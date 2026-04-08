@@ -1,0 +1,31 @@
+{% macro kill_button(project_id, item_id, step_id) %}
+  <button
+    hx-get="/project/{{ project_id }}/api/confirm/kill-step/{{ item_id }}/{{ step_id }}"
+    hx-target="#confirm-dialog"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+    Kill
+  </button>
+{% endmacro %}
+
+{% macro restart_button(project_id, item_id, step_id) %}
+  <button
+    hx-get="/project/{{ project_id }}/api/confirm/restart-step/{{ item_id }}/{{ step_id }}"
+    hx-target="#confirm-dialog"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    title="Restart step">
+    ↻
+  </button>
+{% endmacro %}
+
+{% macro skip_button(project_id, item_id, step_id) %}
+  <button
+    hx-get="/project/{{ project_id }}/api/confirm/skip-step/{{ item_id }}/{{ step_id }}"
+    hx-target="#confirm-dialog"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    title="Skip step">
+    ⏭
+  </button>
+{% endmacro %}

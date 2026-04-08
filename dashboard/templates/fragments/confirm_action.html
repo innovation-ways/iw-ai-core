@@ -1,0 +1,9 @@
+{% from "components/confirm_dialog.html" import confirm_dialog %}
+{{ confirm_dialog(
+     title=title,
+     description=description,
+     confirm_url=confirm_url,
+     confirm_method='post',
+     confirm_label=confirm_label,
+     danger=danger,
+) }}

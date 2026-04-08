@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <title>{% block title %}IW AI Core{% endblock %} — IW AI Core</title>
+
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Theme CSS (custom properties) -->
+  <link rel="stylesheet" href="/static/theme.css" />
+
+  <!-- Dark mode: apply saved preference before paint to avoid flash -->
+  <script>
+    (function () {
+      var saved = localStorage.getItem('theme');
+      if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
+
+  <!-- Tailwind CDN with theme integration -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            background: 'var(--background)',
+            foreground: 'var(--foreground)',
+            card: { DEFAULT: 'var(--card)', foreground: 'var(--card-foreground)' },
+            primary: { DEFAULT: 'var(--primary)', foreground: 'var(--primary-foreground)' },
+            secondary: { DEFAULT: 'var(--secondary)', foreground: 'var(--secondary-foreground)' },
+            muted: { DEFAULT: 'var(--muted)', foreground: 'var(--muted-foreground)' },
+            accent: { DEFAULT: 'var(--accent)', foreground: 'var(--accent-foreground)' },
+            destructive: { DEFAULT: 'var(--destructive)', foreground: 'var(--destructive-foreground)' },
+            border: 'var(--border)',
+            input: 'var(--input)',
+            ring: 'var(--ring)',
+            success: { DEFAULT: 'var(--success)', foreground: 'var(--success-foreground)' },
+            warning: { DEFAULT: 'var(--warning)', foreground: 'var(--warning-foreground)' },
+            info: { DEFAULT: 'var(--info)', foreground: 'var(--info-foreground)' },
+            sidebar: {
+              DEFAULT: 'var(--sidebar)',
+              foreground: 'var(--sidebar-foreground)',
+              primary: 'var(--sidebar-primary)',
+              accent: 'var(--sidebar-accent)',
+              border: 'var(--sidebar-border)',
+            },
+          },
+          borderRadius: {
+            lg: 'calc(var(--radius) + 2px)',
+            md: 'var(--radius)',
+            sm: 'calc(var(--radius) - 2px)',
+          },
+          fontFamily: {
+            sans: ['var(--font-sans)'],
+            mono: ['var(--font-mono)'],
+          },
+        },
+      },
+    }
+  </script>
+
+  <!-- htmx -->
+  <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
+
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-background text-foreground font-sans antialiased">
+
+<!-- Toast container (SSE toasts rendered here) -->
+<div id="toast-container"></div>
+
+<!-- Confirmation dialog overlay (htmx loads content here) -->
+<div id="confirm-dialog"></div>
+
+<!-- App shell: sidebar + main -->
+<div class="flex h-screen overflow-hidden">
+
+  <!-- ===== Sidebar ===== -->
+  <aside id="sidebar"
+         class="w-60 flex-shrink-0 flex flex-col bg-sidebar border-r border-sidebar-border overflow-y-auto">
+
+    <!-- Logo / brand -->
+    <a href="/" class="flex items-center gap-2 px-4 py-4 border-b border-sidebar-border hover:opacity-80 transition-opacity">
+      <div class="w-7 h-7 rounded bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">IW</div>
+      <span class="font-semibold text-sidebar-primary-foreground text-sm">IW AI Core</span>
+    </a>
+
+    <!-- Sidebar nav -->
+    <nav class="flex-1 px-2 py-3 space-y-0.5">
+
+      <!-- Projects section -->
+      <div class="px-2 py-1.5 mb-1">
+        <p class="text-xs text-sidebar-foreground font-medium uppercase tracking-wide">Projects</p>
+      </div>
+
+      <!-- Expandable project list loaded via htmx -->
+      {% set nav_current = current_project.id if current_project else '' %}
+      <div hx-get="/api/nav-projects?current={{ nav_current }}&path={{ request.url.path }}"
+           hx-trigger="load"
+           hx-swap="innerHTML"
+           class="space-y-0.5">
+      </div>
+
+      <!-- System section (always visible) -->
+      <div class="border-t border-sidebar-border my-2 pt-1">
+        <p class="px-2 pb-1 text-xs text-sidebar-foreground font-medium uppercase tracking-wide">System</p>
+      </div>
+      {% set system_links = [
+        ('/system/running', 'Running Tasks'),
+        ('/system/status', 'System Status'),
+        ('/system/all-active', 'All Active Work'),
+        ('/system/config', 'Configuration'),
+      ] %}
+      {% for href, label in system_links %}
+        <a href="{{ href }}"
+           class="flex items-center px-2 py-1.5 rounded text-sm transition-colors
+                  {% if request.url.path == href %}
+                    bg-sidebar-accent text-sidebar-accent-foreground font-medium
+                  {% else %}
+                    text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
+                  {% endif %}">
+          <span>{{ label }}</span>
+          {% if href == '/system/running' and running_count|default(0) > 0 %}
+            <span class="ml-auto text-xs bg-primary text-primary-foreground rounded-full px-1.5 py-0.5">{{ running_count }}</span>
+          {% endif %}
+        </a>
+      {% endfor %}
+
+    </nav>
+
+    <!-- Dark mode toggle at bottom of sidebar -->
+    <div class="px-4 py-3 border-t border-sidebar-border">
+      <button onclick="toggleDarkMode()"
+              class="flex items-center gap-2 text-xs text-sidebar-foreground hover:text-sidebar-primary-foreground transition-colors w-full">
+        <span id="theme-icon">☾</span>
+        <span>Toggle theme</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ===== Main content ===== -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- Global search bar -->
+    <div class="flex-shrink-0 border-b border-border bg-card px-6 py-2 relative">
+      <input type="search"
+             hx-get="/api/search"
+             hx-trigger="keyup changed delay:300ms"
+             hx-target="#global-search-results"
+             {% if current_project %}hx-vals='{"project": "{{ current_project.id }}"}'{% endif %}
+             name="q"
+             placeholder="Search work items… (Ctrl+K)"
+             class="w-full max-w-md px-4 py-1.5 bg-input border border-border rounded-md text-sm
+                    text-foreground placeholder:text-muted-foreground
+                    focus:outline-none focus:ring-2 focus:ring-ring" />
+      <div id="global-search-results" class="absolute left-6 top-full z-50 w-full max-w-md"></div>
+    </div>
+
+    <!-- Page content area -->
+    <main class="flex-1 overflow-y-auto p-6">
+      {% block breadcrumb %}{% endblock %}
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- LLM Quota footer bar (static placeholder) -->
+    <footer class="flex-shrink-0 border-t border-border bg-muted px-6 py-2 flex items-center gap-6 text-xs text-muted-foreground">
+      <span class="font-medium">Claude:</span>
+      <div class="flex items-center gap-2">
+        <span>5h</span>
+        <div class="w-24 h-1.5 bg-border rounded-full overflow-hidden">
+          <div class="h-full bg-primary rounded-full" style="width: 0%"></div>
+        </div>
+        <span>—</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span>7d</span>
+        <div class="w-24 h-1.5 bg-border rounded-full overflow-hidden">
+          <div class="h-full bg-primary rounded-full" style="width: 0%"></div>
+        </div>
+        <span>—</span>
+      </div>
+      <span class="ml-auto text-muted-foreground">IW AI Core v0.1</span>
+    </footer>
+  </div>
+
+</div>
+
+<!-- JS -->
+<script src="/static/theme-toggle.js"></script>
+<script src="/static/duration.js"></script>
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

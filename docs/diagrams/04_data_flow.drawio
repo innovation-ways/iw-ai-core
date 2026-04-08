@@ -1,0 +1,551 @@
+<mxfile host="app.diagrams.net" modified="2026-04-07T14:00:00.000Z" type="device">
+  <diagram name="Data Flow Architecture" id="data-flow-1">
+    <mxGraphModel dx="1900" dy="1350" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1350" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ===== Title ===== -->
+        <mxCell id="title" value="Data Flow Architecture — Two-Tier Storage Model" style="text;html=1;fontSize=16;fontFamily=Inter;fontStyle=1;fontColor=#1B2A4A;align=center;verticalAlign=middle;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="500" y="15" width="800" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ===== LEFT COLUMN: State + Tier 1 Content (PostgreSQL) ===== -->
+        <mxCell id="state-container" value="State + Tier 1 Content (PostgreSQL)" style="swimlane;startSize=30;html=1;rounded=1;arcSize=6;fillColor=#FFE0B2;strokeColor=#FB8C00;fontFamily=Inter;fontStyle=1;fontSize=14;fontColor=#1B2A4A;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="30" y="80" width="340" height="640" as="geometry" />
+        </mxCell>
+        <mxCell id="db-icon" value="DB" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#FB8C00;fontColor=#FFFFFF;strokeColor=#E65100;fontFamily=Inter;fontStyle=1;fontSize=12;" vertex="1" parent="state-container">
+          <mxGeometry x="140" y="38" width="60" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- DB Table rows — State -->
+        <mxCell id="db-section-state" value="&lt;font style=&quot;font-size:10px;color:#E65100&quot;&gt;STATE TABLES&lt;/font&gt;" style="text;html=1;fontFamily=Inter;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=5;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="82" width="310" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="db-t1" value="&lt;b&gt;id_sequences&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Atomic ID allocation (FOR UPDATE lock)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FB8C00;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="102" width="310" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="db-t2" value="&lt;b&gt;work_items&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;status, phase, timestamps&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FB8C00;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="144" width="310" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="db-t3" value="&lt;b&gt;workflow_steps&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;step status, report paths&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FB8C00;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="186" width="310" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="db-t4" value="&lt;b&gt;step_runs&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;execution attempts, durations&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FB8C00;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="228" width="310" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="db-t5" value="&lt;b&gt;fix_cycles&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;review triggers, cycle counts&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FB8C00;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="270" width="310" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="db-t6" value="&lt;b&gt;batches&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;batch status, merge tracking&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FB8C00;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="312" width="310" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="db-t7" value="&lt;b&gt;daemon_events&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;audit trail, notifications&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#FB8C00;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="354" width="310" height="36" as="geometry" />
+        </mxCell>
+
+        <!-- DB Table rows — Tier 1 Content -->
+        <mxCell id="db-section-tier1" value="&lt;font style=&quot;font-size:10px;color:#E65100&quot;&gt;TIER 1 CONTENT (always viewable)&lt;/font&gt;" style="text;html=1;fontFamily=Inter;fontStyle=1;align=left;verticalAlign=middle;spacingLeft=5;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="400" width="310" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="db-tier1-1" value="&lt;b&gt;design_doc_content&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Full design doc markdown (always viewable)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#FFA000;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="422" width="310" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="db-tier1-2" value="&lt;b&gt;report_content&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Step reports (always viewable)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#FFA000;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="464" width="310" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="db-tier1-3" value="&lt;b&gt;design_doc_search&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;tsvector FTS index&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#FFA000;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="506" width="310" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="db-tier1-4" value="&lt;b&gt;summary&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;AI-generated summaries&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#FFA000;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="state-container">
+          <mxGeometry x="15" y="548" width="310" height="36" as="geometry" />
+        </mxCell>
+
+        <!-- Tier 1 separator line -->
+        <mxCell id="tier1-sep" value="" style="endArrow=none;dashed=1;html=1;strokeColor=#FFA000;strokeWidth=1;dashPattern=4 2;" edge="1" parent="state-container">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="15" y="396" as="sourcePoint" />
+            <mxPoint x="325" y="396" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ===== RIGHT COLUMN TOP: Active Work (Project Repo) ===== -->
+        <mxCell id="content-container" value="Active Work (Project Repo)" style="swimlane;startSize=30;html=1;rounded=1;arcSize=6;fillColor=#d5e8d4;strokeColor=#82B366;fontFamily=Inter;fontStyle=1;fontSize=14;fontColor=#1B2A4A;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="1284" y="80" width="340" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="fs-icon" value="FS" style="shape=mxgraph.aws3.s3;whiteSpace=wrap;html=1;fillColor=#82B366;fontColor=#FFFFFF;strokeColor=#6D9B49;fontFamily=Inter;fontStyle=1;fontSize=12;" vertex="1" parent="content-container">
+          <mxGeometry x="145" y="35" width="50" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Active Work label -->
+        <mxCell id="fs-active-label" value="&lt;font style=&quot;font-size:9px;color:#6D9B49&quot;&gt;&lt;i&gt;Only in-flight items. Cleaned up on archive.&lt;/i&gt;&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=middle;whiteSpace=wrap;" vertex="1" parent="content-container">
+          <mxGeometry x="15" y="75" width="310" height="16" as="geometry" />
+        </mxCell>
+
+        <!-- File structure items -->
+        <mxCell id="fs-dir" value="&lt;b&gt;ai-dev/design/active/I001/&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82B366;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="content-container">
+          <mxGeometry x="15" y="95" width="310" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="fs-f1" value="  I001_Issue_Design.md &lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;(design doc)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F1F8E9;strokeColor=#C5E1A5;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=15;" vertex="1" parent="content-container">
+          <mxGeometry x="30" y="127" width="295" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="fs-f2" value="  prompts/ &lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;(step prompts)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F1F8E9;strokeColor=#C5E1A5;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=15;" vertex="1" parent="content-container">
+          <mxGeometry x="30" y="157" width="295" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="fs-f3" value="  reports/ &lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;(agent output)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F1F8E9;strokeColor=#C5E1A5;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=15;" vertex="1" parent="content-container">
+          <mxGeometry x="30" y="187" width="295" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="fs-f4" value="  evidences/ &lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;(screenshots)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F1F8E9;strokeColor=#C5E1A5;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=15;" vertex="1" parent="content-container">
+          <mxGeometry x="30" y="217" width="295" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="fs-f5" value="&lt;b&gt;ai-dev/workflow.md&lt;/b&gt; &lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;(step definitions)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82B366;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="content-container">
+          <mxGeometry x="15" y="253" width="310" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="fs-f6" value="&lt;b&gt;.claude/skills/&lt;/b&gt; &lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;(skill files)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82B366;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="content-container">
+          <mxGeometry x="15" y="283" width="310" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="fs-f7" value="&lt;b&gt;Source code&lt;/b&gt; &lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;(in worktree)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82B366;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="content-container">
+          <mxGeometry x="15" y="313" width="310" height="26" as="geometry" />
+        </mxCell>
+
+        <!-- ===== RIGHT COLUMN BOTTOM: Tier 2 Archive ===== -->
+        <mxCell id="archive-container" value="Tier 2 Archive (iw-ai-core/archive/)" style="swimlane;startSize=30;html=1;rounded=1;arcSize=6;fillColor=#E8EAF6;strokeColor=#5C6BC0;fontFamily=Inter;fontStyle=1;fontSize=14;fontColor=#1B2A4A;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="1284" y="440" width="340" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="archive-icon" value="&#x1F4E6;" style="text;html=1;fontSize=22;fontFamily=Inter;align=center;verticalAlign=middle;" vertex="1" parent="archive-container">
+          <mxGeometry x="150" y="33" width="40" height="36" as="geometry" />
+        </mxCell>
+
+        <!-- Archive label -->
+        <mxCell id="archive-label" value="&lt;font style=&quot;font-size:9px;color:#5C6BC0&quot;&gt;&lt;i&gt;Compressed artifacts. NOT in git. On-demand extraction to /tmp/.&lt;/i&gt;&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=middle;whiteSpace=wrap;" vertex="1" parent="archive-container">
+          <mxGeometry x="15" y="70" width="310" height="16" as="geometry" />
+        </mxCell>
+
+        <!-- Archive file items -->
+        <mxCell id="arc-f1" value="&lt;b&gt;I001.tar.zst&lt;/b&gt; &lt;font style=&quot;font-size:10px;color:#5C6BC0&quot;&gt;(design + prompts + reports + evidences)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#7986CB;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="archive-container">
+          <mxGeometry x="15" y="92" width="310" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="arc-f2" value="&lt;b&gt;I002.tar.zst&lt;/b&gt; &lt;font style=&quot;font-size:10px;color:#5C6BC0&quot;&gt;(compressed archive)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#7986CB;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="archive-container">
+          <mxGeometry x="15" y="130" width="310" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="arc-f3" value="&lt;b&gt;F015.tar.zst&lt;/b&gt; &lt;font style=&quot;font-size:10px;color:#5C6BC0&quot;&gt;(compressed archive)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8EAF6;strokeColor=#7986CB;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=10;" vertex="1" parent="archive-container">
+          <mxGeometry x="15" y="168" width="310" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="arc-dots" value="&lt;font style=&quot;font-size:11px;color:#5C6BC0&quot;&gt;...&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=middle;" vertex="1" parent="archive-container">
+          <mxGeometry x="140" y="205" width="60" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Callout note near archive -->
+        <mxCell id="archive-callout" value="&lt;font style=&quot;font-size:10px&quot;&gt;&lt;b&gt;On-demand viewing:&lt;/b&gt; Dashboard extracts archive to /tmp/, serves read-only, auto-cleanup on TTL expiry&lt;/font&gt;" style="shape=callout;whiteSpace=wrap;html=1;perimeter=calloutPerimeter;size=12;position=0.25;rounded=1;arcSize=8;fillColor=#FFFDE7;strokeColor=#FFA000;fontFamily=Inter;fontColor=#1B2A4A;align=left;spacingLeft=8;spacingRight=8;" vertex="1" parent="archive-container">
+          <mxGeometry x="15" y="228" width="310" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- ===== CENTER: Five Actors ===== -->
+
+        <!-- Actor 1: Skill (Claude Code) -->
+        <mxCell id="actor-skill" value="&lt;b&gt;Skill&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;(Claude Code)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D4E4F7;strokeColor=#5B9BD5;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;arcSize=20;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="510" y="100" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-skill-icon" value="&#x1F527;" style="text;html=1;fontSize=18;fontFamily=Inter;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="475" y="108" width="35" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Actor 2: Agent (LLM in worktree) -->
+        <mxCell id="actor-agent" value="&lt;b&gt;Agent&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;(LLM in worktree)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#66BB6A;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;arcSize=20;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="510" y="210" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-agent-icon" value="&#x1F916;" style="text;html=1;fontSize=18;fontFamily=Inter;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="475" y="218" width="35" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Actor 3: Daemon -->
+        <mxCell id="actor-daemon" value="&lt;b&gt;Daemon&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;(batch_dispatcher.sh)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#AB47BC;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;arcSize=20;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="510" y="320" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-daemon-icon" value="&#x2699;&#xFE0F;" style="text;html=1;fontSize=18;fontFamily=Inter;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="475" y="328" width="35" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Actor 4: Dashboard -->
+        <mxCell id="actor-dashboard" value="&lt;b&gt;Dashboard&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;(ai_dashboard)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D4E4F7;strokeColor=#5B9BD5;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;arcSize=20;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="510" y="430" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-dashboard-icon" value="&#x1F4CA;" style="text;html=1;fontSize=18;fontFamily=Inter;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="475" y="438" width="35" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Actor 5: iw archive command (NEW) -->
+        <mxCell id="actor-archive" value="&lt;b&gt;iw archive&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;(archive command)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#FB8C00;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;arcSize=20;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="510" y="540" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="actor-archive-icon" value="&#x1F5C4;&#xFE0F;" style="text;html=1;fontSize=18;fontFamily=Inter;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="475" y="548" width="35" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- ===== Arrows: Skill → DB ===== -->
+        <mxCell id="arrow-skill-db" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#FB8C00;strokeWidth=2;endArrow=block;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor-skill" target="state-container">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="430" y="125" />
+              <mxPoint x="430" y="80" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-skill-db-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;iw next-id (allocate ID)&lt;br&gt;iw register (create work item)&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#E65100;resizable=0;" vertex="1" connectable="0" parent="arrow-skill-db">
+          <mxGeometry x="-0.1" y="1" relative="1" as="geometry">
+            <mxPoint x="-15" y="-18" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrows: Skill → Files -->
+        <mxCell id="arrow-skill-fs" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82B366;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.15;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor-skill" target="content-container">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="750" y="125" />
+              <mxPoint x="750" y="131" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-skill-fs-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;creates design doc, prompts, manifest&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#6D9B49;resizable=0;" vertex="1" connectable="0" parent="arrow-skill-fs">
+          <mxGeometry x="0.2" relative="1" as="geometry">
+            <mxPoint y="-12" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrows: Agent → DB -->
+        <mxCell id="arrow-agent-db" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#FB8C00;strokeWidth=2;endArrow=block;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="actor-agent">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="370" y="234" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="420" y="235" />
+              <mxPoint x="420" y="234" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-agent-db-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;iw step-start / done / fail&lt;br&gt;(state updates via CLI)&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#E65100;resizable=0;" vertex="1" connectable="0" parent="arrow-agent-db">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <mxPoint y="-18" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrows: Agent → Files -->
+        <mxCell id="arrow-agent-fs" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82B366;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="actor-agent">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1284" y="235" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="750" y="235" />
+              <mxPoint x="750" y="235" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-agent-fs-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;reads prompts, writes reports + code&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#6D9B49;resizable=0;" vertex="1" connectable="0" parent="arrow-agent-fs">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-12" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrows: Daemon → DB (bidirectional) -->
+        <mxCell id="arrow-daemon-db" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#AB47BC;strokeWidth=2;endArrow=block;endFill=1;startArrow=block;startFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="actor-daemon">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="370" y="345" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="420" y="345" />
+              <mxPoint x="420" y="345" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-daemon-db-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;polls status, updates state&lt;br&gt;(bidirectional)&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#7B1FA2;resizable=0;" vertex="1" connectable="0" parent="arrow-daemon-db">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <mxPoint y="-18" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrows: Daemon → Files -->
+        <mxCell id="arrow-daemon-fs" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82B366;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="actor-daemon">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1284" y="345" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="750" y="345" />
+              <mxPoint x="750" y="345" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-daemon-fs-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;writes execution_brief.json (read-only)&lt;br&gt;runs merge&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#6D9B49;resizable=0;" vertex="1" connectable="0" parent="arrow-daemon-fs">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-18" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrows: Dashboard ← DB (read-only) -->
+        <mxCell id="arrow-dashboard-db" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#FB8C00;strokeWidth=2;endArrow=block;endFill=1;dashed=1;dashPattern=5 3;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="actor-dashboard">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="370" y="455" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="420" y="455" />
+              <mxPoint x="420" y="455" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-dashboard-db-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;queries for display&lt;br&gt;(read-only)&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#E65100;resizable=0;" vertex="1" connectable="0" parent="arrow-dashboard-db">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <mxPoint y="-18" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrows: Dashboard → Files -->
+        <mxCell id="arrow-dashboard-fs" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82B366;strokeWidth=2;endArrow=block;endFill=1;dashed=1;dashPattern=5 3;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="actor-dashboard">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1284" y="455" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="750" y="455" />
+              <mxPoint x="750" y="455" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-dashboard-fs-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;links to design docs for&lt;br&gt;content display&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#6D9B49;resizable=0;" vertex="1" connectable="0" parent="arrow-dashboard-fs">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-18" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ===== Arrows: iw archive command ===== -->
+
+        <!-- iw archive → DB: Store design doc + reports (Tier 1) -->
+        <mxCell id="arrow-archive-db" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#FB8C00;strokeWidth=2;endArrow=block;endFill=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="actor-archive">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="370" y="565" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="420" y="565" />
+              <mxPoint x="420" y="565" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-archive-db-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;Store design doc + reports (Tier 1)&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#E65100;resizable=0;" vertex="1" connectable="0" parent="arrow-archive-db">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <mxPoint y="-14" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- iw archive → Archive: Compress everything to .tar.zst (Tier 2) -->
+        <mxCell id="arrow-archive-tier2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#5C6BC0;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;" edge="1" parent="1" source="actor-archive">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1284" y="580" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="750" y="578" />
+              <mxPoint x="750" y="580" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-archive-tier2-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;Compress everything to .tar.zst (Tier 2)&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#5C6BC0;resizable=0;" vertex="1" connectable="0" parent="arrow-archive-tier2">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-14" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Project Repo → iw archive: Read files from active/ -->
+        <mxCell id="arrow-repo-to-archive" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82B366;strokeWidth=2;endArrow=block;endFill=1;dashed=1;dashPattern=5 3;exitX=0;exitY=0.85;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" edge="1" parent="1" source="content-container" target="actor-archive">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1200" y="369" />
+              <mxPoint x="1200" y="510" />
+              <mxPoint x="730" y="510" />
+              <mxPoint x="730" y="553" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-repo-to-archive-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;Read files from active/&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;fontColor=#6D9B49;resizable=0;" vertex="1" connectable="0" parent="arrow-repo-to-archive">
+          <mxGeometry x="0.3" relative="1" as="geometry">
+            <mxPoint y="-12" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- iw archive → Project Repo: Delete active/I001/ (cleanup) -->
+        <mxCell id="arrow-archive-cleanup" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#E53935;strokeWidth=2;endArrow=block;endFill=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.95;entryDx=0;entryDy=0;" edge="1" parent="1" source="actor-archive" target="content-container">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1150" y="553" />
+              <mxPoint x="1150" y="403" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-archive-cleanup-label" value="&lt;font style=&quot;font-size:10px;color:#E53935&quot;&gt;Delete active/I001/ (cleanup)&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontFamily=Inter;resizable=0;" vertex="1" connectable="0" parent="arrow-archive-cleanup">
+          <mxGeometry x="0.1" relative="1" as="geometry">
+            <mxPoint x="8" y="-12" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ===== Vertical separator lines (decorative) ===== -->
+        <mxCell id="sep-left" value="" style="endArrow=none;dashed=1;html=1;strokeColor=#B0B8D4;strokeWidth=1;dashPattern=8 4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="400" y="80" as="sourcePoint" />
+            <mxPoint x="400" y="720" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="sep-right" value="" style="endArrow=none;dashed=1;html=1;strokeColor=#B0B8D4;strokeWidth=1;dashPattern=8 4;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1254" y="80" as="sourcePoint" />
+            <mxPoint x="1254" y="720" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ===== BOTTOM: Work Item Lifecycle Timeline ===== -->
+        <mxCell id="timeline-container" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F8FC;strokeColor=#B0B8D4;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="30" y="760" width="1594" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="timeline-title" value="Work Item Lifecycle — State at Each Stage" style="text;html=1;fontSize=14;fontFamily=Inter;fontStyle=1;fontColor=#1B2A4A;align=left;verticalAlign=middle;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="50" y="768" width="400" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- Timeline arrow -->
+        <mxCell id="timeline-arrow" value="" style="endArrow=block;endFill=1;html=1;strokeColor=#4A5068;strokeWidth=3;rounded=0;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="60" y="840" as="sourcePoint" />
+            <mxPoint x="1594" y="840" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Stage 1: Draft -->
+        <mxCell id="stage-1" value="&lt;b&gt;Draft&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1B2A4A;fontColor=#FFFFFF;strokeColor=#1B2A4A;fontFamily=Inter;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="810" width="90" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-1-dot" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1B2A4A;strokeColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="98" y="834" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-1-db" value="&lt;font style=&quot;font-size:10px;color:#E65100&quot;&gt;&lt;b&gt;DB:&lt;/b&gt; work_item(draft)&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="35" y="858" width="140" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-1-fs" value="&lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;&lt;b&gt;Files:&lt;/b&gt; design doc created&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="35" y="878" width="140" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 2: Approved -->
+        <mxCell id="stage-2" value="&lt;b&gt;Approved&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2E86AB;fontColor=#FFFFFF;strokeColor=#2E86AB;fontFamily=Inter;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="240" y="810" width="90" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-2-dot" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#2E86AB;strokeColor=#2E86AB;" vertex="1" parent="1">
+          <mxGeometry x="278" y="834" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-2-db" value="&lt;font style=&quot;font-size:10px;color:#E65100&quot;&gt;&lt;b&gt;DB:&lt;/b&gt; work_item(approved)&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="210" y="858" width="150" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-2-fs" value="&lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;&lt;b&gt;Files:&lt;/b&gt; unchanged&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="210" y="878" width="150" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 3: Executing -->
+        <mxCell id="stage-3" value="&lt;b&gt;Executing&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FB8C00;fontColor=#FFFFFF;strokeColor=#FB8C00;fontFamily=Inter;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="420" y="810" width="90" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-3-dot" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FB8C00;strokeColor=#FB8C00;" vertex="1" parent="1">
+          <mxGeometry x="458" y="834" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-3-db" value="&lt;font style=&quot;font-size:10px;color:#E65100&quot;&gt;&lt;b&gt;DB:&lt;/b&gt; steps(in_progress)&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="390" y="858" width="150" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-3-fs" value="&lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;&lt;b&gt;Files:&lt;/b&gt; execution_brief&lt;br&gt;+ code changes&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="390" y="878" width="150" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 4: Completed -->
+        <mxCell id="stage-4" value="&lt;b&gt;Completed&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#66BB6A;fontColor=#FFFFFF;strokeColor=#66BB6A;fontFamily=Inter;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="600" y="810" width="90" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-4-dot" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#66BB6A;strokeColor=#66BB6A;" vertex="1" parent="1">
+          <mxGeometry x="638" y="834" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-4-db" value="&lt;font style=&quot;font-size:10px;color:#E65100&quot;&gt;&lt;b&gt;DB:&lt;/b&gt; work_item(completed)&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="570" y="858" width="150" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-4-fs" value="&lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;&lt;b&gt;Files:&lt;/b&gt; all reports written&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="570" y="878" width="150" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 5: Merged -->
+        <mxCell id="stage-5" value="&lt;b&gt;Merged&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#AB47BC;fontColor=#FFFFFF;strokeColor=#AB47BC;fontFamily=Inter;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="790" y="810" width="90" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-5-dot" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#AB47BC;strokeColor=#AB47BC;" vertex="1" parent="1">
+          <mxGeometry x="828" y="834" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-5-db" value="&lt;font style=&quot;font-size:10px;color:#E65100&quot;&gt;&lt;b&gt;DB:&lt;/b&gt; batch_item(merged)&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="760" y="858" width="150" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-5-fs" value="&lt;font style=&quot;font-size:10px;color:#6D9B49&quot;&gt;&lt;b&gt;Files:&lt;/b&gt; code on main branch&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="760" y="878" width="150" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Stage 6: Archived (updated with two-tier details) -->
+        <mxCell id="stage-6" value="&lt;b&gt;Archived&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4A5068;fontColor=#FFFFFF;strokeColor=#4A5068;fontFamily=Inter;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="810" width="90" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-6-dot" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=#4A5068;strokeColor=#4A5068;" vertex="1" parent="1">
+          <mxGeometry x="1058" y="834" width="14" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-6-db" value="&lt;font style=&quot;font-size:10px;color:#E65100&quot;&gt;&lt;b&gt;DB (Tier 1):&lt;/b&gt; design doc + reports stored&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="960" y="858" width="210" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-6-archive" value="&lt;font style=&quot;font-size:10px;color:#5C6BC0&quot;&gt;&lt;b&gt;Archive (Tier 2):&lt;/b&gt; I001.tar.zst created&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="960" y="878" width="210" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="stage-6-cleanup" value="&lt;font style=&quot;font-size:10px;color:#E53935&quot;&gt;&lt;b&gt;Project:&lt;/b&gt; active/I001/ deleted&lt;/font&gt;" style="text;html=1;fontFamily=Inter;align=center;verticalAlign=top;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="960" y="898" width="210" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Archived detail box -->
+        <mxCell id="stage-6-detail" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#4A5068;strokeWidth=1;dashed=1;dashPattern=4 2;" vertex="1" parent="1">
+          <mxGeometry x="955" y="852" width="220" height="72" as="geometry" />
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B0B8D4;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="50" y="940" width="560" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="&lt;b&gt;Legend:&lt;/b&gt;" style="text;html=1;fontSize=10;fontFamily=Inter;fontColor=#1B2A4A;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="60" y="945" width="50" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-solid" value="" style="endArrow=block;endFill=1;html=1;strokeColor=#4A5068;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="115" y="959" as="sourcePoint" />
+            <mxPoint x="155" y="959" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-solid-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;write&lt;/font&gt;" style="text;html=1;fontFamily=Inter;fontColor=#1B2A4A;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="160" y="945" width="40" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-dashed" value="" style="endArrow=block;endFill=1;html=1;strokeColor=#4A5068;strokeWidth=2;dashed=1;dashPattern=5 3;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="210" y="959" as="sourcePoint" />
+            <mxPoint x="250" y="959" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-dashed-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;read-only&lt;/font&gt;" style="text;html=1;fontFamily=Inter;fontColor=#1B2A4A;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="255" y="945" width="60" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-bidir" value="" style="endArrow=block;endFill=1;startArrow=block;startFill=1;html=1;strokeColor=#AB47BC;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="325" y="959" as="sourcePoint" />
+            <mxPoint x="365" y="959" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-bidir-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;bidirectional&lt;/font&gt;" style="text;html=1;fontFamily=Inter;fontColor=#1B2A4A;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="370" y="945" width="80" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-delete" value="" style="endArrow=block;endFill=1;html=1;strokeColor=#E53935;strokeWidth=2;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="460" y="959" as="sourcePoint" />
+            <mxPoint x="500" y="959" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-delete-label" value="&lt;font style=&quot;font-size:10px&quot;&gt;delete/cleanup&lt;/font&gt;" style="text;html=1;fontFamily=Inter;fontColor=#1B2A4A;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="505" y="945" width="90" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- Subtitle / principle callout -->
+        <mxCell id="principle" value="&lt;b&gt;Core Principle:&lt;/b&gt; DB stores state + Tier 1 content (always viewable). Project repo holds active work files (cleaned on archive). Tier 2 archive stores compressed artifacts (.tar.zst, not in git)." style="text;html=1;fontSize=11;fontFamily=Inter;fontColor=#4A5068;align=center;verticalAlign=middle;whiteSpace=wrap;spacingLeft=10;spacingRight=10;" vertex="1" parent="1">
+          <mxGeometry x="300" y="735" width="1000" height="22" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,7 @@
+{% macro duration_counter(started_at, fallback='—') %}
+  {% if started_at %}
+    <span data-started-at="{{ started_at.isoformat() }}">{{ fallback }}</span>
+  {% else %}
+    <span>{{ fallback }}</span>
+  {% endif %}
+{% endmacro %}

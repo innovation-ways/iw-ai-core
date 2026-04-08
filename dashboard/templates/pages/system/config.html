@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}System Configuration{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-foreground">System Configuration</h1>
+  <p class="text-muted-foreground text-sm mt-1">Read-only view of platform configuration</p>
+</div>
+
+<div class="space-y-6">
+
+  <!-- projects.toml -->
+  <div>
+    <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">projects.toml</h2>
+    <div class="bg-card border border-border rounded-lg overflow-hidden">
+      {% if projects_toml %}
+        <pre class="p-4 text-xs font-mono text-foreground overflow-auto max-h-80 whitespace-pre-wrap">{{ projects_toml }}</pre>
+      {% else %}
+        <div class="p-4 text-sm text-muted-foreground">projects.toml not found.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Environment -->
+  <div>
+    <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+      Environment (IW_CORE_* variables)
+    </h2>
+    <div class="bg-card border border-border rounded-lg overflow-hidden">
+      {% if env_summary %}
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/30">
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Variable</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for key, val in env_summary.items() %}
+              <tr class="border-b border-border last:border-0">
+                <td class="px-4 py-2 font-mono text-xs text-foreground">{{ key }}</td>
+                <td class="px-4 py-2 font-mono text-xs
+                  {% if val == '***' %}text-muted-foreground italic{% else %}text-foreground{% endif %}">
+                  {{ val }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="p-4 text-sm text-muted-foreground">No IW_CORE_* environment variables found.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Per-project configs -->
+  <div>
+    <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Project Configurations</h2>
+    <div class="space-y-3">
+      {% for pc in project_configs %}
+        <div class="bg-card border border-border rounded-lg overflow-hidden">
+          <div class="px-4 py-2 border-b border-border bg-muted/30">
+            <p class="text-sm font-medium text-foreground">
+              {{ pc.display_name }}
+              <span class="text-xs text-muted-foreground font-mono ml-1">({{ pc.id }})</span>
+            </p>
+          </div>
+          {% if pc.config %}
+            <pre class="p-4 text-xs font-mono text-foreground overflow-auto max-h-60 whitespace-pre-wrap">{{ pc.config | tojson(indent=2) }}</pre>
+          {% else %}
+            <div class="p-4 text-sm text-muted-foreground">No configuration stored.</div>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="bg-card border border-border rounded-lg p-4 text-sm text-muted-foreground">
+          No projects registered.
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

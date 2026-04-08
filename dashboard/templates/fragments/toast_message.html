@@ -1,0 +1,15 @@
+{# Single toast notification fragment — rendered by JS, not Jinja2 #}
+{# This template is for documentation / server-render fallback only.   #}
+{# The live toast system uses the JS in components/toast.html.          #}
+<div class="toast-item pointer-events-auto flex items-start gap-3 bg-card border rounded-lg shadow-lg p-4 mb-2 w-80 cursor-pointer toast-slide-in border-border"
+     data-toast-type="{{ type }}"
+     onclick="this.remove()">
+  <div class="flex-1 min-w-0">
+    <p class="text-sm font-medium text-card-foreground truncate">{{ title }}</p>
+    <p class="text-xs text-muted-foreground mt-0.5">{{ message }}</p>
+  </div>
+  <button onclick="event.stopPropagation(); this.closest('.toast-item').remove()"
+          class="flex-shrink-0 text-muted-foreground hover:text-foreground text-xs leading-none mt-0.5">
+    ✕
+  </button>
+</div>

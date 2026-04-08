@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+{% from "components/action_button.html" import kill_button, restart_button, skip_button %}
+
+{% block title %}Running Tasks{% endblock %}
+
+{% block head %}
+<style>
+  .toast-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-semibold text-foreground">Running Tasks</h1>
+    <p class="text-muted-foreground text-sm mt-1">
+      Live view of all active steps across
+      {% if current_project %}{{ current_project.display_name }}{% else %}all projects{% endif %}.
+    </p>
+  </div>
+  {% if running_count > 0 %}
+    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary text-primary-foreground">
+      {{ running_count }} active
+    </span>
+  {% endif %}
+</div>
+
+<!-- =====================================================================
+     Section 1: Running Now
+     ===================================================================== -->
+<div class="mb-8">
+  <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+    Running Now
+    {% if running_rows %}
+      <span class="ml-2 text-primary">{{ running_rows|length }}</span>
+    {% endif %}
+  </h2>
+
+  <div class="bg-card border border-border rounded-lg overflow-hidden">
+    <!-- SSE source: triggers running table refresh when running-update event arrives -->
+    <div id="sse-trigger"
+         hx-get="/system/running-fragment"
+         hx-trigger="running-refresh"
+         hx-target="#running-body"
+         hx-swap="innerHTML">
+    </div>
+
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-border bg-muted/30">
+          {% if not current_project %}
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Project</th>
+          {% endif %}
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Item</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Step / Agent</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">PID</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
+          <th class="px-4 py-2 text-right font-medium text-muted-foreground">Action</th>
+        </tr>
+      </thead>
+      <tbody id="running-body">
+        {% include "fragments/running_table.html" %}
+      </tbody>
+    </table>
+
+    {% if not running_rows %}
+      <div class="px-4 py-6 text-center text-muted-foreground text-sm">
+        No steps running right now.
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- =====================================================================
+     Section 2: Failed / Needs Attention
+     ===================================================================== -->
+<div class="mb-8">
+  <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+    Failed / Needs Attention
+    {% if failed_rows %}
+      <span class="ml-2 text-destructive">{{ failed_rows|length }}</span>
+    {% endif %}
+  </h2>
+
+  <div class="bg-card border border-border rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-border bg-muted/30">
+          {% if not current_project %}
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Project</th>
+          {% endif %}
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Item</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Step / Agent</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Error</th>
+          <th class="px-4 py-2 text-right font-medium text-muted-foreground">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in failed_rows %}
+          <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+            {% if not current_project %}
+              <td class="px-4 py-2 font-mono text-xs text-muted-foreground">{{ row.project_name }}</td>
+            {% endif %}
+            <td class="px-4 py-2 font-mono text-xs font-semibold">{{ row.item_id }}</td>
+            <td class="px-4 py-2">
+              <span class="font-mono text-xs">{{ row.step_id }}</span>
+              <span class="text-muted-foreground ml-1 text-xs">{{ row.agent_label }}</span>
+            </td>
+            <td class="px-4 py-2">
+              {{ status_badge(row.status) }}
+            </td>
+            <td class="px-4 py-2 text-xs text-muted-foreground max-w-xs truncate"
+                title="{{ row.error_message or '' }}">
+              {{ row.error_message or '—' }}
+            </td>
+            <td class="px-4 py-2 text-right">
+              <div class="flex items-center justify-end gap-1">
+                {{ restart_button(row.project_id, row.item_id, row.step_id) }}
+                {{ skip_button(row.project_id, row.item_id, row.step_id) }}
+                <button
+                  hx-post="/project/{{ row.project_id }}/api/item/{{ row.item_id }}/restart-from/{{ row.step_id }}"
+                  hx-swap="none"
+                  hx-confirm="Reset this and all downstream steps to pending?"
+                  class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+                  title="Restart from this step (resets all downstream steps)">
+                  ↺ from here
+                </button>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        {% if not failed_rows %}
+          <tr>
+            <td colspan="{% if current_project %}5{% else %}6{% endif %}"
+                class="px-4 py-6 text-center text-muted-foreground text-sm">
+              No steps need attention.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- =====================================================================
+     Section 3: Recently Completed
+     ===================================================================== -->
+<div>
+  <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+    Recently Completed
+    <span class="ml-1 font-normal normal-case">(last hour)</span>
+    {% if completed_rows %}
+      <span class="ml-2 text-success">{{ completed_rows|length }}</span>
+    {% endif %}
+  </h2>
+
+  <div class="bg-card border border-border rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-border bg-muted/30">
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Project</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Item</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Step / Agent</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Completed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in completed_rows %}
+          <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+            <td class="px-4 py-2 font-mono text-xs text-muted-foreground">{{ row.project_id }}</td>
+            <td class="px-4 py-2 font-mono text-xs font-semibold">{{ row.item_id }}</td>
+            <td class="px-4 py-2">
+              <span class="font-mono text-xs">{{ row.step_id }}</span>
+              <span class="text-muted-foreground ml-1 text-xs">{{ row.agent_label }}</span>
+            </td>
+            <td class="px-4 py-2 font-mono text-xs">
+              {% if row.duration_secs is not none %}
+                {% set mins = (row.duration_secs // 60)|int %}
+                {% set secs = (row.duration_secs % 60)|int %}
+                {{ "%dm%02ds"|format(mins, secs) }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 text-xs text-muted-foreground">
+              {{ row.completed_at.strftime('%H:%M:%S') }}
+            </td>
+          </tr>
+        {% endfor %}
+        {% if not completed_rows %}
+          <tr>
+            <td colspan="5" class="px-4 py-6 text-center text-muted-foreground text-sm">
+              No steps completed in the last hour.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% include "components/toast.html" %}
+<script>
+// =========================================================================
+// SSE: connect to event stream for live updates
+// =========================================================================
+(function () {
+  var es = new EventSource('/api/stream/events');
+
+  // running-update → refresh the running table via htmx
+  es.addEventListener('running-update', function () {
+    htmx.trigger('#sse-trigger', 'running-refresh');
+  });
+
+  // toast → show notification
+  es.addEventListener('toast', function (e) {
+    try {
+      showToast(JSON.parse(e.data));
+    } catch (_) { /* ignore malformed */ }
+  });
+
+  es.onerror = function () {
+    // Reconnect automatically via browser's native SSE retry
+  };
+})();
+
+// =========================================================================
+// HX-Trigger: handle showToast from action endpoints
+// =========================================================================
+document.body.addEventListener('htmx:afterRequest', function (e) {
+  var triggerHeader = e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger');
+  if (!triggerHeader) return;
+  try {
+    var trigger = JSON.parse(triggerHeader);
+    if (trigger.showToast) {
+      showToast(trigger.showToast);
+    }
+  } catch (_) { /* ignore */ }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% macro step_pipeline(steps) %}
+  <div class="flex items-center gap-1">
+    {% for step in steps %}
+      {% if step.status == 'completed' %}
+        <div class="w-8 h-8 rounded-full bg-success flex items-center justify-center text-success-foreground text-xs font-bold"
+             title="{{ step.step_id }} {{ step.agent_label }}: {{ step.duration }}">✓</div>
+      {% elif step.status == 'in_progress' %}
+        <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold animate-pulse"
+             title="{{ step.step_id }} {{ step.agent_label }}: running">●</div>
+      {% elif step.status == 'failed' %}
+        <div class="w-8 h-8 rounded-full bg-destructive flex items-center justify-center text-destructive-foreground text-xs font-bold"
+             title="{{ step.step_id }} {{ step.agent_label }}: failed">✗</div>
+      {% elif step.status == 'skipped' %}
+        <div class="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground text-xs font-bold"
+             title="{{ step.step_id }}: skipped">⏭</div>
+      {% else %}
+        <div class="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-secondary-foreground text-xs"
+             title="{{ step.step_id }} {{ step.agent_label }}: pending">○</div>
+      {% endif %}
+      {% if not loop.last %}
+        <div class="w-4 h-0.5 bg-border"></div>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endmacro %}

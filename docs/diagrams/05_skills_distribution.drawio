@@ -1,0 +1,173 @@
+<mxfile host="app.diagrams.net" modified="2026-04-07T00:00:00.000Z" agent="Claude" version="24.0.0" type="device">
+  <diagram id="skills-distribution" name="Skills Distribution Model">
+    <mxGraphModel dx="1654" dy="1169" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="&lt;b&gt;Skills Distribution Model &amp;mdash; Package-like Management&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontFamily=Inter;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="477" y="20" width="700" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== MASTER REPOSITORY ==================== -->
+        <mxCell id="master-container" value="&lt;b&gt;Master Skills (iw-ai-core/skills/)&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#d6b656;strokeWidth=2;verticalAlign=top;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="227" y="70" width="1200" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- Master skills as document shapes -->
+        <mxCell id="ms1" value="&lt;b&gt;iw-new-incident&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;v2.1.0&lt;/font&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.27;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="267" y="105" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ms2" value="&lt;b&gt;iw-new-feature&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;v2.1.0&lt;/font&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.27;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="437" y="105" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ms3" value="&lt;b&gt;iw-new-cr&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;v1.3.0&lt;/font&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.27;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="607" y="105" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ms4" value="&lt;b&gt;iw-batch-execute&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;v1.5.0&lt;/font&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.27;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="777" y="105" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ms5" value="&lt;b&gt;iw-workflow&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;v3.0.0&lt;/font&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.27;fillColor=#fff2cc;strokeColor=#d6b656;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="947" y="105" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== IW SYNC-SKILLS PROCESS ==================== -->
+        <mxCell id="sync-process" value="&lt;b&gt;iw sync-skills&lt;/b&gt;&lt;hr style=&quot;margin:4px 0&quot;&gt;&lt;font style=&quot;font-size:10px&quot;&gt;1. Read .iw-skills-lock.json&lt;br&gt;2. Compare versions with master&lt;br&gt;3. Copy updated skills (skip overrides)&lt;br&gt;4. Update lock file&lt;/font&gt;" style="shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;size=0.1;fillColor=#E1BEE7;strokeColor=#9673a6;strokeWidth=2;fontFamily=Inter;fontSize=12;fontColor=#1B2A4A;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="597" y="250" width="260" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows: Master to Sync Process -->
+        <mxCell id="arrow-master-sync" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=0;strokeColor=#9673a6;strokeWidth=2;fontFamily=Inter;fontSize=10;fontColor=#9673a6;" edge="1" parent="1" source="master-container" target="sync-process">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows: Sync Process to Projects (dashed purple) -->
+        <mxCell id="arrow-sync-projA" value="copy if not overridden" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;dashPattern=8 4;strokeColor=#9673a6;strokeWidth=2;fontFamily=Inter;fontSize=10;fontColor=#9673a6;exitX=0.25;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="sync-process" target="projA-container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-sync-projB" value="copy if not overridden" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;dashPattern=8 4;strokeColor=#9673a6;strokeWidth=2;fontFamily=Inter;fontSize=10;fontColor=#9673a6;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="sync-process" target="projB-container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-sync-projC" value="copy if not overridden" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;dashPattern=8 4;strokeColor=#9673a6;strokeWidth=2;fontFamily=Inter;fontSize=10;fontColor=#9673a6;exitX=0.75;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="sync-process" target="projC-container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== PROJECT A: InnoForge ==================== -->
+        <mxCell id="projA-container" value="&lt;b&gt;Project A: InnoForge .claude/skills/&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;fontFamily=Inter;fontSize=12;fontColor=#1B2A4A;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="30" y="440" width="380" height="230" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pa1" value="&lt;font color=&quot;#2e7d32&quot;&gt;&#9989;&lt;/font&gt; iw-new-incident &lt;b&gt;v2.1.0&lt;/b&gt; &lt;font style=&quot;font-size:9px&quot; color=&quot;#2e7d32&quot;&gt;synced&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="50" y="475" width="340" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="pa2" value="&lt;font color=&quot;#2e7d32&quot;&gt;&#9989;&lt;/font&gt; iw-new-feature &lt;b&gt;v2.1.0&lt;/b&gt; &lt;font style=&quot;font-size:9px&quot; color=&quot;#2e7d32&quot;&gt;synced&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="50" y="500" width="340" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="pa3" value="&lt;font color=&quot;#2e7d32&quot;&gt;&#9989;&lt;/font&gt; iw-batch-execute &lt;b&gt;v1.5.0&lt;/b&gt; &lt;font style=&quot;font-size:9px&quot; color=&quot;#2e7d32&quot;&gt;synced&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="50" y="525" width="340" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="pa4" value="&lt;font color=&quot;#e65100&quot;&gt;&#11088;&lt;/font&gt; innoforge-testing &lt;b&gt;v1.0.0&lt;/b&gt; &lt;font style=&quot;font-size:9px;background:#fff3e0;padding:2px 4px;border-radius:3px;&quot; color=&quot;#e65100&quot;&gt;PROJECT OVERRIDE&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="50" y="555" width="350" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="pa5" value="&lt;font color=&quot;#e65100&quot;&gt;&#11088;&lt;/font&gt; innoforge-ui &lt;b&gt;v1.0.0&lt;/b&gt; &lt;font style=&quot;font-size:9px;background:#fff3e0;padding:2px 4px;border-radius:3px;&quot; color=&quot;#e65100&quot;&gt;PROJECT OVERRIDE&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="50" y="580" width="350" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== PROJECT B ==================== -->
+        <mxCell id="projB-container" value="&lt;b&gt;Project B: .claude/skills/&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;fontFamily=Inter;fontSize=12;fontColor=#1B2A4A;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="440" y="440" width="340" height="190" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pb1" value="&lt;font color=&quot;#2e7d32&quot;&gt;&#9989;&lt;/font&gt; iw-new-incident &lt;b&gt;v2.1.0&lt;/b&gt; &lt;font style=&quot;font-size:9px&quot; color=&quot;#2e7d32&quot;&gt;synced&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="460" y="475" width="300" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="pb2" value="&lt;font color=&quot;#2e7d32&quot;&gt;&#9989;&lt;/font&gt; iw-new-feature &lt;b&gt;v2.1.0&lt;/b&gt; &lt;font style=&quot;font-size:9px&quot; color=&quot;#2e7d32&quot;&gt;synced&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="460" y="500" width="300" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="pb3" value="&lt;font color=&quot;#e65100&quot;&gt;&#11088;&lt;/font&gt; custom-skill &lt;b&gt;v1.0.0&lt;/b&gt; &lt;font style=&quot;font-size:9px;background:#fff3e0;padding:2px 4px;border-radius:3px;&quot; color=&quot;#e65100&quot;&gt;PROJECT OVERRIDE&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="460" y="530" width="300" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== PROJECT C ==================== -->
+        <mxCell id="projC-container" value="&lt;b&gt;Project C: .claude/skills/&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;fontFamily=Inter;fontSize=12;fontColor=#1B2A4A;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="810" y="440" width="340" height="190" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pc1" value="&lt;font color=&quot;#2e7d32&quot;&gt;&#9989;&lt;/font&gt; iw-new-incident &lt;b&gt;v2.1.0&lt;/b&gt; &lt;font style=&quot;font-size:9px&quot; color=&quot;#2e7d32&quot;&gt;synced&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="830" y="475" width="300" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="pc2" value="&lt;font color=&quot;#2e7d32&quot;&gt;&#9989;&lt;/font&gt; iw-new-feature &lt;b&gt;v2.1.0&lt;/b&gt; &lt;font style=&quot;font-size:9px&quot; color=&quot;#2e7d32&quot;&gt;synced&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="830" y="500" width="300" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="pc3" value="&lt;font color=&quot;#2e7d32&quot;&gt;&#9989;&lt;/font&gt; iw-batch-execute &lt;b&gt;v1.5.0&lt;/b&gt; &lt;font style=&quot;font-size:9px&quot; color=&quot;#2e7d32&quot;&gt;synced&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="830" y="525" width="300" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="pc4" value="&lt;font color=&quot;#2e7d32&quot;&gt;&#9989;&lt;/font&gt; iw-workflow &lt;b&gt;v3.0.0&lt;/b&gt; &lt;font style=&quot;font-size:9px&quot; color=&quot;#2e7d32&quot;&gt;synced&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="830" y="550" width="300" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="pc5" value="&lt;font style=&quot;font-size:10px;font-style:italic;&quot; color=&quot;#558b2f&quot;&gt;All skills synced from platform&lt;br&gt;No project overrides&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontColor=#558b2f;" vertex="1" parent="1">
+          <mxGeometry x="870" y="580" width="240" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== CALLOUT 1: .iw-skills-lock.json ==================== -->
+        <mxCell id="callout-lock" value="&lt;b&gt;.iw-skills-lock.json&lt;/b&gt;&lt;hr style=&quot;margin:4px 0&quot;&gt;&lt;font style=&quot;font-size:9px;font-family:monospace;&quot;&gt;{&lt;br&gt;&amp;nbsp;&amp;nbsp;&quot;iw-new-incident&quot;: {&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&quot;version&quot;: &quot;2.1.0&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&quot;source&quot;: &quot;platform&quot;&lt;br&gt;&amp;nbsp;&amp;nbsp;}&lt;br&gt;}&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=14;fillColor=#f5f5f5;strokeColor=#666666;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="30" y="700" width="240" height="145" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== CALLOUT 2: Override Priority ==================== -->
+        <mxCell id="callout-override" value="&lt;b&gt;Override Priority&lt;/b&gt;&lt;hr style=&quot;margin:4px 0&quot;&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Project skills &lt;b&gt;always win&lt;/b&gt;.&lt;br&gt;Platform versions only copied&lt;br&gt;if no project version exists.&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=14;fillColor=#fff3e0;strokeColor=#e65100;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="300" y="700" width="240" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== CALLOUT 3: iw CLI ==================== -->
+        <mxCell id="callout-cli" value="&lt;b&gt;iw CLI manages distribution&lt;/b&gt;&lt;hr style=&quot;margin:4px 0&quot;&gt;&lt;font style=&quot;font-size:10px;font-family:monospace;&quot;&gt;iw sync-skills --project innoforge&lt;/font&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=14;fillColor=#e8eaf6;strokeColor=#3f51b5;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="570" y="700" width="280" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ==================== VERSION CHECK FLOW (Right Side) ==================== -->
+        <mxCell id="flow-title" value="&lt;b&gt;Version Check Flow&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=13;fontFamily=Inter;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="250" width="180" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Diamond: Project has override? -->
+        <mxCell id="d1" value="&lt;font style=&quot;font-size:10px&quot;&gt;Project has&lt;br&gt;override?&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#9673a6;strokeWidth=2;fontFamily=Inter;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="290" width="140" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Yes -> Skip -->
+        <mxCell id="skip-box" value="&lt;font style=&quot;font-size:10px&quot;&gt;Skip&lt;br&gt;(log warning)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#b71c1c;fontFamily=Inter;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="1430" y="300" width="110" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-d1-skip" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;strokeWidth=1.5;fontFamily=Inter;fontSize=10;fontColor=#9673a6;" edge="1" parent="1" source="d1" target="skip-box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- No -> Diamond: Version outdated? -->
+        <mxCell id="d2" value="&lt;font style=&quot;font-size:10px&quot;&gt;Version&lt;br&gt;outdated?&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#9673a6;strokeWidth=2;fontFamily=Inter;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="420" width="140" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-d1-d2" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;strokeWidth=1.5;fontFamily=Inter;fontSize=10;fontColor=#9673a6;" edge="1" parent="1" source="d1" target="d2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Yes -> Copy from master -->
+        <mxCell id="copy-box" value="&lt;font style=&quot;font-size:10px&quot;&gt;Copy from&lt;br&gt;master&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c8e6c9;strokeColor=#2e7d32;fontFamily=Inter;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="1430" y="430" width="110" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-d2-copy" value="Yes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;strokeWidth=1.5;fontFamily=Inter;fontSize=10;fontColor=#9673a6;" edge="1" parent="1" source="d2" target="copy-box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- No -> Up to date -->
+        <mxCell id="uptodate-box" value="&lt;font style=&quot;font-size:10px&quot;&gt;Up to date&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#82b366;fontFamily=Inter;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="550" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-d2-uptodate" value="No" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;strokeWidth=1.5;fontFamily=Inter;fontSize=10;fontColor=#9673a6;" edge="1" parent="1" source="d2" target="uptodate-box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

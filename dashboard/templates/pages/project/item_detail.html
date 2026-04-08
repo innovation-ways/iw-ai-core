@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+{% from "components/step_pipeline.html" import step_pipeline %}
+
+{% block title %}{{ item.id }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="mb-6">
+  <div class="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+    <a href="/project/{{ current_project.id }}/" class="hover:text-foreground transition-colors">{{ current_project.display_name }}</a>
+    <span>/</span>
+    {% if batch_ref %}
+      <a href="/project/{{ current_project.id }}/batch/{{ batch_ref }}"
+         class="hover:text-foreground transition-colors font-mono">{{ batch_ref }}</a>
+      <span>/</span>
+    {% endif %}
+    <span class="text-foreground font-mono">{{ item.id }}</span>
+  </div>
+  <h1 class="text-xl font-semibold text-foreground">
+    <span class="font-mono text-primary mr-2">{{ item.id }}</span>{{ item.title }}
+  </h1>
+  <div class="flex items-center gap-3 mt-2">
+    {{ status_badge(item_type) }}
+    {{ status_badge(item_status) }}
+    {% if batch_ref %}
+      <a href="/project/{{ current_project.id }}/batch/{{ batch_ref }}"
+         class="text-xs text-muted-foreground hover:text-foreground transition-colors font-mono">
+        {{ batch_ref }}
+      </a>
+    {% endif %}
+
+    {# ── Item-level action buttons (contextual by status) ── #}
+    <div class="flex items-center gap-2 ml-auto">
+      {% if item_status == 'draft' %}
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/approve/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Approve
+        </button>
+      {% elif item_status == 'approved' %}
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/unapprove/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-secondary text-secondary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Unapprove
+        </button>
+      {% elif item_status == 'in_progress' %}
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/pause/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-warning text-warning-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Pause
+        </button>
+      {% elif item_status == 'paused' %}
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/resume/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Resume
+        </button>
+      {% elif item_status == 'failed' %}
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/restart/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Restart
+        </button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Summary (if available) -->
+{% if item.summary %}
+  <div class="bg-muted/50 border border-border rounded-lg px-4 py-3 mb-6 text-sm text-foreground">
+    {{ item.summary }}
+  </div>
+{% endif %}
+
+<!-- Metric cards -->
+<div class="grid grid-cols-3 gap-4 mb-6">
+  <div class="bg-card border border-border rounded-lg p-4">
+    <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Total Time</p>
+    <p class="text-xl font-bold font-mono text-foreground">
+      {% if metrics.total_duration_secs is not none %}
+        {% set mins = (metrics.total_duration_secs // 60)|int %}
+        {% set secs = (metrics.total_duration_secs % 60)|int %}
+        {{ "%dm%02ds"|format(mins, secs) }}
+      {% else %}
+        —
+      {% endif %}
+    </p>
+  </div>
+  <div class="bg-card border border-border rounded-lg p-4">
+    <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Fix Cycles</p>
+    <p class="text-xl font-bold text-foreground">{{ metrics.fix_cycles_count }}</p>
+  </div>
+  <div class="bg-card border border-border rounded-lg p-4">
+    <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Steps</p>
+    <p class="text-xl font-bold text-foreground">{{ metrics.steps_completed }}/{{ metrics.steps_total }}</p>
+  </div>
+</div>
+
+<!-- Tab navigation -->
+<div id="tab-nav" class="flex border-b border-border mb-4">
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/overview"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm border-b-2 border-primary text-primary font-medium transition-colors">
+    Overview
+  </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/design-doc"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+    Design Document
+  </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/reports"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+    Reports
+  </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/artifacts"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+    Artifacts
+  </button>
+</div>
+
+<!-- Tab content area (initially loaded with overview) -->
+<div id="tab-content">
+  {% include "fragments/item_overview.html" %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% include "components/toast.html" %}
+<script>
+function setActiveTab(btn) {
+  document.querySelectorAll('.tab-btn').forEach(function(b) {
+    b.classList.remove('border-b-2', 'border-primary', 'text-primary', 'font-medium');
+    b.classList.add('text-muted-foreground');
+  });
+  btn.classList.add('border-b-2', 'border-primary', 'text-primary', 'font-medium');
+  btn.classList.remove('text-muted-foreground');
+}
+
+// Handle HX-Trigger showToast from action buttons
+document.body.addEventListener('htmx:afterRequest', function(e) {
+  var triggerHeader = e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger');
+  if (!triggerHeader) return;
+  try {
+    var trigger = JSON.parse(triggerHeader);
+    if (trigger.showToast) {
+      showToast(trigger.showToast);
+      // Reload the page after item-level actions so status/buttons update
+      if (trigger.showToast.reload) {
+        setTimeout(function() { window.location.reload(); }, 600);
+      }
+    }
+  } catch(_) {}
+});
+</script>
+{% endblock %}

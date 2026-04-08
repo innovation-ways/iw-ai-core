@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+{% from "components/step_pipeline.html" import step_pipeline %}
+
+{% block title %}{{ batch.id }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="mb-6 flex items-start justify-between">
+  <div>
+    <div class="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+      <a href="/project/{{ current_project.id }}/batches" class="hover:text-foreground transition-colors">Batches</a>
+      <span>/</span>
+      <span class="text-foreground font-mono">{{ batch.id }}</span>
+    </div>
+    <h1 class="text-2xl font-semibold text-foreground font-mono">{{ batch.id }}</h1>
+    <div class="flex items-center gap-3 mt-2">
+      {{ status_badge(batch_status) }}
+      <span class="text-xs text-muted-foreground">{{ items|length }} item{{ 's' if items|length != 1 else '' }}</span>
+      <span class="text-xs text-muted-foreground">Max parallel: {{ batch.max_parallel }}</span>
+    </div>
+    <div class="text-xs text-muted-foreground mt-1">
+      Created: {{ batch.created_at.strftime('%Y-%m-%d %H:%M') }}
+      {% if batch.completed_at %}
+        &middot; Completed: {{ batch.completed_at.strftime('%Y-%m-%d %H:%M') }}
+      {% endif %}
+      {% if batch_duration_secs is not none %}
+        &middot; Duration:
+        {% set mins = (batch_duration_secs // 60)|int %}
+        {% set secs = (batch_duration_secs % 60)|int %}
+        {{ "%dm%02ds"|format(mins, secs) }}
+      {% endif %}
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    {% if batch_status == 'planning' %}
+      <button disabled
+              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm opacity-60 cursor-not-allowed">
+        Approve
+      </button>
+    {% elif batch_status == 'executing' %}
+      <button disabled
+              class="px-3 py-1.5 bg-muted text-muted-foreground rounded text-sm opacity-60 cursor-not-allowed">
+        Pause
+      </button>
+    {% elif batch_status == 'paused' %}
+      <button disabled
+              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm opacity-60 cursor-not-allowed">
+        Resume
+      </button>
+    {% elif batch_status in ('completed', 'completed_with_errors') %}
+      <button disabled
+              class="px-3 py-1.5 bg-muted text-muted-foreground rounded text-sm opacity-60 cursor-not-allowed">
+        Archive
+      </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Tab navigation -->
+<div class="flex border-b border-border mb-4">
+  <a href="?tab=items"
+     class="px-4 py-2 text-sm transition-colors
+            {% if active_tab == 'items' or not active_tab %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+    Items
+  </a>
+  <a href="?tab=timeline"
+     class="px-4 py-2 text-sm transition-colors
+            {% if active_tab == 'timeline' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+    Timeline
+  </a>
+  <a href="?tab=logs"
+     class="px-4 py-2 text-sm transition-colors
+            {% if active_tab == 'logs' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+    Logs
+  </a>
+</div>
+
+<!-- Items tab (default) -->
+{% if active_tab in ('items', '', none) or not active_tab %}
+<div class="bg-card border border-border rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-border bg-muted/30">
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground w-8">Grp</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Item</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Title</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
+        <th class="px-4 py-2 text-right font-medium text-muted-foreground">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in items %}
+        <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+          <td class="px-4 py-3 text-xs text-muted-foreground font-mono">{{ row.execution_group }}</td>
+          <td class="px-4 py-3 font-mono text-xs font-semibold">
+            <a href="/project/{{ current_project.id }}/item/{{ row.item_id }}"
+               class="text-primary hover:underline">{{ row.item_id }}</a>
+          </td>
+          <td class="px-4 py-3">
+            <div class="text-sm text-foreground truncate max-w-xs">{{ row.title }}</div>
+            {% if row.steps %}
+              <div class="mt-1.5">{{ step_pipeline(row.steps) }}</div>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3">{{ status_badge(row.status) }}</td>
+          <td class="px-4 py-3 font-mono text-xs text-muted-foreground">
+            {% if row.duration_secs is not none %}
+              {% set mins = (row.duration_secs // 60)|int %}
+              {% set secs = (row.duration_secs % 60)|int %}
+              {{ "%dm%02ds"|format(mins, secs) }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 text-right">
+            <a href="/project/{{ current_project.id }}/item/{{ row.item_id }}"
+               class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90 transition-opacity">
+              View
+            </a>
+          </td>
+        </tr>
+      {% endfor %}
+      {% if not items %}
+        <tr>
+          <td colspan="6" class="px-4 py-8 text-center text-muted-foreground text-sm">
+            No items in this batch.
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Timeline tab -->
+{% elif active_tab == 'timeline' %}
+<div class="bg-card border border-border rounded-lg p-6">
+  {% if items %}
+    <div class="space-y-3">
+      {% for row in items %}
+        {% set bar_pct = ((row.duration_secs or 0) / 3600 * 100)|int if row.duration_secs else 5 %}
+        <div class="flex items-center gap-3">
+          <a href="/project/{{ current_project.id }}/item/{{ row.item_id }}"
+             class="font-mono text-xs font-semibold text-primary w-16 shrink-0 hover:underline">
+            {{ row.item_id }}
+          </a>
+          <div class="flex-1 h-5 bg-muted rounded overflow-hidden relative">
+            <div class="h-full rounded transition-all
+                        {% if row.status == 'merged' %}bg-success{% elif row.status == 'failed' %}bg-destructive{% elif row.status == 'executing' %}bg-primary{% else %}bg-secondary{% endif %}"
+                 style="width: max({{ [bar_pct, 2]|max }}%, 2px)">
+            </div>
+          </div>
+          {% if row.duration_secs is not none %}
+            <span class="font-mono text-xs text-muted-foreground w-14 shrink-0">
+              {% set mins = (row.duration_secs // 60)|int %}
+              {% set secs = (row.duration_secs % 60)|int %}
+              {{ "%dm%02ds"|format(mins, secs) }}
+            </span>
+          {% endif %}
+          {{ status_badge(row.status) }}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-muted-foreground text-sm text-center">No items to display.</p>
+  {% endif %}
+</div>
+
+<!-- Logs tab -->
+{% elif active_tab == 'logs' %}
+<div class="bg-card border border-border rounded-lg p-6">
+  <p class="text-muted-foreground text-sm text-center">
+    Dispatcher log not available for this batch.
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}

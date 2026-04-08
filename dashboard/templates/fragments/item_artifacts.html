@@ -1,0 +1,61 @@
+{% if is_archived %}
+  <div class="bg-card border border-border rounded-lg p-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h3 class="text-sm font-semibold text-foreground">Archived Artifacts</h3>
+        {% if archive_size_bytes %}
+          <p class="text-xs text-muted-foreground mt-0.5">
+            Archive size:
+            {% if archive_size_bytes > 1048576 %}
+              {{ "%.1f"|format(archive_size_bytes / 1048576) }} MB
+            {% elif archive_size_bytes > 1024 %}
+              {{ "%.1f"|format(archive_size_bytes / 1024) }} KB
+            {% else %}
+              {{ archive_size_bytes }} B
+            {% endif %}
+            (.tar.zst)
+          </p>
+        {% endif %}
+      </div>
+      <button disabled
+              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm opacity-60 cursor-not-allowed">
+        Load Artifacts
+      </button>
+    </div>
+    <p class="text-xs text-muted-foreground">
+      Artifact extraction from archives is not yet implemented.
+    </p>
+  </div>
+{% elif artifact_files %}
+  <div class="bg-card border border-border rounded-lg overflow-hidden">
+    <div class="px-4 py-3 border-b border-border bg-muted/30">
+      <h3 class="text-sm font-semibold text-foreground">Files</h3>
+    </div>
+    <div class="divide-y divide-border">
+      {% for f in artifact_files %}
+        <div class="px-4 py-2 flex items-center gap-3 hover:bg-muted/20 transition-colors">
+          <span class="text-xs text-muted-foreground w-4">
+            {% if f.is_dir %}📁{% else %}📄{% endif %}
+          </span>
+          <span class="font-mono text-xs text-foreground flex-1">{{ f.name }}</span>
+          {% if not f.is_dir %}
+            <span class="text-xs text-muted-foreground">
+              {% if f.size_bytes > 1024 %}
+                {{ "%.1f"|format(f.size_bytes / 1024) }} KB
+              {% else %}
+                {{ f.size_bytes }} B
+              {% endif %}
+            </span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% else %}
+  <div class="bg-card border border-border rounded-lg p-8 text-center">
+    <p class="text-muted-foreground text-sm">No artifacts available for this item.</p>
+    {% if not item.design_doc_path and not item.archive_path %}
+      <p class="text-xs text-muted-foreground mt-2">Item has no design doc path or archive.</p>
+    {% endif %}
+  </div>
+{% endif %}
