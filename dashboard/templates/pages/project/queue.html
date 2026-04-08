@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+
+{% block title %}Queue — {{ current_project.display_name if current_project else '' }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-foreground">Queue &amp; Backlog</h1>
+  <p class="text-muted-foreground text-sm mt-1">Items ready for execution and drafts awaiting review</p>
+</div>
+
+<!-- Ready for Execution -->
+<div class="mb-8">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+      Ready for Execution (approved)
+      <span class="ml-2 font-normal text-foreground normal-case">{{ approved_items|length }} items</span>
+    </h2>
+  </div>
+
+  <form id="queue-form"
+        hx-post="/project/{{ current_project.id }}/api/batch/create-from-selection"
+        hx-swap="none">
+    <div class="bg-card border border-border rounded-lg overflow-hidden mb-4">
+      {% if approved_items %}
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/30">
+              <th class="px-4 py-2 w-8"></th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">ID</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Title</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Date</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in approved_items %}
+              <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+                <td class="px-4 py-2">
+                  <input type="checkbox" name="item_ids" value="{{ item.id }}"
+                         class="rounded border-border text-primary focus:ring-ring"
+                         id="chk-{{ item.id }}">
+                </td>
+                <td class="px-4 py-2">
+                  <a href="/project/{{ current_project.id }}/item/{{ item.id }}"
+                     class="font-mono text-xs font-semibold text-primary hover:underline">
+                    {{ item.id }}
+                  </a>
+                </td>
+                <td class="px-4 py-2">
+                  {{ status_badge(item.type) }}
+                </td>
+                <td class="px-4 py-2 text-xs text-foreground">
+                  <a href="/project/{{ current_project.id }}/item/{{ item.id }}"
+                     class="hover:text-primary transition-colors">
+                    {{ item.title }}
+                  </a>
+                </td>
+                <td class="px-4 py-2 text-xs text-muted-foreground">
+                  {{ item.created_at.strftime('%b %d') }}
+                </td>
+                <td class="px-4 py-2">
+                  {{ status_badge(item.status) }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <div class="px-4 py-8 text-center text-muted-foreground text-sm">
+          No approved items. Items approved via <code class="font-mono">iw approve</code> will appear here.
+        </div>
+      {% endif %}
+    </div>
+
+    {% if approved_items %}
+      <button type="submit"
+              class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium
+                     hover:opacity-90 transition-opacity disabled:opacity-50">
+        Create Batch from Selected
+      </button>
+    {% endif %}
+  </form>
+</div>
+
+<!-- Drafts -->
+<div>
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+      Drafts (awaiting review)
+      <span class="ml-2 font-normal text-foreground normal-case">{{ draft_items|length }} items</span>
+    </h2>
+  </div>
+
+  <div class="bg-card border border-border rounded-lg overflow-hidden">
+    {% if draft_items %}
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border bg-muted/30">
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">ID</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Title</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Date</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in draft_items %}
+            <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+              <td class="px-4 py-2">
+                <a href="/project/{{ current_project.id }}/item/{{ item.id }}"
+                   class="font-mono text-xs font-semibold text-primary hover:underline">
+                  {{ item.id }}
+                </a>
+              </td>
+              <td class="px-4 py-2">
+                {{ status_badge(item.type) }}
+              </td>
+              <td class="px-4 py-2 text-xs text-foreground">
+                <a href="/project/{{ current_project.id }}/item/{{ item.id }}"
+                   class="hover:text-primary transition-colors">
+                  {{ item.title }}
+                </a>
+              </td>
+              <td class="px-4 py-2 text-xs text-muted-foreground">
+                {{ item.created_at.strftime('%b %d') }}
+              </td>
+              <td class="px-4 py-2">
+                <button
+                  hx-post="/project/{{ current_project.id }}/api/item/{{ item.id }}/approve"
+                  hx-swap="none"
+                  hx-on::after-request="window.location.reload()"
+                  class="px-2 py-1 bg-success text-success-foreground rounded text-xs
+                         hover:opacity-90 transition-opacity font-medium">
+                  Approve
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="px-4 py-8 text-center text-muted-foreground text-sm">
+        No draft items.
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

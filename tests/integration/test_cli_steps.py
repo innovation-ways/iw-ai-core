@@ -1,0 +1,348 @@
+"""Integration tests for step lifecycle CLI commands against a real PostgreSQL testcontainer."""
+
+import json
+from typing import Any
+
+from click.testing import CliRunner
+
+from orch.cli.main import cli
+from orch.db.models import (
+    Project,
+    RunStatus,
+    StepRun,
+    StepStatus,
+    StepType,
+    WorkflowStep,
+    WorkItem,
+    WorkItemPhase,
+    WorkItemStatus,
+    WorkItemType,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def invoke(
+    runner: CliRunner,
+    args: list[str],
+    get_session: Any,
+    project_id: str = "test-proj",
+) -> Any:
+    return runner.invoke(
+        cli,
+        ["--project", project_id, *args],
+        obj={"get_session": get_session},
+        catch_exceptions=False,
+    )
+
+
+def make_item(
+    db_session: Any,
+    item_id: str = "I001",
+    status: WorkItemStatus = WorkItemStatus.approved,
+) -> WorkItem:
+    item = WorkItem(
+        project_id="test-proj",
+        id=item_id,
+        type=WorkItemType.Issue,
+        title="Test item",
+        status=status,
+        phase=WorkItemPhase.active,
+        config={},
+        depends_on=[],
+        blocks=[],
+    )
+    db_session.add(item)
+    db_session.flush()
+    return item
+
+
+def make_step(
+    db_session: Any,
+    item_id: str = "I001",
+    step_id: str = "S01",
+    status: StepStatus = StepStatus.pending,
+) -> WorkflowStep:
+    step = WorkflowStep(
+        project_id="test-proj",
+        work_item_id=item_id,
+        step_number=1,
+        step_id=step_id,
+        agent_label="Backend",
+        step_type=StepType.implementation,
+        status=status,
+    )
+    db_session.add(step)
+    db_session.flush()
+    return step
+
+
+def make_step_run(
+    db_session: Any,
+    step: WorkflowStep,
+    status: RunStatus = RunStatus.running,
+    run_number: int = 1,
+) -> StepRun:
+    step_run = StepRun(
+        step_id=step.id,
+        run_number=run_number,
+        status=status,
+    )
+    db_session.add(step_run)
+    db_session.flush()
+    return step_run
+
+
+# ---------------------------------------------------------------------------
+# step-start
+# ---------------------------------------------------------------------------
+
+
+def test_step_start_pending_to_in_progress(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    step = make_step(db_session, status=StepStatus.pending)
+
+    runner = CliRunner()
+    result = invoke(runner, ["step-start", "I001", "--step", "S01"], cli_get_session)
+    assert result.exit_code == 0, result.output
+
+    db_session.refresh(step)
+    assert step.status == StepStatus.in_progress
+    assert step.started_at is not None
+
+
+def test_step_start_json_output(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    make_step(db_session, status=StepStatus.pending)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "step-start", "I001", "--step", "S01"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["status"] == "in_progress"
+    assert data["step_id"] == "S01"
+
+
+def test_step_start_rejects_non_pending(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    make_step(db_session, status=StepStatus.in_progress)
+
+    runner = CliRunner()
+    result = invoke(runner, ["step-start", "I001", "--step", "S01"], cli_get_session)
+    assert result.exit_code == 1
+
+
+def test_step_start_not_found_exits_1(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+
+    runner = CliRunner()
+    result = invoke(runner, ["step-start", "I001", "--step", "S99"], cli_get_session)
+    assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# step-done
+# ---------------------------------------------------------------------------
+
+
+def test_step_done_in_progress_to_completed(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    step = make_step(db_session, status=StepStatus.in_progress)
+
+    runner = CliRunner()
+    result = invoke(runner, ["step-done", "I001", "--step", "S01"], cli_get_session)
+    assert result.exit_code == 0, result.output
+
+    db_session.refresh(step)
+    assert step.status == StepStatus.completed
+    assert step.completed_at is not None
+    assert step.report_file is None
+
+
+def test_step_done_with_report_stores_path(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    step = make_step(db_session, status=StepStatus.in_progress)
+
+    runner = CliRunner()
+    result = invoke(
+        runner,
+        ["step-done", "I001", "--step", "S01", "--report", "reports/S01-backend.md"],
+        cli_get_session,
+    )
+    assert result.exit_code == 0, result.output
+
+    db_session.refresh(step)
+    assert step.status == StepStatus.completed
+    assert step.report_file == "reports/S01-backend.md"
+
+
+def test_step_done_rejects_non_in_progress(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    make_step(db_session, status=StepStatus.pending)
+
+    runner = CliRunner()
+    result = invoke(runner, ["step-done", "I001", "--step", "S01"], cli_get_session)
+    assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# step-fail
+# ---------------------------------------------------------------------------
+
+
+def test_step_fail_in_progress_to_failed(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    step = make_step(db_session, status=StepStatus.in_progress)
+
+    runner = CliRunner()
+    result = invoke(
+        runner,
+        ["step-fail", "I001", "--step", "S01", "--reason", "Compilation error"],
+        cli_get_session,
+    )
+    assert result.exit_code == 0, result.output
+
+    db_session.refresh(step)
+    assert step.status == StepStatus.failed
+
+
+def test_step_fail_stores_reason_in_step_run(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    step = make_step(db_session, status=StepStatus.in_progress)
+    step_run = make_step_run(db_session, step, status=RunStatus.running)
+
+    runner = CliRunner()
+    result = invoke(
+        runner,
+        ["step-fail", "I001", "--step", "S01", "--reason", "Out of memory"],
+        cli_get_session,
+    )
+    assert result.exit_code == 0, result.output
+
+    db_session.refresh(step)
+    db_session.refresh(step_run)
+    assert step.status == StepStatus.failed
+    assert step_run.error_message == "Out of memory"
+    assert step_run.status == RunStatus.failed
+
+
+def test_step_fail_rejects_non_in_progress(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    make_step(db_session, status=StepStatus.pending)
+
+    runner = CliRunner()
+    result = invoke(
+        runner,
+        ["step-fail", "I001", "--step", "S01", "--reason", "Something went wrong"],
+        cli_get_session,
+    )
+    assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# Full lifecycle: start → done
+# ---------------------------------------------------------------------------
+
+
+def test_full_step_lifecycle_start_done(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    step = make_step(db_session, status=StepStatus.pending)
+
+    runner = CliRunner()
+
+    result = invoke(runner, ["step-start", "I001", "--step", "S01"], cli_get_session)
+    assert result.exit_code == 0
+
+    db_session.refresh(step)
+    assert step.status == StepStatus.in_progress
+
+    result = invoke(
+        runner,
+        ["step-done", "I001", "--step", "S01", "--report", "out/report.md"],
+        cli_get_session,
+    )
+    assert result.exit_code == 0
+
+    db_session.refresh(step)
+    assert step.status == StepStatus.completed
+    assert step.report_file == "out/report.md"
+
+
+# ---------------------------------------------------------------------------
+# Full lifecycle: start → fail
+# ---------------------------------------------------------------------------
+
+
+def test_full_step_lifecycle_start_fail(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session)
+    step = make_step(db_session, status=StepStatus.pending)
+
+    runner = CliRunner()
+
+    result = invoke(runner, ["step-start", "I001", "--step", "S01"], cli_get_session)
+    assert result.exit_code == 0
+
+    result = invoke(
+        runner,
+        ["step-fail", "I001", "--step", "S01", "--reason", "Agent crashed"],
+        cli_get_session,
+    )
+    assert result.exit_code == 0
+
+    db_session.refresh(step)
+    assert step.status == StepStatus.failed

@@ -1,0 +1,22 @@
+# docker-compose.yml
+# ALL values come from .env — nothing hardcoded.
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: iw-ai-core-db
+    ports:
+      - "${IW_CORE_DB_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: ${IW_CORE_DB_NAME:-iw_orch}
+      POSTGRES_USER: ${IW_CORE_DB_USER:-iw_orch}
+      POSTGRES_PASSWORD: ${IW_CORE_DB_PASSWORD:-iw_orch_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${IW_CORE_DB_USER:-iw_orch}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

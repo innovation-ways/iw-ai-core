@@ -1,0 +1,25 @@
+{% macro confirm_dialog(title, description, confirm_url, confirm_method='post', confirm_label='Confirm', danger=True) %}
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+     onclick="if(event.target===this)document.getElementById('confirm-dialog').innerHTML=''">
+  <div class="bg-card border border-border p-6 rounded-lg shadow-xl max-w-sm w-full mx-4">
+    <h3 class="text-lg font-semibold text-card-foreground">{{ title }}</h3>
+    {% if description %}
+      <p class="text-muted-foreground text-sm mt-2">{{ description }}</p>
+    {% endif %}
+    <div class="flex gap-3 mt-4 justify-end">
+      <button
+        onclick="document.getElementById('confirm-dialog').innerHTML=''"
+        class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+        Cancel
+      </button>
+      <button
+        hx-{{ confirm_method }}="{{ confirm_url }}"
+        hx-swap="none"
+        onclick="document.getElementById('confirm-dialog').innerHTML=''"
+        class="px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 transition-opacity {% if danger %}bg-destructive text-destructive-foreground{% else %}bg-primary text-primary-foreground{% endif %}">
+        {{ confirm_label }}
+      </button>
+    </div>
+  </div>
+</div>
+{% endmacro %}

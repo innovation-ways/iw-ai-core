@@ -1,0 +1,22 @@
+# Environment
+.env
+
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+
+# Platform runtime files
+archive/
+logs/
+.daemon.pid
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
