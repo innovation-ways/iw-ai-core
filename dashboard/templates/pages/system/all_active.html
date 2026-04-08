@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+
+{% block title %}All Active Work{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-foreground">All Active Work</h1>
+  <p class="text-muted-foreground text-sm mt-1">
+    Cross-project view of all non-terminal work items
+    <span class="font-medium text-foreground">{{ total }} items</span>
+  </p>
+</div>
+
+{% if grouped_items %}
+  {% for project_id, items in grouped_items.items() %}
+    <div class="mb-6">
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        <a href="/project/{{ project_id }}/"
+           class="hover:text-foreground transition-colors">
+          {{ items[0].project_name }}
+        </a>
+        <span class="ml-2 font-normal text-foreground normal-case">{{ items|length }}</span>
+      </h2>
+
+      <div class="bg-card border border-border rounded-lg overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/30">
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">ID</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Title</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Phase</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Batch</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in items %}
+              <tr class="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
+                  onclick="window.location='/project/{{ project_id }}/item/{{ item.id }}'">
+                <td class="px-4 py-2 font-mono text-xs font-semibold text-primary">{{ item.id }}</td>
+                <td class="px-4 py-2">{{ status_badge(item.type) }}</td>
+                <td class="px-4 py-2 text-xs text-foreground max-w-xs truncate">{{ item.title }}</td>
+                <td class="px-4 py-2">{{ status_badge(item.status) }}</td>
+                <td class="px-4 py-2 text-xs text-muted-foreground">{{ item.phase }}</td>
+                <td class="px-4 py-2">
+                  {% if item.batch_id %}
+                    <a href="/project/{{ project_id }}/batch/{{ item.batch_id }}"
+                       class="font-mono text-xs text-primary hover:underline">
+                      {{ item.batch_id }}
+                    </a>
+                  {% else %}
+                    <span class="text-xs text-muted-foreground">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="bg-card border border-border rounded-lg p-8 text-center">
+    <p class="text-muted-foreground text-sm">No active work items across any project.</p>
+  </div>
+{% endif %}
+{% endblock %}

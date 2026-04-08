@@ -1,0 +1,93 @@
+<script>
+// =========================================================================
+// Toast notification system
+// =========================================================================
+
+var _toastColors = {
+  success: 'border-l-4 border-l-[var(--success)]',
+  error:   'border-l-4 border-l-[var(--destructive)]',
+  warning: 'border-l-4 border-l-[var(--warning)]',
+  info:    'border-l-4 border-l-[var(--info)]',
+};
+
+var _toastIcons = {
+  success: '✓',
+  error:   '✕',
+  warning: '⚠',
+  info:    'ℹ',
+};
+
+var _toastIconColors = {
+  success: 'text-[var(--success)]',
+  error:   'text-[var(--destructive)]',
+  warning: 'text-[var(--warning)]',
+  info:    'text-[var(--info)]',
+};
+
+function showToast(data) {
+  var container = document.getElementById('toast-container');
+  if (!container) return;
+
+  // Enforce max 5 toasts — remove oldest if at limit
+  var existing = container.querySelectorAll('.toast-item');
+  if (existing.length >= 5) {
+    existing[0].remove();
+  }
+
+  var type = data.type || 'info';
+  var message = data.message || '';
+  var colorClass = _toastColors[type] || _toastColors['info'];
+  var icon = _toastIcons[type] || _toastIcons['info'];
+  var iconColor = _toastIconColors[type] || _toastIconColors['info'];
+
+  var el = document.createElement('div');
+  el.className = [
+    'toast-item',
+    'pointer-events-auto',
+    'flex items-start gap-3',
+    'bg-card border border-border rounded-lg shadow-lg',
+    'p-4 w-80 cursor-pointer',
+    'toast-slide-in',
+    colorClass,
+  ].join(' ');
+
+  el.innerHTML = [
+    '<span class="flex-shrink-0 font-bold text-sm mt-0.5 ' + iconColor + '">' + icon + '</span>',
+    '<div class="flex-1 min-w-0">',
+    '  <p class="text-sm font-medium text-card-foreground leading-tight">' + _escapeHtml(message) + '</p>',
+    '</div>',
+    '<button class="flex-shrink-0 text-muted-foreground hover:text-foreground text-xs leading-none mt-0.5" ',
+    '        onclick="event.stopPropagation(); this.closest(\'.toast-item\').remove()">✕</button>',
+  ].join('');
+
+  // Click anywhere on toast to dismiss
+  el.addEventListener('click', function() { el.remove(); });
+
+  container.appendChild(el);
+
+  // Auto-dismiss after 10 seconds
+  setTimeout(function() {
+    if (el.parentNode) {
+      el.style.transition = 'opacity 0.3s';
+      el.style.opacity = '0';
+      setTimeout(function() { el.remove(); }, 300);
+    }
+  }, 10000);
+}
+
+function _escapeHtml(str) {
+  var d = document.createElement('div');
+  d.appendChild(document.createTextNode(str));
+  return d.innerHTML;
+}
+
+// =========================================================================
+// Toast container positioning styles (injected once)
+// =========================================================================
+(function() {
+  var container = document.getElementById('toast-container');
+  if (container) {
+    container.className = 'fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none';
+  }
+})();
+</script>

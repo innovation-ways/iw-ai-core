@@ -1,0 +1,253 @@
+"""Project registry — loads projects.toml and syncs project configs to the DB.
+
+projects.toml format:
+    [projects.innoforge]
+    enabled = true
+    repo_root = "/home/sergiog/dev/innoforge"
+    display_name = "InnoForge"   # optional — falls back to .iw-orch.json
+
+Each project's .iw-orch.json (at repo_root/.iw-orch.json) provides additional
+project-specific config merged into the DB projects.config JSONB column.
+
+.iw-orch.json schema (all fields optional):
+    {
+        "display_name": "InnoForge",
+        "cli_tool": "opencode",
+        "worktree_base": ".worktrees",
+        "timeout_overrides": {}
+    }
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# ProjectConfig — in-memory representation of one project entry
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ProjectConfig:
+    """In-memory configuration for a single managed project."""
+
+    id: str
+    display_name: str
+    repo_root: str
+    enabled: bool
+    cli_tool: str
+    worktree_base: str
+    config: dict[str, Any]  # full .iw-orch.json content
+
+
+# ---------------------------------------------------------------------------
+# toml / json loading helpers
+# ---------------------------------------------------------------------------
+
+
+def _read_iw_orch_json(repo_root: str) -> dict[str, Any]:
+    """Read .iw-orch.json from the project repo root.
+
+    Returns an empty dict if the file is missing or malformed (logs a warning).
+    """
+    iw_json = Path(repo_root) / ".iw-orch.json"
+    if not iw_json.exists():
+        logger.debug(".iw-orch.json not found in %s — using defaults", repo_root)
+        return {}
+    try:
+        return json.loads(iw_json.read_text())  # type: ignore[no-any-return]
+    except json.JSONDecodeError as exc:
+        logger.warning("Invalid .iw-orch.json in %s: %s — project skipped context", repo_root, exc)
+        return {}
+
+
+def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConfig | None:
+    """Build a ProjectConfig from a single projects.toml entry.
+
+    Returns None if the entry is invalid (missing required fields, bad path).
+    Logs a warning on error so the daemon can skip the project without crashing.
+    """
+    repo_root = entry.get("repo_root")
+    if not repo_root:
+        logger.warning("Project %r missing 'repo_root' — skipping", project_id)
+        return None
+
+    if not Path(repo_root).exists():
+        logger.warning("Project %r repo_root %r does not exist — skipping", project_id, repo_root)
+        return None
+
+    enabled: bool = entry.get("enabled", True)
+    iw_config = _read_iw_orch_json(repo_root)
+
+    # display_name: projects.toml takes precedence over .iw-orch.json, then project_id
+    display_name: str = entry.get("display_name") or iw_config.get("display_name") or project_id
+    cli_tool: str = iw_config.get("cli_tool", "opencode")
+    worktree_base: str = iw_config.get("worktree_base", ".worktrees")
+
+    return ProjectConfig(
+        id=project_id,
+        display_name=display_name,
+        repo_root=repo_root,
+        enabled=enabled,
+        cli_tool=cli_tool,
+        worktree_base=worktree_base,
+        config=iw_config,
+    )
+
+
+def load_projects_toml(path: Path) -> dict[str, ProjectConfig]:
+    """Parse projects.toml and return a {project_id: ProjectConfig} mapping.
+
+    Projects with invalid config are skipped (logged as warnings).
+    Returns an empty dict if the file is empty or has no [projects] section.
+    """
+    try:
+        raw = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as exc:
+        logger.error("Failed to parse projects.toml at %s: %s", path, exc)
+        return {}
+
+    projects_section: dict[str, Any] = raw.get("projects", {})
+    result: dict[str, ProjectConfig] = {}
+
+    for project_id, entry in projects_section.items():
+        if not isinstance(entry, dict):
+            logger.warning("Project %r entry is not a table — skipping", project_id)
+            continue
+        config = _build_project_config(project_id, entry)
+        if config is not None:
+            result[project_id] = config
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# DB sync helper
+# ---------------------------------------------------------------------------
+
+
+def sync_project_to_db(db: Session, config: ProjectConfig) -> None:
+    """Upsert a project record in the DB from a ProjectConfig.
+
+    Uses INSERT ... ON CONFLICT UPDATE so the daemon can call this idempotently
+    on every startup and reload.
+    """
+    from sqlalchemy.dialects.postgresql import insert  # noqa: PLC0415
+
+    from orch.db.models import IdSequence, MigrationLock, Project  # noqa: PLC0415
+
+    stmt = insert(Project).values(
+        id=config.id,
+        display_name=config.display_name,
+        repo_root=config.repo_root,
+        config=config.config,
+        enabled=config.enabled,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["id"],
+        set_={
+            "display_name": stmt.excluded.display_name,
+            "repo_root": stmt.excluded.repo_root,
+            "config": stmt.excluded.config,
+            "enabled": stmt.excluded.enabled,
+        },
+    )
+    db.execute(stmt)
+
+    # Ensure id_sequences rows exist (INSERT ... ON CONFLICT DO NOTHING)
+    for prefix in ("F", "I", "CR", "BATCH"):
+        seq_stmt = insert(IdSequence).values(project_id=config.id, prefix=prefix, next_number=1)
+        seq_stmt = seq_stmt.on_conflict_do_nothing()
+        db.execute(seq_stmt)
+
+    # Ensure migration_locks row exists
+    lock_stmt = insert(MigrationLock).values(project_id=config.id, current_holder=None)
+    lock_stmt = lock_stmt.on_conflict_do_nothing()
+    db.execute(lock_stmt)
+
+    db.commit()
+    logger.debug("Synced project %r to DB", config.id)
+
+
+# ---------------------------------------------------------------------------
+# ProjectRegistry — stateful registry with mtime-based reload detection
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ProjectRegistry:
+    """Tracks projects.toml state and detects changes for the daemon reload loop."""
+
+    path: Path
+    _mtime: float = field(default=0.0, init=False, repr=False)
+    _projects: dict[str, ProjectConfig] = field(default_factory=dict, init=False, repr=False)
+
+    def load(self) -> dict[str, ProjectConfig]:
+        """Initial load. Reads the file and caches the result.
+
+        Returns the loaded {project_id: ProjectConfig} mapping.
+        """
+        self._projects = load_projects_toml(self.path)
+        try:
+            self._mtime = self.path.stat().st_mtime
+        except OSError:
+            self._mtime = 0.0
+        return dict(self._projects)
+
+    def is_stale(self) -> bool:
+        """Return True if projects.toml has been modified since the last load."""
+        try:
+            return self.path.stat().st_mtime != self._mtime
+        except OSError:
+            return False
+
+    def reload(self) -> tuple[dict[str, ProjectConfig], dict[str, str]]:
+        """Re-read projects.toml and return the new projects plus a change summary.
+
+        Returns:
+            (new_projects, changes) where changes maps project_id → one of:
+            "added", "removed", "disabled", "enabled", "unchanged".
+        """
+        new_projects = load_projects_toml(self.path)
+        try:
+            self._mtime = self.path.stat().st_mtime
+        except OSError:
+            self._mtime = 0.0
+
+        changes: dict[str, str] = {}
+        old = self._projects
+        all_ids = set(old) | set(new_projects)
+
+        for pid in all_ids:
+            if pid not in old and pid in new_projects:
+                changes[pid] = "added"
+            elif pid in old and pid not in new_projects:
+                changes[pid] = "removed"
+            elif pid in old and pid in new_projects:
+                was_enabled = old[pid].enabled
+                is_enabled = new_projects[pid].enabled
+                if was_enabled and not is_enabled:
+                    changes[pid] = "disabled"
+                elif not was_enabled and is_enabled:
+                    changes[pid] = "enabled"
+                else:
+                    changes[pid] = "unchanged"
+
+        self._projects = new_projects
+        return dict(new_projects), changes
+
+    @property
+    def projects(self) -> dict[str, ProjectConfig]:
+        """Current in-memory project map (last loaded state)."""
+        return dict(self._projects)

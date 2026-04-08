@@ -1,0 +1,7 @@
+# IW AI Core — Project Registry
+# Add projects here. Daemon re-reads on SIGHUP or file change.
+
+[projects.innoforge]
+display_name = "InnoForge Document Platform"
+repo_root = "/home/sergiog/dev/iw-doc-plan/main/iw-doc-plan"
+enabled = true

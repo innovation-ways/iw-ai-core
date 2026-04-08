@@ -1,0 +1,67 @@
+{% if has_content %}
+  <div class="prose-doc bg-card border border-border rounded-lg p-6">
+    <style>
+      /* Markdown rendering styles scoped to this element */
+      .prose-doc h1, .prose-doc h2, .prose-doc h3, .prose-doc h4 {
+        color: var(--foreground);
+        font-weight: 600;
+        margin-top: 1.5em;
+        margin-bottom: 0.5em;
+      }
+      .prose-doc h1 { font-size: 1.25rem; }
+      .prose-doc h2 { font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+      .prose-doc h3 { font-size: 1rem; }
+      .prose-doc p { color: var(--foreground); line-height: 1.7; margin-bottom: 0.75em; font-size: 0.875rem; }
+      .prose-doc ul, .prose-doc ol { padding-left: 1.5em; margin-bottom: 0.75em; font-size: 0.875rem; color: var(--foreground); }
+      .prose-doc li { margin-bottom: 0.25em; line-height: 1.6; }
+      .prose-doc code {
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        background: var(--muted);
+        color: var(--foreground);
+        padding: 0.1em 0.3em;
+        border-radius: 3px;
+      }
+      .prose-doc pre {
+        background: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1em;
+        overflow-x: auto;
+        margin-bottom: 1em;
+      }
+      .prose-doc pre code {
+        background: none;
+        padding: 0;
+        font-size: 0.8rem;
+        color: var(--foreground);
+      }
+      .prose-doc table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+        margin-bottom: 1em;
+      }
+      .prose-doc th, .prose-doc td {
+        border: 1px solid var(--border);
+        padding: 0.4em 0.75em;
+        text-align: left;
+      }
+      .prose-doc th { background: var(--muted); font-weight: 600; }
+      .prose-doc blockquote {
+        border-left: 3px solid var(--primary);
+        padding-left: 1em;
+        color: var(--muted-foreground);
+        margin: 1em 0;
+        font-style: italic;
+        font-size: 0.875rem;
+      }
+      .prose-doc a { color: var(--primary); text-decoration: underline; }
+    </style>
+    {{ design_doc_html | safe }}
+  </div>
+{% else %}
+  <div class="bg-card border border-border rounded-lg p-8 text-center">
+    <p class="text-muted-foreground text-sm">No design document available for this item.</p>
+  </div>
+{% endif %}

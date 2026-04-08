@@ -1,0 +1,159 @@
+/* dashboard/static/theme.css */
+
+:root {
+  /* --- Core palette (light mode) --- */
+  --background: #fbfbfb;
+  --foreground: #28282d;
+  --card: #ffffff;
+  --card-foreground: #28282d;
+  --popover: #ffffff;
+  --popover-foreground: #28282d;
+  --primary: #5865f2;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f2f3;
+  --secondary-foreground: #28282d;
+  --muted: #f6f6f6;
+  --muted-foreground: #6c6d76;
+  --accent: #eeeef0;
+  --accent-foreground: #28282d;
+  --destructive: #b92733;
+  --destructive-foreground: #ffffff;
+  --border: #dfdfe1;
+  --input: #f2f2f3;
+  --ring: #5865f2;
+
+  /* --- Chart colors --- */
+  --chart-1: #f5a3d1;
+  --chart-2: #f5d18a;
+  --chart-3: #a3f5d1;
+  --chart-4: #a3d1f5;
+  --chart-5: #d1a3f5;
+
+  /* --- Sidebar --- */
+  --sidebar: #f3f3f4;
+  --sidebar-foreground: #666770;
+  --sidebar-primary: #dddde0;
+  --sidebar-primary-foreground: #28282d;
+  --sidebar-accent: #e7e7e9;
+  --sidebar-accent-foreground: #28282d;
+  --sidebar-border: #d9d9dc;
+  --sidebar-ring: #00b0f4;
+
+  /* --- Semantic status (IW additions) --- */
+  --success: #22c55e;
+  --success-foreground: #ffffff;
+  --warning: #f59e0b;
+  --warning-foreground: #ffffff;
+  --info: #00b0f4;
+  --info-foreground: #ffffff;
+
+  /* --- Layout --- */
+  --radius: 0.625rem;
+  --spacing: 0.25rem;
+  --shadow-opacity: 0;
+  --letter-spacing: 0em;
+
+  /* --- Fonts --- */
+  --font-sans: 'Inter', 'Noto Sans JP', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace;
+}
+
+.dark {
+  --background: #323339;
+  --foreground: #ffffff;
+  --card: #393a41;
+  --card-foreground: #ffffff;
+  --popover: #393a41;
+  --popover-foreground: #ffffff;
+  --primary: #5865f2;
+  --primary-foreground: #ffffff;
+  --secondary: #414148;
+  --secondary-foreground: #ffffff;
+  --muted: #2e2f35;
+  --muted-foreground: #a4a5ab;
+  --accent: #484951;
+  --accent-foreground: #ffffff;
+  --destructive: #ffa09b;
+  --destructive-foreground: #ffffff;
+  --border: #3e3f45;
+  --input: #2e2f35;
+  --ring: #5865f2;
+  --chart-1: #f5a3d1;
+  --chart-2: #f5d18a;
+  --chart-3: #a3f5d1;
+  --chart-4: #a3d1f5;
+  --chart-5: #d1a3f5;
+  --sidebar: #2c2d32;
+  --sidebar-foreground: #999aa1;
+  --sidebar-primary: #414248;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #35353a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #393a3f;
+  --sidebar-ring: #00b0f4;
+
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --info: #38bdf8;
+}
+
+/* --- Base resets --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* --- Sidebar transition --- */
+#sidebar {
+  transition: width 0.2s ease;
+}
+
+/* --- Toast container --- */
+#toast-container {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: all;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+  font-size: 0.875rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  animation: slide-in 0.2s ease;
+}
+
+@keyframes slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* --- Scrollbar styling --- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}

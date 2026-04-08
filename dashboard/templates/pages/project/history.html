@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+
+{% block title %}History — {{ current_project.display_name if current_project else '' }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-foreground">History</h1>
+  <p class="text-muted-foreground text-sm mt-1">Completed and failed work items</p>
+</div>
+
+<!-- Filters -->
+<form method="get" class="flex flex-wrap gap-3 mb-4 items-end">
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">Type</label>
+    <select name="type"
+            class="px-3 py-1.5 bg-input border border-border rounded-md text-sm text-foreground
+                   focus:outline-none focus:ring-2 focus:ring-ring">
+      <option value="">All types</option>
+      {% for t in item_types %}
+        <option value="{{ t }}" {% if type_filter == t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">Status</label>
+    <select name="status"
+            class="px-3 py-1.5 bg-input border border-border rounded-md text-sm text-foreground
+                   focus:outline-none focus:ring-2 focus:ring-ring">
+      <option value="">All statuses</option>
+      {% for s in item_statuses %}
+        <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">From</label>
+    <input type="date" name="date_from" value="{{ date_from }}"
+           class="px-3 py-1.5 bg-input border border-border rounded-md text-sm text-foreground
+                  focus:outline-none focus:ring-2 focus:ring-ring">
+  </div>
+
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">To</label>
+    <input type="date" name="date_to" value="{{ date_to }}"
+           class="px-3 py-1.5 bg-input border border-border rounded-md text-sm text-foreground
+                  focus:outline-none focus:ring-2 focus:ring-ring">
+  </div>
+
+  <button type="submit"
+          class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md text-sm
+                 hover:opacity-90 transition-opacity">
+    Filter
+  </button>
+
+  {% if type_filter or status_filter or date_from or date_to %}
+    <a href="?page=1"
+       class="px-3 py-1.5 text-muted-foreground text-sm hover:text-foreground transition-colors">
+      Clear
+    </a>
+  {% endif %}
+</form>
+
+<!-- Results count -->
+<p class="text-xs text-muted-foreground mb-3">
+  Showing {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, total]|min }} of {{ total }} items
+</p>
+
+<!-- Table -->
+<div class="bg-card border border-border rounded-lg overflow-hidden mb-4">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-border bg-muted/30">
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">ID</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Title</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Date</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+        <tr class="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
+            onclick="window.location='/project/{{ current_project.id }}/item/{{ item.id }}'">
+          <td class="px-4 py-2 font-mono text-xs font-semibold text-primary">{{ item.id }}</td>
+          <td class="px-4 py-2">{{ status_badge(item.type) }}</td>
+          <td class="px-4 py-2 text-xs text-foreground max-w-xs truncate">{{ item.title }}</td>
+          <td class="px-4 py-2">{{ status_badge(item.status) }}</td>
+          <td class="px-4 py-2 text-xs text-muted-foreground">
+            {{ item.created_at.strftime('%b %d') }}
+          </td>
+          <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
+            {% if item.duration_secs is not none %}
+              {% set mins = (item.duration_secs // 60)|int %}
+              {% set secs = (item.duration_secs % 60)|int %}
+              {% if mins >= 60 %}
+                {{ (mins // 60) }}h{{ "%02dm"|format(mins % 60) }}
+              {% else %}
+                {{ "%dm%02ds"|format(mins, secs) }}
+              {% endif %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="6" class="px-4 py-8 text-center text-muted-foreground text-sm">
+            No history found{% if type_filter or status_filter %} for the selected filters{% endif %}.
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+  <div class="flex items-center justify-between text-sm">
+    <div class="flex items-center gap-1">
+      {% if page > 1 %}
+        <a href="?page={{ page - 1 }}{% if type_filter %}&type={{ type_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+           class="px-3 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90">
+          ← Prev
+        </a>
+      {% endif %}
+
+      {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+          <span class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium">
+            {{ p }}
+          </span>
+        {% elif p <= 3 or p > total_pages - 3 or (p >= page - 1 and p <= page + 1) %}
+          <a href="?page={{ p }}{% if type_filter %}&type={{ type_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+             class="px-3 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90">
+            {{ p }}
+          </a>
+        {% elif p == 4 and page > 5 %}
+          <span class="px-1 text-muted-foreground text-xs">…</span>
+        {% elif p == total_pages - 3 and page < total_pages - 4 %}
+          <span class="px-1 text-muted-foreground text-xs">…</span>
+        {% endif %}
+      {% endfor %}
+
+      {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}{% if type_filter %}&type={{ type_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+           class="px-3 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90">
+          Next →
+        </a>
+      {% endif %}
+    </div>
+    <p class="text-xs text-muted-foreground">Page {{ page }} of {{ total_pages }}</p>
+  </div>
+{% endif %}
+{% endblock %}
