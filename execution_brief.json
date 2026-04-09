@@ -1,20 +1,20 @@
 {
   "project_id": "iw-ai-core",
-  "id": "I-00003",
-  "title": "History Page Sorting Broken — Replace with Client-Side JS Sorting",
+  "id": "F-00001",
+  "title": "Batch Archive with Post-Merge Actions",
   "status": "approved",
   "phase": "active",
-  "total_steps": 17,
+  "total_steps": 13,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00005",
+  "batch_id": "BATCH-00006",
   "worktree": null,
-  "created_at": "2026-04-09T14:18:20.716233+00:00",
-  "updated_at": "2026-04-09T14:18:20.716233+00:00",
+  "created_at": "2026-04-09T14:51:00.383357+00:00",
+  "updated_at": "2026-04-09T14:51:00.383357+00:00",
   "steps": [
     {
       "step_id": "S01",
-      "label": "Frontend",
+      "label": "Backend",
       "type": "implementation",
       "status": "pending"
     },
@@ -26,97 +26,73 @@
     },
     {
       "step_id": "S03",
-      "label": "Backend",
+      "label": "Api",
       "type": "implementation",
       "status": "pending"
     },
     {
       "step_id": "S04",
+      "label": "Frontend",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S05",
       "label": "CodeReview",
       "type": "code_review",
       "status": "pending"
     },
     {
-      "step_id": "S05",
+      "step_id": "S06",
       "label": "Tests",
       "type": "implementation",
       "status": "pending"
     },
     {
-      "step_id": "S06",
+      "step_id": "S07",
       "label": "CodeReview",
       "type": "code_review",
       "status": "pending"
     },
     {
-      "step_id": "S07",
+      "step_id": "S08",
       "label": "CodeReviewFinal",
       "type": "code_review_final",
       "status": "pending"
     },
     {
-      "step_id": "S08",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
       "step_id": "S09",
-      "label": "QvGate",
+      "label": "QualityValidation",
       "type": "quality_validation",
       "status": "pending"
     },
     {
       "step_id": "S10",
-      "label": "QvGate",
+      "label": "QualityValidation",
       "type": "quality_validation",
       "status": "pending"
     },
     {
       "step_id": "S11",
-      "label": "QvGate",
+      "label": "QualityValidation",
       "type": "quality_validation",
       "status": "pending"
     },
     {
       "step_id": "S12",
-      "label": "QvGate",
+      "label": "QualityValidation",
       "type": "quality_validation",
       "status": "pending"
     },
     {
       "step_id": "S13",
-      "label": "QvGate",
+      "label": "QualityValidation",
       "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S14",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S15",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S16",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S17",
-      "label": "QvBrowser",
-      "type": "browser_verification",
       "status": "pending"
     }
   ],
-  "branch": "agent/I-00003-history-page-sorting-broken-re",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/I-00003",
+  "branch": "agent/F-00001-batch-archive-with-post-merge-",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00001",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-09T14:50:14Z"
+  "brief_generated_at": "2026-04-09T15:35:16Z"
 }
