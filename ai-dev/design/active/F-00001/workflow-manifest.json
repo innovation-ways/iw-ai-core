@@ -1,0 +1,92 @@
+{
+  "id": "F-00001",
+  "type": "Feature",
+  "title": "Batch Archive with Post-Merge Actions",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Batch archiver service: orchestrate archive flow, run post-archive commands, archive work items",
+      "prompt": "prompts/F-00001_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review backend batch archiver",
+      "prompt": "prompts/F-00001_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "api-impl",
+      "description": "Dashboard archive endpoint, confirmation dialog, SSE event types",
+      "prompt": "prompts/F-00001_S03_API_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "frontend-impl",
+      "description": "Wire Archive button to htmx confirmation dialog, add archived state display",
+      "prompt": "prompts/F-00001_S04_Frontend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-impl",
+      "description": "Review API endpoint and frontend template changes",
+      "prompt": "prompts/F-00001_S05_CodeReview_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "tests-impl",
+      "description": "Integration tests for batch archive flow, additional unit test edge cases",
+      "prompt": "prompts/F-00001_S06_Tests_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-impl",
+      "description": "Review test coverage",
+      "prompt": "prompts/F-00001_S07_CodeReview_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-final-impl",
+      "description": "Global review of all F-00001 work",
+      "prompt": "prompts/F-00001_S08_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "quality-validation-impl",
+      "description": "QV gate: ruff check (lint)",
+      "gate": true,
+      "command": "ruff check orch/ dashboard/ tests/"
+    },
+    {
+      "step": "S10",
+      "agent": "quality-validation-impl",
+      "description": "QV gate: ruff format --check",
+      "gate": true,
+      "command": "ruff format --check orch/ dashboard/ tests/"
+    },
+    {
+      "step": "S11",
+      "agent": "quality-validation-impl",
+      "description": "QV gate: mypy type check",
+      "gate": true,
+      "command": "mypy orch/ dashboard/"
+    },
+    {
+      "step": "S12",
+      "agent": "quality-validation-impl",
+      "description": "QV gate: unit tests",
+      "gate": true,
+      "command": "make test-unit"
+    },
+    {
+      "step": "S13",
+      "agent": "quality-validation-impl",
+      "description": "QV gate: integration tests",
+      "gate": true,
+      "command": "make test-integration",
+      "timeout": 900
+    }
+  ]
+}

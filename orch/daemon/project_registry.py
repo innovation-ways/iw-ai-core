@@ -167,7 +167,7 @@ def sync_project_to_db(db: Session, config: ProjectConfig) -> None:
 
     # Ensure id_sequences rows exist (INSERT ... ON CONFLICT DO NOTHING)
     for prefix in ("F", "I", "CR", "BATCH"):
-        seq_stmt = insert(IdSequence).values(project_id=config.id, prefix=prefix, next_number=1)
+        seq_stmt = insert(IdSequence).values(prefix=prefix, next_number=1)
         seq_stmt = seq_stmt.on_conflict_do_nothing()
         db.execute(seq_stmt)
 

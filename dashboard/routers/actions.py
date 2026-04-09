@@ -477,24 +477,10 @@ async def create_batch_from_selection(
     if not items:
         raise HTTPException(status_code=422, detail="No approved items found for the given IDs")
 
-    # Allocate a batch ID
-    from orch.db.models import IdSequence
+    # Allocate a batch ID using the shared helper
+    from orch.cli.id_commands import allocate_next_id
 
-    seq = db.scalar(
-        select(IdSequence).where(
-            IdSequence.project_id == project_id,
-            IdSequence.prefix == "BATCH",
-        )
-    )
-    if seq is None:
-        seq = IdSequence(project_id=project_id, prefix="BATCH", next_number=1)
-        db.add(seq)
-        db.flush()
-        batch_num = 1
-    else:
-        batch_num = seq.next_number
-        seq.next_number += 1
-    batch_id = f"BATCH-{batch_num:05d}"
+    _batch_num, batch_id = allocate_next_id(db, project_id, "BATCH")
 
     batch = Batch(
         project_id=project_id,

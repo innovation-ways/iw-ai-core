@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 # =============================================================================
-# IW AI Core — Worktree Commit Script
+# IW AI Core — Worktree Commit & Squash-Merge Script
 # =============================================================================
 #
-# Commits all changes in a worktree to its branch, then verifies the branch
-# has commits ahead of main — the pre-flight gate before squash-merging.
-# Called by the daemon immediately before squash-merging a completed work item.
+# 1. Commits any uncommitted changes in the worktree branch.
+# 2. Verifies the branch is ahead of main.
+# 3. Squash-merges the branch into main (from the main repo root).
+# 4. Commits the squash merge on main.
 #
+# Called by merge_queue.py for completed work items.
 # This runs OUTSIDE the LLM — deterministic bash only.
 #
 # Usage:
 #   executor/worktree_commit.sh <item_id> <project_repo_root>
 #
 # Exit codes:
-#   0 — success (committed, or working tree was already clean)
-#   1 — failure (commit failed, or branch has no commits ahead of main)
+#   0 — success (squash-merged into main)
+#   1 — failure (commit failed, merge conflict, or branch has no commits)
 #   2 — worktree does not exist (may already be cleaned up — caller handles)
 #
 # =============================================================================
@@ -40,9 +42,10 @@ if [[ ! -f "$WORKTREE_DIR/.git" ]]; then
 fi
 
 cd "$WORKTREE_DIR"
+BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
 
 # ---------------------------------------------------------------------------
-# Step 2: Commit any uncommitted changes
+# Step 2: Commit any uncommitted changes in the worktree
 # ---------------------------------------------------------------------------
 uncommitted=$(git status --porcelain 2>/dev/null || echo "")
 
@@ -65,10 +68,6 @@ fi
 # ---------------------------------------------------------------------------
 # Step 3: Verify branch has commits ahead of main
 # ---------------------------------------------------------------------------
-# This is the critical merge gate: if the branch has no commits ahead of main,
-# the squash merge produces an empty commit — meaning the agent did nothing.
-# Block the merge so the user can investigate.
-# ---------------------------------------------------------------------------
 ahead=$(git log main..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')
 
 if [[ "$ahead" -eq 0 ]]; then
@@ -87,4 +86,68 @@ echo "[worktree_commit] OK: Branch is $ahead commit(s) ahead of main — safe to
 echo "[worktree_commit] Files on branch vs main:" >&2
 git diff main..HEAD --name-status 2>/dev/null | head -30 >&2
 
+# ---------------------------------------------------------------------------
+# Step 5: Squash-merge into main
+# ---------------------------------------------------------------------------
+cd "$PROJECT_REPO_ROOT"
+
+echo "[worktree_commit] Squash-merging branch $BRANCH_NAME into main..." >&2
+
+# Git refuses to squash-merge when untracked files on main collide with files
+# on the branch. These are typically design docs that were created on main
+# before the worktree was set up. Move them out of the way temporarily.
+STASH_DIR=$(mktemp -d "/tmp/iw-merge-stash-${ITEM_ID}-XXXXXX")
+stashed_count=0
+
+# Get the list of NEW files on the branch (Added relative to main)
+while IFS=$'\t' read -r status fpath; do
+    if [[ "$status" == "A" && -f "$fpath" ]]; then
+        mkdir -p "$STASH_DIR/$(dirname "$fpath")"
+        mv "$fpath" "$STASH_DIR/$fpath"
+        stashed_count=$((stashed_count + 1))
+    fi
+done < <(git diff main..."$BRANCH_NAME" --name-status --diff-filter=A 2>/dev/null)
+
+if [[ "$stashed_count" -gt 0 ]]; then
+    echo "[worktree_commit] Moved $stashed_count conflicting untracked files to $STASH_DIR" >&2
+fi
+
+# Perform the squash merge
+if ! git merge --squash "$BRANCH_NAME" 2>&1; then
+    echo "[worktree_commit] ERROR: git merge --squash failed (possible conflict)" >&2
+    # Restore stashed files
+    if [[ "$stashed_count" -gt 0 ]]; then
+        cd "$STASH_DIR"
+        find . -type f | while read -r f; do
+            dest="$PROJECT_REPO_ROOT/${f#./}"
+            mkdir -p "$(dirname "$dest")"
+            mv "$f" "$dest"
+        done
+    fi
+    rm -rf "$STASH_DIR"
+    cd "$PROJECT_REPO_ROOT"
+    git reset HEAD 2>/dev/null || true
+    exit 1
+fi
+
+# Verify merge produced changes
+merge_status=$(git status --porcelain 2>/dev/null || echo "")
+if [[ -z "$merge_status" ]]; then
+    echo "[worktree_commit] ERROR: Squash-merge produced no changes — nothing to commit" >&2
+    rm -rf "$STASH_DIR"
+    exit 1
+fi
+
+# Commit the squash merge
+if git commit --no-verify -m "Merge $ITEM_ID: squash-merge from $BRANCH_NAME"; then
+    echo "[worktree_commit] OK: Squash-merge committed on main" >&2
+else
+    echo "[worktree_commit] ERROR: Squash-merge commit failed" >&2
+    git reset HEAD 2>/dev/null || true
+    rm -rf "$STASH_DIR"
+    exit 1
+fi
+
+rm -rf "$STASH_DIR"
+echo "[worktree_commit] OK: $ITEM_ID merged to main successfully" >&2
 exit 0
