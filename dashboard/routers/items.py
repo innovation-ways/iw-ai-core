@@ -66,6 +66,28 @@ class ReportSection:
 
 
 @dataclass
+class RunLog:
+    """A single step_run entry for the logs tab."""
+
+    run_number: int
+    status: str
+    duration_secs: float | None
+    is_running: bool
+    log_content: str | None
+
+
+@dataclass
+class LogSection:
+    """All runs for a single workflow step, for the logs tab."""
+
+    step_id: str
+    agent_label: str
+    status: str
+    db_step_id: int
+    runs: list[RunLog]
+
+
+@dataclass
 class ArtifactFile:
     """A file in the artifact browser."""
 
@@ -237,6 +259,46 @@ def _list_artifacts(_project_id: str, item: WorkItem, project: Project) -> list[
     return files
 
 
+def _get_log_sections(project_id: str, item_id: str, db: Session) -> list[LogSection]:
+    steps = list(
+        db.scalars(
+            select(WorkflowStep)
+            .where(
+                WorkflowStep.project_id == project_id,
+                WorkflowStep.work_item_id == item_id,
+            )
+            .order_by(WorkflowStep.step_number)
+        ).all()
+    )
+    sections = []
+    for step in steps:
+        runs = list(
+            db.scalars(
+                select(StepRun).where(StepRun.step_id == step.id).order_by(StepRun.run_number)
+            ).all()
+        )
+        run_logs = [
+            RunLog(
+                run_number=r.run_number,
+                status=r.status.value,
+                duration_secs=r.duration_secs,
+                is_running=r.status.value == "running",
+                log_content=r.log_content,
+            )
+            for r in runs
+        ]
+        sections.append(
+            LogSection(
+                step_id=step.step_id,
+                agent_label=step.agent_label,
+                status=step.status.value,
+                db_step_id=step.id,
+                runs=run_logs,
+            )
+        )
+    return sections
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -385,5 +447,62 @@ def item_tab_artifacts(
             "artifact_files": artifact_files,
             "is_archived": item.archived_at is not None,
             "archive_size_bytes": item.archive_size_bytes,
+        },
+    )
+
+
+@router.get("/item/{item_id}/tab/logs", response_class=HTMLResponse)
+def item_tab_logs(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+    log_sections = _get_log_sections(project_id, item_id, db)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/item_logs.html",
+        {
+            "item": item,
+            "log_sections": log_sections,
+            "project_id": project_id,
+        },
+    )
+
+
+@router.get("/item/{item_id}/log-content/{step_db_id}/{run_number}", response_class=HTMLResponse)
+def item_log_content(
+    project_id: str,
+    item_id: str,
+    step_db_id: int,
+    run_number: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_item_or_404(project_id, item_id, db)
+    run = db.scalar(
+        select(StepRun).where(
+            StepRun.step_id == step_db_id,
+            StepRun.run_number == run_number,
+        )
+    )
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/item_log_content.html",
+        {
+            "log_content": run.log_content,
+            "is_running": run.status.value == "running",
+            "project_id": project_id,
+            "item_id": item_id,
+            "step_db_id": step_db_id,
+            "run_number": run_number,
         },
     )

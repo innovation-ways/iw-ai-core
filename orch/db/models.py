@@ -202,11 +202,10 @@ class Project(Base):
 
 
 class IdSequence(Base):
-    """Atomic sequential ID allocation per project and type."""
+    """Global atomic sequential ID allocation per prefix."""
 
     __tablename__ = "id_sequences"
 
-    project_id: Mapped[str] = mapped_column(Text, primary_key=True)
     prefix: Mapped[str] = mapped_column(
         Text,
         primary_key=True,
@@ -219,10 +218,7 @@ class IdSequence(Base):
         comment="Next number to allocate (incremented atomically via FOR UPDATE)",
     )
 
-    __table_args__ = (
-        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
-        {"comment": "Atomic sequential ID allocation per project and type"},
-    )
+    __table_args__ = ({"comment": "Global atomic sequential ID allocation per prefix"},)
 
 
 class WorkItem(Base):

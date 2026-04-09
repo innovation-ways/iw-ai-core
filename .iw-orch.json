@@ -1,6 +1,6 @@
 {
   "project_id": "iw-ai-core",
-  "cli_tool": "claude",
+  "cli_tool": "opencode",
   "max_parallel": 4,
   "auto_publish": false,
   "browser_verification": false,

@@ -103,9 +103,9 @@ def init_project(
     result.db_rows_created.append(f"projects[{project_id}]")
 
     for prefix in _ID_PREFIXES:
-        session.add(IdSequence(project_id=project_id, prefix=prefix, next_number=1))
+        session.add(IdSequence(prefix=prefix, next_number=1))
     session.flush()
-    result.db_rows_created.extend([f"id_sequences[{project_id},{p}]" for p in _ID_PREFIXES])
+    result.db_rows_created.extend([f"id_sequences[{p}]" for p in _ID_PREFIXES])
 
     lock_row = MigrationLock(project_id=project_id, current_holder=None)
     session.add(lock_row)

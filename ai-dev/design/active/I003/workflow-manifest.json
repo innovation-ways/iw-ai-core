@@ -1,0 +1,92 @@
+{
+  "id": "I-00003",
+  "type": "Issue",
+  "title": "History Page Sorting Broken — Replace with Client-Side JS Sorting",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "frontend-impl",
+      "description": "Replace server-side sort_header macro with client-side JS sorting (batches pattern), add data-sort-* attributes, remove pagination UI",
+      "prompt": "prompts/I003_S01_Frontend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 Frontend implementation",
+      "prompt": "prompts/I003_S02_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Remove sort_by/sort_dir/page params from _history_items() and route handler, remove sort constants",
+      "prompt": "prompts/I003_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 Backend implementation",
+      "prompt": "prompts/I003_S04_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Write reproduction test + regression tests for sorting fix",
+      "prompt": "prompts/I003_S05_Tests_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05 Tests implementation",
+      "prompt": "prompts/I003_S06_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "Global review of all I003 work",
+      "prompt": "prompts/I003_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S13",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — validate sorting works visually",
+      "prompt": "prompts/I003_S13_QV_Browser_prompt.md"
+    }
+  ]
+}

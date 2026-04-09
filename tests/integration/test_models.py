@@ -106,11 +106,11 @@ def test_id_sequence_insert_and_query(db_session: Session) -> None:
     db_session.add(project)
     db_session.flush()
 
-    seq = IdSequence(project_id="test-proj", prefix="F", next_number=1)
+    seq = IdSequence(prefix="F", next_number=1)
     db_session.add(seq)
     db_session.flush()
 
-    result = db_session.get(IdSequence, ("test-proj", "F"))
+    result = db_session.get(IdSequence, "F")
     assert result is not None
     assert result.next_number == 1
 
@@ -354,20 +354,16 @@ def test_delete_project_cascades_to_work_items(db_session: Session) -> None:
     assert items == []
 
 
-def test_delete_project_cascades_to_id_sequences(db_session: Session) -> None:
-    """Deleting a project must delete its id_sequences."""
+def test_id_sequence_is_global(db_session: Session) -> None:
+    """id_sequences is global — keyed by prefix only, no project_id."""
     db_session.add(make_project())
     db_session.flush()
-    db_session.add(IdSequence(project_id="test-proj", prefix="F"))
+    db_session.add(IdSequence(prefix="F", next_number=1))
     db_session.flush()
 
-    project = db_session.get(Project, "test-proj")
-    assert project is not None
-    db_session.delete(project)
-    db_session.flush()
-
-    seqs = db_session.query(IdSequence).filter_by(project_id="test-proj").all()
-    assert seqs == []
+    seq = db_session.get(IdSequence, "F")
+    assert seq is not None
+    assert seq.next_number == 1
 
 
 def test_delete_project_cascades_to_batches(db_session: Session) -> None:
