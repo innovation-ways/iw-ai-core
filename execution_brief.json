@@ -1,50 +1,98 @@
 {
   "project_id": "iw-ai-core",
-  "id": "CR001",
-  "title": "Add favicon to IW AI Core dashboard",
+  "id": "CR-00002",
+  "title": "Add sortable columns to History table",
   "status": "approved",
   "phase": "active",
-  "total_steps": 5,
+  "total_steps": 13,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00002",
+  "batch_id": "BATCH-00003",
   "worktree": null,
-  "created_at": "2026-04-08T19:08:34.749399+00:00",
-  "updated_at": "2026-04-08T19:08:34.749399+00:00",
+  "created_at": "2026-04-09T07:36:54.191912+00:00",
+  "updated_at": "2026-04-09T07:36:54.191912+00:00",
   "steps": [
     {
       "step_id": "S01",
-      "label": "Frontend",
+      "label": "Backend",
       "type": "implementation",
       "status": "pending"
     },
     {
       "step_id": "S02",
-      "label": "Tests",
-      "type": "implementation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S03",
       "label": "CodeReview",
       "type": "code_review",
       "status": "pending"
     },
     {
+      "step_id": "S03",
+      "label": "Frontend",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
       "step_id": "S04",
+      "label": "CodeReview",
+      "type": "code_review",
+      "status": "pending"
+    },
+    {
+      "step_id": "S05",
+      "label": "Tests",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S06",
+      "label": "CodeReview",
+      "type": "code_review",
+      "status": "pending"
+    },
+    {
+      "step_id": "S07",
       "label": "CodeReviewFinal",
       "type": "code_review_final",
       "status": "pending"
     },
     {
-      "step_id": "S05",
+      "step_id": "S08",
+      "label": "QualityValidation",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S09",
+      "label": "QualityValidation",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S10",
+      "label": "QualityValidation",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S11",
+      "label": "QualityValidation",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S12",
+      "label": "QualityValidation",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S13",
       "label": "QualityValidation",
       "type": "quality_validation",
       "status": "pending"
     }
   ],
-  "branch": "agent/CR001-add-favicon-to-iw-ai-core-dash",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR001",
+  "branch": "agent/CR-00002-add-sortable-columns-to-histor",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00002",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-09T07:17:15Z"
+  "brief_generated_at": "2026-04-09T08:05:54Z"
 }

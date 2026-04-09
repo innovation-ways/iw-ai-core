@@ -293,13 +293,12 @@ class BatchManager:
             # Build a direct prompt for claude by reading the step's prompt file
             prompt = self._build_claude_prompt(step, worktree_path)
             # Write prompt to a temp file to avoid shell escaping issues
-            prompt_file = Path(worktree_path) / ".tmp" / f"{step.work_item_id}_{step.step_id}.prompt"
+            prompt_file = (
+                Path(worktree_path) / ".tmp" / f"{step.work_item_id}_{step.step_id}.prompt"
+            )
             prompt_file.parent.mkdir(parents=True, exist_ok=True)
             prompt_file.write_text(prompt)
-            command = (
-                f"claude -p \"$(cat {prompt_file})\""
-                " --dangerously-skip-permissions"
-            )
+            command = f'claude -p "$(cat {prompt_file})" --dangerously-skip-permissions'
 
         timeout = get_timeout(self.project_config, step.step_type.value)
 

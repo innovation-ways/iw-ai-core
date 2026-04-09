@@ -62,7 +62,15 @@ def test_acquire_when_free(project_with_lock: Project, db_session: Session) -> N
     runner, get_session = _runner(db_session)
     result = runner.invoke(
         cli,
-        ["--project", "lock-proj", "migration-lock", "acquire", "I-00001", "--branch", "agent/I-00001"],
+        [
+            "--project",
+            "lock-proj",
+            "migration-lock",
+            "acquire",
+            "I-00001",
+            "--branch",
+            "agent/I-00001",
+        ],
         obj={"get_session": get_session, "json": False},
     )
     assert result.exit_code == 0, result.output

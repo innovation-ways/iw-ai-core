@@ -414,7 +414,7 @@ _FONT_SIZES = [15, 12, 11, 10]
 
 def _load_fonts() -> tuple[Any, ...]:
     """Load DejaVu fonts, falling back to the PIL default."""
-    fonts = []
+    fonts: list[Any] = []
     for size in _FONT_SIZES:
         try:
             from PIL import ImageFont  # noqa: PLC0415

@@ -1,6 +1,20 @@
 {% extends "base.html" %}
 {% from "components/status_badge.html" import status_badge %}
 
+{% macro sort_header(label, key) %}
+  <th class="px-4 py-2 text-left font-medium text-muted-foreground"
+      aria-sort="{{ 'ascending' if sort_by == key and sort_dir == 'asc' else 'descending' if sort_by == key and sort_dir == 'desc' else 'none' }}">
+    <a href="?sort_by={{ key }}&sort_dir={{ 'desc' if sort_by == key and sort_dir == 'asc' else 'asc' }}{% if type_filter %}&type={{ type_filter|urlencode }}{% endif %}{% if status_filter %}&status={{ status_filter|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}&page=1"
+       class="hover:text-foreground transition-colors inline-flex items-center gap-1"
+       aria-label="Sort by {{ label }} {{ 'descending' if sort_by == key and sort_dir == 'asc' else 'ascending' }}">
+      {{ label }}
+      {% if sort_by == key %}
+        <span class="text-primary">{{ '▲' if sort_dir == 'asc' else '▼' }}</span>
+      {% endif %}
+    </a>
+  </th>
+{% endmacro %}
+
 {% block title %}History — {{ current_project.display_name if current_project else '' }}{% endblock %}
 
 {% block content %}
@@ -11,6 +25,8 @@
 
 <!-- Filters -->
 <form method="get" class="flex flex-wrap gap-3 mb-4 items-end">
+  <input type="hidden" name="sort_by" value="{{ sort_by }}">
+  <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
   <div>
     <label class="block text-xs text-muted-foreground mb-1">Type</label>
     <select name="type"
@@ -56,7 +72,7 @@
   </button>
 
   {% if type_filter or status_filter or date_from or date_to %}
-    <a href="?page=1"
+    <a href="?page=1&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}{% if type_filter %}&type={{ type_filter|urlencode }}{% endif %}{% if status_filter %}&status={{ status_filter|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}"
        class="px-3 py-1.5 text-muted-foreground text-sm hover:text-foreground transition-colors">
       Clear
     </a>
@@ -73,12 +89,12 @@
   <table class="w-full text-sm">
     <thead>
       <tr class="border-b border-border bg-muted/30">
-        <th class="px-4 py-2 text-left font-medium text-muted-foreground">ID</th>
-        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
-        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Title</th>
-        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
-        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Date</th>
-        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
+        {{ sort_header('ID', 'id') }}
+        {{ sort_header('Type', 'type') }}
+        {{ sort_header('Title', 'title') }}
+        {{ sort_header('Status', 'status') }}
+        {{ sort_header('Date', 'created_at') }}
+        {{ sort_header('Duration', 'duration') }}
       </tr>
     </thead>
     <tbody>
@@ -122,7 +138,7 @@
   <div class="flex items-center justify-between text-sm">
     <div class="flex items-center gap-1">
       {% if page > 1 %}
-        <a href="?page={{ page - 1 }}{% if type_filter %}&type={{ type_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+        <a href="?page={{ page - 1 }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}{% if type_filter %}&type={{ type_filter|urlencode }}{% endif %}{% if status_filter %}&status={{ status_filter|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}"
            class="px-3 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90">
           ← Prev
         </a>
@@ -134,7 +150,7 @@
             {{ p }}
           </span>
         {% elif p <= 3 or p > total_pages - 3 or (p >= page - 1 and p <= page + 1) %}
-          <a href="?page={{ p }}{% if type_filter %}&type={{ type_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+          <a href="?page={{ p }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}{% if type_filter %}&type={{ type_filter|urlencode }}{% endif %}{% if status_filter %}&status={{ status_filter|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}"
              class="px-3 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90">
             {{ p }}
           </a>
@@ -146,7 +162,7 @@
       {% endfor %}
 
       {% if page < total_pages %}
-        <a href="?page={{ page + 1 }}{% if type_filter %}&type={{ type_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+        <a href="?page={{ page + 1 }}&sort_by={{ sort_by }}&sort_dir={{ sort_dir }}{% if type_filter %}&type={{ type_filter|urlencode }}{% endif %}{% if status_filter %}&status={{ status_filter|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from|urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to|urlencode }}{% endif %}"
            class="px-3 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90">
           Next →
         </a>

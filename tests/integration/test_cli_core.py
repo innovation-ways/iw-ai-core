@@ -89,7 +89,12 @@ def test_next_id_all_types(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    expected = {"feature": "F-00001", "incident": "I-00001", "cr": "CR-00001", "batch": "BATCH-00001"}
+    expected = {
+        "feature": "F-00001",
+        "incident": "I-00001",
+        "cr": "CR-00001",
+        "batch": "BATCH-00001",
+    }
 
     for item_type, expected_id in expected.items():
         result = invoke(runner, ["next-id", "--type", item_type], cli_get_session)
@@ -171,7 +176,16 @@ def test_register_json_output(
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--project", "test-proj", "--json", "register", "I-00001", "My title", "--type", "incident"],
+        [
+            "--project",
+            "test-proj",
+            "--json",
+            "register",
+            "I-00001",
+            "My title",
+            "--type",
+            "incident",
+        ],
         obj={"get_session": cli_get_session},
         catch_exceptions=False,
     )
