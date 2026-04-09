@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import signal
+import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -20,6 +23,7 @@ from orch.db.models import (
     BatchItemStatus,
     BatchStatus,
     DaemonEvent,
+    Project,
     RunStatus,
     StepRun,
     StepStatus,
@@ -90,6 +94,13 @@ _ITEM_ACTION_LABELS: dict[str, tuple[str, str, str, bool]] = {
         "Resumes execution from where it left off.",
         "Resume",
         False,
+    ),
+    "full-restart": (
+        "Full restart item?",
+        "Deletes the worktree, clears all logs, and resets every step to pending."
+        " The daemon will re-run setup from scratch.",
+        "Full Restart",
+        True,
     ),
 }
 
@@ -814,6 +825,131 @@ def resume_item(
     _emit(db, "item_resumed", project_id, item_id, f"Item {item_id} resumed by user")
     db.commit()
     return _action_response(f"Item {item_id} resumed.", toast_type="success", reload=True)
+
+
+# ---------------------------------------------------------------------------
+# Full restart item (delete worktree + logs, reset all steps → approved)
+# ---------------------------------------------------------------------------
+
+_logger = logging.getLogger(__name__)
+
+_FULL_RESTART_ALLOWED = {
+    WorkItemStatus.failed,
+    WorkItemStatus.in_progress,
+    WorkItemStatus.paused,
+}
+
+
+def _delete_worktree(item_id: str, worktree_path: str, repo_root: str) -> None:
+    """Remove the git worktree (best-effort — called after DB commit)."""
+    try:
+        subprocess.run(  # noqa: S603
+            ["git", "worktree", "remove", "--force", worktree_path],  # noqa: S607
+            cwd=repo_root,
+            capture_output=True,
+            timeout=30,
+        )
+        _logger.info("Full-restart: removed worktree %s for %s", worktree_path, item_id)
+    except Exception:
+        _logger.warning("Full-restart: could not remove worktree %s for %s", worktree_path, item_id)
+
+
+@router.post("/item/{item_id}/full-restart", response_class=Response)
+def full_restart_item(
+    project_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    item = _get_item(db, project_id, item_id)
+
+    if item.status not in _FULL_RESTART_ALLOWED:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Cannot full-restart: item status is '{item.status.value}'"
+                " (must be failed, in_progress, or paused)"
+            ),
+        )
+
+    # Collect all workflow steps
+    steps = list(
+        db.scalars(
+            select(WorkflowStep).where(
+                WorkflowStep.project_id == project_id,
+                WorkflowStep.work_item_id == item_id,
+            )
+        ).all()
+    )
+
+    # Find worktree path and delete all step runs + log files
+    worktree_path: str | None = None
+    for step in steps:
+        runs = list(db.scalars(select(StepRun).where(StepRun.step_id == step.id)).all())
+        for run in runs:
+            if worktree_path is None and run.worktree_path:
+                worktree_path = run.worktree_path
+            if run.log_file:
+                with contextlib.suppress(FileNotFoundError, OSError):
+                    Path(run.log_file).unlink()
+            db.delete(run)
+
+    # Reset all workflow steps
+    for step in steps:
+        step.status = StepStatus.pending
+        step.started_at = None
+        step.completed_at = None
+        step.report_file = None
+        step.report_content = None
+
+    # Reset item to approved so daemon re-runs setup from scratch
+    item.status = WorkItemStatus.approved
+    item.completed_at = None
+
+    # Re-open any active batch item
+    batch_item = db.scalar(
+        select(BatchItem).where(
+            BatchItem.project_id == project_id,
+            BatchItem.work_item_id == item_id,
+            BatchItem.status.not_in(
+                [BatchItemStatus.completed, BatchItemStatus.merged, BatchItemStatus.skipped]
+            ),
+        )
+    )
+    if batch_item is not None:
+        batch_item.status = BatchItemStatus.pending
+        batch_item.notes = None
+        batch_item.started_at = None
+        batch = db.scalar(
+            select(Batch).where(
+                Batch.project_id == project_id,
+                Batch.id == batch_item.batch_id,
+            )
+        )
+        if batch is not None and batch.status == BatchStatus.completed_with_errors:
+            batch.status = BatchStatus.approved
+            batch.completed_at = None
+
+    _emit(
+        db,
+        "item_full_restarted",
+        project_id,
+        item_id,
+        f"Item {item_id} fully restarted by user (worktree deleted, logs cleared)",
+        {"worktree_path": worktree_path, "steps_reset": len(steps)},
+    )
+    db.commit()
+
+    # Delete worktree after commit (best-effort filesystem operation)
+    if worktree_path:
+        project_rec = db.scalar(select(Project).where(Project.id == project_id))
+        if project_rec:
+            _delete_worktree(item_id, worktree_path, project_rec.repo_root)
+
+    return _action_response(
+        f"Item {item_id} fully reset — daemon will restart from scratch.",
+        toast_type="success",
+        reload=True,
+    )
 
 
 # ---------------------------------------------------------------------------
