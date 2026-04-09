@@ -20,6 +20,7 @@ from orch.db.models import (
     WorkItem,
     WorkItemStatus,
 )
+from orch.utils.log_capture import capture_log_content
 
 # ---------------------------------------------------------------------------
 # Pure validation helpers (used by unit tests without DB)
