@@ -324,6 +324,30 @@ def _synthetic_merge_step(bi: BatchItem | None) -> StepDetail:
     )
 
 
+def _read_log_file(log_file: str | None) -> str | None:
+    """Read log content directly from disk, stripping ANSI escape codes."""
+    if log_file is None:
+        return None
+    path = Path(log_file)
+    if not path.is_file():
+        return None
+    try:
+        from orch.utils.log_capture import strip_ansi
+
+        return strip_ansi(path.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+
+
+def _reverse_log(content: str | None) -> str | None:
+    """Return log content with lines in reverse order (newest first)."""
+    if not content:
+        return content
+    lines = content.splitlines()
+    lines.reverse()
+    return "\n".join(lines)
+
+
 def _setup_log_content(bi: BatchItem) -> str:
     lines = ["=== Worktree Setup ==="]
     if bi.worktree_info and isinstance(bi.worktree_info, dict):
@@ -418,7 +442,7 @@ def _get_log_sections(project_id: str, item_id: str, db: Session) -> list[LogSec
                 status=r.status.value,
                 duration_secs=r.duration_secs,
                 is_running=r.status.value == "running",
-                log_content=r.log_content,
+                log_content=_reverse_log(r.log_content or _read_log_file(r.log_file)),
             )
             for r in runs
         ]
@@ -640,12 +664,14 @@ def item_log_content(
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
 
+    log_content = _reverse_log(run.log_content or _read_log_file(run.log_file))
+
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "fragments/item_log_content.html",
         {
-            "log_content": run.log_content,
+            "log_content": log_content,
             "is_running": run.status.value == "running",
             "project_id": project_id,
             "item_id": item_id,

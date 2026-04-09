@@ -198,6 +198,25 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
             step.completed_at = datetime.now(UTC)
             if report_path is not None:
                 step.report_file = report_path
+
+            # Capture log content into DB before the worktree is cleaned up
+            step_run = session.execute(
+                select(StepRun)
+                .where(
+                    StepRun.step_id == step.id,
+                    StepRun.status == RunStatus.running,
+                )
+                .order_by(StepRun.run_number.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if step_run is not None:
+                step_run.status = RunStatus.completed
+                step_run.completed_at = datetime.now(UTC)
+                if step_run.started_at is not None:
+                    step_run.duration_secs = (
+                        step_run.completed_at - step_run.started_at
+                    ).total_seconds()
+                capture_log_content(step_run)
             session.flush()
 
     except Exception as exc:
@@ -261,6 +280,7 @@ def step_fail(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
                 step_run.error_message = reason
                 step_run.status = RunStatus.failed
                 step_run.completed_at = datetime.now(UTC)
+                capture_log_content(step_run)
                 session.flush()
 
     except Exception as exc:
