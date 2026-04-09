@@ -1,0 +1,50 @@
+{
+  "project_id": "iw-ai-core",
+  "id": "CR001",
+  "title": "Add favicon to IW AI Core dashboard",
+  "status": "approved",
+  "phase": "active",
+  "total_steps": 5,
+  "completed_steps": 0,
+  "current_step": null,
+  "batch_id": "BATCH-00002",
+  "worktree": null,
+  "created_at": "2026-04-08T19:08:34.749399+00:00",
+  "updated_at": "2026-04-08T19:08:34.749399+00:00",
+  "steps": [
+    {
+      "step_id": "S01",
+      "label": "Frontend",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S02",
+      "label": "Tests",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S03",
+      "label": "CodeReview",
+      "type": "code_review",
+      "status": "pending"
+    },
+    {
+      "step_id": "S04",
+      "label": "CodeReviewFinal",
+      "type": "code_review_final",
+      "status": "pending"
+    },
+    {
+      "step_id": "S05",
+      "label": "QualityValidation",
+      "type": "quality_validation",
+      "status": "pending"
+    }
+  ],
+  "branch": "agent/CR001-add-favicon-to-iw-ai-core-dash",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR001",
+  "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
+  "brief_generated_at": "2026-04-09T07:17:15Z"
+}
