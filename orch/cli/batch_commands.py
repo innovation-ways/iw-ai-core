@@ -117,6 +117,77 @@ def validate_batch_resume_transition(current_status: BatchStatus) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Execution plan generation
+# ---------------------------------------------------------------------------
+
+
+def _generate_batch_plan(
+    session: Any,
+    project_id: str,
+    batch: Any,
+    items: list[WorkItem],
+    group_assignments: dict[str, int],
+) -> None:
+    """Generate and store the execution plan, drawio XML, and PNG for a batch."""
+    from orch.batch_planner import (
+        analyze_dependencies as analyze_deps,
+    )
+    from orch.batch_planner import (
+        generate_drawio as gen_drawio,
+    )
+    from orch.batch_planner import (
+        generate_execution_plan_md as gen_plan_md,
+    )
+    from orch.batch_planner import (
+        generate_png as gen_png,
+    )
+    from orch.db.models import WorkflowStep
+
+    # Build items_data for the planner
+    items_data: list[dict[str, Any]] = []
+    for item in items:
+        steps = (
+            session.execute(
+                select(WorkflowStep)
+                .where(
+                    WorkflowStep.project_id == project_id,
+                    WorkflowStep.work_item_id == item.id,
+                )
+                .order_by(WorkflowStep.step_number)
+            )
+            .scalars()
+            .all()
+        )
+        items_data.append(
+            {
+                "id": item.id,
+                "title": item.title,
+                "type": item.type.value,
+                "depends_on": list(item.depends_on or []),
+                "design_doc_content": item.design_doc_content,
+                "steps": [
+                    {"agent_label": s.agent_label, "step_type": s.step_type.value} for s in steps
+                ],
+            }
+        )
+
+    analysis = analyze_deps(items_data)
+
+    # Update group assignments from the richer analysis (may differ due to
+    # file-overlap and DB-step sequencing detected by the planner)
+    for iid, info in analysis.items():
+        group_assignments[iid] = info.group
+
+    plan_md = gen_plan_md(batch.id, analysis, batch.max_parallel)
+    drawio_xml = gen_drawio(batch.id, analysis, batch.max_parallel)
+    png_bytes = gen_png(batch.id, analysis, batch.max_parallel)
+
+    batch.execution_plan_md = plan_md
+    batch.execution_plan_drawio = drawio_xml
+    batch.execution_plan_png = png_bytes
+
+
+# ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
@@ -210,10 +281,14 @@ def batch_create(
                 )
             session.flush()
 
+            # 7. Generate execution plan, drawio XML, and PNG
+            _generate_batch_plan(session, project_id, batch, items, group_assignments)
+            session.flush()
+
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 1)
 
-    # 7. Build groups summary for output
+    # 8. Build groups summary for output
     groups_map: dict[int, list[str]] = {}
     for iid, grp in group_assignments.items():
         groups_map.setdefault(grp, []).append(iid)

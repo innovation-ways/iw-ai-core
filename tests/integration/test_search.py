@@ -86,21 +86,21 @@ def test_search_returns_matching_items(
     _insert_item(
         db_session,
         project_id="proj-alpha",
-        item_id="I001",
+        item_id="I-00001",
         title="Fix template rendering timeout",
         content="WeasyPrint times out when rendering large templates with many zones.",
     )
     _insert_item(
         db_session,
         project_id="proj-alpha",
-        item_id="I002",
+        item_id="I-00002",
         title="Template rendering fails on large invoices",
         content="Rendering pipeline crashes on invoices with nested zone hierarchies.",
     )
     _insert_item(
         db_session,
         project_id="proj-alpha",
-        item_id="F001",
+        item_id="F-00001",
         title="Add dark mode support",
         content="Users want a dark mode toggle in the settings page.",
         item_type=WorkItemType.Feature,
@@ -116,7 +116,7 @@ def test_search_returns_matching_items(
     data = json_mod.loads(result.output)
     assert data["count"] == 2
     ids = {r["id"] for r in data["results"]}
-    assert ids == {"I001", "I002"}
+    assert ids == {"I-00001", "I-00002"}
 
 
 def test_search_ranking_by_relevance(
@@ -127,14 +127,14 @@ def test_search_ranking_by_relevance(
     _insert_item(
         db_session,
         project_id="proj-alpha",
-        item_id="I001",
+        item_id="I-00001",
         title="Fix rendering timeout",
         content="WeasyPrint rendering times out on large templates.",
     )
     _insert_item(
         db_session,
         project_id="proj-alpha",
-        item_id="I002",
+        item_id="I-00002",
         title="Unrelated issue",
         content="Some note about rendering in passing.",
     )
@@ -148,8 +148,8 @@ def test_search_ranking_by_relevance(
     assert result.exit_code == 0, result.output
     data = json_mod.loads(result.output)
     assert data["count"] == 2
-    # I001 has rendering in both title and content — should rank first
-    assert data["results"][0]["id"] == "I001"
+    # I-00001 has rendering in both title and content — should rank first
+    assert data["results"][0]["id"] == "I-00001"
 
 
 def test_search_project_filter(two_projects: tuple[Project, Project], db_session: Session) -> None:
@@ -158,14 +158,14 @@ def test_search_project_filter(two_projects: tuple[Project, Project], db_session
     _insert_item(
         db_session,
         project_id="proj-alpha",
-        item_id="I001",
+        item_id="I-00001",
         title="Timeout issue alpha",
         content="timeout rendering in alpha project pipeline",
     )
     _insert_item(
         db_session,
         project_id="proj-beta",
-        item_id="I001",
+        item_id="I-00001",
         title="Timeout issue beta",
         content="timeout rendering in beta project pipeline",
     )
@@ -190,7 +190,7 @@ def test_search_type_filter(two_projects: tuple[Project, Project], db_session: S
     _insert_item(
         db_session,
         project_id="proj-alpha",
-        item_id="I001",
+        item_id="I-00001",
         title="Incident with timeout",
         content="rendering timeout in issue",
         item_type=WorkItemType.Issue,
@@ -198,7 +198,7 @@ def test_search_type_filter(two_projects: tuple[Project, Project], db_session: S
     _insert_item(
         db_session,
         project_id="proj-alpha",
-        item_id="F001",
+        item_id="F-00001",
         title="Feature with timeout",
         content="rendering timeout in feature",
         item_type=WorkItemType.Feature,
@@ -214,7 +214,7 @@ def test_search_type_filter(two_projects: tuple[Project, Project], db_session: S
     assert result.exit_code == 0, result.output
     data = json_mod.loads(result.output)
     assert data["count"] == 1
-    assert data["results"][0]["id"] == "I001"
+    assert data["results"][0]["id"] == "I-00001"
 
 
 def test_search_returns_empty_for_no_match(
@@ -224,7 +224,7 @@ def test_search_returns_empty_for_no_match(
     _insert_item(
         db_session,
         project_id="proj-alpha",
-        item_id="I001",
+        item_id="I-00001",
         title="Completely unrelated title",
         content="Nothing here matches the search query at all.",
     )
@@ -246,7 +246,7 @@ def test_search_human_output(two_projects: tuple[Project, Project], db_session: 
     _insert_item(
         db_session,
         project_id="proj-alpha",
-        item_id="I001",
+        item_id="I-00001",
         title="Template timeout issue",
         content="timeout when rendering large templates",
     )
@@ -258,5 +258,5 @@ def test_search_human_output(two_projects: tuple[Project, Project], db_session: 
         obj={"get_session": get_session},
     )
     assert result.exit_code == 0, result.output
-    assert "I001" in result.output
+    assert "I-00001" in result.output
     assert "Template timeout issue" in result.output

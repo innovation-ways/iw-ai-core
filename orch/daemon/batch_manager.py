@@ -216,6 +216,9 @@ class BatchManager:
         except WorktreeSetupError as e:
             batch_item.status = BatchItemStatus.failed
             batch_item.notes = f"Worktree setup failed: {e}"
+            # Also mark the work item as failed so the UI shows a Restart button
+            work_item = db.query(WorkItem).filter_by(project_id=self.project_id, id=item_id).one()
+            work_item.status = WorkItemStatus.failed
             db.commit()
             _emit_event(db, self.project_id, "item_failed", item_id, str(e), {"phase": "setup"})
             return
@@ -287,7 +290,16 @@ class BatchManager:
         if cli_tool == "opencode":
             command = f"opencode run '/execute {step.work_item_id} {step.step_id}'"
         else:
-            command = f"claude -p '/execute {step.work_item_id} {step.step_id}'"
+            # Build a direct prompt for claude by reading the step's prompt file
+            prompt = self._build_claude_prompt(step, worktree_path)
+            # Write prompt to a temp file to avoid shell escaping issues
+            prompt_file = Path(worktree_path) / ".tmp" / f"{step.work_item_id}_{step.step_id}.prompt"
+            prompt_file.parent.mkdir(parents=True, exist_ok=True)
+            prompt_file.write_text(prompt)
+            command = (
+                f"claude -p \"$(cat {prompt_file})\""
+                " --dangerously-skip-permissions"
+            )
 
         timeout = get_timeout(self.project_config, step.step_type.value)
 
@@ -325,6 +337,14 @@ class BatchManager:
 
         step.status = StepStatus.in_progress
         step.started_at = now
+
+        # Transition work item approved → in_progress on first step launch
+        work_item = (
+            db.query(WorkItem).filter_by(project_id=self.project_id, id=step.work_item_id).first()
+        )
+        if work_item and work_item.status == WorkItemStatus.approved:
+            work_item.status = WorkItemStatus.in_progress
+
         db.commit()
 
         _emit_event(
@@ -342,6 +362,53 @@ class BatchManager:
             step.step_id,
             proc.pid,
             timeout,
+        )
+
+    def _build_claude_prompt(self, step: WorkflowStep, worktree_path: str) -> str:
+        """Build a direct prompt for claude that includes step instructions.
+
+        Reads the prompt file from the design doc and wraps it with
+        step lifecycle instructions (step-start/step-done/step-fail).
+        """
+        item_id = step.work_item_id
+        step_id = step.step_id
+        design_dir = Path(worktree_path) / "ai-dev" / "design" / "active" / item_id
+
+        # Try to find and read the prompt file from the workflow manifest
+        prompt_content = ""
+        manifest_path = design_dir / "workflow-manifest.json"
+        if manifest_path.exists():
+            import json  # noqa: PLC0415
+
+            manifest = json.loads(manifest_path.read_text())
+            for s in manifest.get("steps", []):
+                if s.get("step") == step_id:
+                    prompt_rel = s.get("prompt", "")
+                    if prompt_rel:
+                        prompt_path = design_dir / prompt_rel
+                        if prompt_path.exists():
+                            prompt_content = prompt_path.read_text()
+                    break
+
+        if not prompt_content:
+            prompt_content = (
+                f"Execute step {step_id} for work item {item_id}. "
+                f"Check ai-dev/design/active/{item_id}/ for design docs and instructions."
+            )
+
+        return (
+            f"You are executing step {step_id} for work item {item_id}.\n\n"
+            f"## Step Instructions\n\n{prompt_content}\n\n"
+            f"## Lifecycle Commands\n\n"
+            f"When you START working on this step, run:\n"
+            f"```bash\nuv run iw step-start {item_id} --step {step_id}\n```\n\n"
+            f"When you COMPLETE this step successfully, run:\n"
+            f"```bash\nuv run iw step-done {item_id} --step {step_id}\n```\n\n"
+            f"If this step FAILS, run:\n"
+            f"```bash\nuv run iw step-fail {item_id} --step {step_id} "
+            f'--reason "brief reason"\n```\n\n'
+            f"IMPORTANT: You MUST call step-done or step-fail before exiting. "
+            f"Execute the instructions above, then report completion."
         )
 
     # ------------------------------------------------------------------

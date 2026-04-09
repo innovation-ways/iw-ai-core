@@ -90,7 +90,7 @@ def make_db(
 
 class TestProcessMergeQueue:
     def test_no_merge_when_already_merging(self):
-        merging_item = make_batch_item("F001", status=BatchItemStatus.merging)
+        merging_item = make_batch_item("F-00001", status=BatchItemStatus.merging)
         db = MagicMock()
 
         # First filter call returns merging item (in-progress check)
@@ -121,9 +121,9 @@ class TestProcessMergeQueue:
 
     def test_merges_oldest_first(self):
         """process_merge_queue delegates ordering to the DB query (order_by started_at)."""
-        older = make_batch_item("F001", started_at=datetime(2024, 1, 1, tzinfo=UTC))
+        older = make_batch_item("F-00001", started_at=datetime(2024, 1, 1, tzinfo=UTC))
         # newer item exists in DB; test verifies ordering picks the older one first
-        make_batch_item("F002", started_at=datetime(2024, 1, 2, tzinfo=UTC))
+        make_batch_item("F-00002", started_at=datetime(2024, 1, 2, tzinfo=UTC))
 
         db = MagicMock()
         call_count = [0]
@@ -150,7 +150,7 @@ class TestProcessMergeQueue:
             process_merge_queue(db, "test-proj", make_project_config(), MagicMock())
 
         assert len(merged_items) == 1
-        assert merged_items[0].work_item_id == "F001"
+        assert merged_items[0].work_item_id == "F-00001"
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +161,7 @@ class TestProcessMergeQueue:
 class TestMergeItem:
     def test_successful_merge_sets_merged(self):
         db = MagicMock()
-        item = make_batch_item("F001", worktree_info={"path": "/wt/F001"})
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
         with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="squash ok", stderr="")
@@ -174,7 +174,7 @@ class TestMergeItem:
 
     def test_failed_merge_marks_item_failed(self):
         db = MagicMock()
-        item = make_batch_item("F001", worktree_info={"path": "/wt/F001"})
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
         with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict on main.py")
@@ -185,7 +185,7 @@ class TestMergeItem:
 
     def test_timeout_marks_item_failed(self):
         db = MagicMock()
-        item = make_batch_item("F001", worktree_info={"path": "/wt/F001"})
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
         with patch(
             "orch.daemon.merge_queue.subprocess.run",
@@ -198,7 +198,7 @@ class TestMergeItem:
 
     def test_missing_worktree_path_marks_failed_without_running_script(self):
         db = MagicMock()
-        item = make_batch_item("F001", worktree_info={})  # no "path" key
+        item = make_batch_item("F-00001", worktree_info={})  # no "path" key
 
         with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
             _merge_item(db, item, "test-proj", make_project_config())
@@ -209,7 +209,7 @@ class TestMergeItem:
 
     def test_merging_status_set_before_script_runs(self):
         db = MagicMock()
-        item = make_batch_item("F001", worktree_info={"path": "/wt/F001"})
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         status_at_call: list[BatchItemStatus] = []
 
         def capture_status(*args, **kwargs):
@@ -226,7 +226,7 @@ class TestMergeItem:
 
     def test_merge_info_stdout_truncated_to_1000(self):
         db = MagicMock()
-        item = make_batch_item("F001", worktree_info={"path": "/wt/F001"})
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         long_output = "x" * 5000
 
         with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:

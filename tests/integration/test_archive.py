@@ -107,27 +107,27 @@ def test_full_archive_flow(
     doc_path = repo_root / "I001_Design.md"
     doc_path.write_text("# Design Doc\nThis fixes the timeout.", encoding="utf-8")
 
-    work_item_dir = repo_root / "ai-dev" / "design" / "active" / "I001"
+    work_item_dir = repo_root / "ai-dev" / "design" / "active" / "I-00001"
     work_item_dir.mkdir(parents=True)
     (work_item_dir / "I001_Design.md").write_text("# Design Doc", encoding="utf-8")
     prompts_dir = work_item_dir / "prompts"
     prompts_dir.mkdir()
     (prompts_dir / "S01_prompt.md").write_text("Do the work", encoding="utf-8")
 
-    wi = _make_completed_item(db_session, project_id, "I001", design_doc_path="I001_Design.md")
+    wi = _make_completed_item(db_session, project_id, "I-00001", design_doc_path="I001_Design.md")
 
-    archive_work_item(db_session, project_id, "I001", archive_dir=archive_dir, cleanup=True)
+    archive_work_item(db_session, project_id, "I-00001", archive_dir=archive_dir, cleanup=True)
 
     db_session.refresh(wi)
     assert wi.design_doc_content == "# Design Doc\nThis fixes the timeout."
     assert wi.phase == WorkItemPhase.done
     assert wi.archived_at is not None
 
-    assert wi.archive_path == f"{project_id}/I001.tar.zst"
+    assert wi.archive_path == f"{project_id}/I-00001.tar.zst"
     assert wi.archive_size_bytes is not None
     assert wi.archive_size_bytes > 0
 
-    expected_archive = archive_dir / project_id / "I001.tar.zst"
+    expected_archive = archive_dir / project_id / "I-00001.tar.zst"
     assert expected_archive.exists()
 
     dctx = zstd.ZstdDecompressor()
@@ -152,7 +152,7 @@ def test_archive_stores_step_reports(
     """archive_work_item stores step report_content in DB (Tier 1)."""
     project_id = test_project_with_root.id
 
-    _make_completed_item(db_session, project_id, "I001")
+    _make_completed_item(db_session, project_id, "I-00001")
 
     report_path = repo_root / "reports" / "S01_report.md"
     report_path.parent.mkdir(parents=True)
@@ -160,7 +160,7 @@ def test_archive_stores_step_reports(
 
     step = WorkflowStep(
         project_id=project_id,
-        work_item_id="I001",
+        work_item_id="I-00001",
         step_number=1,
         step_id="S01",
         agent_label="Backend",
@@ -171,7 +171,7 @@ def test_archive_stores_step_reports(
     db_session.add(step)
     db_session.flush()
 
-    archive_work_item(db_session, project_id, "I001", archive_dir=None)
+    archive_work_item(db_session, project_id, "I-00001", archive_dir=None)
 
     db_session.refresh(step)
     assert step.report_content == "## Step 1 Report\nAll good."
@@ -186,15 +186,15 @@ def test_archive_all_completed(
     """archive_all_completed archives every completed+unarchived item."""
     project_id = test_project_with_root.id
 
-    for item_id in ("I001", "I002"):
+    for item_id in ("I-00001", "I-00002"):
         _make_completed_item(db_session, project_id, item_id)
 
     archived = archive_all_completed(db_session, project_id, archive_dir=None)
 
-    assert set(archived) == {"I001", "I002"}
+    assert set(archived) == {"I-00001", "I-00002"}
 
-    wi1 = db_session.get(WorkItem, (project_id, "I001"))
-    wi2 = db_session.get(WorkItem, (project_id, "I002"))
+    wi1 = db_session.get(WorkItem, (project_id, "I-00001"))
+    wi2 = db_session.get(WorkItem, (project_id, "I-00002"))
     assert wi1 is not None
     assert wi1.archived_at is not None
     assert wi2 is not None
@@ -209,18 +209,18 @@ def test_archive_idempotent(
 ) -> None:
     """Calling archive_work_item twice does not raise and only Tier 2-archives once."""
     project_id = test_project_with_root.id
-    work_item_dir = repo_root / "ai-dev" / "design" / "active" / "I001"
+    work_item_dir = repo_root / "ai-dev" / "design" / "active" / "I-00001"
     work_item_dir.mkdir(parents=True)
     (work_item_dir / "f.txt").write_text("x")
 
-    _make_completed_item(db_session, project_id, "I001")
+    _make_completed_item(db_session, project_id, "I-00001")
 
-    archive_work_item(db_session, project_id, "I001", archive_dir=archive_dir, cleanup=False)
-    wi = db_session.get(WorkItem, (project_id, "I001"))
+    archive_work_item(db_session, project_id, "I-00001", archive_dir=archive_dir, cleanup=False)
+    wi = db_session.get(WorkItem, (project_id, "I-00001"))
     assert wi is not None
     first_path = wi.archive_path
 
-    archive_work_item(db_session, project_id, "I001", archive_dir=archive_dir, cleanup=False)
+    archive_work_item(db_session, project_id, "I-00001", archive_dir=archive_dir, cleanup=False)
     db_session.refresh(wi)
 
     assert wi.archive_path == first_path
@@ -238,8 +238,8 @@ def test_fts_finds_archived_item(
     doc = repo_root / "I001_Design.md"
     doc.write_text("The WeasyPrint timeout issue causes slow invoice rendering.", encoding="utf-8")
 
-    _make_completed_item(db_session, project_id, "I001", design_doc_path="I001_Design.md")
-    archive_work_item(db_session, project_id, "I001", archive_dir=None)
+    _make_completed_item(db_session, project_id, "I-00001", design_doc_path="I001_Design.md")
+    archive_work_item(db_session, project_id, "I-00001", archive_dir=None)
     db_session.flush()
 
     results = db_session.execute(
@@ -253,7 +253,7 @@ def test_fts_finds_archived_item(
     ).fetchall()
 
     assert len(results) == 1
-    assert results[0][0] == "I001"
+    assert results[0][0] == "I-00001"
 
 
 def test_cli_archive_command(
@@ -265,11 +265,11 @@ def test_cli_archive_command(
     """iw archive <item_id> archives via CLI with Tier 1 + Tier 2."""
     project_id = test_project_with_root.id
 
-    work_item_dir = repo_root / "ai-dev" / "design" / "active" / "I001"
+    work_item_dir = repo_root / "ai-dev" / "design" / "active" / "I-00001"
     work_item_dir.mkdir(parents=True)
     (work_item_dir / "design.md").write_text("content", encoding="utf-8")
 
-    _make_completed_item(db_session, project_id, "I001")
+    _make_completed_item(db_session, project_id, "I-00001")
 
     @contextmanager  # type: ignore[arg-type]
     def get_session() -> Generator[Session, None, None]:
@@ -283,7 +283,7 @@ def test_cli_archive_command(
             "--project",
             project_id,
             "archive",
-            "I001",
+            "I-00001",
             "--archive-dir",
             str(archive_dir),
         ],
@@ -292,10 +292,10 @@ def test_cli_archive_command(
 
     assert result.exit_code == 0, result.output
     data = json_mod.loads(result.output)
-    assert data["archived"] == ["I001"]
+    assert data["archived"] == ["I-00001"]
     assert data["count"] == 1
 
-    wi = db_session.get(WorkItem, (project_id, "I001"))
+    wi = db_session.get(WorkItem, (project_id, "I-00001"))
     assert wi is not None
     assert wi.archived_at is not None
     assert wi.phase == WorkItemPhase.done

@@ -15,13 +15,20 @@ from orch.db.models import StepStatus
 
 
 def test_step_start_pending_is_valid() -> None:
-    assert validate_step_start_transition(StepStatus.pending) is None
+    error, already = validate_step_start_transition(StepStatus.pending)
+    assert error is None
+    assert already is False
+
+
+def test_step_start_in_progress_is_idempotent() -> None:
+    error, already = validate_step_start_transition(StepStatus.in_progress)
+    assert error is None
+    assert already is True
 
 
 @pytest.mark.parametrize(
     "status",
     [
-        StepStatus.in_progress,
         StepStatus.completed,
         StepStatus.failed,
         StepStatus.needs_fix,
@@ -29,7 +36,7 @@ def test_step_start_pending_is_valid() -> None:
     ],
 )
 def test_step_start_rejects_non_pending(status: StepStatus) -> None:
-    error = validate_step_start_transition(status)
+    error, _already = validate_step_start_transition(status)
     assert error is not None
     assert status.value in error
 

@@ -58,7 +58,7 @@ def make_project(project_id: str = "test-proj") -> Project:
 
 def make_work_item(
     project_id: str = "test-proj",
-    item_id: str = "F001",
+    item_id: str = "F-00001",
     title: str = "My Feature",
 ) -> WorkItem:
     return WorkItem(
@@ -71,7 +71,7 @@ def make_work_item(
 
 def make_workflow_step(
     project_id: str = "test-proj",
-    work_item_id: str = "F001",
+    work_item_id: str = "F-00001",
     step_number: int = 1,
 ) -> WorkflowStep:
     return WorkflowStep(
@@ -123,7 +123,7 @@ def test_work_item_insert_and_query(db_session: Session) -> None:
     db_session.add(item)
     db_session.flush()
 
-    result = db_session.get(WorkItem, ("test-proj", "F001"))
+    result = db_session.get(WorkItem, ("test-proj", "F-00001"))
     assert result is not None
     assert result.type == WorkItemType.Feature
     assert result.status == WorkItemStatus.draft
@@ -144,7 +144,7 @@ def test_workflow_step_insert_and_query(db_session: Session) -> None:
 
     result = (
         db_session.query(WorkflowStep)
-        .filter_by(project_id="test-proj", work_item_id="F001", step_number=1)
+        .filter_by(project_id="test-proj", work_item_id="F-00001", step_number=1)
         .one()
     )
     assert result.step_type == StepType.implementation
@@ -196,11 +196,11 @@ def test_batch_insert_and_query(db_session: Session) -> None:
     db_session.add(make_project())
     db_session.flush()
 
-    batch = Batch(project_id="test-proj", id="BATCH001")
+    batch = Batch(project_id="test-proj", id="BATCH-00001")
     db_session.add(batch)
     db_session.flush()
 
-    result = db_session.get(Batch, ("test-proj", "BATCH001"))
+    result = db_session.get(Batch, ("test-proj", "BATCH-00001"))
     assert result is not None
     assert result.status == BatchStatus.planning
     assert result.max_parallel == 4
@@ -212,21 +212,21 @@ def test_batch_item_insert_and_query(db_session: Session) -> None:
     db_session.flush()
     db_session.add(make_work_item())
     db_session.flush()
-    batch = Batch(project_id="test-proj", id="BATCH001")
+    batch = Batch(project_id="test-proj", id="BATCH-00001")
     db_session.add(batch)
     db_session.flush()
 
     bi = BatchItem(
         project_id="test-proj",
-        batch_id="BATCH001",
-        work_item_id="F001",
+        batch_id="BATCH-00001",
+        work_item_id="F-00001",
     )
     db_session.add(bi)
     db_session.flush()
 
     result = (
         db_session.query(BatchItem)
-        .filter_by(project_id="test-proj", batch_id="BATCH001", work_item_id="F001")
+        .filter_by(project_id="test-proj", batch_id="BATCH-00001", work_item_id="F-00001")
         .one()
     )
     assert result.status == BatchItemStatus.pending
@@ -306,15 +306,15 @@ def test_same_item_id_in_different_projects(db_session: Session) -> None:
         db_session.add(
             WorkItem(
                 project_id=proj_id,
-                id="F001",  # same ID in both projects — must be allowed
+                id="F-00001",  # same ID in both projects — must be allowed
                 type=WorkItemType.Feature,
                 title="Shared ID Feature",
             )
         )
     db_session.flush()
 
-    item_a = db_session.get(WorkItem, ("proj-a", "F001"))
-    item_b = db_session.get(WorkItem, ("proj-b", "F001"))
+    item_a = db_session.get(WorkItem, ("proj-a", "F-00001"))
+    item_b = db_session.get(WorkItem, ("proj-b", "F-00001"))
     assert item_a is not None
     assert item_b is not None
     assert item_a is not item_b
@@ -324,10 +324,10 @@ def test_duplicate_item_id_in_same_project_rejected(db_session: Session) -> None
     """Duplicate (project_id, id) must be rejected by the composite PK."""
     db_session.add(make_project())
     db_session.flush()
-    db_session.add(make_work_item(item_id="F001"))
+    db_session.add(make_work_item(item_id="F-00001"))
     db_session.flush()
 
-    db_session.add(make_work_item(item_id="F001"))
+    db_session.add(make_work_item(item_id="F-00001"))
     with pytest.raises((IntegrityError, Exception)):  # noqa: B017
         db_session.flush()
 
@@ -341,8 +341,8 @@ def test_delete_project_cascades_to_work_items(db_session: Session) -> None:
     """Deleting a project must delete all its work items (ON DELETE CASCADE)."""
     db_session.add(make_project())
     db_session.flush()
-    db_session.add(make_work_item(item_id="F001"))
-    db_session.add(make_work_item(item_id="F002"))
+    db_session.add(make_work_item(item_id="F-00001"))
+    db_session.add(make_work_item(item_id="F-00002"))
     db_session.flush()
 
     project = db_session.get(Project, "test-proj")
@@ -374,7 +374,7 @@ def test_delete_project_cascades_to_batches(db_session: Session) -> None:
     """Deleting a project must delete its batches."""
     db_session.add(make_project())
     db_session.flush()
-    db_session.add(Batch(project_id="test-proj", id="BATCH001"))
+    db_session.add(Batch(project_id="test-proj", id="BATCH-00001"))
     db_session.flush()
 
     project = db_session.get(Project, "test-proj")
@@ -395,13 +395,13 @@ def test_delete_work_item_cascades_to_workflow_steps(db_session: Session) -> Non
     db_session.add(make_workflow_step())
     db_session.flush()
 
-    item = db_session.get(WorkItem, ("test-proj", "F001"))
+    item = db_session.get(WorkItem, ("test-proj", "F-00001"))
     assert item is not None
     db_session.delete(item)
     db_session.flush()
 
     steps = (
-        db_session.query(WorkflowStep).filter_by(project_id="test-proj", work_item_id="F001").all()
+        db_session.query(WorkflowStep).filter_by(project_id="test-proj", work_item_id="F-00001").all()
     )
     assert steps == []
 
@@ -440,7 +440,7 @@ def test_fts_trigger_sets_tsvector_on_insert(db_session: Session) -> None:
 
     item = WorkItem(
         project_id="test-proj",
-        id="F001",
+        id="F-00001",
         type=WorkItemType.Feature,
         title="Authentication System",
         design_doc_content="Implement login with session management",
@@ -461,7 +461,7 @@ def test_fts_trigger_updates_tsvector_when_content_changes(db_session: Session) 
 
     item = WorkItem(
         project_id="test-proj",
-        id="F001",
+        id="F-00001",
         type=WorkItemType.Feature,
         title="Auth",
     )
@@ -486,7 +486,7 @@ def test_fts_trigger_title_only_when_no_content(db_session: Session) -> None:
 
     item = WorkItem(
         project_id="test-proj",
-        id="F001",
+        id="F-00001",
         type=WorkItemType.Feature,
         title="Unique Title Keywords",
     )
@@ -505,9 +505,9 @@ def test_fts_full_text_search_query(db_session: Session) -> None:
 
     # Use clear English words that the 'english' stemmer handles well
     for item_id, title, content in [
-        ("F001", "Authentication", "user login session management"),
-        ("F002", "Database", "schema migration database upgrade"),
-        ("F003", "Frontend", "visual interface components"),
+        ("F-00001", "Authentication", "user login session management"),
+        ("F-00002", "Database", "schema migration database upgrade"),
+        ("F-00003", "Frontend", "visual interface components"),
     ]:
         db_session.add(
             WorkItem(
@@ -520,16 +520,16 @@ def test_fts_full_text_search_query(db_session: Session) -> None:
         )
     db_session.flush()
 
-    # Search for "session" — should find only F001
+    # Search for "session" — should find only F-00001
     results = (
         db_session.query(WorkItem)
         .filter(WorkItem.design_doc_search.op("@@")(text("plainto_tsquery('english', 'session')")))
         .all()
     )
     assert len(results) == 1
-    assert results[0].id == "F001"
+    assert results[0].id == "F-00001"
 
-    # Search for "migration" — should find only F002
+    # Search for "migration" — should find only F-00002
     results = (
         db_session.query(WorkItem)
         .filter(
@@ -538,4 +538,4 @@ def test_fts_full_text_search_query(db_session: Session) -> None:
         .all()
     )
     assert len(results) == 1
-    assert results[0].id == "F002"
+    assert results[0].id == "F-00002"

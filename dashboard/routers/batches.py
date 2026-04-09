@@ -255,6 +255,19 @@ def batch_detail(
     if batch.created_at and batch.completed_at:
         dur = (batch.completed_at - batch.created_at).total_seconds()
 
+    # Render execution plan markdown to HTML if present
+    plan_html: str | None = None
+    if batch.execution_plan_md:
+        import markdown as md
+
+        plan_html = md.markdown(
+            batch.execution_plan_md,
+            extensions=["tables", "fenced_code"],
+        )
+
+    has_plan = batch.execution_plan_md is not None
+    has_diagram = batch.execution_plan_png is not None
+
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -267,5 +280,48 @@ def batch_detail(
             "batch_duration_secs": dur,
             "items": items,
             "active_tab": tab,
+            "plan_html": plan_html,
+            "has_plan": has_plan,
+            "has_diagram": has_diagram,
+        },
+    )
+
+
+@router.get("/batch/{batch_id}/diagram.png")
+def batch_diagram_png(
+    project_id: str,
+    batch_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Serve the execution plan PNG image."""
+    from fastapi.responses import Response as FastAPIResponse
+
+    batch = _get_batch_or_404(project_id, batch_id, db)
+    if batch.execution_plan_png is None:
+        raise HTTPException(status_code=404, detail="No diagram available")
+    return FastAPIResponse(
+        content=batch.execution_plan_png,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@router.get("/batch/{batch_id}/diagram.drawio")
+def batch_diagram_drawio(
+    project_id: str,
+    batch_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Download the draw.io XML file."""
+    from fastapi.responses import Response as FastAPIResponse
+
+    batch = _get_batch_or_404(project_id, batch_id, db)
+    if batch.execution_plan_drawio is None:
+        raise HTTPException(status_code=404, detail="No diagram available")
+    return FastAPIResponse(
+        content=batch.execution_plan_drawio,
+        media_type="application/xml",
+        headers={
+            "Content-Disposition": f'attachment; filename="{batch_id}-execution-plan.drawio"',
         },
     )

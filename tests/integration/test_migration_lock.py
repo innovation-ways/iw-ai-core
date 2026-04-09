@@ -62,16 +62,16 @@ def test_acquire_when_free(project_with_lock: Project, db_session: Session) -> N
     runner, get_session = _runner(db_session)
     result = runner.invoke(
         cli,
-        ["--project", "lock-proj", "migration-lock", "acquire", "I001", "--branch", "agent/I001"],
+        ["--project", "lock-proj", "migration-lock", "acquire", "I-00001", "--branch", "agent/I-00001"],
         obj={"get_session": get_session, "json": False},
     )
     assert result.exit_code == 0, result.output
-    assert "acquired for I001" in result.output
+    assert "acquired for I-00001" in result.output
 
     lock = db_session.get(MigrationLock, "lock-proj")
     assert lock is not None
-    assert lock.current_holder == "I001"
-    assert lock.branch == "agent/I001"
+    assert lock.current_holder == "I-00001"
+    assert lock.branch == "agent/I-00001"
     assert lock.locked_at is not None
 
 
@@ -82,18 +82,18 @@ def test_acquire_when_held_returns_error(project_with_lock: Project, db_session:
     assert lock is not None
     from datetime import UTC, datetime
 
-    lock.current_holder = "I003"
+    lock.current_holder = "I-00003"
     lock.locked_at = datetime(2026, 4, 7, 10, 30, 0, tzinfo=UTC)
     db_session.flush()
 
     runner, get_session = _runner(db_session)
     result = runner.invoke(
         cli,
-        ["--project", "lock-proj", "migration-lock", "acquire", "I001"],
+        ["--project", "lock-proj", "migration-lock", "acquire", "I-00001"],
         obj={"get_session": get_session, "json": False},
     )
     assert result.exit_code == 4
-    assert "I003" in result.output
+    assert "I-00003" in result.output
 
 
 def test_acquire_held_json_output(project_with_lock: Project, db_session: Session) -> None:
@@ -103,20 +103,20 @@ def test_acquire_held_json_output(project_with_lock: Project, db_session: Sessio
 
     lock = db_session.get(MigrationLock, "lock-proj")
     assert lock is not None
-    lock.current_holder = "I003"
+    lock.current_holder = "I-00003"
     lock.locked_at = datetime(2026, 4, 7, 10, 30, 0, tzinfo=UTC)
     db_session.flush()
 
     runner, get_session = _runner(db_session)
     result = runner.invoke(
         cli,
-        ["--json", "--project", "lock-proj", "migration-lock", "acquire", "I001"],
+        ["--json", "--project", "lock-proj", "migration-lock", "acquire", "I-00001"],
         obj={"get_session": get_session},
     )
     assert result.exit_code == 4
     data = json_mod.loads(result.output)
     assert data["code"] == 4
-    assert "I003" in data["error"]
+    assert "I-00003" in data["error"]
 
 
 def test_release_when_holder_matches(project_with_lock: Project, db_session: Session) -> None:
@@ -125,14 +125,14 @@ def test_release_when_holder_matches(project_with_lock: Project, db_session: Ses
 
     lock = db_session.get(MigrationLock, "lock-proj")
     assert lock is not None
-    lock.current_holder = "I001"
+    lock.current_holder = "I-00001"
     lock.locked_at = datetime.now(UTC)
     db_session.flush()
 
     runner, get_session = _runner(db_session)
     result = runner.invoke(
         cli,
-        ["--project", "lock-proj", "migration-lock", "release", "I001"],
+        ["--project", "lock-proj", "migration-lock", "release", "I-00001"],
         obj={"get_session": get_session, "json": False},
     )
     assert result.exit_code == 0, result.output
@@ -151,18 +151,18 @@ def test_release_when_holder_does_not_match(
 
     lock = db_session.get(MigrationLock, "lock-proj")
     assert lock is not None
-    lock.current_holder = "I003"
+    lock.current_holder = "I-00003"
     lock.locked_at = datetime.now(UTC)
     db_session.flush()
 
     runner, get_session = _runner(db_session)
     result = runner.invoke(
         cli,
-        ["--project", "lock-proj", "migration-lock", "release", "I001"],
+        ["--project", "lock-proj", "migration-lock", "release", "I-00001"],
         obj={"get_session": get_session, "json": False},
     )
     assert result.exit_code == 4
-    assert "I003" in result.output
+    assert "I-00003" in result.output
 
 
 def test_status_free(project_with_lock: Project, db_session: Session) -> None:
@@ -183,8 +183,8 @@ def test_status_held(project_with_lock: Project, db_session: Session) -> None:
 
     lock = db_session.get(MigrationLock, "lock-proj")
     assert lock is not None
-    lock.current_holder = "I005"
-    lock.branch = "agent/I005-branch"
+    lock.current_holder = "I-00005"
+    lock.branch = "agent/I-00005-branch"
     lock.locked_at = datetime(2026, 4, 7, 10, 30, 0, tzinfo=UTC)
     db_session.flush()
 
@@ -195,8 +195,8 @@ def test_status_held(project_with_lock: Project, db_session: Session) -> None:
         obj={"get_session": get_session, "json": False},
     )
     assert result.exit_code == 0, result.output
-    assert "I005" in result.output
-    assert "agent/I005-branch" in result.output
+    assert "I-00005" in result.output
+    assert "agent/I-00005-branch" in result.output
 
 
 def test_sequential_acquire_after_release(project_with_lock: Project, db_session: Session) -> None:
@@ -206,7 +206,7 @@ def test_sequential_acquire_after_release(project_with_lock: Project, db_session
     # First acquire
     r1 = runner.invoke(
         cli,
-        ["--project", "lock-proj", "migration-lock", "acquire", "I001"],
+        ["--project", "lock-proj", "migration-lock", "acquire", "I-00001"],
         obj={"get_session": get_session, "json": False},
     )
     assert r1.exit_code == 0
@@ -214,7 +214,7 @@ def test_sequential_acquire_after_release(project_with_lock: Project, db_session
     # Release
     r2 = runner.invoke(
         cli,
-        ["--project", "lock-proj", "migration-lock", "release", "I001"],
+        ["--project", "lock-proj", "migration-lock", "release", "I-00001"],
         obj={"get_session": get_session, "json": False},
     )
     assert r2.exit_code == 0
@@ -222,11 +222,11 @@ def test_sequential_acquire_after_release(project_with_lock: Project, db_session
     # Second holder acquires
     r3 = runner.invoke(
         cli,
-        ["--project", "lock-proj", "migration-lock", "acquire", "I002"],
+        ["--project", "lock-proj", "migration-lock", "acquire", "I-00002"],
         obj={"get_session": get_session, "json": False},
     )
     assert r3.exit_code == 0
 
     lock = db_session.get(MigrationLock, "lock-proj")
     assert lock is not None
-    assert lock.current_holder == "I002"
+    assert lock.current_holder == "I-00002"

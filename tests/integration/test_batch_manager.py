@@ -181,9 +181,9 @@ class TestBatchLifecycleFull:
     def test_approved_batch_transitions_to_executing(
         self, db_session: Session, manager: BatchManager, test_project
     ):
-        make_work_item(db_session, "F001")
+        make_work_item(db_session, "F-00001")
         batch = make_batch(db_session, "B001", status=BatchStatus.approved)
-        make_batch_item(db_session, "B001", "F001")
+        make_batch_item(db_session, "B001", "F-00001")
 
         with patch.object(manager, "_launch_item"):
             manager.process_batches()
@@ -194,13 +194,13 @@ class TestBatchLifecycleFull:
     def test_pending_item_gets_launched(
         self, db_session: Session, manager: BatchManager, test_project
     ):
-        make_work_item(db_session, "F001")
-        step = make_workflow_step(db_session, "F001", 1, "S01")
+        make_work_item(db_session, "F-00001")
+        step = make_workflow_step(db_session, "F-00001", 1, "S01")
         make_batch(db_session, "B001")
-        batch_item = make_batch_item(db_session, "B001", "F001")
+        batch_item = make_batch_item(db_session, "B001", "F-00001")
         db_session.flush()
 
-        fake_worktree = {"path": "/wt/F001", "branch": "agent/F001", "created_at": "now"}
+        fake_worktree = {"path": "/wt/F-00001", "branch": "agent/F-00001", "created_at": "now"}
 
         with (
             patch.object(manager, "_setup_worktree", return_value=fake_worktree),
@@ -219,17 +219,17 @@ class TestBatchLifecycleFull:
     def test_step_completion_launches_next_step(
         self, db_session: Session, manager: BatchManager, test_project
     ):
-        make_work_item(db_session, "F001")
-        make_workflow_step(db_session, "F001", 1, "S01", status=StepStatus.completed)
-        step2 = make_workflow_step(db_session, "F001", 2, "S02", status=StepStatus.pending)
+        make_work_item(db_session, "F-00001")
+        make_workflow_step(db_session, "F-00001", 1, "S01", status=StepStatus.completed)
+        step2 = make_workflow_step(db_session, "F-00001", 2, "S02", status=StepStatus.pending)
         make_batch(db_session, "B001", status=BatchStatus.executing)
         batch_item = make_batch_item(
             db_session,
             "B001",
-            "F001",
+            "F-00001",
             status=BatchItemStatus.executing,
         )
-        batch_item.worktree_info = {"path": "/wt/F001", "branch": "agent/F001"}
+        batch_item.worktree_info = {"path": "/wt/F-00001", "branch": "agent/F-00001"}
         db_session.flush()
 
         with (
@@ -246,16 +246,16 @@ class TestBatchLifecycleFull:
     def test_all_steps_done_marks_item_completed(
         self, db_session: Session, manager: BatchManager, test_project
     ):
-        work_item = make_work_item(db_session, "F001")
-        make_workflow_step(db_session, "F001", 1, "S01", status=StepStatus.completed)
+        work_item = make_work_item(db_session, "F-00001")
+        make_workflow_step(db_session, "F-00001", 1, "S01", status=StepStatus.completed)
         make_batch(db_session, "B001", status=BatchStatus.executing)
         batch_item = make_batch_item(
             db_session,
             "B001",
-            "F001",
+            "F-00001",
             status=BatchItemStatus.executing,
         )
-        batch_item.worktree_info = {"path": "/wt/F001"}
+        batch_item.worktree_info = {"path": "/wt/F-00001"}
         db_session.flush()
 
         manager.process_batches()
@@ -268,12 +268,12 @@ class TestBatchLifecycleFull:
     def test_all_merged_completes_batch(
         self, db_session: Session, manager: BatchManager, test_project
     ):
-        make_work_item(db_session, "F001")
+        make_work_item(db_session, "F-00001")
         batch = make_batch(db_session, "B001", status=BatchStatus.executing)
         make_batch_item(
             db_session,
             "B001",
-            "F001",
+            "F-00001",
             status=BatchItemStatus.merged,
         )
         db_session.flush()
@@ -288,20 +288,20 @@ class TestExecutionGroupAdvancement:
     def test_group_1_launches_after_group_0_all_merged(
         self, db_session: Session, manager: BatchManager, test_project
     ):
-        make_work_item(db_session, "F001")
-        make_work_item(db_session, "F002")
+        make_work_item(db_session, "F-00001")
+        make_work_item(db_session, "F-00002")
 
         make_batch(db_session, "B001", status=BatchStatus.executing)
         make_batch_item(
-            db_session, "B001", "F001", execution_group=0, status=BatchItemStatus.merged
+            db_session, "B001", "F-00001", execution_group=0, status=BatchItemStatus.merged
         )
         bi_f002 = make_batch_item(
-            db_session, "B001", "F002", execution_group=1, status=BatchItemStatus.pending
+            db_session, "B001", "F-00002", execution_group=1, status=BatchItemStatus.pending
         )
-        make_workflow_step(db_session, "F002", 1, "S01")
+        make_workflow_step(db_session, "F-00002", 1, "S01")
         db_session.flush()
 
-        fake_worktree = {"path": "/wt/F002", "branch": "agent/F002", "created_at": "now"}
+        fake_worktree = {"path": "/wt/F-00002", "branch": "agent/F-00002", "created_at": "now"}
 
         with (
             patch.object(manager, "_setup_worktree", return_value=fake_worktree),
@@ -318,19 +318,19 @@ class TestExecutionGroupAdvancement:
     def test_group_1_does_not_launch_while_group_0_still_executing(
         self, db_session: Session, manager: BatchManager, test_project
     ):
-        make_work_item(db_session, "F001")
-        make_work_item(db_session, "F002")
+        make_work_item(db_session, "F-00001")
+        make_work_item(db_session, "F-00002")
 
         make_batch(db_session, "B001", status=BatchStatus.executing)
         bi_f001 = make_batch_item(
-            db_session, "B001", "F001", execution_group=0, status=BatchItemStatus.executing
+            db_session, "B001", "F-00001", execution_group=0, status=BatchItemStatus.executing
         )
-        bi_f001.worktree_info = {"path": "/wt/F001"}
+        bi_f001.worktree_info = {"path": "/wt/F-00001"}
         bi_f002 = make_batch_item(
-            db_session, "B001", "F002", execution_group=1, status=BatchItemStatus.pending
+            db_session, "B001", "F-00002", execution_group=1, status=BatchItemStatus.pending
         )
-        # F001 has an in_progress step so _check_executing_item won't advance it
-        make_workflow_step(db_session, "F001", 1, "S01", status=StepStatus.in_progress)
+        # F-00001 has an in_progress step so _check_executing_item won't advance it
+        make_workflow_step(db_session, "F-00001", 1, "S01", status=StepStatus.in_progress)
         db_session.flush()
 
         launched: list[str] = []
@@ -342,7 +342,7 @@ class TestExecutionGroupAdvancement:
 
         manager.process_batches()
 
-        assert "F002" not in launched
+        assert "F-00002" not in launched
         db_session.refresh(bi_f002)
         assert bi_f002.status == BatchItemStatus.pending
 
@@ -351,18 +351,18 @@ class TestMergeQueueIntegration:
     def test_merge_queue_oldest_first(
         self, db_session: Session, manager: BatchManager, test_project
     ):
-        make_work_item(db_session, "F001")
-        make_work_item(db_session, "F002")
+        make_work_item(db_session, "F-00001")
+        make_work_item(db_session, "F-00002")
 
         make_batch(db_session, "B001", status=BatchStatus.executing)
 
-        older_item = make_batch_item(db_session, "B001", "F001", status=BatchItemStatus.completed)
+        older_item = make_batch_item(db_session, "B001", "F-00001", status=BatchItemStatus.completed)
         older_item.started_at = datetime(2024, 1, 1, tzinfo=UTC)
-        older_item.worktree_info = {"path": "/wt/F001"}
+        older_item.worktree_info = {"path": "/wt/F-00001"}
 
-        newer_item = make_batch_item(db_session, "B001", "F002", status=BatchItemStatus.completed)
+        newer_item = make_batch_item(db_session, "B001", "F-00002", status=BatchItemStatus.completed)
         newer_item.started_at = datetime(2024, 1, 2, tzinfo=UTC)
-        newer_item.worktree_info = {"path": "/wt/F002"}
+        newer_item.worktree_info = {"path": "/wt/F-00002"}
 
         db_session.flush()
 
@@ -382,30 +382,30 @@ class TestMergeQueueIntegration:
         db_session.refresh(older_item)
         db_session.refresh(newer_item)
 
-        # Only F001 (older) should be merged; F002 waits for next cycle
+        # Only F-00001 (older) should be merged; F-00002 waits for next cycle
         assert older_item.status == BatchItemStatus.merged
         assert newer_item.status == BatchItemStatus.completed
 
     def test_merge_queue_one_at_a_time(
         self, db_session: Session, manager: BatchManager, test_project
     ):
-        make_work_item(db_session, "F001")
-        make_work_item(db_session, "F002")
+        make_work_item(db_session, "F-00001")
+        make_work_item(db_session, "F-00002")
 
         make_batch(db_session, "B001", status=BatchStatus.executing)
 
-        merging_item = make_batch_item(db_session, "B001", "F001", status=BatchItemStatus.merging)
-        merging_item.worktree_info = {"path": "/wt/F001"}
+        merging_item = make_batch_item(db_session, "B001", "F-00001", status=BatchItemStatus.merging)
+        merging_item.worktree_info = {"path": "/wt/F-00001"}
 
-        ready_item = make_batch_item(db_session, "B001", "F002", status=BatchItemStatus.completed)
-        ready_item.worktree_info = {"path": "/wt/F002"}
+        ready_item = make_batch_item(db_session, "B001", "F-00002", status=BatchItemStatus.completed)
+        ready_item.worktree_info = {"path": "/wt/F-00002"}
 
         db_session.flush()
 
         with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
             manager.process_merge_queue()
 
-        # subprocess.run should NOT be called — F001 is still merging
+        # subprocess.run should NOT be called — F-00001 is still merging
         mock_run.assert_not_called()
         db_session.refresh(ready_item)
         assert ready_item.status == BatchItemStatus.completed  # unchanged

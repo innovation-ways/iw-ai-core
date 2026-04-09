@@ -29,6 +29,7 @@ from orch.db.models import (
     RunStatus,
     StepType,
     WorkflowStep,
+    WorkItemStatus,
 )
 
 # ---------------------------------------------------------------------------
@@ -111,46 +112,46 @@ def make_manager(tmp_path: Path, db: MagicMock, cli_tool: str = "opencode") -> B
 class TestCurrentExecutionGroup:
     def test_all_pending_returns_group_0(self):
         items = [
-            make_batch_item("F001", execution_group=0, status=BatchItemStatus.pending),
-            make_batch_item("F002", execution_group=0, status=BatchItemStatus.pending),
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.pending),
+            make_batch_item("F-00002", execution_group=0, status=BatchItemStatus.pending),
         ]
         assert _current_execution_group(items) == 0
 
     def test_group_0_executing_returns_group_0(self):
         items = [
-            make_batch_item("F001", execution_group=0, status=BatchItemStatus.executing),
-            make_batch_item("F002", execution_group=1, status=BatchItemStatus.pending),
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.executing),
+            make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
         ]
         assert _current_execution_group(items) == 0
 
     def test_group_0_merged_advances_to_group_1(self):
         items = [
-            make_batch_item("F001", execution_group=0, status=BatchItemStatus.merged),
-            make_batch_item("F002", execution_group=1, status=BatchItemStatus.pending),
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merged),
+            make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
         ]
         assert _current_execution_group(items) == 1
 
     def test_all_terminal_returns_none(self):
         items = [
-            make_batch_item("F001", execution_group=0, status=BatchItemStatus.merged),
-            make_batch_item("F002", execution_group=0, status=BatchItemStatus.failed),
-            make_batch_item("F003", execution_group=1, status=BatchItemStatus.skipped),
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merged),
+            make_batch_item("F-00002", execution_group=0, status=BatchItemStatus.failed),
+            make_batch_item("F-00003", execution_group=1, status=BatchItemStatus.skipped),
         ]
         assert _current_execution_group(items) is None
 
     def test_completed_item_keeps_group_active(self):
         # 'completed' means waiting for merge — still non-terminal
         items = [
-            make_batch_item("F001", execution_group=0, status=BatchItemStatus.completed),
-            make_batch_item("F002", execution_group=1, status=BatchItemStatus.pending),
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.completed),
+            make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
         ]
         assert _current_execution_group(items) == 0
 
     def test_mixed_groups_returns_lowest_non_terminal(self):
         items = [
-            make_batch_item("F001", execution_group=0, status=BatchItemStatus.merged),
-            make_batch_item("F002", execution_group=1, status=BatchItemStatus.executing),
-            make_batch_item("F003", execution_group=2, status=BatchItemStatus.pending),
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merged),
+            make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.executing),
+            make_batch_item("F-00003", execution_group=2, status=BatchItemStatus.pending),
         ]
         assert _current_execution_group(items) == 1
 
@@ -179,9 +180,9 @@ class TestParallelismLimit:
 
     def test_respects_max_parallel(self, tmp_path):
         items = [
-            make_batch_item("F001", execution_group=0, status=BatchItemStatus.pending),
-            make_batch_item("F002", execution_group=0, status=BatchItemStatus.pending),
-            make_batch_item("F003", execution_group=0, status=BatchItemStatus.pending),
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.pending),
+            make_batch_item("F-00002", execution_group=0, status=BatchItemStatus.pending),
+            make_batch_item("F-00003", execution_group=0, status=BatchItemStatus.pending),
         ]
         db = MagicMock()
         batch = MagicMock(spec=Batch)
@@ -211,13 +212,13 @@ class TestParallelismLimit:
         manager._process_batch(db, batch)
 
         assert len(launched) == 2, f"Expected 2 launched, got {launched}"
-        assert "F003" not in launched
+        assert "F-00003" not in launched
 
     def test_already_executing_counts_against_limit(self, tmp_path):
         items = [
-            make_batch_item("F001", execution_group=0, status=BatchItemStatus.executing),
-            make_batch_item("F002", execution_group=0, status=BatchItemStatus.pending),
-            make_batch_item("F003", execution_group=0, status=BatchItemStatus.pending),
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.executing),
+            make_batch_item("F-00002", execution_group=0, status=BatchItemStatus.pending),
+            make_batch_item("F-00003", execution_group=0, status=BatchItemStatus.pending),
         ]
         db = MagicMock()
         batch = MagicMock(spec=Batch)
@@ -246,7 +247,7 @@ class TestParallelismLimit:
 
         # 1 already executing + 1 launched = 2 (limit)
         assert len(launched) == 1
-        assert launched[0] == "F002"
+        assert launched[0] == "F-00002"
 
 
 # ---------------------------------------------------------------------------
@@ -261,8 +262,8 @@ class TestCheckBatchCompletion:
         batch.id = "B001"
         batch.status = BatchStatus.executing
         items = [
-            make_batch_item("F001", status=BatchItemStatus.merged),
-            make_batch_item("F002", status=BatchItemStatus.merged),
+            make_batch_item("F-00001", status=BatchItemStatus.merged),
+            make_batch_item("F-00002", status=BatchItemStatus.merged),
         ]
         manager = make_manager(tmp_path, db)
         manager._check_batch_completion(db, batch, items)
@@ -274,8 +275,8 @@ class TestCheckBatchCompletion:
         batch.id = "B001"
         batch.status = BatchStatus.executing
         items = [
-            make_batch_item("F001", status=BatchItemStatus.merged),
-            make_batch_item("F002", status=BatchItemStatus.failed),
+            make_batch_item("F-00001", status=BatchItemStatus.merged),
+            make_batch_item("F-00002", status=BatchItemStatus.failed),
         ]
         manager = make_manager(tmp_path, db)
         manager._check_batch_completion(db, batch, items)
@@ -287,8 +288,8 @@ class TestCheckBatchCompletion:
         batch.id = "B001"
         batch.status = BatchStatus.executing
         items = [
-            make_batch_item("F001", status=BatchItemStatus.skipped),
-            make_batch_item("F002", status=BatchItemStatus.merged),
+            make_batch_item("F-00001", status=BatchItemStatus.skipped),
+            make_batch_item("F-00002", status=BatchItemStatus.merged),
         ]
         manager = make_manager(tmp_path, db)
         manager._check_batch_completion(db, batch, items)
@@ -300,8 +301,8 @@ class TestCheckBatchCompletion:
         batch.id = "B001"
         batch.status = BatchStatus.executing
         items = [
-            make_batch_item("F001", status=BatchItemStatus.merged),
-            make_batch_item("F002", status=BatchItemStatus.executing),
+            make_batch_item("F-00001", status=BatchItemStatus.merged),
+            make_batch_item("F-00002", status=BatchItemStatus.executing),
         ]
         manager = make_manager(tmp_path, db)
         manager._check_batch_completion(db, batch, items)
@@ -318,13 +319,13 @@ class TestCommandBuilding:
     def test_opencode_command(self, tmp_path):
         db = MagicMock()
         step = MagicMock(spec=WorkflowStep)
-        step.work_item_id = "F001"
+        step.work_item_id = "F-00001"
         step.step_id = "S01"
         step.step_type = StepType.implementation
         step.id = 1
         step.started_at = None
 
-        worktree_info = {"path": "/wt/F001"}
+        worktree_info = {"path": "/wt/F-00001"}
 
         # Capture the Popen call
         with (
@@ -342,19 +343,19 @@ class TestCommandBuilding:
 
         cmd = mock_popen.call_args[0][0]
         assert "opencode run" in cmd
-        assert "F001" in cmd
+        assert "F-00001" in cmd
         assert "S01" in cmd
 
     def test_claude_command(self, tmp_path):
         db = MagicMock()
         step = MagicMock(spec=WorkflowStep)
-        step.work_item_id = "F002"
+        step.work_item_id = "F-00002"
         step.step_id = "S02"
         step.step_type = StepType.code_review
         step.id = 2
         step.started_at = None
 
-        worktree_info = {"path": "/wt/F002"}
+        worktree_info = {"path": "/wt/F-00002"}
 
         with (
             patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen,
@@ -370,7 +371,7 @@ class TestCommandBuilding:
 
         cmd = mock_popen.call_args[0][0]
         assert "claude -p" in cmd
-        assert "F002" in cmd
+        assert "F-00002" in cmd
         assert "S02" in cmd
 
 
@@ -383,13 +384,13 @@ class TestStepLaunchFields:
     def test_step_run_records_pid_command_and_timeout(self, tmp_path):
         db = MagicMock()
         step = MagicMock(spec=WorkflowStep)
-        step.work_item_id = "F003"
+        step.work_item_id = "F-00003"
         step.step_id = "S01"
         step.step_type = StepType.implementation
         step.id = 3
         step.started_at = None
 
-        worktree_info = {"path": "/wt/F003"}
+        worktree_info = {"path": "/wt/F-00003"}
 
         with (
             patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen,
@@ -413,7 +414,7 @@ class TestStepLaunchFields:
         assert run.status == RunStatus.running
         assert run.pid_alive is True
         assert run.cli_tool == "opencode"
-        assert run.worktree_path == "/wt/F003"
+        assert run.worktree_path == "/wt/F-00003"
         assert run.timeout_secs is not None
         assert run.started_at is not None
         assert run.last_heartbeat is not None
@@ -424,7 +425,7 @@ class TestStepLaunchFields:
         """Agents must be detached from the daemon's process group."""
         db = MagicMock()
         step = MagicMock(spec=WorkflowStep)
-        step.work_item_id = "F004"
+        step.work_item_id = "F-00004"
         step.step_id = "S01"
         step.step_type = StepType.implementation
         step.id = 4
@@ -438,7 +439,7 @@ class TestStepLaunchFields:
             mock_popen.return_value = MagicMock(pid=1)
             manager = make_manager(tmp_path, db)
             db.query.return_value.filter.return_value.count.return_value = 0
-            manager._launch_step(db, step, {"path": "/wt/F004"})
+            manager._launch_step(db, step, {"path": "/wt/F-00004"})
 
         kwargs = mock_popen.call_args[1]
         assert kwargs.get("start_new_session") is True
@@ -453,8 +454,12 @@ class TestWorktreeSetup:
     def test_failed_setup_marks_item_failed(self, tmp_path):
         db = MagicMock()
         batch_item = MagicMock(spec=BatchItem)
-        batch_item.work_item_id = "F001"
+        batch_item.work_item_id = "F-00001"
         batch_item.status = BatchItemStatus.pending
+
+        # Set up a mock work item that db.query(WorkItem).filter_by(...).one() returns
+        mock_work_item = MagicMock()
+        db.query.return_value.filter_by.return_value.one.return_value = mock_work_item
 
         manager = make_manager(tmp_path, db)
 
@@ -463,15 +468,17 @@ class TestWorktreeSetup:
 
         assert batch_item.status == BatchItemStatus.failed
         assert "disk full" in batch_item.notes
+        # Work item must also be marked failed so the UI shows a Restart button
+        assert mock_work_item.status == WorkItemStatus.failed
 
     def test_successful_setup_transitions_to_executing(self, tmp_path):
         db = MagicMock()
         batch_item = MagicMock(spec=BatchItem)
-        batch_item.work_item_id = "F001"
+        batch_item.work_item_id = "F-00001"
         batch_item.status = BatchItemStatus.pending
 
         manager = make_manager(tmp_path, db)
-        fake_info = {"path": "/wt/F001", "branch": "agent/F001", "created_at": "now"}
+        fake_info = {"path": "/wt/F-00001", "branch": "agent/F-00001", "created_at": "now"}
 
         with (
             patch.object(manager, "_setup_worktree", return_value=fake_info),

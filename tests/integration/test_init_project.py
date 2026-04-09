@@ -182,7 +182,7 @@ def test_next_id_works_for_new_project(
         catch_exceptions=False,
     )
     assert result.exit_code == 0, result.output
-    assert result.output.strip() == "I001"
+    assert result.output.strip() == "I-00001"
 
     result2 = runner.invoke(
         cli,
@@ -191,4 +191,4 @@ def test_next_id_works_for_new_project(
         catch_exceptions=False,
     )
     assert result2.exit_code == 0
-    assert result2.output.strip() == "F001"
+    assert result2.output.strip() == "F-00001"

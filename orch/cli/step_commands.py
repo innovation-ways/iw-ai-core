@@ -26,11 +26,18 @@ from orch.db.models import (
 # ---------------------------------------------------------------------------
 
 
-def validate_step_start_transition(current_status: StepStatus) -> str | None:
-    """Return an error message if step-start is invalid, or None if OK."""
-    if current_status != StepStatus.pending:
-        return f"Cannot start step: current status is '{current_status.value}'"
-    return None
+def validate_step_start_transition(current_status: StepStatus) -> tuple[str | None, bool]:
+    """Return (error_message, already_started) for step-start validation.
+
+    Returns (None, False) if step is pending and can be started.
+    Returns (None, True) if step is already in_progress (idempotent — no-op).
+    Returns (error_msg, False) for invalid transitions.
+    """
+    if current_status == StepStatus.pending:
+        return None, False
+    if current_status == StepStatus.in_progress:
+        return None, True  # Idempotent: daemon already started it
+    return f"Cannot start step: current status is '{current_status.value}'", False
 
 
 def validate_step_done_transition(current_status: StepStatus) -> str | None:
@@ -111,6 +118,8 @@ def step_start(ctx: click.Context, item_id: str, step_id: str) -> None:
     project_id = resolve_project(ctx)
     get_session = ctx.obj["get_session"]
 
+    already_started = False
+
     try:
         with get_session() as session:
             step = _find_step(session, project_id, item_id, step_id)
@@ -121,13 +130,25 @@ def step_start(ctx: click.Context, item_id: str, step_id: str) -> None:
                     1,
                 )
 
-            error = validate_step_start_transition(step.status)
+            error, already_started = validate_step_start_transition(step.status)
             if error:
                 output_error(ctx, error, 1)
 
-            step.status = StepStatus.in_progress
-            step.started_at = datetime.now(UTC)
-            session.flush()
+            if not already_started:
+                step.status = StepStatus.in_progress
+                step.started_at = datetime.now(UTC)
+
+                # Transition work item approved → in_progress on first step start
+                work_item = session.scalar(
+                    select(WorkItem).where(
+                        WorkItem.project_id == project_id,
+                        WorkItem.id == item_id,
+                    )
+                )
+                if work_item and work_item.status == WorkItemStatus.approved:
+                    work_item.status = WorkItemStatus.in_progress
+
+                session.flush()
 
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 1)
@@ -140,11 +161,13 @@ def step_start(ctx: click.Context, item_id: str, step_id: str) -> None:
                     "item_id": item_id,
                     "step_id": step_id,
                     "status": "in_progress",
+                    "already_started": already_started,
                 }
             )
         )
     else:
-        click.echo(f"Started {item_id} step {step_id}")
+        suffix = " (already in progress)" if already_started else ""
+        click.echo(f"Started {item_id} step {step_id}{suffix}")
 
 
 @click.command("step-done")

@@ -10,14 +10,14 @@ from orch.cli.batch_commands import build_execution_groups
 
 
 def test_no_deps_all_in_group_0() -> None:
-    item_deps = {"I001": [], "I002": [], "I003": []}
+    item_deps = {"I-00001": [], "I-00002": [], "I-00003": []}
     groups = build_execution_groups(item_deps)
-    assert groups == {"I001": 0, "I002": 0, "I003": 0}
+    assert groups == {"I-00001": 0, "I-00002": 0, "I-00003": 0}
 
 
 def test_single_item_no_deps() -> None:
-    groups = build_execution_groups({"I001": []})
-    assert groups == {"I001": 0}
+    groups = build_execution_groups({"I-00001": []})
+    assert groups == {"I-00001": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -63,11 +63,11 @@ def test_diamond_dependency() -> None:
 
 
 def test_external_dependency_ignored() -> None:
-    # I001 depends on EXTERNAL-999 which is not in the batch — should be in group 0
-    item_deps = {"I001": ["EXTERNAL-999"], "I002": []}
+    # I-00001 depends on EXTERNAL-999 which is not in the batch — should be in group 0
+    item_deps = {"I-00001": ["EXTERNAL-999"], "I-00002": []}
     groups = build_execution_groups(item_deps)
-    assert groups["I001"] == 0
-    assert groups["I002"] == 0
+    assert groups["I-00001"] == 0
+    assert groups["I-00002"] == 0
 
 
 # ---------------------------------------------------------------------------
