@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -51,6 +52,7 @@ class StepDetail:
     error_message: str | None
     run_count: int
     report_content: str | None = None
+    is_synthetic: bool = False
 
 
 @dataclass
@@ -83,8 +85,9 @@ class LogSection:
     step_id: str
     agent_label: str
     status: str
-    db_step_id: int
+    db_step_id: int | None
     runs: list[RunLog]
+    static_content: str | None = None
 
 
 @dataclass
@@ -132,7 +135,8 @@ def _get_item_or_404(project_id: str, item_id: str, db: Session) -> WorkItem:
 
 
 def _get_steps(project_id: str, item_id: str, db: Session) -> list[StepDetail]:
-    steps = list(
+    bi = _get_batch_item(project_id, item_id, db)
+    workflow_steps = list(
         db.scalars(
             select(WorkflowStep)
             .where(
@@ -142,8 +146,8 @@ def _get_steps(project_id: str, item_id: str, db: Session) -> list[StepDetail]:
             .order_by(WorkflowStep.step_number)
         ).all()
     )
-    result = []
-    for step in steps:
+    result: list[StepDetail] = [_synthetic_setup_step(bi)]
+    for step in workflow_steps:
         # Get run count and last error from step_runs
         runs = list(
             db.scalars(
@@ -173,6 +177,7 @@ def _get_steps(project_id: str, item_id: str, db: Session) -> list[StepDetail]:
                 report_content=step.report_content,
             )
         )
+    result.append(_synthetic_merge_step(bi))
     return result
 
 
@@ -234,6 +239,123 @@ def _get_batch_item_error(project_id: str, item_id: str, db: Session) -> str | N
     return None
 
 
+def _get_batch_item(project_id: str, item_id: str, db: Session) -> BatchItem | None:
+    return db.scalar(
+        select(BatchItem).where(
+            BatchItem.project_id == project_id,
+            BatchItem.work_item_id == item_id,
+        )
+    )
+
+
+def _setup_status(bi: BatchItem | None) -> str:
+    if bi is None:
+        return "pending"
+    if bi.worktree_info:
+        return "completed"
+    if bi.status == BatchItemStatus.setting_up:
+        return "in_progress"
+    if bi.status == BatchItemStatus.failed:
+        return "failed"
+    return "pending"
+
+
+def _merge_status(bi: BatchItem | None) -> str:
+    if bi is None or not bi.worktree_info:
+        return "pending"
+    if bi.merged_at is not None:
+        return "completed"
+    if bi.status in (BatchItemStatus.merging, BatchItemStatus.completed):
+        return "in_progress"
+    if bi.status == BatchItemStatus.failed:
+        return "failed"
+    return "pending"
+
+
+def _synthetic_setup_step(bi: BatchItem | None) -> StepDetail:
+    status = _setup_status(bi)
+    dur: float | None = None
+    if bi and bi.worktree_info and bi.started_at:
+        from datetime import datetime
+
+        created_raw = (
+            bi.worktree_info.get("created_at") if isinstance(bi.worktree_info, dict) else None
+        )
+        if created_raw:
+            try:
+                created = datetime.fromisoformat(created_raw)
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=UTC)
+                started = bi.started_at
+                if started.tzinfo is None:
+                    started = started.replace(tzinfo=UTC)
+                dur = (created - started).total_seconds()
+                if dur < 0:
+                    dur = None
+            except ValueError:
+                pass
+    return StepDetail(
+        step_id="S00",
+        agent_label="Worktree Setup",
+        step_type="setup",
+        status=status,
+        duration_secs=dur,
+        started_at=bi.started_at if bi else None,
+        completed_at=None,
+        error_message=bi.notes if bi and status == "failed" else None,
+        run_count=0,
+        is_synthetic=True,
+    )
+
+
+def _synthetic_merge_step(bi: BatchItem | None) -> StepDetail:
+    status = _merge_status(bi)
+    return StepDetail(
+        step_id="MERGE",
+        agent_label="Squash Merge",
+        step_type="merge",
+        status=status,
+        duration_secs=None,
+        started_at=None,
+        completed_at=bi.merged_at if bi else None,
+        error_message=bi.notes if bi and status == "failed" else None,
+        run_count=0,
+        is_synthetic=True,
+    )
+
+
+def _setup_log_content(bi: BatchItem) -> str:
+    lines = ["=== Worktree Setup ==="]
+    if bi.worktree_info and isinstance(bi.worktree_info, dict):
+        lines.append(f"Path:       {bi.worktree_info.get('path', '—')}")
+        lines.append(f"Branch:     {bi.worktree_info.get('branch', '—')}")
+        lines.append(f"Created at: {bi.worktree_info.get('created_at', '—')}")
+    else:
+        lines.append("Worktree info not available.")
+    if bi.notes:
+        lines.append("")
+        lines.append(f"Notes: {bi.notes}")
+    return "\n".join(lines)
+
+
+def _merge_log_content(bi: BatchItem) -> str:
+    lines = ["=== Squash Merge ==="]
+    if bi.merged_at:
+        lines.append(f"Merged at: {bi.merged_at.isoformat()}")
+    if bi.merge_info and isinstance(bi.merge_info, dict):
+        stdout = bi.merge_info.get("stdout", "")
+        if stdout:
+            lines.append("")
+            lines.append("--- stdout ---")
+            lines.append(stdout)
+    if bi.notes:
+        lines.append("")
+        lines.append(f"Notes: {bi.notes}")
+    if len(lines) == 1:
+        lines.append("No merge output recorded.")
+    return "\n".join(lines)
+
+
 def _list_artifacts(_project_id: str, item: WorkItem, project: Project) -> list[ArtifactFile]:
     """Try to list artifact files from disk. Returns empty list on any error."""
     if item.design_doc_path is None:
@@ -260,7 +382,21 @@ def _list_artifacts(_project_id: str, item: WorkItem, project: Project) -> list[
 
 
 def _get_log_sections(project_id: str, item_id: str, db: Session) -> list[LogSection]:
-    steps = list(
+    bi = _get_batch_item(project_id, item_id, db)
+
+    setup_content = _setup_log_content(bi) if bi else "No batch item found."
+    sections: list[LogSection] = [
+        LogSection(
+            step_id="S00",
+            agent_label="Worktree Setup",
+            status=_setup_status(bi),
+            db_step_id=None,
+            runs=[],
+            static_content=setup_content,
+        )
+    ]
+
+    workflow_steps = list(
         db.scalars(
             select(WorkflowStep)
             .where(
@@ -270,8 +406,7 @@ def _get_log_sections(project_id: str, item_id: str, db: Session) -> list[LogSec
             .order_by(WorkflowStep.step_number)
         ).all()
     )
-    sections = []
-    for step in steps:
+    for step in workflow_steps:
         runs = list(
             db.scalars(
                 select(StepRun).where(StepRun.step_id == step.id).order_by(StepRun.run_number)
@@ -296,6 +431,18 @@ def _get_log_sections(project_id: str, item_id: str, db: Session) -> list[LogSec
                 runs=run_logs,
             )
         )
+
+    merge_content = _merge_log_content(bi) if bi else "No batch item found."
+    sections.append(
+        LogSection(
+            step_id="MERGE",
+            agent_label="Squash Merge",
+            status=_merge_status(bi),
+            db_step_id=None,
+            runs=[],
+            static_content=merge_content,
+        )
+    )
     return sections
 
 
