@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from orch.daemon.batch_manager import BatchManager
 from orch.daemon.project_registry import ProjectConfig, ProjectRegistry, sync_project_to_db
-from orch.db.models import DaemonEvent, StepRun
+from orch.db.models import DaemonEvent, StepRun, StepStatus, WorkflowStep
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
