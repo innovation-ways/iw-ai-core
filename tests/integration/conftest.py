@@ -66,6 +66,16 @@ def db_engine(pg_container: PostgresContainer) -> Engine:
     return engine
 
 
+@pytest.fixture(scope="session")
+def db_session_factory(db_engine: Engine):
+    """Return a sessionmaker bound to the test engine.
+
+    This can be used to patch SessionLocal for tests that need the background
+    thread to use the testcontainer.
+    """
+    return sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+
+
 @pytest.fixture
 def db_session(db_engine: Engine) -> Generator[Session, None, None]:
     """Provide a transactional DB session that rolls back after each test.
@@ -101,7 +111,7 @@ def test_project(db_session: Session) -> Project:
 
 
 @pytest.fixture
-def cli_get_session(db_session: Session) -> Callable[[], contextmanager]:  # type: ignore[type-arg]
+def cli_get_session(db_session: Session) -> Callable[[], contextmanager]:  # type: ignore[arg-type]
     """Return a get_session factory that yields the test db_session.
 
     Inject into CLI commands via ctx.obj['get_session'] so tests never

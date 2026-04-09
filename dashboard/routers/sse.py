@@ -35,6 +35,9 @@ _TOAST_EVENTS = frozenset(
         "item_merged",
         "merge_conflict",
         "poll_error",
+        "batch_archiving",
+        "batch_archived",
+        "batch_archive_failed",
     }
 )
 # All events we care about (union)
@@ -50,6 +53,9 @@ _TOAST_SEVERITY: dict[str, str] = {
     "item_merged": "info",
     "merge_conflict": "error",
     "poll_error": "error",
+    "batch_archiving": "info",
+    "batch_archived": "success",
+    "batch_archive_failed": "error",
 }
 
 
