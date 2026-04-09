@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import exists, nulls_first, nulls_last, select
+from sqlalchemy import exists, select
 
 from dashboard.dependencies import get_db
 from orch.db.models import (
@@ -27,24 +27,6 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/project/{project_id}")
-
-_HISTORY_PAGE_SIZE = 20
-
-# Statuses that appear in history
-_HISTORY_STATUSES = {WorkItemStatus.completed, WorkItemStatus.failed}
-_HISTORY_PHASES = {WorkItemPhase.done}
-
-# Sort columns mapping for _history_items()
-_SORT_COLUMNS = {
-    "id": WorkItem.id,
-    "type": WorkItem.type,
-    "title": WorkItem.title,
-    "status": WorkItem.status,
-    "created_at": WorkItem.created_at,
-}
-_ALLOWED_SORT_BY = {"id", "type", "title", "status", "created_at", "duration"}
-_ALLOWED_SORT_DIR = ("asc", "desc")
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -145,17 +127,8 @@ def _history_items(
     status_filter: str | None,
     date_from: str | None,
     date_to: str | None,
-    page: int,
-    sort_by: str = "created_at",
-    sort_dir: str = "desc",
-) -> tuple[list[HistoryItem], int]:
-    """Return (items_on_page, total_count) for the history page."""
-    # Validate and normalize sort parameters
-    if sort_by not in _ALLOWED_SORT_BY:
-        sort_by = "created_at"
-    if sort_dir not in _ALLOWED_SORT_DIR:
-        sort_dir = "desc"
-
+) -> list[HistoryItem]:
+    """Return all history items (sorting is client-side JS)."""
     stmt = select(WorkItem).where(
         WorkItem.project_id == project_id,
         WorkItem.status.in_([WorkItemStatus.completed, WorkItemStatus.failed])
@@ -163,7 +136,6 @@ def _history_items(
     )
 
     if type_filter:
-        # match case-insensitively against enum value
         for wt in WorkItemType:
             if wt.value.lower() == type_filter.lower():
                 stmt = stmt.where(WorkItem.type == wt)
@@ -189,23 +161,10 @@ def _history_items(
         except ValueError:
             pass
 
-    # Apply dynamic sorting
-    if sort_by == "duration":
-        if sort_dir == "asc":
-            stmt = stmt.order_by(nulls_last(WorkItem.completed_at.asc()))
-        else:
-            stmt = stmt.order_by(nulls_first(WorkItem.completed_at.desc()))
-    else:
-        col = _SORT_COLUMNS[sort_by]
-        stmt = stmt.order_by(col.asc()) if sort_dir == "asc" else stmt.order_by(col.desc())
-
-    all_rows = list(db.scalars(stmt))
-    total = len(all_rows)
-    offset = (page - 1) * _HISTORY_PAGE_SIZE
-    page_rows = all_rows[offset : offset + _HISTORY_PAGE_SIZE]
+    stmt = stmt.order_by(WorkItem.created_at.desc())
 
     items = []
-    for r in page_rows:
+    for r in db.scalars(stmt):
         duration: int | None = None
         if r.completed_at and r.created_at:
             duration = int((r.completed_at - r.created_at).total_seconds())
@@ -220,7 +179,7 @@ def _history_items(
                 duration_secs=duration,
             )
         )
-    return items, total
+    return items
 
 
 # ---------------------------------------------------------------------------
@@ -254,25 +213,16 @@ def project_history(
     status: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
-    page: int = 1,
-    sort_by: str = "created_at",
-    sort_dir: str = "desc",
 ) -> Any:
     project = _get_project_or_404(project_id, db)
-    if page < 1:
-        page = 1
-    items, total = _history_items(
+    items = _history_items(
         project_id,
         db,
         type_filter=type,
         status_filter=status,
         date_from=date_from,
         date_to=date_to,
-        page=page,
-        sort_by=sort_by,
-        sort_dir=sort_dir,
     )
-    total_pages = max(1, (total + _HISTORY_PAGE_SIZE - 1) // _HISTORY_PAGE_SIZE)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -281,18 +231,13 @@ def project_history(
             "current_project": project,
             "running_count": 0,
             "items": items,
-            "total": total,
-            "page": page,
-            "total_pages": total_pages,
-            "page_size": _HISTORY_PAGE_SIZE,
+            "total": len(items),
             "type_filter": type,
             "status_filter": status,
             "date_from": date_from or "",
             "date_to": date_to or "",
             "item_types": [t.value for t in WorkItemType],
             "item_statuses": [s.value for s in [WorkItemStatus.completed, WorkItemStatus.failed]],
-            "sort_by": sort_by,
-            "sort_dir": sort_dir,
         },
     )
 
