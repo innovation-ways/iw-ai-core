@@ -188,6 +188,9 @@
 {% block scripts %}
 {% include "components/toast.html" %}
 <script>
+// Track active tab URL for SSE-driven refresh
+var _activeTabUrl = '/project/{{ current_project.id }}/item/{{ item.id }}/tab/overview';
+
 function setActiveTab(btn) {
   document.querySelectorAll('.tab-btn').forEach(function(b) {
     b.classList.remove('border-b-2', 'border-primary', 'text-primary', 'font-medium');
@@ -195,7 +198,26 @@ function setActiveTab(btn) {
   });
   btn.classList.add('border-b-2', 'border-primary', 'text-primary', 'font-medium');
   btn.classList.remove('text-muted-foreground');
+  _activeTabUrl = btn.getAttribute('hx-get') || _activeTabUrl;
 }
+
+// SSE for live step status updates
+(function () {
+  var es = new EventSource('/api/stream/events');
+
+  es.addEventListener('running-update', function (e) {
+    // Only refresh if the overview tab is active (it shows step pipeline)
+    if (_activeTabUrl && _activeTabUrl.indexOf('/tab/overview') !== -1) {
+      htmx.ajax('GET', _activeTabUrl, {target: '#tab-content', swap: 'innerHTML'});
+    }
+  });
+
+  es.addEventListener('toast', function (e) {
+    try { showToast(JSON.parse(e.data)); } catch (_) {}
+  });
+
+  es.onerror = function () {};
+})();
 
 // Handle HX-Trigger showToast from action buttons
 document.body.addEventListener('htmx:afterRequest', function(e) {

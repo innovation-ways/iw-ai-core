@@ -150,6 +150,13 @@
 <!-- Items tab -->
 {% elif active_tab in ('items', '', none) or (not active_tab and not has_plan) %}
 <div class="bg-card border border-border rounded-lg overflow-hidden">
+  <!-- SSE trigger: refreshes batch items on running-update event -->
+  <div id="batch-items-sse-trigger"
+       hx-get="/project/{{ current_project.id }}/batch/{{ batch.id }}/fragment/items"
+       hx-trigger="batch-items-refresh"
+       hx-target="#batch-items-body"
+       hx-swap="innerHTML">
+  </div>
   <table class="w-full text-sm">
     <thead>
       <tr class="border-b border-border bg-muted/30">
@@ -161,7 +168,7 @@
         <th class="px-4 py-2 text-right font-medium text-muted-foreground">Action</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="batch-items-body">
       {% for row in items %}
         <tr class="border-b border-border last:border-0 hover:bg-muted/20">
           <td class="px-4 py-3 text-xs text-muted-foreground font-mono">{{ row.execution_group }}</td>
@@ -254,6 +261,12 @@
 <script>
 (function () {
   var es = new EventSource('/api/stream/events');
+
+  es.addEventListener('running-update', function () {
+    if (document.getElementById('batch-items-sse-trigger')) {
+      htmx.trigger('#batch-items-sse-trigger', 'batch-items-refresh');
+    }
+  });
 
   es.addEventListener('toast', function (e) {
     try {

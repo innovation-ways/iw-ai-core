@@ -287,6 +287,50 @@ def batch_detail(
     )
 
 
+@router.get("/batches/fragment", response_class=HTMLResponse)
+def batch_list_fragment(
+    project_id: str,
+    request: Request,
+    status: str | None = None,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: returns only the batches tbody rows for live refresh."""
+    _get_project_or_404(project_id, db)
+    batches = _all_batches(project_id, db, status_filter=status)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/batches_table_rows.html",
+        {
+            "current_project": db.scalar(select(Project).where(Project.id == project_id)),
+            "batches": batches,
+            "status_filter": status,
+        },
+    )
+
+
+@router.get("/batch/{batch_id}/fragment/items", response_class=HTMLResponse)
+def batch_items_fragment(
+    project_id: str,
+    batch_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: returns only the batch items tbody rows for live refresh."""
+    project = _get_project_or_404(project_id, db)
+    _get_batch_or_404(project_id, batch_id, db)
+    items = _batch_item_rows(project_id, batch_id, db)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/batch_items_rows.html",
+        {
+            "current_project": project,
+            "items": items,
+        },
+    )
+
+
 @router.get("/batch/{batch_id}/diagram.png")
 def batch_diagram_png(
     project_id: str,

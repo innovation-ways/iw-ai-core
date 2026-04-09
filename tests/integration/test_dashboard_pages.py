@@ -385,3 +385,116 @@ def test_batch_detail_404_for_unknown_project(client: TestClient, db_session: An
 def test_item_detail_404_for_unknown_project(client: TestClient, db_session: Any) -> None:
     resp = client.get("/project/ghost/item/I-00001")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# SSE fragment endpoints (Option B live refresh)
+# ---------------------------------------------------------------------------
+
+
+def test_batches_fragment_returns_rows(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    make_item(db_session)
+    batch = make_batch(db_session)
+    make_batch_item(db_session)
+
+    resp = client.get("/project/test-proj/batches/fragment")
+    assert resp.status_code == 200
+    assert "<html" not in resp.text  # fragment, not full page
+    assert batch.id in resp.text
+    assert "<tr" in resp.text
+
+
+def test_batches_fragment_empty(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+
+    resp = client.get("/project/test-proj/batches/fragment")
+    assert resp.status_code == 200
+    assert "<html" not in resp.text
+    assert "No batches found" in resp.text
+
+
+def test_batches_fragment_status_filter(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    make_item(db_session)
+    make_batch(db_session, status=BatchStatus.completed)
+
+    resp = client.get("/project/test-proj/batches/fragment?status=executing")
+    assert resp.status_code == 200
+    assert "BATCH-00001" not in resp.text
+
+
+def test_batches_fragment_404_for_unknown_project(client: TestClient, db_session: Any) -> None:
+    resp = client.get("/project/ghost/batches/fragment")
+    assert resp.status_code == 404
+
+
+def test_batch_items_fragment_returns_rows(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    item = make_item(db_session)
+    batch = make_batch(db_session)
+    make_batch_item(db_session)
+
+    resp = client.get(f"/project/test-proj/batch/{batch.id}/fragment/items")
+    assert resp.status_code == 200
+    assert "<html" not in resp.text  # fragment, not full page
+    assert item.id in resp.text
+    assert "<tr" in resp.text
+
+
+def test_batch_items_fragment_empty(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    batch = make_batch(db_session)
+
+    resp = client.get(f"/project/test-proj/batch/{batch.id}/fragment/items")
+    assert resp.status_code == 200
+    assert "<html" not in resp.text
+    assert "No items in this batch" in resp.text
+
+
+def test_batch_items_fragment_404_for_unknown_batch(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+
+    resp = client.get("/project/test-proj/batch/NO-SUCH/fragment/items")
+    assert resp.status_code == 404
+
+
+def test_batch_items_fragment_404_for_unknown_project(client: TestClient, db_session: Any) -> None:
+    resp = client.get("/project/ghost/batch/BATCH-X/fragment/items")
+    assert resp.status_code == 404
+
+
+def test_batches_page_has_sse_trigger(client: TestClient, db_session: Any) -> None:
+    """Batches list page must include the SSE trigger div for live refresh."""
+    make_project(db_session)
+
+    resp = client.get("/project/test-proj/batches")
+    assert resp.status_code == 200
+    assert "batches-sse-trigger" in resp.text
+    assert "batches/fragment" in resp.text
+
+
+def test_batch_detail_has_sse_trigger(client: TestClient, db_session: Any) -> None:
+    """Batch detail items tab must include the SSE trigger div for live refresh."""
+    make_project(db_session)
+    make_item(db_session)
+    batch = make_batch(db_session)
+    make_batch_item(db_session)
+
+    resp = client.get(f"/project/test-proj/batch/{batch.id}?tab=items")
+    assert resp.status_code == 200
+    assert "batch-items-sse-trigger" in resp.text
+    assert "fragment/items" in resp.text
+
+
+def test_item_detail_has_sse_script(client: TestClient, db_session: Any) -> None:
+    """Item detail page must include SSE connection for overview tab live refresh."""
+    make_project(db_session)
+    item = make_item(db_session)
+    make_step(db_session)
+
+    resp = client.get(f"/project/test-proj/item/{item.id}")
+    assert resp.status_code == 200
+    assert "EventSource" in resp.text
+    assert "running-update" in resp.text
+    assert "/tab/overview" in resp.text
