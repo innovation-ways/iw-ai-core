@@ -356,11 +356,15 @@ class TestMergeQueueIntegration:
 
         make_batch(db_session, "B001", status=BatchStatus.executing)
 
-        older_item = make_batch_item(db_session, "B001", "F-00001", status=BatchItemStatus.completed)
+        older_item = make_batch_item(
+            db_session, "B001", "F-00001", status=BatchItemStatus.completed
+        )
         older_item.started_at = datetime(2024, 1, 1, tzinfo=UTC)
         older_item.worktree_info = {"path": "/wt/F-00001"}
 
-        newer_item = make_batch_item(db_session, "B001", "F-00002", status=BatchItemStatus.completed)
+        newer_item = make_batch_item(
+            db_session, "B001", "F-00002", status=BatchItemStatus.completed
+        )
         newer_item.started_at = datetime(2024, 1, 2, tzinfo=UTC)
         newer_item.worktree_info = {"path": "/wt/F-00002"}
 
@@ -394,10 +398,14 @@ class TestMergeQueueIntegration:
 
         make_batch(db_session, "B001", status=BatchStatus.executing)
 
-        merging_item = make_batch_item(db_session, "B001", "F-00001", status=BatchItemStatus.merging)
+        merging_item = make_batch_item(
+            db_session, "B001", "F-00001", status=BatchItemStatus.merging
+        )
         merging_item.worktree_info = {"path": "/wt/F-00001"}
 
-        ready_item = make_batch_item(db_session, "B001", "F-00002", status=BatchItemStatus.completed)
+        ready_item = make_batch_item(
+            db_session, "B001", "F-00002", status=BatchItemStatus.completed
+        )
         ready_item.worktree_info = {"path": "/wt/F-00002"}
 
         db_session.flush()

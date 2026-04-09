@@ -401,7 +401,9 @@ def test_delete_work_item_cascades_to_workflow_steps(db_session: Session) -> Non
     db_session.flush()
 
     steps = (
-        db_session.query(WorkflowStep).filter_by(project_id="test-proj", work_item_id="F-00001").all()
+        db_session.query(WorkflowStep)
+        .filter_by(project_id="test-proj", work_item_id="F-00001")
+        .all()
     )
     assert steps == []
 
