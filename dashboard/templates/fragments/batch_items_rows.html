@@ -1,0 +1,40 @@
+{% from "components/status_badge.html" import status_badge %}
+{% from "components/step_pipeline.html" import step_pipeline %}
+{% for row in items %}
+  <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+    <td class="px-4 py-3 text-xs text-muted-foreground font-mono">{{ row.execution_group }}</td>
+    <td class="px-4 py-3 font-mono text-xs font-semibold">
+      <a href="/project/{{ current_project.id }}/item/{{ row.item_id }}"
+         class="text-primary hover:underline">{{ row.item_id }}</a>
+    </td>
+    <td class="px-4 py-3">
+      <div class="text-sm text-foreground truncate max-w-xs">{{ row.title }}</div>
+      {% if row.steps %}
+        <div class="mt-1.5">{{ step_pipeline(row.steps) }}</div>
+      {% endif %}
+    </td>
+    <td class="px-4 py-3">{{ status_badge(row.status) }}</td>
+    <td class="px-4 py-3 font-mono text-xs text-muted-foreground">
+      {% if row.duration_secs is not none %}
+        {% set mins = (row.duration_secs // 60)|int %}
+        {% set secs = (row.duration_secs % 60)|int %}
+        {{ "%dm%02ds"|format(mins, secs) }}
+      {% else %}
+        —
+      {% endif %}
+    </td>
+    <td class="px-4 py-3 text-right">
+      <a href="/project/{{ current_project.id }}/item/{{ row.item_id }}"
+         class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90 transition-opacity">
+        View
+      </a>
+    </td>
+  </tr>
+{% endfor %}
+{% if not items %}
+  <tr>
+    <td colspan="6" class="px-4 py-8 text-center text-muted-foreground text-sm">
+      No items in this batch.
+    </td>
+  </tr>
+{% endif %}

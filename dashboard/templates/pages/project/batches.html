@@ -27,6 +27,13 @@
 
 <!-- Batch table -->
 <div class="bg-card border border-border rounded-lg overflow-hidden">
+  <!-- SSE trigger: refreshes batch rows on running-update event -->
+  <div id="batches-sse-trigger"
+       hx-get="/project/{{ current_project.id }}/batches/fragment{% if status_filter %}?status={{ status_filter }}{% endif %}"
+       hx-trigger="batches-refresh"
+       hx-target="#batches-body"
+       hx-swap="innerHTML">
+  </div>
   <table id="batches-table" class="w-full text-sm">
     <thead>
       <tr class="border-b border-border bg-muted/30">
@@ -54,7 +61,7 @@
         {% endfor %}
       </tr>
     </thead>
-    <tbody>
+    <tbody id="batches-body">
       {% for batch in batches %}
         <tr class="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
             onclick="window.location='/project/{{ current_project.id }}/batch/{{ batch.id }}'"
@@ -102,6 +109,35 @@
     </tbody>
   </table>
 </div>
+
+{% endblock %}
+
+{% block scripts %}
+{% include "components/toast.html" %}
+<script>
+(function () {
+  var es = new EventSource('/api/stream/events');
+
+  es.addEventListener('running-update', function () {
+    htmx.trigger('#batches-sse-trigger', 'batches-refresh');
+  });
+
+  es.addEventListener('toast', function (e) {
+    try { showToast(JSON.parse(e.data)); } catch (_) {}
+  });
+
+  es.onerror = function () {};
+})();
+
+document.body.addEventListener('htmx:afterRequest', function (e) {
+  var triggerHeader = e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger');
+  if (!triggerHeader) return;
+  try {
+    var trigger = JSON.parse(triggerHeader);
+    if (trigger.showToast) showToast(trigger.showToast);
+  } catch (_) {}
+});
+</script>
 
 <script>
 (function() {
