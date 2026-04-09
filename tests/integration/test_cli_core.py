@@ -9,12 +9,12 @@ from sqlalchemy.orm import Session as SASession
 
 from orch.cli.id_commands import allocate_next_id
 from orch.cli.main import cli
-from orch.cli.utils import format_id
 from orch.db.models import (
     Batch,
     BatchItem,
     BatchItemStatus,
     BatchStatus,
+    IdSequence,
     Project,
     WorkflowStep,
     WorkItem,
@@ -57,10 +57,15 @@ def test_next_id_sequential(
 ) -> None:
     runner = CliRunner()
 
-    for i in range(1, 4):
+    ids = []
+    for _ in range(3):
         result = invoke(runner, ["next-id", "--type", "incident"], cli_get_session)
         assert result.exit_code == 0, result.output
-        assert result.output.strip() == f"I-{i:05d}"
+        ids.append(result.output.strip())
+
+    # Must be sequential (gapless, ascending)
+    numbers = [int(i.split("-")[1]) for i in ids]
+    assert numbers == [numbers[0], numbers[0] + 1, numbers[0] + 2]
 
 
 def test_next_id_json_output(
@@ -77,10 +82,10 @@ def test_next_id_json_output(
     )
     assert result.exit_code == 0
     data = json.loads(result.output)
-    assert data["id"] == "I-00001"
+    assert data["id"].startswith("I-")
     assert data["project_id"] == "test-proj"
     assert data["prefix"] == "I"
-    assert data["number"] == 1
+    assert isinstance(data["number"], int)
 
 
 def test_next_id_all_types(
@@ -89,17 +94,17 @@ def test_next_id_all_types(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    expected = {
-        "feature": "F-00001",
-        "incident": "I-00001",
-        "cr": "CR-00001",
-        "batch": "BATCH-00001",
+    expected_prefixes = {
+        "feature": "F-",
+        "incident": "I-",
+        "cr": "CR-",
+        "batch": "BATCH-",
     }
 
-    for item_type, expected_id in expected.items():
+    for item_type, prefix in expected_prefixes.items():
         result = invoke(runner, ["next-id", "--type", item_type], cli_get_session)
         assert result.exit_code == 0, f"{item_type}: {result.output}"
-        assert result.output.strip() == expected_id
+        assert result.output.strip().startswith(prefix)
 
 
 def test_next_id_concurrent_no_duplicates(db_engine: Any) -> None:
@@ -133,14 +138,19 @@ def test_next_id_concurrent_no_duplicates(db_engine: Any) -> None:
     with ThreadPoolExecutor(max_workers=10) as executor:
         results = list(executor.map(lambda _: allocate(), range(10)))
 
-    # Cleanup
+    # Cleanup — delete project and the global sequence row
     with _session() as s, s.begin():
         p = s.get(Project, project_id)
         if p:
             s.delete(p)
+        seq = s.get(IdSequence, "I")
+        if seq:
+            s.delete(seq)
 
     assert len(set(results)) == 10
-    assert sorted(results) == [format_id("I", i) for i in range(1, 11)]
+    # IDs must be unique and gapless (exact start depends on prior state)
+    numbers = sorted(int(r.split("-")[1]) for r in results)
+    assert numbers == list(range(numbers[0], numbers[0] + 10))
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +457,7 @@ def test_full_flow_next_id_register_approve(
     )
     assert result.exit_code == 0
     item_id = json.loads(result.output)["id"]
-    assert item_id == "I-00001"
+    assert item_id.startswith("I-")
 
     result = runner.invoke(
         cli,

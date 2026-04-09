@@ -265,6 +265,11 @@ class Daemon:
                         run.id,
                         run.pid,
                     )
+                    # Also update parent WorkflowStep so batch_manager doesn't get stuck
+                    parent = db.get(WorkflowStep, run.step_id)
+                    if parent is not None and parent.status == StepStatus.in_progress:
+                        parent.status = StepStatus.failed
+                        parent.completed_at = now
                     emit_event(
                         db,
                         project_id=None,

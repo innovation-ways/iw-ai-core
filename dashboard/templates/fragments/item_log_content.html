@@ -1,0 +1,12 @@
+{% if log_content %}
+  <pre class="bg-muted/50 border border-border rounded p-3 text-xs font-mono text-foreground/90 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap break-words">{{ log_content }}</pre>
+{% else %}
+  <p class="text-xs text-muted-foreground italic">No log content available.</p>
+{% endif %}
+{% if is_running %}
+  <div hx-get="/project/{{ project_id }}/item/{{ item_id }}/log-content/{{ step_db_id }}/{{ run_number }}"
+       hx-trigger="every 5s"
+       hx-target="#log-{{ step_db_id }}-{{ run_number }}"
+       hx-swap="innerHTML">
+  </div>
+{% endif %}

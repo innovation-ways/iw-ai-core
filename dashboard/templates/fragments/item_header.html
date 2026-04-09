@@ -1,10 +1,5 @@
-{% extends "base.html" %}
 {% from "components/status_badge.html" import status_badge %}
-{% from "components/step_pipeline.html" import step_pipeline %}
 
-{% block title %}{{ item.id }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
-
-{% block content %}
 <!-- Header -->
 <div class="mb-6">
   <div class="flex items-center gap-2 text-xs text-muted-foreground mb-1">
@@ -117,79 +112,3 @@
     <p class="text-xl font-bold text-foreground">{{ metrics.steps_completed }}/{{ metrics.steps_total }}</p>
   </div>
 </div>
-
-<!-- Tab navigation -->
-<div id="tab-nav" class="flex border-b border-border mb-4">
-  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/overview"
-          hx-target="#tab-content"
-          hx-swap="innerHTML"
-          hx-on:click="setActiveTab(this)"
-          class="tab-btn px-4 py-2 text-sm border-b-2 border-primary text-primary font-medium transition-colors">
-    Overview
-  </button>
-  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/design-doc"
-          hx-target="#tab-content"
-          hx-swap="innerHTML"
-          hx-on:click="setActiveTab(this)"
-          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-    Design Document
-  </button>
-  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/reports"
-          hx-target="#tab-content"
-          hx-swap="innerHTML"
-          hx-on:click="setActiveTab(this)"
-          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-    Reports
-  </button>
-  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/artifacts"
-          hx-target="#tab-content"
-          hx-swap="innerHTML"
-          hx-on:click="setActiveTab(this)"
-          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-    Artifacts
-  </button>
-  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/logs"
-          hx-target="#tab-content"
-          hx-swap="innerHTML"
-          hx-on:click="setActiveTab(this)"
-          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-    Logs
-  </button>
-</div>
-
-<!-- Tab content area (initially loaded with overview) -->
-<div id="tab-content">
-  {% include "fragments/item_overview.html" %}
-</div>
-
-{% endblock %}
-
-{% block scripts %}
-{% include "components/toast.html" %}
-<script>
-function setActiveTab(btn) {
-  document.querySelectorAll('.tab-btn').forEach(function(b) {
-    b.classList.remove('border-b-2', 'border-primary', 'text-primary', 'font-medium');
-    b.classList.add('text-muted-foreground');
-  });
-  btn.classList.add('border-b-2', 'border-primary', 'text-primary', 'font-medium');
-  btn.classList.remove('text-muted-foreground');
-}
-
-// Handle HX-Trigger showToast from action buttons
-document.body.addEventListener('htmx:afterRequest', function(e) {
-  var triggerHeader = e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger');
-  if (!triggerHeader) return;
-  try {
-    var trigger = JSON.parse(triggerHeader);
-    if (trigger.showToast) {
-      showToast(trigger.showToast);
-      // Reload the page after item-level actions so status/buttons update
-      if (trigger.showToast.reload) {
-        setTimeout(function() { window.location.reload(); }, 600);
-      }
-    }
-  } catch(_) {}
-});
-</script>
-{% endblock %}

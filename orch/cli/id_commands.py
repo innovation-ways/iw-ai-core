@@ -26,11 +26,14 @@ if TYPE_CHECKING:
 
 
 def allocate_next_id(session: Session, project_id: str, prefix: str) -> tuple[int, str]:
-    """Atomically allocate the next sequential ID for (project_id, prefix).
+    """Atomically allocate the next sequential ID for *prefix*.
 
     Uses INSERT … ON CONFLICT DO NOTHING to initialise the row, then
     SELECT … FOR UPDATE to lock-and-increment atomically.  Safe under
     concurrent callers — only one transaction can hold the row lock at a time.
+
+    *project_id* is accepted for call-site compatibility but is no longer
+    stored — id_sequences is now a global (prefix-only) table.
 
     Returns (number, formatted_id).
     """
@@ -42,17 +45,13 @@ def allocate_next_id(session: Session, project_id: str, prefix: str) -> tuple[in
     # Initialise the row if it doesn't exist yet (handles first-time creation
     # and concurrent first-time callers — only one INSERT wins).
     session.execute(
-        pg_insert(IdSequence)
-        .values(project_id=project_id, prefix=prefix, next_number=1)
-        .on_conflict_do_nothing()
+        pg_insert(IdSequence).values(prefix=prefix, next_number=1).on_conflict_do_nothing()
     )
     session.flush()  # make the new row visible within this transaction
 
     # Lock the row to prevent concurrent increments.
     row = session.execute(
-        select(IdSequence)
-        .where(IdSequence.project_id == project_id, IdSequence.prefix == prefix)
-        .with_for_update()
+        select(IdSequence).where(IdSequence.prefix == prefix).with_for_update()
     ).scalar_one()
 
     number = row.next_number
