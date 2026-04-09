@@ -50,7 +50,12 @@
       {% for step in steps %}
         <tr class="border-b border-border last:border-0 hover:bg-muted/20">
           <td class="px-4 py-2 font-mono text-xs font-semibold">{{ step.step_id }}</td>
-          <td class="px-4 py-2 text-xs text-foreground">{{ step.agent_label }}</td>
+          <td class="px-4 py-2">
+            <div class="text-xs text-foreground">{{ step.agent_label }}</div>
+            {% if step.step_label %}
+              <div class="text-xs text-muted-foreground truncate max-w-xs" title="{{ step.step_label }}">{{ step.step_label }}</div>
+            {% endif %}
+          </td>
           <td class="px-4 py-2">{{ status_badge(step.status) }}</td>
           <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
             {% if step.started_at %}

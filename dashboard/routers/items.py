@@ -51,6 +51,7 @@ class StepDetail:
     completed_at: datetime | None
     error_message: str | None
     run_count: int
+    step_label: str | None = None
     report_content: str | None = None
     is_synthetic: bool = False
 
@@ -175,6 +176,7 @@ def _get_steps(project_id: str, item_id: str, db: Session) -> list[StepDetail]:
                 completed_at=step.completed_at,
                 error_message=error_msg,
                 run_count=len(runs),
+                step_label=step.step_label,
                 report_content=step.report_content,
             )
         )

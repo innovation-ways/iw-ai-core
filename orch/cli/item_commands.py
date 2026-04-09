@@ -224,6 +224,9 @@ def register(
                 description_raw = step_data.get("description")
                 description = str(description_raw) if description_raw else None
 
+                label_raw_val = step_data.get("step_label")
+                step_label = str(label_raw_val) if label_raw_val else None
+
                 # Derive numeric step_number from step_id ("S01" → 1)
                 num_str = step_id_str.lstrip("Ss")
                 try:
@@ -240,6 +243,7 @@ def register(
                         agent_label=label,
                         opencode_agent=agent or None,
                         step_type=step_type,
+                        step_label=step_label,
                         description=description,
                     )
                 )
