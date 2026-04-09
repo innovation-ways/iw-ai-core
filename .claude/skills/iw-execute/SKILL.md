@@ -16,31 +16,38 @@ agent: orchestrator
 
 Execute the AI development workflow for work item **$ARGUMENTS**.
 
+**Argument parsing:** `$ARGUMENTS` may contain `ITEM_ID STEP_ID` (e.g. `CR-00003 S03`) when invoked by the daemon.
+- **ITEM_ID** = first token (e.g. `CR-00003`)
+- **STEP_ID** = second token if present (e.g. `S03`) — use to resume from that step
+
 ## Pre-Flight Data
 
 Current status from platform:
-!`uv run iw item-status $ARGUMENTS --json 2>/dev/null || echo '{"error": "item not found or not registered"}'`
+!`uv run iw item-status $(echo $ARGUMENTS | awk '{print $1}') --json 2>/dev/null || echo '{"error": "item not found or not registered"}'`
 
 Work item design document location:
-!`ls -d ai-dev/design/active/$ARGUMENTS 2>/dev/null || echo "NOT_FOUND: $ARGUMENTS not in ai-dev/design/active/"`
+!`ls -d ai-dev/design/active/$(echo $ARGUMENTS | awk '{print $1}') 2>/dev/null || echo "NOT_FOUND: $(echo $ARGUMENTS | awk '{print $1}') not in ai-dev/design/active/"`
 
 ## Pre-Flight Validation
 
+Parse `$ARGUMENTS` into `ITEM_ID` (first token) and optional `STEP_ID` (second token).
+Use only `ITEM_ID` for all `iw` CLI commands below.
+
 Before executing, validate:
 
-1. **Item is registered** — `uv run iw item-status $ARGUMENTS` must succeed
-2. **Item status is `approved`** — if `draft`, tell user to run `uv run iw approve $ARGUMENTS` first
-3. **Design doc exists** — must be in `ai-dev/design/active/$ARGUMENTS/`
+1. **Item is registered** — `uv run iw item-status ITEM_ID` must succeed
+2. **Item status is `approved`** — if `draft`, tell user to run `uv run iw approve ITEM_ID` first
+3. **Design doc exists** — must be in `ai-dev/design/active/ITEM_ID/`
 
 ## If item not found:
 
-Report error: "Work item $ARGUMENTS not found in database. Create a design first with /iw-new-feature, /iw-new-incident, or /iw-new-cr, then register it with `uv run iw register`."
+Report error: "Work item ITEM_ID not found in database. Create a design first with /iw-new-feature, /iw-new-incident, or /iw-new-cr, then register it with `uv run iw register`."
 
 ## If item status is `draft`:
 
-Report: "Work item $ARGUMENTS is in 'draft' status. Review the design, then approve with: `iw approve $ARGUMENTS`"
+Report: "Work item ITEM_ID is in 'draft' status. Review the design, then approve with: `iw approve ITEM_ID`"
 
-## If item status is `approved`:
+## If item status is `approved` or `in_progress`:
 
 Begin execution. For each step in the workflow:
 
@@ -48,19 +55,19 @@ Begin execution. For each step in the workflow:
 
 1. Before starting each step, call:
    ```bash
-   uv run iw step-start $ARGUMENTS --step S{NN}
+   uv run iw step-start ITEM_ID --step S{NN}
    ```
 
 2. Delegate the step to the correct specialist subagent using **path-based delegation** (pass the prompt file path)
 
 3. After step completes successfully:
    ```bash
-   uv run iw step-done $ARGUMENTS --step S{NN}
+   uv run iw step-done ITEM_ID --step S{NN}
    ```
 
 4. After step fails:
    ```bash
-   uv run iw step-fail $ARGUMENTS --step S{NN} --reason "{brief reason}"
+   uv run iw step-fail ITEM_ID --step S{NN} --reason "{brief reason}"
    ```
 
 5. Output a progress status line after EVERY step
@@ -69,16 +76,17 @@ Begin execution. For each step in the workflow:
 
 If item status is `in_progress`:
 
-1. `uv run iw item-status $ARGUMENTS --json` shows current step state
-2. Find the first step not yet `completed`
-3. Output: "Resuming $ARGUMENTS — {N} of {total} steps already completed"
-4. Resume from the first non-completed step
+1. `uv run iw item-status ITEM_ID --json` shows current step state
+2. If `STEP_ID` was provided in arguments, resume from that step
+3. Otherwise, find the first step not yet `completed`
+4. Output: "Resuming ITEM_ID — {N} of {total} steps already completed"
+5. Resume from the target step
 
 ## Worktree Isolation
 
 For daemon-managed execution, use `iw batch-create` + `iw batch-approve` instead:
 ```bash
-uv run iw batch-create $ARGUMENTS
+uv run iw batch-create ITEM_ID
 uv run iw batch-approve BATCH-001
 ```
 
