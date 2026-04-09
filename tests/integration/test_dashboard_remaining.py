@@ -226,25 +226,27 @@ def test_history_shows_failed_items(client: TestClient, db_session: Any) -> None
     assert item.id in resp.text
 
 
-def test_history_pagination(client: TestClient, db_session: Any) -> None:
+def test_history_returns_all_items_no_pagination(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
-    # Insert 25 completed items
+    # Insert 25 completed items — all should be returned (no pagination)
     for i in range(1, 26):
         make_item(
             db_session,
             item_id=f"I-{i:05d}",
             status=WorkItemStatus.completed,
             phase=WorkItemPhase.done,
+            title=f"Item {i}",
         )
 
-    resp = client.get("/project/test-proj/history?page=1")
+    resp = client.get("/project/test-proj/history")
     assert resp.status_code == 200
-    # Should show pagination
-    assert "Page 1" in resp.text
-
-    resp2 = client.get("/project/test-proj/history?page=2")
-    assert resp2.status_code == 200
-    assert "Page 2" in resp2.text
+    # All 25 items should be present (no server-side pagination)
+    assert "25 items" in resp.text
+    assert "I-00001" in resp.text
+    assert "I-00025" in resp.text
+    # No pagination controls — no "next"/"prev" page links
+    assert "page=" not in resp.text
+    assert "Next" not in resp.text
 
 
 def test_history_type_filter(client: TestClient, db_session: Any) -> None:
@@ -268,6 +270,147 @@ def test_history_type_filter(client: TestClient, db_session: Any) -> None:
     assert resp.status_code == 200
     assert "F-00001" in resp.text
     assert "I-00001" not in resp.text
+
+
+def test_history_status_filter(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    make_item(
+        db_session,
+        item_id="I-00001",
+        status=WorkItemStatus.completed,
+        phase=WorkItemPhase.done,
+        title="Completed item",
+    )
+    make_item(
+        db_session,
+        item_id="I-00002",
+        status=WorkItemStatus.failed,
+        title="Failed item",
+    )
+
+    resp = client.get("/project/test-proj/history?status=completed")
+    assert resp.status_code == 200
+    assert "I-00001" in resp.text
+    assert "I-00002" not in resp.text
+
+
+def test_history_date_from_filter(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    make_item(
+        db_session,
+        item_id="I-00001",
+        status=WorkItemStatus.completed,
+        phase=WorkItemPhase.done,
+    )
+
+    # Filter with a future date — should return no items
+    resp = client.get("/project/test-proj/history?date_from=2099-01-01")
+    assert resp.status_code == 200
+    assert "0 items" in resp.text
+
+
+def test_history_date_to_filter(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    make_item(
+        db_session,
+        item_id="I-00001",
+        status=WorkItemStatus.completed,
+        phase=WorkItemPhase.done,
+    )
+
+    # Filter with a past date — should return no items
+    resp = client.get("/project/test-proj/history?date_to=2000-01-01")
+    assert resp.status_code == 200
+    assert "0 items" in resp.text
+
+
+def test_history_empty_state(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    resp = client.get("/project/test-proj/history")
+    assert resp.status_code == 200
+    assert "No history found" in resp.text
+    assert "0 items" in resp.text
+
+
+def test_history_empty_state_with_filter(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    resp = client.get("/project/test-proj/history?type=Feature")
+    assert resp.status_code == 200
+    assert "for the selected filters" in resp.text
+
+
+def test_history_table_has_sortable_columns(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    make_item(
+        db_session,
+        item_id="I-00001",
+        status=WorkItemStatus.completed,
+        phase=WorkItemPhase.done,
+    )
+
+    resp = client.get("/project/test-proj/history")
+    assert resp.status_code == 200
+    # Table has id attribute for JS sorting
+    assert 'id="history-table"' in resp.text
+    # All sortable column headers present with data-sort-key
+    for key in ("id", "type", "title", "status", "created", "duration"):
+        assert f'data-sort-key="{key}"' in resp.text
+    # Sort JS function is present
+    assert "sortTable" in resp.text
+
+
+def test_history_rows_have_sort_data_attributes(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    make_item(
+        db_session,
+        item_id="I-00001",
+        status=WorkItemStatus.completed,
+        phase=WorkItemPhase.done,
+        title="Test sort attrs",
+    )
+
+    resp = client.get("/project/test-proj/history")
+    assert resp.status_code == 200
+    assert 'data-sort-id="I-00001"' in resp.text
+    assert 'data-sort-type="Issue"' in resp.text
+    assert 'data-sort-title="Test sort attrs"' in resp.text
+    assert 'data-sort-status="completed"' in resp.text
+    assert "data-sort-created=" in resp.text
+    assert "data-sort-duration=" in resp.text
+
+
+def test_history_duration_display(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(tz=UTC)
+    make_item(
+        db_session,
+        item_id="I-00001",
+        status=WorkItemStatus.completed,
+        phase=WorkItemPhase.done,
+        completed_at=now + timedelta(minutes=5, seconds=30),
+    )
+
+    resp = client.get("/project/test-proj/history")
+    assert resp.status_code == 200
+    # Duration should be formatted (not raw seconds)
+    assert "5m30s" in resp.text
+
+
+def test_history_clear_link_shown_with_filters(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    resp = client.get("/project/test-proj/history?type=Issue")
+    assert resp.status_code == 200
+    assert 'href="?"' in resp.text
+    assert "Clear" in resp.text
+
+
+def test_history_no_clear_link_without_filters(client: TestClient, db_session: Any) -> None:
+    make_project(db_session)
+    resp = client.get("/project/test-proj/history")
+    assert resp.status_code == 200
+    assert "Clear" not in resp.text
 
 
 def test_history_404_for_unknown_project(client: TestClient, db_session: Any) -> None:
