@@ -1,20 +1,20 @@
 {
   "project_id": "iw-ai-core",
-  "id": "CR-00002",
-  "title": "Add sortable columns to History table",
+  "id": "I-00003",
+  "title": "History Page Sorting Broken — Replace with Client-Side JS Sorting",
   "status": "approved",
   "phase": "active",
-  "total_steps": 13,
+  "total_steps": 17,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00003",
+  "batch_id": "BATCH-00005",
   "worktree": null,
-  "created_at": "2026-04-09T07:36:54.191912+00:00",
-  "updated_at": "2026-04-09T07:36:54.191912+00:00",
+  "created_at": "2026-04-09T14:18:20.716233+00:00",
+  "updated_at": "2026-04-09T14:18:20.716233+00:00",
   "steps": [
     {
       "step_id": "S01",
-      "label": "Backend",
+      "label": "Frontend",
       "type": "implementation",
       "status": "pending"
     },
@@ -26,7 +26,7 @@
     },
     {
       "step_id": "S03",
-      "label": "Frontend",
+      "label": "Backend",
       "type": "implementation",
       "status": "pending"
     },
@@ -56,43 +56,67 @@
     },
     {
       "step_id": "S08",
-      "label": "QualityValidation",
+      "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
     },
     {
       "step_id": "S09",
-      "label": "QualityValidation",
+      "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
     },
     {
       "step_id": "S10",
-      "label": "QualityValidation",
+      "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
     },
     {
       "step_id": "S11",
-      "label": "QualityValidation",
+      "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
     },
     {
       "step_id": "S12",
-      "label": "QualityValidation",
+      "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
     },
     {
       "step_id": "S13",
-      "label": "QualityValidation",
+      "label": "QvGate",
       "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S14",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S15",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S16",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S17",
+      "label": "QvBrowser",
+      "type": "browser_verification",
       "status": "pending"
     }
   ],
-  "branch": "agent/CR-00002-add-sortable-columns-to-histor",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00002",
+  "branch": "agent/I-00003-history-page-sorting-broken-re",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/I-00003",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-09T08:05:54Z"
+  "brief_generated_at": "2026-04-09T14:50:14Z"
 }
