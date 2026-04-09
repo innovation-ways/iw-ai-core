@@ -1,5 +1,7 @@
 # Environment
 .env
+.env.local
+.env.*.local
 
 # Virtual environment
 .venv/
@@ -14,9 +16,34 @@ dist/
 archive/
 logs/
 .daemon.pid
+.dashboard.pid
 
 # Tool caches
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
 htmlcov/
+
+# Git worktrees (parallel AI agent isolation)
+.worktrees/
+.claude/worktrees/
+.tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker
+data/
+output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Others
+.playwright-cli/
+

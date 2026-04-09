@@ -408,9 +408,12 @@ def archive(
 
 @click.command("item-status")
 @click.argument("item_id")
+@click.option("--json", "-j", "json_output", is_flag=True, help="Machine-readable JSON output")
 @click.pass_context
-def item_status(ctx: click.Context, item_id: str) -> None:
+def item_status(ctx: click.Context, item_id: str, json_output: bool) -> None:
     """Show the current status of a work item."""
+    if json_output:
+        ctx.obj["json"] = True
     project_id = resolve_project(ctx)
     get_session = ctx.obj["get_session"]
 

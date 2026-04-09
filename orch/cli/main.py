@@ -17,7 +17,7 @@ from orch.cli.item_commands import approve, archive, item_status, register, unap
 from orch.cli.lock_commands import migration_lock
 from orch.cli.project_commands import projects
 from orch.cli.search_commands import search
-from orch.cli.skills_commands import init_project_cmd, sync_skills_cmd
+from orch.cli.skills_commands import init_project_cmd, sync_agents_cmd, sync_skills_cmd
 from orch.cli.step_commands import (
     step_done,
     step_fail,
@@ -76,6 +76,7 @@ cli.add_command(batch_resume)
 cli.add_command(migration_lock)
 cli.add_command(search)
 cli.add_command(sync_skills_cmd, name="sync-skills")
+cli.add_command(sync_agents_cmd, name="sync-agents")
 cli.add_command(init_project_cmd, name="init-project")
 cli.add_command(daemon)
 cli.add_command(projects)

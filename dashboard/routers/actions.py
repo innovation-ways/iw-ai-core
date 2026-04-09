@@ -494,12 +494,12 @@ async def create_batch_from_selection(
     else:
         batch_num = seq.next_number
         seq.next_number += 1
-    batch_id = f"BATCH-{batch_num:03d}"
+    batch_id = f"BATCH-{batch_num:05d}"
 
     batch = Batch(
         project_id=project_id,
         id=batch_id,
-        status=BatchStatus.approved,
+        status=BatchStatus.planning,
         max_parallel=4,
         cli_tool="claude",
         auto_publish=False,
@@ -507,12 +507,52 @@ async def create_batch_from_selection(
     db.add(batch)
     db.flush()
 
+    # Generate execution plan with dependency analysis
+    from orch.batch_planner import (
+        analyze_dependencies,
+        generate_drawio,
+        generate_execution_plan_md,
+        generate_png,
+    )
+    from orch.db.models import WorkflowStep
+
+    items_data = []
     for item in items:
+        steps = list(
+            db.scalars(
+                select(WorkflowStep)
+                .where(
+                    WorkflowStep.project_id == project_id,
+                    WorkflowStep.work_item_id == item.id,
+                )
+                .order_by(WorkflowStep.step_number)
+            )
+        )
+        items_data.append(
+            {
+                "id": item.id,
+                "title": item.title,
+                "type": item.type.value,
+                "depends_on": list(item.depends_on or []),
+                "design_doc_content": item.design_doc_content,
+                "steps": [
+                    {"agent_label": s.agent_label, "step_type": s.step_type.value} for s in steps
+                ],
+            }
+        )
+
+    analysis = analyze_dependencies(items_data)
+    batch.execution_plan_md = generate_execution_plan_md(batch_id, analysis, 4)
+    batch.execution_plan_drawio = generate_drawio(batch_id, analysis, 4)
+    batch.execution_plan_png = generate_png(batch_id, analysis, 4)
+
+    for item in items:
+        group = analysis[item.id].group if item.id in analysis else 0
         bi = BatchItem(
             project_id=project_id,
             batch_id=batch_id,
             work_item_id=item.id,
-            execution_group=0,
+            execution_group=group,
             status=BatchItemStatus.pending,
         )
         db.add(bi)
@@ -522,7 +562,7 @@ async def create_batch_from_selection(
         "batch_created",
         project_id,
         batch_id,
-        f"Batch {batch_id} created from {len(items)} items by user",
+        f"Batch {batch_id} created with plan from {len(items)} items by user",
         {"item_ids": [i.id for i in items]},
     )
     db.commit()
@@ -634,6 +674,60 @@ def restart_item(
         .limit(1)
     )
 
+    # Check if all steps are still pending (failed before any step ran, e.g. worktree setup)
+    all_pending = first_failed is None and all(
+        s.status == StepStatus.pending
+        for s in db.scalars(
+            select(WorkflowStep).where(
+                WorkflowStep.project_id == project_id,
+                WorkflowStep.work_item_id == item_id,
+            )
+        ).all()
+    )
+
+    if all_pending:
+        # Failed at setup phase — reset item to approved so daemon retries it.
+        # Also reset the batch item if it exists, and re-open the batch.
+        item.status = WorkItemStatus.approved
+        item.completed_at = None
+
+        batch_item = db.scalar(
+            select(BatchItem).where(
+                BatchItem.project_id == project_id,
+                BatchItem.work_item_id == item_id,
+                BatchItem.status == BatchItemStatus.failed,
+            )
+        )
+        if batch_item is not None:
+            batch_item.status = BatchItemStatus.pending
+            batch_item.notes = None
+            batch_item.started_at = None
+            # Re-open the parent batch so the daemon picks it up again
+            batch = db.scalar(
+                select(Batch).where(
+                    Batch.project_id == project_id,
+                    Batch.id == batch_item.batch_id,
+                )
+            )
+            if batch is not None and batch.status == BatchStatus.completed_with_errors:
+                batch.status = BatchStatus.approved
+                batch.completed_at = None
+
+        _emit(
+            db,
+            "item_restarted",
+            project_id,
+            item_id,
+            f"Item {item_id} restarted (failed at setup, no steps ran)",
+        )
+        db.commit()
+
+        return _action_response(
+            f"Item {item_id} reset to approved — daemon will retry.",
+            toast_type="success",
+            reload=True,
+        )
+
     if first_failed is None:
         raise HTTPException(status_code=422, detail="No failed steps found to restart")
 
@@ -734,3 +828,184 @@ def resume_item(
     _emit(db, "item_resumed", project_id, item_id, f"Item {item_id} resumed by user")
     db.commit()
     return _action_response(f"Item {item_id} resumed.", toast_type="success", reload=True)
+
+
+# ---------------------------------------------------------------------------
+# Batch-level action labels
+# ---------------------------------------------------------------------------
+
+_BATCH_ACTION_LABELS: dict[str, tuple[str, str, str, bool]] = {
+    "approve": (
+        "Approve batch?",
+        "This approves the batch for execution. The daemon will pick it up on its next poll.",
+        "Approve",
+        False,
+    ),
+    "pause": (
+        "Pause batch?",
+        "In-progress items will finish, but no new items will be launched.",
+        "Pause",
+        True,
+    ),
+    "resume": (
+        "Resume batch?",
+        "Resumes launching pending items from where it was paused.",
+        "Resume",
+        False,
+    ),
+    "cancel": (
+        "Cancel batch?",
+        "Cancels this batch. It will no longer be eligible for execution.",
+        "Cancel",
+        True,
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# Batch confirm dialog (GET — returns HTML fragment)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/confirm-batch/{action}/{batch_id}",
+    response_class=HTMLResponse,
+)
+def confirm_batch_dialog(
+    project_id: str,
+    action: str,
+    batch_id: str,
+    request: Request,
+) -> Any:
+    templates: Jinja2Templates = request.app.state.templates
+
+    label_info = _BATCH_ACTION_LABELS.get(action)
+    if label_info is None:
+        raise HTTPException(status_code=400, detail=f"Unknown batch action: {action}")
+
+    title, description, confirm_label, danger = label_info
+
+    action_url = f"/project/{project_id}/api/batch/{batch_id}/{action}"
+
+    return templates.TemplateResponse(
+        request,
+        "fragments/confirm_action.html",
+        {
+            "title": f"{title.rstrip('?')} {batch_id}?",
+            "description": description,
+            "confirm_url": action_url,
+            "confirm_label": confirm_label,
+            "danger": danger,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Approve batch (planning → approved)
+# ---------------------------------------------------------------------------
+
+
+def _get_batch(db: Session, project_id: str, batch_id: str) -> Batch:
+    batch = db.scalar(
+        select(Batch).where(
+            Batch.project_id == project_id,
+            Batch.id == batch_id,
+        )
+    )
+    if batch is None:
+        raise HTTPException(status_code=404, detail=f"Batch {batch_id} not found")
+    return batch
+
+
+@router.post("/batch/{batch_id}/approve", response_class=Response)
+def approve_batch(
+    project_id: str,
+    batch_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    batch = _get_batch(db, project_id, batch_id)
+    if batch.status != BatchStatus.planning:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot approve: batch status is '{batch.status.value}' (must be planning)",
+        )
+    batch.status = BatchStatus.approved
+    batch.updated_at = datetime.now(UTC)
+    _emit(db, "batch_approved", project_id, batch_id, f"Batch {batch_id} approved by user")
+    db.commit()
+    return _action_response(f"Batch {batch_id} approved.", toast_type="success", reload=True)
+
+
+# ---------------------------------------------------------------------------
+# Pause batch (executing → paused)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/batch/{batch_id}/pause", response_class=Response)
+def pause_batch(
+    project_id: str,
+    batch_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    batch = _get_batch(db, project_id, batch_id)
+    if batch.status != BatchStatus.executing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot pause: batch status is '{batch.status.value}' (must be executing)",
+        )
+    batch.status = BatchStatus.paused
+    batch.updated_at = datetime.now(UTC)
+    _emit(db, "batch_paused", project_id, batch_id, f"Batch {batch_id} paused by user")
+    db.commit()
+    return _action_response(f"Batch {batch_id} paused.", toast_type="warning", reload=True)
+
+
+# ---------------------------------------------------------------------------
+# Resume batch (paused → executing)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/batch/{batch_id}/resume", response_class=Response)
+def resume_batch(
+    project_id: str,
+    batch_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    batch = _get_batch(db, project_id, batch_id)
+    if batch.status != BatchStatus.paused:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot resume: batch status is '{batch.status.value}' (must be paused)",
+        )
+    batch.status = BatchStatus.executing
+    batch.updated_at = datetime.now(UTC)
+    _emit(db, "batch_resumed", project_id, batch_id, f"Batch {batch_id} resumed by user")
+    db.commit()
+    return _action_response(f"Batch {batch_id} resumed.", toast_type="success", reload=True)
+
+
+# ---------------------------------------------------------------------------
+# Cancel batch (planning/approved → cancelled)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/batch/{batch_id}/cancel", response_class=Response)
+def cancel_batch(
+    project_id: str,
+    batch_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    batch = _get_batch(db, project_id, batch_id)
+    if batch.status not in (BatchStatus.planning, BatchStatus.approved):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Cannot cancel: batch status is '{batch.status.value}'"
+                " (must be planning or approved)"
+            ),
+        )
+    batch.status = BatchStatus.cancelled
+    batch.updated_at = datetime.now(UTC)
+    _emit(db, "batch_cancelled", project_id, batch_id, f"Batch {batch_id} cancelled by user")
+    db.commit()
+    return _action_response(f"Batch {batch_id} cancelled.", toast_type="warning", reload=True)

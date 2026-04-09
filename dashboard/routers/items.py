@@ -14,6 +14,7 @@ from dashboard.dependencies import get_db
 from dashboard.utils.markdown import render_markdown
 from orch.db.models import (
     BatchItem,
+    BatchItemStatus,
     FixCycle,
     Project,
     StepRun,
@@ -197,6 +198,20 @@ def _get_batch_ref(project_id: str, item_id: str, db: Session) -> str | None:
     return bi.batch_id if bi else None
 
 
+def _get_batch_item_error(project_id: str, item_id: str, db: Session) -> str | None:
+    """Return the batch_item notes if the item failed at setup (no step runs)."""
+    bi = db.scalar(
+        select(BatchItem).where(
+            BatchItem.project_id == project_id,
+            BatchItem.work_item_id == item_id,
+            BatchItem.status == BatchItemStatus.failed,
+        )
+    )
+    if bi and bi.notes:
+        return bi.notes
+    return None
+
+
 def _list_artifacts(_project_id: str, item: WorkItem, project: Project) -> list[ArtifactFile]:
     """Try to list artifact files from disk. Returns empty list on any error."""
     if item.design_doc_path is None:
@@ -239,6 +254,7 @@ def item_detail(
     steps = _get_steps(project_id, item_id, db)
     metrics = _get_metrics(project_id, item_id, steps, db)
     batch_ref = _get_batch_ref(project_id, item_id, db)
+    setup_error = _get_batch_item_error(project_id, item_id, db)
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -253,6 +269,7 @@ def item_detail(
             "steps": steps,
             "metrics": metrics,
             "batch_ref": batch_ref,
+            "setup_error": setup_error,
         },
     )
 

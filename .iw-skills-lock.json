@@ -1,0 +1,96 @@
+{
+  "synced_at": "2026-04-08T21:10:48Z",
+  "platform_version": "1.0.0",
+  "skills": {
+    "iw-batch-execute": {
+      "version": "3.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-batch-status": {
+      "version": "2.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-batch-stop": {
+      "version": "2.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-blog-writer": {
+      "version": "1.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-brand-config": {
+      "version": "1.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-diagram-generator": {
+      "version": "1.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-doc-generator": {
+      "version": "1.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-doc-system": {
+      "version": "1.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-draw-io": {
+      "version": "1.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-execute": {
+      "version": "2.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-new-cr": {
+      "version": "2.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-new-feature": {
+      "version": "2.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-new-incident": {
+      "version": "2.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-pitch-deck": {
+      "version": "1.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-promo-writer": {
+      "version": "1.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-review-design": {
+      "version": "2.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-tech-doc-writer": {
+      "version": "1.0.0",
+      "source": "platform",
+      "overridden": false
+    },
+    "iw-workflow": {
+      "version": "2.0.0",
+      "source": "platform",
+      "overridden": false
+    }
+  }
+}

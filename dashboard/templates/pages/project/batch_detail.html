@@ -5,6 +5,9 @@
 {% block title %}{{ batch.id }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
 
 {% block content %}
+<!-- Confirm dialog container (htmx swaps fragment here) -->
+<div id="confirm-dialog"></div>
+
 <!-- Header -->
 <div class="mb-6 flex items-start justify-between">
   <div>
@@ -34,18 +37,37 @@
   </div>
   <div class="flex items-center gap-2">
     {% if batch_status == 'planning' %}
-      <button disabled
-              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm opacity-60 cursor-not-allowed">
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/cancel/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-muted text-destructive rounded text-sm hover:opacity-90 transition-opacity">
+        Cancel
+      </button>
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/approve/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm hover:opacity-90 transition-opacity">
         Approve
       </button>
+    {% elif batch_status == 'approved' %}
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/cancel/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-muted text-destructive rounded text-sm hover:opacity-90 transition-opacity">
+        Cancel
+      </button>
     {% elif batch_status == 'executing' %}
-      <button disabled
-              class="px-3 py-1.5 bg-muted text-muted-foreground rounded text-sm opacity-60 cursor-not-allowed">
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/pause/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-muted text-muted-foreground rounded text-sm hover:opacity-90 transition-opacity">
         Pause
       </button>
     {% elif batch_status == 'paused' %}
-      <button disabled
-              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm opacity-60 cursor-not-allowed">
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/resume/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm hover:opacity-90 transition-opacity">
         Resume
       </button>
     {% elif batch_status in ('completed', 'completed_with_errors') %}
@@ -59,9 +81,16 @@
 
 <!-- Tab navigation -->
 <div class="flex border-b border-border mb-4">
+  {% if has_plan %}
+  <a href="?tab=plan"
+     class="px-4 py-2 text-sm transition-colors
+            {% if active_tab == 'plan' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+    Plan
+  </a>
+  {% endif %}
   <a href="?tab=items"
      class="px-4 py-2 text-sm transition-colors
-            {% if active_tab == 'items' or not active_tab %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+            {% if active_tab == 'items' or (not active_tab and not has_plan) %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
     Items
   </a>
   <a href="?tab=timeline"
@@ -76,8 +105,44 @@
   </a>
 </div>
 
-<!-- Items tab (default) -->
-{% if active_tab in ('items', '', none) or not active_tab %}
+<!-- Plan tab -->
+{% if active_tab == 'plan' and has_plan %}
+<div class="space-y-6">
+  {% if has_diagram %}
+  <div class="bg-card border border-border rounded-lg p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-medium text-foreground">Execution Diagram</h3>
+      <a href="/project/{{ current_project.id }}/batch/{{ batch.id }}/diagram.drawio"
+         class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90 transition-opacity">
+        Download .drawio
+      </a>
+    </div>
+    <img src="/project/{{ current_project.id }}/batch/{{ batch.id }}/diagram.png"
+         alt="{{ batch.id }} execution plan diagram"
+         class="w-full rounded border border-border bg-white" />
+  </div>
+  {% endif %}
+
+  <div class="bg-card border border-border rounded-lg p-6">
+    <h3 class="text-sm font-medium text-foreground mb-3">Execution Plan</h3>
+    <div class="prose prose-sm prose-invert max-w-none
+                [&_table]:w-full [&_table]:text-xs [&_table]:border-collapse
+                [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:border [&_th]:border-border [&_th]:bg-muted/30 [&_th]:font-medium [&_th]:text-muted-foreground
+                [&_td]:px-3 [&_td]:py-2 [&_td]:border [&_td]:border-border [&_td]:text-sm
+                [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-foreground [&_h1]:mb-4
+                [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:mt-6 [&_h2]:mb-3
+                [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mt-4 [&_h3]:mb-2
+                [&_p]:text-sm [&_p]:text-muted-foreground
+                [&_li]:text-sm [&_li]:text-muted-foreground
+                [&_strong]:text-foreground
+                [&_hr]:border-border [&_hr]:my-4">
+      {{ plan_html | safe }}
+    </div>
+  </div>
+</div>
+
+<!-- Items tab -->
+{% elif active_tab in ('items', '', none) or (not active_tab and not has_plan) %}
 <div class="bg-card border border-border rounded-lg overflow-hidden">
   <table class="w-full text-sm">
     <thead>

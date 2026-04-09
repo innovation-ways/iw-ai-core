@@ -29,6 +29,7 @@ class InitProjectResult:
     repo_path: Path
     created_files: list[str] = field(default_factory=list)
     skills_synced: int = 0
+    agents_synced: int = 0
     db_rows_created: list[str] = field(default_factory=list)
     projects_toml_updated: bool = False
 
@@ -130,6 +131,20 @@ def init_project(
     result.created_files.append("ai-dev/workflow.md")
 
     # ------------------------------------------------------------------
+    # 5b. Design templates (Feature, Issue, CR, prompts, reviews, QV)
+    # ------------------------------------------------------------------
+    import shutil
+
+    design_templates_src = root / "templates" / "design"
+    design_templates_dst = repo_path / "ai-dev" / "templates"
+    if design_templates_src.is_dir():
+        design_templates_dst.mkdir(parents=True, exist_ok=True)
+        for tmpl in sorted(design_templates_src.iterdir()):
+            if tmpl.is_file() and tmpl.suffix == ".md":
+                shutil.copy2(tmpl, design_templates_dst / tmpl.name)
+        result.created_files.append("ai-dev/templates/")
+
+    # ------------------------------------------------------------------
     # 6. Sync base skills
     # ------------------------------------------------------------------
     from orch.skills.sync import sync_skills
@@ -137,5 +152,17 @@ def init_project(
     skills_dir = root / "skills"
     sync_result = sync_skills(repo_path, skills_dir)
     result.skills_synced = len(sync_result.updated)
+
+    # ------------------------------------------------------------------
+    # 7. Sync agents and commands
+    # ------------------------------------------------------------------
+    from orch.skills.sync_agents import sync_agents_and_commands
+
+    agent_sync = sync_agents_and_commands(repo_path, root)
+    result.agents_synced = (
+        agent_sync.claude_agents_synced
+        + agent_sync.opencode_agents_synced
+        + agent_sync.opencode_commands_synced
+    )
 
     return result

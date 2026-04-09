@@ -67,7 +67,7 @@ def make_project(db: Any, project_id: str = "test-proj") -> Project:
 def make_item(
     db: Any,
     project_id: str = "test-proj",
-    item_id: str = "I001",
+    item_id: str = "I-00001",
     title: str = "Test Item",
     status: WorkItemStatus = WorkItemStatus.in_progress,
     design_doc_content: str | None = None,
@@ -92,7 +92,7 @@ def make_item(
 def make_step(
     db: Any,
     project_id: str = "test-proj",
-    item_id: str = "I001",
+    item_id: str = "I-00001",
     step_id: str = "S01",
     step_number: int = 1,
     status: StepStatus = StepStatus.completed,
@@ -116,7 +116,7 @@ def make_step(
 def make_batch(
     db: Any,
     project_id: str = "test-proj",
-    batch_id: str = "BATCH-001",
+    batch_id: str = "BATCH-00001",
     status: BatchStatus = BatchStatus.executing,
 ) -> Batch:
     batch = Batch(
@@ -135,8 +135,8 @@ def make_batch(
 def make_batch_item(
     db: Any,
     project_id: str = "test-proj",
-    batch_id: str = "BATCH-001",
-    item_id: str = "I001",
+    batch_id: str = "BATCH-00001",
+    item_id: str = "I-00001",
     status: BatchItemStatus = BatchItemStatus.executing,
 ) -> BatchItem:
     bi = BatchItem(
@@ -211,7 +211,7 @@ def test_batch_list_status_filter(client: TestClient, db_session: Any) -> None:
     resp = client.get("/project/test-proj/batches?status=executing")
     assert resp.status_code == 200
     # The completed batch should not appear in the table rows
-    assert "BATCH-001" not in resp.text
+    assert "BATCH-00001" not in resp.text
 
 
 def test_batch_list_404_for_unknown_project(client: TestClient, db_session: Any) -> None:
@@ -295,7 +295,7 @@ def test_item_detail_shows_batch_reference(client: TestClient, db_session: Any) 
 
     resp = client.get(f"/project/test-proj/item/{item.id}")
     assert resp.status_code == 200
-    assert "BATCH-001" in resp.text
+    assert "BATCH-00001" in resp.text
 
 
 # ---------------------------------------------------------------------------
@@ -383,5 +383,5 @@ def test_batch_detail_404_for_unknown_project(client: TestClient, db_session: An
 
 
 def test_item_detail_404_for_unknown_project(client: TestClient, db_session: Any) -> None:
-    resp = client.get("/project/ghost/item/I001")
+    resp = client.get("/project/ghost/item/I-00001")
     assert resp.status_code == 404

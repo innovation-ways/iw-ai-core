@@ -8,10 +8,19 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import exists, select
 
 from dashboard.dependencies import get_db
-from orch.db.models import Project, WorkItem, WorkItemPhase, WorkItemStatus, WorkItemType
+from orch.db.models import (
+    Batch,
+    BatchItem,
+    BatchStatus,
+    Project,
+    WorkItem,
+    WorkItemPhase,
+    WorkItemStatus,
+    WorkItemType,
+)
 
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates
@@ -47,13 +56,36 @@ class QueueItem:
     created_at: datetime
 
 
+_ACTIVE_BATCH_STATUSES = (
+    BatchStatus.approved,
+    BatchStatus.executing,
+    BatchStatus.paused,
+    BatchStatus.publishing,
+)
+
+
 def _queue_items(project_id: str, db: Session) -> tuple[list[QueueItem], list[QueueItem]]:
     """Return (approved_items, draft_items) for the queue page."""
+    # Exclude items already associated with an active batch
+    in_active_batch = (
+        exists()
+        .where(
+            BatchItem.project_id == WorkItem.project_id,
+            BatchItem.work_item_id == WorkItem.id,
+        )
+        .where(
+            Batch.project_id == BatchItem.project_id,
+            Batch.id == BatchItem.batch_id,
+            Batch.status.in_(_ACTIVE_BATCH_STATUSES),
+        )
+        .correlate(WorkItem)
+    )
     stmt = (
         select(WorkItem)
         .where(
             WorkItem.project_id == project_id,
             WorkItem.status.in_([WorkItemStatus.approved, WorkItemStatus.draft]),
+            ~in_active_batch,
         )
         .order_by(WorkItem.created_at.desc())
     )

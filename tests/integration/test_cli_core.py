@@ -60,7 +60,7 @@ def test_next_id_sequential(
     for i in range(1, 4):
         result = invoke(runner, ["next-id", "--type", "incident"], cli_get_session)
         assert result.exit_code == 0, result.output
-        assert result.output.strip() == f"I{i:03d}"
+        assert result.output.strip() == f"I-{i:05d}"
 
 
 def test_next_id_json_output(
@@ -77,7 +77,7 @@ def test_next_id_json_output(
     )
     assert result.exit_code == 0
     data = json.loads(result.output)
-    assert data["id"] == "I001"
+    assert data["id"] == "I-00001"
     assert data["project_id"] == "test-proj"
     assert data["prefix"] == "I"
     assert data["number"] == 1
@@ -89,7 +89,7 @@ def test_next_id_all_types(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    expected = {"feature": "F001", "incident": "I001", "cr": "CR001", "batch": "BATCH-001"}
+    expected = {"feature": "F-00001", "incident": "I-00001", "cr": "CR-00001", "batch": "BATCH-00001"}
 
     for item_type, expected_id in expected.items():
         result = invoke(runner, ["next-id", "--type", item_type], cli_get_session)
@@ -151,13 +151,13 @@ def test_register_creates_work_item(
     runner = CliRunner()
     result = invoke(
         runner,
-        ["register", "I001", "Fix timeout", "--type", "incident"],
+        ["register", "I-00001", "Fix timeout", "--type", "incident"],
         cli_get_session,
     )
     assert result.exit_code == 0, result.output
-    assert "I001" in result.output
+    assert "I-00001" in result.output
 
-    item = db_session.get(WorkItem, ("test-proj", "I001"))
+    item = db_session.get(WorkItem, ("test-proj", "I-00001"))
     assert item is not None
     assert item.title == "Fix timeout"
     assert item.status == WorkItemStatus.draft
@@ -171,13 +171,13 @@ def test_register_json_output(
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--project", "test-proj", "--json", "register", "I001", "My title", "--type", "incident"],
+        ["--project", "test-proj", "--json", "register", "I-00001", "My title", "--type", "incident"],
         obj={"get_session": cli_get_session},
         catch_exceptions=False,
     )
     assert result.exit_code == 0
     data = json.loads(result.output)
-    assert data["id"] == "I001"
+    assert data["id"] == "I-00001"
     assert data["created"] is True
     assert data["status"] == "draft"
 
@@ -188,11 +188,11 @@ def test_register_idempotent(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    invoke(runner, ["register", "I001", "Title", "--type", "incident"], cli_get_session)
+    invoke(runner, ["register", "I-00001", "Title", "--type", "incident"], cli_get_session)
 
     result = runner.invoke(
         cli,
-        ["--project", "test-proj", "--json", "register", "I001", "Other", "--type", "incident"],
+        ["--project", "test-proj", "--json", "register", "I-00001", "Other", "--type", "incident"],
         obj={"get_session": cli_get_session},
         catch_exceptions=False,
     )
@@ -210,7 +210,7 @@ def test_register_wrong_prefix_exits_2(
     runner = CliRunner()
     result = invoke(
         runner,
-        ["register", "I001", "Title", "--type", "feature"],
+        ["register", "I-00001", "Title", "--type", "feature"],
         cli_get_session,
     )
     assert result.exit_code == 2
@@ -240,7 +240,7 @@ def test_register_steps_from_manifest(
         runner,
         [
             "register",
-            "I001",
+            "I-00001",
             "With steps",
             "--type",
             "incident",
@@ -253,7 +253,7 @@ def test_register_steps_from_manifest(
 
     steps = (
         db_session.query(WorkflowStep)
-        .filter(WorkflowStep.project_id == "test-proj", WorkflowStep.work_item_id == "I001")
+        .filter(WorkflowStep.project_id == "test-proj", WorkflowStep.work_item_id == "I-00001")
         .order_by(WorkflowStep.step_number)
         .all()
     )
@@ -275,12 +275,12 @@ def test_approve_draft_to_approved(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    invoke(runner, ["register", "I001", "Test", "--type", "incident"], cli_get_session)
+    invoke(runner, ["register", "I-00001", "Test", "--type", "incident"], cli_get_session)
 
-    result = invoke(runner, ["approve", "I001"], cli_get_session)
+    result = invoke(runner, ["approve", "I-00001"], cli_get_session)
     assert result.exit_code == 0, result.output
 
-    item = db_session.get(WorkItem, ("test-proj", "I001"))
+    item = db_session.get(WorkItem, ("test-proj", "I-00001"))
     assert item is not None
     assert item.status == WorkItemStatus.approved
 
@@ -291,11 +291,11 @@ def test_approve_json_output(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    invoke(runner, ["register", "I001", "Test", "--type", "incident"], cli_get_session)
+    invoke(runner, ["register", "I-00001", "Test", "--type", "incident"], cli_get_session)
 
     result = runner.invoke(
         cli,
-        ["--project", "test-proj", "--json", "approve", "I001"],
+        ["--project", "test-proj", "--json", "approve", "I-00001"],
         obj={"get_session": cli_get_session},
         catch_exceptions=False,
     )
@@ -310,7 +310,7 @@ def test_approve_not_found_exits_1(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    result = invoke(runner, ["approve", "I999"], cli_get_session)
+    result = invoke(runner, ["approve", "I-00999"], cli_get_session)
     assert result.exit_code == 1
 
 
@@ -320,10 +320,10 @@ def test_approve_already_approved_exits_1(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    invoke(runner, ["register", "I001", "Test", "--type", "incident"], cli_get_session)
-    invoke(runner, ["approve", "I001"], cli_get_session)
+    invoke(runner, ["register", "I-00001", "Test", "--type", "incident"], cli_get_session)
+    invoke(runner, ["approve", "I-00001"], cli_get_session)
 
-    result = invoke(runner, ["approve", "I001"], cli_get_session)
+    result = invoke(runner, ["approve", "I-00001"], cli_get_session)
     assert result.exit_code == 1
 
 
@@ -338,13 +338,13 @@ def test_unapprove_approved_to_draft(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    invoke(runner, ["register", "I001", "Test", "--type", "incident"], cli_get_session)
-    invoke(runner, ["approve", "I001"], cli_get_session)
+    invoke(runner, ["register", "I-00001", "Test", "--type", "incident"], cli_get_session)
+    invoke(runner, ["approve", "I-00001"], cli_get_session)
 
-    result = invoke(runner, ["unapprove", "I001"], cli_get_session)
+    result = invoke(runner, ["unapprove", "I-00001"], cli_get_session)
     assert result.exit_code == 0, result.output
 
-    item = db_session.get(WorkItem, ("test-proj", "I001"))
+    item = db_session.get(WorkItem, ("test-proj", "I-00001"))
     assert item is not None
     assert item.status == WorkItemStatus.draft
 
@@ -355,12 +355,12 @@ def test_unapprove_rejects_active_batch_exits_4(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    invoke(runner, ["register", "I001", "Test", "--type", "incident"], cli_get_session)
-    invoke(runner, ["approve", "I001"], cli_get_session)
+    invoke(runner, ["register", "I-00001", "Test", "--type", "incident"], cli_get_session)
+    invoke(runner, ["approve", "I-00001"], cli_get_session)
 
     batch = Batch(
         project_id="test-proj",
-        id="BATCH-001",
+        id="BATCH-00001",
         status=BatchStatus.executing,
         cli_tool="opencode",
     )
@@ -370,14 +370,14 @@ def test_unapprove_rejects_active_batch_exits_4(
     db_session.add(
         BatchItem(
             project_id="test-proj",
-            batch_id="BATCH-001",
-            work_item_id="I001",
+            batch_id="BATCH-00001",
+            work_item_id="I-00001",
             status=BatchItemStatus.executing,
         )
     )
     db_session.flush()
 
-    result = invoke(runner, ["unapprove", "I001"], cli_get_session)
+    result = invoke(runner, ["unapprove", "I-00001"], cli_get_session)
     assert result.exit_code == 4
 
 
@@ -387,12 +387,12 @@ def test_unapprove_completed_batch_is_ok(
     cli_get_session: Any,
 ) -> None:
     runner = CliRunner()
-    invoke(runner, ["register", "I001", "Test", "--type", "incident"], cli_get_session)
-    invoke(runner, ["approve", "I001"], cli_get_session)
+    invoke(runner, ["register", "I-00001", "Test", "--type", "incident"], cli_get_session)
+    invoke(runner, ["approve", "I-00001"], cli_get_session)
 
     batch = Batch(
         project_id="test-proj",
-        id="BATCH-001",
+        id="BATCH-00001",
         status=BatchStatus.completed,
         cli_tool="opencode",
     )
@@ -402,14 +402,14 @@ def test_unapprove_completed_batch_is_ok(
     db_session.add(
         BatchItem(
             project_id="test-proj",
-            batch_id="BATCH-001",
-            work_item_id="I001",
+            batch_id="BATCH-00001",
+            work_item_id="I-00001",
             status=BatchItemStatus.merged,
         )
     )
     db_session.flush()
 
-    result = invoke(runner, ["unapprove", "I001"], cli_get_session)
+    result = invoke(runner, ["unapprove", "I-00001"], cli_get_session)
     assert result.exit_code == 0
 
 
@@ -433,7 +433,7 @@ def test_full_flow_next_id_register_approve(
     )
     assert result.exit_code == 0
     item_id = json.loads(result.output)["id"]
-    assert item_id == "I001"
+    assert item_id == "I-00001"
 
     result = runner.invoke(
         cli,
@@ -462,7 +462,7 @@ def test_full_flow_next_id_register_approve(
     assert result.exit_code == 0
     assert json.loads(result.output)["status"] == "approved"
 
-    item = db_session.get(WorkItem, ("test-proj", "I001"))
+    item = db_session.get(WorkItem, ("test-proj", "I-00001"))
     assert item is not None
     assert item.status == WorkItemStatus.approved
     assert item.title == "Full flow test"

@@ -75,14 +75,14 @@ def test_find_project_root_missing_project_id(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("prefix", "number", "expected"),
     [
-        ("F", 1, "F001"),
-        ("F", 42, "F042"),
-        ("F", 999, "F999"),
-        ("I", 1, "I001"),
-        ("CR", 3, "CR003"),
-        ("BATCH", 1, "BATCH-001"),
-        ("BATCH", 12, "BATCH-012"),
-        ("BATCH", 999, "BATCH-999"),
+        ("F", 1, "F-00001"),
+        ("F", 42, "F-00042"),
+        ("F", 999, "F-00999"),
+        ("I", 1, "I-00001"),
+        ("CR", 3, "CR-00003"),
+        ("BATCH", 1, "BATCH-00001"),
+        ("BATCH", 12, "BATCH-00012"),
+        ("BATCH", 999, "BATCH-00999"),
     ],
 )
 def test_format_id(prefix: str, number: int, expected: str) -> None:
@@ -97,21 +97,21 @@ def test_format_id(prefix: str, number: int, expected: str) -> None:
 @pytest.mark.parametrize(
     ("item_id", "item_type", "expected"),
     [
-        ("I001", "incident", True),
-        ("I999", "incident", True),
-        ("F001", "feature", True),
-        ("CR001", "cr", True),
-        ("CR042", "cr", True),
+        ("I-00001", "incident", True),
+        ("I-00999", "incident", True),
+        ("F-00001", "feature", True),
+        ("CR-00001", "cr", True),
+        ("CR-00042", "cr", True),
         # Wrong prefix for type
-        ("I001", "feature", False),
-        ("F001", "incident", False),
-        ("CR001", "feature", False),
-        ("F001", "cr", False),
+        ("I-00001", "feature", False),
+        ("F-00001", "incident", False),
+        ("CR-00001", "feature", False),
+        ("F-00001", "cr", False),
         # Prefix with no digits
         ("I", "incident", False),
         ("F", "feature", False),
         # Completely wrong format
-        ("BATCH-001", "incident", False),
+        ("BATCH-00001", "incident", False),
         ("001", "incident", False),
     ],
 )
@@ -160,13 +160,13 @@ def test_unapprove_rejects_non_approved_status() -> None:
 
 
 def test_unapprove_rejects_item_in_active_batch() -> None:
-    error = validate_unapprove_transition(WorkItemStatus.approved, "BATCH-003")
+    error = validate_unapprove_transition(WorkItemStatus.approved, "BATCH-00003")
     assert error is not None
-    assert "BATCH-003" in error
+    assert "BATCH-00003" in error
 
 
 def test_unapprove_status_error_takes_precedence_over_batch() -> None:
-    error = validate_unapprove_transition(WorkItemStatus.in_progress, "BATCH-001")
+    error = validate_unapprove_transition(WorkItemStatus.in_progress, "BATCH-00001")
     assert error is not None
     assert "in_progress" in error
 

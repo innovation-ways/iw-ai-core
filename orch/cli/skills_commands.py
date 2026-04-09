@@ -91,6 +91,67 @@ def sync_skills_cmd(ctx: click.Context, check: bool, force_skill: str | None) ->
     click.echo(summary)
 
 
+@click.command("sync-agents")
+@click.pass_context
+def sync_agents_cmd(ctx: click.Context) -> None:
+    """Sync platform agents and commands to a project's .claude/ and .opencode/ directories."""
+    from orch.cli.utils import resolve_project
+    from orch.skills.sync_agents import sync_agents_and_commands
+
+    project_id = resolve_project(ctx)
+    repo_root = ctx.obj.get("repo_root")
+
+    if repo_root is None:
+        from sqlalchemy import select
+
+        from orch.db.models import Project
+
+        get_session = ctx.obj["get_session"]
+        try:
+            with get_session() as session:
+                project_row = session.execute(
+                    select(Project).where(Project.id == project_id)
+                ).scalar_one_or_none()
+                if project_row is not None:
+                    repo_root = project_row.repo_root
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+    if repo_root is None:
+        output_error(ctx, "Could not determine project repo root", 3)
+
+    platform_root = Path(__file__).resolve().parent.parent.parent
+
+    result = sync_agents_and_commands(Path(repo_root), platform_root)
+
+    if ctx.obj.get("json"):
+        click.echo(
+            json.dumps(
+                {
+                    "project_id": project_id,
+                    "claude_agents": result.claude_agents_synced,
+                    "opencode_agents": result.opencode_agents_synced,
+                    "opencode_commands": result.opencode_commands_synced,
+                    "errors": result.errors,
+                }
+            )
+        )
+        return
+
+    click.echo(f"Syncing agents for {project_id}...")
+    click.echo(f"  Claude agents: {result.claude_agents_synced}")
+    click.echo(f"  OpenCode agents: {result.opencode_agents_synced}")
+    click.echo(f"  OpenCode commands: {result.opencode_commands_synced}")
+    for err in result.errors:
+        click.echo(f"  WARNING: {err}", err=True)
+    total = (
+        result.claude_agents_synced
+        + result.opencode_agents_synced
+        + result.opencode_commands_synced
+    )
+    click.echo(f"Total: {total} files synced.")
+
+
 @click.command("init-project")
 @click.option("--id", "project_id", required=True, help="Unique project identifier")
 @click.option(
@@ -129,6 +190,7 @@ def init_project_cmd(
                     "repo_path": str(result.repo_path),
                     "created_files": result.created_files,
                     "skills_synced": result.skills_synced,
+                    "agents_synced": result.agents_synced,
                     "db_rows_created": result.db_rows_created,
                     "projects_toml_updated": result.projects_toml_updated,
                 }
@@ -141,5 +203,6 @@ def init_project_cmd(
     click.echo("  Registry: projects.toml updated")
     click.echo("  Database: project + ID sequences + migration lock created")
     click.echo(f"  Skills: {result.skills_synced} base skills synced")
+    click.echo(f"  Agents: {result.agents_synced} agents/commands synced")
     click.echo("  Workflow: ai-dev/workflow.md created from template")
     click.echo("Ready. Project will appear in dashboard on next daemon poll.")

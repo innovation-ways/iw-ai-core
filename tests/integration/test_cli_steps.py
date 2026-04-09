@@ -40,7 +40,7 @@ def invoke(
 
 def make_item(
     db_session: Any,
-    item_id: str = "I001",
+    item_id: str = "I-00001",
     status: WorkItemStatus = WorkItemStatus.approved,
 ) -> WorkItem:
     item = WorkItem(
@@ -61,7 +61,7 @@ def make_item(
 
 def make_step(
     db_session: Any,
-    item_id: str = "I001",
+    item_id: str = "I-00001",
     step_id: str = "S01",
     status: StepStatus = StepStatus.pending,
 ) -> WorkflowStep:
@@ -109,7 +109,7 @@ def test_step_start_pending_to_in_progress(
     step = make_step(db_session, status=StepStatus.pending)
 
     runner = CliRunner()
-    result = invoke(runner, ["step-start", "I001", "--step", "S01"], cli_get_session)
+    result = invoke(runner, ["step-start", "I-00001", "--step", "S01"], cli_get_session)
     assert result.exit_code == 0, result.output
 
     db_session.refresh(step)
@@ -128,7 +128,7 @@ def test_step_start_json_output(
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["--project", "test-proj", "--json", "step-start", "I001", "--step", "S01"],
+        ["--project", "test-proj", "--json", "step-start", "I-00001", "--step", "S01"],
         obj={"get_session": cli_get_session},
         catch_exceptions=False,
     )
@@ -138,16 +138,31 @@ def test_step_start_json_output(
     assert data["step_id"] == "S01"
 
 
-def test_step_start_rejects_non_pending(
+def test_step_start_idempotent_when_in_progress(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    """step-start on an already in_progress step is a no-op (idempotent)."""
+    make_item(db_session)
+    make_step(db_session, status=StepStatus.in_progress)
+
+    runner = CliRunner()
+    result = invoke(runner, ["step-start", "I-00001", "--step", "S01"], cli_get_session)
+    assert result.exit_code == 0
+    assert "already in progress" in result.output
+
+
+def test_step_start_rejects_completed(
     db_session: Any,
     test_project: Project,
     cli_get_session: Any,
 ) -> None:
     make_item(db_session)
-    make_step(db_session, status=StepStatus.in_progress)
+    make_step(db_session, status=StepStatus.completed)
 
     runner = CliRunner()
-    result = invoke(runner, ["step-start", "I001", "--step", "S01"], cli_get_session)
+    result = invoke(runner, ["step-start", "I-00001", "--step", "S01"], cli_get_session)
     assert result.exit_code == 1
 
 
@@ -159,7 +174,7 @@ def test_step_start_not_found_exits_1(
     make_item(db_session)
 
     runner = CliRunner()
-    result = invoke(runner, ["step-start", "I001", "--step", "S99"], cli_get_session)
+    result = invoke(runner, ["step-start", "I-00001", "--step", "S99"], cli_get_session)
     assert result.exit_code == 1
 
 
@@ -177,7 +192,7 @@ def test_step_done_in_progress_to_completed(
     step = make_step(db_session, status=StepStatus.in_progress)
 
     runner = CliRunner()
-    result = invoke(runner, ["step-done", "I001", "--step", "S01"], cli_get_session)
+    result = invoke(runner, ["step-done", "I-00001", "--step", "S01"], cli_get_session)
     assert result.exit_code == 0, result.output
 
     db_session.refresh(step)
@@ -197,7 +212,7 @@ def test_step_done_with_report_stores_path(
     runner = CliRunner()
     result = invoke(
         runner,
-        ["step-done", "I001", "--step", "S01", "--report", "reports/S01-backend.md"],
+        ["step-done", "I-00001", "--step", "S01", "--report", "reports/S01-backend.md"],
         cli_get_session,
     )
     assert result.exit_code == 0, result.output
@@ -216,7 +231,7 @@ def test_step_done_rejects_non_in_progress(
     make_step(db_session, status=StepStatus.pending)
 
     runner = CliRunner()
-    result = invoke(runner, ["step-done", "I001", "--step", "S01"], cli_get_session)
+    result = invoke(runner, ["step-done", "I-00001", "--step", "S01"], cli_get_session)
     assert result.exit_code == 1
 
 
@@ -236,7 +251,7 @@ def test_step_fail_in_progress_to_failed(
     runner = CliRunner()
     result = invoke(
         runner,
-        ["step-fail", "I001", "--step", "S01", "--reason", "Compilation error"],
+        ["step-fail", "I-00001", "--step", "S01", "--reason", "Compilation error"],
         cli_get_session,
     )
     assert result.exit_code == 0, result.output
@@ -257,7 +272,7 @@ def test_step_fail_stores_reason_in_step_run(
     runner = CliRunner()
     result = invoke(
         runner,
-        ["step-fail", "I001", "--step", "S01", "--reason", "Out of memory"],
+        ["step-fail", "I-00001", "--step", "S01", "--reason", "Out of memory"],
         cli_get_session,
     )
     assert result.exit_code == 0, result.output
@@ -280,7 +295,7 @@ def test_step_fail_rejects_non_in_progress(
     runner = CliRunner()
     result = invoke(
         runner,
-        ["step-fail", "I001", "--step", "S01", "--reason", "Something went wrong"],
+        ["step-fail", "I-00001", "--step", "S01", "--reason", "Something went wrong"],
         cli_get_session,
     )
     assert result.exit_code == 1
@@ -301,7 +316,7 @@ def test_full_step_lifecycle_start_done(
 
     runner = CliRunner()
 
-    result = invoke(runner, ["step-start", "I001", "--step", "S01"], cli_get_session)
+    result = invoke(runner, ["step-start", "I-00001", "--step", "S01"], cli_get_session)
     assert result.exit_code == 0
 
     db_session.refresh(step)
@@ -309,7 +324,7 @@ def test_full_step_lifecycle_start_done(
 
     result = invoke(
         runner,
-        ["step-done", "I001", "--step", "S01", "--report", "out/report.md"],
+        ["step-done", "I-00001", "--step", "S01", "--report", "out/report.md"],
         cli_get_session,
     )
     assert result.exit_code == 0
@@ -334,12 +349,12 @@ def test_full_step_lifecycle_start_fail(
 
     runner = CliRunner()
 
-    result = invoke(runner, ["step-start", "I001", "--step", "S01"], cli_get_session)
+    result = invoke(runner, ["step-start", "I-00001", "--step", "S01"], cli_get_session)
     assert result.exit_code == 0
 
     result = invoke(
         runner,
-        ["step-fail", "I001", "--step", "S01", "--reason", "Agent crashed"],
+        ["step-fail", "I-00001", "--step", "S01", "--reason", "Agent crashed"],
         cli_get_session,
     )
     assert result.exit_code == 0
