@@ -76,6 +76,7 @@ class RunLog:
     duration_secs: float | None
     is_running: bool
     log_content: str | None
+    log_modified: str | None = None
 
 
 @dataclass
@@ -339,6 +340,23 @@ def _read_log_file(log_file: str | None) -> str | None:
         return None
 
 
+def _get_log_modified(log_file: str | None) -> str | None:
+    """Return human-readable last-modified time for a log file."""
+    if log_file is None:
+        return None
+    path = Path(log_file)
+    if not path.is_file():
+        return None
+    try:
+        from datetime import datetime
+
+        mtime = path.stat().st_mtime
+        dt = datetime.fromtimestamp(mtime, tz=UTC).astimezone()
+        return dt.strftime("%H:%M:%S")
+    except OSError:
+        return None
+
+
 def _reverse_log(content: str | None) -> str | None:
     """Return log content with lines in reverse order (newest first)."""
     if not content:
@@ -443,6 +461,7 @@ def _get_log_sections(project_id: str, item_id: str, db: Session) -> list[LogSec
                 duration_secs=r.duration_secs,
                 is_running=r.status.value == "running",
                 log_content=_reverse_log(r.log_content or _read_log_file(r.log_file)),
+                log_modified=_get_log_modified(r.log_file),
             )
             for r in runs
         ]
@@ -665,6 +684,7 @@ def item_log_content(
         raise HTTPException(status_code=404, detail="Run not found")
 
     log_content = _reverse_log(run.log_content or _read_log_file(run.log_file))
+    log_modified = _get_log_modified(run.log_file)
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -672,6 +692,7 @@ def item_log_content(
         "fragments/item_log_content.html",
         {
             "log_content": log_content,
+            "log_modified": log_modified,
             "is_running": run.status.value == "running",
             "project_id": project_id,
             "item_id": item_id,
