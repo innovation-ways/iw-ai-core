@@ -1,98 +1,50 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00001",
-  "title": "Batch Archive with Post-Merge Actions",
+  "id": "CR-00003",
+  "title": "Replace sidebar IW text logo with favicon SVG image",
   "status": "approved",
   "phase": "active",
-  "total_steps": 13,
+  "total_steps": 5,
   "completed_steps": 0,
   "current_step": null,
   "batch_id": "BATCH-00006",
-  "worktree": null,
-  "created_at": "2026-04-09T14:51:00.383357+00:00",
-  "updated_at": "2026-04-09T14:51:00.383357+00:00",
+  "worktree": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00003",
+  "created_at": "2026-04-09T15:29:43.835836+00:00",
+  "updated_at": "2026-04-09T15:29:43.835836+00:00",
   "steps": [
     {
       "step_id": "S01",
-      "label": "Backend",
-      "type": "implementation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S02",
-      "label": "CodeReview",
-      "type": "code_review",
-      "status": "pending"
-    },
-    {
-      "step_id": "S03",
-      "label": "Api",
-      "type": "implementation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S04",
       "label": "Frontend",
       "type": "implementation",
       "status": "pending"
     },
     {
-      "step_id": "S05",
-      "label": "CodeReview",
-      "type": "code_review",
-      "status": "pending"
-    },
-    {
-      "step_id": "S06",
-      "label": "Tests",
+      "step_id": "S02",
+      "label": "FrontendReview",
       "type": "implementation",
       "status": "pending"
     },
     {
-      "step_id": "S07",
-      "label": "CodeReview",
-      "type": "code_review",
-      "status": "pending"
-    },
-    {
-      "step_id": "S08",
+      "step_id": "S03",
       "label": "CodeReviewFinal",
       "type": "code_review_final",
       "status": "pending"
     },
     {
-      "step_id": "S09",
-      "label": "QualityValidation",
-      "type": "quality_validation",
+      "step_id": "S04",
+      "label": "CodeReviewFixFinal",
+      "type": "code_review_fix_final",
       "status": "pending"
     },
     {
-      "step_id": "S10",
-      "label": "QualityValidation",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S11",
-      "label": "QualityValidation",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S12",
-      "label": "QualityValidation",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S13",
+      "step_id": "S05",
       "label": "QualityValidation",
       "type": "quality_validation",
       "status": "pending"
     }
   ],
-  "branch": "agent/F-00001-batch-archive-with-post-merge-",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00001",
+  "branch": "agent/CR-00003-replace-sidebar-iw-text-logo-w",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00003",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-09T15:35:16Z"
+  "brief_generated_at": "2026-04-09T18:52:23Z"
 }
