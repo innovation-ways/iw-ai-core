@@ -440,6 +440,11 @@ class StepRun(Base):
     # Output
     exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     log_file: Mapped[str | None] = mapped_column(Text, nullable=True)
+    log_content: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Captured log content (ANSI-stripped, truncated) for fast DB access",
+    )
     report_file: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Timestamps
     started_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
