@@ -51,6 +51,13 @@
           class="px-3 py-1 bg-warning text-warning-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
           Pause
         </button>
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/full-restart/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Full Restart
+        </button>
       {% elif item_status == 'paused' %}
         <button
           hx-get="/project/{{ current_project.id }}/api/confirm-item/resume/{{ item.id }}"
@@ -58,6 +65,13 @@
           hx-swap="innerHTML"
           class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
           Resume
+        </button>
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/full-restart/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Full Restart
         </button>
       {% elif item_status == 'failed' %}
         <button
