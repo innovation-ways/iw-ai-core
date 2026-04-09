@@ -39,6 +39,7 @@
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Step</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Agent</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Started</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Runs</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Error</th>
@@ -51,6 +52,13 @@
           <td class="px-4 py-2 font-mono text-xs font-semibold">{{ step.step_id }}</td>
           <td class="px-4 py-2 text-xs text-foreground">{{ step.agent_label }}</td>
           <td class="px-4 py-2">{{ status_badge(step.status) }}</td>
+          <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
+            {% if step.started_at %}
+              {{ step.started_at.strftime('%H:%M:%S') }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
           <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
             {% if step.duration_secs is not none %}
               {% set m = (step.duration_secs // 60)|int %}
@@ -83,7 +91,7 @@
       {% endfor %}
       {% if not steps %}
         <tr>
-          <td colspan="7" class="px-4 py-8 text-center text-muted-foreground text-sm">
+          <td colspan="8" class="px-4 py-8 text-center text-muted-foreground text-sm">
             No steps found.
           </td>
         </tr>

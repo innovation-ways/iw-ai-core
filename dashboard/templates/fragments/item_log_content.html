@@ -1,3 +1,6 @@
+{% if log_modified %}
+  <p class="text-xs text-muted-foreground mb-1">Last update: {{ log_modified }}</p>
+{% endif %}
 {% if log_content %}
   <pre class="bg-muted/50 border border-border rounded p-3 text-xs font-mono text-foreground/90 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap break-words">{{ log_content }}</pre>
 {% else %}

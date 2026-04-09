@@ -43,6 +43,9 @@
                 <div class="flex items-center gap-2 mb-2">
                   <span class="text-xs font-mono text-muted-foreground">Run #{{ run.run_number }}</span>
                   {{ status_badge(run.status) }}
+                  {% if run.log_modified %}
+                    <span class="text-xs text-muted-foreground" title="Log last modified">last update {{ run.log_modified }}</span>
+                  {% endif %}
                   {% if run.duration_secs is not none %}
                     <span class="text-xs font-mono text-muted-foreground">
                       {% if run.duration_secs >= 3600 %}

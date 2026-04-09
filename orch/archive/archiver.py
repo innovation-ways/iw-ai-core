@@ -12,6 +12,8 @@ import zstandard as zstd
 from sqlalchemy import select
 
 from orch.db.models import (
+    BatchItem,
+    BatchItemStatus,
     Project,
     WorkflowStep,
     WorkItem,
