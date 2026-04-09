@@ -1,6 +1,23 @@
 {% from "components/status_badge.html" import status_badge %}
 
 {% if log_sections %}
+  <script>
+    // Preserve scroll position in log <pre> elements across htmx polling swaps
+    document.addEventListener('htmx:beforeSwap', function(e) {
+      var t = e.detail.target;
+      if (t.id && t.id.startsWith('log-')) {
+        var pre = t.querySelector('pre');
+        if (pre) t._savedScroll = pre.scrollTop;
+      }
+    });
+    document.addEventListener('htmx:afterSwap', function(e) {
+      var t = e.detail.target;
+      if (t.id && t.id.startsWith('log-') && t._savedScroll) {
+        var pre = t.querySelector('pre');
+        if (pre) pre.scrollTop = t._savedScroll;
+      }
+    });
+  </script>
   <div class="space-y-3">
     {% for section in log_sections %}
       <details class="bg-card border border-border rounded-lg group"
