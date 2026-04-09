@@ -180,6 +180,7 @@ def _handle_crashed(
     run.completed_at = now
     if run.started_at is not None:
         run.duration_secs = (now - run.started_at).total_seconds()
+    capture_log_content(run)
 
     _update_parent_step(db, run.step_id, StepStatus.failed, now)
     _emit_event(db, project_id, "step_crashed", str(run.id), msg, {"pid": run.pid})
@@ -202,6 +203,7 @@ def _handle_timeout(
     run.error_message = msg
     run.completed_at = now
     run.duration_secs = elapsed
+    capture_log_content(run)
 
     _update_parent_step(db, run.step_id, StepStatus.failed, now)
     _emit_event(
