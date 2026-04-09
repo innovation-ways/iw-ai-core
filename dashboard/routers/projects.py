@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 
 from dashboard.dependencies import get_db
@@ -22,6 +21,7 @@ from orch.db.models import (
 )
 
 if TYPE_CHECKING:
+    from fastapi.templating import Jinja2Templates
     from sqlalchemy.orm import Session
 
 router = APIRouter()

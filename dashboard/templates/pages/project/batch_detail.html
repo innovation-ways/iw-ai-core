@@ -71,10 +71,16 @@
         Resume
       </button>
     {% elif batch_status in ('completed', 'completed_with_errors') %}
-      <button disabled
-              class="px-3 py-1.5 bg-muted text-muted-foreground rounded text-sm opacity-60 cursor-not-allowed">
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/archive/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm hover:opacity-90 transition-opacity">
         Archive
       </button>
+    {% elif batch_status == 'archived' %}
+      <span class="px-3 py-1.5 text-muted-foreground text-sm">
+        Archived
+      </span>
     {% endif %}
   </div>
 </div>
@@ -241,4 +247,34 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+{% include "components/toast.html" %}
+<script>
+(function () {
+  var es = new EventSource('/api/stream/events');
+
+  es.addEventListener('toast', function (e) {
+    try {
+      showToast(JSON.parse(e.data));
+    } catch (_) { /* ignore malformed */ }
+  });
+
+  es.onerror = function () {
+    // Reconnect automatically via browser's native SSE retry
+  };
+})();
+
+document.body.addEventListener('htmx:afterRequest', function (e) {
+  var triggerHeader = e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger');
+  if (!triggerHeader) return;
+  try {
+    var trigger = JSON.parse(triggerHeader);
+    if (trigger.showToast) {
+      showToast(trigger.showToast);
+    }
+  } catch (_) { /* ignore */ }
+});
+</script>
 {% endblock %}
