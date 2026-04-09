@@ -341,6 +341,11 @@ class WorkflowStep(Base):
         comment="OpenCode/Claude agent to invoke (e.g., 'backend-impl', 'code-review-impl')",
     )
     step_type: Mapped[StepType] = mapped_column(_step_type_col, nullable=False)
+    step_label: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Short human-readable label for the step (e.g., 'ruff lint', 'unit tests')",
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[StepStatus] = mapped_column(
         _step_status_col, nullable=False, server_default=text("'pending'")

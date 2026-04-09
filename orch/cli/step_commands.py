@@ -6,6 +6,7 @@ import json
 import os
 import signal
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import click
@@ -199,6 +200,12 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
             step.completed_at = datetime.now(UTC)
             if report_path is not None:
                 step.report_file = report_path
+                # Read file content for immediate dashboard rendering (Tier 1)
+                full_path = Path(report_path)
+                if not full_path.is_absolute():
+                    full_path = Path.cwd() / full_path
+                if full_path.exists():
+                    step.report_content = full_path.read_text(encoding="utf-8")
 
             # Capture log content into DB before the worktree is cleaned up
             step_run = session.execute(
