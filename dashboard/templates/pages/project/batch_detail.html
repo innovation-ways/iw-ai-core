@@ -247,11 +247,53 @@
 
 <!-- Logs tab -->
 {% elif active_tab == 'logs' %}
+{% if batch_events %}
+<div class="bg-card border border-border rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-border bg-muted/30">
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Time</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Event</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Entity</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Message</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev in batch_events %}
+      <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+        <td class="px-4 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
+          {{ ev.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+        </td>
+        <td class="px-4 py-2">
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+            {% if 'failed' in ev.event_type or 'error' in ev.event_type %}bg-destructive/20 text-destructive
+            {% elif 'completed' in ev.event_type or 'merged' in ev.event_type %}bg-success/20 text-success
+            {% elif 'launched' in ev.event_type or 'executing' in ev.event_type or 'started' in ev.event_type %}bg-primary/20 text-primary
+            {% else %}bg-secondary text-secondary-foreground{% endif %}">
+            {{ ev.event_type }}
+          </span>
+        </td>
+        <td class="px-4 py-2 font-mono text-xs">
+          {% if ev.entity_id == batch.id %}
+            <span class="text-muted-foreground">{{ ev.entity_id }}</span>
+          {% else %}
+            <a href="/project/{{ current_project.id }}/item/{{ ev.entity_id }}"
+               class="text-primary hover:underline">{{ ev.entity_id }}</a>
+          {% endif %}
+        </td>
+        <td class="px-4 py-2 text-sm text-foreground">{{ ev.message or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
 <div class="bg-card border border-border rounded-lg p-6">
   <p class="text-muted-foreground text-sm text-center">
-    Dispatcher log not available for this batch.
+    No dispatcher events recorded for this batch.
   </p>
 </div>
+{% endif %}
 {% endif %}
 
 {% endblock %}

@@ -15,6 +15,7 @@ from orch.db.models import (
     Batch,
     BatchItem,
     BatchStatus,
+    DaemonEvent,
     Project,
     WorkflowStep,
     WorkItem,
@@ -268,6 +269,24 @@ def batch_detail(
     has_plan = batch.execution_plan_md is not None
     has_diagram = batch.execution_plan_png is not None
 
+    # Fetch dispatcher events for the logs tab
+    batch_events: list[DaemonEvent] = []
+    if tab == "logs":
+        # Collect work item IDs belonging to this batch
+        item_ids = [row.item_id for row in items]
+        # Query events where entity_id is the batch itself or any of its items
+        entity_ids = [batch_id, *item_ids]
+        batch_events = list(
+            db.scalars(
+                select(DaemonEvent)
+                .where(
+                    DaemonEvent.project_id == project_id,
+                    DaemonEvent.entity_id.in_(entity_ids),
+                )
+                .order_by(DaemonEvent.created_at.desc())
+            ).all()
+        )
+
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -283,6 +302,7 @@ def batch_detail(
             "plan_html": plan_html,
             "has_plan": has_plan,
             "has_diagram": has_diagram,
+            "batch_events": batch_events,
         },
     )
 
