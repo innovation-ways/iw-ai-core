@@ -90,6 +90,7 @@ def make_run(**kwargs) -> MagicMock:
     run.error_message = None
     run.completed_at = None
     run.duration_secs = None
+    run.log_file = None
     for k, v in kwargs.items():
         setattr(run, k, v)
     return run
@@ -99,7 +100,9 @@ def make_db(runs: list) -> MagicMock:
     """Create a mock Session that yields `runs` from the query chain."""
     db = MagicMock()
     db.query.return_value.join.return_value.filter.return_value.all.return_value = runs
-    db.get.return_value = MagicMock()  # mock WorkflowStep
+    mock_step = MagicMock()
+    mock_step.status = StepStatus.in_progress  # allow transitions in _update_parent_step
+    db.get.return_value = mock_step
     return db
 
 

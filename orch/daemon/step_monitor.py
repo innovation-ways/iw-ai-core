@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from orch.db.models import DaemonEvent, RunStatus, StepRun, StepStatus, WorkflowStep
+from orch.utils.log_capture import capture_log_content
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
