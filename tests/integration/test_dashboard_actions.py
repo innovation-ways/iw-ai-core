@@ -16,6 +16,8 @@ from sqlalchemy import select
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
 from orch.db.models import (
+    Batch,
+    BatchStatus,
     DaemonEvent,
     Project,
     RunStatus,
@@ -58,7 +60,7 @@ def client(db_session: Any) -> Generator[TestClient, None, None]:
 def make_item(
     db_session: Any,
     project_id: str = "test-proj",
-    item_id: str = "I001",
+    item_id: str = "I-00001",
     status: WorkItemStatus = WorkItemStatus.in_progress,
 ) -> WorkItem:
     item = WorkItem(
@@ -80,7 +82,7 @@ def make_item(
 def make_step(
     db_session: Any,
     project_id: str = "test-proj",
-    item_id: str = "I001",
+    item_id: str = "I-00001",
     step_id: str = "S01",
     step_number: int = 1,
     status: StepStatus = StepStatus.in_progress,
@@ -114,8 +116,8 @@ def make_run(
         status=status,
         pid=pid,
         pid_alive=True,
-        command="claude -p '/execute I001 S01'",
-        worktree_path="/repos/test/.worktrees/I001",
+        command="claude -p '/execute I-00001 S01'",
+        worktree_path="/repos/test/.worktrees/I-00001",
         cli_tool="claude",
         timeout_secs=1800,
         started_at=datetime.now(UTC),
@@ -407,3 +409,144 @@ def test_running_fragment_returns_tbody(
     assert resp.status_code == 200
     # Fragment has no full HTML structure
     assert "<html" not in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Batch approval actions
+# ---------------------------------------------------------------------------
+
+
+def _make_batch(
+    db_session: Any,
+    project_id: str = "test-proj",
+    batch_id: str = "BATCH-00001",
+    status: BatchStatus | None = None,
+) -> Batch:
+    batch = Batch(
+        project_id=project_id,
+        id=batch_id,
+        status=status or BatchStatus.planning,
+        max_parallel=4,
+        cli_tool="claude",
+        auto_publish=False,
+    )
+    db_session.add(batch)
+    db_session.flush()
+    return batch
+
+
+def test_approve_batch_planning_to_approved(
+    client: TestClient,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    batch = _make_batch(db_session)
+
+    resp = client.post(f"/project/{test_project.id}/api/batch/{batch.id}/approve")
+    assert resp.status_code == 204
+
+    db_session.refresh(batch)
+    assert batch.status == BatchStatus.approved
+
+
+def test_approve_batch_wrong_state_returns_422(
+    client: TestClient,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    batch = _make_batch(db_session, status=BatchStatus.executing)
+
+    resp = client.post(f"/project/{test_project.id}/api/batch/{batch.id}/approve")
+    assert resp.status_code == 422
+
+
+def test_pause_batch_executing_to_paused(
+    client: TestClient,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    batch = _make_batch(db_session, status=BatchStatus.executing)
+
+    resp = client.post(f"/project/{test_project.id}/api/batch/{batch.id}/pause")
+    assert resp.status_code == 204
+
+    db_session.refresh(batch)
+    assert batch.status == BatchStatus.paused
+
+
+def test_resume_batch_paused_to_executing(
+    client: TestClient,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    batch = _make_batch(db_session, status=BatchStatus.paused)
+
+    resp = client.post(f"/project/{test_project.id}/api/batch/{batch.id}/resume")
+    assert resp.status_code == 204
+
+    db_session.refresh(batch)
+    assert batch.status == BatchStatus.executing
+
+
+def test_cancel_batch_planning_to_cancelled(
+    client: TestClient,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    batch = _make_batch(db_session)
+
+    resp = client.post(f"/project/{test_project.id}/api/batch/{batch.id}/cancel")
+    assert resp.status_code == 204
+
+    db_session.refresh(batch)
+    assert batch.status == BatchStatus.cancelled
+
+
+def test_cancel_batch_approved_to_cancelled(
+    client: TestClient,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    batch = _make_batch(db_session, status=BatchStatus.approved)
+
+    resp = client.post(f"/project/{test_project.id}/api/batch/{batch.id}/cancel")
+    assert resp.status_code == 204
+
+    db_session.refresh(batch)
+    assert batch.status == BatchStatus.cancelled
+
+
+def test_cancel_batch_wrong_state_returns_422(
+    client: TestClient,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    batch = _make_batch(db_session, status=BatchStatus.executing)
+
+    resp = client.post(f"/project/{test_project.id}/api/batch/{batch.id}/cancel")
+    assert resp.status_code == 422
+
+
+def test_confirm_batch_dialog_returns_fragment(
+    client: TestClient,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    batch = _make_batch(db_session)
+
+    resp = client.get(f"/project/{test_project.id}/api/confirm-batch/approve/{batch.id}")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Approve" in resp.text
+    assert batch.id in resp.text
+
+
+def test_confirm_batch_unknown_action_returns_400(
+    client: TestClient,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    batch = _make_batch(db_session)
+
+    resp = client.get(f"/project/{test_project.id}/api/confirm-batch/destroy/{batch.id}")
+    assert resp.status_code == 400

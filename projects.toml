@@ -5,3 +5,8 @@
 display_name = "InnoForge Document Platform"
 repo_root = "/home/sergiog/dev/iw-doc-plan/main/iw-doc-plan"
 enabled = true
+
+[projects.iw-ai-core]
+display_name = "IW AI Core Platform"
+repo_root = "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core"
+enabled = true

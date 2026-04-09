@@ -21,6 +21,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     Text,
     UniqueConstraint,
     func,
@@ -121,6 +122,7 @@ class BatchStatus(enum.Enum):
     publish_failed = "publish_failed"
     blocked = "blocked"
     archived = "archived"
+    cancelled = "cancelled"
 
 
 class BatchItemStatus(enum.Enum):
@@ -519,9 +521,26 @@ class Batch(Base):
         comment="Whether to auto-push to origin after all items merged",
     )
     plan_path: Mapped[str | None] = mapped_column(
-        Text, nullable=True, comment="Path to the batch execution plan document"
+        Text, nullable=True, comment="Path to the batch execution plan document (legacy)"
     )
-    diagram_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    diagram_path: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Path to the diagram file (legacy)"
+    )
+    execution_plan_md: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Markdown execution plan with dependency analysis and warnings",
+    )
+    execution_plan_drawio: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Draw.io XML diagram of the execution plan",
+    )
+    execution_plan_png: Mapped[bytes | None] = mapped_column(
+        LargeBinary,
+        nullable=True,
+        comment="PNG image of the execution plan diagram",
+    )
     created_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, nullable=False, server_default=func.now()
     )

@@ -236,9 +236,13 @@ def _update_parent_step(
     new_status: StepStatus,
     now: datetime,
 ) -> None:
-    """Update the parent WorkflowStep status."""
+    """Update the parent WorkflowStep status.
+
+    Only transitions from in_progress — if the step was already completed
+    (e.g., agent called step-done before the PID exited), do not regress it.
+    """
     step = db.get(WorkflowStep, step_id)
-    if step is not None:
+    if step is not None and step.status == StepStatus.in_progress:
         step.status = new_status
         if new_status in (StepStatus.completed, StepStatus.failed):
             step.completed_at = now

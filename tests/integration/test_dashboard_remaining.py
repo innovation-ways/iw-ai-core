@@ -64,7 +64,7 @@ def make_project(db: Any, project_id: str = "test-proj") -> Project:
 def make_item(
     db: Any,
     project_id: str = "test-proj",
-    item_id: str = "I001",
+    item_id: str = "I-00001",
     title: str = "Test Item",
     status: WorkItemStatus = WorkItemStatus.draft,
     phase: WorkItemPhase = WorkItemPhase.active,
@@ -92,7 +92,7 @@ def make_item(
 def make_batch(
     db: Any,
     project_id: str = "test-proj",
-    batch_id: str = "BATCH-001",
+    batch_id: str = "BATCH-00001",
     status: BatchStatus = BatchStatus.executing,
 ) -> Batch:
     batch = Batch(
@@ -111,8 +111,8 @@ def make_batch(
 def make_batch_item(
     db: Any,
     project_id: str = "test-proj",
-    batch_id: str = "BATCH-001",
-    item_id: str = "I001",
+    batch_id: str = "BATCH-00001",
+    item_id: str = "I-00001",
     status: BatchItemStatus = BatchItemStatus.executing,
 ) -> BatchItem:
     bi = BatchItem(
@@ -141,13 +141,13 @@ def test_queue_returns_200(client: TestClient, db_session: Any) -> None:
 
 def test_queue_shows_approved_items_with_checkboxes(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
-    make_item(db_session, item_id="I001", status=WorkItemStatus.approved)
-    make_item(db_session, item_id="I002", status=WorkItemStatus.approved, title="Another item")
+    make_item(db_session, item_id="I-00001", status=WorkItemStatus.approved)
+    make_item(db_session, item_id="I-00002", status=WorkItemStatus.approved, title="Another item")
 
     resp = client.get("/project/test-proj/queue")
     assert resp.status_code == 200
-    assert "I001" in resp.text
-    assert "I002" in resp.text
+    assert "I-00001" in resp.text
+    assert "I-00002" in resp.text
     # Should have checkboxes for the approved items
     assert 'type="checkbox"' in resp.text
     assert 'name="item_ids"' in resp.text
@@ -155,17 +155,17 @@ def test_queue_shows_approved_items_with_checkboxes(client: TestClient, db_sessi
 
 def test_queue_shows_draft_items(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
-    make_item(db_session, item_id="I003", status=WorkItemStatus.draft, title="Draft item")
+    make_item(db_session, item_id="I-00003", status=WorkItemStatus.draft, title="Draft item")
 
     resp = client.get("/project/test-proj/queue")
     assert resp.status_code == 200
-    assert "I003" in resp.text
+    assert "I-00003" in resp.text
     assert "Draft item" in resp.text
 
 
 def test_queue_draft_has_approve_button(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
-    make_item(db_session, item_id="I004", status=WorkItemStatus.draft)
+    make_item(db_session, item_id="I-00004", status=WorkItemStatus.draft)
 
     resp = client.get("/project/test-proj/queue")
     assert resp.status_code == 200
@@ -200,7 +200,7 @@ def test_history_shows_completed_items(client: TestClient, db_session: Any) -> N
     make_project(db_session)
     item = make_item(
         db_session,
-        item_id="I001",
+        item_id="I-00001",
         status=WorkItemStatus.completed,
         phase=WorkItemPhase.done,
         title="Completed work",
@@ -216,7 +216,7 @@ def test_history_shows_failed_items(client: TestClient, db_session: Any) -> None
     make_project(db_session)
     item = make_item(
         db_session,
-        item_id="I002",
+        item_id="I-00002",
         status=WorkItemStatus.failed,
         title="Failed work",
     )
@@ -232,7 +232,7 @@ def test_history_pagination(client: TestClient, db_session: Any) -> None:
     for i in range(1, 26):
         make_item(
             db_session,
-            item_id=f"I{i:03d}",
+            item_id=f"I-{i:05d}",
             status=WorkItemStatus.completed,
             phase=WorkItemPhase.done,
         )
@@ -249,10 +249,10 @@ def test_history_pagination(client: TestClient, db_session: Any) -> None:
 
 def test_history_type_filter(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
-    make_item(db_session, item_id="I001", status=WorkItemStatus.completed, title="Issue item")
+    make_item(db_session, item_id="I-00001", status=WorkItemStatus.completed, title="Issue item")
     feature = WorkItem(
         project_id="test-proj",
-        id="F001",
+        id="F-00001",
         type=WorkItemType.Feature,
         title="Feature item",
         status=WorkItemStatus.completed,
@@ -266,8 +266,8 @@ def test_history_type_filter(client: TestClient, db_session: Any) -> None:
 
     resp = client.get("/project/test-proj/history?type=Feature")
     assert resp.status_code == 200
-    assert "F001" in resp.text
-    assert "I001" not in resp.text
+    assert "F-00001" in resp.text
+    assert "I-00001" not in resp.text
 
 
 def test_history_404_for_unknown_project(client: TestClient, db_session: Any) -> None:
@@ -293,14 +293,14 @@ def test_search_returns_relevant_results(client: TestClient, db_session: Any) ->
     # Insert item with FTS-indexed content
     item = make_item(
         db_session,
-        item_id="I001",
+        item_id="I-00001",
         title="Template rendering timeout",
         design_doc_content="WeasyPrint times out when rendering large templates.",
     )
 
     resp = client.get("/api/search?q=rendering")
     assert resp.status_code == 200
-    assert "I001" in resp.text
+    assert "I-00001" in resp.text
     assert item.title in resp.text
 
 
@@ -308,7 +308,7 @@ def test_search_no_results_shows_empty_state(client: TestClient, db_session: Any
     make_project(db_session)
     make_item(
         db_session,
-        item_id="I001",
+        item_id="I-00001",
         title="Completely unrelated",
         design_doc_content="Nothing matching here.",
     )
@@ -332,13 +332,13 @@ def test_search_project_filter(client: TestClient, db_session: Any) -> None:
     make_item(
         db_session,
         project_id="proj-a",
-        item_id="I001",
+        item_id="I-00001",
         title="Timeout in alpha",
         design_doc_content="rendering timeout alpha",
     )
     item_b = WorkItem(
         project_id="proj-b",
-        id="I001",
+        id="I-00001",
         type=WorkItemType.Issue,
         title="Timeout in beta",
         status=WorkItemStatus.completed,
@@ -402,7 +402,7 @@ def test_all_active_shows_in_progress_items(client: TestClient, db_session: Any)
     make_project(db_session)
     item = make_item(
         db_session,
-        item_id="I001",
+        item_id="I-00001",
         status=WorkItemStatus.in_progress,
         phase=WorkItemPhase.active,
         title="In-progress work",
@@ -418,7 +418,7 @@ def test_all_active_excludes_completed_items(client: TestClient, db_session: Any
     make_project(db_session)
     make_item(
         db_session,
-        item_id="I001",
+        item_id="I-00001",
         status=WorkItemStatus.completed,
         phase=WorkItemPhase.done,
         title="Done work",
@@ -426,7 +426,7 @@ def test_all_active_excludes_completed_items(client: TestClient, db_session: Any
 
     resp = client.get("/system/all-active")
     assert resp.status_code == 200
-    assert "I001" not in resp.text
+    assert "I-00001" not in resp.text
 
 
 def test_all_active_empty_state(client: TestClient, db_session: Any) -> None:

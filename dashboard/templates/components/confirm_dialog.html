@@ -15,7 +15,7 @@
       <button
         hx-{{ confirm_method }}="{{ confirm_url }}"
         hx-swap="none"
-        onclick="document.getElementById('confirm-dialog').innerHTML=''"
+        onclick="setTimeout(function(){document.getElementById('confirm-dialog').innerHTML=''},50)"
         class="px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 transition-opacity {% if danger %}bg-destructive text-destructive-foreground{% else %}bg-primary text-primary-foreground{% endif %}">
         {{ confirm_label }}
       </button>

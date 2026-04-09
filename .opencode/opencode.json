@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "model": "minimax/MiniMax-M2.7",
+  "instructions": [
+    "CLAUDE.md"
+  ],
+  "agent": {
+    "build": {
+      "steps": 500
+    }
+  },
+  "permission": {
+    "bash": {
+      "ls": "allow",
+      "ll": "allow",
+      "cat": "allow",
+      "grep": "allow",
+      "git *": "allow",
+      "rg": "allow",
+      "pytest *": "allow",
+      "make *": "allow",
+      "uv run *": "allow",
+      "uv sync *": "allow",
+      "docker *": "allow",
+      "*": "allow"
+    },
+    "external_directory": {
+      "*": "allow"
+    }
+  }
+}

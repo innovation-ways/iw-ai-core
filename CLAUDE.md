@@ -199,6 +199,57 @@ make dashboard-start          # Start web dashboard on port 9900
 
 ---
 
+## Playwright CLI (Browser Automation)
+
+This project runs on headless WSL/Linux with no display server. Browser automation uses `playwright-cli` exclusively.
+
+### Setup
+
+- **Binary**: `~/.local/bin/playwright-cli` (pre-installed globally)
+- **Browser cache**: `~/.cache/ms-playwright/` (Chromium pre-cached)
+- **Project config**: `.playwright/cli.config.json` — tells playwright-cli to use bundled Chromium
+- **Permission**: `Bash(playwright-cli:*)` in `.claude/settings.local.json`
+
+### Rules (NON-NEGOTIABLE)
+
+1. **ALWAYS** use `playwright-cli` for all browser interaction
+2. **ALWAYS** run `playwright-cli kill-all` before starting a new browser session
+3. **NEVER** use `agent-browser` — it attempts to install its own Chromium and fails in headless environments
+4. **NEVER** run `npx playwright install`, `agent-browser install --with-deps`, or similar browser install commands
+5. **NEVER** write Playwright scripts that call `chromium.launch()` directly
+6. **NEVER** modify `.playwright/cli.config.json` from LLM code
+
+### Common Commands
+
+```bash
+playwright-cli --version             # Verify installation
+playwright-cli kill-all              # Kill all sessions (run before starting)
+playwright-cli open <url>            # Open a URL in browser
+playwright-cli goto <url>            # Navigate current page
+playwright-cli snapshot              # Get accessibility snapshot of current page
+playwright-cli screenshot            # Take screenshot
+playwright-cli click <selector>      # Click an element
+playwright-cli fill <selector> <val> # Fill a form field
+playwright-cli eval <js>             # Execute JavaScript
+playwright-cli tab-list              # List open tabs
+playwright-cli tab-new <url>         # Open new tab
+playwright-cli console               # Get console messages
+playwright-cli network               # Get network requests
+playwright-cli close-all             # Close all browsers
+playwright-cli list                  # List active sessions
+```
+
+### Session Management
+
+Use `-s=<name>` flag for named sessions (useful for auth persistence):
+```bash
+playwright-cli open -s=dashboard http://localhost:9900
+playwright-cli snapshot -s=dashboard
+playwright-cli close-all -s=dashboard
+```
+
+---
+
 ## Docs Reference
 
 | Document | What It Contains |

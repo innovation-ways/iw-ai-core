@@ -1,0 +1,88 @@
+# {TYPE}{NNN}_S{NN}_CodeReview_FIX_prompt
+
+**Work Item**: {ID} -- {Title}
+**Fix Cycle**: {cycle_number} of 5
+**Original Step**: S{impl_step_NN} ({Agent})
+**Review That Triggered Fix**: S{review_step_NN}
+
+---
+
+## Input Files
+
+- `ai-dev/work/{ID}/{ID}_{Type}_Design.md` -- Design document
+- `ai-dev/work/{ID}/reports/{ID}_S{review_step_NN}_CodeReview_report.md` -- Review report with findings
+- All files referenced in the findings below
+
+## Output Files
+
+- `ai-dev/work/{ID}/reports/{ID}_S{NN}_CodeReview_FIX_report.md` -- Fix report
+
+## Context
+
+The code review for step S{impl_step_NN} found issues that must be fixed. You must address **only** the CRITICAL, HIGH, and MEDIUM (fixable) findings listed below. Do not refactor beyond the scope of these findings.
+
+## Findings to Fix
+
+{For each mandatory finding from the review report, include:}
+
+### Finding {N}: {severity} -- {category}
+
+**File**: `{file_path}`, line {line}
+**Description**: {description}
+**Suggestion**: {suggestion}
+
+{Repeat for all mandatory findings.}
+
+## Constraints
+
+1. **Only fix the flagged issues.** Do not refactor unrelated code, add features, or reorganize files.
+2. **Preserve existing behavior.** Your fixes must not break functionality that was working before.
+3. **Follow project conventions.** Read `CLAUDE.md` for project-specific patterns. Match existing code style.
+4. **Run tests after every fix.** Ensure no regressions are introduced.
+
+## Escalation
+
+This is fix cycle **{cycle_number} of 5**. If this is cycle 5 and you cannot resolve all findings, report the unresolvable findings in `findings_skipped` with a clear explanation. The orchestrator will escalate to a human reviewer.
+
+## Test Verification (NON-NEGOTIABLE)
+
+After applying fixes:
+
+1. Run the project's unit test command
+2. Run lint and type checking
+3. Do **NOT** report `tests_passed: true` unless ALL tests pass with zero failures
+4. If your fix breaks other tests, fix those too
+
+## Fix Result Contract
+
+```json
+{
+  "step": "S{NN}",
+  "agent": "CodeReview_FIX",
+  "work_item": "{ID}",
+  "fix_cycle": {cycle_number},
+  "review_step": "S{review_step_NN}",
+  "findings_addressed": [
+    {
+      "finding_number": 1,
+      "severity": "CRITICAL|HIGH|MEDIUM_FIXABLE",
+      "status": "fixed|partially_fixed",
+      "files_changed": ["path/to/file.py"],
+      "description": "What was done to fix it"
+    }
+  ],
+  "findings_skipped": [
+    {
+      "finding_number": 2,
+      "severity": "HIGH",
+      "reason": "Why it could not be fixed"
+    }
+  ],
+  "tests_passed": true,
+  "test_summary": "X passed, 0 failed",
+  "notes": ""
+}
+```
+
+- `findings_addressed`: All findings you fixed. Use `partially_fixed` only if the fix is incomplete but improves the situation.
+- `findings_skipped`: Any findings you could not fix. Only acceptable on cycle 5 (escalation). On cycles 1-4, all findings must be addressed.

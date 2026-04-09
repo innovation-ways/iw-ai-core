@@ -84,21 +84,22 @@ TYPE_TO_PREFIX: dict[str, str] = {
 
 # Prefixes used when validating work item IDs (no batch type here)
 TYPE_TO_ID_PREFIX: dict[str, str] = {
-    "feature": "F",
-    "incident": "I",
-    "cr": "CR",
+    "feature": "F-",
+    "incident": "I-",
+    "cr": "CR-",
 }
 
 
 def format_id(prefix: str, number: int) -> str:
-    """Format a sequential ID.  BATCH uses dash notation, others do not."""
-    if prefix == "BATCH":
-        return f"BATCH-{number:03d}"
-    return f"{prefix}{number:03d}"
+    """Format a sequential ID with dash separator and 5-digit zero-padding."""
+    return f"{prefix}-{number:05d}"
 
 
 def validate_id_prefix(item_id: str, item_type: str) -> bool:
-    """Return True if item_id starts with the expected prefix for item_type."""
+    """Return True if item_id starts with the expected prefix for item_type.
+
+    Expected format: ``PREFIX-DIGITS`` (e.g. ``I-00001``, ``CR-00042``).
+    """
     expected = TYPE_TO_ID_PREFIX.get(item_type)
     if expected is None:
         return False

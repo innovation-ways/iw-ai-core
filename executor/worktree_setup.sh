@@ -50,10 +50,14 @@ fi
 # ---------------------------------------------------------------------------
 cd "$PROJECT_REPO_ROOT"
 
-ITEM_JSON=$(iw item-status "$ITEM_ID" --json 2>/dev/null) || {
-    echo "ERROR: Could not get item status for $ITEM_ID (is the DB reachable?)" >&2
+IW_STDERR=$(mktemp)
+ITEM_JSON=$(iw item-status "$ITEM_ID" --json 2>"$IW_STDERR") || {
+    ERR_MSG=$(cat "$IW_STDERR")
+    rm -f "$IW_STDERR"
+    echo "ERROR: iw item-status failed for $ITEM_ID: $ERR_MSG" >&2
     exit 1
 }
+rm -f "$IW_STDERR"
 
 if [[ -z "$ITEM_JSON" ]] || echo "$ITEM_JSON" | jq -e '.error' >/dev/null 2>&1; then
     echo "ERROR: iw item-status returned an error for $ITEM_ID" >&2
@@ -146,7 +150,7 @@ cd "$WORKTREE_DIR"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Re-fetch item status from within the worktree so auto-detection finds .iw-orch.json
-ITEM_JSON_FRESH=$(iw item-status "$ITEM_ID" --json 2>/dev/null || echo "$ITEM_JSON")
+ITEM_JSON_FRESH=$(iw item-status "$ITEM_ID" --json 2>/dev/null) || ITEM_JSON_FRESH="$ITEM_JSON"
 
 echo "$ITEM_JSON_FRESH" | jq \
     --arg branch "$BRANCH" \
