@@ -8,6 +8,7 @@ import logging
 import os
 import signal
 import subprocess
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -17,6 +18,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
+from orch.archive import archive_batch
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -981,6 +983,15 @@ _BATCH_ACTION_LABELS: dict[str, tuple[str, str, str, bool]] = {
         "Cancel",
         True,
     ),
+    "archive": (
+        "Archive batch?",
+        (
+            "Archives this batch: runs post-merge commands (alembic migrations, docker rebuilds)"
+            " and archives all work items. This runs in the background."
+        ),
+        "Archive",
+        False,  # not danger — this is a normal completion action
+    ),
 }
 
 
@@ -1131,3 +1142,45 @@ def cancel_batch(
     _emit(db, "batch_cancelled", project_id, batch_id, f"Batch {batch_id} cancelled by user")
     db.commit()
     return _action_response(f"Batch {batch_id} cancelled.", toast_type="warning", reload=True)
+
+
+# ---------------------------------------------------------------------------
+# Archive batch (completed/completed_with_errors → archived, background thread)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/batch/{batch_id}/archive", response_class=Response)
+def archive_batch_endpoint(
+    project_id: str,
+    batch_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    batch = _get_batch(db, project_id, batch_id)
+    if batch.status not in (BatchStatus.completed, BatchStatus.completed_with_errors):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Cannot archive: batch status is '{batch.status.value}'"
+                " (must be completed or completed_with_errors)"
+            ),
+        )
+    _emit(
+        db,
+        "batch_archiving",
+        project_id,
+        batch_id,
+        f"Batch {batch_id} archiving started",
+    )
+    db.commit()
+
+    threading.Thread(
+        target=archive_batch,
+        args=(project_id, batch_id),
+        daemon=True,
+    ).start()
+
+    return _action_response(
+        f"Batch {batch_id} archiving started...",
+        toast_type="info",
+        reload=True,
+    )
