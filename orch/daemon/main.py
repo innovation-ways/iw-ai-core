@@ -288,7 +288,7 @@ class Daemon:
 
     def _check_orphaned_worktrees(self, project_id: str, cfg: ProjectConfig) -> None:
         """Log any worktree directories that have no matching active batch_item."""
-        worktree_base = Path(cfg.repo_root) / cfg.worktree_base
+        worktree_base = Path(cfg.working_dir) / cfg.worktree_base
         if not worktree_base.exists():
             return
 

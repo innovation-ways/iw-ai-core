@@ -32,6 +32,7 @@
               <th class="px-4 py-2 text-left font-medium text-muted-foreground">Title</th>
               <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Date</th>
               <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -62,6 +63,16 @@
                 </td>
                 <td class="px-4 py-2">
                   {{ status_badge(item.status) }}
+                </td>
+                <td class="px-4 py-2">
+                  <button
+                    hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+                    hx-target="#confirm-dialog"
+                    hx-swap="innerHTML"
+                    class="px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs
+                           hover:opacity-90 transition-opacity font-medium">
+                    Cancel
+                  </button>
                 </td>
               </tr>
             {% endfor %}
@@ -126,7 +137,7 @@
               <td class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">
                 {{ item.created_at.strftime('%b %d') }}
               </td>
-              <td class="px-4 py-2">
+              <td class="px-4 py-2 flex gap-2">
                 <button
                   hx-post="/project/{{ current_project.id }}/api/item/{{ item.id }}/approve"
                   hx-swap="none"
@@ -134,6 +145,14 @@
                   class="px-2 py-1 bg-success text-success-foreground rounded text-xs
                          hover:opacity-90 transition-opacity font-medium">
                   Approve
+                </button>
+                <button
+                  hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+                  hx-target="#confirm-dialog"
+                  hx-swap="innerHTML"
+                  class="px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs
+                         hover:opacity-90 transition-opacity font-medium">
+                  Cancel
                 </button>
               </td>
             </tr>

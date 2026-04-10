@@ -466,7 +466,7 @@ def _generate_fix_prompt(
         )
 
     # Write to a separate fix-cycles directory (NOT prompts/ — review agents scan that)
-    prompt_dir = Path(worktree_path) / "ai-dev" / "design" / "active" / item_id / "fix-cycles"
+    prompt_dir = Path(worktree_path) / "ai-dev" / "active" / item_id / "fix-cycles"
     prompt_dir.mkdir(parents=True, exist_ok=True)
     prompt_file = prompt_dir / f"{item_id}_{step_id}_FIX_cycle{cycle_number}_prompt.md"
     prompt_file.write_text(prompt)
