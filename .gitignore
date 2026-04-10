@@ -24,6 +24,10 @@ logs/
 .pytest_cache/
 htmlcov/
 
+# Allure test reporting
+allure-results/
+allure-report/
+
 # Git worktrees (parallel AI agent isolation)
 .worktrees/
 .claude/worktrees/

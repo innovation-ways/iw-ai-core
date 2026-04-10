@@ -33,6 +33,22 @@ test-integration:
 
 test: test-unit test-integration
 
+# --- Allure test reporting ---
+allure-unit:
+	uv run pytest tests/unit/ -v --alluredir=allure-results
+
+allure-integration:
+	uv run pytest tests/integration/ -v --alluredir=allure-results
+
+allure-all:
+	uv run pytest tests/ -v --alluredir=allure-results
+
+allure-serve:
+	npx allure serve allure-results --host 0.0.0.0 --port 9999
+
+allure-clean:
+	rm -rf allure-results allure-report
+
 # --- All checks (run before commit) ---
 check: quality test
 
