@@ -26,7 +26,14 @@
         <table class="w-full text-sm min-w-[500px]">
           <thead>
             <tr class="border-b border-border bg-muted/30">
-              <th class="px-4 py-2 w-8"></th>
+              <th class="px-4 py-2 w-8">
+                <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input type="checkbox" id="select-all-approved"
+                         class="rounded border-border text-primary focus:ring-ring"
+                         onclick="toggleSelectAll(this)">
+                  <span class="text-xs font-medium text-muted-foreground">Select all</span>
+                </label>
+              </th>
               <th class="px-4 py-2 text-left font-medium text-muted-foreground">ID</th>
               <th class="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
               <th class="px-4 py-2 text-left font-medium text-muted-foreground">Title</th>
@@ -86,9 +93,9 @@
     </div>
 
     {% if approved_items %}
-      <button type="submit"
+      <button type="submit" id="create-batch-btn" disabled
               class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium
-                     hover:opacity-90 transition-opacity disabled:opacity-50">
+                     hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
         Create Batch from Selected
       </button>
     {% endif %}
@@ -166,4 +173,22 @@
     {% endif %}
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateBatchBtn() {
+  const anyChecked = document.querySelectorAll('#queue-form input[name="item_ids"]:checked').length > 0;
+  const btn = document.getElementById('create-batch-btn');
+  if (btn) btn.disabled = !anyChecked;
+}
+
+function toggleSelectAll(master) {
+  document.querySelectorAll('#queue-form input[type="checkbox"][name="item_ids"]')
+    .forEach(cb => cb.checked = master.checked);
+  updateBatchBtn();
+}
+
+document.getElementById('queue-form')?.addEventListener('change', updateBatchBtn);
+</script>
 {% endblock %}
