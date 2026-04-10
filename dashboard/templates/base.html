@@ -86,9 +86,16 @@
 <!-- App shell: sidebar + main -->
 <div class="flex h-screen overflow-hidden">
 
+  <!-- ===== Sidebar backdrop (mobile only) ===== -->
+  <div id="sidebar-backdrop"
+       class="fixed inset-0 bg-black/50 z-30 hidden lg:hidden"
+       onclick="toggleSidebar()"></div>
+
   <!-- ===== Sidebar ===== -->
   <aside id="sidebar"
-         class="w-60 flex-shrink-0 flex flex-col bg-sidebar border-r border-sidebar-border overflow-y-auto">
+         class="fixed inset-y-0 left-0 z-40 w-60 flex-shrink-0 flex flex-col bg-sidebar border-r border-sidebar-border overflow-y-auto
+                -translate-x-full lg:translate-x-0 lg:static lg:z-auto
+                transition-transform duration-200 ease-in-out">
 
     <!-- Logo / brand -->
     <a href="/" class="flex items-center gap-2 px-4 py-4 border-b border-sidebar-border hover:opacity-80 transition-opacity">
@@ -153,7 +160,15 @@
   <div class="flex-1 flex flex-col overflow-hidden">
 
     <!-- Global search bar -->
-    <div class="flex-shrink-0 border-b border-border bg-card px-6 py-2 relative">
+    <div class="flex-shrink-0 border-b border-border bg-card px-3 sm:px-6 py-2 relative flex items-center gap-3">
+      <!-- Hamburger menu (mobile only) -->
+      <button id="sidebar-toggle"
+              class="lg:hidden p-1.5 -ml-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-accent transition-colors"
+              onclick="toggleSidebar()">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
       <input type="search"
              hx-get="/api/search"
              hx-trigger="keyup changed delay:300ms"
@@ -161,29 +176,29 @@
              {% if current_project %}hx-vals='{"project": "{{ current_project.id }}"}'{% endif %}
              name="q"
              placeholder="Search work items… (Ctrl+K)"
-             class="w-full max-w-md px-4 py-1.5 bg-input border border-border rounded-md text-sm
+             class="w-full max-w-full sm:max-w-md px-4 py-1.5 bg-input border border-border rounded-md text-sm
                     text-foreground placeholder:text-muted-foreground
                     focus:outline-none focus:ring-2 focus:ring-ring" />
-      <div id="global-search-results" class="absolute left-6 top-full z-50 w-full max-w-md"></div>
+      <div id="global-search-results" class="absolute left-3 sm:left-6 top-full z-50 w-full max-w-md"></div>
     </div>
 
     <!-- Page content area -->
-    <main class="flex-1 overflow-y-auto p-6">
+    <main class="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
       {% block breadcrumb %}{% endblock %}
       {% block content %}{% endblock %}
     </main>
 
     <!-- LLM Quota footer bar (static placeholder) -->
-    <footer class="flex-shrink-0 border-t border-border bg-muted px-6 py-2 flex items-center gap-6 text-xs text-muted-foreground">
+    <footer class="flex-shrink-0 border-t border-border bg-muted px-3 sm:px-6 py-2 flex items-center gap-4 sm:gap-6 text-xs text-muted-foreground">
       <span class="font-medium">Claude:</span>
-      <div class="flex items-center gap-2">
+      <div class="hidden sm:flex items-center gap-2">
         <span>5h</span>
         <div class="w-24 h-1.5 bg-border rounded-full overflow-hidden">
           <div class="h-full bg-primary rounded-full" style="width: 0%"></div>
         </div>
         <span>—</span>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="hidden sm:flex items-center gap-2">
         <span>7d</span>
         <div class="w-24 h-1.5 bg-border rounded-full overflow-hidden">
           <div class="h-full bg-primary rounded-full" style="width: 0%"></div>
@@ -199,6 +214,28 @@
 <!-- JS -->
 <script src="/static/theme-toggle.js"></script>
 <script src="/static/duration.js"></script>
+<script>
+  function toggleSidebar() {
+    var sidebar = document.getElementById('sidebar');
+    var backdrop = document.getElementById('sidebar-backdrop');
+    var isOpen = !sidebar.classList.contains('-translate-x-full');
+    if (isOpen) {
+      sidebar.classList.add('-translate-x-full');
+      backdrop.classList.add('hidden');
+      document.body.classList.remove('sidebar-open');
+    } else {
+      sidebar.classList.remove('-translate-x-full');
+      backdrop.classList.remove('hidden');
+      document.body.classList.add('sidebar-open');
+    }
+  }
+  // Auto-close sidebar on link click (mobile)
+  document.getElementById('sidebar').addEventListener('click', function(e) {
+    if (e.target.closest('a') && window.innerWidth < 1024) {
+      toggleSidebar();
+    }
+  });
+</script>
 {% block scripts %}{% endblock %}
 
 </body>

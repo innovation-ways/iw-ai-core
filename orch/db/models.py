@@ -137,6 +137,15 @@ class BatchItemStatus(enum.Enum):
     skipped = "skipped"
 
 
+class TestRunStatus(enum.Enum):
+    pending = "pending"
+    running = "running"
+    passed = "passed"
+    failed = "failed"
+    cancelled = "cancelled"
+    error = "error"
+
+
 # ---------------------------------------------------------------------------
 # Reusable column type shorthands
 # ---------------------------------------------------------------------------
@@ -153,6 +162,7 @@ _fix_trigger_col = SAEnum(FixTrigger, name="fix_trigger", create_type=True)
 _fix_status_col = SAEnum(FixStatus, name="fix_status", create_type=True)
 _batch_status_col = SAEnum(BatchStatus, name="batch_status", create_type=True)
 _batch_item_status_col = SAEnum(BatchItemStatus, name="batch_item_status", create_type=True)
+_test_run_status_col = SAEnum(TestRunStatus, name="test_run_status", create_type=True)
 
 
 # ---------------------------------------------------------------------------
@@ -492,6 +502,12 @@ class FixCycle(Base):
     status: Mapped[FixStatus] = mapped_column(
         _fix_status_col, nullable=False, server_default=text("'pending'")
     )
+    fix_metadata: Mapped[Any] = mapped_column(
+        JSONB,
+        nullable=True,
+        server_default=text("'{}'"),
+        comment="Runtime metadata: pid, timeout_secs, log_file, worktree_path",
+    )
     started_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
 
@@ -681,6 +697,59 @@ class DaemonEvent(Base):
                 "Append-only. Powers notifications and analytics."
             )
         },
+    )
+
+
+class TestRun(Base):
+    """Test execution runs launched from the dashboard. Append-only."""
+
+    __tablename__ = "test_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(
+        Text, nullable=False, comment="Project that owns this test run"
+    )
+    category: Mapped[str] = mapped_column(
+        Text, nullable=False, comment="Test category key (e.g. 'unit', 'integration', 'e2e')"
+    )
+    status: Mapped[TestRunStatus] = mapped_column(
+        _test_run_status_col, nullable=False, server_default=text("'pending'")
+    )
+    command: Mapped[str] = mapped_column(Text, nullable=False, comment="Shell command executed")
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    duration_secs: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pid: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="OS process ID (for kill support)"
+    )
+    log_path: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Absolute path to captured stdout/stderr log"
+    )
+    allure_results_dir: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Path to allure-results directory for this run"
+    )
+    allure_report_dir: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Path to generated allure-report directory"
+    )
+    summary: Mapped[Any] = mapped_column(
+        JSONB, nullable=True, comment="Parsed Allure widgets/summary.json content"
+    )
+    triggered_by: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'user'"),
+        comment="Who triggered: user, scheduled",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
+        Index("idx_test_runs_project_created", "project_id", "created_at"),
+        Index("idx_test_runs_project_status", "project_id", "status"),
+        {"comment": "Test execution runs launched from the dashboard. Append-only."},
     )
 
 

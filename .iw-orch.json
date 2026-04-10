@@ -4,5 +4,27 @@
   "max_parallel": 4,
   "auto_publish": false,
   "browser_verification": false,
-  "fix_cycle_max": 5
+  "fix_cycle_max": 5,
+  "test_config": {
+    "execution_dir": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
+    "allure_results_dir": "allure-results",
+    "allure_report_dir": "allure-report",
+    "categories": {
+      "unit": {
+        "label": "Unit Tests",
+        "command": "uv run pytest tests/unit/ -v --alluredir=allure-results",
+        "description": "Fast tests, no external dependencies"
+      },
+      "integration": {
+        "label": "Integration Tests",
+        "command": "uv run pytest tests/integration/ -v --alluredir=allure-results",
+        "description": "Requires PostgreSQL testcontainer"
+      },
+      "all": {
+        "label": "All Tests",
+        "command": "uv run pytest tests/ -v --alluredir=allure-results",
+        "description": "Complete test suite (unit + integration)"
+      }
+    }
+  }
 }

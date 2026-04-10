@@ -1,0 +1,73 @@
+{% from "components/status_badge.html" import status_badge %}
+
+{% if not has_config %}
+  <div class="px-4 py-8 text-center text-muted-foreground text-sm">
+    No test categories configured.
+  </div>
+{% else %}
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    {% for card in categories %}
+    <div class="bg-card border border-border rounded-lg p-5 flex flex-col">
+      <!-- Header -->
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-semibold text-foreground">{{ card.label }}</h3>
+        {% if card.last_run %}
+          {{ status_badge(card.last_run.status.value) }}
+        {% endif %}
+      </div>
+
+      <!-- Description -->
+      <p class="text-xs text-muted-foreground mb-3 flex-1">{{ card.description }}</p>
+
+      <!-- Command -->
+      <div class="bg-muted rounded px-2 py-1 mb-3">
+        <code class="text-xs font-mono text-muted-foreground">{{ card.command }}</code>
+      </div>
+
+      <!-- Last run info -->
+      {% if card.last_run %}
+        <div class="text-xs text-muted-foreground mb-3">
+          Last run:
+          {% if card.last_run.started_at %}
+            {{ card.last_run.started_at.strftime('%b %d %H:%M') }}
+          {% endif %}
+          {% if card.last_run.duration_secs is not none %}
+            {% set mins = (card.last_run.duration_secs // 60)|int %}
+            {% set secs = (card.last_run.duration_secs % 60)|int %}
+            &middot; {{ "%dm%02ds"|format(mins, secs) }}
+          {% endif %}
+        </div>
+      {% endif %}
+
+      <!-- Launch / Running button -->
+      {% if card.last_run and card.last_run.status.value in ('pending', 'running') %}
+        <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 text-sm text-primary">
+            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            <span>Running...</span>
+          </div>
+          <button hx-post="/project/{{ current_project.id }}/api/tests/kill/{{ card.last_run.id }}"
+                  hx-swap="none"
+                  hx-on::after-request="window.location.reload()"
+                  class="ml-auto px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs
+                         hover:opacity-90 transition-opacity font-medium">
+            Cancel
+          </button>
+        </div>
+      {% else %}
+        <button hx-post="/project/{{ current_project.id }}/api/tests/launch/{{ card.key }}"
+                hx-swap="none"
+                hx-on::after-request="window.location.reload()"
+                hx-confirm="Launch {{ card.label }}?"
+                class="w-full px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium
+                       hover:opacity-90 transition-opacity">
+          Launch
+        </button>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}

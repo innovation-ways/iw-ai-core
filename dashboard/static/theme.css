@@ -145,6 +145,22 @@ html, body {
   to { transform: translateX(0); opacity: 1; }
 }
 
+/* --- Responsive sidebar --- */
+body.sidebar-open {
+  overflow: hidden;
+}
+
+/* --- Responsive toast container --- */
+@media (max-width: 640px) {
+  #toast-container {
+    left: 1rem;
+    right: 1rem;
+  }
+  #toast-container .toast-item {
+    width: 100% !important;
+  }
+}
+
 /* --- Scrollbar styling --- */
 ::-webkit-scrollbar {
   width: 6px;

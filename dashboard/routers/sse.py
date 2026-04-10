@@ -38,10 +38,15 @@ _TOAST_EVENTS = frozenset(
         "batch_archiving",
         "batch_archived",
         "batch_archive_failed",
+        "test_started",
+        "test_completed",
+        "test_failed",
     }
 )
+# Test-specific events that trigger test tab refresh
+_TEST_UPDATE_EVENTS = frozenset({"test_started", "test_completed", "test_failed"})
 # All events we care about (union)
-_WATCHED_EVENTS = _RUNNING_UPDATE_EVENTS | _TOAST_EVENTS
+_WATCHED_EVENTS = _RUNNING_UPDATE_EVENTS | _TOAST_EVENTS | _TEST_UPDATE_EVENTS
 
 _TOAST_SEVERITY: dict[str, str] = {
     "step_failed": "error",
@@ -56,6 +61,9 @@ _TOAST_SEVERITY: dict[str, str] = {
     "batch_archiving": "info",
     "batch_archived": "success",
     "batch_archive_failed": "error",
+    "test_started": "info",
+    "test_completed": "success",
+    "test_failed": "error",
 }
 
 
@@ -98,6 +106,16 @@ async def _event_generator(request: Request) -> AsyncGenerator[str, None]:
                     }
                 )
                 yield f"event: running-update\ndata: {data}\nid: {event.id}\n\n"
+
+            if event.event_type in _TEST_UPDATE_EVENTS:
+                data = json.dumps(
+                    {
+                        "event_type": event.event_type,
+                        "entity_id": event.entity_id,
+                        "project_id": event.project_id,
+                    }
+                )
+                yield f"event: test-update\ndata: {data}\nid: {event.id}\n\n"
 
             if event.event_type in _TOAST_EVENTS:
                 severity = _TOAST_SEVERITY.get(event.event_type, "info")

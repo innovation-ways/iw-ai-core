@@ -20,7 +20,7 @@
   <h1 class="text-xl font-semibold text-foreground">
     <span class="font-mono text-primary mr-2">{{ item.id }}</span>{{ item.title }}
   </h1>
-  <div class="flex items-center gap-3 mt-2">
+  <div class="flex flex-wrap items-center gap-2 sm:gap-3 mt-2">
     {{ status_badge(item_type) }}
     {{ status_badge(item_status) }}
     {% if batch_ref %}
@@ -31,7 +31,7 @@
     {% endif %}
 
     {# ── Item-level action buttons (contextual by status) ── #}
-    <div class="flex items-center gap-2 ml-auto">
+    <div class="flex flex-wrap items-center gap-2 ml-0 sm:ml-auto w-full sm:w-auto mt-2 sm:mt-0">
       {% if item_status == 'draft' %}
         <button
           hx-get="/project/{{ current_project.id }}/api/confirm-item/approve/{{ item.id }}"
@@ -116,7 +116,7 @@
 {% endif %}
 
 <!-- Metric cards -->
-<div class="grid grid-cols-3 gap-4 mb-6">
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
   <div class="bg-card border border-border rounded-lg p-4">
     <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Total Time</p>
     <p class="text-xl font-bold font-mono text-foreground">
@@ -140,40 +140,40 @@
 </div>
 
 <!-- Tab navigation -->
-<div id="tab-nav" class="flex border-b border-border mb-4">
+<div id="tab-nav" class="flex border-b border-border mb-4 overflow-x-auto">
   <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/overview"
           hx-target="#tab-content"
           hx-swap="innerHTML"
           hx-on:click="setActiveTab(this)"
-          class="tab-btn px-4 py-2 text-sm border-b-2 border-primary text-primary font-medium transition-colors">
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap border-b-2 border-primary text-primary font-medium transition-colors">
     Overview
   </button>
   <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/design-doc"
           hx-target="#tab-content"
           hx-swap="innerHTML"
           hx-on:click="setActiveTab(this)"
-          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
     Design Document
   </button>
   <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/reports"
           hx-target="#tab-content"
           hx-swap="innerHTML"
           hx-on:click="setActiveTab(this)"
-          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
     Reports
   </button>
   <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/artifacts"
           hx-target="#tab-content"
           hx-swap="innerHTML"
           hx-on:click="setActiveTab(this)"
-          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
     Artifacts
   </button>
   <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/logs"
           hx-target="#tab-content"
           hx-swap="innerHTML"
           hx-on:click="setActiveTab(this)"
-          class="tab-btn px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
     Logs
   </button>
 </div>

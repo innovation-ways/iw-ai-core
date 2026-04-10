@@ -19,6 +19,7 @@ from dashboard.routers import (
     search,
     sse,
     system,
+    tests,
 )
 
 _HERE = Path(__file__).resolve().parent
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(project_dashboard.router)
     app.include_router(batches.router)
     app.include_router(items.router)
+    app.include_router(tests.router)
     app.include_router(project_pages.router)
     app.include_router(search.router)
 
