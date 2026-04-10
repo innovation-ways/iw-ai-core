@@ -79,7 +79,7 @@ Classify whether the bug is **UI-visible** (affects what the user sees in the br
    ```bash
    playwright-cli open http://localhost:5173
    # Login, navigate, and perform ALL steps to reproduce the bug
-   playwright-cli screenshot ai-dev/design/active/{ID}/evidences/pre/{ID}-bug-evidence.png
+   playwright-cli screenshot ai-dev/active/{ID}/evidences/pre/{ID}-bug-evidence.png
    playwright-cli close
    ```
 
@@ -129,9 +129,9 @@ Present the following summary to the user and ask for approval:
 | ... | ... | ... |
 
 ### Files to Create
-- Design: `ai-dev/design/active/{ID}/{ID}_Issue_Design.md`
-- Prompts: {count} files in `ai-dev/design/active/{ID}/prompts/`
-- Manifest: `ai-dev/design/active/{ID}/workflow-manifest.json`
+- Design: `ai-dev/active/{ID}/{ID}_Issue_Design.md`
+- Prompts: {count} files in `ai-dev/active/{ID}/prompts/`
+- Manifest: `ai-dev/active/{ID}/workflow-manifest.json`
 
 ### Questions / Concerns
 {List any open questions or things you're unsure about}
@@ -165,13 +165,13 @@ The lock is acquired at execution time by the orchestrator, not at design time. 
 Create the folder structure:
 
 ```bash
-mkdir -p ai-dev/design/active/{ID}/prompts/
-mkdir -p ai-dev/design/active/{ID}/evidences/pre/
+mkdir -p ai-dev/active/{ID}/prompts/
+mkdir -p ai-dev/active/{ID}/evidences/pre/
 ```
 
 Then create the design document at:
 ```
-ai-dev/design/active/{ID}/{ID}_Issue_Design.md
+ai-dev/active/{ID}/{ID}_Issue_Design.md
 ```
 
 Use the template from `ai-dev/templates/Issue_Design_Template.md`. Fill in ALL sections:
@@ -179,7 +179,7 @@ Use the template from `ai-dev/templates/Issue_Design_Template.md`. Fill in ALL s
 - **Description**: What is broken and expected behavior (2-3 sentences)
 - **Severity**: Based on impact assessment
 - **Reported By**: Source of the bug report
-- **Browser Evidence** (UI-visible only): Reference screenshot and snapshot files from `ai-dev/design/active/{ID}/evidences/pre/`
+- **Browser Evidence** (UI-visible only): Reference screenshot and snapshot files from `ai-dev/active/{ID}/evidences/pre/`
 - **Steps to Reproduce**: Numbered sequence with Expected/Actual
 - **Browser Verification Script** (UI-visible only): Exact Playwright CLI commands to reproduce the bug
 - **Root Cause Analysis**: Why this is happening, with file:line references
@@ -237,15 +237,15 @@ S15: QV Browser — Browser verification (only if UI-visible)
 
 ## Step 5: Generate ALL Prompt Files (only after GO)
 
-Create all prompt files in `ai-dev/design/active/{ID}/prompts/`.
+Create all prompt files in `ai-dev/active/{ID}/prompts/`.
 
-**IMPORTANT**: Every generated prompt MUST include `Input Files` and `Output Files` sections with paths using the `ai-dev/design/active/{ID}/` prefix. Reports go in `ai-dev/design/active/{ID}/reports/`.
+**IMPORTANT**: Every generated prompt MUST include `Input Files` and `Output Files` sections with paths using the `ai-dev/active/{ID}/` prefix. Reports go in `ai-dev/active/{ID}/reports/`.
 
 ### 5a: Implementation Prompts
 
 For each fix agent, create:
 ```
-ai-dev/design/active/{ID}/prompts/{ID}_S{NN}_{Agent}_prompt.md
+ai-dev/active/{ID}/prompts/{ID}_S{NN}_{Agent}_prompt.md
 ```
 
 Using `ai-dev/templates/Implementation_Prompt_Template.md` as the base. **Key differences for incidents**:
@@ -296,7 +296,7 @@ QV gates are **script-driven** — no QV prompt file needed for gate steps.
 
 ## Step 5b: Generate Workflow Manifest (only after GO)
 
-Create `ai-dev/design/active/{ID}/workflow-manifest.json` (step definitions only — state lives in DB):
+Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions only — state lives in DB):
 
 ```json
 {
@@ -350,8 +350,8 @@ After all files are created, register the item in the database:
 ```bash
 iw register {ID} "{One-line summary of the bug}" \
   --type incident \
-  --design-doc ai-dev/design/active/{ID}/{ID}_Issue_Design.md \
-  --steps-from ai-dev/design/active/{ID}/workflow-manifest.json
+  --design-doc ai-dev/active/{ID}/{ID}_Issue_Design.md \
+  --steps-from ai-dev/active/{ID}/workflow-manifest.json
 ```
 
 This records the item and all its workflow steps in the database. The item starts in `draft` status.
@@ -370,10 +370,10 @@ Display a summary of everything created:
 {Brief root cause summary with file:line reference}
 
 ### Design Document
-- `ai-dev/design/active/{ID}/{ID}_Issue_Design.md`
+- `ai-dev/active/{ID}/{ID}_Issue_Design.md`
 
 ### Workflow Manifest
-- `ai-dev/design/active/{ID}/workflow-manifest.json`
+- `ai-dev/active/{ID}/workflow-manifest.json`
 
 ### Execution Plan
 | Step | File | Type |
@@ -408,6 +408,6 @@ Display a summary of everything created:
 - **NEVER** skip CodeReview steps
 - **NEVER** skip CodeReview_Final or QV gate steps
 - **NEVER** skip Browser Verification for UI-visible bugs
-- **NEVER** place files in `done/` — all new files go in `ai-dev/design/active/`
+- **NEVER** place files in `done/` — all new files go in `ai-dev/active/`
 - **NEVER** start implementation — this skill only creates the fix package
 - **NEVER** write tests that only check response shape — always verify semantic correctness

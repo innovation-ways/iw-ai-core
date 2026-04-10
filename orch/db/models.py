@@ -58,6 +58,7 @@ class WorkItemStatus(enum.Enum):
     completed = "completed"
     failed = "failed"
     paused = "paused"
+    cancelled = "cancelled"
 
 
 class WorkItemPhase(enum.Enum):
