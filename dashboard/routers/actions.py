@@ -18,7 +18,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
-from orch.archive import archive_batch
+from orch.archive.batch_archiver import archive_batch
 from orch.db.models import (
     Batch,
     BatchItem,
