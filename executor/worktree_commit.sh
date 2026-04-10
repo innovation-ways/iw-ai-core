@@ -103,7 +103,7 @@ echo "[worktree_commit] OK: Branch is $ahead commit(s) ahead of main — safe to
 # Step 4: Show what will be merged (summary for logs)
 # ---------------------------------------------------------------------------
 echo "[worktree_commit] Files on branch vs main:" >&2
-git diff main..HEAD --name-status 2>/dev/null | head -30 >&2
+git diff main..HEAD --name-status 2>/dev/null | head -30 || true >&2
 
 # ---------------------------------------------------------------------------
 # Step 5: Squash-merge into main
