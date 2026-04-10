@@ -51,3 +51,6 @@ Thumbs.db
 # Others
 .playwright-cli/
 
+# IW platform runtime state (auto-updated by iw sync-skills, causes merge conflicts)
+.iw-skills-lock.json
+
