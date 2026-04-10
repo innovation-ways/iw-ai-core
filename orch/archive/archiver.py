@@ -12,8 +12,6 @@ import zstandard as zstd
 from sqlalchemy import select
 
 from orch.db.models import (
-    BatchItem,
-    BatchItemStatus,
     Project,
     WorkflowStep,
     WorkItem,
@@ -142,43 +140,6 @@ def archive_all_completed(
     for wi in items:
         archive_work_item(db, project_id, wi.id, archive_dir)
         archived.append(wi.id)
-    return archived
-
-
-def archive_batch(project_id: str, batch_id: str) -> list[str]:
-    """Archive all merged items in a batch. Creates its own DB session (for use in threads).
-
-    Args:
-        project_id: Project identifier.
-        batch_id: Batch identifier.
-
-    Returns:
-        List of archived item IDs.
-    """
-    from orch.db.session import get_session
-
-    archived: list[str] = []
-    with get_session() as db:
-        batch_items = (
-            db.execute(
-                select(BatchItem).where(
-                    BatchItem.project_id == project_id,
-                    BatchItem.batch_id == batch_id,
-                    BatchItem.status == BatchItemStatus.merged,
-                )
-            )
-            .scalars()
-            .all()
-        )
-        project = db.get(Project, project_id)
-        archive_dir = Path(project.repo_root) / "ai-dev" / "archives" if project else None
-        for bi in batch_items:
-            try:
-                archive_work_item(db, project_id, bi.work_item_id, archive_dir)
-                archived.append(bi.work_item_id)
-            except Exception:
-                pass
-        db.commit()
     return archived
 
 
