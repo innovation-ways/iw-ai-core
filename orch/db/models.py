@@ -571,6 +571,9 @@ class Batch(Base):
         _TIMESTAMPTZ, nullable=False, server_default=func.now()
     )
     completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(
+        _TIMESTAMPTZ, nullable=True, comment="Timestamp when the batch was archived"
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
