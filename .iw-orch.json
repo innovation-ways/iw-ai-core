@@ -5,6 +5,9 @@
   "auto_publish": false,
   "browser_verification": false,
   "fix_cycle_max": 5,
+  "post_archive_commands": [
+    "uv run alembic upgrade head"
+  ],
   "test_config": {
     "execution_dir": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
     "allure_results_dir": "allure-results",
