@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+
+{% block title %}Tests — {{ current_project.display_name if current_project else '' }}{% endblock %}
+
+{% block content %}
+<!-- Confirm dialog container -->
+<div id="confirm-dialog"></div>
+
+<!-- Header -->
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-foreground">Tests</h1>
+  <p class="text-muted-foreground text-sm mt-1">Launch, monitor, and review test runs</p>
+</div>
+
+{% if not has_config %}
+  <!-- No test configuration -->
+  <div class="bg-card border border-border rounded-lg p-8 text-center">
+    <svg class="w-12 h-12 mx-auto text-muted-foreground mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0 1 12 15a9.065 9.065 0 0 0-6.23.693L5 14.5m14.8.8 1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0 1 12 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+    </svg>
+    <h3 class="text-lg font-medium text-foreground mb-2">No Test Configuration</h3>
+    <p class="text-muted-foreground text-sm mb-4">
+      Add a <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">test_config</code> section to your
+      <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">.iw-orch.json</code> to enable test execution.
+    </p>
+    <details class="text-left max-w-lg mx-auto">
+      <summary class="text-sm text-primary cursor-pointer hover:underline">Example configuration</summary>
+      <pre class="mt-2 bg-muted p-3 rounded text-xs font-mono overflow-x-auto text-foreground">{
+  "test_config": {
+    "execution_dir": "/path/to/project",
+    "allure_results_dir": "allure-results",
+    "allure_report_dir": "allure-report",
+    "categories": {
+      "unit": {
+        "label": "Unit Tests",
+        "command": "make allure-unit",
+        "description": "Fast tests, no external dependencies"
+      }
+    }
+  }
+}</pre>
+    </details>
+  </div>
+{% else %}
+  <!-- Tab navigation -->
+  <div class="flex border-b border-border mb-4 overflow-x-auto">
+    <a href="?tab=launch"
+       class="px-4 py-2 text-sm transition-colors
+              {% if active_tab == 'launch' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+      Launch
+    </a>
+    <a href="?tab=runs"
+       class="px-4 py-2 text-sm transition-colors
+              {% if active_tab == 'runs' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+      Runs
+    </a>
+    <a href="?tab=results"
+       class="px-4 py-2 text-sm transition-colors
+              {% if active_tab == 'results' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+      Results
+    </a>
+  </div>
+
+  <!-- Tab content -->
+  <div id="tab-content">
+    {% if active_tab == 'launch' %}
+      {% include "fragments/tests_launch.html" %}
+    {% elif active_tab == 'runs' %}
+      {% include "fragments/tests_runs.html" %}
+    {% elif active_tab == 'results' %}
+      {% include "fragments/tests_results.html" %}
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var es = new EventSource('/api/stream/events');
+  es.addEventListener('test-update', function () {
+    // Reload the current tab content
+    var tabContent = document.getElementById('tab-content');
+    if (tabContent) {
+      window.location.reload();
+    }
+  });
+  es.addEventListener('toast', function (e) {
+    try { showToast(JSON.parse(e.data)); } catch (_) {}
+  });
+  es.onerror = function () {};
+})();
+</script>
+{% endblock %}

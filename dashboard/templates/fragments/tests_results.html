@@ -1,0 +1,115 @@
+{% from "components/status_badge.html" import status_badge %}
+
+{% if summary %}
+  <!-- Run selector -->
+  {% if recent_runs %}
+  <div class="mb-4 flex items-center gap-3">
+    <label class="text-sm text-muted-foreground">Run:</label>
+    <select onchange="if(this.value) window.location.href='?tab=results&run=' + this.value"
+            class="bg-input border border-border rounded-md px-3 py-1.5 text-sm text-foreground">
+      {% for r in recent_runs %}
+        <option value="{{ r.id }}"
+                {% if selected_run_id is defined and selected_run_id == r.id %}selected{% elif selected_run_id is not defined and loop.first %}selected{% endif %}>
+          #{{ r.id }} — {{ r.category }} — {{ r.started_at.strftime('%b %d %H:%M') if r.started_at else 'N/A' }}
+          — {{ r.status.value }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+
+  <!-- Summary cards -->
+  <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+    <!-- Total -->
+    <div class="bg-card border border-border rounded-lg p-4 text-center">
+      <p class="text-3xl font-bold text-foreground">{{ summary.total }}</p>
+      <p class="text-xs text-muted-foreground mt-1">Total Tests</p>
+    </div>
+    <!-- Passed -->
+    <div class="bg-card border border-border rounded-lg p-4 text-center">
+      <p class="text-3xl font-bold text-success">{{ summary.passed }}</p>
+      <p class="text-xs text-muted-foreground mt-1">Passed</p>
+    </div>
+    <!-- Failed -->
+    <div class="bg-card border border-border rounded-lg p-4 text-center">
+      <p class="text-3xl font-bold text-destructive">{{ summary.failed + summary.broken }}</p>
+      <p class="text-xs text-muted-foreground mt-1">Failed</p>
+    </div>
+    <!-- Skipped -->
+    <div class="bg-card border border-border rounded-lg p-4 text-center">
+      <p class="text-3xl font-bold text-warning">{{ summary.skipped }}</p>
+      <p class="text-xs text-muted-foreground mt-1">Skipped</p>
+    </div>
+    <!-- Duration -->
+    <div class="bg-card border border-border rounded-lg p-4 text-center">
+      {% set dur_secs = (summary.duration_ms / 1000)|int %}
+      {% set dur_mins = (dur_secs // 60)|int %}
+      {% set dur_rem = (dur_secs % 60)|int %}
+      <p class="text-3xl font-bold text-foreground">{{ "%d:%02d"|format(dur_mins, dur_rem) }}</p>
+      <p class="text-xs text-muted-foreground mt-1">Duration</p>
+    </div>
+  </div>
+
+  <!-- Pass/fail bar -->
+  {% if summary.total > 0 %}
+  <div class="mb-6">
+    <div class="flex items-center gap-2 mb-1">
+      <span class="text-xs text-muted-foreground">Pass rate:</span>
+      <span class="text-xs font-medium text-foreground">
+        {{ "%.1f"|format((summary.passed / summary.total) * 100) }}%
+      </span>
+    </div>
+    <div class="w-full h-3 bg-muted rounded-full overflow-hidden flex">
+      {% set pass_pct = (summary.passed / summary.total * 100)|round(1) %}
+      {% set fail_pct = ((summary.failed + summary.broken) / summary.total * 100)|round(1) %}
+      {% set skip_pct = (summary.skipped / summary.total * 100)|round(1) %}
+      {% if pass_pct > 0 %}
+        <div class="h-full bg-success" style="width: {{ pass_pct }}%"></div>
+      {% endif %}
+      {% if fail_pct > 0 %}
+        <div class="h-full bg-destructive" style="width: {{ fail_pct }}%"></div>
+      {% endif %}
+      {% if skip_pct > 0 %}
+        <div class="h-full bg-warning" style="width: {{ skip_pct }}%"></div>
+      {% endif %}
+    </div>
+    <div class="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+      <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-success inline-block"></span> Passed</span>
+      <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-destructive inline-block"></span> Failed</span>
+      <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-warning inline-block"></span> Skipped</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Open full report button -->
+  {% if summary.run_id %}
+  <div class="flex items-center gap-3">
+    <a href="/project/{{ current_project.id }}/tests/report/{{ summary.run_id }}/index.html"
+       target="_blank"
+       class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium
+              hover:opacity-90 transition-opacity inline-flex items-center gap-2">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+      </svg>
+      Open Full Allure Report
+    </a>
+    <span class="text-xs text-muted-foreground">
+      Run #{{ summary.run_id }} &middot; {{ summary.category }}
+      {% if summary.started_at %}
+        &middot; {{ summary.started_at.strftime('%b %d %H:%M') }}
+      {% endif %}
+    </span>
+  </div>
+  {% endif %}
+
+{% else %}
+  <div class="bg-card border border-border rounded-lg p-8 text-center">
+    <svg class="w-10 h-10 mx-auto text-muted-foreground mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+    </svg>
+    <h3 class="text-lg font-medium text-foreground mb-2">No Test Results Yet</h3>
+    <p class="text-muted-foreground text-sm">
+      Launch a test run from the <a href="?tab=launch" class="text-primary hover:underline">Launch</a> tab to see results here.
+    </p>
+  </div>
+{% endif %}

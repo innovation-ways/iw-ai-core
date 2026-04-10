@@ -43,7 +43,7 @@
     {% endif %}
   </h2>
 
-  <div class="bg-card border border-border rounded-lg overflow-hidden">
+  <div class="bg-card border border-border rounded-lg overflow-x-auto">
     <!-- SSE source: triggers running table refresh when running-update event arrives -->
     <div id="sse-trigger"
          hx-get="/system/running-fragment"
@@ -52,7 +52,7 @@
          hx-swap="innerHTML">
     </div>
 
-    <table class="w-full text-sm">
+    <table class="w-full text-sm min-w-[500px]">
       <thead>
         <tr class="border-b border-border bg-muted/30">
           {% if not current_project %}
@@ -60,7 +60,7 @@
           {% endif %}
           <th class="px-4 py-2 text-left font-medium text-muted-foreground">Item</th>
           <th class="px-4 py-2 text-left font-medium text-muted-foreground">Step / Agent</th>
-          <th class="px-4 py-2 text-left font-medium text-muted-foreground">PID</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">PID</th>
           <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
           <th class="px-4 py-2 text-right font-medium text-muted-foreground">Action</th>
         </tr>
@@ -89,8 +89,8 @@
     {% endif %}
   </h2>
 
-  <div class="bg-card border border-border rounded-lg overflow-hidden">
-    <table class="w-full text-sm">
+  <div class="bg-card border border-border rounded-lg overflow-x-auto">
+    <table class="w-full text-sm min-w-[550px]">
       <thead>
         <tr class="border-b border-border bg-muted/30">
           {% if not current_project %}
@@ -99,7 +99,7 @@
           <th class="px-4 py-2 text-left font-medium text-muted-foreground">Item</th>
           <th class="px-4 py-2 text-left font-medium text-muted-foreground">Step / Agent</th>
           <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
-          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Error</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Error</th>
           <th class="px-4 py-2 text-right font-medium text-muted-foreground">Actions</th>
         </tr>
       </thead>
@@ -117,7 +117,7 @@
             <td class="px-4 py-2">
               {{ status_badge(row.status) }}
             </td>
-            <td class="px-4 py-2 text-xs text-muted-foreground max-w-xs truncate"
+            <td class="px-4 py-2 text-xs text-muted-foreground max-w-xs truncate hidden sm:table-cell"
                 title="{{ row.error_message or '' }}">
               {{ row.error_message or '—' }}
             </td>
@@ -162,11 +162,11 @@
     {% endif %}
   </h2>
 
-  <div class="bg-card border border-border rounded-lg overflow-hidden">
-    <table class="w-full text-sm">
+  <div class="bg-card border border-border rounded-lg overflow-x-auto">
+    <table class="w-full text-sm min-w-[450px]">
       <thead>
         <tr class="border-b border-border bg-muted/30">
-          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Project</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Project</th>
           <th class="px-4 py-2 text-left font-medium text-muted-foreground">Item</th>
           <th class="px-4 py-2 text-left font-medium text-muted-foreground">Step / Agent</th>
           <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
@@ -176,7 +176,7 @@
       <tbody>
         {% for row in completed_rows %}
           <tr class="border-b border-border last:border-0 hover:bg-muted/20">
-            <td class="px-4 py-2 font-mono text-xs text-muted-foreground">{{ row.project_id }}</td>
+            <td class="px-4 py-2 font-mono text-xs text-muted-foreground hidden sm:table-cell">{{ row.project_id }}</td>
             <td class="px-4 py-2 font-mono text-xs font-semibold">{{ row.item_id }}</td>
             <td class="px-4 py-2">
               <span class="font-mono text-xs">{{ row.step_id }}</span>

@@ -119,6 +119,17 @@ class HistoryItem:
     duration_secs: int | None
 
 
+_HISTORY_PAGE_SIZE = 20
+
+_SORT_COLUMNS: dict[str, Any] = {
+    "id": WorkItem.id,
+    "title": WorkItem.title,
+    "created_at": WorkItem.created_at,
+    "type": WorkItem.type,
+    "status": WorkItem.status,
+}
+
+
 def _history_items(
     project_id: str,
     db: Session,
@@ -127,9 +138,12 @@ def _history_items(
     status_filter: str | None,
     date_from: str | None,
     date_to: str | None,
-) -> list[HistoryItem]:
-    """Return all history items (sorting is client-side JS)."""
-    stmt = select(WorkItem).where(
+    page: int = 1,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
+) -> tuple[list[HistoryItem], int]:
+    """Return paginated, sorted history items and total count."""
+    base = select(WorkItem).where(
         WorkItem.project_id == project_id,
         WorkItem.status.in_([WorkItemStatus.completed, WorkItemStatus.failed])
         | WorkItem.phase.in_([WorkItemPhase.done]),
@@ -138,30 +152,50 @@ def _history_items(
     if type_filter:
         for wt in WorkItemType:
             if wt.value.lower() == type_filter.lower():
-                stmt = stmt.where(WorkItem.type == wt)
+                base = base.where(WorkItem.type == wt)
                 break
 
     if status_filter:
         for ws in WorkItemStatus:
             if ws.value.lower() == status_filter.lower():
-                stmt = stmt.where(WorkItem.status == ws)
+                base = base.where(WorkItem.status == ws)
                 break
 
     if date_from:
         try:
             dt = datetime.fromisoformat(date_from).replace(tzinfo=UTC)
-            stmt = stmt.where(WorkItem.created_at >= dt)
+            base = base.where(WorkItem.created_at >= dt)
         except ValueError:
             pass
 
     if date_to:
         try:
             dt = datetime.fromisoformat(date_to).replace(tzinfo=UTC)
-            stmt = stmt.where(WorkItem.created_at <= dt)
+            base = base.where(WorkItem.created_at <= dt)
         except ValueError:
             pass
 
-    stmt = stmt.order_by(WorkItem.created_at.desc())
+    # Total count (before pagination)
+    from sqlalchemy import func as sa_func
+
+    total = db.scalar(select(sa_func.count()).select_from(base.subquery())) or 0
+
+    # Sorting — "duration" uses completed_at as proxy with NULLS LAST (asc) / NULLS FIRST (desc)
+    if sort_by == "duration":
+        if sort_dir == "asc":
+            base = base.order_by(WorkItem.completed_at.asc().nulls_last())
+        else:
+            base = base.order_by(WorkItem.completed_at.desc().nulls_first())
+    else:
+        col = _SORT_COLUMNS.get(sort_by, WorkItem.created_at)
+        if sort_dir == "asc":
+            base = base.order_by(col.asc())
+        else:
+            base = base.order_by(col.desc())
+
+    # Pagination
+    offset = (max(page, 1) - 1) * _HISTORY_PAGE_SIZE
+    stmt = base.offset(offset).limit(_HISTORY_PAGE_SIZE)
 
     items = []
     for r in db.scalars(stmt):
@@ -179,7 +213,7 @@ def _history_items(
                 duration_secs=duration,
             )
         )
-    return items
+    return items, total
 
 
 # ---------------------------------------------------------------------------
@@ -213,15 +247,21 @@ def project_history(
     status: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    page: int = 1,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
 ) -> Any:
     project = _get_project_or_404(project_id, db)
-    items = _history_items(
+    items, total = _history_items(
         project_id,
         db,
         type_filter=type,
         status_filter=status,
         date_from=date_from,
         date_to=date_to,
+        page=page,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -231,13 +271,16 @@ def project_history(
             "current_project": project,
             "running_count": 0,
             "items": items,
-            "total": len(items),
+            "total": total,
             "type_filter": type,
             "status_filter": status,
             "date_from": date_from or "",
             "date_to": date_to or "",
             "item_types": [t.value for t in WorkItemType],
             "item_statuses": [s.value for s in [WorkItemStatus.completed, WorkItemStatus.failed]],
+            "page": page,
+            "sort_by": sort_by,
+            "sort_dir": sort_dir,
         },
     )
 

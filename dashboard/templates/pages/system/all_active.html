@@ -23,16 +23,16 @@
         <span class="ml-2 font-normal text-foreground normal-case">{{ items|length }}</span>
       </h2>
 
-      <div class="bg-card border border-border rounded-lg overflow-hidden">
-        <table class="w-full text-sm">
+      <div class="bg-card border border-border rounded-lg overflow-x-auto">
+        <table class="w-full text-sm min-w-[500px]">
           <thead>
             <tr class="border-b border-border bg-muted/30">
               <th class="px-4 py-2 text-left font-medium text-muted-foreground">ID</th>
               <th class="px-4 py-2 text-left font-medium text-muted-foreground">Type</th>
               <th class="px-4 py-2 text-left font-medium text-muted-foreground">Title</th>
               <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
-              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Phase</th>
-              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Batch</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Phase</th>
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Batch</th>
             </tr>
           </thead>
           <tbody>
@@ -43,8 +43,8 @@
                 <td class="px-4 py-2">{{ status_badge(item.type) }}</td>
                 <td class="px-4 py-2 text-xs text-foreground max-w-xs truncate">{{ item.title }}</td>
                 <td class="px-4 py-2">{{ status_badge(item.status) }}</td>
-                <td class="px-4 py-2 text-xs text-muted-foreground">{{ item.phase }}</td>
-                <td class="px-4 py-2">
+                <td class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">{{ item.phase }}</td>
+                <td class="px-4 py-2 hidden sm:table-cell">
                   {% if item.batch_id %}
                     <a href="/project/{{ project_id }}/batch/{{ item.batch_id }}"
                        class="font-mono text-xs text-primary hover:underline">

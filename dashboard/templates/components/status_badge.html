@@ -20,6 +20,9 @@
     'archived': 'bg-muted text-muted-foreground',
     'enabled': 'bg-success text-success-foreground',
     'disabled': 'bg-muted text-muted-foreground',
+    'passed': 'bg-success text-success-foreground',
+    'cancelled': 'bg-muted text-muted-foreground',
+    'error': 'bg-destructive text-destructive-foreground',
   } %}
   <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium {{ colors.get(status, 'bg-muted text-muted-foreground') }}">
     {{ status }}

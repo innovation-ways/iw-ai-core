@@ -9,8 +9,8 @@
 <div id="confirm-dialog"></div>
 
 <!-- Header -->
-<div class="mb-6 flex items-start justify-between">
-  <div>
+<div class="mb-6 flex flex-col sm:flex-row items-start justify-between gap-4">
+  <div class="min-w-0">
     <div class="flex items-center gap-2 text-xs text-muted-foreground mb-1">
       <a href="/project/{{ current_project.id }}/batches" class="hover:text-foreground transition-colors">Batches</a>
       <span>/</span>
@@ -86,26 +86,26 @@
 </div>
 
 <!-- Tab navigation -->
-<div class="flex border-b border-border mb-4">
+<div class="flex border-b border-border mb-4 overflow-x-auto">
   {% if has_plan %}
   <a href="?tab=plan"
-     class="px-4 py-2 text-sm transition-colors
+     class="px-4 py-2 text-sm whitespace-nowrap transition-colors
             {% if active_tab == 'plan' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
     Plan
   </a>
   {% endif %}
   <a href="?tab=items"
-     class="px-4 py-2 text-sm transition-colors
+     class="px-4 py-2 text-sm whitespace-nowrap transition-colors
             {% if active_tab == 'items' or (not active_tab and not has_plan) %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
     Items
   </a>
   <a href="?tab=timeline"
-     class="px-4 py-2 text-sm transition-colors
+     class="px-4 py-2 text-sm whitespace-nowrap transition-colors
             {% if active_tab == 'timeline' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
     Timeline
   </a>
   <a href="?tab=logs"
-     class="px-4 py-2 text-sm transition-colors
+     class="px-4 py-2 text-sm whitespace-nowrap transition-colors
             {% if active_tab == 'logs' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
     Logs
   </a>
@@ -149,7 +149,7 @@
 
 <!-- Items tab -->
 {% elif active_tab in ('items', '', none) or (not active_tab and not has_plan) %}
-<div class="bg-card border border-border rounded-lg overflow-hidden">
+<div class="bg-card border border-border rounded-lg overflow-x-auto">
   <!-- SSE trigger: refreshes batch items on running-update event -->
   <div id="batch-items-sse-trigger"
        hx-get="/project/{{ current_project.id }}/batch/{{ batch.id }}/fragment/items"
@@ -157,7 +157,7 @@
        hx-target="#batch-items-body"
        hx-swap="innerHTML">
   </div>
-  <table class="w-full text-sm">
+  <table class="w-full text-sm min-w-[550px]">
     <thead>
       <tr class="border-b border-border bg-muted/30">
         <th class="px-4 py-2 text-left font-medium text-muted-foreground w-8">Grp</th>
@@ -248,13 +248,13 @@
 <!-- Logs tab -->
 {% elif active_tab == 'logs' %}
 {% if batch_events %}
-<div class="bg-card border border-border rounded-lg overflow-hidden">
-  <table class="w-full text-sm">
+<div class="bg-card border border-border rounded-lg overflow-x-auto">
+  <table class="w-full text-sm min-w-[500px]">
     <thead>
       <tr class="border-b border-border bg-muted/30">
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Time</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Event</th>
-        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Entity</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Entity</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Message</th>
       </tr>
     </thead>
@@ -273,7 +273,7 @@
             {{ ev.event_type }}
           </span>
         </td>
-        <td class="px-4 py-2 font-mono text-xs">
+        <td class="px-4 py-2 font-mono text-xs hidden sm:table-cell">
           {% if ev.entity_id == batch.id %}
             <span class="text-muted-foreground">{{ ev.entity_id }}</span>
           {% else %}

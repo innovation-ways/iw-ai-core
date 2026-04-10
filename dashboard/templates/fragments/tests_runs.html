@@ -1,0 +1,94 @@
+{% from "components/status_badge.html" import status_badge %}
+
+<div class="bg-card border border-border rounded-lg overflow-x-auto">
+  {% if runs %}
+    <table class="w-full text-sm min-w-[550px]">
+      <thead>
+        <tr class="border-b border-border bg-muted/30">
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">#</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Category</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Started</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Exit</th>
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+          <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+            <td class="px-4 py-2 font-mono text-xs text-muted-foreground">{{ run.id }}</td>
+            <td class="px-4 py-2 text-xs font-medium text-foreground">{{ run.category }}</td>
+            <td class="px-4 py-2">{{ status_badge(run.status) }}</td>
+            <td class="px-4 py-2 text-xs text-muted-foreground">
+              {% if run.duration_secs is not none %}
+                {% set mins = (run.duration_secs // 60)|int %}
+                {% set secs = (run.duration_secs % 60)|int %}
+                {{ "%dm%02ds"|format(mins, secs) }}
+              {% elif run.status == 'running' %}
+                <span class="text-primary">running...</span>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 text-xs text-muted-foreground">
+              {% if run.started_at %}
+                {{ run.started_at.strftime('%b %d %H:%M') }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
+              {% if run.exit_code is not none %}
+                <span class="{% if run.exit_code == 0 %}text-success{% else %}text-destructive{% endif %}">{{ run.exit_code }}</span>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td class="px-4 py-2">
+              <div class="flex items-center gap-1">
+                {% if run.has_log %}
+                  <button hx-get="/project/{{ current_project.id }}/tests/fragment/log/{{ run.id }}"
+                          hx-target="#log-modal"
+                          hx-swap="innerHTML"
+                          class="px-2 py-0.5 bg-muted text-muted-foreground rounded text-xs
+                                 hover:bg-accent hover:text-accent-foreground transition-colors"
+                          title="View log">
+                    Log
+                  </button>
+                {% endif %}
+                {% if run.has_report %}
+                  <a href="/project/{{ current_project.id }}/tests/report/{{ run.id }}/index.html"
+                     target="_blank"
+                     class="px-2 py-0.5 bg-info text-info-foreground rounded text-xs
+                            hover:opacity-90 transition-opacity"
+                     title="Open Allure report">
+                    Report
+                  </a>
+                {% endif %}
+                {% if run.status == 'running' %}
+                  <button hx-post="/project/{{ current_project.id }}/api/tests/kill/{{ run.id }}"
+                          hx-swap="none"
+                          hx-on::after-request="window.location.reload()"
+                          hx-confirm="Cancel test run #{{ run.id }}?"
+                          class="px-2 py-0.5 bg-destructive text-destructive-foreground rounded text-xs
+                                 hover:opacity-90 transition-opacity"
+                          title="Cancel run">
+                    Kill
+                  </button>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="px-4 py-8 text-center text-muted-foreground text-sm">
+      No test runs yet. Launch a test from the <a href="?tab=launch" class="text-primary hover:underline">Launch</a> tab.
+    </div>
+  {% endif %}
+</div>
+
+<!-- Log modal container -->
+<div id="log-modal"></div>

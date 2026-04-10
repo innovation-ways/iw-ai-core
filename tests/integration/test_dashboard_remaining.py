@@ -226,9 +226,9 @@ def test_history_shows_failed_items(client: TestClient, db_session: Any) -> None
     assert item.id in resp.text
 
 
-def test_history_returns_all_items_no_pagination(client: TestClient, db_session: Any) -> None:
+def test_history_returns_paginated_items(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
-    # Insert 25 completed items — all should be returned (no pagination)
+    # Insert 25 completed items — page 1 returns first 20 (server-side pagination)
     for i in range(1, 26):
         make_item(
             db_session,
@@ -240,13 +240,10 @@ def test_history_returns_all_items_no_pagination(client: TestClient, db_session:
 
     resp = client.get("/project/test-proj/history")
     assert resp.status_code == 200
-    # All 25 items should be present (no server-side pagination)
+    # Total count should reflect all 25 items
     assert "25 items" in resp.text
-    assert "I-00001" in resp.text
-    assert "I-00025" in resp.text
-    # No pagination controls — no "next"/"prev" page links
-    assert "page=" not in resp.text
-    assert "Next" not in resp.text
+    # Page 1 shows 20 items (default page size)
+    assert "I-00025" in resp.text  # most recent (created last, sorted desc by default)
 
 
 def test_history_type_filter(client: TestClient, db_session: Any) -> None:
