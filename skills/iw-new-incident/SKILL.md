@@ -1,6 +1,6 @@
 ---
 name: iw-new-incident
-version: "2.0.0"
+version: "2.1.0"
 description: Creates a new Incident (bug fix) design document with all fix prompts following the IW development workflow. Use when reporting a bug, creating incident reports, planning bug fixes, or user says "new incident", "new bug", "create incident", "report bug", "fix bug", "/iw-new-incident".
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 argument-hint: <brief description of the bug or issue>
@@ -22,9 +22,11 @@ Reserve the next available Incident ID **immediately** to prevent concurrent age
 iw next-id --type incident
 ```
 
-This atomically allocates the next ID (e.g., `I001`) using a database row-lock — no file reading needed, no race conditions possible. Store the returned ID — you will use it throughout.
+This atomically allocates the next ID (e.g., `I-00005`) using a database row-lock — no file reading needed, no race conditions possible. Store the returned ID **exactly as printed** — you will use it verbatim throughout.
 
 **CRITICAL**: The `iw next-id` call MUST happen before ANY other work. The ID is reserved the moment the call returns.
+
+**CRITICAL**: Use the ID **exactly as returned** (format: `I-NNNNN`). Do NOT look for tracking files, do NOT use a manually chosen number, do NOT override or "adjust" the returned value for any reason. The database is the sole source of truth for IDs.
 
 ## Step 2: Investigate the Issue
 
@@ -77,7 +79,7 @@ Classify whether the bug is **UI-visible** (affects what the user sees in the br
    ```bash
    playwright-cli open http://localhost:5173
    # Login, navigate, and perform ALL steps to reproduce the bug
-   playwright-cli screenshot ai-dev/design/active/I{NNN}/evidences/pre/I{NNN}-bug-evidence.png
+   playwright-cli screenshot ai-dev/design/active/{ID}/evidences/pre/{ID}-bug-evidence.png
    playwright-cli close
    ```
 
@@ -110,7 +112,7 @@ Document findings with file paths and line references.
 Present the following summary to the user and ask for approval:
 
 ```markdown
-### Incident Summary: I{NNN}
+### Incident Summary: {ID}
 
 **Bug**: {1-2 sentence description of what is broken}
 **Root Cause**: {Brief root cause with file:line reference}
@@ -127,9 +129,9 @@ Present the following summary to the user and ask for approval:
 | ... | ... | ... |
 
 ### Files to Create
-- Design: `ai-dev/design/active/I{NNN}/I{NNN}_Issue_Design.md`
-- Prompts: {count} files in `ai-dev/design/active/I{NNN}/prompts/`
-- Manifest: `ai-dev/design/active/I{NNN}/workflow-manifest.json`
+- Design: `ai-dev/design/active/{ID}/{ID}_Issue_Design.md`
+- Prompts: {count} files in `ai-dev/design/active/{ID}/prompts/`
+- Manifest: `ai-dev/design/active/{ID}/workflow-manifest.json`
 
 ### Questions / Concerns
 {List any open questions or things you're unsure about}
@@ -163,13 +165,13 @@ The lock is acquired at execution time by the orchestrator, not at design time. 
 Create the folder structure:
 
 ```bash
-mkdir -p ai-dev/design/active/I{NNN}/prompts/
-mkdir -p ai-dev/design/active/I{NNN}/evidences/pre/
+mkdir -p ai-dev/design/active/{ID}/prompts/
+mkdir -p ai-dev/design/active/{ID}/evidences/pre/
 ```
 
 Then create the design document at:
 ```
-ai-dev/design/active/I{NNN}/I{NNN}_Issue_Design.md
+ai-dev/design/active/{ID}/{ID}_Issue_Design.md
 ```
 
 Use the template from `ai-dev/templates/Issue_Design_Template.md`. Fill in ALL sections:
@@ -177,7 +179,7 @@ Use the template from `ai-dev/templates/Issue_Design_Template.md`. Fill in ALL s
 - **Description**: What is broken and expected behavior (2-3 sentences)
 - **Severity**: Based on impact assessment
 - **Reported By**: Source of the bug report
-- **Browser Evidence** (UI-visible only): Reference screenshot and snapshot files from `ai-dev/design/active/I{NNN}/evidences/pre/`
+- **Browser Evidence** (UI-visible only): Reference screenshot and snapshot files from `ai-dev/design/active/{ID}/evidences/pre/`
 - **Steps to Reproduce**: Numbered sequence with Expected/Actual
 - **Browser Verification Script** (UI-visible only): Exact Playwright CLI commands to reproduce the bug
 - **Root Cause Analysis**: Why this is happening, with file:line references
@@ -235,15 +237,15 @@ S15: QV Browser — Browser verification (only if UI-visible)
 
 ## Step 5: Generate ALL Prompt Files (only after GO)
 
-Create all prompt files in `ai-dev/design/active/I{NNN}/prompts/`.
+Create all prompt files in `ai-dev/design/active/{ID}/prompts/`.
 
-**IMPORTANT**: Every generated prompt MUST include `Input Files` and `Output Files` sections with paths using the `ai-dev/design/active/I{NNN}/` prefix. Reports go in `ai-dev/design/active/I{NNN}/reports/`.
+**IMPORTANT**: Every generated prompt MUST include `Input Files` and `Output Files` sections with paths using the `ai-dev/design/active/{ID}/` prefix. Reports go in `ai-dev/design/active/{ID}/reports/`.
 
 ### 5a: Implementation Prompts
 
 For each fix agent, create:
 ```
-ai-dev/design/active/I{NNN}/prompts/I{NNN}_S{NN}_{Agent}_prompt.md
+ai-dev/design/active/{ID}/prompts/{ID}_S{NN}_{Agent}_prompt.md
 ```
 
 Using `ai-dev/templates/Implementation_Prompt_Template.md` as the base. **Key differences for incidents**:
@@ -294,11 +296,11 @@ QV gates are **script-driven** — no QV prompt file needed for gate steps.
 
 ## Step 5b: Generate Workflow Manifest (only after GO)
 
-Create `ai-dev/design/active/I{NNN}/workflow-manifest.json` (step definitions only — state lives in DB):
+Create `ai-dev/design/active/{ID}/workflow-manifest.json` (step definitions only — state lives in DB):
 
 ```json
 {
-  "id": "I{NNN}",
+  "id": "{ID}",
   "type": "Issue",
   "title": "{One-line summary of the bug}",
   "browser_verification": true,
@@ -307,7 +309,7 @@ Create `ai-dev/design/active/I{NNN}/workflow-manifest.json` (step definitions on
       "step": "S01",
       "agent": "{agent-slug}",
       "description": "{What this step does}",
-      "prompt": "prompts/I{NNN}_S01_{Agent}_prompt.md"
+      "prompt": "prompts/{ID}_S01_{Agent}_prompt.md"
     }
   ]
 }
@@ -346,10 +348,10 @@ Agent slug mapping:
 After all files are created, register the item in the database:
 
 ```bash
-iw register I{NNN} "{One-line summary of the bug}" \
+iw register {ID} "{One-line summary of the bug}" \
   --type incident \
-  --design-doc ai-dev/design/active/I{NNN}/I{NNN}_Issue_Design.md \
-  --steps-from ai-dev/design/active/I{NNN}/workflow-manifest.json
+  --design-doc ai-dev/design/active/{ID}/{ID}_Issue_Design.md \
+  --steps-from ai-dev/design/active/{ID}/workflow-manifest.json
 ```
 
 This records the item and all its workflow steps in the database. The item starts in `draft` status.
@@ -359,7 +361,7 @@ This records the item and all its workflow steps in the database. The item start
 Display a summary of everything created:
 
 ```markdown
-## Incident Package: I{NNN} — {Title}
+## Incident Package: {ID} — {Title}
 
 ### UI Visibility
 {UI-visible / Backend-only} — Browser verification: {Yes / No}
@@ -368,22 +370,22 @@ Display a summary of everything created:
 {Brief root cause summary with file:line reference}
 
 ### Design Document
-- `ai-dev/design/active/I{NNN}/I{NNN}_Issue_Design.md`
+- `ai-dev/design/active/{ID}/{ID}_Issue_Design.md`
 
 ### Workflow Manifest
-- `ai-dev/design/active/I{NNN}/workflow-manifest.json`
+- `ai-dev/design/active/{ID}/workflow-manifest.json`
 
 ### Execution Plan
 | Step | File | Type |
 |------|------|------|
-| S01 | `I{NNN}_S01_{Agent}_prompt.md` | Fix Implementation |
+| S01 | `{ID}_S01_{Agent}_prompt.md` | Fix Implementation |
 | ... | ... | ... |
 
 ### Next Steps
 1. Review the design document and all prompts
-2. When ready: `iw approve I{NNN}`
-3. To execute: `iw batch-create I{NNN}` → `iw batch-approve BATCH-{NNN}`
-4. Monitor: dashboard at http://localhost:9900 or `iw item-status I{NNN}`
+2. When ready: `iw approve {ID}`
+3. To execute: `iw batch-create {ID}` → `iw batch-approve BATCH-{NNN}`
+4. Monitor: dashboard at http://localhost:9900 or `iw item-status {ID}`
 ```
 
 ---
@@ -401,7 +403,7 @@ Display a summary of everything created:
 - **MUST** require the Tests prompt to produce both a reproduction test AND regression tests
 - **MUST** call `iw register` at the end (Step 6) to record in the database
 - **MUST** create ALL files (design + all prompts) in a single session
-- **MUST** use the exact file naming convention: `I{NNN}_S{NN}_{Agent}_prompt.md`
+- **MUST** use the exact file naming convention: `{ID}_S{NN}_{Agent}_prompt.md`
 - **MUST** keep the fix scope minimal — fix the bug, don't refactor
 - **NEVER** skip CodeReview steps
 - **NEVER** skip CodeReview_Final or QV gate steps

@@ -147,10 +147,12 @@ def sync_project_to_db(db: Session, config: ProjectConfig) -> None:
 
     from orch.db.models import IdSequence, MigrationLock, Project  # noqa: PLC0415
 
+    dev_clone = config.config.get("dev_clone")
     stmt = insert(Project).values(
         id=config.id,
         display_name=config.display_name,
         repo_root=config.repo_root,
+        dev_clone=dev_clone,
         config=config.config,
         enabled=config.enabled,
     )
@@ -159,6 +161,7 @@ def sync_project_to_db(db: Session, config: ProjectConfig) -> None:
         set_={
             "display_name": stmt.excluded.display_name,
             "repo_root": stmt.excluded.repo_root,
+            "dev_clone": stmt.excluded.dev_clone,
             "config": stmt.excluded.config,
             "enabled": stmt.excluded.enabled,
         },
