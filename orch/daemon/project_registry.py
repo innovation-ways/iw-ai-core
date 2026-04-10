@@ -49,6 +49,17 @@ class ProjectConfig:
     cli_tool: str
     worktree_base: str
     config: dict[str, Any]  # full .iw-orch.json content
+    dev_clone: str | None = None
+
+    @property
+    def working_dir(self) -> str:
+        """Directory used for worktree operations.
+
+        Returns dev_clone when set (active development clone), otherwise repo_root.
+        This ensures worktrees are created in the development branch of the project,
+        not the main/production branch.
+        """
+        return self.dev_clone or self.repo_root
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +106,8 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
     cli_tool: str = iw_config.get("cli_tool", "opencode")
     worktree_base: str = iw_config.get("worktree_base", ".worktrees")
 
+    dev_clone: str | None = iw_config.get("dev_clone") or None
+
     return ProjectConfig(
         id=project_id,
         display_name=display_name,
@@ -103,6 +116,7 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         cli_tool=cli_tool,
         worktree_base=worktree_base,
         config=iw_config,
+        dev_clone=dev_clone,
     )
 
 

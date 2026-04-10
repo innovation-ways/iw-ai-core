@@ -104,6 +104,12 @@ _ITEM_ACTION_LABELS: dict[str, tuple[str, str, str, bool]] = {
         "Full Restart",
         True,
     ),
+    "cancel": (
+        "Cancel item?",
+        "This cancels the item and removes it from the queue. This cannot be undone.",
+        "OK",
+        True,
+    ),
 }
 
 
@@ -453,6 +459,24 @@ def approve_item(
     _emit(db, "item_approved", project_id, item_id, f"Item {item_id} approved by user")
     db.commit()
     return _action_response(f"Item {item_id} approved.", toast_type="success", reload=True)
+
+
+@router.post("/item/{item_id}/cancel", response_class=Response)
+def cancel_item(
+    project_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    item = _get_item(db, project_id, item_id)
+    if item.status not in (WorkItemStatus.draft, WorkItemStatus.approved):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot cancel: item status is '{item.status.value}' (must be draft or approved)",
+        )
+    item.status = WorkItemStatus.cancelled
+    _emit(db, "item_cancelled", project_id, item_id, f"Item {item_id} cancelled by user")
+    db.commit()
+    return _action_response(f"Item {item_id} cancelled.", toast_type="info", reload=True)
 
 
 # ---------------------------------------------------------------------------

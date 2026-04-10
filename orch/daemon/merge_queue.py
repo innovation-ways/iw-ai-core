@@ -101,7 +101,12 @@ def _merge_item(
     logger.info("[%s] Merging %s (worktree: %s)", project_id, item_id, worktree_path)
 
     try:
-        cmd = ["bash", str(_EXECUTOR_DIR / "worktree_commit.sh"), item_id, project_config.repo_root]  # noqa: S607
+        cmd = [
+            "bash",
+            str(_EXECUTOR_DIR / "worktree_commit.sh"),
+            item_id,
+            project_config.working_dir,
+        ]  # noqa: S607
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # noqa: S603
         if result.returncode != 0:
             raise MergeError(result.stderr.strip() or f"exit code {result.returncode}")
@@ -113,7 +118,7 @@ def _merge_item(
         _emit_event(db, project_id, "item_merged", item_id, f"Merged {item_id} successfully")
         logger.info("[%s] Merged %s", project_id, item_id)
 
-        _cleanup_worktree(item_id, worktree_path, project_config.repo_root)
+        _cleanup_worktree(item_id, worktree_path, project_config.working_dir)
 
     except (MergeError, subprocess.TimeoutExpired) as e:
         batch_item.status = BatchItemStatus.failed

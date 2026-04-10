@@ -81,8 +81,8 @@ Present a summary:
 | ... | ... | ... |
 
 ### Files to Create
-- Design: `ai-dev/design/active/{ID}/{ID}_CR_Design.md`
-- Prompts: {count} files in `ai-dev/design/active/{ID}/prompts/`
+- Design: `ai-dev/active/{ID}/{ID}_CR_Design.md`
+- Prompts: {count} files in `ai-dev/active/{ID}/prompts/`
 ```
 
 Ask: **Ready to proceed? Please confirm GO or tell me what needs to change.**
@@ -100,12 +100,12 @@ If the lock is held by another item, warn the user.
 Create the folder structure:
 
 ```bash
-mkdir -p ai-dev/design/active/{ID}/prompts/
+mkdir -p ai-dev/active/{ID}/prompts/
 ```
 
 Then create the design document at:
 ```
-ai-dev/design/active/{ID}/{ID}_CR_Design.md
+ai-dev/active/{ID}/{ID}_CR_Design.md
 ```
 
 Use the template from `ai-dev/templates/CR_Design_Template.md`. Fill in ALL sections including:
@@ -119,11 +119,11 @@ Use the template from `ai-dev/templates/CR_Design_Template.md`. Fill in ALL sect
 
 ## Step 6: Generate ALL Prompt Files (only after GO)
 
-Create all prompt files in `ai-dev/design/active/{ID}/prompts/`.
+Create all prompt files in `ai-dev/active/{ID}/prompts/`.
 
 ## Step 7: Generate Workflow Manifest (only after GO)
 
-Create `ai-dev/design/active/{ID}/workflow-manifest.json` (step definitions — state lives in DB):
+Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state lives in DB):
 
 ```json
 {
@@ -151,8 +151,8 @@ After all files are created, register the item in the database:
 ```bash
 iw register {ID} "{One-line CR title}" \
   --type cr \
-  --design-doc ai-dev/design/active/{ID}/{ID}_CR_Design.md \
-  --steps-from ai-dev/design/active/{ID}/workflow-manifest.json
+  --design-doc ai-dev/active/{ID}/{ID}_CR_Design.md \
+  --steps-from ai-dev/active/{ID}/workflow-manifest.json
 ```
 
 ## Step 9: Present Package for Review

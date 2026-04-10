@@ -22,7 +22,7 @@ Work items flow through these phases:
 
 ## workflow-manifest.json Schema
 
-Every work item folder contains a manifest file at `ai-dev/design/active/{ID}/workflow-manifest.json`:
+Every work item folder contains a manifest file at `ai-dev/active/{ID}/workflow-manifest.json`:
 
 ```json
 {

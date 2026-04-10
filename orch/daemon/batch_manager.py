@@ -243,13 +243,13 @@ class BatchManager:
     def _setup_worktree(self, item_id: str) -> dict[str, str]:
         """Call worktree_setup.sh. Returns {path, branch, created_at}."""
         script = str(_EXECUTOR_DIR / "worktree_setup.sh")
-        cmd = ["bash", script, item_id, self.project_config.repo_root]  # noqa: S607
+        cmd = ["bash", script, item_id, self.project_config.working_dir]  # noqa: S607
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # noqa: S603
         if result.returncode != 0:
             raise WorktreeSetupError(result.stderr.strip() or f"exit code {result.returncode}")
 
         worktree_path = (
-            Path(self.project_config.repo_root) / self.project_config.worktree_base / item_id
+            Path(self.project_config.working_dir) / self.project_config.worktree_base / item_id
         )
         return {
             "path": str(worktree_path),
@@ -371,7 +371,7 @@ class BatchManager:
         """
         item_id = step.work_item_id
         step_id = step.step_id
-        design_dir = Path(worktree_path) / "ai-dev" / "design" / "active" / item_id
+        design_dir = Path(worktree_path) / "ai-dev" / "active" / item_id
 
         # Try to find and read the prompt file from the workflow manifest
         prompt_content = ""
@@ -392,7 +392,7 @@ class BatchManager:
         if not prompt_content:
             prompt_content = (
                 f"Execute step {step_id} for work item {item_id}. "
-                f"Check ai-dev/design/active/{item_id}/ for design docs and instructions."
+                f"Check ai-dev/active/{item_id}/ for design docs and instructions."
             )
 
         return (

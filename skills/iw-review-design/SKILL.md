@@ -19,7 +19,7 @@ This review has two phases:
 ## Step 1: Locate and Load the Package
 
 1. Determine the work item ID from `$ARGUMENTS` (e.g., `I006`, `F124`, `CR002`)
-2. Read all files in `ai-dev/design/active/{ID}/`:
+2. Read all files in `ai-dev/active/{ID}/`:
    - Design document: `{ID}_*_Design.md`
    - Manifest: `workflow-manifest.json`
    - All prompts in `prompts/`
@@ -70,7 +70,7 @@ Check the design document against its template. Every required section must be p
 
 ## Step 3: Validate the Workflow Manifest
 
-Check `ai-dev/design/active/{ID}/workflow-manifest.json`:
+Check `ai-dev/active/{ID}/workflow-manifest.json`:
 
 - [ ] Required fields: `id`, `type`, `title`, `steps`
 - [ ] `id` matches the work item ID
@@ -84,7 +84,7 @@ Check `ai-dev/design/active/{ID}/workflow-manifest.json`:
 
 For each step in the manifest with a `prompt` field:
 
-1. Verify the file exists at `ai-dev/design/active/{ID}/prompts/{filename}`
+1. Verify the file exists at `ai-dev/active/{ID}/prompts/{filename}`
 2. Check it has Input Files and Output Files sections
 3. Verify it has a clear task description
 

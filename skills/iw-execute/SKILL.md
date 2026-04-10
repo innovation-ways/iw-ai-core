@@ -26,7 +26,7 @@ Current status from platform:
 !`uv run iw item-status $(echo $ARGUMENTS | awk '{print $1}') --json 2>/dev/null || echo '{"error": "item not found or not registered"}'`
 
 Work item design document location:
-!`ls -d ai-dev/design/active/$(echo $ARGUMENTS | awk '{print $1}') 2>/dev/null || echo "NOT_FOUND: $(echo $ARGUMENTS | awk '{print $1}') not in ai-dev/design/active/"`
+!`ls -d ai-dev/active/$(echo $ARGUMENTS | awk '{print $1}') 2>/dev/null || echo "NOT_FOUND: $(echo $ARGUMENTS | awk '{print $1}') not in ai-dev/active/"`
 
 ## Pre-Flight Validation
 
@@ -37,7 +37,7 @@ Before executing, validate:
 
 1. **Item is registered** — `uv run iw item-status ITEM_ID` must succeed
 2. **Item status is `approved`** — if `draft`, tell user to run `uv run iw approve ITEM_ID` first
-3. **Design doc exists** — must be in `ai-dev/design/active/ITEM_ID/`
+3. **Design doc exists** — must be in `ai-dev/active/ITEM_ID/`
 
 ## If item not found:
 
