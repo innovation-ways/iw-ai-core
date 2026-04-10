@@ -1,6 +1,6 @@
 ---
 name: iw-new-feature
-version: "2.0.0"
+version: "2.1.0"
 description: Creates a new Feature design document with all implementation prompts following the IW development workflow. Use when starting a new feature, creating feature designs, planning feature implementation, or user says "new feature", "create feature", "design feature", "/iw-new-feature".
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 argument-hint: <brief feature description>
@@ -22,9 +22,11 @@ Reserve the next available Feature ID **immediately** to prevent concurrent agen
 iw next-id --type feature
 ```
 
-This atomically allocates the next ID (e.g., `F001`) using a database row-lock. Store the returned ID — you will use it throughout.
+This atomically allocates the next ID (e.g., `F-00001`) using a database row-lock. Store the returned ID **exactly as printed** — you will use it verbatim throughout.
 
 **CRITICAL**: The `iw next-id` call MUST happen before ANY other work.
+
+**CRITICAL**: Use the ID **exactly as returned** (format: `F-NNNNN`). Do NOT look for tracking files, do NOT use a manually chosen number, do NOT override or "adjust" the returned value for any reason. The database is the sole source of truth for IDs.
 
 ## Step 2: Gather Requirements (MANDATORY INTERACTION)
 
@@ -58,7 +60,7 @@ Document findings with specific file paths and line references.
 Present a summary:
 
 ```markdown
-### Feature Summary: F{NNN}
+### Feature Summary: {ID}
 
 **Feature**: {1-2 sentence description}
 **Layers affected**: {Database / Backend / API / Frontend / Pipeline / Template}
@@ -71,9 +73,9 @@ Present a summary:
 | ... | ... | ... | ... |
 
 ### Files to Create
-- Design: `ai-dev/design/active/F{NNN}/F{NNN}_Feature_Design.md`
-- Prompts: {count} files in `ai-dev/design/active/F{NNN}/prompts/`
-- Manifest: `ai-dev/design/active/F{NNN}/workflow-manifest.json`
+- Design: `ai-dev/design/active/{ID}/{ID}_Feature_Design.md`
+- Prompts: {count} files in `ai-dev/design/active/{ID}/prompts/`
+- Manifest: `ai-dev/design/active/{ID}/workflow-manifest.json`
 ```
 
 Ask: **Ready to proceed? Please confirm GO or tell me what needs to change.**
@@ -93,12 +95,12 @@ If the lock is held by another item, warn the user before proceeding.
 Create the folder structure:
 
 ```bash
-mkdir -p ai-dev/design/active/F{NNN}/prompts/
+mkdir -p ai-dev/design/active/{ID}/prompts/
 ```
 
 Then create the design document at:
 ```
-ai-dev/design/active/F{NNN}/F{NNN}_Feature_Design.md
+ai-dev/design/active/{ID}/{ID}_Feature_Design.md
 ```
 
 Use the template from `ai-dev/templates/Feature_Design_Template.md`. Fill in ALL sections:
@@ -142,17 +144,17 @@ S08..S16: QV Gates
 
 ## Step 6: Generate ALL Prompt Files (only after GO)
 
-Create all prompt files in `ai-dev/design/active/F{NNN}/prompts/`.
+Create all prompt files in `ai-dev/design/active/{ID}/prompts/`.
 
-Use `ai-dev/templates/` as the base for each prompt type. Reports go in `ai-dev/design/active/F{NNN}/reports/`.
+Use `ai-dev/templates/` as the base for each prompt type. Reports go in `ai-dev/design/active/{ID}/reports/`.
 
 ## Step 7: Generate Workflow Manifest (only after GO)
 
-Create `ai-dev/design/active/F{NNN}/workflow-manifest.json` (step definitions — state lives in DB):
+Create `ai-dev/design/active/{ID}/workflow-manifest.json` (step definitions — state lives in DB):
 
 ```json
 {
-  "id": "F{NNN}",
+  "id": "{ID}",
   "type": "Feature",
   "title": "{One-line feature title}",
   "browser_verification": false,
@@ -161,7 +163,7 @@ Create `ai-dev/design/active/F{NNN}/workflow-manifest.json` (step definitions �
       "step": "S01",
       "agent": "{agent-slug}",
       "description": "{What this step does}",
-      "prompt": "prompts/F{NNN}_S01_{Agent}_prompt.md"
+      "prompt": "prompts/{ID}_S01_{Agent}_prompt.md"
     }
   ]
 }
@@ -185,10 +187,10 @@ QV gate steps (add after CodeReview_Final):
 After all files are created, register the item in the database:
 
 ```bash
-iw register F{NNN} "{One-line feature title}" \
+iw register {ID} "{One-line feature title}" \
   --type feature \
-  --design-doc ai-dev/design/active/F{NNN}/F{NNN}_Feature_Design.md \
-  --steps-from ai-dev/design/active/F{NNN}/workflow-manifest.json
+  --design-doc ai-dev/design/active/{ID}/{ID}_Feature_Design.md \
+  --steps-from ai-dev/design/active/{ID}/workflow-manifest.json
 ```
 
 ## Step 9: Present Package for Review
@@ -196,15 +198,15 @@ iw register F{NNN} "{One-line feature title}" \
 Display a summary showing all created files and the next steps:
 
 ```markdown
-## Feature Package: F{NNN} — {Title}
+## Feature Package: {ID} — {Title}
 
 ### Design Document
-- `ai-dev/design/active/F{NNN}/F{NNN}_Feature_Design.md`
+- `ai-dev/design/active/{ID}/{ID}_Feature_Design.md`
 
 ### Next Steps
 1. Review the design document and all prompts
-2. When ready: `iw approve F{NNN}`
-3. To execute: `iw batch-create F{NNN}` → `iw batch-approve BATCH-{NNN}`
+2. When ready: `iw approve {ID}`
+3. To execute: `iw batch-create {ID}` → `iw batch-approve BATCH-{NNN}`
 4. Monitor: dashboard at http://localhost:9900
 ```
 
