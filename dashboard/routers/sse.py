@@ -23,6 +23,28 @@ router = APIRouter(prefix="/api")
 _RUNNING_UPDATE_EVENTS = frozenset(
     {"step_launched", "step_completed", "step_killed", "step_crashed", "step_timeout"}
 )
+# Entity-level status transitions (item/batch lifecycle + step actions)
+_STATUS_UPDATE_EVENTS = frozenset(
+    {
+        # Item lifecycle (emitted by dashboard actions)
+        "item_approved",
+        "item_unapproved",
+        "item_cancelled",
+        "item_paused",
+        "item_resumed",
+        "item_restarted",
+        "item_full_restarted",
+        # Batch lifecycle (emitted by dashboard actions + daemon)
+        "batch_created",
+        "batch_approved",
+        "batch_paused",
+        "batch_resumed",
+        "batch_cancelled",
+        # Step actions that affect item status display
+        "step_restarted",
+        "step_skipped",
+    }
+)
 # Event types that show a toast notification
 _TOAST_EVENTS = frozenset(
     {
@@ -41,12 +63,31 @@ _TOAST_EVENTS = frozenset(
         "test_started",
         "test_completed",
         "test_failed",
+        # Item lifecycle
+        "item_approved",
+        "item_unapproved",
+        "item_cancelled",
+        "item_paused",
+        "item_resumed",
+        "item_restarted",
+        "item_full_restarted",
+        # Batch lifecycle
+        "batch_created",
+        "batch_approved",
+        "batch_paused",
+        "batch_resumed",
+        "batch_cancelled",
+        # Step actions
+        "step_restarted",
+        "step_skipped",
     }
 )
 # Test-specific events that trigger test tab refresh
 _TEST_UPDATE_EVENTS = frozenset({"test_started", "test_completed", "test_failed"})
 # All events we care about (union)
-_WATCHED_EVENTS = _RUNNING_UPDATE_EVENTS | _TOAST_EVENTS | _TEST_UPDATE_EVENTS
+_WATCHED_EVENTS = (
+    _RUNNING_UPDATE_EVENTS | _STATUS_UPDATE_EVENTS | _TOAST_EVENTS | _TEST_UPDATE_EVENTS
+)
 
 _TOAST_SEVERITY: dict[str, str] = {
     "step_failed": "error",
@@ -64,6 +105,20 @@ _TOAST_SEVERITY: dict[str, str] = {
     "test_started": "info",
     "test_completed": "success",
     "test_failed": "error",
+    "item_approved": "success",
+    "item_unapproved": "info",
+    "item_cancelled": "warning",
+    "item_paused": "warning",
+    "item_resumed": "success",
+    "item_restarted": "info",
+    "item_full_restarted": "info",
+    "batch_created": "info",
+    "batch_approved": "success",
+    "batch_paused": "warning",
+    "batch_resumed": "success",
+    "batch_cancelled": "warning",
+    "step_restarted": "info",
+    "step_skipped": "info",
 }
 
 
@@ -117,6 +172,16 @@ async def _event_generator(request: Request) -> AsyncGenerator[str, None]:
                 )
                 yield f"event: test-update\ndata: {data}\nid: {event.id}\n\n"
 
+            if event.event_type in _STATUS_UPDATE_EVENTS:
+                data = json.dumps(
+                    {
+                        "event_type": event.event_type,
+                        "entity_id": event.entity_id,
+                        "project_id": event.project_id,
+                    }
+                )
+                yield f"event: status-update\ndata: {data}\nid: {event.id}\n\n"
+
             if event.event_type in _TOAST_EVENTS:
                 severity = _TOAST_SEVERITY.get(event.event_type, "info")
                 data = json.dumps(
@@ -155,8 +220,10 @@ def _get_latest_event_id() -> int:
 async def stream_events(request: Request) -> Any:
     """SSE stream for real-time dashboard updates.
 
-    Clients receive two event types:
+    Clients receive these event types:
     - ``running-update``: refresh the running steps table
+    - ``status-update``: item/batch/step lifecycle status transition
+    - ``test-update``: refresh the test results tab
     - ``toast``: display a notification toast
     """
     return StreamingResponse(

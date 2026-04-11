@@ -1036,6 +1036,16 @@ def confirm_batch_dialog(
 ) -> Any:
     templates: Jinja2Templates = request.app.state.templates
 
+    if action == "archive":
+        return templates.TemplateResponse(
+            request,
+            "fragments/archive_batch_dialog.html",
+            {
+                "project_id": project_id,
+                "batch_id": batch_id,
+            },
+        )
+
     label_info = _BATCH_ACTION_LABELS.get(action)
     if label_info is None:
         raise HTTPException(status_code=400, detail=f"Unknown batch action: {action}")
@@ -1177,6 +1187,7 @@ def cancel_batch(
 def archive_batch_endpoint(
     project_id: str,
     batch_id: str,
+    skip_post_commands: bool = False,
     db: Session = Depends(get_db),
 ) -> Any:
     batch = _get_batch(db, project_id, batch_id)
@@ -1200,6 +1211,7 @@ def archive_batch_endpoint(
     threading.Thread(
         target=archive_batch,
         args=(project_id, batch_id),
+        kwargs={"run_post_commands": not skip_post_commands},
         daemon=True,
     ).start()
 

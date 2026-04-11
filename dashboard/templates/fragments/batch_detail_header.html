@@ -1,0 +1,81 @@
+{% from "components/status_badge.html" import status_badge %}
+
+<!-- Confirm dialog container (htmx swaps fragment here) -->
+<div id="confirm-dialog"></div>
+
+<!-- Header -->
+<div class="mb-6 flex flex-col sm:flex-row items-start justify-between gap-4">
+  <div class="min-w-0">
+    <div class="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+      <a href="/project/{{ current_project.id }}/batches" class="hover:text-foreground transition-colors">Batches</a>
+      <span>/</span>
+      <span class="text-foreground font-mono">{{ batch.id }}</span>
+    </div>
+    <h1 class="text-2xl font-semibold text-foreground font-mono">{{ batch.id }}</h1>
+    <div class="flex items-center gap-3 mt-2">
+      {{ status_badge(batch_status) }}
+      <span class="text-xs text-muted-foreground">{{ items|length }} item{{ 's' if items|length != 1 else '' }}</span>
+      <span class="text-xs text-muted-foreground">Max parallel: {{ batch.max_parallel }}</span>
+    </div>
+    <div class="text-xs text-muted-foreground mt-1">
+      Created: {{ batch.created_at.strftime('%Y-%m-%d %H:%M') }}
+      {% if batch.completed_at %}
+        &middot; Completed: {{ batch.completed_at.strftime('%Y-%m-%d %H:%M') }}
+      {% endif %}
+      {% if batch_duration_secs is not none %}
+        &middot; Duration:
+        {% set mins = (batch_duration_secs // 60)|int %}
+        {% set secs = (batch_duration_secs % 60)|int %}
+        {{ "%dm%02ds"|format(mins, secs) }}
+      {% endif %}
+    </div>
+  </div>
+  <div class="flex items-center gap-2">
+    {% if batch_status == 'planning' %}
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/cancel/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-muted text-destructive rounded text-sm hover:opacity-90 transition-opacity">
+        Cancel
+      </button>
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/approve/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm hover:opacity-90 transition-opacity">
+        Approve
+      </button>
+    {% elif batch_status == 'approved' %}
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/cancel/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-muted text-destructive rounded text-sm hover:opacity-90 transition-opacity">
+        Cancel
+      </button>
+    {% elif batch_status == 'executing' %}
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/pause/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-muted text-muted-foreground rounded text-sm hover:opacity-90 transition-opacity">
+        Pause
+      </button>
+    {% elif batch_status == 'paused' %}
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/resume/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm hover:opacity-90 transition-opacity">
+        Resume
+      </button>
+    {% elif batch_status in ('completed', 'completed_with_errors') %}
+      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/archive/{{ batch.id }}"
+              hx-target="#confirm-dialog"
+              hx-swap="innerHTML"
+              class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm hover:opacity-90 transition-opacity">
+        Archive
+      </button>
+    {% elif batch_status == 'archived' %}
+      <span class="px-3 py-1.5 text-muted-foreground text-sm">
+        Archived
+      </span>
+    {% endif %}
+  </div>
+</div>
