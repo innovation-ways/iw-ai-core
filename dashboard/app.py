@@ -16,6 +16,7 @@ from dashboard.routers import (
     project_dashboard,
     project_pages,
     projects,
+    quality,
     running,
     search,
     sse,
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(batches.router)
     app.include_router(items.router)
     app.include_router(tests.router)
+    app.include_router(quality.router)
     app.include_router(project_pages.router)
     app.include_router(search.router)
 

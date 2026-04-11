@@ -12,7 +12,6 @@ from fastapi import HTTPException
 from fastapi.responses import Response
 from sqlalchemy import select
 
-from dashboard.dependencies import get_db  # noqa: F401 — re-exported
 from orch.db.models import Project, TestRun
 
 if TYPE_CHECKING:

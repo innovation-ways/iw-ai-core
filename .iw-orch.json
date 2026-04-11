@@ -16,17 +16,51 @@
       "unit": {
         "label": "Unit Tests",
         "command": "uv run pytest tests/unit/ -v --alluredir=allure-results",
-        "description": "Fast tests, no external dependencies"
+        "description": "Fast tests, no external dependencies",
+        "group": "backend"
       },
       "integration": {
         "label": "Integration Tests",
         "command": "uv run pytest tests/integration/ -v --alluredir=allure-results",
-        "description": "Requires PostgreSQL testcontainer"
+        "description": "Requires PostgreSQL testcontainer",
+        "group": "backend"
       },
       "all": {
-        "label": "All Tests",
+        "label": "Run All Tests",
         "command": "uv run pytest tests/ -v --alluredir=allure-results",
-        "description": "Complete test suite (unit + integration)"
+        "description": "Complete test suite (unit + integration)",
+        "group": "suites",
+        "bundle": true
+      }
+    }
+  },
+  "quality_config": {
+    "execution_dir": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
+    "categories": {
+      "lint": {
+        "label": "Lint (Ruff)",
+        "description": "Code style and linting checks",
+        "command": "make lint",
+        "group": "style"
+      },
+      "format": {
+        "label": "Format Check (Ruff)",
+        "description": "Code formatting verification",
+        "command": "make format",
+        "group": "style"
+      },
+      "typecheck": {
+        "label": "Type Check (Mypy)",
+        "description": "Strict static type checking on orch/ and dashboard/",
+        "command": "make typecheck",
+        "group": "style"
+      },
+      "all-quality": {
+        "label": "Run All Quality Gates",
+        "description": "Lint + format + type check",
+        "command": "make quality",
+        "group": "suites",
+        "bundle": true
       }
     }
   }
