@@ -1,6 +1,6 @@
 ---
 name: iw-new-cr
-version: "2.0.0"
+version: "2.1.0"
 description: Creates a new Change Request design document with all implementation prompts following the IW development workflow. Use when modifying existing functionality, requesting changes to current behavior, refactoring, or user says "new change request", "new CR", "create CR", "change request", "modify existing", "/iw-new-cr".
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 argument-hint: <brief description of the change needed>
@@ -22,9 +22,11 @@ Reserve the next available CR ID **immediately** to prevent concurrent agents fr
 iw next-id --type cr
 ```
 
-This atomically allocates the next ID (e.g., `CR001`) using a database row-lock. Store the returned ID — you will use it throughout.
+This atomically allocates the next ID (e.g., `CR-00001`) using a database row-lock. Store the returned ID **exactly as printed** — you will use it verbatim throughout.
 
 **CRITICAL**: The `iw next-id` call MUST happen before ANY other work.
+
+**CRITICAL**: Use the ID **exactly as returned** (format: `CR-NNNNN`). Do NOT look for tracking files, do NOT use a manually chosen number, do NOT override or "adjust" the returned value for any reason. The database is the sole source of truth for IDs.
 
 ## Step 2: Understand the Change (MANDATORY INTERACTION)
 
@@ -64,7 +66,7 @@ Document findings with specific file paths and line references.
 Present a summary:
 
 ```markdown
-### Change Request Summary: CR{NNN}
+### Change Request Summary: {ID}
 
 **Change**: {1-2 sentence description of current → desired behavior}
 **Reason**: {Why this change is needed}
@@ -79,8 +81,8 @@ Present a summary:
 | ... | ... | ... |
 
 ### Files to Create
-- Design: `ai-dev/design/active/CR{NNN}/CR{NNN}_CR_Design.md`
-- Prompts: {count} files in `ai-dev/design/active/CR{NNN}/prompts/`
+- Design: `ai-dev/active/{ID}/{ID}_CR_Design.md`
+- Prompts: {count} files in `ai-dev/active/{ID}/prompts/`
 ```
 
 Ask: **Ready to proceed? Please confirm GO or tell me what needs to change.**
@@ -98,12 +100,12 @@ If the lock is held by another item, warn the user.
 Create the folder structure:
 
 ```bash
-mkdir -p ai-dev/design/active/CR{NNN}/prompts/
+mkdir -p ai-dev/active/{ID}/prompts/
 ```
 
 Then create the design document at:
 ```
-ai-dev/design/active/CR{NNN}/CR{NNN}_CR_Design.md
+ai-dev/active/{ID}/{ID}_CR_Design.md
 ```
 
 Use the template from `ai-dev/templates/CR_Design_Template.md`. Fill in ALL sections including:
@@ -117,15 +119,15 @@ Use the template from `ai-dev/templates/CR_Design_Template.md`. Fill in ALL sect
 
 ## Step 6: Generate ALL Prompt Files (only after GO)
 
-Create all prompt files in `ai-dev/design/active/CR{NNN}/prompts/`.
+Create all prompt files in `ai-dev/active/{ID}/prompts/`.
 
 ## Step 7: Generate Workflow Manifest (only after GO)
 
-Create `ai-dev/design/active/CR{NNN}/workflow-manifest.json` (step definitions — state lives in DB):
+Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state lives in DB):
 
 ```json
 {
-  "id": "CR{NNN}",
+  "id": "{ID}",
   "type": "ChangeRequest",
   "title": "{One-line CR title}",
   "browser_verification": false,
@@ -134,7 +136,7 @@ Create `ai-dev/design/active/CR{NNN}/workflow-manifest.json` (step definitions �
       "step": "S01",
       "agent": "{agent-slug}",
       "description": "{What this step does}",
-      "prompt": "prompts/CR{NNN}_S01_{Agent}_prompt.md"
+      "prompt": "prompts/{ID}_S01_{Agent}_prompt.md"
     }
   ]
 }
@@ -147,21 +149,21 @@ Add QV gate steps after CodeReview_Final (same as iw-new-incident pattern).
 After all files are created, register the item in the database:
 
 ```bash
-iw register CR{NNN} "{One-line CR title}" \
+iw register {ID} "{One-line CR title}" \
   --type cr \
-  --design-doc ai-dev/design/active/CR{NNN}/CR{NNN}_CR_Design.md \
-  --steps-from ai-dev/design/active/CR{NNN}/workflow-manifest.json
+  --design-doc ai-dev/active/{ID}/{ID}_CR_Design.md \
+  --steps-from ai-dev/active/{ID}/workflow-manifest.json
 ```
 
 ## Step 9: Present Package for Review
 
 ```markdown
-## Change Request Package: CR{NNN} — {Title}
+## Change Request Package: {ID} — {Title}
 
 ### Next Steps
 1. Review the design document and all prompts
-2. When ready: `iw approve CR{NNN}`
-3. To execute: `iw batch-create CR{NNN}` → `iw batch-approve BATCH-{NNN}`
+2. When ready: `iw approve {ID}`
+3. To execute: `iw batch-create {ID}` → `iw batch-approve BATCH-{NNN}`
 4. Monitor: dashboard at http://localhost:9900
 ```
 

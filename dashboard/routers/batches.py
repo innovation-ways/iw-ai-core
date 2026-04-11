@@ -6,7 +6,7 @@ import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
@@ -59,6 +59,8 @@ class BatchItemRow:
     steps: list[StepNode] = field(default_factory=list)
     duration_secs: float | None = None
     started_at: datetime | None = None
+    started_at_ts: float | None = None
+    ended_at_ts: float | None = None
 
 
 @dataclass
@@ -169,16 +171,19 @@ def _batch_item_rows(project_id: str, batch_id: str, db: Session) -> list[BatchI
                 steps=step_nodes,
                 duration_secs=dur_total,
                 started_at=bi.started_at,
+                started_at_ts=bi.started_at.timestamp() if bi.started_at else None,
+                ended_at_ts=bi.merged_at.timestamp() if bi.merged_at else None,
             )
         )
     return rows
 
 
-def _all_batches(project_id: str, db: Session, status_filter: str | None) -> list[BatchRow]:
+def _all_batches(project_id: str, db: Session, status_filter: list[str]) -> list[BatchRow]:
     stmt = select(Batch).where(Batch.project_id == project_id).order_by(Batch.created_at.desc())
-    if status_filter and status_filter in _ALL_STATUSES:
+    valid = [s for s in status_filter if s in _ALL_STATUSES]
+    if valid:
         with contextlib.suppress(ValueError):
-            stmt = stmt.where(Batch.status == BatchStatus(status_filter))
+            stmt = stmt.where(Batch.status.in_([BatchStatus(s) for s in valid]))
 
     batches = list(db.scalars(stmt).all())
     rows = []
@@ -220,7 +225,7 @@ def _all_batches(project_id: str, db: Session, status_filter: str | None) -> lis
 def batch_list(
     project_id: str,
     request: Request,
-    status: str | None = None,
+    status: list[str] = Query(default=[]),
     db: Session = Depends(get_db),
 ) -> Any:
     project = _get_project_or_404(project_id, db)
@@ -269,6 +274,25 @@ def batch_detail(
     has_plan = batch.execution_plan_md is not None
     has_diagram = batch.execution_plan_png is not None
 
+    # Compute gantt bounds for the timeline tab
+    import datetime as _dt
+
+    gantt_start_ts: float | None = None
+    gantt_end_ts: float | None = None
+    gantt_total_secs: float | None = None
+    started_ts_list = [r.started_at_ts for r in items if r.started_at_ts is not None]
+    ended_ts_list = [r.ended_at_ts for r in items if r.ended_at_ts is not None]
+    if started_ts_list:
+        gantt_start_ts = min(started_ts_list)
+        if ended_ts_list:
+            gantt_end_ts = max(ended_ts_list)
+            # Extend to now if any item is still running
+            if any(r.started_at_ts and not r.ended_at_ts for r in items):
+                gantt_end_ts = max(gantt_end_ts, _dt.datetime.now().timestamp())
+        else:
+            gantt_end_ts = _dt.datetime.now().timestamp()
+        gantt_total_secs = gantt_end_ts - gantt_start_ts if gantt_end_ts else None
+
     # Fetch dispatcher events for the logs tab
     batch_events: list[DaemonEvent] = []
     if tab == "logs":
@@ -303,6 +327,9 @@ def batch_detail(
             "has_plan": has_plan,
             "has_diagram": has_diagram,
             "batch_events": batch_events,
+            "gantt_start_ts": gantt_start_ts,
+            "gantt_end_ts": gantt_end_ts,
+            "gantt_total_secs": gantt_total_secs,
         },
     )
 
@@ -311,7 +338,7 @@ def batch_detail(
 def batch_list_fragment(
     project_id: str,
     request: Request,
-    status: str | None = None,
+    status: list[str] = Query(default=[]),
     db: Session = Depends(get_db),
 ) -> Any:
     """htmx fragment: returns only the batches tbody rows for live refresh."""

@@ -214,34 +214,84 @@
 <!-- Timeline tab -->
 {% elif active_tab == 'timeline' %}
 <div class="bg-card border border-border rounded-lg p-6">
-  {% if items %}
-    <div class="space-y-3">
+  {% if items and gantt_total_secs and gantt_total_secs > 0 %}
+    {# Time axis labels at 0%, 25%, 50%, 75%, 100% #}
+    {% set axis_pcts = [0, 25, 50, 75, 100] %}
+    <div class="flex items-end mb-1" style="padding-left: 6.5rem;">
+      <div class="flex-1 relative h-5">
+        {% for pct in axis_pcts %}
+          {% set ts = gantt_start_ts + gantt_total_secs * pct / 100 %}
+          <span class="absolute text-xs text-muted-foreground"
+                style="left: {{ pct }}%; transform: translateX(-50%){% if pct == 0 %} translateX(0){% elif pct == 100 %} translateX(-100%){% endif %}">
+            {{ ts | fmt_ts_time }}
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Grid + bars #}
+    <div class="space-y-1.5">
       {% for row in items %}
-        {% set bar_pct = ((row.duration_secs or 0) / 3600 * 100)|int if row.duration_secs else 5 %}
-        <div class="flex items-center gap-3">
+        {# Compute bar position and width as percentages #}
+        {% if row.started_at_ts is not none %}
+          {% set offset_secs = row.started_at_ts - gantt_start_ts %}
+          {% set bar_left = (offset_secs / gantt_total_secs * 100) | round(3) %}
+          {% if row.ended_at_ts is not none %}
+            {% set bar_width = ((row.ended_at_ts - row.started_at_ts) / gantt_total_secs * 100) | round(3) %}
+          {% else %}
+            {% set bar_width = ((gantt_end_ts - row.started_at_ts) / gantt_total_secs * 100) | round(3) %}
+          {% endif %}
+          {% set bar_width = [bar_width, 0.5] | max %}
+        {% else %}
+          {% set bar_left = 0 %}
+          {% set bar_width = 0 %}
+        {% endif %}
+        <div class="flex items-center gap-2">
           <a href="/project/{{ current_project.id }}/item/{{ row.item_id }}"
-             class="font-mono text-xs font-semibold text-primary w-16 shrink-0 hover:underline">
+             class="font-mono text-xs font-semibold text-primary shrink-0 hover:underline text-right"
+             style="width: 6rem;">
             {{ row.item_id }}
           </a>
-          <div class="flex-1 h-5 bg-muted rounded overflow-hidden relative">
-            <div class="h-full rounded transition-all
-                        {% if row.status == 'merged' %}bg-success{% elif row.status == 'failed' %}bg-destructive{% elif row.status == 'executing' %}bg-primary{% else %}bg-secondary{% endif %}"
-                 style="width: max({{ [bar_pct, 2]|max }}%, 2px)">
-            </div>
+          <div class="flex-1 h-6 rounded relative" style="background: hsl(var(--muted) / 0.3); border: 1px solid hsl(var(--border) / 0.3);">
+            {# Grid lines at 25%, 50%, 75% #}
+            {% for gp in [25, 50, 75] %}
+              <div class="absolute top-0 bottom-0" style="left: {{ gp }}%; width: 1px; background: hsl(var(--border) / 0.5);"></div>
+            {% endfor %}
+            {# Bar #}
+            {% if row.started_at_ts is not none %}
+              <div class="absolute top-0.5 bottom-0.5 rounded"
+                   title="{{ row.item_id }}: {{ row.duration_secs | round | int if row.duration_secs else '?' }}s"
+                   style="left: {{ bar_left }}%; width: {{ bar_width }}%;
+                          {% if row.status == 'merged' %}background: var(--success);
+                          {% elif row.status == 'failed' %}background: var(--destructive);
+                          {% elif row.status == 'executing' %}background: var(--primary);
+                          {% else %}background: var(--muted-foreground);{% endif %}">
+              </div>
+            {% endif %}
           </div>
-          {% if row.duration_secs is not none %}
-            <span class="font-mono text-xs text-muted-foreground w-14 shrink-0">
-              {% set mins = (row.duration_secs // 60)|int %}
-              {% set secs = (row.duration_secs % 60)|int %}
-              {{ "%dm%02ds"|format(mins, secs) }}
-            </span>
-          {% endif %}
-          {{ status_badge(row.status) }}
+          <span class="font-mono text-xs text-muted-foreground shrink-0 text-right" style="width: 4rem;">
+            {% if row.duration_secs is not none %}
+              {{ "%dm%02ds"|format((row.duration_secs // 60)|int, (row.duration_secs % 60)|int) }}
+            {% else %}
+              —
+            {% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+
+    {# Legend #}
+    <div class="flex items-center gap-4 mt-4 pt-4 border-t border-border">
+      <span class="text-xs text-muted-foreground">Legend:</span>
+      {% for status, label, color in [('merged', 'Merged', 'var(--success)'), ('failed', 'Failed', 'var(--destructive)'), ('executing', 'Executing', 'var(--primary)'), ('approved', 'Queued', 'var(--muted-foreground)')] %}
+        <div class="flex items-center gap-1.5">
+          <div class="w-3 h-3 rounded-sm" style="background: {{ color }};"></div>
+          <span class="text-xs text-muted-foreground">{{ label }}</span>
         </div>
       {% endfor %}
     </div>
   {% else %}
-    <p class="text-muted-foreground text-sm text-center">No items to display.</p>
+    <p class="text-muted-foreground text-sm text-center">No timeline data available — items must have started to appear here.</p>
   {% endif %}
 </div>
 

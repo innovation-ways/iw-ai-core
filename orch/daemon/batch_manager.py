@@ -395,19 +395,27 @@ class BatchManager:
                 f"Check ai-dev/active/{item_id}/ for design docs and instructions."
             )
 
+        report_dir = f"ai-dev/active/{item_id}/reports"
+        report_file = f"{report_dir}/{item_id}_{step_id}_{step.agent_label}_report.md"
         return (
             f"You are executing step {step_id} for work item {item_id}.\n\n"
             f"## Step Instructions\n\n{prompt_content}\n\n"
             f"## Lifecycle Commands\n\n"
             f"When you START working on this step, run:\n"
             f"```bash\nuv run iw step-start {item_id} --step {step_id}\n```\n\n"
-            f"When you COMPLETE this step successfully, run:\n"
-            f"```bash\nuv run iw step-done {item_id} --step {step_id}\n```\n\n"
+            f"When you COMPLETE this step successfully:\n"
+            f"1. Write a brief markdown report to `{report_file}` summarising:\n"
+            f"   - What was done\n"
+            f"   - Files changed\n"
+            f"   - Test results (if applicable)\n"
+            f"   - Any issues or observations\n"
+            f"2. Run:\n"
+            f"```bash\nmkdir -p {report_dir}\n"
+            f"uv run iw step-done {item_id} --step {step_id} --report {report_file}\n```\n\n"
             f"If this step FAILS, run:\n"
             f"```bash\nuv run iw step-fail {item_id} --step {step_id} "
             f'--reason "brief reason"\n```\n\n'
-            f"IMPORTANT: You MUST call step-done or step-fail before exiting. "
-            f"Execute the instructions above, then report completion."
+            f"IMPORTANT: You MUST call step-done (with --report) or step-fail before exiting."
         )
 
     # ------------------------------------------------------------------

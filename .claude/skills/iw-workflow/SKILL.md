@@ -1,6 +1,6 @@
 ---
 name: iw-workflow
-version: "2.0.0"
+version: "2.1.0"
 description: IW AI Core workflow orchestration rules, manifest schema, and agent contract definitions. Use when executing work item workflows, parsing agent results, managing fix cycles, or understanding the automated development pipeline.
 allowed-tools: Bash
 ---
@@ -22,7 +22,7 @@ Work items flow through these phases:
 
 ## workflow-manifest.json Schema
 
-Every work item folder contains a manifest file at `ai-dev/design/active/{ID}/workflow-manifest.json`:
+Every work item folder contains a manifest file at `ai-dev/active/{ID}/workflow-manifest.json`:
 
 ```json
 {
@@ -78,12 +78,17 @@ During execution (daemon or manual), agents report state via `iw` CLI:
 # Before starting a step:
 iw step-start S01 --item F123
 
-# After step completes successfully:
-iw step-done S01 --item F123
+# After step completes successfully — ALWAYS include --report:
+REPORT_FILE="ai-dev/active/F123/reports/F123_S01_{AgentLabel}_report.md"
+mkdir -p "ai-dev/active/F123/reports"
+# Write a markdown report to $REPORT_FILE (files changed, test results, notes), then:
+iw step-done S01 --item F123 --report $REPORT_FILE
 
 # After step fails:
 iw step-fail S01 --item F123 --reason "Code review failed: missing error handling"
 ```
+
+**The `--report` flag is MANDATORY for every `step-done` call.** Reports are stored in the dashboard so developers can review what each agent did. A step completed without a report is invisible to reviewers.
 
 ## Fix Cycle Protocol
 
