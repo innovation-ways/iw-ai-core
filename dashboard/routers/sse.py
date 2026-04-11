@@ -84,9 +84,15 @@ _TOAST_EVENTS = frozenset(
 )
 # Test-specific events that trigger test tab refresh
 _TEST_UPDATE_EVENTS = frozenset({"test_started", "test_completed", "test_failed"})
+# Quality-gate events that trigger quality tab refresh
+_QUALITY_UPDATE_EVENTS = frozenset({"quality_started", "quality_completed", "quality_failed"})
 # All events we care about (union)
 _WATCHED_EVENTS = (
-    _RUNNING_UPDATE_EVENTS | _STATUS_UPDATE_EVENTS | _TOAST_EVENTS | _TEST_UPDATE_EVENTS
+    _RUNNING_UPDATE_EVENTS
+    | _STATUS_UPDATE_EVENTS
+    | _TOAST_EVENTS
+    | _TEST_UPDATE_EVENTS
+    | _QUALITY_UPDATE_EVENTS
 )
 
 _TOAST_SEVERITY: dict[str, str] = {
@@ -171,6 +177,16 @@ async def _event_generator(request: Request) -> AsyncGenerator[str, None]:
                     }
                 )
                 yield f"event: test-update\ndata: {data}\nid: {event.id}\n\n"
+
+            if event.event_type in _QUALITY_UPDATE_EVENTS:
+                data = json.dumps(
+                    {
+                        "event_type": event.event_type,
+                        "entity_id": event.entity_id,
+                        "project_id": event.project_id,
+                    }
+                )
+                yield f"event: quality-update\ndata: {data}\nid: {event.id}\n\n"
 
             if event.event_type in _STATUS_UPDATE_EVENTS:
                 data = json.dumps(
