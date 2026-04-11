@@ -39,7 +39,7 @@
 {% if not batches %}
   <tr class="empty-row">
     <td colspan="6" class="px-4 py-8 text-center text-muted-foreground text-sm">
-      No batches found{% if status_filter %} with status "{{ status_filter }}"{% endif %}.
+      No batches found{% if status_filter %} with status: {{ status_filter | join(', ') }}{% endif %}.
     </td>
   </tr>
 {% endif %}

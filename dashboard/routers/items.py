@@ -52,6 +52,7 @@ class StepDetail:
     error_message: str | None
     run_count: int
     step_label: str | None = None
+    description: str | None = None
     report_content: str | None = None
     is_synthetic: bool = False
 
@@ -136,8 +137,24 @@ def _get_item_or_404(project_id: str, item_id: str, db: Session) -> WorkItem:
     return item
 
 
-def _get_steps(project_id: str, item_id: str, db: Session) -> list[StepDetail]:
+def _read_report_file(report_file: str | None, repo_root: str | None) -> str | None:
+    """Read report markdown from disk when DB content is not available."""
+    if report_file is None or repo_root is None:
+        return None
+    path = Path(repo_root) / report_file
+    if not path.is_file():
+        return None
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _get_steps(
+    project_id: str, item_id: str, db: Session, project: Project | None = None
+) -> list[StepDetail]:
     bi = _get_batch_item(project_id, item_id, db)
+    repo_root = project.repo_root if project else None
     workflow_steps = list(
         db.scalars(
             select(WorkflowStep)
@@ -165,6 +182,8 @@ def _get_steps(project_id: str, item_id: str, db: Session) -> list[StepDetail]:
         if step.started_at and step.completed_at:
             dur = (step.completed_at - step.started_at).total_seconds()
 
+        report = step.report_content or _read_report_file(step.report_file, repo_root)
+
         result.append(
             StepDetail(
                 step_id=step.step_id,
@@ -177,7 +196,8 @@ def _get_steps(project_id: str, item_id: str, db: Session) -> list[StepDetail]:
                 error_message=error_msg,
                 run_count=len(runs),
                 step_label=step.step_label,
-                report_content=step.report_content,
+                description=step.description,
+                report_content=report,
             )
         )
     result.append(_synthetic_merge_step(bi))
@@ -591,9 +611,9 @@ def item_tab_reports(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
-    _get_project_or_404(project_id, db)
+    project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
-    steps = _get_steps(project_id, item_id, db)
+    steps = _get_steps(project_id, item_id, db, project=project)
 
     report_sections = [
         ReportSection(
