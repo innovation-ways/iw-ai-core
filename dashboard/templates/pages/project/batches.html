@@ -11,10 +11,21 @@
   </div>
 </div>
 
-<!-- Status filter: multi-select checkbox pills -->
+<!-- Status filter: preset buttons + individual status pills -->
 <div class="mb-4 flex flex-wrap items-center gap-2">
-  <span class="text-sm text-muted-foreground">Status:</span>
-  {% for s in all_statuses %}
+  <span class="text-sm text-muted-foreground">Filter:</span>
+  <button id="preset-active" onclick="setPreset('active')"
+          class="rounded-full border px-3 py-1 text-xs font-medium transition-colors
+                 border-border text-muted-foreground hover:border-primary/60 hover:text-foreground">
+    All active
+  </button>
+  <button id="preset-all" onclick="setPreset('all')"
+          class="rounded-full border px-3 py-1 text-xs font-medium transition-colors
+                 border-border text-muted-foreground hover:border-primary/60 hover:text-foreground">
+    All
+  </button>
+  <span class="text-muted-foreground select-none">·</span>
+  {% for s in visible_statuses %}
     <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
                   rounded-full border px-3 py-1 text-xs font-medium transition-colors
                   has-[:checked]:bg-primary has-[:checked]:border-primary has-[:checked]:text-primary-foreground
@@ -27,10 +38,6 @@
       {{ s }}
     </label>
   {% endfor %}
-  <button onclick="clearStatusFilter()"
-          class="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline ml-1">
-    Clear
-  </button>
 </div>
 
 <!-- Batch table -->
@@ -123,6 +130,8 @@
 {% block scripts %}
 {% include "components/toast.html" %}
 <script>
+var ACTIVE_STATUSES = {{ active_statuses | tojson }};
+
 function applyStatusFilter() {
   var checked = Array.from(document.querySelectorAll('.status-cb:checked')).map(function(cb) {
     return cb.value;
@@ -145,18 +154,56 @@ function applyStatusFilter() {
   // Keep URL in sync for bookmarking/sharing
   var qs = checked.map(function(s) { return 'status=' + encodeURIComponent(s); }).join('&');
   history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+
+  // Highlight matching preset button if any
+  var allVisible = Array.from(document.querySelectorAll('.status-cb')).map(function(cb) { return cb.value; });
+  var isAll = checked.length === 0 || allVisible.every(function(s) { return checked.indexOf(s) !== -1; });
+  var isActive = !isAll
+    && ACTIVE_STATUSES.every(function(s) { return checked.indexOf(s) !== -1; })
+    && checked.every(function(s) { return ACTIVE_STATUSES.indexOf(s) !== -1; });
+  highlightPreset(isAll ? 'all' : isActive ? 'active' : null);
 }
 
-function clearStatusFilter() {
-  document.querySelectorAll('.status-cb:checked').forEach(function(cb) { cb.checked = false; });
+function highlightPreset(name) {
+  ['preset-active', 'preset-all'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    var active = (name === 'active' && id === 'preset-active') || (name === 'all' && id === 'preset-all');
+    if (active) {
+      btn.classList.add('bg-primary', 'border-primary', 'text-primary-foreground');
+      btn.classList.remove('border-border', 'text-muted-foreground');
+    } else {
+      btn.classList.remove('bg-primary', 'border-primary', 'text-primary-foreground');
+      btn.classList.add('border-border', 'text-muted-foreground');
+    }
+  });
+}
+
+function setPreset(preset) {
+  var cbs = document.querySelectorAll('.status-cb');
+  cbs.forEach(function(cb) {
+    cb.checked = preset === 'all' ? false : ACTIVE_STATUSES.indexOf(cb.value) !== -1;
+  });
   applyStatusFilter();
 }
+
+// On page load: default to "All active" when no URL params present
+(function() {
+  var params = new URLSearchParams(location.search);
+  if (params.getAll('status').length === 0) {
+    setPreset('active');
+  }
+})();
 </script>
 <script>
 (function () {
   var es = new EventSource('/api/stream/events');
 
   es.addEventListener('running-update', function () {
+    htmx.trigger('#batches-sse-trigger', 'batches-refresh');
+  });
+
+  es.addEventListener('status-update', function () {
     htmx.trigger('#batches-sse-trigger', 'batches-refresh');
   });
 

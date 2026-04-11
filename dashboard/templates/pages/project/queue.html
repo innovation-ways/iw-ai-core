@@ -176,6 +176,7 @@
 {% endblock %}
 
 {% block scripts %}
+{% include "components/toast.html" %}
 <script>
 function updateBatchBtn() {
   const anyChecked = document.querySelectorAll('#queue-form input[name="item_ids"]:checked').length > 0;
@@ -190,5 +191,20 @@ function toggleSelectAll(master) {
 }
 
 document.getElementById('queue-form')?.addEventListener('change', updateBatchBtn);
+
+// SSE: reload page when item statuses change (preserving checkbox state isn't worth the complexity)
+(function () {
+  var es = new EventSource('/api/stream/events');
+
+  es.addEventListener('status-update', function () {
+    window.location.reload();
+  });
+
+  es.addEventListener('toast', function (e) {
+    try { showToast(JSON.parse(e.data)); } catch (_) {}
+  });
+
+  es.onerror = function () {};
+})();
 </script>
 {% endblock %}
