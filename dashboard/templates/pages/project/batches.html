@@ -125,13 +125,31 @@
 <script>
 function applyStatusFilter() {
   var checked = Array.from(document.querySelectorAll('.status-cb:checked')).map(function(cb) {
-    return 'status=' + encodeURIComponent(cb.value);
+    return cb.value;
   });
-  window.location = checked.length ? '?' + checked.join('&') : '?';
+
+  // Filter rows client-side — no round-trip
+  var rows = Array.from(document.querySelectorAll('#batches-table tbody tr:not(.empty-row)'));
+  rows.forEach(function(row) {
+    var rowStatus = row.getAttribute('data-sort-status') || '';
+    row.style.display = (checked.length === 0 || checked.indexOf(rowStatus) !== -1) ? '' : 'none';
+  });
+
+  // Show empty-row only when all data rows are hidden
+  var emptyRow = document.querySelector('#batches-table tbody tr.empty-row');
+  if (emptyRow) {
+    var anyVisible = rows.some(function(r) { return r.style.display !== 'none'; });
+    emptyRow.style.display = anyVisible ? 'none' : '';
+  }
+
+  // Keep URL in sync for bookmarking/sharing
+  var qs = checked.map(function(s) { return 'status=' + encodeURIComponent(s); }).join('&');
+  history.replaceState(null, '', qs ? '?' + qs : location.pathname);
 }
+
 function clearStatusFilter() {
   document.querySelectorAll('.status-cb:checked').forEach(function(cb) { cb.checked = false; });
-  window.location = '?';
+  applyStatusFilter();
 }
 </script>
 <script>
