@@ -71,13 +71,19 @@ class BatchManager:
     # ------------------------------------------------------------------
 
     def monitor_running_steps(self) -> None:
-        """Check health of all running step_runs (PID alive, timeout, stall)."""
-        from orch.daemon import step_monitor  # noqa: PLC0415
+        """Check health of all running step_runs and active fix cycles."""
+        from orch.daemon import fix_cycle, step_monitor  # noqa: PLC0415
 
         with self._session_factory() as db:
             step_monitor.monitor_running_steps(
                 db,
                 self.project_id,
+                self.config,
+            )
+            fix_cycle.check_active_fix_cycles(
+                db,
+                self.project_id,
+                self.project_config,
                 self.config,
             )
 
@@ -191,7 +197,32 @@ class BatchManager:
             .first()
         )
         if has_failed:
-            return  # Step failed — leave for user intervention
+            # needs_fix means a fix cycle is already in progress — wait for it
+            if has_failed.status == StepStatus.needs_fix:
+                return
+
+            # Step failed — attempt a fix cycle if the step type supports it
+            from orch.daemon import fix_cycle  # noqa: PLC0415
+
+            if fix_cycle.should_attempt_fix(db, has_failed, self.project_config):
+                worktree_info = batch_item.worktree_info or {}
+                fix_cycle.attempt_fix_cycle(
+                    db,
+                    has_failed,
+                    self.project_id,
+                    self.project_config,
+                    self.config,
+                    worktree_info,
+                )
+            else:
+                # Max fix cycles exhausted — leave for user intervention
+                logger.warning(
+                    "[%s] Max fix cycles exhausted for %s/%s — needs human review",
+                    self.project_id,
+                    batch_item.work_item_id,
+                    has_failed.step_id,
+                )
+            return
 
         # No active or failed steps → advance to next step (or complete item)
         self._launch_next_step(db, batch_item.work_item_id, batch_item.worktree_info or {})
@@ -498,6 +529,18 @@ class BatchManager:
 # ---------------------------------------------------------------------------
 # Module-level helpers (pure / easily testable)
 # ---------------------------------------------------------------------------
+
+
+def _build_agent_env(cli_tool: str, item_id: str, worktree_path: str) -> dict[str, str]:  # noqa: ARG001
+    """Build the subprocess environment for an agent launch.
+
+    Inherits the current process environment so PATH, credentials, and
+    IW_CORE_* vars are available to the agent.  cli_tool / item_id are
+    accepted for call-site symmetry but not currently used.
+    """
+    import os
+
+    return os.environ.copy()
 
 
 def _current_execution_group(items: list[BatchItem]) -> int | None:
