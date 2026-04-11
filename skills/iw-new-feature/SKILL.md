@@ -42,6 +42,32 @@ Present what you understood from `$ARGUMENTS`, then ask the user to confirm or c
 
 **WAIT for user answers before proceeding.**
 
+## Step 2b: Browser Evidence Capture (Frontend features only — MANDATORY before GO)
+
+**When the feature affects what users see in the browser** (Frontend layer is in scope), you MUST capture the current UI state BEFORE presenting the GO/NO-GO checkpoint.
+
+Evidence files are an exception to the "no files before GO" rule — they are investigation artifacts, not design documents.
+
+1. Check dev environment health:
+   ```bash
+   ./innoforge.sh --health
+   ```
+
+2. If healthy, navigate to the affected area and screenshot the **current state** (before the feature exists):
+   ```bash
+   playwright-cli open http://localhost:5173
+   # Navigate to the relevant page/section
+   playwright-cli screenshot ai-dev/active/{ID}/evidences/pre/{ID}-before.png
+   playwright-cli close
+   ```
+
+3. Store the evidence status for the GO/NO-GO checkpoint:
+   - `Captured` — screenshot saved to `evidences/pre/`
+   - `Deferred` — dev environment not running (note in design doc)
+   - `N/A` — no frontend changes (backend-only feature)
+
+**If the dev environment is not running**, skip browser capture and note it as "deferred — dev environment not available" in the design document.
+
 ## Step 3: Analyze Codebase
 
 Before writing the design, examine relevant existing code:
@@ -65,6 +91,7 @@ Present a summary:
 **Feature**: {1-2 sentence description}
 **Layers affected**: {Database / Backend / API / Frontend / Pipeline / Template}
 **Priority**: {Critical / High / Medium / Low}
+**Browser Evidence**: {Captured / Deferred / N/A — backend-only}
 
 ### Proposed Implementation Plan
 | Step | Agent | Description | Parallel With |
@@ -96,6 +123,8 @@ Create the folder structure:
 
 ```bash
 mkdir -p ai-dev/active/{ID}/prompts/
+mkdir -p ai-dev/active/{ID}/evidences/pre/
+mkdir -p ai-dev/active/{ID}/evidences/post/
 ```
 
 Then create the design document at:
@@ -140,7 +169,21 @@ S05: Frontend — UI components
 S06: Tests — Integration + unit tests
 S07: CodeReview_Final — Global review
 S08..S16: QV Gates
+S17: QV Browser — Post-implementation screenshot (Frontend features only)
 ```
+
+**QV Browser step** (include when `browser_verification: true`):
+```json
+{"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — capture post-implementation evidence", "prompt": "prompts/{ID}_S{N}_QVBrowser_prompt.md"}
+```
+
+The QV Browser prompt must:
+1. Navigate to the affected page and verify the feature works
+2. Capture a post-implementation screenshot:
+   ```bash
+   playwright-cli screenshot ai-dev/active/{ID}/evidences/post/{ID}-after.png
+   ```
+3. Call `iw step-done` with a report comparing pre/post state
 
 ## Step 6: Generate ALL Prompt Files (only after GO)
 
@@ -157,7 +200,8 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state l
   "id": "{ID}",
   "type": "Feature",
   "title": "{One-line feature title}",
-  "browser_verification": false,
+  "browser_verification": true,
+  // set to false for backend-only features (no Frontend step)
   "steps": [
     {
       "step": "S01",
