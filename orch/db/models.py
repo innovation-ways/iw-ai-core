@@ -745,6 +745,12 @@ class TestRun(Base):
         server_default=text("'user'"),
         comment="Who triggered: user, scheduled",
     )
+    run_type: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'test'"),
+        comment="Discriminator: test or quality",
+    )
     created_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, nullable=False, server_default=func.now()
     )
@@ -753,6 +759,7 @@ class TestRun(Base):
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
         Index("idx_test_runs_project_created", "project_id", "created_at"),
         Index("idx_test_runs_project_status", "project_id", "status"),
+        Index("idx_test_runs_run_type", "project_id", "run_type", "created_at"),
         {"comment": "Test execution runs launched from the dashboard. Append-only."},
     )
 
