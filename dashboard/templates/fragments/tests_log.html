@@ -9,7 +9,7 @@
     <div class="flex items-center justify-between px-4 py-3 border-b border-border">
       <div class="flex items-center gap-3">
         <h3 class="text-sm font-semibold text-foreground">
-          Test Run #{{ run.id }} — {{ run.category }}
+          {{ run_type_label|default('Test') }} Run #{{ run.id }} — {{ run.category }}
         </h3>
         {{ status_badge(run.status.value) }}
       </div>
@@ -23,7 +23,7 @@
     <!-- Log content -->
     <div class="flex-1 overflow-auto p-4"
          {% if is_running %}
-           hx-get="/project/{{ current_project.id }}/tests/fragment/log/{{ run.id }}"
+           hx-get="{{ log_fetch_url|default('/project/' ~ current_project.id ~ '/tests/fragment/log/' ~ run.id) }}"
            hx-trigger="every 5s"
            hx-target="#log-modal"
            hx-swap="innerHTML"
