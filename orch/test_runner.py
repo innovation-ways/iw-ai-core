@@ -44,11 +44,14 @@ def launch_test_run(run_id: int) -> None:
             return
 
         project_id = run.project_id
+        event_prefix = "quality" if run.run_type == "quality" else "test"
         execution_dir = _resolve_execution_dir(run, db)
         if execution_dir is None:
             run.status = TestRunStatus.error
             run.finished_at = datetime.now(UTC)
-            _emit_event(db, project_id, "test_failed", str(run_id), "No execution_dir configured")
+            _emit_event(
+                db, project_id, f"{event_prefix}_failed", str(run_id), "No execution_dir configured"
+            )
             db.commit()
             return
 
@@ -57,16 +60,19 @@ def launch_test_run(run_id: int) -> None:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / f"{run_id}.log"
 
-        # Clean allure-results before each run to avoid stale data
-        proj = db.scalar(select(Project).where(Project.id == project_id))
-        allure_results_rel = (
-            (proj.config or {}).get("test_config", {}).get("allure_results_dir", "allure-results")
-            if proj
-            else "allure-results"
-        )
-        allure_results_path = Path(execution_dir) / allure_results_rel
-        if allure_results_path.is_dir():
-            shutil.rmtree(allure_results_path, ignore_errors=True)
+        # Clean allure-results before each run to avoid stale data (skipped for quality runs)
+        if run.run_type != "quality":
+            proj = db.scalar(select(Project).where(Project.id == project_id))
+            allure_results_rel = (
+                (proj.config or {})
+                .get("test_config", {})
+                .get("allure_results_dir", "allure-results")
+                if proj
+                else "allure-results"
+            )
+            allure_results_path = Path(execution_dir) / allure_results_rel
+            if allure_results_path.is_dir():
+                shutil.rmtree(allure_results_path, ignore_errors=True)
 
         # Update status to running
         run.status = TestRunStatus.running
@@ -77,7 +83,7 @@ def launch_test_run(run_id: int) -> None:
         _emit_event(
             db,
             project_id,
-            "test_started",
+            f"{event_prefix}_started",
             str(run_id),
             f"Test run {run_id} started: {run.category}",
         )
@@ -105,7 +111,9 @@ def launch_test_run(run_id: int) -> None:
             run.status = TestRunStatus.error
             run.finished_at = datetime.now(UTC)
             run.duration_secs = time.monotonic() - start_time
-            _emit_event(db, project_id, "test_failed", str(run_id), f"Subprocess error: {exc}")
+            _emit_event(
+                db, project_id, f"{event_prefix}_failed", str(run_id), f"Subprocess error: {exc}"
+            )
             db.commit()
             return
 
@@ -127,8 +135,8 @@ def launch_test_run(run_id: int) -> None:
         run.allure_results_dir = allure_results
         run.allure_report_dir = allure_report
 
-        # Generate allure report if results directory exists
-        if allure_results and Path(allure_results).is_dir():
+        # Generate allure report if results directory exists (skipped for quality runs)
+        if run.run_type != "quality" and allure_results and Path(allure_results).is_dir():
             _generate_allure_report(allure_results, allure_report, execution_dir)
             summary = parse_allure_summary(allure_report)
             if summary:
@@ -138,14 +146,18 @@ def launch_test_run(run_id: int) -> None:
         if exit_code == 0:
             run.status = TestRunStatus.passed
             _emit_event(
-                db, project_id, "test_completed", str(run_id), f"Tests passed ({run.category})"
+                db,
+                project_id,
+                f"{event_prefix}_completed",
+                str(run_id),
+                f"Tests passed ({run.category})",
             )
         else:
             run.status = TestRunStatus.failed
             _emit_event(
                 db,
                 project_id,
-                "test_failed",
+                f"{event_prefix}_failed",
                 str(run_id),
                 f"Tests failed ({run.category}, exit code {exit_code})",
             )
@@ -276,8 +288,9 @@ def _resolve_execution_dir(run: TestRun, db: Any) -> str | None:
     if project is None:
         return None
     config = project.config or {}
-    test_config = config.get("test_config", {})
-    return test_config.get("execution_dir")
+    config_key = "quality_config" if run.run_type == "quality" else "test_config"
+    section = config.get(config_key, {})
+    return section.get("execution_dir")
 
 
 def _resolve_allure_dirs(
@@ -289,10 +302,11 @@ def _resolve_allure_dirs(
     if project is None:
         return None, None
     config = project.config or {}
-    test_config = config.get("test_config", {})
+    config_key = "quality_config" if run.run_type == "quality" else "test_config"
+    section = config.get(config_key, {})
 
-    results_rel = test_config.get("allure_results_dir", "allure-results")
-    report_rel = test_config.get("allure_report_dir", "allure-report")
+    results_rel = section.get("allure_results_dir", "allure-results")
+    report_rel = section.get("allure_report_dir", "allure-report")
 
     results_abs = str(Path(execution_dir) / results_rel)
     report_abs = str(Path(execution_dir) / report_rel)

@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import mimetypes
 import threading
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -16,10 +14,19 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
+from dashboard.routers._run_helpers import (
+    action_response,
+    build_category_cards,
+    build_run_rows,
+    get_project_or_404,
+    group_cards,
+)
 from orch.db.models import Project, TestRun, TestRunStatus
 from orch.test_runner import kill_test_run, launch_test_run
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from fastapi.templating import Jinja2Templates
     from sqlalchemy.orm import Session
 
@@ -27,65 +34,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/project/{project_id}")
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _get_project_or_404(project_id: str, db: Session) -> Project:
-    project = db.scalar(select(Project).where(Project.id == project_id))
-    if project is None:
-        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
-    return project
-
-
 def _get_test_config(project: Project) -> dict[str, Any]:
     """Extract test_config from project JSONB config."""
-    config = project.config or {}
-    return config.get("test_config", {})
-
-
-def _action_response(
-    message: str,
-    toast_type: str = "success",
-    *,
-    reload: bool = False,
-) -> Response:
-    """Return 204 with HX-Trigger header to show a toast."""
-    toast: dict[str, Any] = {"message": message, "type": toast_type}
-    if reload:
-        toast["reload"] = True
-    trigger = json.dumps({"showToast": toast})
-    return Response(
-        status_code=204,
-        headers={
-            "HX-Trigger": trigger,
-            "HX-Refresh": "false",
-        },
-    )
-
-
-@dataclass
-class TestCategoryCard:
-    key: str
-    label: str
-    description: str
-    command: str
-    last_run: TestRun | None = None
-
-
-@dataclass
-class TestRunRow:
-    id: int
-    category: str
-    status: str
-    command: str
-    duration_secs: float | None
-    started_at: datetime | None
-    finished_at: datetime | None
-    exit_code: int | None
-    has_report: bool
-    has_log: bool
+    config: dict[str, Any] = project.config or {}
+    result: dict[str, Any] = config.get("test_config", {})
+    return result
 
 
 @dataclass
@@ -129,7 +88,7 @@ def tests_page(
     db: Session = Depends(get_db),
     tab: str = "launch",
 ) -> Any:
-    project = _get_project_or_404(project_id, db)
+    project = get_project_or_404(project_id, db)
     test_config = _get_test_config(project)
     templates: Jinja2Templates = request.app.state.templates
 
@@ -145,9 +104,10 @@ def tests_page(
     }
 
     if active_tab == "launch":
-        context["categories"] = _build_category_cards(project_id, test_config, db)
+        cards = build_category_cards(project_id, test_config, db, run_type="test")
+        context["grouped_categories"] = group_cards(cards)
     elif active_tab == "runs":
-        context["runs"] = _build_run_rows(project_id, db)
+        context["runs"] = build_run_rows(project_id, db, run_type="test")
     elif active_tab == "results":
         context["summary"] = _get_latest_summary(project_id, db)
         context["recent_runs"] = _get_completed_runs(project_id, db, limit=20)
@@ -170,15 +130,16 @@ def tests_fragment_launch(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
-    project = _get_project_or_404(project_id, db)
+    project = get_project_or_404(project_id, db)
     test_config = _get_test_config(project)
     templates: Jinja2Templates = request.app.state.templates
+    cards = build_category_cards(project_id, test_config, db, run_type="test")
     return templates.TemplateResponse(
         request,
         "fragments/tests_launch.html",
         {
             "current_project": project,
-            "categories": _build_category_cards(project_id, test_config, db),
+            "grouped_categories": group_cards(cards),
             "has_config": bool(test_config.get("categories")),
         },
     )
@@ -190,14 +151,14 @@ def tests_fragment_runs(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
-    project = _get_project_or_404(project_id, db)
+    project = get_project_or_404(project_id, db)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "fragments/tests_runs.html",
         {
             "current_project": project,
-            "runs": _build_run_rows(project_id, db),
+            "runs": build_run_rows(project_id, db, run_type="test"),
         },
     )
 
@@ -208,7 +169,7 @@ def tests_fragment_results(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
-    project = _get_project_or_404(project_id, db)
+    project = get_project_or_404(project_id, db)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -228,7 +189,7 @@ def tests_fragment_results_for_run(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
-    project = _get_project_or_404(project_id, db)
+    project = get_project_or_404(project_id, db)
     run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
     if run is None:
         raise HTTPException(status_code=404, detail="Test run not found")
@@ -257,7 +218,7 @@ def tests_fragment_log(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
-    project = _get_project_or_404(project_id, db)
+    project = get_project_or_404(project_id, db)
     run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
     if run is None:
         raise HTTPException(status_code=404, detail="Test run not found")
@@ -284,6 +245,8 @@ def tests_fragment_log(
             "run": run,
             "log_content": log_content,
             "is_running": run.status == TestRunStatus.running,
+            "run_type_label": "Test",
+            "log_fetch_url": f"/project/{project_id}/tests/fragment/log/{run_id}",
         },
     )
 
@@ -299,7 +262,7 @@ def launch_test(
     category: str,
     db: Session = Depends(get_db),
 ) -> Any:
-    project = _get_project_or_404(project_id, db)
+    project = get_project_or_404(project_id, db)
     test_config = _get_test_config(project)
     categories = test_config.get("categories", {})
 
@@ -311,11 +274,12 @@ def launch_test(
         select(TestRun).where(
             TestRun.project_id == project_id,
             TestRun.category == category,
+            TestRun.run_type == "test",
             TestRun.status.in_([TestRunStatus.pending, TestRunStatus.running]),
         )
     )
     if existing:
-        return _action_response(
+        return action_response(
             f"A {category} test run is already in progress (#{existing.id}).",
             toast_type="warning",
         )
@@ -330,6 +294,7 @@ def launch_test(
         status=TestRunStatus.pending,
         command=command,
         triggered_by="user",
+        run_type="test",
     )
     db.add(run)
     db.commit()
@@ -344,7 +309,7 @@ def launch_test(
     )
     thread.start()
 
-    return _action_response(
+    return action_response(
         f"Test run #{run.id} launched ({cat_config.get('label', category)}).", reload=True
     )
 
@@ -355,15 +320,15 @@ def kill_test(
     run_id: int,
     db: Session = Depends(get_db),
 ) -> Any:
-    _get_project_or_404(project_id, db)
+    get_project_or_404(project_id, db)
     run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
     if run is None:
         raise HTTPException(status_code=404, detail="Test run not found")
 
     success = kill_test_run(run_id)
     if success:
-        return _action_response(f"Test run #{run_id} cancelled.", toast_type="warning", reload=True)
-    return _action_response(f"Test run #{run_id} is not running.", toast_type="warning")
+        return action_response(f"Test run #{run_id} cancelled.", toast_type="warning", reload=True)
+    return action_response(f"Test run #{run_id} is not running.", toast_type="warning")
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +344,7 @@ def serve_allure_report(
     db: Session = Depends(get_db),
 ) -> Any:
     """Serve static files from the Allure report directory."""
-    _get_project_or_404(project_id, db)
+    get_project_or_404(project_id, db)
     run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
     if run is None or not run.allure_report_dir:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -405,60 +370,8 @@ def serve_allure_report(
 
 
 # ---------------------------------------------------------------------------
-# Data builders
+# Data builders (Allure-specific — tests only)
 # ---------------------------------------------------------------------------
-
-
-def _build_category_cards(
-    project_id: str, test_config: dict[str, Any], db: Session
-) -> list[TestCategoryCard]:
-    """Build category cards with last run info."""
-    categories = test_config.get("categories", {})
-    cards = []
-    for key, cat in categories.items():
-        last_run = db.scalar(
-            select(TestRun)
-            .where(TestRun.project_id == project_id, TestRun.category == key)
-            .order_by(TestRun.created_at.desc())
-            .limit(1)
-        )
-        cards.append(
-            TestCategoryCard(
-                key=key,
-                label=cat.get("label", key),
-                description=cat.get("description", ""),
-                command=cat.get("command", ""),
-                last_run=last_run,
-            )
-        )
-    return cards
-
-
-def _build_run_rows(project_id: str, db: Session) -> list[TestRunRow]:
-    """Build run rows for the runs table."""
-    runs = list(
-        db.scalars(
-            select(TestRun)
-            .where(TestRun.project_id == project_id)
-            .order_by(TestRun.created_at.desc())
-            .limit(50)
-        )
-    )
-    return [
-        TestRunRow(
-            id=r.id,
-            category=r.category,
-            status=r.status.value,
-            command=r.command,
-            duration_secs=r.duration_secs,
-            started_at=r.started_at,
-            finished_at=r.finished_at,
-            exit_code=r.exit_code,
-            has_report=bool(r.allure_report_dir and Path(r.allure_report_dir).is_dir()),
-            has_log=bool(r.log_path and Path(r.log_path).is_file()),
-        )
-        for r in runs
-    ]
 
 
 def _get_latest_summary(project_id: str, db: Session) -> AllureSummary | None:
@@ -467,6 +380,7 @@ def _get_latest_summary(project_id: str, db: Session) -> AllureSummary | None:
         select(TestRun)
         .where(
             TestRun.project_id == project_id,
+            TestRun.run_type == "test",
             TestRun.status.in_([TestRunStatus.passed, TestRunStatus.failed]),
             TestRun.summary.isnot(None),
         )
@@ -485,6 +399,7 @@ def _get_completed_runs(project_id: str, db: Session, *, limit: int = 20) -> lis
             select(TestRun)
             .where(
                 TestRun.project_id == project_id,
+                TestRun.run_type == "test",
                 TestRun.status.in_([TestRunStatus.passed, TestRunStatus.failed]),
             )
             .order_by(TestRun.created_at.desc())

@@ -240,22 +240,19 @@ class TestLaunchTestRunEventTypes:
 
         mock_db = MagicMock()
 
-        # scalar call order in launch_test_run (current, pre-fix):
-        #   1. select(TestRun) — get the run
-        #   2. select(Project) — allure-results cleanup (only for run_type=="test" post-fix)
-        #   3. select(Project) — inside _resolve_execution_dir
-        #   4. select(TestRun.status) — cancelled check (after subprocess)
-        #   5. select(Project) — inside _resolve_allure_dirs (only for run_type=="test" post-fix)
-        # Use a function that always returns the right type based on the argument.
+        # Dispatch by statement content:
+        # - select(TestRun) selects all columns including "project_id"
+        # - select(TestRun.status) selects only the status column
+        # - select(Project) selects from the projects table
         def _scalar_dispatch(stmt: Any) -> Any:
-            # Introspect what entity is being selected
-            entity = getattr(stmt, "entity", None) or getattr(stmt, "columns_clause_froms", None)
             txt = str(stmt)
-            if "test_runs" in txt and "status" in txt and "WHERE" in txt:
-                return TestRunStatus.running
-            if "test_runs" in txt:
+            if "test_runs.project_id" in txt:
+                # Full TestRun row select
                 return mock_run
-            # default: project
+            if "test_runs" in txt:
+                # select(TestRun.status) — cancelled status check
+                return TestRunStatus.running
+            # default: project lookup
             return mock_project
 
         mock_db.scalar.side_effect = _scalar_dispatch
@@ -337,10 +334,10 @@ class TestLaunchTestRunAllureSkip:
 
         def _scalar_dispatch(stmt: Any) -> Any:
             txt = str(stmt)
-            if "test_runs" in txt and "status" in txt and "WHERE" in txt:
-                return TestRunStatus.running
-            if "test_runs" in txt:
+            if "test_runs.project_id" in txt:
                 return mock_run
+            if "test_runs" in txt:
+                return TestRunStatus.running
             return mock_project
 
         mock_db.scalar.side_effect = _scalar_dispatch
