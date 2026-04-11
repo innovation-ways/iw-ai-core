@@ -104,6 +104,16 @@ class ArtifactFile:
 
 
 @dataclass
+class EvidenceFile:
+    """A single screenshot/snapshot in the evidences browser."""
+
+    filename: str
+    phase: str  # "pre" or "post"
+    abs_path: str
+    size_bytes: int
+
+
+@dataclass
 class ItemMetrics:
     """Computed metrics for the item detail header."""
 
@@ -445,6 +455,30 @@ def _list_artifacts(_project_id: str, item: WorkItem, project: Project) -> list[
     return files
 
 
+def _list_evidences(item: WorkItem, project: Project) -> list[EvidenceFile]:
+    """Scan ai-dev/active/{id}/evidences/{pre,post}/ for image/snapshot files."""
+    base = Path(project.repo_root) / "ai-dev" / "active" / item.id / "evidences"
+    results: list[EvidenceFile] = []
+    for phase in ("pre", "post"):
+        phase_dir = base / phase
+        if not phase_dir.exists():
+            continue
+        try:
+            for entry in sorted(phase_dir.iterdir()):
+                if entry.is_file():
+                    results.append(
+                        EvidenceFile(
+                            filename=entry.name,
+                            phase=phase,
+                            abs_path=str(entry),
+                            size_bytes=entry.stat().st_size,
+                        )
+                    )
+        except OSError:
+            pass
+    return results
+
+
 def _get_log_sections(project_id: str, item_id: str, db: Session) -> list[LogSection]:
     bi = _get_batch_item(project_id, item_id, db)
 
@@ -684,6 +718,65 @@ def item_tab_logs(
             "project_id": project_id,
         },
     )
+
+
+@router.get("/item/{item_id}/tab/evidences", response_class=HTMLResponse)
+def item_tab_evidences(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    project = _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+    evidences = _list_evidences(item, project)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/item_evidences.html",
+        {
+            "item": item,
+            "project_id": project_id,
+            "evidences": evidences,
+            "pre_evidences": [e for e in evidences if e.phase == "pre"],
+            "post_evidences": [e for e in evidences if e.phase == "post"],
+        },
+    )
+
+
+@router.get("/item/{item_id}/evidence/{phase}/{filename}")
+def item_evidence_file(
+    project_id: str,
+    item_id: str,
+    phase: str,
+    filename: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Serve a single evidence image file."""
+    if phase not in ("pre", "post"):
+        raise HTTPException(status_code=404, detail="Invalid evidence phase")
+    project = _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+    evidence_path = (
+        Path(project.repo_root) / "ai-dev" / "active" / item.id / "evidences" / phase / filename
+    )
+    # Prevent path traversal
+    try:
+        evidence_path.resolve().relative_to(
+            (Path(project.repo_root) / "ai-dev" / "active" / item.id / "evidences").resolve()
+        )
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not evidence_path.is_file():
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+    content_type, _ = mimetypes.guess_type(filename)
+    content_type = content_type or "application/octet-stream"
+    try:
+        data = evidence_path.read_bytes()
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Could not read file") from exc
+    return Response(content=data, media_type=content_type)
 
 
 @router.get("/item/{item_id}/log-content/{step_db_id}/{run_number}", response_class=HTMLResponse)
