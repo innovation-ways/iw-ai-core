@@ -582,6 +582,37 @@ def item_detail(
     )
 
 
+@router.get("/item/{item_id}/fragment/header", response_class=HTMLResponse)
+def item_header_fragment(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: returns item header + metrics for live refresh."""
+    project = _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+    steps = _get_steps(project_id, item_id, db)
+    metrics = _get_metrics(project_id, item_id, steps, db)
+    batch_ref = _get_batch_ref(project_id, item_id, db)
+    setup_error = _get_batch_item_error(project_id, item_id, db)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/item_header.html",
+        {
+            "current_project": project,
+            "item": item,
+            "item_type": item.type.value,
+            "item_status": item.status.value,
+            "batch_ref": batch_ref,
+            "setup_error": setup_error,
+            "metrics": metrics,
+        },
+    )
+
+
 @router.get("/item/{item_id}/tab/overview", response_class=HTMLResponse)
 def item_tab_overview(
     project_id: str,

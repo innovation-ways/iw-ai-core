@@ -31,6 +31,9 @@ if TYPE_CHECKING:
 router = APIRouter(prefix="/project/{project_id}")
 
 _ALL_STATUSES = [s.value for s in BatchStatus]
+_HIDDEN_STATUSES = {"published", "publish_failed"}
+_VISIBLE_STATUSES = [s for s in _ALL_STATUSES if s not in _HIDDEN_STATUSES]
+_ACTIVE_STATUSES = [s for s in _VISIBLE_STATUSES if s not in ("archived", "cancelled")]
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +243,8 @@ def batch_list(
             "running_count": 0,
             "batches": batches,
             "status_filter": status,
-            "all_statuses": _ALL_STATUSES,
+            "visible_statuses": _VISIBLE_STATUSES,
+            "active_statuses": _ACTIVE_STATUSES,
         },
     )
 
@@ -373,6 +377,36 @@ def batch_items_fragment(
         "fragments/batch_items_rows.html",
         {
             "current_project": project,
+            "items": items,
+        },
+    )
+
+
+@router.get("/batch/{batch_id}/fragment/header", response_class=HTMLResponse)
+def batch_detail_header_fragment(
+    project_id: str,
+    batch_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: returns batch detail header for live refresh."""
+    project = _get_project_or_404(project_id, db)
+    batch = _get_batch_or_404(project_id, batch_id, db)
+    items = _batch_item_rows(project_id, batch_id, db)
+
+    dur: float | None = None
+    if batch.created_at and batch.completed_at:
+        dur = (batch.completed_at - batch.created_at).total_seconds()
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/batch_detail_header.html",
+        {
+            "current_project": project,
+            "batch": batch,
+            "batch_status": batch.status.value,
+            "batch_duration_secs": dur,
             "items": items,
         },
     )

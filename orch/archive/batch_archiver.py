@@ -30,11 +30,12 @@ from orch.db.models import (
 logger = logging.getLogger(__name__)
 
 
-def archive_batch(project_id: str, batch_id: str) -> list[str]:
+def archive_batch(project_id: str, batch_id: str, *, run_post_commands: bool = True) -> list[str]:
     """Orchestrate full batch archival. Creates its own DB session (for use in threads).
 
     Steps:
       1. Run post_archive_commands from project.config (failures are logged, not fatal)
+         — skipped when run_post_commands=False
       2. Archive all merged BatchItems via archive_work_item()
       3. Transition batch.status → archived, set batch.archived_at
       4. Emit batch_archived or batch_archive_failed DaemonEvent
@@ -42,6 +43,7 @@ def archive_batch(project_id: str, batch_id: str) -> list[str]:
     Args:
         project_id: Project identifier.
         batch_id: Batch identifier.
+        run_post_commands: When False, skip post_archive_commands entirely.
 
     Returns:
         List of successfully archived work item IDs.
@@ -49,7 +51,7 @@ def archive_batch(project_id: str, batch_id: str) -> list[str]:
     from orch.db.session import get_session  # noqa: PLC0415
 
     try:
-        return _run_archive(project_id, batch_id)
+        return _run_archive(project_id, batch_id, run_post_commands=run_post_commands)
     except Exception:
         logger.exception(
             "[%s] Fatal error archiving batch %s — emitting batch_archive_failed",
@@ -68,7 +70,7 @@ def archive_batch(project_id: str, batch_id: str) -> list[str]:
         return []
 
 
-def _run_archive(project_id: str, batch_id: str) -> list[str]:
+def _run_archive(project_id: str, batch_id: str, *, run_post_commands: bool = True) -> list[str]:
     """Inner implementation — raises on fatal errors (caller handles)."""
     from orch.db.session import get_session  # noqa: PLC0415
 
@@ -85,12 +87,15 @@ def _run_archive(project_id: str, batch_id: str) -> list[str]:
         archive_dir = repo_root / "ai-dev" / "archives"
         post_archive_commands: list[str] = (project.config or {}).get("post_archive_commands", [])
 
-        # --- Step 1: Run post-archive commands ---
+        # --- Step 1: Run post-archive commands (skipped if run_post_commands=False) ---
         command_errors: list[str] = []
-        for cmd in post_archive_commands:
-            error = _run_command(cmd, cwd=repo_root, project_id=project_id)
-            if error:
-                command_errors.append(error)
+        if run_post_commands:
+            for cmd in post_archive_commands:
+                error = _run_command(cmd, cwd=repo_root, project_id=project_id)
+                if error:
+                    command_errors.append(error)
+        else:
+            logger.info("[%s] Skipping post-archive commands for batch %s", project_id, batch_id)
 
         # --- Step 2: Archive merged work items ---
         batch_items = (
