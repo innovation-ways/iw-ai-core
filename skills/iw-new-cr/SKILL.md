@@ -45,7 +45,29 @@ Present what you understood from `$ARGUMENTS`, then ask the user to confirm or c
 
 ### Determine UI Visibility
 
-If the change affects what users see in the browser, mark `browser_verification: true` and capture browser evidence of the current state before proposing changes.
+If the change affects what users see in the browser (Frontend layer affected), mark `browser_verification: true` and capture browser evidence of the **current state** before proposing changes.
+
+**When `browser_verification: true`** — MANDATORY before GO:
+
+1. Check dev environment health:
+   ```bash
+   ./innoforge.sh --health
+   ```
+
+2. Navigate to the affected area and screenshot the current behavior:
+   ```bash
+   playwright-cli open http://localhost:5173
+   # Navigate to the affected page/component
+   playwright-cli screenshot ai-dev/active/{ID}/evidences/pre/{ID}-before.png
+   playwright-cli close
+   ```
+
+3. Record the evidence status for the GO/NO-GO checkpoint:
+   - `Captured` — screenshot saved to `evidences/pre/`
+   - `Deferred` — dev environment not running (note in design doc)
+   - `N/A` — no frontend changes (backend-only CR)
+
+**If the dev environment is not running**, skip browser capture and note it as "deferred" in the design document.
 
 ## Step 3: Analyze Current Implementation
 
@@ -73,6 +95,7 @@ Present a summary:
 **Priority**: {Critical / High / Medium / Low}
 **Breaking changes**: {Yes / No — describe if yes}
 **Data migration**: {Required / Not required}
+**Browser Evidence**: {Captured / Deferred / N/A — backend-only}
 
 ### Proposed Change Plan
 | Step | Agent | Description |
@@ -101,6 +124,8 @@ Create the folder structure:
 
 ```bash
 mkdir -p ai-dev/active/{ID}/prompts/
+mkdir -p ai-dev/active/{ID}/evidences/pre/
+mkdir -p ai-dev/active/{ID}/evidences/post/
 ```
 
 Then create the design document at:
@@ -130,7 +155,8 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state l
   "id": "{ID}",
   "type": "ChangeRequest",
   "title": "{One-line CR title}",
-  "browser_verification": false,
+  "browser_verification": true,
+  // set to false for backend-only CRs (no Frontend step)
   "steps": [
     {
       "step": "S01",
@@ -143,6 +169,16 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state l
 ```
 
 Add QV gate steps after CodeReview_Final (same as iw-new-incident pattern).
+
+When `browser_verification: true`, add a QV Browser step after all QV gates:
+```json
+{"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — capture post-implementation evidence", "prompt": "prompts/{ID}_S{N}_QVBrowser_prompt.md"}
+```
+
+The QV Browser prompt must navigate to the affected page, verify the change, and capture a post-implementation screenshot:
+```bash
+playwright-cli screenshot ai-dev/active/{ID}/evidences/post/{ID}-after.png
+```
 
 ## Step 8: Register in Platform
 
