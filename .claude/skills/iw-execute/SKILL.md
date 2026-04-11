@@ -1,6 +1,6 @@
 ---
 name: iw-execute
-version: "2.0.0"
+version: "2.1.0"
 description: >
   Execute the AI development workflow for a work item via the IW AI Core platform.
   Checks item status, starts steps via iw CLI, delegates to specialist subagents.
@@ -26,7 +26,7 @@ Current status from platform:
 !`uv run iw item-status $(echo $ARGUMENTS | awk '{print $1}') --json 2>/dev/null || echo '{"error": "item not found or not registered"}'`
 
 Work item design document location:
-!`ls -d ai-dev/design/active/$(echo $ARGUMENTS | awk '{print $1}') 2>/dev/null || echo "NOT_FOUND: $(echo $ARGUMENTS | awk '{print $1}') not in ai-dev/design/active/"`
+!`ls -d ai-dev/active/$(echo $ARGUMENTS | awk '{print $1}') 2>/dev/null || echo "NOT_FOUND: $(echo $ARGUMENTS | awk '{print $1}') not in ai-dev/active/"`
 
 ## Pre-Flight Validation
 
@@ -37,7 +37,7 @@ Before executing, validate:
 
 1. **Item is registered** — `uv run iw item-status ITEM_ID` must succeed
 2. **Item status is `approved`** — if `draft`, tell user to run `uv run iw approve ITEM_ID` first
-3. **Design doc exists** — must be in `ai-dev/design/active/ITEM_ID/`
+3. **Design doc exists** — must be in `ai-dev/active/ITEM_ID/`
 
 ## If item not found:
 
@@ -60,9 +60,19 @@ Begin execution. For each step in the workflow:
 
 2. Delegate the step to the correct specialist subagent using **path-based delegation** (pass the prompt file path)
 
-3. After step completes successfully:
+3. After step completes successfully, write a report then call step-done:
    ```bash
-   uv run iw step-done ITEM_ID --step S{NN}
+   mkdir -p ai-dev/active/ITEM_ID/reports
+   ```
+   Write a markdown report to `ai-dev/active/ITEM_ID/reports/ITEM_ID_S{NN}_{AgentLabel}_report.md` containing:
+   - Completion status and step description
+   - Files changed (list)
+   - Test results summary
+   - Any notes or observations from the subagent
+
+   Then:
+   ```bash
+   uv run iw step-done ITEM_ID --step S{NN} --report ai-dev/active/ITEM_ID/reports/ITEM_ID_S{NN}_{AgentLabel}_report.md
    ```
 
 4. After step fails:

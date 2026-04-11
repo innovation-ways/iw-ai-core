@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from dashboard.routers import (
     actions,
     batches,
+    daemon_control,
     items,
     project_dashboard,
     project_pages,
@@ -40,6 +41,13 @@ def create_app() -> FastAPI:
 
     # Configure Jinja2 templates and store on app state so routers can access it
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+    def _fmt_ts_time(ts: float) -> str:
+        import datetime as _dt_module
+
+        return _dt_module.datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+
+    templates.env.filters["fmt_ts_time"] = _fmt_ts_time
     app.state.templates = templates
 
     # Register routers
@@ -48,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(actions.router)
     app.include_router(sse.router)
     app.include_router(system.router)
+    app.include_router(daemon_control.router)
     app.include_router(project_dashboard.router)
     app.include_router(batches.router)
     app.include_router(items.router)

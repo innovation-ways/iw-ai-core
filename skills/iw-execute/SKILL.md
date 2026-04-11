@@ -1,6 +1,6 @@
 ---
 name: iw-execute
-version: "2.0.0"
+version: "2.1.0"
 description: >
   Execute the AI development workflow for a work item via the IW AI Core platform.
   Checks item status, starts steps via iw CLI, delegates to specialist subagents.
@@ -60,9 +60,19 @@ Begin execution. For each step in the workflow:
 
 2. Delegate the step to the correct specialist subagent using **path-based delegation** (pass the prompt file path)
 
-3. After step completes successfully:
+3. After step completes successfully, write a report then call step-done:
    ```bash
-   uv run iw step-done ITEM_ID --step S{NN}
+   mkdir -p ai-dev/active/ITEM_ID/reports
+   ```
+   Write a markdown report to `ai-dev/active/ITEM_ID/reports/ITEM_ID_S{NN}_{AgentLabel}_report.md` containing:
+   - Completion status and step description
+   - Files changed (list)
+   - Test results summary
+   - Any notes or observations from the subagent
+
+   Then:
+   ```bash
+   uv run iw step-done ITEM_ID --step S{NN} --report ai-dev/active/ITEM_ID/reports/ITEM_ID_S{NN}_{AgentLabel}_report.md
    ```
 
 4. After step fails:

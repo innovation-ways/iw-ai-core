@@ -52,8 +52,9 @@
           <td class="px-4 py-2 font-mono text-xs font-semibold">{{ step.step_id }}</td>
           <td class="px-4 py-2">
             <div class="text-xs text-foreground">{{ step.agent_label }}</div>
-            {% if step.step_label %}
-              <div class="text-xs text-muted-foreground truncate max-w-xs" title="{{ step.step_label }}">{{ step.step_label }}</div>
+            {% set subtitle = step.step_label or step.description %}
+            {% if subtitle %}
+              <div class="text-xs text-muted-foreground truncate max-w-xs" title="{{ subtitle }}">{{ subtitle }}</div>
             {% endif %}
           </td>
           <td class="px-4 py-2">{{ status_badge(step.status) }}</td>

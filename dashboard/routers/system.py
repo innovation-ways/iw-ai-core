@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -13,10 +14,14 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 
 from dashboard.dependencies import get_db
+from orch.cli.daemon_commands import get_pid_file_path, is_process_alive, read_pid
 from orch.db.models import (
     Batch,
     BatchStatus,
+    DaemonEvent,
     Project,
+    StepStatus,
+    WorkflowStep,
     WorkItem,
     WorkItemPhase,
     WorkItemStatus,
@@ -35,6 +40,17 @@ _TERMINAL_PHASES = {WorkItemPhase.done}
 # ---------------------------------------------------------------------------
 # Data containers
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class DaemonStatus:
+    is_running: bool
+    pid: int | None
+    uptime_secs: float | None
+    last_poll_at: datetime | None
+    poll_count: int
+    running_steps: int
+    active_batches: int
 
 
 @dataclass
@@ -65,6 +81,61 @@ class ActiveWorkItem:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _daemon_status(db: Session) -> DaemonStatus:
+    """Read daemon liveness from PID file and operational stats from DB."""
+    pid_file = get_pid_file_path()
+    pid = read_pid(pid_file)
+    is_running = pid is not None and is_process_alive(pid)
+
+    # Uptime: time since most recent daemon_started event
+    started_event = db.scalar(
+        select(DaemonEvent)
+        .where(DaemonEvent.event_type == "daemon_started")
+        .order_by(DaemonEvent.created_at.desc())
+        .limit(1)
+    )
+    uptime_secs: float | None = None
+    if is_running and started_event:
+        uptime_secs = (datetime.now(UTC) - started_event.created_at).total_seconds()
+
+    # Last poll and total poll count
+    poll_event = db.scalar(
+        select(DaemonEvent)
+        .where(DaemonEvent.event_type == "daemon_poll")
+        .order_by(DaemonEvent.created_at.desc())
+        .limit(1)
+    )
+    poll_count = (
+        db.scalar(select(func.count(DaemonEvent.id)).where(DaemonEvent.event_type == "daemon_poll"))
+        or 0
+    )
+
+    running_steps = (
+        db.scalar(
+            select(func.count(WorkflowStep.id)).where(WorkflowStep.status == StepStatus.in_progress)
+        )
+        or 0
+    )
+    active_batches = (
+        db.scalar(
+            select(func.count())
+            .select_from(Batch)
+            .where(Batch.status.in_([BatchStatus.approved, BatchStatus.executing]))
+        )
+        or 0
+    )
+
+    return DaemonStatus(
+        is_running=is_running,
+        pid=pid if is_running else None,
+        uptime_secs=uptime_secs,
+        last_poll_at=poll_event.created_at if poll_event else None,
+        poll_count=poll_count,
+        running_steps=running_steps,
+        active_batches=active_batches,
+    )
 
 
 def _git_branch_and_stats(repo_root: str) -> tuple[str, int, int, str | None]:
@@ -224,6 +295,7 @@ def _safe_config_display(config: dict[str, Any]) -> dict[str, Any]:
 @router.get("/status", response_class=HTMLResponse)
 def system_status(request: Request, db: Session = Depends(get_db)) -> Any:
     project_summaries = _project_summaries(db)
+    daemon = _daemon_status(db)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -232,6 +304,7 @@ def system_status(request: Request, db: Session = Depends(get_db)) -> Any:
             "current_project": None,
             "running_count": 0,
             "project_summaries": project_summaries,
+            "daemon": daemon,
         },
     )
 

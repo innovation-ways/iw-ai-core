@@ -11,25 +11,33 @@
   </div>
 </div>
 
-<!-- Status filter dropdown -->
-<div class="mb-4 flex items-center gap-2">
-  <label for="status-filter" class="text-sm text-muted-foreground">Status:</label>
-  <select id="status-filter"
-          onchange="window.location = this.value ? '?status=' + this.value : '?'"
-          class="rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground
-                 focus:outline-none focus:ring-2 focus:ring-primary/50">
-    <option value=""{% if not status_filter %} selected{% endif %}>All</option>
-    {% for s in all_statuses %}
-      <option value="{{ s }}"{% if status_filter == s %} selected{% endif %}>{{ s }}</option>
-    {% endfor %}
-  </select>
+<!-- Status filter: multi-select checkbox pills -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <span class="text-sm text-muted-foreground">Status:</span>
+  {% for s in all_statuses %}
+    <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
+                  rounded-full border px-3 py-1 text-xs font-medium transition-colors
+                  has-[:checked]:bg-primary has-[:checked]:border-primary has-[:checked]:text-primary-foreground
+                  border-border text-muted-foreground hover:border-primary/60 hover:text-foreground">
+      <input type="checkbox"
+             class="status-cb sr-only"
+             value="{{ s }}"
+             onchange="applyStatusFilter()"
+             {% if s in status_filter %}checked{% endif %}>
+      {{ s }}
+    </label>
+  {% endfor %}
+  <button onclick="clearStatusFilter()"
+          class="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline ml-1">
+    Clear
+  </button>
 </div>
 
 <!-- Batch table -->
 <div class="bg-card border border-border rounded-lg overflow-x-auto">
   <!-- SSE trigger: refreshes batch rows on running-update event -->
   <div id="batches-sse-trigger"
-       hx-get="/project/{{ current_project.id }}/batches/fragment{% if status_filter %}?status={{ status_filter }}{% endif %}"
+       hx-get="/project/{{ current_project.id }}/batches/fragment{% if status_filter %}?{% for s in status_filter %}status={{ s }}{% if not loop.last %}&amp;{% endif %}{% endfor %}{% endif %}"
        hx-trigger="batches-refresh"
        hx-target="#batches-body"
        hx-swap="innerHTML">
@@ -102,7 +110,7 @@
       {% if not batches %}
         <tr class="empty-row">
           <td colspan="6" class="px-4 py-8 text-center text-muted-foreground text-sm">
-            No batches found{% if status_filter %} with status "{{ status_filter }}"{% endif %}.
+            No batches found{% if status_filter %} with status: {{ status_filter | join(', ') }}{% endif %}.
           </td>
         </tr>
       {% endif %}
@@ -114,6 +122,18 @@
 
 {% block scripts %}
 {% include "components/toast.html" %}
+<script>
+function applyStatusFilter() {
+  var checked = Array.from(document.querySelectorAll('.status-cb:checked')).map(function(cb) {
+    return 'status=' + encodeURIComponent(cb.value);
+  });
+  window.location = checked.length ? '?' + checked.join('&') : '?';
+}
+function clearStatusFilter() {
+  document.querySelectorAll('.status-cb:checked').forEach(function(cb) { cb.checked = false; });
+  window.location = '?';
+}
+</script>
 <script>
 (function () {
   var es = new EventSource('/api/stream/events');
