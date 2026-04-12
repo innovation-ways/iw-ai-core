@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from orch.cli.utils import output_error, resolve_project
 from orch.db.models import (
+    DaemonEvent,
     RunStatus,
     StepRun,
     StepStatus,
@@ -290,6 +291,16 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
                 capture_log_content(step_run)
                 _worktree_path = step_run.worktree_path or ""
             _step_type_val = step.step_type
+
+            session.add(
+                DaemonEvent(
+                    project_id=project_id,
+                    event_type="step_completed",
+                    entity_id=item_id,
+                    message=f"Step {step_id} completed",
+                    event_metadata={"step_id": step_id},
+                )
+            )
             session.flush()
 
     except Exception as exc:
@@ -362,7 +373,17 @@ def step_fail(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
                 step_run.completed_at = datetime.now(UTC)
                 capture_log_content(step_run)
                 _worktree_path = step_run.worktree_path or ""
-                session.flush()
+
+            session.add(
+                DaemonEvent(
+                    project_id=project_id,
+                    event_type="step_failed",
+                    entity_id=item_id,
+                    message=f"Step {step_id} failed: {reason}",
+                    event_metadata={"step_id": step_id, "reason": reason},
+                )
+            )
+            session.flush()
 
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 1)

@@ -83,7 +83,30 @@ class ItemAnalysis:
 # File-overlap extraction from design doc content
 # ---------------------------------------------------------------------------
 
-_FILE_PATH_RE = re.compile(r"(?:src/|frontend/src/)[\w/._-]+\.(?:py|tsx|ts|jsx|js|html|css)")
+# Match any path-looking token that contains at least one directory separator
+# and ends in a known source-code extension. Deliberately excludes `.md`,
+# `.json`, and `.yaml` to avoid false positives from design docs quoting each
+# other or from workflow manifests being referenced across items. The old
+# regex only caught `src/` and `frontend/src/` prefixes — that missed every
+# path rooted at `orch/`, `dashboard/`, `backend/`, `api/`, etc., which is
+# why F-00004 / F-00005 were not flagged as overlapping on DesignerShell.tsx
+# (their common file sits under `frontend/src/` and WOULD have matched the
+# old regex, but `design_doc_content` was never populated at registration —
+# see register() in orch/cli/item_commands.py).
+_FILE_PATH_RE = re.compile(
+    r"\b[\w][\w./-]*/[\w./-]+"
+    r"\.(?:py|pyi|tsx|ts|jsx|js|mjs|cjs|vue|svelte|html|css|scss|sass|sql|sh|bash|go|rs|java|kt|rb|c|h|cpp|hpp|cs)"
+    r"\b"
+)
+
+# Test-file path fragments: conflicts in test files are trivially resolvable,
+# and design docs often list them next to the production files — counting
+# them would cause duplicate overlap signals.
+_TEST_PATH_MARKERS = ("/tests/", "/test/", "/__tests__/", "conftest", ".test.", ".spec.")
+
+
+def _is_test_path(path: str) -> bool:
+    return any(marker in path for marker in _TEST_PATH_MARKERS)
 
 
 def extract_affected_files(design_doc: str | None) -> list[str]:
@@ -97,7 +120,7 @@ def extract_affected_files(design_doc: str | None) -> list[str]:
     files: set[str] = set()
     for match in _FILE_PATH_RE.finditer(design_doc):
         path = match.group(0)
-        if "/tests/" not in path and "conftest" not in path:
+        if not _is_test_path(path):
             files.add(path)
     return sorted(files)
 

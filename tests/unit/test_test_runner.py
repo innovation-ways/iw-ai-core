@@ -266,7 +266,7 @@ class TestLaunchTestRunEventTypes:
             patch("orch.test_runner.parse_allure_summary", return_value=None),
             patch.object(Path, "mkdir"),
             patch.object(Path, "is_dir", return_value=False),  # allure dir doesn't exist
-            patch("builtins.open", MagicMock()),
+            patch.object(Path, "open", MagicMock()),
         ):
             launch_test_run(1)
 
@@ -364,7 +364,7 @@ class TestLaunchTestRunAllureSkip:
             patch.object(Path, "mkdir"),
             # Make allure dir appear to exist so cleanup/generate would trigger if not guarded
             patch.object(Path, "is_dir", return_value=True),
-            patch("builtins.open", MagicMock()),
+            patch.object(Path, "open", MagicMock()),
         ):
             launch_test_run(1)
 

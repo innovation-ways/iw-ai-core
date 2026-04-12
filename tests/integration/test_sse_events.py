@@ -30,10 +30,20 @@ def test_all_toast_events_have_severity():
 
 
 def test_running_update_events_unchanged():
-    """Running-update events should remain the original 5 step events."""
-    assert frozenset(
-        {"step_launched", "step_completed", "step_killed", "step_crashed", "step_timeout"}
-    ) == _RUNNING_UPDATE_EVENTS
+    """Running-update events should include the 6 step lifecycle events."""
+    assert (
+        frozenset(
+            {
+                "step_launched",
+                "step_completed",
+                "step_failed",
+                "step_killed",
+                "step_crashed",
+                "step_timeout",
+            }
+        )
+        == _RUNNING_UPDATE_EVENTS
+    )
 
 
 def test_status_update_events_cover_action_emitted_types():

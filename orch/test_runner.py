@@ -7,6 +7,7 @@ parses results, and updates DB state. Designed to run in daemon threads
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -28,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 # ANSI escape code pattern for stripping from log output
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+# Default subprocess timeout — overridden per-project via test_config/quality_config.timeout_secs
+_DEFAULT_TEST_TIMEOUT_SECS = 3600  # 1 hour
 
 
 def launch_test_run(run_id: int) -> None:
@@ -90,8 +94,9 @@ def launch_test_run(run_id: int) -> None:
 
         # Launch subprocess
         start_time = time.monotonic()
+        test_timeout = _resolve_test_timeout(run, db)
         try:
-            with open(log_path, "w") as log_file:
+            with Path(log_path).open("w") as log_file:
                 proc = subprocess.Popen(
                     run.command,
                     shell=True,
@@ -105,7 +110,33 @@ def launch_test_run(run_id: int) -> None:
             run.pid = proc.pid
             db.commit()
 
-            exit_code = proc.wait()
+            try:
+                exit_code = proc.wait(timeout=test_timeout)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "TestRun %d timed out after %ds — killing process group",
+                    run_id,
+                    test_timeout,
+                )
+                with contextlib.suppress(ProcessLookupError, PermissionError):
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                time.sleep(3)
+                with contextlib.suppress(ProcessLookupError, PermissionError):
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                proc.wait()
+                run.status = TestRunStatus.error
+                run.finished_at = datetime.now(UTC)
+                run.duration_secs = time.monotonic() - start_time
+                run.pid = None
+                _emit_event(
+                    db,
+                    project_id,
+                    f"{event_prefix}_failed",
+                    str(run_id),
+                    f"Test run timed out after {test_timeout}s",
+                )
+                db.commit()
+                return
         except Exception as exc:
             logger.exception("Subprocess error for TestRun %d", run_id)
             run.status = TestRunStatus.error
@@ -200,10 +231,8 @@ def kill_test_run(run_id: int) -> bool:
             db.commit()
             return True
 
-        try:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(os.getpgid(run.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            pass
 
         run.status = TestRunStatus.cancelled
         run.finished_at = datetime.now(UTC)
@@ -221,7 +250,8 @@ def parse_allure_summary(report_dir: str | None) -> dict[str, Any] | None:
     """Read and return Allure summary data from the widgets directory.
 
     Supports both Allure 3.x (widgets/statistic.json) and Allure 2.x (widgets/summary.json).
-    Returns a normalized dict with {statistic: {total, passed, failed, skipped, broken}, time: {duration}}.
+    Returns a normalized dict with keys: statistic (total/passed/failed/skipped/broken)
+    and time (duration).
     """
     if not report_dir:
         return None
@@ -250,7 +280,7 @@ def parse_allure_summary(report_dir: str | None) -> dict[str, Any] | None:
     summary_path = widgets / "summary.json"
     if summary_path.is_file():
         try:
-            return json.loads(summary_path.read_text(encoding="utf-8"))
+            return json.loads(summary_path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
         except (json.JSONDecodeError, OSError):
             logger.warning("Failed to parse Allure summary at %s", summary_path)
 
@@ -290,7 +320,19 @@ def _resolve_execution_dir(run: TestRun, db: Any) -> str | None:
     config = project.config or {}
     config_key = "quality_config" if run.run_type == "quality" else "test_config"
     section = config.get(config_key, {})
-    return section.get("execution_dir")
+    return section.get("execution_dir")  # type: ignore[no-any-return]
+
+
+def _resolve_test_timeout(run: TestRun, db: Any) -> int:
+    """Get the subprocess timeout (seconds) from project config, or the platform default."""
+    project = db.scalar(select(Project).where(Project.id == run.project_id))
+    if project is None:
+        return _DEFAULT_TEST_TIMEOUT_SECS
+    config = project.config or {}
+    config_key = "quality_config" if run.run_type == "quality" else "test_config"
+    section = config.get(config_key, {})
+    raw = section.get("timeout_secs")
+    return int(raw) if raw else _DEFAULT_TEST_TIMEOUT_SECS
 
 
 def _resolve_allure_dirs(
@@ -313,7 +355,7 @@ def _resolve_allure_dirs(
     return results_abs, report_abs
 
 
-def _generate_allure_report(results_dir: str, report_dir: str | None, cwd: str) -> bool:
+def _generate_allure_report(results_dir: str, report_dir: str | None, cwd: str) -> bool:  # noqa: ARG001
     """Run allure generate to produce the HTML report."""
     if not report_dir:
         return False
@@ -335,7 +377,7 @@ def _generate_allure_report(results_dir: str, report_dir: str | None, cwd: str) 
             logger.warning("allure generate failed: %s", result.stderr[:500])
             return False
         return True
-    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+    except (subprocess.TimeoutExpired, OSError) as exc:
         logger.warning("allure generate error: %s", exc)
         return False
 

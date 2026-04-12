@@ -288,6 +288,82 @@ def test_register_steps_from_manifest(
     assert steps[2].step_id == "S03"
 
 
+def test_register_loads_design_doc_content_from_disk(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+    tmp_path: Any,
+    monkeypatch: Any,
+) -> None:
+    """Regression: `register` previously stored only `design_doc_path`,
+    leaving `design_doc_content` NULL. That meant the batch planner's
+    file-overlap detection saw an empty string for every item and always
+    reported "no overlaps", which caused BATCH-00011's F-00004 / F-00005
+    collision on DesignerShell.tsx to slip through."""
+    design_doc = tmp_path / "F-00001_Design.md"
+    design_doc.write_text(
+        "# F-00001\n\n"
+        "| File | Role |\n"
+        "| `frontend/src/components/editor/DesignerShell.tsx` | Editor shell |\n"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    result = invoke(
+        runner,
+        [
+            "register",
+            "F-00001",
+            "Test",
+            "--type",
+            "feature",
+            "--design-doc",
+            "F-00001_Design.md",
+        ],
+        cli_get_session,
+    )
+    assert result.exit_code == 0, result.output
+
+    item = db_session.get(WorkItem, ("test-proj", "F-00001"))
+    assert item is not None
+    assert item.design_doc_path == "F-00001_Design.md"
+    assert item.design_doc_content is not None
+    assert "DesignerShell.tsx" in item.design_doc_content
+
+
+def test_register_tolerates_missing_design_doc_file(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+    tmp_path: Any,
+    monkeypatch: Any,
+) -> None:
+    """If the --design-doc file does not exist the item still registers,
+    but a warning is emitted and design_doc_content is NULL."""
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = invoke(
+        runner,
+        [
+            "register",
+            "F-00002",
+            "Test",
+            "--type",
+            "feature",
+            "--design-doc",
+            "does-not-exist.md",
+        ],
+        cli_get_session,
+    )
+    assert result.exit_code == 0, result.output
+    assert "Warning" in result.output or "not found" in result.output
+
+    item = db_session.get(WorkItem, ("test-proj", "F-00002"))
+    assert item is not None
+    assert item.design_doc_path == "does-not-exist.md"
+    assert item.design_doc_content is None
+
+
 # ---------------------------------------------------------------------------
 # approve
 # ---------------------------------------------------------------------------

@@ -39,6 +39,78 @@ def test_extract_affected_files_empty() -> None:
     assert extract_affected_files("") == []
 
 
+def test_extract_affected_files_finds_non_src_paths() -> None:
+    """Regression: the old regex only matched `src/` / `frontend/src/`, so
+    modifications to `orch/`, `dashboard/`, `executor/`, etc. were invisible
+    to the planner. Widened regex catches any path with a slash and a known
+    code extension."""
+    doc = """
+    - Update `orch/daemon/merge_queue.py` to handle rebase failures
+    - Add `dashboard/routers/items.py` endpoint
+    - Fix `executor/worktree_commit.sh` cleanup path
+    - Touch `alembic/versions/abc123_add_column.py`
+    """
+    files = extract_affected_files(doc)
+    assert "orch/daemon/merge_queue.py" in files
+    assert "dashboard/routers/items.py" in files
+    assert "executor/worktree_commit.sh" in files
+    assert "alembic/versions/abc123_add_column.py" in files
+
+
+def test_extract_affected_files_excludes_frontend_test_dirs() -> None:
+    """`__tests__/`, `.test.`, and `.spec.` are frontend test markers."""
+    doc = """
+    - `frontend/src/components/Foo.tsx` — new component
+    - `frontend/src/__tests__/components/Foo.test.tsx` — test
+    - `frontend/src/components/Bar.spec.ts` — spec
+    """
+    files = extract_affected_files(doc)
+    assert "frontend/src/components/Foo.tsx" in files
+    assert not any("__tests__" in f for f in files)
+    assert not any(".test." in f for f in files)
+    assert not any(".spec." in f for f in files)
+
+
+def test_extract_affected_files_ignores_markdown_refs() -> None:
+    """Design docs often quote other docs by path. `.md` should not trigger
+    overlap detection — it would flood the planner with false positives."""
+    doc = """
+    See `docs/IW_AI_Core_Architecture.md` for context.
+    Related: `ai-dev/active/F-00001/F-00001_Feature_Design.md`
+    Touches `orch/config.py`.
+    """
+    files = extract_affected_files(doc)
+    assert "orch/config.py" in files
+    assert not any(f.endswith(".md") for f in files)
+
+
+def test_analyze_f00004_f00005_style_conflict_is_detected() -> None:
+    """Regression test for BATCH-00011: two parallel items both modifying
+    `frontend/src/components/editor/DesignerShell.tsx` must be placed in
+    different execution groups."""
+    doc_data_wizard = """
+    | File | Role |
+    | `frontend/src/components/editor/DesignerShell.tsx` | Editor shell |
+    - New: `frontend/src/components/editor/wizards/DataFieldWizard.tsx`
+    - Modified: DesignerShell.tsx (component:add wiring)
+    """
+    doc_cond_wizard = """
+    | File | Role |
+    | `frontend/src/components/editor/DesignerShell.tsx` | Editor shell |
+    - New: `frontend/src/components/editor/wizards/ConditionalWizard.tsx`
+    - Modified: DesignerShell.tsx (extend component:add handler)
+    """
+    items = [
+        _make_item("F-00004", design_doc=doc_data_wizard),
+        _make_item("F-00005", design_doc=doc_cond_wizard),
+    ]
+    result = analyze_dependencies(items)
+    # Both items list DesignerShell.tsx in their design — must be sequenced.
+    assert result["F-00004"].group != result["F-00005"].group
+    assert "F-00005" in result["F-00004"].overlap_with
+    assert "F-00004" in result["F-00005"].overlap_with
+
+
 # ---------------------------------------------------------------------------
 # has_database_step
 # ---------------------------------------------------------------------------

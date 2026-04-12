@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy import select
 
 from orch.archive.archiver import archive_work_item
+from orch.config import CORE_ROOT, load_config
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -84,7 +85,11 @@ def _run_archive(project_id: str, batch_id: str, *, run_post_commands: bool = Tr
             raise ValueError(f"Project {project_id} not found")
 
         repo_root = Path(project.repo_root)
-        archive_dir = repo_root / "ai-dev" / "archives"
+        config = load_config()
+        raw_archive_dir = Path(config.archive_dir)
+        archive_dir = (
+            raw_archive_dir if raw_archive_dir.is_absolute() else CORE_ROOT / raw_archive_dir
+        )
         post_archive_commands: list[str] = (project.config or {}).get("post_archive_commands", [])
 
         # --- Step 1: Run post-archive commands (skipped if run_post_commands=False) ---

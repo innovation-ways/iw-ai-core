@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def allocate_next_id(session: Session, project_id: str, prefix: str) -> tuple[int, str]:
+def allocate_next_id(session: Session, project_id: str, prefix: str) -> tuple[int, str]:  # noqa: ARG001
     """Atomically allocate the next sequential ID for *prefix*.
 
     Uses INSERT … ON CONFLICT DO NOTHING to initialise the row, then

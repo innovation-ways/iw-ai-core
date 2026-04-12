@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -23,10 +29,21 @@ from dashboard.routers import (
     system,
     tests,
 )
+from orch.test_runner import mark_orphaned_runs
 
 _HERE = Path(__file__).resolve().parent
 _STATIC_DIR = _HERE / "static"
 _TEMPLATES_DIR = _HERE / "templates"
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
+    count = mark_orphaned_runs()
+    if count:
+        logger.warning("Marked %d orphaned test run(s) as error on startup", count)
+    yield
 
 
 def create_app() -> FastAPI:
@@ -35,6 +52,7 @@ def create_app() -> FastAPI:
         title="IW AI Core Dashboard",
         description="Real-time management interface for IW AI Core orchestration platform.",
         version="0.1.0",
+        lifespan=_lifespan,
     )
 
     # Mount static files
@@ -46,7 +64,7 @@ def create_app() -> FastAPI:
     def _fmt_ts_time(ts: float) -> str:
         import datetime as _dt_module
 
-        return _dt_module.datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+        return _dt_module.datetime.fromtimestamp(ts, tz=_dt_module.UTC).strftime("%H:%M:%S")
 
     templates.env.filters["fmt_ts_time"] = _fmt_ts_time
     app.state.templates = templates

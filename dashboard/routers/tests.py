@@ -227,12 +227,16 @@ def tests_fragment_log(
     if run.log_path and Path(run.log_path).is_file():
         try:
             lines = Path(run.log_path).read_text(encoding="utf-8", errors="replace").splitlines()
-            # Tail last 2000 lines for large logs
+            # Tail last 2000 lines for large logs, then reverse (newest first)
             if len(lines) > 2000:
-                log_content = f"... (showing last 2000 of {len(lines)} lines) ...\n"
-                log_content += "\n".join(lines[-2000:])
+                tail = lines[-2000:]
+                tail.reverse()
+                log_content = "\n".join(tail)
+                log_content += f"\n\n... ({len(lines) - 2000} earlier lines not shown) ..."
             else:
-                log_content = "\n".join(lines)
+                lines_copy = list(lines)
+                lines_copy.reverse()
+                log_content = "\n".join(lines_copy)
         except OSError:
             log_content = "(Error reading log file)"
 

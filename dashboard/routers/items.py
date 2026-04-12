@@ -552,27 +552,42 @@ class ArtifactFile:
     is_dir: bool = False
 
 
-def _list_evidences(item: WorkItem, project: Project) -> list[EvidenceFile]:
-    """Scan ai-dev/active/{id}/evidences/{pre,post}/ for image/snapshot files."""
-    base = Path(project.repo_root) / "ai-dev" / "active" / item.id / "evidences"
+def _list_evidences(
+    item: WorkItem, project: Project, worktree_path: str | None = None
+) -> list[EvidenceFile]:
+    """Scan ai-dev/active/{id}/evidences/{pre,post}/ for image/snapshot files.
+
+    Checks worktree_path first (for in-progress items), then falls back to repo_root.
+    """
+    rel_evidences = Path("ai-dev") / "active" / item.id / "evidences"
+
+    # Check worktree first, then repo_root
+    base_candidates = []
+    if worktree_path:
+        base_candidates.append(Path(worktree_path) / rel_evidences)
+    base_candidates.append(Path(project.repo_root) / rel_evidences)
+
     results: list[EvidenceFile] = []
-    for phase in ("pre", "post"):
-        phase_dir = base / phase
-        if not phase_dir.exists():
-            continue
-        try:
-            for entry in sorted(phase_dir.iterdir()):
-                if entry.is_file():
-                    results.append(
-                        EvidenceFile(
-                            filename=entry.name,
-                            phase=phase,
-                            abs_path=str(entry),
-                            size_bytes=entry.stat().st_size,
+    seen: set[str] = set()
+    for base in base_candidates:
+        for phase in ("pre", "post"):
+            phase_dir = base / phase
+            if not phase_dir.exists():
+                continue
+            try:
+                for entry in sorted(phase_dir.iterdir()):
+                    if entry.is_file() and entry.name not in seen:
+                        seen.add(entry.name)
+                        results.append(
+                            EvidenceFile(
+                                filename=entry.name,
+                                phase=phase,
+                                abs_path=str(entry),
+                                size_bytes=entry.stat().st_size,
+                            )
                         )
-                    )
-        except OSError:
-            pass
+            except OSError:
+                pass
     return results
 
 
@@ -897,7 +912,9 @@ def item_tab_evidences(
 ) -> Any:
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
-    evidences = _list_evidences(item, project)
+    bi = _get_batch_item(project_id, item_id, db)
+    worktree_path = (bi.worktree_info or {}).get("path") if bi else None
+    evidences = _list_evidences(item, project, worktree_path)
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
