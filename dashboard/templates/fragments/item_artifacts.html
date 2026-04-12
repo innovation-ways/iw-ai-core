@@ -26,31 +26,138 @@
       Artifact extraction from archives is not yet implemented.
     </p>
   </div>
-{% elif artifact_files %}
-  <div class="bg-card border border-border rounded-lg overflow-hidden">
-    <div class="px-4 py-3 border-b border-border bg-muted/30">
-      <h3 class="text-sm font-semibold text-foreground">Files</h3>
-    </div>
-    <div class="divide-y divide-border">
-      {% for f in artifact_files %}
-        <div class="px-4 py-2 flex items-center gap-3 hover:bg-muted/20 transition-colors">
-          <span class="text-xs text-muted-foreground w-4">
-            {% if f.is_dir %}📁{% else %}📄{% endif %}
-          </span>
-          <span class="font-mono text-xs text-foreground flex-1">{{ f.name }}</span>
-          {% if not f.is_dir %}
-            <span class="text-xs text-muted-foreground">
-              {% if f.size_bytes > 1024 %}
-                {{ "%.1f"|format(f.size_bytes / 1024) }} KB
+{% elif artifact_tree %}
+  {# ── Split-pane artifact browser ── #}
+  <div class="bg-card border border-border rounded-lg overflow-hidden flex" style="height: 480px;">
+
+    {# ── Left pane: collapsible file tree ── #}
+    <div class="w-72 flex-shrink-0 border-r border-border overflow-y-auto bg-muted/10">
+
+      {# Tree heading #}
+      <div class="px-3 py-2 border-b border-border bg-muted/30">
+        <h3 class="text-sm font-semibold text-foreground">Artifacts</h3>
+      </div>
+
+      {# Recursive tree macro #}
+      {% macro render_node(node) %}
+        {% if node.is_dir %}
+          <details class="group">
+            <summary class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors rounded-sm mx-1 my-0.5">
+              <span class="text-muted-foreground text-xs select-none">▶</span>
+              <span class="text-sm">📁 {{ node.name }}</span>
+            </summary>
+            <div class="ml-3">
+              {% for child in node.children %}
+                {{ render_node(child) }}
+              {% endfor %}
+            </div>
+          </details>
+        {% else %}
+          <div class="artifact-file-row flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-muted/30 transition-colors rounded-sm mx-1 my-0.5"
+               onclick="loadArtifact('{{ node.rel_path }}', '{{ node.file_type }}')"
+               title="{{ node.size_bytes }} bytes">
+            <span class="text-xs text-muted-foreground w-4 text-center">
+              {% if node.file_type == 'image' %}🖼{% else %}📄{% endif %}
+            </span>
+            <span class="font-mono text-xs text-foreground flex-1 truncate">{{ node.name }}</span>
+            <span class="text-xs text-muted-foreground whitespace-nowrap">
+              {% if node.size_bytes > 1024 %}
+                {{ "%.1f"|format(node.size_bytes / 1024) }} KB
               {% else %}
-                {{ f.size_bytes }} B
+                {{ node.size_bytes }} B
               {% endif %}
             </span>
-          {% endif %}
-        </div>
-      {% endfor %}
+          </div>
+        {% endif %}
+      {% endmacro %}
+
+      <div class="py-1">
+        {% for node in artifact_tree %}
+          {{ render_node(node) }}
+        {% endfor %}
+      </div>
     </div>
+
+    {# ── Right pane: file viewer ── #}
+    <div id="artifact-viewer" class="flex-1 overflow-auto p-4 flex items-center justify-center">
+      <p class="text-muted-foreground text-sm">Select a file to preview</p>
+    </div>
+
   </div>
+
+  {# Scoped markdown viewer styles (no prose plugin available) #}
+  <style>
+    #artifact-viewer h1 { font-size:1.25rem; font-weight:700; margin:0.75rem 0 0.5rem; }
+    #artifact-viewer h2 { font-size:1.1rem; font-weight:600; margin:0.75rem 0 0.4rem; }
+    #artifact-viewer h3 { font-size:1rem; font-weight:600; margin:0.5rem 0 0.3rem; }
+    #artifact-viewer h4 { font-size:0.9rem; font-weight:600; margin:0.5rem 0 0.25rem; }
+    #artifact-viewer p  { margin-bottom:0.5rem; line-height:1.6; }
+    #artifact-viewer code { background:rgba(0,0,0,0.08); padding:0.1em 0.3em; border-radius:3px; font-size:0.85em; }
+    #artifact-viewer pre { background:rgba(0,0,0,0.06); padding:0.75rem; border-radius:6px; overflow-x:auto; margin-bottom:0.75rem; }
+    #artifact-viewer pre code { background:none; padding:0; }
+    #artifact-viewer ul { list-style:disc; margin-left:1.25rem; margin-bottom:0.5rem; }
+    #artifact-viewer ol { list-style:decimal; margin-left:1.25rem; margin-bottom:0.5rem; }
+    #artifact-viewer a  { color:#3b82f6; }
+    #artifact-viewer a:hover { text-decoration:underline; }
+    #artifact-viewer table { border-collapse:collapse; width:100%; margin-bottom:0.75rem; }
+    #artifact-viewer th, #artifact-viewer td { border:1px solid #e5e7eb; padding:0.25rem 0.5rem; font-size:0.8rem; }
+    #artifact-viewer th { background:rgba(0,0,0,0.04); font-weight:600; }
+    #artifact-viewer blockquote { border-left:3px solid #d1d5db; padding-left:0.75rem; color:#6b7280; margin-bottom:0.5rem; }
+    #artifact-viewer hr { border:none; border-top:1px solid #e5e7eb; margin:1rem 0; }
+  </style>
+
+  {# JavaScript for async file loading #}
+  <script>
+  (function() {
+    const projectId = {{ project_id | tojson }};
+    const itemId = {{ item.id | tojson }};
+
+    window.loadArtifact = async function(relPath, fileType) {
+      const viewer = document.getElementById('artifact-viewer');
+      if (!viewer) return;
+
+      // Highlight selected row
+      document.querySelectorAll('.artifact-file-row').forEach(el => el.classList.remove('bg-primary/10'));
+      if (event && event.currentTarget) {
+        event.currentTarget.classList.add('bg-primary/10');
+      }
+
+      if (fileType === 'image') {
+        const url = `/project/${projectId}/item/${itemId}/artifact-raw?path=${encodeURIComponent(relPath)}`;
+        viewer.innerHTML = `<div class="flex justify-center"><img src="${url}" class="max-w-full rounded shadow" alt="${relPath}"></div>`;
+        return;
+      }
+
+      if (fileType === 'binary') {
+        viewer.innerHTML = '<p class="text-muted-foreground text-sm">Binary file — cannot preview.</p>';
+        return;
+      }
+
+      viewer.innerHTML = '<p class="text-muted-foreground text-sm animate-pulse">Loading\u2026</p>';
+      try {
+        const resp = await fetch(`/project/${projectId}/item/${itemId}/artifact-raw?path=${encodeURIComponent(relPath)}`);
+        if (!resp.ok) {
+          viewer.innerHTML = `<p class="text-destructive text-sm">Could not load file (HTTP ${resp.status}).</p>`;
+          return;
+        }
+        const text = await resp.text();
+        if (fileType === 'markdown') {
+          viewer.innerHTML = marked.parse(text);
+        } else {
+          // text / code — textContent escapes HTML automatically (XSS-safe)
+          const pre = document.createElement('pre');
+          pre.className = 'text-xs font-mono whitespace-pre-wrap text-foreground overflow-auto';
+          pre.textContent = text;
+          viewer.innerHTML = '';
+          viewer.appendChild(pre);
+        }
+      } catch (err) {
+        viewer.innerHTML = '<p class="text-destructive text-sm">Error loading file.</p>';
+      }
+    };
+  })();
+  </script>
+
 {% else %}
   <div class="bg-card border border-border rounded-lg p-8 text-center">
     <p class="text-muted-foreground text-sm">No artifacts available for this item.</p>

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import mimetypes
+from dataclasses import dataclass, field
 from datetime import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
@@ -94,13 +95,121 @@ class LogSection:
 
 
 @dataclass
-class ArtifactFile:
-    """A file in the artifact browser."""
+class ArtifactNode:
+    """One node in the artifact file tree."""
 
-    name: str
-    path: str
-    size_bytes: int
-    is_dir: bool = False
+    name: str  # filename or directory name
+    abs_path: str  # absolute path on disk (for reading)
+    rel_path: str  # path relative to artifact root (used in /artifact-raw URL param)
+    is_dir: bool
+    size_bytes: int  # 0 for directories
+    file_type: str  # "markdown" | "image" | "text" | "binary" | "directory"
+    children: list[ArtifactNode] = field(default_factory=list)
+
+
+def _detect_file_type(name: str) -> str:
+    """Map a filename to a viewer content type."""
+    name_lower = name.lower()
+    if name_lower.endswith(".md"):
+        return "markdown"
+    image_exts = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")
+    if any(name_lower.endswith(e) for e in image_exts):
+        return "image"
+    text_exts = (
+        ".txt",
+        ".log",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".sh",
+        ".py",
+        ".toml",
+        ".cfg",
+        ".ini",
+        ".sql",
+        ".html",
+        ".css",
+        ".js",
+        ".ts",
+        ".xml",
+        ".env",
+    )
+    if any(name_lower.endswith(e) for e in text_exts):
+        return "text"
+    return "binary"
+
+
+def _resolve_artifact_root(
+    item: WorkItem, project: Project, worktree_path: str | None
+) -> Path | None:
+    """Return the first existing candidate path for the artifact directory.
+
+    Worktree is preferred; falls back to repo_root. Returns None if neither
+    exists or if item.design_doc_path is None.
+    """
+    if item.design_doc_path is None:
+        return None
+    rel_dir = Path(item.design_doc_path).parent
+    candidates: list[Path] = []
+    if worktree_path:
+        candidates.append(Path(worktree_path) / rel_dir)
+    candidates.append(Path(project.repo_root) / rel_dir)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _build_artifact_tree(directory: Path, root: Path) -> list[ArtifactNode]:
+    """Recursively build the artifact tree starting at *directory*.
+
+    *root* is used to compute rel_path for each node.
+    Sort order: directories first (alphabetical), then files (alphabetical).
+    """
+    nodes: list[ArtifactNode] = []
+    try:
+        entries = list(directory.iterdir())
+    except OSError:
+        return nodes
+    dirs = sorted([e for e in entries if e.is_dir()], key=lambda e: e.name.lower())
+    files = sorted([e for e in entries if e.is_file()], key=lambda e: e.name.lower())
+    for entry in dirs + files:
+        rel = str(entry.relative_to(root))
+        if entry.is_dir():
+            children = _build_artifact_tree(entry, root)
+            nodes.append(
+                ArtifactNode(
+                    name=entry.name,
+                    abs_path=str(entry),
+                    rel_path=rel,
+                    is_dir=True,
+                    size_bytes=0,
+                    file_type="directory",
+                    children=children,
+                )
+            )
+        else:
+            nodes.append(
+                ArtifactNode(
+                    name=entry.name,
+                    abs_path=str(entry),
+                    rel_path=rel,
+                    is_dir=False,
+                    size_bytes=entry.stat().st_size,
+                    file_type=_detect_file_type(entry.name),
+                )
+            )
+    return nodes
+
+
+def _list_artifact_tree(
+    _project_id: str, item: WorkItem, project: Project, worktree_path: str | None = None
+) -> list[ArtifactNode]:
+    """Build the artifact tree for *item*, preferring worktree paths."""
+    root = _resolve_artifact_root(item, project, worktree_path)
+    if root is None:
+        return []
+    return _build_artifact_tree(root, root)
 
 
 @dataclass
@@ -430,29 +539,17 @@ def _merge_log_content(bi: BatchItem) -> str:
     return "\n".join(lines)
 
 
-def _list_artifacts(_project_id: str, item: WorkItem, project: Project) -> list[ArtifactFile]:
-    """Try to list artifact files from disk. Returns empty list on any error."""
-    if item.design_doc_path is None:
-        return []
-    # Active items: look in the project repo
-    # The design_doc_path is relative to repo_root, typically ai-dev/design/active/{id}/
-    active_dir = Path(project.repo_root) / "ai-dev" / "design" / "active" / item.id
-    if not active_dir.exists():
-        return []
-    files = []
-    try:
-        for entry in sorted(active_dir.iterdir()):
-            files.append(
-                ArtifactFile(
-                    name=entry.name,
-                    path=str(entry),
-                    size_bytes=entry.stat().st_size if entry.is_file() else 0,
-                    is_dir=entry.is_dir(),
-                )
-            )
-    except OSError:
-        pass
-    return files
+@dataclass
+class ArtifactFile:
+    """Deprecated — kept for backward compatibility with tests that import it.
+
+    Use ``ArtifactNode`` and ``_list_artifact_tree`` instead.
+    """
+
+    name: str
+    path: str
+    size_bytes: int
+    is_dir: bool = False
 
 
 def _list_evidences(item: WorkItem, project: Project) -> list[EvidenceFile]:
@@ -713,7 +810,9 @@ def item_tab_artifacts(
 ) -> Any:
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
-    artifact_files = _list_artifacts(project_id, item, project)
+    bi = _get_batch_item(project_id, item_id, db)
+    worktree_path = bi.worktree_info.get("path") if bi and bi.worktree_info else None
+    artifact_tree = _list_artifact_tree(project_id, item, project, worktree_path)
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -721,11 +820,49 @@ def item_tab_artifacts(
         "fragments/item_artifacts.html",
         {
             "item": item,
-            "artifact_files": artifact_files,
+            "artifact_tree": artifact_tree,
             "is_archived": item.archived_at is not None,
             "archive_size_bytes": item.archive_size_bytes,
         },
     )
+
+
+@router.get("/item/{item_id}/artifact-raw")
+def item_artifact_raw(
+    project_id: str,
+    item_id: str,
+    path: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Serve a raw artifact file by relative path.
+
+    Path traversal protection: the resolved path must be within the artifact root.
+    """
+    project = _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+    bi = _get_batch_item(project_id, item_id, db)
+    worktree_path = bi.worktree_info.get("path") if bi and bi.worktree_info else None
+    artifact_root = _resolve_artifact_root(item, project, worktree_path)
+    if artifact_root is None:
+        raise HTTPException(status_code=404, detail="Artifact root not found")
+
+    # Resolve the requested file and protect against traversal
+    try:
+        requested = (artifact_root / path).resolve()
+        requested.relative_to(artifact_root.resolve())
+    except ValueError as err:
+        raise HTTPException(status_code=403, detail="Access denied") from err
+
+    if not requested.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    content_type, _ = mimetypes.guess_type(path)
+    content_type = content_type or "application/octet-stream"
+    try:
+        data = requested.read_bytes()
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Could not read file") from exc
+    return Response(content=data, media_type=content_type)
 
 
 @router.get("/item/{item_id}/tab/logs", response_class=HTMLResponse)
@@ -797,8 +934,8 @@ def item_evidence_file(
         evidence_path.resolve().relative_to(
             (Path(project.repo_root) / "ai-dev" / "active" / item.id / "evidences").resolve()
         )
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Access denied")
+    except ValueError as err:
+        raise HTTPException(status_code=403, detail="Access denied") from err
     if not evidence_path.is_file():
         raise HTTPException(status_code=404, detail="Evidence file not found")
     content_type, _ = mimetypes.guess_type(filename)
