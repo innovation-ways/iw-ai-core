@@ -188,10 +188,7 @@ def _history_items(
             base = base.order_by(WorkItem.completed_at.desc().nulls_first())
     else:
         col = _SORT_COLUMNS.get(sort_by, WorkItem.created_at)
-        if sort_dir == "asc":
-            base = base.order_by(col.asc())
-        else:
-            base = base.order_by(col.desc())
+        base = base.order_by(col.asc()) if sort_dir == "asc" else base.order_by(col.desc())
 
     # Pagination
     offset = (max(page, 1) - 1) * _HISTORY_PAGE_SIZE

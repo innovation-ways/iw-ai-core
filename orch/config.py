@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 # Load .env from the repo root (two levels up from this file: orch/config.py -> orch/ -> repo root)
 _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+CORE_ROOT: Path = _ENV_FILE.parent
 load_dotenv(_ENV_FILE)
 
 

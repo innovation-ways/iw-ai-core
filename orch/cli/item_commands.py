@@ -186,6 +186,34 @@ def register(
                     )
                 return
 
+            # Load the design doc content from disk so downstream consumers
+            # (batch planner file-overlap detection, FTS, dashboard preview)
+            # have the full text — not just a path. Resolved relative to the
+            # current working directory, which by convention is the project
+            # repo root when `iw register` is invoked from the
+            # iw-new-* skills. Missing files are tolerated with a warning so
+            # that registration stays idempotent when the doc lives outside
+            # the checkout (e.g. planned items).
+            design_doc_content: str | None = None
+            if design_doc:
+                doc_path = Path(design_doc)
+                if not doc_path.is_absolute():
+                    doc_path = Path.cwd() / doc_path
+                try:
+                    design_doc_content = doc_path.read_text(encoding="utf-8")
+                except FileNotFoundError:
+                    click.echo(
+                        f"Warning: design doc not found at {doc_path} — "
+                        "item will be registered without content (batch planner "
+                        "file-overlap detection will not see this item's files)",
+                        err=True,
+                    )
+                except OSError as exc:
+                    click.echo(
+                        f"Warning: could not read design doc {doc_path}: {exc}",
+                        err=True,
+                    )
+
             # Insert work item
             work_item = WorkItem(
                 project_id=project_id,
@@ -193,6 +221,7 @@ def register(
                 type=_ITEM_TYPE_MAP[item_type],
                 title=title,
                 design_doc_path=design_doc,
+                design_doc_content=design_doc_content,
                 status=WorkItemStatus.draft,
                 phase=WorkItemPhase.active,
                 config={},

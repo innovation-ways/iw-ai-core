@@ -4,19 +4,28 @@
 # =============================================================================
 #
 # 1. Commits any uncommitted changes in the worktree branch.
-# 2. Verifies the branch is ahead of main.
-# 3. Squash-merges the branch into main (from the main repo root).
-# 4. Commits the squash merge on main.
+# 2. Rebases the branch onto the current tip of main so divergent parallel
+#    batch items are reconciled on the branch — never on main.
+# 3. Verifies the branch is ahead of main.
+# 4. Squash-merges the branch into main (from the main repo root).
+# 5. Commits the squash merge on main.
 #
 # Called by merge_queue.py for completed work items.
 # This runs OUTSIDE the LLM — deterministic bash only.
+#
+# Guarantees:
+#   - If the pre-merge rebase fails, main is NEVER touched.
+#   - If the squash-merge fails partway, main's worktree is restored to a
+#     clean HEAD (git reset --hard + git clean -fd) before returning, so no
+#     branch content leaks onto main as modified tracked files or untracked
+#     files.
 #
 # Usage:
 #   executor/worktree_commit.sh <item_id> <project_repo_root>
 #
 # Exit codes:
 #   0 — success (squash-merged into main)
-#   1 — failure (commit failed, merge conflict, or branch has no commits)
+#   1 — failure (commit failed, rebase conflict, merge conflict, or empty branch)
 #   2 — worktree does not exist (may already be cleaned up — caller handles)
 #
 # =============================================================================
@@ -85,6 +94,43 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Step 2.5: Rebase branch onto the latest main
+# ---------------------------------------------------------------------------
+# This runs ENTIRELY in the branch's worktree and never touches main. If any
+# other batch item merged to main between when this branch was created and now,
+# we replay our commit(s) on top so the squash-merge in Step 5 is a trivial
+# fast-forward that cannot conflict.
+#
+# On conflict we abort the rebase (returning the branch to its pre-rebase
+# state) and exit 1 — main is never touched.
+
+MAIN_SHA=$(git rev-parse main 2>/dev/null || echo "")
+BRANCH_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+
+if [[ -z "$MAIN_SHA" ]]; then
+    echo "[worktree_commit] ERROR: Could not resolve 'main' from worktree" >&2
+    exit 1
+fi
+
+if [[ "$(git merge-base HEAD main)" == "$MAIN_SHA" ]]; then
+    echo "[worktree_commit] INFO: Branch already contains main tip ($MAIN_SHA) — no rebase needed" >&2
+else
+    echo "[worktree_commit] INFO: Rebasing $BRANCH_NAME onto main ($MAIN_SHA)" >&2
+
+    if git rebase main 2>&1; then
+        NEW_BRANCH_SHA=$(git rev-parse HEAD)
+        echo "[worktree_commit] OK: Rebased $BRANCH_NAME: $BRANCH_SHA → $NEW_BRANCH_SHA" >&2
+    else
+        echo "[worktree_commit] ERROR: Rebase conflict — aborting" >&2
+        echo "[worktree_commit]        Another batch item modified the same files before this one merged." >&2
+        echo "[worktree_commit]        Conflicts must be resolved manually in $WORKTREE_DIR" >&2
+        git rebase --abort 2>/dev/null || true
+        # Main is untouched — nothing to clean up there.
+        exit 1
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # Step 3: Verify branch has commits ahead of main
 # ---------------------------------------------------------------------------
 ahead=$(git log main..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')
@@ -133,6 +179,9 @@ fi
 # Git refuses to squash-merge when untracked files on main collide with files
 # on the branch. These are typically design docs that were created on main
 # before the worktree was set up. Move them out of the way temporarily.
+# Note: the main stash above with --include-untracked should cover most of
+# these, but we keep this belt-and-braces for files that fall outside the stash
+# (ignored files, files in nested worktrees, etc.).
 STASH_DIR=$(mktemp -d "/tmp/iw-merge-stash-${ITEM_ID}-XXXXXX")
 stashed_count=0
 
@@ -149,9 +198,30 @@ if [[ "$stashed_count" -gt 0 ]]; then
     echo "[worktree_commit] Moved $stashed_count conflicting untracked files to $STASH_DIR" >&2
 fi
 
+# ---------------------------------------------------------------------------
+# Cleanup helper: restores main's worktree to a clean HEAD state after a
+# failed merge. `git merge --squash` can leave partial changes in both the
+# index and the working tree even on failure; a plain `git reset HEAD` only
+# clears the index, leaving branch content smeared across main as modified
+# tracked files and untracked files (which is exactly what happened on
+# F-00004). This function wipes all of that.
+# ---------------------------------------------------------------------------
+_cleanup_main_after_failed_merge() {
+    cd "$PROJECT_REPO_ROOT"
+    # Discard any staged/unstaged modifications to tracked files from the
+    # merge attempt.
+    git reset --hard HEAD 2>/dev/null || true
+    # Remove any untracked files the merge attempt wrote to the working tree.
+    # Respects .gitignore (so nested worktrees / build artifacts are safe)
+    # and only removes files that appeared as a result of the failed merge,
+    # because all pre-existing untracked files were stashed above.
+    git clean -fd 2>/dev/null || true
+}
+
 # Perform the squash merge
 if ! git merge --squash "$BRANCH_NAME" 2>&1; then
     echo "[worktree_commit] ERROR: git merge --squash failed (possible conflict)" >&2
+    _cleanup_main_after_failed_merge
     # Restore file-level stash
     if [[ "$stashed_count" -gt 0 ]]; then
         cd "$STASH_DIR"
@@ -163,7 +233,6 @@ if ! git merge --squash "$BRANCH_NAME" 2>&1; then
     fi
     rm -rf "$STASH_DIR"
     cd "$PROJECT_REPO_ROOT"
-    git reset HEAD 2>/dev/null || true
     exit 1  # exit trap restores main stash
 fi
 
@@ -171,6 +240,7 @@ fi
 merge_status=$(git status --porcelain 2>/dev/null || echo "")
 if [[ -z "$merge_status" ]]; then
     echo "[worktree_commit] ERROR: Squash-merge produced no changes — nothing to commit" >&2
+    _cleanup_main_after_failed_merge
     rm -rf "$STASH_DIR"
     exit 1  # exit trap restores main stash
 fi
@@ -180,7 +250,7 @@ if git commit --no-verify -m "Merge $ITEM_ID: squash-merge from $BRANCH_NAME"; t
     echo "[worktree_commit] OK: Squash-merge committed on main" >&2
 else
     echo "[worktree_commit] ERROR: Squash-merge commit failed" >&2
-    git reset HEAD 2>/dev/null || true
+    _cleanup_main_after_failed_merge
     rm -rf "$STASH_DIR"
     exit 1  # exit trap restores main stash
 fi

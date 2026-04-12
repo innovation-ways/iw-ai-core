@@ -46,6 +46,18 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _mock_archive_background(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent the background archive thread from connecting to the live DB.
+
+    The archive endpoint spawns a thread that calls archive_batch() with its
+    own get_session() pointing at the live DB (port 5433). This mock replaces
+    that function so integration tests never touch the live platform database.
+    Background archive behavior is covered by unit tests with proper mocking.
+    """
+    monkeypatch.setattr("dashboard.routers.actions.archive_batch", lambda *_a, **_kw: [])
+
+
 @pytest.fixture
 def repo_root(tmp_path: Path) -> Path:
     """A temporary directory to serve as a project repo root."""

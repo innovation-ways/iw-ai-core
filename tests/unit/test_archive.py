@@ -140,7 +140,7 @@ def test_tier1_sets_archived_at(tmp_path: Path) -> None:
 
 def test_tier2_creates_tar_zst(tmp_path: Path) -> None:
     """archive_work_item creates a .tar.zst archive in the correct location."""
-    work_item_dir = tmp_path / "repos" / "ai-dev" / "design" / "active" / "I-00001"
+    work_item_dir = tmp_path / "repos" / "ai-dev" / "active" / "I-00001"
     work_item_dir.mkdir(parents=True)
     (work_item_dir / "file.txt").write_text("hello", encoding="utf-8")
 
@@ -157,7 +157,7 @@ def test_tier2_creates_tar_zst(tmp_path: Path) -> None:
 
 def test_tier2_records_archive_path_and_size(tmp_path: Path) -> None:
     """archive_work_item stores archive_path and archive_size_bytes in the DB."""
-    work_item_dir = tmp_path / "repos" / "ai-dev" / "design" / "active" / "I-00001"
+    work_item_dir = tmp_path / "repos" / "ai-dev" / "active" / "I-00001"
     work_item_dir.mkdir(parents=True)
     (work_item_dir / "doc.md").write_text("content", encoding="utf-8")
 
@@ -174,7 +174,7 @@ def test_tier2_records_archive_path_and_size(tmp_path: Path) -> None:
 
 def test_tier2_archive_contains_correct_files(tmp_path: Path) -> None:
     """The .tar.zst archive contains the expected files from the work item folder."""
-    work_item_dir = tmp_path / "repos" / "ai-dev" / "design" / "active" / "I-00001"
+    work_item_dir = tmp_path / "repos" / "ai-dev" / "active" / "I-00001"
     work_item_dir.mkdir(parents=True)
     (work_item_dir / "design.md").write_text("# Design", encoding="utf-8")
     sub = work_item_dir / "prompts"
@@ -202,7 +202,7 @@ def test_tier2_archive_contains_correct_files(tmp_path: Path) -> None:
 
 def test_tier2_cleanup_deletes_source_folder(tmp_path: Path) -> None:
     """When cleanup=True, the work item source folder is deleted after archiving."""
-    work_item_dir = tmp_path / "repos" / "ai-dev" / "design" / "active" / "I-00001"
+    work_item_dir = tmp_path / "repos" / "ai-dev" / "active" / "I-00001"
     work_item_dir.mkdir(parents=True)
     (work_item_dir / "file.txt").write_text("data", encoding="utf-8")
 
@@ -217,7 +217,7 @@ def test_tier2_cleanup_deletes_source_folder(tmp_path: Path) -> None:
 
 def test_tier2_no_cleanup_preserves_source_folder(tmp_path: Path) -> None:
     """When cleanup=False, the work item source folder is preserved."""
-    work_item_dir = tmp_path / "repos" / "ai-dev" / "design" / "active" / "I-00001"
+    work_item_dir = tmp_path / "repos" / "ai-dev" / "active" / "I-00001"
     work_item_dir.mkdir(parents=True)
     (work_item_dir / "file.txt").write_text("data", encoding="utf-8")
 
@@ -240,7 +240,7 @@ def test_idempotent_second_call_skips_tier2(tmp_path: Path) -> None:
     """Second archive_work_item call (archived_at already set) skips Tier 2."""
     from datetime import UTC, datetime
 
-    work_item_dir = tmp_path / "repos" / "ai-dev" / "design" / "active" / "I-00001"
+    work_item_dir = tmp_path / "repos" / "ai-dev" / "active" / "I-00001"
     work_item_dir.mkdir(parents=True)
     (work_item_dir / "file.txt").write_text("data", encoding="utf-8")
 
@@ -252,7 +252,7 @@ def test_idempotent_second_call_skips_tier2(tmp_path: Path) -> None:
 
     first_size = wi.archive_size_bytes
 
-    # Simulate already archived
+    # Simulate already archived (archive_path set by first call)
     wi.archived_at = datetime.now(UTC)
 
     archive_work_item(db, "proj", "I-00001", archive_dir=archive_dir, cleanup=False)

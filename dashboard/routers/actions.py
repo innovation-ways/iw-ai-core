@@ -471,7 +471,7 @@ def cancel_item(
     if item.status not in (WorkItemStatus.draft, WorkItemStatus.approved):
         raise HTTPException(
             status_code=422,
-            detail=f"Cannot cancel: item status is '{item.status.value}' (must be draft or approved)",
+            detail=f"Cannot cancel: status '{item.status.value}' (must be draft or approved)",
         )
     item.status = WorkItemStatus.cancelled
     _emit(db, "item_cancelled", project_id, item_id, f"Item {item_id} cancelled by user")

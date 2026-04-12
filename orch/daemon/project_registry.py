@@ -55,9 +55,9 @@ class ProjectConfig:
     def working_dir(self) -> str:
         """Directory used for worktree operations.
 
-        Returns dev_clone when set (active development clone), otherwise repo_root.
-        This ensures worktrees are created in the development branch of the project,
-        not the main/production branch.
+        Normally returns repo_root. dev_clone is a legacy escape hatch that
+        redirects worktree creation to an alternate clone; leave it unset
+        unless you have a specific reason to route agents elsewhere.
         """
         return self.dev_clone or self.repo_root
 
