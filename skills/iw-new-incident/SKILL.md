@@ -292,7 +292,23 @@ Create `CodeReview_Final_prompt.md`. The global review MUST verify:
 
 QV gates are **script-driven** — no QV prompt file needed for gate steps.
 
-**If `browser_verification: true`**, create a browser verification prompt.
+**If `browser_verification: true`**, create a browser verification prompt at `ai-dev/active/{ID}/prompts/{ID}_S{N}_BrowserVerification_prompt.md` and reference it from the workflow manifest:
+
+```json
+{"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — verify fix end-to-end in isolated worktree stack", "prompt": "prompts/{ID}_S{N}_BrowserVerification_prompt.md"}
+```
+
+To create the prompt file, **copy `ai-dev/templates/QVBrowser_Prompt_Template.md`** (synced from `templates/design/` by `iw init-project` / `iw skills sync`) and fill in ONLY the `{{ID}}`, `{{STEP}}`, `{{TITLE}}`, `{{TYPE}}`, input-files list, and V1..V(n) sections. The V(n) verifications must cover:
+
+1. **The reproduction case** — navigate to the exact URL/interaction that triggered the bug and verify it now behaves correctly.
+2. **Adjacent flows (No Regressions)** — confirm the fix didn't break neighboring functionality, and no new console errors appeared.
+
+Leave the Environment, Prerequisites, Pass Criteria, Report, and Result Contract sections of the template untouched.
+
+**Hard rules for the QV Browser prompt:**
+- **NEVER** hardcode URLs, ports, or credentials. No `localhost:5173`, no `localhost:5174`, no literal passwords. The IW daemon spins up an isolated e2e stack built from the worktree's source and exports `$IW_BROWSER_BASE_URL`, `$IW_BROWSER_E2E_USER`, `$IW_BROWSER_E2E_PASSWORD`, `$IW_ITEM_ID`, and `$IW_STEP_ID` at runtime. Use those env vars (or the equivalent `{{IW_BROWSER_BASE_URL}}` placeholder, which the daemon substitutes at launch).
+- **NEVER** instruct the agent to run `make dev`, `make e2e-up`, `docker compose`, or any install command — the stack is already up and will be torn down afterwards.
+- Use `playwright-cli` exclusively (not `agent-browser`, not direct `chromium.launch()`).
 
 ## Step 5b: Generate Workflow Manifest (only after GO)
 

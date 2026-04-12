@@ -37,7 +37,7 @@ PLATFORM_TIMEOUT_DEFAULTS: dict[str, int] = {
     "code_review_fix_final": 2700,
     "quality_validation": 600,
     "qv_fix": 1800,
-    "browser_verification": 900,
+    "browser_verification": 1800,
 }
 _FALLBACK_TIMEOUT = 1800
 
@@ -90,6 +90,7 @@ def monitor_running_steps(
     db: Session,
     project_id: str,
     config: DaemonConfig,
+    project_config: ProjectConfig | None = None,
 ) -> None:
     """Check all running step_runs for the given project.
 
@@ -110,7 +111,7 @@ def monitor_running_steps(
     )
 
     for run in runs:
-        _check_step_health(db, run, project_id, config)
+        _check_step_health(db, run, project_id, config, project_config)
 
     db.commit()
 
@@ -136,6 +137,7 @@ def _check_step_health(
     run: StepRun,
     project_id: str,
     config: DaemonConfig,
+    project_config: ProjectConfig | None = None,
 ) -> None:
     """Evaluate health of a single running StepRun and act on it."""
     now = datetime.now(UTC)
@@ -143,7 +145,7 @@ def _check_step_health(
     run.pid_alive = alive
 
     if not alive:
-        _handle_crashed(db, run, project_id, now)
+        _handle_crashed(db, run, project_id, now, project_config)
         return
 
     # PID is alive — snapshot old heartbeat before updating it
@@ -154,7 +156,7 @@ def _check_step_health(
     if run.started_at is not None and run.timeout_secs is not None:
         elapsed = (now - run.started_at).total_seconds()
         if elapsed > run.timeout_secs:
-            _handle_timeout(db, run, project_id, now, elapsed)
+            _handle_timeout(db, run, project_id, now, elapsed, project_config)
             return
 
     # Check stall using the heartbeat from before this poll cycle
@@ -169,6 +171,7 @@ def _handle_crashed(
     run: StepRun,
     project_id: str,
     now: datetime,
+    project_config: ProjectConfig | None = None,
 ) -> None:
     """Mark a StepRun as failed due to dead or missing PID."""
     msg = (
@@ -184,6 +187,10 @@ def _handle_crashed(
     capture_log_content(run)
 
     _update_parent_step(db, run.step_id, StepStatus.failed, now)
+
+    # Tear down browser env if applicable (before emitting event)
+    _maybe_teardown_browser_env(db, run, project_id, project_config)
+
     _emit_event(db, project_id, "step_crashed", str(run.id), msg, {"pid": run.pid})
     logger.warning("step_run %d crashed: %s", run.id, msg)
 
@@ -194,6 +201,7 @@ def _handle_timeout(
     project_id: str,
     now: datetime,
     elapsed: float,
+    project_config: ProjectConfig | None = None,
 ) -> None:
     """SIGTERM the process and mark a StepRun as timed out."""
     msg = f"Timeout after {elapsed:.0f}s (limit: {run.timeout_secs}s)"
@@ -207,6 +215,10 @@ def _handle_timeout(
     capture_log_content(run)
 
     _update_parent_step(db, run.step_id, StepStatus.failed, now)
+
+    # Tear down browser env if applicable (before emitting event)
+    _maybe_teardown_browser_env(db, run, project_id, project_config)
+
     _emit_event(
         db,
         project_id,
@@ -216,6 +228,53 @@ def _handle_timeout(
         {"pid": run.pid, "elapsed_secs": elapsed, "timeout_secs": run.timeout_secs},
     )
     logger.warning("step_run %d timed out: %s", run.id, msg)
+
+
+def _maybe_teardown_browser_env(
+    db: Session,
+    run: StepRun,
+    project_id: str,
+    project_config: ProjectConfig | None,
+) -> None:
+    """If the step is a browser_verification step, run the env_down hook.
+
+    Looks up the parent WorkflowStep to check its type.  Never raises —
+    any error is logged at WARNING level (teardown is best-effort).
+    """
+    if project_config is None:
+        return
+
+    try:
+        from orch.daemon import browser_env  # noqa: PLC0415
+
+        step = db.get(WorkflowStep, run.step_id)
+        if step is None:
+            return
+        if not browser_env.is_browser_verification_step(step.step_type):
+            return
+
+        bv_env = browser_env.resolve_browser_env(
+            project_config,
+            project_id,
+            step.work_item_id,
+        )
+        if bv_env is None:
+            return
+
+        worktree_path = run.worktree_path or ""
+        browser_env.run_env_down_hook(
+            project_config,
+            worktree_path,
+            bv_env,
+            step.work_item_id,
+            step.step_id,
+        )
+    except Exception:
+        logger.warning(
+            "step_run %d: browser env teardown raised an exception (non-fatal)",
+            run.id,
+            exc_info=True,
+        )
 
 
 def _handle_stall(
