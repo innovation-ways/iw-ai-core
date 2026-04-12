@@ -45,8 +45,8 @@ CREATE TABLE projects (
 COMMENT ON TABLE projects IS 'Registry of software projects managed by IW AI Core';
 COMMENT ON COLUMN projects.id IS 'Unique project identifier (e.g., "innoforge")';
 COMMENT ON COLUMN projects.display_name IS 'Human-readable project name';
-COMMENT ON COLUMN projects.repo_root IS 'Absolute path to the main clone repo root';
-COMMENT ON COLUMN projects.dev_clone IS 'Absolute path to the development clone (optional)';
+COMMENT ON COLUMN projects.repo_root IS 'Absolute path to the main clone repo root — agents create worktrees here';
+COMMENT ON COLUMN projects.dev_clone IS 'Legacy: absolute path to an alternate clone used to host worktrees. Leave NULL in the single-clone + git-worktree model.';
 COMMENT ON COLUMN projects.config IS 'Full .iw-orch.json content as JSONB';
 COMMENT ON COLUMN projects.enabled IS 'Whether the daemon processes this project';
 ```
