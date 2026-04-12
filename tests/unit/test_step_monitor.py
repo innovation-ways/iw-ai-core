@@ -410,7 +410,7 @@ def test_get_timeout_all_platform_defaults() -> None:
         "code_review_fix_final": 2700,
         "quality_validation": 600,
         "qv_fix": 1800,
-        "browser_verification": 900,
+        "browser_verification": 1800,
     }
     for step_type, expected_secs in expected.items():
         assert get_timeout(project_config, step_type) == expected_secs

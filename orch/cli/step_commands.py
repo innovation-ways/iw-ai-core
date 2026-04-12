@@ -107,6 +107,66 @@ def _find_step(
 
 
 # ---------------------------------------------------------------------------
+# Browser verification teardown helper
+# ---------------------------------------------------------------------------
+
+
+def _run_browser_teardown_if_needed(
+    project_id: str,
+    item_id: str,
+    step_id: str,
+    step_type: Any,
+    worktree_path: str,
+) -> None:
+    """Run browser env teardown when a browser_verification step ends (any terminal state).
+
+    Loads the project config from the projects.toml path stored in DaemonConfig.
+    Silently skips if the config cannot be loaded or if the project is not
+    browser_verification-enabled (opt-in behaviour).
+    """
+    try:
+        from orch.daemon import browser_env  # noqa: PLC0415
+
+        if not browser_env.is_browser_verification_step(step_type):
+            return
+
+        # Load project config — available via projects_toml in DaemonConfig
+        from orch.config import load_config  # noqa: PLC0415
+        from orch.daemon.project_registry import load_projects_toml  # noqa: PLC0415
+
+        try:
+            daemon_cfg = load_config()
+            projects = load_projects_toml(daemon_cfg.projects_toml)
+        except Exception:
+            return  # Config unavailable (test environment or misconfiguration) — skip
+
+        project_config = projects.get(project_id)
+        if project_config is None:
+            return
+
+        bv_env = browser_env.resolve_browser_env(project_config, project_id, item_id)
+        if bv_env is None:
+            return
+
+        browser_env.run_env_down_hook(
+            project_config,
+            worktree_path,
+            bv_env,
+            item_id,
+            step_id,
+        )
+    except Exception:
+        import logging  # noqa: PLC0415
+
+        logging.getLogger(__name__).warning(
+            "browser env teardown failed for %s/%s (non-fatal)",
+            item_id,
+            step_id,
+            exc_info=True,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
@@ -182,6 +242,9 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
     project_id = resolve_project(ctx)
     get_session = ctx.obj["get_session"]
 
+    _worktree_path: str = ""
+    _step_type_val: Any = None
+
     try:
         with get_session() as session:
             step = _find_step(session, project_id, item_id, step_id)
@@ -225,10 +288,15 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
                         step_run.completed_at - step_run.started_at
                     ).total_seconds()
                 capture_log_content(step_run)
+                _worktree_path = step_run.worktree_path or ""
+            _step_type_val = step.step_type
             session.flush()
 
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 1)
+
+    # browser_verification teardown — runs after DB flush, outside the session
+    _run_browser_teardown_if_needed(project_id, item_id, step_id, _step_type_val, _worktree_path)
 
     if ctx.obj.get("json"):
         click.echo(
@@ -256,6 +324,9 @@ def step_fail(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
     project_id = resolve_project(ctx)
     get_session = ctx.obj["get_session"]
 
+    _worktree_path: str = ""
+    _step_type_val: Any = None
+
     try:
         with get_session() as session:
             step = _find_step(session, project_id, item_id, step_id)
@@ -271,6 +342,7 @@ def step_fail(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
                 output_error(ctx, error, 1)
 
             step.status = StepStatus.failed
+            _step_type_val = step.step_type
             session.flush()
 
             # Store reason in the current running step_run (if daemon created one)
@@ -289,10 +361,14 @@ def step_fail(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
                 step_run.status = RunStatus.failed
                 step_run.completed_at = datetime.now(UTC)
                 capture_log_content(step_run)
+                _worktree_path = step_run.worktree_path or ""
                 session.flush()
 
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 1)
+
+    # browser_verification teardown — runs after DB flush, outside the session
+    _run_browser_teardown_if_needed(project_id, item_id, step_id, _step_type_val, _worktree_path)
 
     if ctx.obj.get("json"):
         click.echo(
@@ -320,10 +396,10 @@ def step_fail(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
 @click.option("--step", "step_id", required=True, help="Step ID (e.g., S01)")
 @click.pass_context
 def step_restart(ctx: click.Context, item_id: str, step_id: str) -> None:
-    """Restart a failed step: reset to pending and create a new StepRun."""
+    """Restart a failed step: reset to pending so the daemon relaunches it."""
     project_id = resolve_project(ctx)
     get_session = ctx.obj["get_session"]
-    new_run_number: int | None = None
+    next_run_number: int | None = None
 
     try:
         with get_session() as session:
@@ -339,40 +415,49 @@ def step_restart(ctx: click.Context, item_id: str, step_id: str) -> None:
             if error:
                 output_error(ctx, error, 1)
 
-            # Reset step to pending
+            # Guard: refuse if any subsequent step has already been started or completed.
+            # Restarting S15 after S16 has run would corrupt the workflow state.
+            non_pristine = (
+                StepStatus.in_progress,
+                StepStatus.completed,
+                StepStatus.failed,
+                StepStatus.needs_fix,
+            )
+            advanced = session.execute(
+                select(WorkflowStep)
+                .where(
+                    WorkflowStep.project_id == project_id,
+                    WorkflowStep.work_item_id == item_id,
+                    WorkflowStep.step_number > step.step_number,
+                    WorkflowStep.status.in_(non_pristine),
+                )
+                .order_by(WorkflowStep.step_number)
+                .limit(1)
+            ).scalar_one_or_none()
+            if advanced is not None:
+                output_error(
+                    ctx,
+                    f"Cannot restart {step_id}: subsequent step {advanced.step_id} "
+                    f"is already in state '{advanced.status.value}'. "
+                    "Reset or skip later steps first.",
+                    1,
+                )
+
+            # Reset step to pending — the daemon's _launch_step will create a
+            # fresh running StepRun when it picks this step up on the next poll.
+            # We do NOT create a pending StepRun here to avoid orphan rows.
             step.status = StepStatus.pending
             step.started_at = None
             step.completed_at = None
-            session.flush()
 
-            # Find the highest run_number for this step
+            # Compute next_run_number for the output message (not persisted)
             max_run = session.execute(
                 select(StepRun.run_number)
                 .where(StepRun.step_id == step.id)
                 .order_by(StepRun.run_number.desc())
                 .limit(1)
             ).scalar_one_or_none()
-
-            new_run_number = (max_run or 0) + 1
-
-            # Carry forward command and worktree_path from the last run
-            last_run = session.execute(
-                select(StepRun)
-                .where(StepRun.step_id == step.id)
-                .order_by(StepRun.run_number.desc())
-                .limit(1)
-            ).scalar_one_or_none()
-
-            new_run = StepRun(
-                step_id=step.id,
-                run_number=new_run_number,
-                status=RunStatus.pending,
-                command=last_run.command if last_run else None,
-                worktree_path=last_run.worktree_path if last_run else None,
-                cli_tool=last_run.cli_tool if last_run else None,
-                timeout_secs=last_run.timeout_secs if last_run else None,
-            )
-            session.add(new_run)
+            next_run_number = (max_run or 0) + 1
 
             # If the work item itself is failed, reset it to in_progress
             work_item = session.execute(
@@ -384,7 +469,6 @@ def step_restart(ctx: click.Context, item_id: str, step_id: str) -> None:
 
             if work_item and work_item.status == WorkItemStatus.failed:
                 work_item.status = WorkItemStatus.in_progress
-                session.flush()
 
             session.flush()
 
@@ -399,12 +483,12 @@ def step_restart(ctx: click.Context, item_id: str, step_id: str) -> None:
                     "item_id": item_id,
                     "step_id": step_id,
                     "status": "pending",
-                    "run_number": new_run_number,
+                    "next_run_number": next_run_number,
                 }
             )
         )
     else:
-        click.echo(f"Restarted {item_id} step {step_id} (run #{new_run_number})")
+        click.echo(f"Restarted {item_id} step {step_id} (next run will be #{next_run_number})")
 
 
 # ---------------------------------------------------------------------------

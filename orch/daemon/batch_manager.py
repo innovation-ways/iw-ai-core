@@ -79,6 +79,7 @@ class BatchManager:
                 db,
                 self.project_id,
                 self.config,
+                self.project_config,
             )
             fix_cycle.check_active_fix_cycles(
                 db,
@@ -194,6 +195,7 @@ class BatchManager:
                 WorkflowStep.work_item_id == batch_item.work_item_id,
                 WorkflowStep.status.in_([StepStatus.failed, StepStatus.needs_fix]),
             )
+            .order_by(WorkflowStep.step_number)
             .first()
         )
         if has_failed:
@@ -309,20 +311,119 @@ class BatchManager:
             self._complete_item(db, item_id)
             return
 
+        # Guard: all steps before this one must be in a terminal state.
+        # If a lower-numbered step is still pending/in_progress/failed/needs_fix,
+        # launching this step would create an out-of-order execution.
+        terminal_statuses = frozenset({StepStatus.completed, StepStatus.skipped})
+        blocking = (
+            db.query(WorkflowStep)
+            .filter(
+                WorkflowStep.project_id == self.project_id,
+                WorkflowStep.work_item_id == item_id,
+                WorkflowStep.step_number < step.step_number,
+                WorkflowStep.status.notin_(list(terminal_statuses)),
+            )
+            .order_by(WorkflowStep.step_number)
+            .first()
+        )
+        if blocking:
+            logger.error(
+                "[%s] Step ordering violation for %s: want to launch %s (step_number=%d) "
+                "but %s (step_number=%d) is not terminal (status=%s) — holding",
+                self.project_id,
+                item_id,
+                step.step_id,
+                step.step_number,
+                blocking.step_id,
+                blocking.step_number,
+                blocking.status.value,
+            )
+            return
+
         self._launch_step(db, step, worktree_info)
 
     def _launch_step(self, db: Session, step: WorkflowStep, worktree_info: dict[str, Any]) -> None:
         """Start the agent process and record everything in DB."""
+        from orch.daemon import browser_env  # noqa: PLC0415
         from orch.daemon.step_monitor import get_timeout  # noqa: PLC0415
 
         worktree_path = worktree_info.get("path", "")
         cli_tool = self.project_config.cli_tool
+
+        # ------------------------------------------------------------------
+        # browser_verification pre-hook: bring up the test environment
+        # ------------------------------------------------------------------
+        agent_env: dict[str, str] | None = None
+        if browser_env.is_browser_verification_step(step.step_type):
+            bv_env = browser_env.resolve_browser_env(
+                self.project_config,
+                self.project_id,
+                step.work_item_id,
+            )
+            if bv_env is not None:
+                success, log_path = browser_env.run_env_up_hook(
+                    self.project_config,
+                    worktree_path,
+                    bv_env,
+                    step.work_item_id,
+                    step.step_id,
+                )
+                if not success:
+                    # Fail the step — don't launch the agent
+                    now = datetime.now(UTC)
+                    log_tail = ""
+                    if log_path and log_path.exists():
+                        lines = log_path.read_text(errors="replace").splitlines()
+                        log_tail = "\n".join(lines[-20:])
+                    run_number = _next_run_number(db, step)
+                    error_msg = f"browser env setup failed: {log_tail}"
+                    run = StepRun(
+                        step_id=step.id,
+                        run_number=run_number,
+                        status=RunStatus.failed,
+                        error_message=error_msg,
+                        worktree_path=worktree_path,
+                        cli_tool=cli_tool,
+                        log_file=str(log_path),
+                        started_at=now,
+                        completed_at=now,
+                        timeout_secs=get_timeout(self.project_config, step.step_type.value),
+                    )
+                    db.add(run)
+                    step.status = StepStatus.failed
+                    step.started_at = now
+                    step.completed_at = now
+                    db.commit()
+                    _emit_event(
+                        db,
+                        self.project_id,
+                        "step_failed",
+                        step.work_item_id,
+                        f"Step {step.step_id} failed: browser env setup failed",
+                        {
+                            "reason": "browser_env_setup_failed",
+                            "log": str(log_path),
+                            "step_id": step.step_id,
+                        },
+                    )
+                    db.commit()
+                    logger.warning(
+                        "[%s] browser env_up failed for %s/%s — step marked failed",
+                        self.project_id,
+                        step.work_item_id,
+                        step.step_id,
+                    )
+                    return
+                agent_env = bv_env
 
         if cli_tool == "opencode":
             command = f"opencode run '/execute {step.work_item_id} {step.step_id}'"
         else:
             # Build a direct prompt for claude by reading the step's prompt file
             prompt = self._build_claude_prompt(step, worktree_path)
+            # Apply browser_verification placeholder substitutions if applicable
+            if agent_env is not None:
+                prompt = browser_env.render_prompt_substitutions(prompt, agent_env)
             # Write prompt to a temp file to avoid shell escaping issues
             prompt_file = (
                 Path(worktree_path) / ".tmp" / f"{step.work_item_id}_{step.step_id}.prompt"
@@ -338,6 +439,10 @@ class BatchManager:
         run_number = _next_run_number(db, step)
         log_file = log_dir / f"{step.work_item_id}_{step.step_id}_run{run_number}.log"
 
+        import os  # noqa: PLC0415
+
+        proc_env = {**os.environ, **(agent_env or {})}
+
         with log_file.open("w") as log_fh:
             proc = subprocess.Popen(  # noqa: S602
                 command,
@@ -346,6 +451,7 @@ class BatchManager:
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,  # Detach: daemon restart won't kill agents
+                env=proc_env,
             )
 
         now = datetime.now(UTC)

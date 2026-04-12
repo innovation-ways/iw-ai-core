@@ -172,13 +172,16 @@ Add QV gate steps after CodeReview_Final (same as iw-new-incident pattern).
 
 When `browser_verification: true`, add a QV Browser step after all QV gates:
 ```json
-{"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — capture post-implementation evidence", "prompt": "prompts/{ID}_S{N}_QVBrowser_prompt.md"}
+{"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — verify change end-to-end in isolated worktree stack", "prompt": "prompts/{ID}_S{N}_BrowserVerification_prompt.md"}
 ```
 
-The QV Browser prompt must navigate to the affected page, verify the change, and capture a post-implementation screenshot:
-```bash
-playwright-cli screenshot ai-dev/active/{ID}/evidences/post/{ID}-after.png
-```
+To create the prompt file, **copy `ai-dev/templates/QVBrowser_Prompt_Template.md`** (synced from `templates/design/` by `iw init-project` / `iw skills sync`) to `ai-dev/active/{ID}/prompts/{ID}_S{N}_BrowserVerification_prompt.md` and fill in ONLY the `{{ID}}`, `{{STEP}}`, `{{TITLE}}`, `{{TYPE}}`, input-files list, and V1..V(n) sections with concrete acceptance criteria for the change. Leave the Environment, Prerequisites, Pass Criteria, Report, and Result Contract sections untouched.
+
+**Hard rules for the QV Browser prompt:**
+- **NEVER** hardcode URLs, ports, or credentials. No `localhost:5173`, no `localhost:5174`, no literal passwords. The IW daemon spins up an isolated e2e stack built from the worktree's source and exports `$IW_BROWSER_BASE_URL`, `$IW_BROWSER_E2E_USER`, `$IW_BROWSER_E2E_PASSWORD`, `$IW_ITEM_ID`, and `$IW_STEP_ID` at runtime. Use those env vars (or the equivalent `{{IW_BROWSER_BASE_URL}}` placeholder, which the daemon substitutes at launch).
+- **NEVER** instruct the agent to run `make dev`, `make e2e-up`, `docker compose`, or any install command — the stack is already up and will be torn down afterwards.
+- Use `playwright-cli` exclusively (not `agent-browser`, not direct `chromium.launch()`).
+- Include a **No Regressions** verification (V(n)) covering adjacent flows and console-error checks.
 
 ## Step 8: Register in Platform
 
