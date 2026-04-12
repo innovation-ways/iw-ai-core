@@ -95,7 +95,7 @@ This is the complete journey from typing `/iw-new-incident` in Claude Code to a 
 
 ### Phase 1: Work Item Creation (Human + Claude Code)
 
-**Context**: Developer is working in the InnoForge development clone (`/home/sergiog/dev/iw-doc-plan/development/iw-doc-plan`). They've found a bug and want to create an incident.
+**Context**: Developer is working in the InnoForge `manual-dev` worktree (`/home/sergiog/dev/iw-doc-plan/manual-dev/iw-doc-plan`) — a sibling `git worktree` of the main clone. They've found a bug and want to create an incident.
 
 #### Step 1.1: Skill Invocation
 
@@ -147,7 +147,7 @@ ai-dev/design/active/I001/
     +-- pre/                          <-- Bug screenshots, logs
 ```
 
-These files are created in the **InnoForge repo** (development clone), not in iw-ai-core. Content stays with the project.
+These files are created in the **InnoForge repo** (in the `manual-dev` worktree), not in iw-ai-core. Content stays with the project.
 
 #### Step 1.4: Work Item Registration
 
@@ -443,7 +443,6 @@ Each project self-describes with a `.iw-orch.json` file in its repo root:
   "project_id": "innoforge",
   "display_name": "InnoForge Document Platform",
   "repo_root": "/home/sergiog/dev/iw-doc-plan/main/iw-doc-plan",
-  "dev_clone": "/home/sergiog/dev/iw-doc-plan/development/iw-doc-plan",
   "id_prefixes": { "Feature": "F", "Issue": "I", "ChangeRequest": "CR", "Batch": "BATCH" },
   "worktree_base": ".worktrees",
   "ai_dev_dir": "ai-dev",
@@ -453,6 +452,8 @@ Each project self-describes with a `.iw-orch.json` file in its repo root:
   "branch_prefix": "agent"
 }
 ```
+
+> **Note**: `dev_clone` is a legacy optional field that used to redirect worktree creation to a secondary clone on a different branch. In the current single-clone + `git worktree` model it should be omitted; the daemon creates worktrees under `repo_root/<worktree_base>/<item-id>/` based on `repo_root`'s current `HEAD` (normally `main`).
 
 The central `projects.toml` in iw-ai-core links everything:
 

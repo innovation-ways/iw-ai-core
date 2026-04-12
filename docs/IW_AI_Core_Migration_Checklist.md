@@ -307,7 +307,6 @@ Project-specific commands (stay in project repo):
     "project_id": "innoforge",
     "display_name": "InnoForge Document Platform",
     "repo_root": "/home/sergiog/dev/iw-doc-plan/main/iw-doc-plan",
-    "dev_clone": "/home/sergiog/dev/iw-doc-plan/development/iw-doc-plan",
     "id_prefixes": { "Feature": "F", "Issue": "I", "ChangeRequest": "CR", "Batch": "BATCH" },
     "worktree_base": ".worktrees",
     "ai_dev_dir": "ai-dev",
@@ -318,7 +317,7 @@ Project-specific commands (stay in project repo):
     "timeout_overrides": {}
   }
   ```
-- [ ] Also create `.iw-orch.json` in the development clone (same `project_id`)
+  > Note: `dev_clone` is a legacy optional field — omit it. The single-clone + `git worktree` model creates all agent worktrees under `repo_root/<worktree_base>/<item-id>/`.
 
 ### 7.2. Register in Platform
 
@@ -463,7 +462,7 @@ Replace old targets that call deleted scripts with new targets that call `iw` CL
 
 ### 9.2. End-to-End: Create Work Item
 
-- [ ] `cd /home/sergiog/dev/iw-doc-plan/development/iw-doc-plan`
+- [ ] `cd /home/sergiog/dev/iw-doc-plan/manual-dev/iw-doc-plan`
 - [ ] Run `/iw-new-incident` in Claude Code
 - [ ] Verify: `iw next-id` returns I001 (fresh start)
 - [ ] Verify: design doc created in `ai-dev/design/active/I001/`

@@ -22,7 +22,7 @@ Implement configuration loading:
 ### 2. Database Models (`orch/db/models.py`)
 
 Implement ALL SQLAlchemy 2.0 models (sync, Mapped[] style) for:
-- `Project` — id (TEXT PK), display_name, repo_root, dev_clone, config (JSONB), enabled, registered_at, updated_at
+- `Project` — id (TEXT PK), display_name, repo_root, dev_clone (legacy, nullable), config (JSONB), enabled, registered_at, updated_at
 - `IdSequence` — composite PK (project_id, prefix), next_number
 - `WorkItem` — composite PK (project_id, id), type (ENUM), status (ENUM), phase (ENUM), all Tier 1 columns (design_doc_content, design_doc_search, summary), all Tier 2 columns (archive_path, archive_size_bytes, archived_at), timestamps
 - `WorkflowStep` — SERIAL PK, FK to WorkItem, step_number, step_id, agent_label, step_type (ENUM), status (ENUM), report_content (Tier 1), timestamps
