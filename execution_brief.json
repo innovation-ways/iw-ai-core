@@ -1,16 +1,16 @@
 {
   "project_id": "iw-ai-core",
-  "id": "CR-00003",
-  "title": "Replace sidebar IW text logo with favicon SVG image",
+  "id": "F-00010",
+  "title": "Artifact Tree Browser with Inline File Viewer",
   "status": "approved",
   "phase": "active",
-  "total_steps": 5,
+  "total_steps": 9,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00006",
-  "worktree": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00003",
-  "created_at": "2026-04-09T15:29:43.835836+00:00",
-  "updated_at": "2026-04-09T15:29:43.835836+00:00",
+  "batch_id": "BATCH-00013",
+  "worktree": null,
+  "created_at": "2026-04-12T18:25:03.802264+00:00",
+  "updated_at": "2026-04-12T18:25:03.802264+00:00",
   "steps": [
     {
       "step_id": "S01",
@@ -20,31 +20,55 @@
     },
     {
       "step_id": "S02",
-      "label": "FrontendReview",
-      "type": "implementation",
+      "label": "CodeReview",
+      "type": "code_review",
       "status": "pending"
     },
     {
       "step_id": "S03",
+      "label": "Tests",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S04",
       "label": "CodeReviewFinal",
       "type": "code_review_final",
       "status": "pending"
     },
     {
-      "step_id": "S04",
-      "label": "CodeReviewFixFinal",
-      "type": "code_review_fix_final",
+      "step_id": "S05",
+      "label": "QvGate",
+      "type": "quality_validation",
       "status": "pending"
     },
     {
-      "step_id": "S05",
-      "label": "QualityValidation",
+      "step_id": "S06",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S07",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S08",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S09",
+      "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
     }
   ],
-  "branch": "agent/CR-00003-replace-sidebar-iw-text-logo-w",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00003",
+  "branch": "agent/F-00010-artifact-tree-browser-with-inl",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00010",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-09T18:52:23Z"
+  "brief_generated_at": "2026-04-12T18:55:47Z"
 }
