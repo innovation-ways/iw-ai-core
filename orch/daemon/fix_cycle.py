@@ -372,7 +372,7 @@ def _get_review_findings(db: Session, step: WorkflowStep, worktree_path: str) ->
     return "No findings available — review the code for issues flagged by the previous review."
 
 
-def _get_qv_findings(db: Session, step: WorkflowStep, worktree_path: str) -> str:
+def _get_qv_findings(db: Session, step: WorkflowStep, worktree_path: str) -> str:  # noqa: ARG001
     """Extract quality validation findings from step_run error/log content."""
     latest_run = db.execute(
         select(StepRun)
@@ -490,7 +490,7 @@ def _get_gate_command(step: WorkflowStep, worktree_path: str) -> str:
         manifest = json.loads(manifest_path.read_text())
         for s in manifest.get("steps", []):
             if s.get("step") == step.step_id:
-                return s.get("command", "")
+                return str(s.get("command", ""))
     return ""
 
 

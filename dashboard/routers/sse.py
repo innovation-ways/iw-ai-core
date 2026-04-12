@@ -21,7 +21,14 @@ router = APIRouter(prefix="/api")
 
 # Event types that trigger a running-table refresh
 _RUNNING_UPDATE_EVENTS = frozenset(
-    {"step_launched", "step_completed", "step_killed", "step_crashed", "step_timeout"}
+    {
+        "step_launched",
+        "step_completed",
+        "step_failed",
+        "step_killed",
+        "step_crashed",
+        "step_timeout",
+    }
 )
 # Entity-level status transitions (item/batch lifecycle + step actions)
 _STATUS_UPDATE_EVENTS = frozenset(

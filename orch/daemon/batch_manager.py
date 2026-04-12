@@ -416,20 +416,20 @@ class BatchManager:
                     return
                 agent_env = bv_env
 
+        # Build prompt from the step's manifest prompt file (shared by all CLI tools)
+        prompt = self._build_claude_prompt(step, worktree_path)
+        if agent_env is not None:
+            prompt = browser_env.render_prompt_substitutions(prompt, agent_env)
+        prompt_file = Path(worktree_path) / ".tmp" / f"{step.work_item_id}_{step.step_id}.prompt"
+        prompt_file.parent.mkdir(parents=True, exist_ok=True)
+        prompt_file.write_text(prompt)
+
         if cli_tool == "opencode":
-            command = f"opencode run '/execute {step.work_item_id} {step.step_id}'"
+            agent_args = f"--agent {step.agent_label}" if step.agent_label else ""
+            command = (
+                f'opencode run "$(cat {prompt_file})" --dangerously-skip-permissions {agent_args}'
+            ).strip()
         else:
-            # Build a direct prompt for claude by reading the step's prompt file
-            prompt = self._build_claude_prompt(step, worktree_path)
-            # Apply browser_verification placeholder substitutions if applicable
-            if agent_env is not None:
-                prompt = browser_env.render_prompt_substitutions(prompt, agent_env)
-            # Write prompt to a temp file to avoid shell escaping issues
-            prompt_file = (
-                Path(worktree_path) / ".tmp" / f"{step.work_item_id}_{step.step_id}.prompt"
-            )
-            prompt_file.parent.mkdir(parents=True, exist_ok=True)
-            prompt_file.write_text(prompt)
             command = f'claude -p "$(cat {prompt_file})" --dangerously-skip-permissions'
 
         timeout = get_timeout(self.project_config, step.step_type.value)

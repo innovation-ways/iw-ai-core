@@ -292,9 +292,9 @@ def batch_detail(
             gantt_end_ts = max(ended_ts_list)
             # Extend to now if any item is still running
             if any(r.started_at_ts and not r.ended_at_ts for r in items):
-                gantt_end_ts = max(gantt_end_ts, _dt.datetime.now().timestamp())
+                gantt_end_ts = max(gantt_end_ts, _dt.datetime.now(_dt.UTC).timestamp())
         else:
-            gantt_end_ts = _dt.datetime.now().timestamp()
+            gantt_end_ts = _dt.datetime.now(_dt.UTC).timestamp()
         gantt_total_secs = gantt_end_ts - gantt_start_ts if gantt_end_ts else None
 
     # Fetch dispatcher events for the logs tab

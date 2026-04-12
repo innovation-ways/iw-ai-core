@@ -86,10 +86,20 @@ def archive_work_item(
 
     # --- Tier 2: Compress to archive ---
 
-    if already_archived or archive_dir is None:
+    # Skip if archive file already exists or no archive dir configured
+    if archive_dir is None or wi.archive_path is not None:
         return
 
-    work_item_dir = repo_root / "ai-dev" / "design" / "active" / item_id
+    # Derive the work item directory from design_doc_path (parent dir), falling back to
+    # the conventional location. This handles projects whose active dir is not under
+    # ai-dev/design/active/ (e.g. InnoForge uses ai-dev/active/).
+    if wi.design_doc_path:
+        work_item_dir = (repo_root / wi.design_doc_path).parent
+        if not work_item_dir.exists():
+            # design_doc_path may be stale; fall back to conventional location
+            work_item_dir = repo_root / "ai-dev" / "active" / item_id
+    else:
+        work_item_dir = repo_root / "ai-dev" / "active" / item_id
     if not work_item_dir.exists():
         return
 
