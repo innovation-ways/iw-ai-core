@@ -9,10 +9,10 @@ Read these documents:
 - `IW_AI_Core_Migration_Checklist.md` — section 4.5 (executor scripts changes)
 
 Source files in InnoForge to reference:
-- `/home/sergiog/dev/iw-doc-plan/development/iw-doc-plan/scripts/worktree_setup.sh`
-- `/home/sergiog/dev/iw-doc-plan/development/iw-doc-plan/scripts/step_executor.sh`
-- `/home/sergiog/dev/iw-doc-plan/development/iw-doc-plan/scripts/step_executor_lib.sh`
-- `/home/sergiog/dev/iw-doc-plan/development/iw-doc-plan/scripts/worktree_commit.sh`
+- `/home/sergiog/dev/iw-doc-plan/main/iw-doc-plan/scripts/worktree_setup.sh`
+- `/home/sergiog/dev/iw-doc-plan/main/iw-doc-plan/scripts/step_executor.sh`
+- `/home/sergiog/dev/iw-doc-plan/main/iw-doc-plan/scripts/step_executor_lib.sh`
+- `/home/sergiog/dev/iw-doc-plan/main/iw-doc-plan/scripts/worktree_commit.sh`
 
 ## Task
 
