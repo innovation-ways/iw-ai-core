@@ -12,10 +12,12 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 from orch.db.models import (
+    DocGenerationJob,
     DocStatus,
     DocTier,
     DocType,
     EditorialCategory,
+    JobStatus,
     Project,
     ProjectDoc,
     ProjectDocVersion,
@@ -244,3 +246,102 @@ class DocService:
         self._session.delete(doc)
         self._session.flush()
         return True
+
+    def create_doc_job(
+        self,
+        project_id: str,
+        doc_id: str,
+        requested_by: str = "user",  # noqa: ARG002
+    ) -> DocGenerationJob:
+        doc = self.get_doc(project_id, doc_id)
+        if doc is None:
+            raise KeyError(f"Document '{project_id}:{doc_id}' not found")
+        import uuid
+
+        job = DocGenerationJob(
+            id=str(uuid.uuid4()),
+            project_id=project_id,
+            doc_id=f"{project_id}:{doc_id}",
+            status=JobStatus.queued,
+            requested_at=datetime.now(UTC),
+        )
+        self._session.add(job)
+        self._session.flush()
+        return job
+
+    def start_doc_job(
+        self,
+        job_id: str,
+        pid: int | None = None,
+        skill_used: str | None = None,
+    ) -> DocGenerationJob:
+        job = self._session.get(DocGenerationJob, job_id)
+        if job is None:
+            raise ValueError(f"Job '{job_id}' not found")
+        if job.status != JobStatus.queued:
+            raise ValueError(f"Job '{job_id}' is in status '{job.status.value}', expected 'queued'")
+        job.status = JobStatus.running
+        job.started_at = datetime.now(UTC)
+        job.agent_pid = pid
+        job.skill_used = skill_used
+        self._session.flush()
+        return job
+
+    def complete_doc_job(
+        self,
+        job_id: str,
+        error: str | None = None,
+    ) -> DocGenerationJob:
+        job = self._session.get(DocGenerationJob, job_id)
+        if job is None:
+            raise ValueError(f"Job '{job_id}' not found")
+        if job.status in (JobStatus.completed, JobStatus.failed):
+            return job
+        job.completed_at = datetime.now(UTC)
+        if error is None:
+            job.status = JobStatus.completed
+        else:
+            job.status = JobStatus.failed
+            job.error = error
+        if job.started_at is not None:
+            job.duration_seconds = int((job.completed_at - job.started_at).total_seconds())
+        self._session.flush()
+        return job
+
+    def get_running_jobs_count(self, project_id: str) -> int:
+        return (
+            self._session.query(DocGenerationJob)
+            .filter(
+                DocGenerationJob.project_id == project_id,
+                DocGenerationJob.status == JobStatus.running,
+            )
+            .count()
+        )
+
+    def get_queued_jobs(self, project_id: str, limit: int = 10) -> list[DocGenerationJob]:
+        return (
+            self._session.query(DocGenerationJob)
+            .filter(
+                DocGenerationJob.project_id == project_id,
+                DocGenerationJob.status == JobStatus.queued,
+            )
+            .order_by(DocGenerationJob.requested_at.asc())
+            .limit(limit)
+            .all()
+        )
+
+    def get_stalled_jobs(self, timeout_minutes: int = 10) -> list[DocGenerationJob]:
+        now = datetime.now(UTC)
+        threshold = now - timedelta(minutes=timeout_minutes)
+        return (
+            self._session.query(DocGenerationJob)
+            .filter(
+                DocGenerationJob.status == JobStatus.running,
+                DocGenerationJob.started_at.isnot(None),
+                DocGenerationJob.started_at < threshold,
+            )
+            .all()
+        )
+
+    def get_doc_job(self, job_id: str) -> DocGenerationJob | None:
+        return self._session.get(DocGenerationJob, job_id)
