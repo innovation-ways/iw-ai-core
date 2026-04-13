@@ -19,6 +19,8 @@ from orch.db.models import (
 from orch.doc_service import DocService
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from sqlalchemy.orm import Session
 
 
@@ -411,8 +413,107 @@ def test_list_doc_versions_ordered(db_session: Session) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_get_stale_docs(db_session: Session) -> None:
-    make_project(db_session)
+def test_get_stale_docs(db_session: Session, tmp_path: Path) -> None:
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)  # noqa: S603,S607
+    subprocess.run(
+        ["git", "config", "user.email", "test@test.com"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )  # noqa: S603,S607
+    subprocess.run(
+        ["git", "config", "user.name", "test"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )  # noqa: S603,S607
+
+    auth_rs = repo / "src" / "auth" / "mod.rs"
+    auth_rs.parent.mkdir(parents=True, exist_ok=True)
+    auth_rs.write_text("initial content", encoding="utf-8")
+    subprocess.run(["git", "add", str(auth_rs)], cwd=repo, check=True, capture_output=True)  # noqa: S603,S607
+    subprocess.run(
+        ["git", "commit", "-m", "initial"],  # noqa: S603,S607
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env={
+            **__import__("os").environ,
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+        },
+    )
+
+    import time
+
+    time.sleep(0.1)
+
+    auth_rs.write_text("updated content", encoding="utf-8")
+    subprocess.run(["git", "add", str(auth_rs)], cwd=repo, check=True, capture_output=True)  # noqa: S603,S607
+    subprocess.run(
+        ["git", "commit", "-m", "updated"],  # noqa: S603,S607
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env={
+            **__import__("os").environ,
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+        },
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "test"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )  # noqa: S603
+
+    auth_rs = repo / "src" / "auth" / "mod.rs"
+    auth_rs.parent.mkdir(parents=True, exist_ok=True)
+    auth_rs.write_text("initial content", encoding="utf-8")
+    subprocess.run(["git", "add", str(auth_rs)], cwd=repo, check=True, capture_output=True)  # noqa: S603
+    subprocess.run(
+        ["git", "commit", "-m", "initial"],  # noqa: S603
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env={
+            **__import__("os").environ,
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+        },
+    )
+
+    import time
+
+    time.sleep(0.1)
+
+    auth_rs.write_text("updated content", encoding="utf-8")
+    subprocess.run(["git", "add", str(auth_rs)], cwd=repo, check=True, capture_output=True)  # noqa: S603
+    subprocess.run(
+        ["git", "commit", "-m", "updated"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env={
+            **__import__("os").environ,
+            "GIT_AUTHOR_NAME": "test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+        },
+    )  # noqa: S603
+
+    project = Project(
+        id="test-proj",
+        display_name="Test Project",
+        repo_root=str(repo),
+        config={},
+    )
+    db_session.add(project)
+    db_session.flush()
 
     svc = DocService(db_session)
     doc = svc.create_doc(
@@ -431,9 +532,9 @@ def test_get_stale_docs(db_session: Session) -> None:
     doc.source_paths = ["src/auth/mod.rs"]
     db_session.flush()
 
-    stale = svc.get_stale_docs("test-proj", threshold_hours=24)
+    stale = svc.get_stale_docs("test-proj", str(repo), threshold_hours=24)
     assert len(stale) == 1
-    assert stale[0].id == "test-proj:module-auth"
+    assert stale[0][0].id == "test-proj:module-auth"
 
 
 # ---------------------------------------------------------------------------
