@@ -61,11 +61,15 @@
                     <span class="text-xs text-yellow-500 animate-pulse font-semibold">LIVE</span>
                   {% endif %}
                 </div>
-                <!-- Log content block -->
+                <!-- Log content block.
+                     For running steps: hx-trigger="load" fires once to fetch the log-content
+                     fragment, which injects its own "every 5s" inner poller. This avoids
+                     having two concurrent pollers (outer + inner) which was causing
+                     browser connection exhaustion. -->
                 <div id="log-{{ section.db_step_id }}-{{ run.run_number }}"
                      {% if run.is_running %}
                        hx-get="/project/{{ project_id }}/item/{{ item.id }}/log-content/{{ section.db_step_id }}/{{ run.run_number }}"
-                       hx-trigger="every 5s"
+                       hx-trigger="load"
                        hx-swap="innerHTML"
                      {% endif %}>
                   {% if run.log_content %}

@@ -359,10 +359,12 @@ def _get_metrics(
 
 def _get_batch_ref(project_id: str, item_id: str, db: Session) -> str | None:
     bi = db.scalar(
-        select(BatchItem).where(
+        select(BatchItem)
+        .where(
             BatchItem.project_id == project_id,
             BatchItem.work_item_id == item_id,
         )
+        .order_by(BatchItem.id.desc())
     )
     return bi.batch_id if bi else None
 
@@ -370,11 +372,13 @@ def _get_batch_ref(project_id: str, item_id: str, db: Session) -> str | None:
 def _get_batch_item_error(project_id: str, item_id: str, db: Session) -> str | None:
     """Return the batch_item notes if the item failed at setup (no step runs)."""
     bi = db.scalar(
-        select(BatchItem).where(
+        select(BatchItem)
+        .where(
             BatchItem.project_id == project_id,
             BatchItem.work_item_id == item_id,
             BatchItem.status == BatchItemStatus.failed,
         )
+        .order_by(BatchItem.id.desc())
     )
     if bi and bi.notes:
         return bi.notes
@@ -383,10 +387,12 @@ def _get_batch_item_error(project_id: str, item_id: str, db: Session) -> str | N
 
 def _get_batch_item(project_id: str, item_id: str, db: Session) -> BatchItem | None:
     return db.scalar(
-        select(BatchItem).where(
+        select(BatchItem)
+        .where(
             BatchItem.project_id == project_id,
             BatchItem.work_item_id == item_id,
         )
+        .order_by(BatchItem.id.desc())
     )
 
 

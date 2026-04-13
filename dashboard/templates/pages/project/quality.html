@@ -71,11 +71,21 @@
 <script>
 (function () {
   var es = new EventSource('/api/stream/events');
+
+  var _fragmentUrls = {
+    launch: '/project/{{ current_project.id }}/quality/fragment/launch',
+    runs:   '/project/{{ current_project.id }}/quality/fragment/runs',
+  };
+
+  function _reloadTabContent() {
+    var params = new URLSearchParams(window.location.search);
+    var tab = params.get('tab') || 'launch';
+    var url = _fragmentUrls[tab] || _fragmentUrls.launch;
+    htmx.ajax('GET', url, {target: '#tab-content', swap: 'innerHTML'});
+  }
+
   es.addEventListener('quality-update', function () {
-    var tabContent = document.getElementById('tab-content');
-    if (tabContent) {
-      window.location.reload();
-    }
+    _reloadTabContent();
   });
   es.addEventListener('toast', function (e) {
     try { showToast(JSON.parse(e.data)); } catch (_) {}
