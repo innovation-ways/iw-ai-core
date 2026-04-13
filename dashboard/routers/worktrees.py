@@ -191,7 +191,7 @@ def _parse_git_files(path: str) -> list[FileEntry]:
 def _validate_path(path: str, db: Session) -> bool:
     """Return True if path is a known project root or active agent worktree."""
     project_roots = set(
-        db.execute(select(Project.repo_root).where(Project.enabled.is_(True))).scalars().all()  # type: ignore[arg-type]
+        db.execute(select(Project.repo_root).where(Project.enabled.is_(True))).scalars().all()
     )
     if path in project_roots:
         return True
@@ -242,19 +242,19 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
     known_paths: set[str] = set()
 
     # ---- Project main checkouts (always shown — catches developer dirty state) ----
-    projects = db.execute(select(Project).where(Project.enabled.is_(True))).scalars().all()  # type: ignore[arg-type]
+    projects = db.execute(select(Project).where(Project.enabled.is_(True))).scalars().all()
     for project in projects:
-        path = project.repo_root
-        known_paths.add(path)
-        label, mod, untr = _git_status(path)
+        project_path = project.repo_root
+        known_paths.add(project_path)
+        label, mod, untr = _git_status(project_path)
         rows.append(
             WorktreeRow(
                 project_id=project.id,
                 item_id="(main)",
                 batch_id="—",
-                branch=_current_branch(path),
+                branch=_current_branch(project_path),
                 batch_status="main",
-                path=path,
+                path=project_path,
                 git_label=label,
                 modified=mod,
                 untracked=untr,
@@ -268,15 +268,15 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
     stmt = select(BatchItem).where(BatchItem.status.in_(list(_ACTIVE_STATUSES)))
     for bi in db.execute(stmt).scalars().all():
         wt = bi.worktree_info or {}
-        path: str | None = wt.get("path")
+        wt_path: str | None = wt.get("path")
         branch: str = wt.get("branch", "—")
 
-        if path:
-            known_paths.add(path)
+        if wt_path:
+            known_paths.add(wt_path)
 
-        if path:
-            label, mod, untr = _git_status(path)
-            ahead = _commits_ahead(path)
+        if wt_path:
+            label, mod, untr = _git_status(wt_path)
+            ahead = _commits_ahead(wt_path)
         else:
             label, mod, untr, ahead = "no_path", 0, 0, -1
 
@@ -287,7 +287,7 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
                 batch_id=bi.batch_id,
                 branch=branch,
                 batch_status=bi.status.value,
-                path=path or "—",
+                path=wt_path or "—",
                 git_label=label,
                 modified=mod,
                 untracked=untr,
@@ -342,7 +342,7 @@ def nav_worktree_badge(request: Request, db: Session = Depends(get_db)) -> Any:
     templates: Jinja2Templates = request.app.state.templates
     dirty = 0
 
-    projects = db.execute(select(Project).where(Project.enabled.is_(True))).scalars().all()  # type: ignore[arg-type]
+    projects = db.execute(select(Project).where(Project.enabled.is_(True))).scalars().all()
     for project in projects:
         label, _, _ = _git_status(project.repo_root)
         if label == "dirty":

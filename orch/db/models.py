@@ -147,6 +147,45 @@ class TestRunStatus(enum.Enum):
     error = "error"
 
 
+class DocType(enum.Enum):
+    module = "module"
+    api = "api"
+    architecture = "architecture"
+    release_notes = "release_notes"
+    error_catalog = "error_catalog"
+    webhook_ref = "webhook_ref"
+    user_guide = "user_guide"
+
+
+class DocTier(enum.Enum):
+    fully_automated = "fully_automated"
+    semi_automated = "semi_automated"
+    human_authored = "human_authored"
+
+
+class EditorialCategory(enum.Enum):
+    technical = "technical"
+    functional = "functional"
+    guide = "guide"
+    compliance = "compliance"
+    marketing = "marketing"
+    release = "release"
+
+
+class DocStatus(enum.Enum):
+    planned = "planned"
+    draft = "draft"
+    published = "published"
+    archived = "archived"
+
+
+class JobStatus(enum.Enum):
+    queued = "queued"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
+
+
 # ---------------------------------------------------------------------------
 # Reusable column type shorthands
 # ---------------------------------------------------------------------------
@@ -164,6 +203,12 @@ _fix_status_col = SAEnum(FixStatus, name="fix_status", create_type=True)
 _batch_status_col = SAEnum(BatchStatus, name="batch_status", create_type=True)
 _batch_item_status_col = SAEnum(BatchItemStatus, name="batch_item_status", create_type=True)
 _test_run_status_col = SAEnum(TestRunStatus, name="test_run_status", create_type=True)
+
+_doc_type_col = SAEnum(DocType, name="doc_type", create_type=False)
+_doc_tier_col = SAEnum(DocTier, name="doc_tier", create_type=False)
+_editorial_category_col = SAEnum(EditorialCategory, name="editorial_category", create_type=False)
+_doc_status_col = SAEnum(DocStatus, name="doc_status", create_type=False)
+_job_status_col = SAEnum(JobStatus, name="job_status", create_type=False)
 
 
 # ---------------------------------------------------------------------------
@@ -764,6 +809,135 @@ class TestRun(Base):
     )
 
 
+class ProjectDoc(Base):
+    """Project-level documentation catalog entries."""
+
+    __tablename__ = "project_docs"
+
+    id: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        comment="Composite PK: '{project_id}:{doc_id}'",
+    )
+    project_id: Mapped[str] = mapped_column(Text, nullable=False)
+    doc_id: Mapped[str] = mapped_column(
+        Text, nullable=False, comment="User-defined doc identifier within project"
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    slug: Mapped[str] = mapped_column(Text, nullable=False)
+    doc_type: Mapped[DocType] = mapped_column(_doc_type_col, nullable=False)
+    tier: Mapped[DocTier] = mapped_column(_doc_tier_col, nullable=False)
+    editorial_category: Mapped[EditorialCategory] = mapped_column(
+        _editorial_category_col, nullable=False
+    )
+    status: Mapped[DocStatus] = mapped_column(
+        _doc_status_col, nullable=False, server_default=text("'planned'")
+    )
+    audience: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'"),
+        comment="JSONB array of audience strings",
+    )
+    source_paths: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'"),
+        comment="JSONB array of source file paths",
+    )
+    content: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Tier 1: full markdown content"
+    )
+    content_search: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        nullable=True,
+        comment="PostgreSQL tsvector for full-text search",
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    generated_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    generated_by: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Generator identifier (e.g., 'skill:iw-doc-generator')"
+    )
+    html_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pdf_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
+        UniqueConstraint("project_id", "doc_id", name="uq_project_docs_project_doc"),
+        Index("idx_project_docs_project_id", "project_id"),
+        Index("idx_project_docs_fts", "content_search", postgresql_using="gin"),
+        {"comment": "Project-level documentation catalog entries"},
+    )
+
+
+class ProjectDocVersion(Base):
+    """Immutable version snapshots of ProjectDoc content."""
+
+    __tablename__ = "project_doc_versions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    doc_id: Mapped[str] = mapped_column(Text, nullable=False, comment="FK to project_docs.id")
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, comment="Markdown content snapshot")
+    generated_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trigger_reason: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="e.g., 'manual', 'batch-merge:B-00042', 'cli:iw doc-update'"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(["doc_id"], ["project_docs.id"], ondelete="CASCADE"),
+        Index("idx_project_doc_versions_doc_id", "doc_id"),
+        {"comment": "Immutable version snapshots of ProjectDoc content"},
+    )
+
+
+class DocGenerationJob(Base):
+    """Async AI documentation generation job tracking."""
+
+    __tablename__ = "doc_generation_jobs"
+
+    id: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        comment="UUID primary key",
+    )
+    project_id: Mapped[str] = mapped_column(Text, nullable=False)
+    doc_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="FK to project_docs.id; job survives doc deletion"
+    )
+    status: Mapped[JobStatus] = mapped_column(
+        _job_status_col, nullable=False, server_default=text("'queued'")
+    )
+    requested_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    agent_output: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Raw agent stdout/result"
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["doc_id"], ["project_docs.id"], ondelete="SET NULL"),
+        Index("idx_doc_generation_jobs_project_id", "project_id"),
+        Index("idx_doc_generation_jobs_doc_id", "doc_id"),
+        Index("idx_doc_generation_jobs_status", "status"),
+        {"comment": "Async AI documentation generation job tracking"},
+    )
+
+
 # ---------------------------------------------------------------------------
 # FTS trigger SQL — used by Alembic migration and integration test fixtures
 # ---------------------------------------------------------------------------
@@ -791,3 +965,26 @@ CREATE TRIGGER trg_work_items_fts
 
 DROP_FTS_TRIGGER_SQL = "DROP TRIGGER IF EXISTS trg_work_items_fts ON work_items;"
 DROP_FTS_FUNCTION_SQL = "DROP FUNCTION IF EXISTS work_items_fts_update();"
+
+PROJECT_DOCS_FTS_FUNCTION_SQL = """\
+CREATE OR REPLACE FUNCTION update_project_docs_fts() RETURNS trigger AS $$
+BEGIN
+    NEW.content_search := to_tsvector(
+        'english',
+        coalesce(NEW.title, '') || ' ' || coalesce(NEW.content, '')
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+"""
+
+PROJECT_DOCS_FTS_TRIGGER_SQL = """\
+CREATE TRIGGER trg_project_docs_fts
+    BEFORE INSERT OR UPDATE OF title, content
+    ON project_docs
+    FOR EACH ROW
+    EXECUTE FUNCTION update_project_docs_fts();
+"""
+
+DROP_PROJECT_DOCS_FTS_TRIGGER_SQL = "DROP TRIGGER IF EXISTS trg_project_docs_fts ON project_docs;"
+DROP_PROJECT_DOCS_FTS_FUNCTION_SQL = "DROP FUNCTION IF EXISTS update_project_docs_fts();"
