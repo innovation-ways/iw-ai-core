@@ -1,0 +1,43 @@
+{
+  "name": "Innovation Ways",
+  "colors": {
+    "primary": "#1E293B",
+    "accent": "#3B82F6",
+    "accentLight": "#DBEAFE",
+    "secondary": "#10B981",
+    "secondaryLight": "#D1FAE5",
+    "background": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "border": "#E2E8F0",
+    "text": "#0F172A",
+    "textMuted": "#64748B",
+    "warning": "#F59E0B",
+    "error": "#EF4444",
+    "success": "#10B981"
+  },
+  "fonts": {
+    "heading": "Inter",
+    "body": "Inter",
+    "mono": "JetBrains Mono"
+  },
+  "logo": {
+    "primary": "templates/brand/assets/logo.svg",
+    "darkBackground": "templates/brand/assets/logo-white.svg",
+    "text": "Innovation Ways"
+  },
+  "spacing": {
+    "pagePadding": "48px",
+    "sectionGap": "32px",
+    "elementGap": "16px"
+  },
+  "pdf": {
+    "format": "A4",
+    "marginTop": "20mm",
+    "marginBottom": "20mm",
+    "marginLeft": "18mm",
+    "marginRight": "18mm"
+  },
+  "diagrams": {
+    "mermaidInit": "%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#DBEAFE', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#3B82F6', 'lineColor': '#64748B', 'secondaryColor': '#D1FAE5', 'tertiaryColor': '#F8FAFC', 'background': '#FFFFFF', 'mainBkg': '#DBEAFE', 'nodeBorder': '#3B82F6', 'clusterBkg': '#F1F5F9', 'titleColor': '#1E293B', 'edgeLabelBackground': '#F8FAFC', 'fontFamily': 'Inter'}}}%%"
+  }
+}

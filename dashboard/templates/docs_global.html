@@ -35,7 +35,7 @@
     <!-- Doc Type Pills -->
     <div class="flex flex-wrap items-center gap-2">
       <span class="text-xs text-muted-foreground font-medium">Type:</span>
-      {% set doc_types = ['module', 'api', 'architecture', 'release_notes', 'error_catalog', 'webhook_ref', 'user_guide'] %}
+      {% set doc_types = ['module', 'api', 'architecture', 'release_notes', 'error_catalog', 'webhook_ref', 'user_guide', 'product_overview', 'feature_catalog'] %}
       <button
         hx-get="/api/docs/search"
         hx-vals='{"doc_type": ""}'

@@ -1,0 +1,16 @@
+{
+  "MKT-001": {
+    "sources": [
+      "docs/IW_AI_Core_Architecture.md",
+      "docs/IW_AI_Core_Daemon_Design.md",
+      "CLAUDE.md"
+    ],
+    "diagrams": [
+      {
+        "id": "platform-overview",
+        "type": "mermaid",
+        "description": "High-level component diagram: projects, daemon, CLI, dashboard, PostgreSQL"
+      }
+    ]
+  }
+}
