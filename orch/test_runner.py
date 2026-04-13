@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import re
-import shutil  # noqa: F401 — used in launch_test_run
+import shutil
 import signal
 import subprocess
 import time
@@ -64,19 +64,18 @@ def launch_test_run(run_id: int) -> None:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / f"{run_id}.log"
 
-        # Clean allure-results before each run to avoid stale data (skipped for quality runs)
-        if run.run_type != "quality":
-            proj = db.scalar(select(Project).where(Project.id == project_id))
-            allure_results_rel = (
-                (proj.config or {})
-                .get("test_config", {})
-                .get("allure_results_dir", "allure-results")
-                if proj
-                else "allure-results"
-            )
-            allure_results_path = Path(execution_dir) / allure_results_rel
-            if allure_results_path.is_dir():
-                shutil.rmtree(allure_results_path, ignore_errors=True)
+        # Resolve per-run allure directories so concurrent runs don't clobber each other.
+        # Results use a unique run-scoped name; the persistent HTML report keeps the run_id too.
+        allure_results, allure_report = _resolve_allure_dirs(run, db, execution_dir, run_id)
+        run.allure_results_dir = allure_results
+        run.allure_report_dir = allure_report
+
+        # When the command is a make invocation, override ALLURE_RESULTS so the Makefile
+        # target writes to the run-specific directory instead of the shared default.
+        command = run.command
+        if allure_results and "make " in command:
+            results_rel = Path(allure_results).relative_to(execution_dir)
+            command = f"ALLURE_RESULTS={results_rel} {command}"
 
         # Update status to running
         run.status = TestRunStatus.running
@@ -98,7 +97,7 @@ def launch_test_run(run_id: int) -> None:
         try:
             with Path(log_path).open("w") as log_file:
                 proc = subprocess.Popen(
-                    run.command,
+                    command,
                     shell=True,
                     cwd=execution_dir,
                     stdout=log_file,
@@ -161,14 +160,12 @@ def launch_test_run(run_id: int) -> None:
         run.duration_secs = elapsed
         run.pid = None  # Process is done
 
-        # Determine allure paths from project config
-        allure_results, allure_report = _resolve_allure_dirs(run, db, execution_dir)
-        run.allure_results_dir = allure_results
-        run.allure_report_dir = allure_report
-
-        # Generate allure report if results directory exists (skipped for quality runs)
+        # Generate allure report if results directory exists (skipped for quality runs).
+        # After generating the HTML report the raw results dir is deleted — it can be large
+        # (thousands of JSON files) and everything needed is in the HTML report.
         if run.run_type != "quality" and allure_results and Path(allure_results).is_dir():
             _generate_allure_report(allure_results, allure_report, execution_dir)
+            shutil.rmtree(allure_results, ignore_errors=True)
             summary = parse_allure_summary(allure_report)
             if summary:
                 run.summary = summary
@@ -336,10 +333,13 @@ def _resolve_test_timeout(run: TestRun, db: Any) -> int:
 
 
 def _resolve_allure_dirs(
-    run: TestRun, db: Any, execution_dir: str
+    run: TestRun, db: Any, execution_dir: str, run_id: int | None = None
 ) -> tuple[str | None, str | None]:
-    """Get allure results and report directories from project config."""
+    """Get per-run allure results and report directories.
 
+    Directory names are scoped by run_id (e.g. ``allure-results-42``,
+    ``allure-report-42``) so concurrent test runs never share a directory.
+    """
     project = db.scalar(select(Project).where(Project.id == run.project_id))
     if project is None:
         return None, None
@@ -347,16 +347,23 @@ def _resolve_allure_dirs(
     config_key = "quality_config" if run.run_type == "quality" else "test_config"
     section = config.get(config_key, {})
 
-    results_rel = section.get("allure_results_dir", "allure-results")
-    report_rel = section.get("allure_report_dir", "allure-report")
+    results_base = section.get("allure_results_dir", "allure-results")
+    report_base = section.get("allure_report_dir", "allure-report")
 
-    results_abs = str(Path(execution_dir) / results_rel)
-    report_abs = str(Path(execution_dir) / report_rel)
+    # Append run_id suffix for isolation when provided
+    suffix = f"-{run_id}" if run_id is not None else ""
+    results_abs = str(Path(execution_dir) / f"{results_base}{suffix}")
+    report_abs = str(Path(execution_dir) / f"{report_base}{suffix}")
     return results_abs, report_abs
 
 
-def _generate_allure_report(results_dir: str, report_dir: str | None, cwd: str) -> bool:  # noqa: ARG001
-    """Run allure generate to produce the HTML report."""
+def _generate_allure_report(results_dir: str, report_dir: str | None, cwd: str) -> bool:
+    """Run ``allure generate`` to produce the HTML report.
+
+    Passes the results directory explicitly so Allure 3.x doesn't fall back
+    to its default glob (``**/*allure-results``) which would pick up results
+    from other concurrent runs.
+    """
     if not report_dir:
         return False
     try:
@@ -365,9 +372,9 @@ def _generate_allure_report(results_dir: str, report_dir: str | None, cwd: str) 
         if report_path.is_dir():
             shutil.rmtree(report_path, ignore_errors=True)
 
-        # Allure 3.x: no positional arg for results dir, uses glob pattern
+        # Allure 3.x: positional arg is the results directory
         result = subprocess.run(
-            ["npx", "allure", "generate", "-o", report_dir],
+            ["npx", "allure", "generate", results_dir, "-o", report_dir],
             cwd=cwd,
             capture_output=True,
             text=True,
