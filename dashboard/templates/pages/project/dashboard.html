@@ -88,7 +88,7 @@
           {% for event in recent_activity %}
             <div class="px-4 py-2 flex items-start gap-3">
               <span class="text-xs text-muted-foreground font-mono shrink-0 pt-0.5">
-                {{ event.timestamp.strftime('%H:%M') }}
+                {{ event.timestamp | localdt('%H:%M') }}
               </span>
               <div class="min-w-0">
                 {% if event.entity_id %}

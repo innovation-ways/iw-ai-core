@@ -291,6 +291,18 @@ def launch_test(
     cat_config = categories[category]
     command = cat_config["command"]
 
+    # If this category uses the E2E docker stack, block concurrent stack launches.
+    # All e2e_stack categories share the same ports — running two simultaneously
+    # causes "port already allocated" Docker errors.
+    if cat_config.get("e2e_stack"):
+        blocking = _find_running_e2e_stack_test(project_id, category, categories, db)
+        if blocking:
+            return action_response(
+                f"E2E stack already in use by run #{blocking.id} ({blocking.category}). "
+                "Wait for it to finish before launching another E2E stack test.",
+                toast_type="warning",
+            )
+
     # Create test run row
     run = TestRun(
         project_id=project_id,
@@ -370,6 +382,37 @@ def serve_allure_report(
     return FileResponse(
         path=str(target),
         media_type=content_type or "application/octet-stream",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _find_running_e2e_stack_test(
+    project_id: str,
+    current_category: str,
+    categories: dict[str, Any],
+    db: Session,
+) -> TestRun | None:
+    """Return any running/pending test that uses the shared E2E docker stack.
+
+    E2E stack categories bind to fixed host ports — only one can run at a time.
+    Checks all categories with e2e_stack=true except the one being launched.
+    """
+    e2e_stack_cats = [
+        cat for cat, cfg in categories.items() if cfg.get("e2e_stack") and cat != current_category
+    ]
+    if not e2e_stack_cats:
+        return None
+    return db.scalar(
+        select(TestRun).where(
+            TestRun.project_id == project_id,
+            TestRun.category.in_(e2e_stack_cats),
+            TestRun.run_type == "test",
+            TestRun.status.in_([TestRunStatus.pending, TestRunStatus.running]),
+        )
     )
 
 

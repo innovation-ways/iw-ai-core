@@ -51,7 +51,7 @@
           <div class="text-xs text-muted-foreground mb-3">
             Last run:
             {% if card.last_run.started_at %}
-              {{ card.last_run.started_at.strftime('%b %d %H:%M') }}
+              {{ card.last_run.started_at | localdt('%b %d %H:%M') }}
             {% endif %}
             {% if card.last_run.duration_secs is not none %}
               {% set mins = (card.last_run.duration_secs // 60)|int %}

@@ -66,7 +66,7 @@
                   </a>
                 </td>
                 <td class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">
-                  {{ item.created_at.strftime('%b %d') }}
+                  {{ item.created_at | localdt('%b %d') }}
                 </td>
                 <td class="px-4 py-2">
                   {{ status_badge(item.status) }}
@@ -142,7 +142,7 @@
                 </a>
               </td>
               <td class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">
-                {{ item.created_at.strftime('%b %d') }}
+                {{ item.created_at | localdt('%b %d') }}
               </td>
               <td class="px-4 py-2 flex gap-2">
                 <button
