@@ -1,0 +1,79 @@
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick="if(event.target===this)document.getElementById('docs-config-overlay').innerHTML=''">
+  <div class="bg-card border border-border p-6 rounded-lg shadow-xl max-w-md w-full mx-4" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold text-card-foreground">Documentation Settings</h3>
+      <button onclick="document.getElementById('docs-config-overlay').innerHTML=''" class="p-1 text-muted-foreground hover:text-foreground rounded transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <form hx-post="/api/project/{{ project_id }}/docs/config"
+          hx-encoding="application/json"
+          hx-target="#docs-config-overlay"
+          hx-swap="innerHTML"
+          id="docs-config-form">
+      <div class="space-y-5">
+        <!-- Auto-trigger toggle -->
+        <div class="flex items-center justify-between">
+          <div>
+            <label for="auto-trigger" class="text-sm font-medium text-foreground">Auto-trigger generation on batch merge</label>
+            <p class="text-xs text-muted-foreground mt-0.5">Automatically regenerate docs when source files change after a batch merge</p>
+          </div>
+          <button type="button" onclick="toggleAutoTrigger()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+            <span id="auto-trigger-track" class="inline-flex h-4 w-4 items-center rounded-full bg-white transition-transform ml-1 {% if doc_config.get('auto_trigger_on_merge', false) %}translate-x-5{% endif %}">
+            </span>
+          </button>
+          <input type="hidden" name="auto_trigger_on_merge" id="auto-trigger-value" value="{{ 'true' if doc_config.get('auto_trigger_on_merge', false) else 'false' }}">
+        </div>
+
+        <!-- Staleness threshold -->
+        <div>
+          <label for="stale-threshold" class="text-sm font-medium text-foreground">Staleness threshold (hours)</label>
+          <p class="text-xs text-muted-foreground mt-0.5">Docs with source files changed within this window are marked stale</p>
+          <input type="number" id="stale-threshold" name="stale_threshold_hours"
+                 value="{{ doc_config.get('stale_threshold_hours', 24) }}"
+                 min="1" max="720"
+                 class="mt-2 w-full px-3 py-2 bg-input border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+
+        <!-- Forbidden phrases -->
+        <div>
+          <label for="forbidden-phrases" class="text-sm font-medium text-foreground">Forbidden phrases</label>
+          <p class="text-xs text-muted-foreground mt-0.5">Comma-separated list of phrases to flag in lint checks</p>
+          <input type="text" id="forbidden-phrases" name="forbidden_phrases"
+                 value="{{ doc_config.get('forbidden_phrases', []) | join(', ') }}"
+                 placeholder="cutting-edge, state-of-the-art, ..."
+                 class="mt-2 w-full px-3 py-2 bg-input border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-6 justify-end">
+        <button type="button" onclick="document.getElementById('docs-config-overlay').innerHTML=''"
+                class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+          Cancel
+        </button>
+        <button type="submit"
+                class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+          Save Settings
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function toggleAutoTrigger() {
+  var track = document.getElementById('auto-trigger-track');
+  var input = document.getElementById('auto-trigger-value');
+  var isOn = track.classList.contains('translate-x-5');
+  if (isOn) {
+    track.classList.remove('translate-x-5');
+    track.classList.add('ml-1');
+    input.value = 'false';
+  } else {
+    track.classList.add('translate-x-5');
+    track.classList.remove('ml-1');
+    input.value = 'true';
+  }
+}
+</script>

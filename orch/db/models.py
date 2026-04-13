@@ -926,6 +926,14 @@ class DocGenerationJob(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     agent_pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     skill_used: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trigger_reason: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Why the job was created (e.g., 'batch-merge:B-00042:F-00013')"
+    )
+    lint_warnings: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="List of lint warning objects {rule, message, section}",
+    )
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, nullable=False, server_default=func.now()

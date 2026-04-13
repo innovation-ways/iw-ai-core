@@ -326,3 +326,58 @@ def doc_job_done(ctx: click.Context, job_id: str, error: str | None) -> None:
 
     click.echo(json.dumps({"job_id": job_id, "status": final_status}))
     sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
+# docs-check-stale: check which docs are stale based on git mtime
+# ---------------------------------------------------------------------------
+
+
+@click.command("docs-check-stale")
+@click.argument("project_id")
+@click.option(
+    "--threshold-hours",
+    "threshold_hours",
+    type=int,
+    default=24,
+    help="Staleness threshold in hours (default: 24)",
+)
+@click.pass_context
+def docs_check_stale(ctx: click.Context, project_id: str, threshold_hours: int) -> None:
+    """Check which docs are stale based on git mtime of source files.
+
+    Exits 0 if all docs are current, exits 1 if any docs are stale.
+    """
+    from datetime import timedelta
+
+    get_session = ctx.obj["get_session"]
+
+    try:
+        with get_session() as session:
+            from orch.db.models import Project
+
+            project = session.get(Project, project_id)
+            if project is None:
+                output_error(ctx, f"Project '{project_id}' not found", 1)
+
+            svc = DocService(session)
+            stale = svc.get_stale_docs(project_id, project.repo_root, threshold_hours)
+
+            if not stale:
+                click.echo("All docs are current.")
+                sys.exit(0)
+
+            now = datetime.now(UTC)
+            for doc, changed_path, source_mtime in stale:
+                age = now - source_mtime
+                if age < timedelta(hours=1) or age < timedelta(days=1):
+                    age_str = f"modified {age.seconds // 3600}h ago"
+                else:
+                    days = age.days
+                    age_str = f"modified {days}d ago"
+                click.echo(f"STALE  {doc.doc_id:<30} {changed_path} ({age_str})")
+
+            sys.exit(1)
+
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 3)

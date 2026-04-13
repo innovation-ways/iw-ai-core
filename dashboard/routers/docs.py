@@ -44,6 +44,9 @@ def docs_library(
     docs = svc.list_docs(project_id)
     doc_types = [dt.value for dt in DocType]
     statuses = [ds.value for ds in DocStatus]
+    stale_docs = svc.get_stale_docs(project_id, project.repo_root)
+    stale_doc_ids = {doc.doc_id for doc, _, _ in stale_docs}
+    stale_source_map = {doc.doc_id: path for doc, path, _ in stale_docs}
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -53,6 +56,8 @@ def docs_library(
             "docs": docs,
             "doc_types": doc_types,
             "statuses": statuses,
+            "stale_doc_ids": stale_doc_ids,
+            "stale_source_map": stale_source_map,
         },
     )
 
@@ -168,7 +173,7 @@ def docs_search(
     doc_type: str | None = None,
     status: str | None = None,
 ) -> Any:
-    _get_project_or_404(project_id, db)
+    project = _get_project_or_404(project_id, db)
     svc = DocService(db)
 
     doc_type_enum: DocType | None = None
@@ -191,11 +196,19 @@ def docs_search(
         status=status_enum,
         search=q,
     )
+    stale_docs = svc.get_stale_docs(project_id, project.repo_root)
+    stale_doc_ids = {doc.doc_id for doc, _, _ in stale_docs}
+    stale_source_map = {doc.doc_id: path for doc, path, _ in stale_docs}
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "fragments/docs_search_results.html",
-        {"docs": docs, "current_project_id": project_id},
+        {
+            "docs": docs,
+            "current_project_id": project_id,
+            "stale_doc_ids": stale_doc_ids,
+            "stale_source_map": stale_source_map,
+        },
     )
 
 
@@ -428,15 +441,146 @@ def docs_card(
     db: Session = Depends(get_db),
 ) -> Any:
     """htmx fragment: a single docs_card.html for the given doc."""
-    _get_project_or_404(project_id, db)
+    project = _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
 
+    stale_docs = svc.get_stale_docs(project_id, project.repo_root)
+    stale_doc_ids = {d.doc_id for d, _, _ in stale_docs}
+    stale_source_map = {d.doc_id: path for d, path, _ in stale_docs}
+
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "fragments/docs_card.html",
-        {"doc": doc, "current_project": db.get(Project, project_id)},
+        {
+            "doc": doc,
+            "current_project": project,
+            "stale_doc_ids": stale_doc_ids,
+            "stale_source_map": stale_source_map,
+        },
+    )
+
+
+@router.get("/api/project/{id}/docs/config", response_class=HTMLResponse)
+def docs_config_get(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: render doc config panel."""
+    project = _get_project_or_404(project_id, db)
+    doc_config = project.config.get("doc_generation", {}) if project.config else {}
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_config_panel.html",
+        {"project_id": project_id, "doc_config": doc_config},
+    )
+
+
+@router.post("/api/project/{id}/docs/config")
+async def docs_config_post(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Save doc config to Project.config.doc_generation."""
+    project = _get_project_or_404(project_id, db)
+    data = await request.json()
+    if "doc_generation" not in (project.config or {}):
+        if project.config is None:
+            project.config = {}
+        project.config["doc_generation"] = {}
+
+    cfg = project.config["doc_generation"]
+    if "auto_trigger_on_merge" in data:
+        cfg["auto_trigger_on_merge"] = data["auto_trigger_on_merge"]
+    if "stale_threshold_hours" in data:
+        cfg["stale_threshold_hours"] = int(data["stale_threshold_hours"])
+    if "forbidden_phrases" in data:
+        phrases = data["forbidden_phrases"]
+        if isinstance(phrases, str):
+            phrases = [p.strip() for p in phrases.split(",") if p.strip()]
+        cfg["forbidden_phrases"] = phrases
+
+    db.flush()
+    return HTMLResponse(
+        '<div class="p-4 bg-green-50 border border-green-200 rounded-lg '
+        'text-sm text-green-700">Settings saved ✓</div>',
+        headers={"HX-Trigger": '{"configSaved": {}}'},
+    )
+
+
+@router.get("/api/project/{id}/docs/stale", response_class=HTMLResponse)
+def docs_stale_summary(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: stale docs summary row."""
+    project = _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    stale_docs = svc.get_stale_docs(project_id, project.repo_root)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_stale_summary.html",
+        {"project_id": project_id, "stale_count": len(stale_docs)},
+    )
+
+
+@router.post("/api/project/{id}/docs/regenerate-stale", response_class=HTMLResponse)
+def docs_regenerate_stale(
+    project_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Create jobs for all stale docs."""
+    project = _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    stale_docs = svc.get_stale_docs(project_id, project.repo_root)
+    created_count = 0
+    for doc, _, _ in stale_docs:
+        svc.create_doc_job(project_id, doc.doc_id, trigger_reason="user:regenerate-stale")
+        created_count += 1
+    return HTMLResponse(
+        f'<div class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg '
+        f'text-sm text-green-700">Queued {created_count} job'
+        f"{'s' if created_count != 1 else ''} for regeneration</div>",
+        headers={"HX-Trigger": '{"docsRegenerated": {}}'},
+    )
+
+
+@router.get("/api/project/{id}/docs/{doc_id}/lint-warnings", response_class=HTMLResponse)
+def docs_lint_warnings(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: lint warnings callout for doc detail page."""
+    _get_project_or_404(project_id, db)
+    from orch.db.models import DocGenerationJob
+
+    full_doc_id = f"{project_id}:{doc_id}"
+    job = (
+        db.query(DocGenerationJob)
+        .filter(
+            DocGenerationJob.doc_id == full_doc_id,
+            DocGenerationJob.status == JobStatus.completed,
+        )
+        .order_by(DocGenerationJob.completed_at.desc())
+        .first()
+    )
+
+    if job is None or not job.lint_warnings:
+        return HTMLResponse("")
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_lint_warnings.html",
+        {"lint_warnings": job.lint_warnings},
     )

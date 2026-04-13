@@ -182,6 +182,7 @@ class TestDocServiceJobLifecycle:
         mock_job.error = None
         mock_job.completed_at = None
         mock_job.duration_seconds = None
+        mock_job.doc_id = None
         mock_db.get.return_value = mock_job
 
         svc = DocService(mock_db)

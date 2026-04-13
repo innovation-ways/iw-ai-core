@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
+import re
+import subprocess
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+import yaml
 from sqlalchemy import func, select, text
 
 if TYPE_CHECKING:
@@ -38,6 +42,26 @@ def _slugify(title: str) -> str:
     if not slug:
         slug = "untitled"
     return slug
+
+
+def _path_matches_pattern(source_pattern: str, changed_paths: list[str]) -> bool:
+
+    for cp in changed_paths:
+        if fnmatch.fnmatch(cp, source_pattern):
+            return True
+        if fnmatch.fnmatch(source_pattern, cp):
+            return True
+        if "/" in source_pattern and "/" in cp:
+            sp_parts = source_pattern.split("/")
+            cp_parts = cp.split("/")
+            if len(sp_parts) == len(cp_parts) and all(
+                fnmatch.fnmatch(sp_parts[i], cp_parts[i])
+                if "*" in sp_parts[i] or "?" in sp_parts[i]
+                else sp_parts[i] == cp_parts[i]
+                for i in range(len(sp_parts))
+            ):
+                return True
+    return False
 
 
 def _content_hash(content: str) -> str:
@@ -226,17 +250,185 @@ class DocService:
         )
         return list(result.scalars().all())
 
-    def get_stale_docs(self, project_id: str, threshold_hours: int = 24) -> list[ProjectDoc]:
-        now = datetime.now(UTC)
-        result = self._session.execute(
-            select(ProjectDoc)
-            .where(ProjectDoc.project_id == project_id)
-            .where(ProjectDoc.source_paths != [])
-            .where(ProjectDoc.generated_at.is_not(None))
-            .where(ProjectDoc.generated_at < now - timedelta(hours=threshold_hours))
-            .where(ProjectDoc.status != DocStatus.archived)
+    def get_stale_docs(
+        self,
+        project_id: str,
+        repo_root: str,
+        threshold_hours: int = 24,  # noqa: ARG002
+    ) -> list[tuple[ProjectDoc, str, datetime]]:
+        docs = (
+            self._session.query(ProjectDoc)
+            .filter(
+                ProjectDoc.project_id == project_id,
+                ProjectDoc.source_paths != [],
+                ProjectDoc.generated_at.is_not(None),
+                ProjectDoc.status != DocStatus.archived,
+            )
+            .all()
         )
-        return list(result.scalars().all())
+        stale: list[tuple[ProjectDoc, str, datetime]] = []
+        for doc in docs:
+            for path in doc.source_paths:
+                result = subprocess.run(
+                    ["git", "log", "-1", "--format=%ct", "--", path],
+                    cwd=repo_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode != 0:
+                    continue
+                if not result.stdout.strip():
+                    continue
+                try:
+                    mtime_epoch = int(result.stdout.strip())
+                except ValueError:
+                    continue
+                mtime = datetime.fromtimestamp(mtime_epoch, tz=UTC)
+                if doc.generated_at is not None and mtime > doc.generated_at:
+                    stale.append((doc, path, mtime))
+                    break
+        return stale
+
+    def find_docs_by_source_path(
+        self,
+        project_id: str,
+        changed_paths: list[str],
+    ) -> list[ProjectDoc]:
+        docs = (
+            self._session.query(ProjectDoc)
+            .filter(
+                ProjectDoc.project_id == project_id,
+                ProjectDoc.status != DocStatus.archived,
+            )
+            .all()
+        )
+        matched: list[ProjectDoc] = []
+        for doc in docs:
+            if not doc.source_paths:
+                continue
+            for sp in doc.source_paths:
+                if _path_matches_pattern(sp, changed_paths):
+                    matched.append(doc)
+                    break
+        return matched
+
+    def lint_doc_content(
+        self,
+        content: str,
+        editorial_category: EditorialCategory,
+        forbidden_phrases: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        warnings: list[dict[str, Any]] = []
+        if forbidden_phrases is None:
+            forbidden_phrases = [
+                "cutting-edge",
+                "state-of-the-art",
+                "revolutionary",
+                "game-changing",
+                "leverage",
+                "synergy",
+                "robust solution",
+            ]
+
+        fm_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+        if fm_match:
+            try:
+                yaml.safe_load(fm_match.group(1))
+            except yaml.YAMLError:
+                warnings.append(
+                    {
+                        "rule": "frontmatter_parseable",
+                        "message": "Frontmatter is not valid YAML",
+                        "section": None,
+                    }
+                )
+        else:
+            warnings.append(
+                {
+                    "rule": "frontmatter_required",
+                    "message": "Document must start with YAML frontmatter",
+                    "section": None,
+                }
+            )
+
+        for phrase in forbidden_phrases:
+            if phrase.lower() in content.lower():
+                warnings.append(
+                    {
+                        "rule": "forbidden_phrase",
+                        "message": f"Forbidden phrase: '{phrase}'",
+                        "section": None,
+                    }
+                )
+
+        cat_str = (
+            editorial_category.value
+            if hasattr(editorial_category, "value")
+            else str(editorial_category)
+        )
+
+        if cat_str == "technical":
+            if "## Purpose" not in content:
+                warnings.append(
+                    {
+                        "rule": "required_section_purpose",
+                        "message": "Missing '## Purpose' section",
+                        "section": "Purpose",
+                    }
+                )
+            if "## Architecture" not in content:
+                warnings.append(
+                    {
+                        "rule": "required_section_architecture",
+                        "message": "Missing '## Architecture' section",
+                        "section": "Architecture",
+                    }
+                )
+            if not re.search(r"```", content):
+                warnings.append(
+                    {
+                        "rule": "has_code_block",
+                        "message": "Document must contain at least one fenced code block",
+                        "section": None,
+                    }
+                )
+        elif cat_str == "functional":
+            if "## Overview" not in content:
+                warnings.append(
+                    {
+                        "rule": "required_section_overview",
+                        "message": "Missing '## Overview' section",
+                        "section": "Overview",
+                    }
+                )
+            if "## Key Capabilities" not in content:
+                warnings.append(
+                    {
+                        "rule": "required_section_capabilities",
+                        "message": "Missing '## Key Capabilities' section",
+                        "section": "Key Capabilities",
+                    }
+                )
+        elif cat_str == "guide":
+            if "## Prerequisites" not in content:
+                warnings.append(
+                    {
+                        "rule": "required_section_prerequisites",
+                        "message": "Missing '## Prerequisites' section",
+                        "section": "Prerequisites",
+                    }
+                )
+            if "## Steps" not in content:
+                warnings.append(
+                    {
+                        "rule": "required_section_steps",
+                        "message": "Missing '## Steps' section",
+                        "section": "Steps",
+                    }
+                )
+
+        return warnings
 
     def delete_doc(self, project_id: str, doc_id: str) -> bool:
         id_ = f"{project_id}:{doc_id}"
@@ -252,6 +444,7 @@ class DocService:
         project_id: str,
         doc_id: str,
         requested_by: str = "user",  # noqa: ARG002
+        trigger_reason: str | None = None,
     ) -> DocGenerationJob:
         doc = self.get_doc(project_id, doc_id)
         if doc is None:
@@ -264,6 +457,7 @@ class DocService:
             doc_id=f"{project_id}:{doc_id}",
             status=JobStatus.queued,
             requested_at=datetime.now(UTC),
+            trigger_reason=trigger_reason,
         )
         self._session.add(job)
         self._session.flush()
@@ -305,6 +499,18 @@ class DocService:
             job.error = error
         if job.started_at is not None:
             job.duration_seconds = int((job.completed_at - job.started_at).total_seconds())
+
+        if error is None and job.doc_id is not None:
+            doc = self._session.get(ProjectDoc, job.doc_id)
+            if doc is not None and doc.content is not None:
+                project = self._session.get(Project, job.project_id)
+                forbidden = None
+                if project and project.config:
+                    forbidden = project.config.get("doc_generation", {}).get("forbidden_phrases")
+                warnings = self.lint_doc_content(doc.content, doc.editorial_category, forbidden)
+                if warnings:
+                    job.lint_warnings = warnings
+
         self._session.flush()
         return job
 
