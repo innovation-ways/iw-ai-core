@@ -3,28 +3,12 @@
 {% block title %}Worktree Health{% endblock %}
 
 {% block content %}
-<div class="mb-6 flex items-center justify-between">
-  <div>
-    <h1 class="text-2xl font-semibold text-foreground">Worktree Health</h1>
-    <p class="text-muted-foreground text-sm mt-1">
-      Git status of all active agent worktrees across all projects. Dirty or orphaned worktrees
-      can block squash-merges — resolve before the merge phase.
-    </p>
-  </div>
-
-  {% set dirty_count = worktrees | selectattr('git_label', 'equalto', 'dirty') | list | length %}
-  {% set orphan_count = worktrees | selectattr('is_orphan') | list | length %}
-  {% if dirty_count or orphan_count %}
-    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-destructive/10 text-destructive border border-destructive/20">
-      <span class="w-2 h-2 rounded-full bg-destructive animate-pulse"></span>
-      {{ dirty_count + orphan_count }} issue{% if dirty_count + orphan_count != 1 %}s{% endif %}
-    </span>
-  {% elif worktrees %}
-    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-success/10 text-success border border-success/20">
-      <span class="w-2 h-2 rounded-full bg-success"></span>
-      All clean
-    </span>
-  {% endif %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-foreground">Worktree Health</h1>
+  <p class="text-muted-foreground text-sm mt-1">
+    Git status of all active agent worktrees across all projects. Dirty or orphaned worktrees
+    can block squash-merges — resolve before the merge phase.
+  </p>
 </div>
 
 <!-- Worktree table (auto-refreshes every 30 s) -->
