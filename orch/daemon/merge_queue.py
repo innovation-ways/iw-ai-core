@@ -85,6 +85,9 @@ def _merge_item(
     project_config: ProjectConfig,
 ) -> None:
     """Squash-merge a completed item's branch to main via worktree_commit.sh."""
+    from orch.daemon.batch_merge_hooks import trigger_doc_regeneration_on_merge
+    from orch.db.models import Project
+
     item_id = batch_item.work_item_id
     worktree_path = (batch_item.worktree_info or {}).get("path")
 
@@ -119,6 +122,10 @@ def _merge_item(
         logger.info("[%s] Merged %s", project_id, item_id)
 
         _cleanup_worktree(item_id, worktree_path, project_config.working_dir)
+
+        project = db.get(Project, project_id)
+        if project is not None:
+            trigger_doc_regeneration_on_merge(db, batch_item, project)
 
     except (MergeError, subprocess.TimeoutExpired) as e:
         batch_item.status = BatchItemStatus.failed

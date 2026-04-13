@@ -74,7 +74,7 @@
       "step": "S11",
       "agent": "qv-gate",
       "gate": "frontend-tests",
-      "command": "make test-frontend",
+      "command": "make test-integration",
       "description": "QV: Frontend tests"
     },
     {

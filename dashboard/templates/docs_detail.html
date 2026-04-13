@@ -69,6 +69,12 @@
         <h1 class="text-3xl font-bold text-foreground">{{ doc.title }}</h1>
       </div>
 
+      <!-- Lint Warnings (htmx loaded) -->
+      <div id="lint-warnings-panel"
+           hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/lint-warnings"
+           hx-trigger="load"
+           hx-swap="innerHTML"></div>
+
       <!-- Document Content or Placeholder -->
       <div id="doc-content-area" class="p-6">
         {% if doc.content %}
