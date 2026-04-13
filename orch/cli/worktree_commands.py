@@ -183,9 +183,7 @@ def worktree_status(ctx: click.Context, verbose: bool, json_output: bool) -> Non
 
     with get_session() as session:
         # ---- Project main checkouts (always shown — catches developer dirty state) ----
-        projects = (
-            session.execute(select(Project).where(Project.enabled.is_(True))).scalars().all()  # type: ignore[arg-type]
-        )
+        projects = session.execute(select(Project).where(Project.enabled.is_(True))).scalars().all()
         known_paths: set[str] = set()
         for project in projects:
             path = project.repo_root

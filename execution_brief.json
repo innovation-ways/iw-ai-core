@@ -1,57 +1,57 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00010",
-  "title": "Artifact Tree Browser with Inline File Viewer",
+  "id": "F-00011",
+  "title": "Project-Level Documentation System — Foundation (Phase 1)",
   "status": "approved",
   "phase": "active",
-  "total_steps": 9,
+  "total_steps": 15,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00013",
+  "batch_id": "BATCH-00014",
   "worktree": null,
-  "created_at": "2026-04-12T18:25:03.802264+00:00",
-  "updated_at": "2026-04-12T18:25:03.802264+00:00",
+  "created_at": "2026-04-13T09:37:54.133561+00:00",
+  "updated_at": "2026-04-13T09:37:54.133561+00:00",
   "steps": [
     {
       "step_id": "S01",
-      "label": "Frontend",
+      "label": "Database",
       "type": "implementation",
       "status": "pending"
     },
     {
       "step_id": "S02",
+      "label": "Backend",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S03",
       "label": "CodeReview",
       "type": "code_review",
       "status": "pending"
     },
     {
-      "step_id": "S03",
+      "step_id": "S04",
+      "label": "Api",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S05",
+      "label": "Frontend",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S06",
       "label": "Tests",
       "type": "implementation",
       "status": "pending"
     },
     {
-      "step_id": "S04",
+      "step_id": "S07",
       "label": "CodeReviewFinal",
       "type": "code_review_final",
-      "status": "pending"
-    },
-    {
-      "step_id": "S05",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S06",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S07",
-      "label": "QvGate",
-      "type": "quality_validation",
       "status": "pending"
     },
     {
@@ -65,10 +65,46 @@
       "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
+    },
+    {
+      "step_id": "S10",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S11",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S12",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S13",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S14",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S15",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
     }
   ],
-  "branch": "agent/F-00010-artifact-tree-browser-with-inl",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00010",
+  "branch": "agent/F-00011-project-level-documentation-sy",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00011",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-12T18:55:47Z"
+  "brief_generated_at": "2026-04-13T10:26:32Z"
 }
