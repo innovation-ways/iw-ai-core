@@ -89,6 +89,91 @@ def docs_detail(
     )
 
 
+@router.get("/docs/{doc_id}/html-view")
+def docs_html_view(
+    project_id: str,
+    doc_id: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Serve the stored branded HTML file, or render markdown on-the-fly as fallback."""
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    if doc.content is None:
+        raise HTTPException(status_code=404, detail="No content available")
+
+    # Prefer the pre-generated HTML file on disk
+    if doc.html_path and Path(doc.html_path).exists():
+        html_bytes = Path(doc.html_path).read_bytes()
+        return Response(content=html_bytes, media_type="text/html")
+
+    # Fallback: render markdown inline with minimal styling
+    rendered = render_markdown(doc.content)
+    fallback_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{doc.title}</title>
+<style>
+  body {{ font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 24px;
+         color: #0F172A; line-height: 1.6; }}
+  h1,h2,h3 {{ color: #1E293B; }} h2 {{ border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; }}
+  table {{ border-collapse: collapse; width: 100%; }} th,td {{ border: 1px solid #E2E8F0; padding: 8px 12px; }}
+  th {{ background: #F1F5F9; }} img {{ max-width: 100%; }}
+  code {{ background: #F1F5F9; padding: 2px 5px; border-radius: 3px; font-size: 0.875em; }}
+  pre {{ background: #F1F5F9; padding: 16px; border-radius: 6px; overflow-x: auto; }}
+  pre code {{ background: none; padding: 0; }}
+</style>
+</head>
+<body>{rendered}</body>
+</html>"""
+    return Response(content=fallback_html, media_type="text/html")
+
+
+@router.get("/docs/{doc_id}/pdf-view")
+def docs_pdf_view(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Serve PDF inline for embedding in an iframe (no Content-Disposition: attachment)."""
+    project = _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    if doc.content is None:
+        raise HTTPException(status_code=404, detail="No content to generate PDF from")
+
+    # Use cached PDF if available
+    if doc.pdf_path and Path(doc.pdf_path).exists():
+        pdf_bytes = Path(doc.pdf_path).read_bytes()
+        return Response(content=pdf_bytes, media_type="application/pdf")
+
+    # Generate on-the-fly
+    templates: Jinja2Templates = request.app.state.templates
+    pdf_template = templates.get_template("pdf/doc_pdf.html")
+    html_content = pdf_template.render(
+        doc=doc,
+        project=project,
+        rendered_content=render_markdown(doc.content),
+        generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    try:
+        from weasyprint import HTML
+
+        pdf_bytes = HTML(string=html_content).write_pdf()
+    except ImportError:
+        raise HTTPException(status_code=501, detail="WeasyPrint not installed")
+
+    return Response(content=pdf_bytes, media_type="application/pdf")
+
+
 @router.get("/docs/{doc_id}/pdf")
 def docs_pdf(
     project_id: str,
