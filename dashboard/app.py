@@ -26,6 +26,7 @@ from dashboard.routers import (
     project_pages,
     projects,
     quality,
+    research,
     running,
     search,
     sse,
@@ -103,5 +104,6 @@ def create_app() -> FastAPI:
     app.include_router(worktrees.router)
     app.include_router(docs.router)
     app.include_router(docs_global.router)
+    app.include_router(research.router)
 
     return app

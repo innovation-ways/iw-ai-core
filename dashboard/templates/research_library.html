@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Research — {{ current_project.display_name if current_project else '' }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-start justify-between">
+  <div>
+    <h1 class="text-2xl font-semibold text-foreground">Research</h1>
+    <p class="text-muted-foreground text-sm mt-1">Project research documents and analysis.</p>
+  </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="mb-6 space-y-3">
+  <!-- Status Filters -->
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="text-xs text-muted-foreground font-medium mr-1">Status:</span>
+    <button
+      hx-get="/project/{{ current_project.id }}/api/research/search"
+      hx-vals='{"status": ""}'
+      hx-target="#research-grid"
+      hx-swap="innerHTML"
+      class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
+             bg-card text-muted-foreground hover:bg-muted">
+      All
+    </button>
+    {% for s in statuses %}
+    <button
+      hx-get="/project/{{ current_project.id }}/api/research/search"
+      hx-vals='{"status": "{{ s }}"}'
+      hx-target="#research-grid"
+      hx-swap="innerHTML"
+      class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
+             bg-card text-muted-foreground hover:bg-muted">
+      {{ s|title }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <!-- Category Filters -->
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="text-xs text-muted-foreground font-medium mr-1">Mode:</span>
+    <button
+      hx-get="/project/{{ current_project.id }}/api/research/search"
+      hx-vals='{"category": ""}'
+      hx-target="#research-grid"
+      hx-swap="innerHTML"
+      class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
+             bg-card text-muted-foreground hover:bg-muted">
+      All
+    </button>
+    {% for c in categories %}
+    <button
+      hx-get="/project/{{ current_project.id }}/api/research/search"
+      hx-vals='{"category": "{{ c }}"}'
+      hx-target="#research-grid"
+      hx-swap="innerHTML"
+      class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
+             bg-card text-muted-foreground hover:bg-muted">
+      {{ c|title }}
+    </button>
+    {% endfor %}
+  </div>
+
+  <!-- Search Input -->
+  <div class="relative max-w-md">
+    <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+    </svg>
+    <input
+      type="text"
+      name="q"
+      placeholder="Search research…"
+      hx-get="/project/{{ current_project.id }}/api/research/search"
+      hx-trigger="input changed delay:300ms"
+      hx-target="#research-grid"
+      hx-swap="innerHTML"
+      class="w-full pl-10 pr-4 py-2 bg-input border border-border rounded-md text-sm
+             text-foreground placeholder:text-muted-foreground
+             focus:outline-none focus:ring-2 focus:ring-ring"
+    />
+  </div>
+</div>
+
+<!-- Research Table -->
+<div id="research-grid" class="bg-card border border-border rounded-lg overflow-hidden">
+  {% if docs %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-muted border-b border-border">
+        <tr>
+          <th class="text-left px-4 py-3 font-medium text-muted-foreground">ID</th>
+          <th class="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
+          <th class="text-left px-4 py-3 font-medium text-muted-foreground">Mode</th>
+          <th class="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+          <th class="text-left px-4 py-3 font-medium text-muted-foreground">Created</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        {% for doc in docs %}
+        <tr class="hover:bg-muted/50 transition-colors">
+          <td class="px-4 py-3 font-mono text-xs text-muted-foreground">
+            <a href="/project/{{ current_project.id }}/research/{{ doc.doc_id }}" class="hover:text-primary">{{ doc.doc_id }}</a>
+          </td>
+          <td class="px-4 py-3">
+            <a href="/project/{{ current_project.id }}/research/{{ doc.doc_id }}" class="font-medium text-foreground hover:text-primary">
+              {{ doc.title }}
+            </a>
+          </td>
+          <td class="px-4 py-3">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
+              {{ doc.editorial_category.value|replace('_',' ')|title if doc.editorial_category else '—' }}
+            </span>
+          </td>
+          <td class="px-4 py-3">
+            {% set status_colors = {
+              'planned': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+              'draft': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200',
+              'published': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
+              'archived': 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'
+            } %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ status_colors.get(doc.status.value, 'bg-muted text-muted-foreground') }}">
+              {{ doc.status.value|title }}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-muted-foreground">
+            {{ doc.created_at.strftime('%Y-%m-%d') if doc.created_at else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <!-- Empty State -->
+  <div class="flex flex-col items-center justify-center py-16 text-center">
+    <svg class="w-12 h-12 text-muted-foreground/50 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+    </svg>
+    <h3 class="text-lg font-semibold text-foreground mb-2">No research documents yet</h3>
+    <p class="text-muted-foreground text-sm mb-4 max-w-sm">
+      Use <code class="font-mono bg-muted px-1.5 py-0.5 rounded text-xs">/iw-research</code> to create one.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
