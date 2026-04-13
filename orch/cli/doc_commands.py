@@ -12,7 +12,14 @@ from typing import Any
 import click
 
 from orch.cli.utils import output_error, resolve_project
-from orch.db.models import DocStatus, DocTier, DocType, EditorialCategory, JobStatus  # noqa: F401
+from orch.db.models import (  # noqa: F401
+    DocStatus,
+    DocTier,
+    DocType,
+    EditorialCategory,
+    JobStatus,
+    Project,
+)
 from orch.doc_service import DocService
 
 _MAX_CONTENT_SIZE = 10 * 1024 * 1024
@@ -378,6 +385,90 @@ def docs_check_stale(ctx: click.Context, project_id: str, threshold_hours: int) 
                 click.echo(f"STALE  {doc.doc_id:<30} {changed_path} ({age_str})")
 
             sys.exit(1)
+
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 3)
+
+
+@click.command("docs-export")
+@click.argument("project_id")
+@click.argument("doc_ids", nargs=-1)
+@click.option(
+    "--output-dir",
+    "output_dir",
+    type=click.Path(path_type=Path),
+    default=Path.cwd(),
+    help="Output directory for ZIP files",
+)
+@click.pass_context
+def docs_export(
+    ctx: click.Context,
+    project_id: str,
+    doc_ids: tuple[str, ...],
+    output_dir: Path,
+) -> None:
+    """Export project docs as ZIP bundles.
+
+    PROJECT_ID is the project identifier.
+
+    DOC_IDS are specific doc IDs to export. If none given, exports all
+    non-archived docs in the project.
+    """
+    get_session = ctx.obj["get_session"]
+
+    if not output_dir.is_absolute():
+        click.echo("Error: --output-dir must be an absolute path", err=True)
+        sys.exit(2)
+
+    if not output_dir.exists():
+        click.echo(f"Error: --output-dir '{output_dir}' does not exist", err=True)
+        sys.exit(2)
+
+    try:
+        with get_session() as session:
+            project = session.get(Project, project_id)
+            if project is None:
+                click.echo(f"Error: Project '{project_id}' not found", err=True)
+                sys.exit(1)
+
+            svc = DocService(session)
+
+            if doc_ids:
+                docs = []
+                for did in doc_ids:
+                    doc = svc.get_doc(project_id, did)
+                    if doc is None:
+                        click.echo(
+                            f"Error: Doc '{did}' not found in project '{project_id}'", err=True
+                        )
+                        sys.exit(2)
+                    docs.append(doc)
+            else:
+                all_docs = svc.list_docs(project_id, limit=1000)
+                docs = [d for d in all_docs if d.status != DocStatus.archived]
+
+            if not docs:
+                click.echo("No docs to export.")
+                sys.exit(0)
+
+            def render_html(content: str, _doc: Any) -> str:
+                return f"<html><body>{content}</body></html>"
+
+            def render_pdf(_html: str) -> bytes | None:
+                return None
+
+            doc_id_list = [d.id for d in docs]
+            zip_bytes = svc.export_bundle(project_id, doc_id_list, render_html, render_pdf)
+
+            if len(docs) == 1:
+                slug = docs[0].slug or docs[0].doc_id
+                output_path = output_dir / f"{slug}.zip"
+            else:
+                output_path = output_dir / f"{project_id}-docs-export.zip"
+
+            output_path.write_bytes(zip_bytes)
+            click.echo(f"Exported {len(docs)} doc(s) to {output_path}")
+            sys.exit(0)
 
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 3)

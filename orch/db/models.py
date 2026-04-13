@@ -860,6 +860,11 @@ class ProjectDoc(Base):
     )
     html_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     pdf_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    broken_links: Mapped[list[dict[str, str]] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="List of {url, type, status} objects from link validation",
+    )
     created_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, nullable=False, server_default=func.now()
     )
