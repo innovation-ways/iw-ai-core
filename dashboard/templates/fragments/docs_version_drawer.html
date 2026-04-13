@@ -1,5 +1,5 @@
 <div class="bg-card border border-border rounded-lg overflow-hidden transition-all duration-200"
-     x-data="{ open: true }"
+     x-data="{ open: true, selected: [] }"
      x-show="open"
      x-transition:enter="transition ease-out duration-200"
      x-transition:enter-start="opacity-0 -translate-y-2"
@@ -26,12 +26,22 @@
     {% if versions %}
       <ul class="divide-y divide-border">
         {% for version in versions %}
-          <li class="px-4 py-3 hover:bg-muted/20 transition-colors">
+          <li class="px-4 py-3 hover:bg-muted/20 transition-colors"
+              :class="{ 'bg-primary/5': selected.includes({{ version.version }}) }">
             <div class="flex items-start justify-between gap-2 mb-1">
               <div class="flex items-center gap-2">
-                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-primary/10 text-primary font-mono">
-                  v{{ version.version }}
-                </span>
+                <input type="checkbox"
+                       id="v-select-{{ version.version }}"
+                       value="{{ version.version }}"
+                       @change="selected = selected.includes({{ version.version }}) ? selected.filter(v => v !== {{ version.version }}) : [...selected, {{ version.version }}].sort((a,b) => a - b)"
+                       class="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                       :disabled="selected.length >= 2 && !selected.includes({{ version.version }})"
+                       aria-label="Select version {{ version.version }}">
+                <label for="v-select-{{ version.version }}" class="cursor-pointer">
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-primary/10 text-primary font-mono cursor-pointer">
+                    v{{ version.version }}
+                  </span>
+                </label>
                 <span class="text-xs text-muted-foreground">
                   {{ version.created_at | localdt('%Y-%m-%d %H:%M') }}
                 </span>
@@ -52,10 +62,37 @@
           </li>
         {% endfor %}
       </ul>
+      <!-- Compare Button -->
+      <div class="px-4 py-3 border-t border-border bg-muted/20"
+           x-show="selected.length === 2"
+           x-transition>
+        <button @click="const [v1, v2] = selected; htmx.ajax('GET', '/api/project/{{ project_id }}/docs/{{ doc_id }}/diff?v1=' + v1 + '&v2=' + v2, {target: '#diff-viewer', swap: 'innerHTML'})"
+                class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+          Compare Selected Versions
+        </button>
+        <p class="text-xs text-muted-foreground text-center mt-1">
+          Comparing v<span x-text="selected[0]"></span> → v<span x-text="selected[1]"></span>
+        </p>
+      </div>
     {% else %}
       <div class="px-4 py-8 text-center text-muted-foreground text-sm">
         No version history yet
       </div>
     {% endif %}
   </div>
+
+  <!-- Diff Viewer Container -->
+  <div id="diff-viewer" class="border-t border-border"></div>
 </div>
+
+<script>
+function resetVersionSelection() {
+  const checkboxes = document.querySelectorAll('#version-drawer input[type="checkbox"]');
+  checkboxes.forEach(cb => cb.checked = false);
+  const diffViewer = document.getElementById('diff-viewer');
+  if (diffViewer) diffViewer.innerHTML = '';
+}
+</script>

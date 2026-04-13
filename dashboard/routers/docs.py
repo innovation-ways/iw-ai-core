@@ -553,6 +553,153 @@ def docs_regenerate_stale(
     )
 
 
+@router.get("/api/docs/{doc_id}/diff", response_class=HTMLResponse)
+def docs_diff(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    v1: int = 0,
+    v2: int = 0,
+) -> Any:
+    _get_project_or_404(project_id, db)
+    if v1 >= v2:
+        raise HTTPException(
+            status_code=422,
+            detail=f"v1 ({v1}) must be less than v2 ({v2})",
+        )
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    try:
+        diff_lines = svc.diff_versions(project_id, doc_id, v1, v2)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_diff.html",
+        {
+            "diff_lines": diff_lines,
+            "v1": v1,
+            "v2": v2,
+            "doc_id": doc_id,
+            "project_id": project_id,
+        },
+    )
+
+
+def _make_render_pdf_fn() -> Any:
+    def render_pdf(html_content: str) -> bytes | None:
+        try:
+            from weasyprint import HTML
+
+            return HTML(string=html_content).write_pdf()  # type: ignore[no-any-return]
+        except ImportError:
+            return None
+
+    return render_pdf
+
+
+@router.get("/api/docs/export")
+def docs_export_bundle(
+    project_id: str,
+    db: Session = Depends(get_db),
+    doc_ids: str = "",
+) -> StreamingResponse:
+    project = _get_project_or_404(project_id, db)
+    svc = DocService(db)
+
+    if doc_ids.strip():
+        raw_ids = [d.strip() for d in doc_ids.split(",") if d.strip()]
+        full_ids = [f"{project_id}:{d}" for d in raw_ids]
+    else:
+        docs = svc.list_docs(project_id)
+        full_ids = [doc.id for doc in docs]
+
+    if not full_ids:
+        raise HTTPException(status_code=422, detail="No valid doc_ids provided")
+
+    zip_bytes = svc.export_bundle(
+        project_id,
+        full_ids,
+        render_html_fn=lambda content, _doc: render_markdown(content),
+        render_pdf_fn=_make_render_pdf_fn(),
+    )
+
+    import io
+
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{project.id}-docs-export.zip"',
+        },
+    )
+
+
+@router.get("/api/docs/{doc_id}/export")
+def docs_export_single(
+    project_id: str,
+    doc_id: str,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+
+    full_id = f"{project_id}:{doc_id}"
+    zip_bytes = svc.export_bundle(
+        project_id,
+        [full_id],
+        render_html_fn=lambda content, _doc: render_markdown(content),
+        render_pdf_fn=_make_render_pdf_fn(),
+    )
+
+    import io
+
+    slug = doc.slug or doc_id
+    filename = f"{slug}-v{doc.version}.zip"
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/api/docs/{doc_id}/validate-links", response_class=HTMLResponse)
+async def docs_validate_links(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    project = _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    if not doc.content:
+        raise HTTPException(status_code=422, detail="Document has no content to validate")
+
+    repo_root = project.repo_root
+    broken = await asyncio.to_thread(svc.validate_links, doc, repo_root)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_broken_links.html",
+        {
+            "broken_links": broken,
+            "doc_id": doc_id,
+            "project_id": project_id,
+        },
+    )
+
+
 @router.get("/api/project/{id}/docs/{doc_id}/lint-warnings", response_class=HTMLResponse)
 def docs_lint_warnings(
     project_id: str,

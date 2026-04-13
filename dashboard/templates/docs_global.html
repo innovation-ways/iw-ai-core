@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Documentation — Global Search{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+  <!-- Platform branding header -->
+  <div class="mb-8 text-center">
+    <h1 class="text-3xl font-bold text-foreground mb-2">Documentation</h1>
+    <p class="text-muted-foreground">Search across all project documentation</p>
+  </div>
+
+  <!-- Large search bar -->
+  <div class="relative mb-4">
+    <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+    </svg>
+    <input
+      type="search"
+      name="q"
+      value="{{ query }}"
+      placeholder="Search documentation..."
+      hx-get="/api/docs/search"
+      hx-trigger="input changed delay:300ms"
+      hx-target="#global-results"
+      hx-include="[name='doc_type'],[name='status'],[name='tier'],[name='project_id']"
+      class="w-full text-lg px-6 py-4 pl-14 bg-input border border-border rounded-lg
+             text-foreground placeholder:text-muted-foreground
+             focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+    />
+  </div>
+
+  <!-- Filter row -->
+  <div class="flex flex-wrap items-center gap-3 mb-6 pb-4 border-b border-border">
+    <!-- Doc Type Pills -->
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs text-muted-foreground font-medium">Type:</span>
+      {% set doc_types = ['module', 'api', 'architecture', 'release_notes', 'error_catalog', 'webhook_ref', 'user_guide'] %}
+      <button
+        hx-get="/api/docs/search"
+        hx-vals='{"doc_type": ""}'
+        hx-target="#global-results"
+        hx-include="[name='q'],[name='status'],[name='tier'],[name='project_id']"
+        class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
+               {% if not selected_type %}bg-primary text-primary-foreground border-primary{% else %}bg-card text-muted-foreground hover:bg-muted{% endif %}">
+        All
+      </button>
+      {% for dtype in doc_types %}
+      <button
+        hx-get="/api/docs/search"
+        hx-vals='{"doc_type": "{{ dtype }}"}'
+        hx-target="#global-results"
+        hx-include="[name='q'],[name='status'],[name='tier'],[name='project_id']"
+        class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
+               bg-card text-muted-foreground hover:bg-muted">
+        {{ dtype|title }}
+      </button>
+      {% endfor %}
+    </div>
+
+    <!-- Status Pills -->
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs text-muted-foreground font-medium">Status:</span>
+      {% set statuses = ['planned', 'draft', 'published', 'archived'] %}
+      <button
+        hx-get="/api/docs/search"
+        hx-vals='{"status": ""}'
+        hx-target="#global-results"
+        hx-include="[name='q'],[name='doc_type'],[name='tier'],[name='project_id']"
+        class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
+               {% if not selected_status %}bg-primary text-primary-foreground border-primary{% else %}bg-card text-muted-foreground hover:bg-muted{% endif %}">
+        All
+      </button>
+      {% for s in statuses %}
+      <button
+        hx-get="/api/docs/search"
+        hx-vals='{"status": "{{ s }}"}'
+        hx-target="#global-results"
+        hx-include="[name='q'],[name='doc_type'],[name='tier'],[name='project_id']"
+        class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
+               bg-card text-muted-foreground hover:bg-muted">
+        {{ s|title }}
+      </button>
+      {% endfor %}
+    </div>
+
+    <!-- Tier Pills -->
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs text-muted-foreground font-medium">Tier:</span>
+      {% set tiers = ['fully_automated', 'semi_automated', 'human_authored'] %}
+      <button
+        hx-get="/api/docs/search"
+        hx-vals='{"tier": ""}'
+        hx-target="#global-results"
+        hx-include="[name='q'],[name='doc_type'],[name='status'],[name='project_id']"
+        class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
+               {% if not selected_tier %}bg-primary text-primary-foreground border-primary{% else %}bg-card text-muted-foreground hover:bg-muted{% endif %}">
+        All
+      </button>
+      {% for t in tiers %}
+      <button
+        hx-get="/api/docs/search"
+        hx-vals='{"tier": "{{ t }}"}'
+        hx-target="#global-results"
+        hx-include="[name='q'],[name='doc_type'],[name='status'],[name='project_id']"
+        class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
+               bg-card text-muted-foreground hover:bg-muted">
+        {{ t|title }}
+      </button>
+      {% endfor %}
+    </div>
+
+    <!-- Project Dropdown -->
+    <div class="flex items-center gap-2">
+      <span class="text-xs text-muted-foreground font-medium">Project:</span>
+      <select name="project_id"
+              hx-get="/api/docs/search"
+              hx-trigger="change"
+              hx-target="#global-results"
+              hx-include="[name='q'],[name='doc_type'],[name='status'],[name='tier']"
+              class="px-3 py-1.5 bg-input border border-border rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-ring">
+        <option value="">All projects</option>
+        {% for project in projects %}
+          <option value="{{ project.id }}">{{ project.display_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <!-- Results container -->
+  <div id="global-results" class="htmx-indicator" data-htmx-indicator=".loading-spinner">
+    <!-- Initial state: prompt to search -->
+    {% if not query %}
+      <div class="py-16 text-center text-muted-foreground">
+        <svg class="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <p class="text-sm">Enter a search term to find documentation across all projects</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Loading spinner (hidden by default) -->
+  <div class="loading-spinner hidden fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+  </div>
+</div>
+{% endblock %}

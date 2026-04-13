@@ -69,6 +69,14 @@
         <h1 class="text-3xl font-bold text-foreground">{{ doc.title }}</h1>
       </div>
 
+      <!-- Broken Links Callout (htmx loaded) -->
+      {% if doc.broken_links is not none %}
+      <div id="broken-links-callout"
+           hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/validate-links"
+           hx-trigger="load"
+           hx-swap="innerHTML"></div>
+      {% endif %}
+
       <!-- Lint Warnings (htmx loaded) -->
       <div id="lint-warnings-panel"
            hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/lint-warnings"
