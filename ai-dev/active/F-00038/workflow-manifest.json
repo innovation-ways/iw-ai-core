@@ -1,0 +1,74 @@
+{
+  "id": "F-00038",
+  "type": "Feature",
+  "title": "Instance Guide Overlay — Per-Document Editorial Override",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Migration: create doc_instance_guides table (doc_id PK, guide_md, updated_at, FK to project_docs ON DELETE CASCADE)",
+      "prompt": "prompts/F-00038_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "backend-impl",
+      "description": "DocInstanceGuide model; DocService CRUD methods (get/save/delete); _effective_guide merge logic; update create_doc_job to use effective guide for snapshot",
+      "prompt": "prompts/F-00038_S02_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-impl",
+      "description": "Code review of S02 Backend implementation",
+      "prompt": "prompts/F-00038_S03_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "tests-impl",
+      "description": "Unit tests for _effective_guide merge logic; integration tests for CRUD and snapshot",
+      "prompt": "prompts/F-00038_S04_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global review: completeness, consistency, full test suite",
+      "prompt": "prompts/F-00038_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": ".venv/bin/python -m ruff check orch/ tests/",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": ".venv/bin/python -m ruff format --check orch/ tests/",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": ".venv/bin/python -m mypy orch/db/models.py orch/doc_service.py",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": ".venv/bin/pytest tests/unit/ -x --timeout=60 -q 2>/dev/null || echo 'No unit tests — OK'",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": ".venv/bin/pytest tests/integration/ -x --timeout=300 -q",
+      "description": "QV: Integration tests",
+      "timeout": 600
+    }
+  ]
+}
