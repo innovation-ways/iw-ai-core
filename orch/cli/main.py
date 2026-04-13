@@ -12,7 +12,7 @@ from orch.cli.batch_commands import (
     batch_status,
 )
 from orch.cli.daemon_commands import daemon
-from orch.cli.doc_commands import doc_update
+from orch.cli.doc_commands import doc_job_done, doc_job_start, doc_update
 from orch.cli.id_commands import current_project, next_id
 from orch.cli.item_commands import approve, archive, item_status, register, unapprove
 from orch.cli.lock_commands import migration_lock
@@ -84,3 +84,5 @@ cli.add_command(daemon)
 cli.add_command(projects)
 cli.add_command(worktree_status, name="worktree-status")
 cli.add_command(doc_update)
+cli.add_command(doc_job_start, name="doc-job-start")
+cli.add_command(doc_job_done, name="doc-job-done")
