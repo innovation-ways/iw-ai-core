@@ -1,0 +1,12 @@
+{% if dirty > 0 %}
+<span hx-get="/system/nav/worktree-badge"
+      hx-trigger="every 60s"
+      hx-swap="outerHTML"
+      class="ml-auto w-2 h-2 rounded-full bg-destructive animate-pulse flex-shrink-0"
+      title="{{ dirty }} dirty worktree{% if dirty != 1 %}s{% endif %}"></span>
+{% else %}
+<span hx-get="/system/nav/worktree-badge"
+      hx-trigger="every 60s"
+      hx-swap="outerHTML"
+      class="ml-auto"></span>
+{% endif %}
