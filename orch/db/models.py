@@ -49,6 +49,7 @@ class WorkItemType(enum.Enum):
     Feature = "Feature"
     Issue = "Issue"
     ChangeRequest = "ChangeRequest"
+    Research = "Research"
 
 
 class WorkItemStatus(enum.Enum):
@@ -157,6 +158,7 @@ class DocType(enum.Enum):
     user_guide = "user_guide"
     product_overview = "product_overview"
     feature_catalog = "feature_catalog"
+    research = "research"
 
 
 class DocTier(enum.Enum):

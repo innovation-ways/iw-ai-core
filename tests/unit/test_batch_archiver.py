@@ -52,13 +52,27 @@ def _make_db(
 ) -> MagicMock:
     db = MagicMock()
 
+    work_items: dict[tuple[str, str], MagicMock] = {}
+
+    if batch_items:
+        for bi in batch_items:
+            wi = MagicMock()
+            wi.id = bi.work_item_id
+            wi.project_id = bi.project_id
+            wi.archived_at = None
+            wi.design_doc_content = None
+            wi.summary = None
+            work_items[(bi.project_id, bi.work_item_id)] = wi
+
     def _get(model_cls, pk):  # noqa: ANN001
-        from orch.db.models import Batch, Project  # noqa: PLC0415
+        from orch.db.models import Batch, Project, WorkItem  # noqa: PLC0415
 
         if model_cls is Batch:
             return batch if batch is not None else _make_batch()
         if model_cls is Project:
             return project if project is not None else _make_project()
+        if model_cls is WorkItem:
+            return work_items.get(pk)
         return None
 
     db.get.side_effect = _get
@@ -86,6 +100,10 @@ def _session_factory(db: MagicMock):
 # ---------------------------------------------------------------------------
 
 
+def _good_run(*args, **kwargs):  # noqa: ANN001
+    return MagicMock(returncode=0, stdout="", stderr="")
+
+
 class TestArchiveBatchSuccess:
     def test_returns_archived_item_ids(self) -> None:
         items = [_make_batch_item("F-00001"), _make_batch_item("F-00002")]
@@ -94,6 +112,7 @@ class TestArchiveBatchSuccess:
         with (
             patch(_GET_SESSION, side_effect=_session_factory(db)),
             patch(_ARCHIVE_ITEM) as mock_archive,
+            patch(_SUBPROCESS_RUN, side_effect=_good_run),
         ):
             result = archive_batch("proj", "BATCH-001")
 
@@ -107,6 +126,7 @@ class TestArchiveBatchSuccess:
         with (
             patch(_GET_SESSION, side_effect=_session_factory(db)),
             patch(_ARCHIVE_ITEM),
+            patch(_SUBPROCESS_RUN, side_effect=_good_run),
         ):
             archive_batch("proj", "BATCH-001")
 
@@ -119,6 +139,7 @@ class TestArchiveBatchSuccess:
         with (
             patch(_GET_SESSION, side_effect=_session_factory(db)),
             patch(_ARCHIVE_ITEM),
+            patch(_SUBPROCESS_RUN, side_effect=_good_run),
         ):
             archive_batch("proj", "BATCH-001")
 
@@ -130,6 +151,7 @@ class TestArchiveBatchSuccess:
         with (
             patch(_GET_SESSION, side_effect=_session_factory(db)),
             patch(_ARCHIVE_ITEM),
+            patch(_SUBPROCESS_RUN, side_effect=_good_run),
         ):
             archive_batch("proj", "BATCH-001")
 
@@ -143,6 +165,7 @@ class TestArchiveBatchSuccess:
         with (
             patch(_GET_SESSION, side_effect=_session_factory(db)),
             patch(_ARCHIVE_ITEM),
+            patch(_SUBPROCESS_RUN, side_effect=_good_run),
         ):
             archive_batch("proj", "BATCH-001")
 
@@ -190,13 +213,15 @@ class TestArchiveBatchItemErrors:
         items = [_make_batch_item("F-00001"), _make_batch_item("F-00002")]
         db = _make_db(batch_items=items)
 
-        def _side_effect(db, project_id, item_id, archive_dir):  # noqa: ANN001
+        def _side_effect(*args, **kwargs):  # noqa: ANN001
+            item_id = args[2] if len(args) > 2 else kwargs.get("item_id")
             if item_id == "F-00001":
                 raise RuntimeError("disk full")
 
         with (
             patch(_GET_SESSION, side_effect=_session_factory(db)),
             patch(_ARCHIVE_ITEM, side_effect=_side_effect),
+            patch(_SUBPROCESS_RUN, side_effect=_good_run),
         ):
             result = archive_batch("proj", "BATCH-001")
 
@@ -209,6 +234,7 @@ class TestArchiveBatchItemErrors:
         with (
             patch(_GET_SESSION, side_effect=_session_factory(db)),
             patch(_ARCHIVE_ITEM, side_effect=RuntimeError("oops")),
+            patch(_SUBPROCESS_RUN, side_effect=_good_run),
         ):
             archive_batch("proj", "BATCH-001")
 
@@ -224,6 +250,7 @@ class TestArchiveBatchItemErrors:
         with (
             patch(_GET_SESSION, side_effect=_session_factory(db)),
             patch(_ARCHIVE_ITEM, side_effect=RuntimeError("oops")),
+            patch(_SUBPROCESS_RUN, side_effect=_good_run),
         ):
             archive_batch("proj", "BATCH-001")
 

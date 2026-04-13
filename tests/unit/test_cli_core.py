@@ -6,13 +6,20 @@ from pathlib import Path
 import pytest
 
 from orch.cli.item_commands import (
+    _ITEM_TYPE_MAP,
     agent_to_label,
     agent_to_step_type,
     validate_approve_transition,
     validate_unapprove_transition,
 )
-from orch.cli.utils import find_project_root, format_id, validate_id_prefix
-from orch.db.models import StepType, WorkItemStatus
+from orch.cli.utils import (
+    TYPE_TO_ID_PREFIX,
+    TYPE_TO_PREFIX,
+    find_project_root,
+    format_id,
+    validate_id_prefix,
+)
+from orch.db.models import DocType, StepType, WorkItemStatus, WorkItemType
 
 # ---------------------------------------------------------------------------
 # find_project_root
@@ -83,6 +90,8 @@ def test_find_project_root_missing_project_id(tmp_path: Path) -> None:
         ("BATCH", 1, "BATCH-00001"),
         ("BATCH", 12, "BATCH-00012"),
         ("BATCH", 999, "BATCH-00999"),
+        ("R", 1, "R-00001"),
+        ("R", 42, "R-00042"),
     ],
 )
 def test_format_id(prefix: str, number: int, expected: str) -> None:
@@ -102,14 +111,19 @@ def test_format_id(prefix: str, number: int, expected: str) -> None:
         ("F-00001", "feature", True),
         ("CR-00001", "cr", True),
         ("CR-00042", "cr", True),
+        ("R-00001", "research", True),
+        ("R-00042", "research", True),
         # Wrong prefix for type
         ("I-00001", "feature", False),
         ("F-00001", "incident", False),
         ("CR-00001", "feature", False),
         ("F-00001", "cr", False),
+        ("R-00001", "feature", False),
+        ("F-00001", "research", False),
         # Prefix with no digits
         ("I", "incident", False),
         ("F", "feature", False),
+        ("R", "research", False),
         # Completely wrong format
         ("BATCH-00001", "incident", False),
         ("001", "incident", False),
@@ -243,3 +257,28 @@ def test_parse_manifest_steps(tmp_path: Path) -> None:
     assert len(steps) == 2
     assert steps[0]["step"] == "S01"
     assert steps[1]["agent"] == "code-review-impl"
+
+
+# ---------------------------------------------------------------------------
+# Research work item type tests
+# ---------------------------------------------------------------------------
+
+
+def test_work_item_type_research() -> None:
+    assert WorkItemType.Research.value == "Research"
+
+
+def test_doc_type_research() -> None:
+    assert DocType.research.value == "research"
+
+
+def test_type_to_prefix_research() -> None:
+    assert TYPE_TO_PREFIX.get("research") == "R"
+
+
+def test_type_to_id_prefix_research() -> None:
+    assert TYPE_TO_ID_PREFIX.get("research") == "R-"
+
+
+def test_item_type_map_research() -> None:
+    assert _ITEM_TYPE_MAP.get("research") == WorkItemType.Research

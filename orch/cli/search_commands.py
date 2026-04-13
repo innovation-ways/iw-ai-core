@@ -15,6 +15,7 @@ _TYPE_MAP: dict[str, WorkItemType] = {
     "feature": WorkItemType.Feature,
     "incident": WorkItemType.Issue,
     "cr": WorkItemType.ChangeRequest,
+    "research": WorkItemType.Research,
 }
 
 
@@ -24,7 +25,7 @@ _TYPE_MAP: dict[str, WorkItemType] = {
     "--type",
     "item_type",
     default=None,
-    type=click.Choice(["feature", "incident", "cr"]),
+    type=click.Choice(["feature", "incident", "cr", "research"]),
     help="Filter by item type",
 )
 @click.option("--limit", default=20, show_default=True, help="Maximum number of results")
