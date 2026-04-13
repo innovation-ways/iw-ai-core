@@ -1,0 +1,162 @@
+<!-- Worktree health table fragment — auto-refreshes every 30 s via htmx -->
+<div id="worktree-table"
+     hx-get="/system/worktrees/table"
+     hx-trigger="every 30s, worktree-committed from:body"
+     hx-swap="outerHTML">
+
+  {% if not worktrees %}
+    <div class="bg-card border border-border rounded-lg px-4 py-10 text-center text-muted-foreground text-sm">
+      No active worktrees. Agent worktrees appear here when a batch is executing.
+    </div>
+
+  {% else %}
+    <div class="bg-card border border-border rounded-lg overflow-x-auto">
+      <table class="w-full text-sm min-w-[700px]">
+        <thead>
+          <tr class="border-b border-border bg-muted/30">
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Project</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Item</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Branch</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Batch</th>
+            <th class="px-4 py-2 text-right font-medium text-muted-foreground">Ahead</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden lg:table-cell">Path</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for wt in worktrees %}
+            {% if not loop.first and wt.batch_status != 'main' and loop.previtem.batch_status == 'main' %}
+            <tr class="border-t-2 border-border/60">
+              <td colspan="7" class="px-4 py-0.5 text-xs text-muted-foreground bg-muted/20">Agent worktrees</td>
+            </tr>
+            {% endif %}
+
+            {# Only rows with actual changes are clickable #}
+            {% set clickable = wt.git_label in ('dirty', 'untracked') %}
+            <tr class="border-b border-border last:border-0
+                       {% if wt.git_label == 'dirty' %}bg-destructive/5
+                       {% elif wt.git_label in ('orphaned', 'untracked') %}bg-warning/5
+                       {% endif %}
+                       {% if clickable %}cursor-pointer hover:bg-muted/30{% else %}hover:bg-muted/20{% endif %}
+                       transition-colors"
+                {% if clickable %}
+                hx-get="/system/worktrees/files?path={{ wt.path | urlencode }}"
+                hx-target="#worktree-detail"
+                hx-swap="innerHTML"
+                hx-indicator="#worktree-detail"
+                title="Click to view and commit changes"
+                {% endif %}>
+
+              <!-- Git status badge -->
+              <td class="px-4 py-2.5">
+                {% if wt.git_label == 'clean' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success">
+                    <span class="w-1.5 h-1.5 rounded-full bg-success"></span>clean
+                  </span>
+                {% elif wt.git_label == 'dirty' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive">
+                    <span class="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse"></span>
+                    dirty
+                    {% if wt.modified %}· {{ wt.modified }}M{% endif %}
+                    {% if wt.untracked %}· {{ wt.untracked }}U{% endif %}
+                  </span>
+                {% elif wt.git_label == 'untracked' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                    <span class="w-1.5 h-1.5 rounded-full bg-warning"></span>
+                    untracked · {{ wt.untracked }}
+                  </span>
+                {% elif wt.git_label == 'orphaned' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                    <span class="w-1.5 h-1.5 rounded-full bg-warning"></span>orphaned
+                  </span>
+                {% elif wt.git_label == 'no_path' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                    <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground"></span>no path
+                  </span>
+                {% else %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive">
+                    <span class="w-1.5 h-1.5 rounded-full bg-destructive"></span>{{ wt.git_label }}
+                  </span>
+                {% endif %}
+              </td>
+
+              <!-- Project -->
+              <td class="px-4 py-2.5 text-xs text-muted-foreground font-mono">
+                {{ wt.project_id }}
+              </td>
+
+              <!-- Item -->
+              <td class="px-4 py-2.5">
+                {% if wt.item_id not in ('—', '(main)') %}
+                  <a href="/project/{{ wt.project_id }}/item/{{ wt.item_id }}"
+                     onclick="event.stopPropagation()"
+                     class="font-mono text-xs font-semibold text-primary hover:underline">
+                    {{ wt.item_id }}
+                  </a>
+                {% else %}
+                  <span class="text-xs text-muted-foreground">{{ wt.item_id }}</span>
+                {% endif %}
+              </td>
+
+              <!-- Branch -->
+              <td class="px-4 py-2.5 font-mono text-xs text-foreground max-w-[180px] truncate" title="{{ wt.branch }}">
+                {{ wt.branch }}
+              </td>
+
+              <!-- Batch status -->
+              <td class="px-4 py-2.5">
+                {% if wt.batch_status == 'main' %}
+                  <span class="text-xs text-muted-foreground font-medium">main checkout</span>
+                {% elif wt.batch_status == 'executing' %}
+                  <span class="text-xs text-primary font-medium">executing</span>
+                {% elif wt.batch_status == 'setting_up' %}
+                  <span class="text-xs text-info font-medium">setting up</span>
+                {% elif wt.batch_status == 'merging' %}
+                  <span class="text-xs text-warning font-medium">merging</span>
+                {% else %}
+                  <span class="text-xs text-muted-foreground">{{ wt.batch_status }}</span>
+                {% endif %}
+              </td>
+
+              <!-- Commits ahead -->
+              <td class="px-4 py-2.5 text-right font-mono text-xs">
+                {% if wt.ahead >= 0 %}
+                  <span class="{% if wt.ahead == 0 %}text-muted-foreground{% else %}text-foreground{% endif %}">
+                    +{{ wt.ahead }}
+                  </span>
+                {% else %}
+                  <span class="text-muted-foreground">—</span>
+                {% endif %}
+              </td>
+
+              <!-- Path -->
+              <td class="px-4 py-2.5 font-mono text-xs text-muted-foreground max-w-xs truncate hidden lg:table-cell"
+                  title="{{ wt.path }}">
+                {{ wt.path }}
+              </td>
+
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Summary row -->
+    {% set dirty_count = worktrees | selectattr('git_label', 'equalto', 'dirty') | list | length %}
+    {% set orphan_count = worktrees | selectattr('is_orphan') | list | length %}
+    {% set clean_count = worktrees | selectattr('git_label', 'equalto', 'clean') | list | length %}
+    <p class="mt-2 text-xs text-muted-foreground">
+      {{ worktrees | length }} worktree{% if worktrees | length != 1 %}s{% endif %}
+      &nbsp;·&nbsp; <span class="text-success">{{ clean_count }} clean</span>
+      {% if dirty_count %}
+        &nbsp;·&nbsp; <span class="text-destructive">{{ dirty_count }} dirty</span>
+      {% endif %}
+      {% if orphan_count %}
+        &nbsp;·&nbsp; <span class="text-warning">{{ orphan_count }} orphaned</span>
+      {% endif %}
+      &nbsp;·&nbsp; refreshed {{ worktrees[0].checked_at.strftime('%H:%M:%S') if worktrees else '' }} UTC
+      &nbsp;·&nbsp; <span class="text-muted-foreground italic">click a dirty row to view &amp; commit</span>
+    </p>
+
+  {% endif %}
+</div>

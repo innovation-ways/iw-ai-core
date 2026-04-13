@@ -27,6 +27,7 @@ from orch.cli.step_commands import (
     step_skip,
     step_start,
 )
+from orch.cli.worktree_commands import worktree_status
 
 
 @click.group()
@@ -80,3 +81,4 @@ cli.add_command(sync_agents_cmd, name="sync-agents")
 cli.add_command(init_project_cmd, name="init-project")
 cli.add_command(daemon)
 cli.add_command(projects)
+cli.add_command(worktree_status, name="worktree-status")

@@ -6,6 +6,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from fastapi import FastAPI
 
@@ -28,6 +29,7 @@ from dashboard.routers import (
     sse,
     system,
     tests,
+    worktrees,
 )
 from orch.test_runner import mark_orphaned_runs
 
@@ -67,6 +69,7 @@ def create_app() -> FastAPI:
         return _dt_module.datetime.fromtimestamp(ts, tz=_dt_module.UTC).strftime("%H:%M:%S")
 
     templates.env.filters["fmt_ts_time"] = _fmt_ts_time
+    templates.env.filters["urlencode"] = quote
     app.state.templates = templates
 
     # Register routers
@@ -83,5 +86,6 @@ def create_app() -> FastAPI:
     app.include_router(quality.router)
     app.include_router(project_pages.router)
     app.include_router(search.router)
+    app.include_router(worktrees.router)
 
     return app

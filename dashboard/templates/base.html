@@ -128,6 +128,7 @@
       </div>
       {% set system_links = [
         ('/system/running', 'Running Tasks'),
+        ('/system/worktrees', 'Worktree Health'),
         ('/system/status', 'System Status'),
         ('/system/all-active', 'All Active Work'),
         ('/system/config', 'Configuration'),
@@ -143,6 +144,11 @@
           <span>{{ label }}</span>
           {% if href == '/system/running' and running_count|default(0) > 0 %}
             <span class="ml-auto text-xs bg-primary text-primary-foreground rounded-full px-1.5 py-0.5">{{ running_count }}</span>
+          {% elif href == '/system/worktrees' %}
+            <span hx-get="/system/nav/worktree-badge"
+                  hx-trigger="load, every 60s"
+                  hx-swap="outerHTML"
+                  class="ml-auto"></span>
           {% endif %}
         </a>
       {% endfor %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Worktree Health{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="text-2xl font-semibold text-foreground">Worktree Health</h1>
+    <p class="text-muted-foreground text-sm mt-1">
+      Git status of all active agent worktrees across all projects. Dirty or orphaned worktrees
+      can block squash-merges — resolve before the merge phase.
+    </p>
+  </div>
+
+  {% set dirty_count = worktrees | selectattr('git_label', 'equalto', 'dirty') | list | length %}
+  {% set orphan_count = worktrees | selectattr('is_orphan') | list | length %}
+  {% if dirty_count or orphan_count %}
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-destructive/10 text-destructive border border-destructive/20">
+      <span class="w-2 h-2 rounded-full bg-destructive animate-pulse"></span>
+      {{ dirty_count + orphan_count }} issue{% if dirty_count + orphan_count != 1 %}s{% endif %}
+    </span>
+  {% elif worktrees %}
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-success/10 text-success border border-success/20">
+      <span class="w-2 h-2 rounded-full bg-success"></span>
+      All clean
+    </span>
+  {% endif %}
+</div>
+
+<!-- Worktree table (auto-refreshes every 30 s) -->
+{% include "fragments/worktree_table.html" %}
+
+<!-- File detail panel — populated by clicking a dirty row -->
+<div id="worktree-detail" class="mt-4"></div>
+
+<!-- Help text -->
+<div class="mt-6 bg-muted/30 border border-border rounded-lg p-4 text-xs text-muted-foreground space-y-1.5">
+  <p class="font-medium text-foreground">Status guide</p>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 mt-2">
+    <div><span class="font-mono text-success">clean</span> — no changes, safe to merge</div>
+    <div><span class="font-mono text-destructive">dirty</span> — tracked files modified; merge will fail</div>
+    <div><span class="font-mono text-warning">untracked</span> — new files not staged; harmless but worth reviewing</div>
+    <div><span class="font-mono text-warning">orphaned</span> — worktree on disk with no active batch item; safe to delete</div>
+    <div><span class="font-mono text-muted-foreground">no_path</span> — path in DB does not exist on disk</div>
+    <div><span class="font-mono text-muted-foreground">error / timeout</span> — git command failed</div>
+  </div>
+  <p class="mt-2">
+    To remove an orphaned worktree:
+    <code class="bg-muted px-1 py-0.5 rounded">iw worktree-status</code> to identify it, then delete via the item detail page or
+    <code class="bg-muted px-1 py-0.5 rounded">git worktree remove --force &lt;path&gt;</code>
+  </p>
+</div>
+{% endblock %}
