@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "add_doc_job_trigger_reason"
-down_revision = "20260413144509_add_doc_lint_warnings"
+down_revision = "add_doc_lint_warnings"
 branch_labels = None
 depends_on = None
 

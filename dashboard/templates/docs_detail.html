@@ -26,7 +26,9 @@
             'release_notes': 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200',
             'error_catalog': 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200',
             'webhook_ref': 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-200',
-            'user_guide': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'
+            'user_guide': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
+            'product_overview': 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-200',
+            'feature_catalog': 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-200'
           } %}
           <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium {{ type_colors.get(doc.doc_type.value, 'bg-muted text-muted-foreground') }}">
             {{ doc.doc_type.value|title }}

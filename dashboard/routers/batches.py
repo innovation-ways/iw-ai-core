@@ -427,7 +427,7 @@ def batch_diagram_png(
     return FastAPIResponse(
         content=batch.execution_plan_png,
         media_type="image/png",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
 
 

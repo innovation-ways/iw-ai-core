@@ -11,6 +11,12 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
+# revision identifiers, used by Alembic.
+revision = "73a7ae48b82b"
+down_revision = "6a5e03db855a"
+branch_labels = None
+depends_on = None
+
 
 def upgrade() -> None:
     op.add_column(

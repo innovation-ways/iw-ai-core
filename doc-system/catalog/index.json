@@ -1,0 +1,17 @@
+{
+  "documents": [
+    {
+      "id": "MKT-001",
+      "title": "IW AI Core — Platform Product Overview",
+      "category": "marketing",
+      "template": "promotional.html",
+      "audience": ["executives", "engineering-managers", "stakeholders"],
+      "description": "High-level product overview of the IW AI Core orchestration platform. Covers the problem it solves, key capabilities, and value delivered to engineering teams. Non-technical tone.",
+      "status": "draft",
+      "version": "1.0",
+      "last_generated": "2026-04-13",
+      "slug": "iw-ai-core-product-overview",
+      "doc_type": "product_overview"
+    }
+  ]
+}

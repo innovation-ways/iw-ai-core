@@ -1,0 +1,31 @@
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#DBEAFE', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#3B82F6', 'lineColor': '#64748B', 'secondaryColor': '#D1FAE5', 'tertiaryColor': '#F8FAFC', 'background': '#FFFFFF', 'mainBkg': '#DBEAFE', 'nodeBorder': '#3B82F6', 'clusterBkg': '#F1F5F9', 'titleColor': '#1E293B', 'edgeLabelBackground': '#F8FAFC', 'fontFamily': 'Inter'}}}%%
+graph TB
+    subgraph Platform ["IW AI Core Platform"]
+        DB[(PostgreSQL\nState & History)]
+        Daemon[Orchestration\nDaemon]
+        Dashboard[Web Dashboard]
+        CLI[iw CLI]
+    end
+
+    subgraph Projects ["Registered Projects"]
+        P1[Project A]
+        P2[Project B]
+        P3[Project C]
+    end
+
+    subgraph Agents ["AI Agents"]
+        A1[Claude Code]
+        A2[OpenCode]
+    end
+
+    Human([Engineering\nTeam]) -->|designs & approves| Dashboard
+    Dashboard <-->|reads & controls| DB
+    Daemon <-->|polls & updates| DB
+    Daemon -->|launches agents in| Projects
+    A1 & A2 -->|iw step-start\niw step-done| CLI
+    CLI -->|writes state| DB
+    Daemon -->|merges to main| Projects
+
+    style Platform fill:#F1F5F9,stroke:#3B82F6,stroke-width:2px
+    style Projects fill:#D1FAE5,stroke:#10B981,stroke-width:2px
+    style Agents fill:#DBEAFE,stroke:#3B82F6,stroke-width:2px
