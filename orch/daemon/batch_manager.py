@@ -524,6 +524,21 @@ class BatchManager:
                         prompt_path = design_dir / prompt_rel
                         if prompt_path.exists():
                             prompt_content = prompt_path.read_text()
+                    elif s.get("command"):
+                        # qv-gate step: build prompt from the explicit command field
+                        gate_cmd = s["command"]
+                        gate_name = s.get("gate", step_id)
+                        description = s.get("description", "")
+                        prompt_content = (
+                            f"Run the following quality gate and report results.\n\n"
+                            f"**Gate**: {gate_name}\n"
+                            f"**Command**: `{gate_cmd}`\n"
+                            f"**Description**: {description}\n\n"
+                            f"Execute exactly: `{gate_cmd}`\n"
+                            f"Capture the output. If exit code is 0, the gate passed. "
+                            f"Otherwise it failed.\n"
+                            f"Report PASS or FAIL with the relevant output."
+                        )
                     break
 
         if not prompt_content:
