@@ -1,0 +1,88 @@
+{
+  "id": "F-00011",
+  "type": "Feature",
+  "title": "Project-Level Documentation System — Foundation (Phase 1)",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "ProjectDoc, ProjectDocVersion, DocGenerationJob models + Alembic migration + FTS trigger",
+      "prompt": "prompts/F-00011_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "backend-impl",
+      "description": "DocService: CRUD, FTS query, version snapshot, staleness detection",
+      "prompt": "prompts/F-00011_S02_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-impl",
+      "description": "Code review of S01 (Database) + S02 (Backend)",
+      "prompt": "prompts/F-00011_S03_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "api-impl",
+      "description": "iw doc-update CLI command with all metadata flags",
+      "prompt": "prompts/F-00011_S04_API_prompt.md",
+      "parallel_with": "S05"
+    },
+    {
+      "step": "S05",
+      "agent": "frontend-impl",
+      "description": "Docs sidebar tab, library card-grid view, document detail page, PDF download route",
+      "prompt": "prompts/F-00011_S05_Frontend_prompt.md",
+      "parallel_with": "S04"
+    },
+    {
+      "step": "S06",
+      "agent": "tests-impl",
+      "description": "Dashboard route integration tests, CLI integration tests, end-to-end roundtrip, boundary + invariant tests",
+      "prompt": "prompts/F-00011_S06_Tests_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-agent review: completeness, integration, InnoForge alignment, security, UI elegance",
+      "prompt": "prompts/F-00011_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    }
+  ]
+}

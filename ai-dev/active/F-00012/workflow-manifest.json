@@ -1,0 +1,97 @@
+{
+  "id": "F-00012",
+  "type": "Feature",
+  "title": "Project-Level Documentation System — AI Generation (Phase 2)",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "DocJobPoller daemon component, job lifecycle methods, agent executor integration, stall detection",
+      "prompt": "prompts/F-00012_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "api-impl",
+      "description": "iw doc-job-start, iw doc-job-done CLI commands, SSE stream route, job status route, generate route",
+      "prompt": "prompts/F-00012_S02_API_prompt.md",
+      "parallel_with": "S03"
+    },
+    {
+      "step": "S03",
+      "agent": "frontend-impl",
+      "description": "Generate/Regenerate buttons, SSE-driven progress indicator, job history panel, library card refresh on completion",
+      "prompt": "prompts/F-00012_S03_Frontend_prompt.md",
+      "parallel_with": "S02"
+    },
+    {
+      "step": "S04",
+      "agent": "tests-impl",
+      "description": "Full generation lifecycle integration tests, SSE stream tests, CLI command tests, boundary tests",
+      "prompt": "prompts/F-00012_S04_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-agent review: completeness, daemon integration, SSE safety, security",
+      "prompt": "prompts/F-00012_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "frontend-tests",
+      "command": "make test-frontend",
+      "description": "QV: Frontend tests"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    }
+  ]
+}

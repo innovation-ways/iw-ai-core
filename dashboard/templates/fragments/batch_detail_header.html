@@ -18,9 +18,9 @@
       <span class="text-xs text-muted-foreground">Max parallel: {{ batch.max_parallel }}</span>
     </div>
     <div class="text-xs text-muted-foreground mt-1">
-      Created: {{ batch.created_at.strftime('%Y-%m-%d %H:%M') }}
+      Created: {{ batch.created_at | localdt('%Y-%m-%d %H:%M') }}
       {% if batch.completed_at %}
-        &middot; Completed: {{ batch.completed_at.strftime('%Y-%m-%d %H:%M') }}
+        &middot; Completed: {{ batch.completed_at | localdt('%Y-%m-%d %H:%M') }}
       {% endif %}
       {% if batch_duration_secs is not none %}
         &middot; Duration:

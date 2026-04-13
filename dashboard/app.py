@@ -66,9 +66,21 @@ def create_app() -> FastAPI:
     def _fmt_ts_time(ts: float) -> str:
         import datetime as _dt_module
 
-        return _dt_module.datetime.fromtimestamp(ts, tz=_dt_module.UTC).strftime("%H:%M:%S")
+        return (
+            _dt_module.datetime.fromtimestamp(ts, tz=_dt_module.UTC)
+            .astimezone()
+            .strftime("%H:%M:%S")
+        )
+
+    def _localdt(dt: object, fmt: str = "%b %d %H:%M") -> str:
+        import datetime as _dt_module
+
+        if not isinstance(dt, _dt_module.datetime):
+            return ""
+        return dt.astimezone().strftime(fmt)
 
     templates.env.filters["fmt_ts_time"] = _fmt_ts_time
+    templates.env.filters["localdt"] = _localdt
     templates.env.filters["urlencode"] = quote
     app.state.templates = templates
 

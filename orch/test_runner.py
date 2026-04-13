@@ -70,6 +70,13 @@ def launch_test_run(run_id: int) -> None:
         run.allure_results_dir = allure_results
         run.allure_report_dir = allure_report
 
+        # Run cleanup_command before the main command (e.g., tear down a stale E2E
+        # docker stack left by a previous run that crashed or was killed).
+        cat_config = _resolve_category_config(run, db)
+        cleanup_cmd = cat_config.get("cleanup_command")
+        if cleanup_cmd:
+            _run_cleanup_command(cleanup_cmd, execution_dir)
+
         # When the command is a make invocation, override ALLURE_RESULTS so the Makefile
         # target writes to the run-specific directory instead of the shared default.
         command = run.command
@@ -355,6 +362,32 @@ def _resolve_allure_dirs(
     results_abs = str(Path(execution_dir) / f"{results_base}{suffix}")
     report_abs = str(Path(execution_dir) / f"{report_base}{suffix}")
     return results_abs, report_abs
+
+
+def _resolve_category_config(run: TestRun, db: Any) -> dict[str, Any]:
+    """Get the category config dict for this run from project config."""
+    project = db.scalar(select(Project).where(Project.id == run.project_id))
+    if project is None:
+        return {}
+    config = project.config or {}
+    config_key = "quality_config" if run.run_type == "quality" else "test_config"
+    categories = config.get(config_key, {}).get("categories", {})
+    return categories.get(run.category, {})  # type: ignore[no-any-return]
+
+
+def _run_cleanup_command(command: str, cwd: str) -> None:
+    """Run a cleanup command before the main test, ignoring failures.
+
+    Used to tear down stale E2E docker stacks left by crashed or killed runs.
+    """
+    with contextlib.suppress(Exception):
+        subprocess.run(
+            command,
+            shell=True,
+            cwd=cwd,
+            capture_output=True,
+            timeout=60,
+        )
 
 
 def _generate_allure_report(results_dir: str, report_dir: str | None, cwd: str) -> bool:
