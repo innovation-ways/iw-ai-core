@@ -112,7 +112,7 @@
           <td class="px-4 py-2 text-xs text-foreground max-w-xs truncate">{{ item.title }}</td>
           <td class="px-4 py-2">{{ status_badge(item.status) }}</td>
           <td class="px-4 py-2 text-xs text-muted-foreground">
-            {{ item.created_at.strftime('%b %d') }}
+            {{ item.created_at | localdt('%b %d') }}
           </td>
           <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
             {% if item.duration_secs is not none %}

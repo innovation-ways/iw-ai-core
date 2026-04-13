@@ -60,7 +60,7 @@
           <td class="px-4 py-2">{{ status_badge(step.status) }}</td>
           <td class="px-4 py-2 font-mono text-xs text-muted-foreground hidden sm:table-cell">
             {% if step.started_at %}
-              {{ step.started_at.strftime('%H:%M:%S') }}
+              {{ step.started_at | localdt('%H:%M:%S') }}
             {% else %}
               —
             {% endif %}

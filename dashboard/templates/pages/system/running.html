@@ -192,7 +192,7 @@
               {% endif %}
             </td>
             <td class="px-4 py-2 text-xs text-muted-foreground">
-              {{ row.completed_at.strftime('%H:%M:%S') }}
+              {{ row.completed_at | localdt('%H:%M:%S') }}
             </td>
           </tr>
         {% endfor %}

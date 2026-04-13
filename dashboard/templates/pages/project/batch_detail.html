@@ -247,7 +247,7 @@
       {% for ev in batch_events %}
       <tr class="border-b border-border last:border-0 hover:bg-muted/20">
         <td class="px-4 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
-          {{ ev.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+          {{ ev.created_at | localdt('%Y-%m-%d %H:%M:%S') }}
         </td>
         <td class="px-4 py-2">
           <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium

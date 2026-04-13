@@ -48,7 +48,7 @@
         <p class="text-xs text-muted-foreground mb-1">Last poll</p>
         <p class="text-sm text-foreground">
           {% if daemon.last_poll_at %}
-            {{ daemon.last_poll_at.strftime('%H:%M:%S') }}
+            {{ daemon.last_poll_at | localdt('%H:%M:%S') }}
           {% else %}
             —
           {% endif %}
