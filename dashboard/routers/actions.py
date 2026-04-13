@@ -564,10 +564,21 @@ async def create_batch_from_selection(
             }
         )
 
-    analysis = analyze_dependencies(items_data)
-    batch.execution_plan_md = generate_execution_plan_md(batch_id, analysis, 4)
-    batch.execution_plan_drawio = generate_drawio(batch_id, analysis, 4)
-    batch.execution_plan_png = generate_png(batch_id, analysis, 4)
+    # Run all CPU-bound plan generation in a thread so the event loop isn't
+    # blocked while Pillow/drawio rendering runs (~5-30s for large batches).
+    import asyncio as _asyncio
+
+    def _build_plan() -> tuple:
+        _analysis = analyze_dependencies(items_data)
+        _md = generate_execution_plan_md(batch_id, _analysis, 4)
+        _drawio = generate_drawio(batch_id, _analysis, 4)
+        _png = generate_png(batch_id, _analysis, 4)
+        return _analysis, _md, _drawio, _png
+
+    analysis, plan_md, plan_drawio, plan_png = await _asyncio.to_thread(_build_plan)
+    batch.execution_plan_md = plan_md
+    batch.execution_plan_drawio = plan_drawio
+    batch.execution_plan_png = plan_png
 
     for item in items:
         group = analysis[item.id].group if item.id in analysis else 0
