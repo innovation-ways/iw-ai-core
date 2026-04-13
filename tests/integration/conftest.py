@@ -21,7 +21,14 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
-from orch.db.models import FTS_FUNCTION_SQL, FTS_TRIGGER_SQL, Base, Project
+from orch.db.models import (
+    FTS_FUNCTION_SQL,
+    FTS_TRIGGER_SQL,
+    PROJECT_DOCS_FTS_FUNCTION_SQL,
+    PROJECT_DOCS_FTS_TRIGGER_SQL,
+    Base,
+    Project,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -61,6 +68,8 @@ def db_engine(pg_container: PostgresContainer) -> Engine:
     with engine.connect() as conn:
         conn.execute(text(FTS_FUNCTION_SQL))
         conn.execute(text(FTS_TRIGGER_SQL))
+        conn.execute(text(PROJECT_DOCS_FTS_FUNCTION_SQL))
+        conn.execute(text(PROJECT_DOCS_FTS_TRIGGER_SQL))
         conn.commit()
 
     return engine
