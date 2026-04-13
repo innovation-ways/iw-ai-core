@@ -8,15 +8,31 @@
     <h1 class="text-2xl font-semibold text-foreground">Documentation</h1>
     <p class="text-muted-foreground text-sm mt-1">Project knowledge base, auto-generated and human-authored docs.</p>
   </div>
-  <!-- Settings Gear Icon -->
-  <button
-    hx-get="/api/project/{{ current_project.id }}/docs/config"
-    hx-target="#docs-config-overlay"
-    hx-swap="innerHTML"
-    class="p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-md hover:bg-gray-100"
-    aria-label="Documentation settings">
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-  </button>
+  <div class="flex items-center gap-2">
+    <!-- Select mode toggle -->
+    <button
+      id="select-mode-btn"
+      hx-get="/project/{{ current_project.id }}/api/docs/select-mode"
+      hx-target="#docs-grid"
+      hx-swap="innerHTML"
+      class="flex items-center gap-2 px-3 py-2 border border-border rounded-md text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+      onclick="toggleSelectMode()"
+      aria-label="Toggle select mode">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 11l3-3m0 0l3 3m-3-3v8m0-13a9 9 0 110 18 9 9 0 010-18z"/>
+      </svg>
+      Select
+    </button>
+    <!-- Settings Gear Icon -->
+    <button
+      hx-get="/api/project/{{ current_project.id }}/docs/config"
+      hx-target="#docs-config-overlay"
+      hx-swap="innerHTML"
+      class="p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-md hover:bg-gray-100"
+      aria-label="Documentation settings">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+    </button>
+  </div>
 </div>
 
 <!-- Config overlay container -->
@@ -98,7 +114,7 @@
 </div>
 
 <!-- Card Grid (htmx target) -->
-<div id="docs-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+<div id="docs-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" data-select-mode="false">
   {% if docs %}
     {% for doc in docs %}
       {% include "fragments/docs_card.html" %}
@@ -119,5 +135,124 @@
     </div>
   {% endif %}
 </div>
+
+<!-- Floating Action Bar (hidden by default) -->
+<div id="export-action-bar"
+     class="fixed bottom-6 left-1/2 -translate-x-1/2 hidden z-40
+            bg-card border border-border rounded-lg shadow-lg px-4 py-3
+            flex items-center gap-4">
+  <span id="selected-count" class="text-sm font-medium text-foreground">0 selected</span>
+  <div class="flex items-center gap-2">
+    <button onclick="exportSelected()"
+            class="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+      </svg>
+      Export Selected
+    </button>
+    <button onclick="clearSelection()"
+            class="flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">
+      Clear
+    </button>
+  </div>
+</div>
+
+<script>
+var selectModeActive = false;
+
+function toggleSelectMode() {
+  selectModeActive = !selectModeActive;
+  var grid = document.getElementById('docs-grid');
+  var actionBar = document.getElementById('export-action-bar');
+  var selectBtn = document.getElementById('select-mode-btn');
+  
+  if (grid) {
+    grid.dataset.selectMode = selectModeActive;
+  }
+  
+  if (selectBtn) {
+    if (selectModeActive) {
+      selectBtn.classList.add('bg-primary', 'text-primary-foreground', 'border-primary');
+      selectBtn.classList.remove('text-muted-foreground');
+      selectBtn.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+        Cancel
+      `;
+    } else {
+      selectBtn.classList.remove('bg-primary', 'text-primary-foreground', 'border-primary');
+      selectBtn.classList.add('text-muted-foreground');
+      selectBtn.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 11l3-3m0 0l3 3m-3-3v8m0-13a9 9 0 110 18 9 9 0 010-18z"/>
+        </svg>
+        Select
+      `;
+      clearSelection();
+    }
+  }
+  
+  if (!selectModeActive) {
+    if (actionBar) actionBar.classList.add('hidden');
+  }
+  
+  updateCheckboxVisibility();
+}
+
+function updateCheckboxVisibility() {
+  var checkboxes = document.querySelectorAll('.doc-select-checkbox');
+  checkboxes.forEach(function(cb) {
+    if (cb) {
+      cb.style.display = selectModeActive ? 'block' : 'none';
+    }
+  });
+}
+
+function updateSelectedCount() {
+  var checked = document.querySelectorAll('.doc-select-checkbox:checked');
+  var count = checked.length;
+  var countEl = document.getElementById('selected-count');
+  var actionBar = document.getElementById('export-action-bar');
+  
+  if (countEl) {
+    countEl.textContent = count + ' selected';
+  }
+  
+  if (actionBar) {
+    if (count > 0) {
+      actionBar.classList.remove('hidden');
+    } else {
+      actionBar.classList.add('hidden');
+    }
+  }
+}
+
+function exportSelected() {
+  var checked = document.querySelectorAll('.doc-select-checkbox:checked');
+  var docIds = Array.from(checked).map(function(cb) { return cb.value; });
+  
+  if (docIds.length === 0) return;
+  
+  var projectId = '{{ current_project.id }}';
+  var url = '/api/project/' + projectId + '/docs/export?doc_ids=' + docIds.join(',');
+  window.location.href = url;
+}
+
+function clearSelection() {
+  var checkboxes = document.querySelectorAll('.doc-select-checkbox:checked');
+  checkboxes.forEach(function(cb) { cb.checked = false; });
+  updateSelectedCount();
+}
+
+// Listen for checkbox changes
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('docs-grid')?.addEventListener('change', function(e) {
+    if (e.target.classList.contains('doc-select-checkbox')) {
+      updateSelectedCount();
+    }
+  });
+});
+</script>
 
 {% endblock %}

@@ -1,16 +1,16 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00013",
-  "title": "Project-Level Documentation System — Automation (Phase 3)",
+  "id": "F-00014",
+  "title": "Project-Level Documentation System — Polish (Phase 4)",
   "status": "approved",
   "phase": "active",
-  "total_steps": 12,
+  "total_steps": 13,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00017",
+  "batch_id": "BATCH-00018",
   "worktree": null,
-  "created_at": "2026-04-13T09:54:59.721953+00:00",
-  "updated_at": "2026-04-13T09:54:59.721953+00:00",
+  "created_at": "2026-04-13T09:54:59.939742+00:00",
+  "updated_at": "2026-04-13T09:54:59.939742+00:00",
   "steps": [
     {
       "step_id": "S01",
@@ -20,26 +20,26 @@
     },
     {
       "step_id": "S02",
-      "label": "Frontend",
+      "label": "Api",
       "type": "implementation",
       "status": "pending"
     },
     {
       "step_id": "S03",
-      "label": "Tests",
+      "label": "Frontend",
       "type": "implementation",
       "status": "pending"
     },
     {
       "step_id": "S04",
-      "label": "CodeReviewFinal",
-      "type": "code_review_final",
+      "label": "Tests",
+      "type": "implementation",
       "status": "pending"
     },
     {
       "step_id": "S05",
-      "label": "QvGate",
-      "type": "quality_validation",
+      "label": "CodeReviewFinal",
+      "type": "code_review_final",
       "status": "pending"
     },
     {
@@ -83,10 +83,16 @@
       "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
+    },
+    {
+      "step_id": "S13",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
     }
   ],
-  "branch": "agent/F-00013-project-level-documentation-sy",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00013",
+  "branch": "agent/F-00014-project-level-documentation-sy",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00014",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-13T13:44:36Z"
+  "brief_generated_at": "2026-04-13T16:19:39Z"
 }

@@ -1,4 +1,12 @@
-<div id="doc-card-{{ doc.slug }}" class="bg-card border border-border rounded-lg p-4 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-150 flex flex-col relative">
+<div id="doc-card-{{ doc.slug }}" class="bg-card border border-border rounded-lg p-4 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-150 flex flex-col relative" data-select-mode="false">
+  <!-- Select checkbox (hidden by default) -->
+  <div class="absolute top-3 left-3 doc-select-checkbox-container" style="display: none;">
+    <input type="checkbox"
+           class="doc-select-checkbox w-5 h-5 rounded border-border text-primary focus:ring-primary cursor-pointer"
+           value="{{ doc.doc_id }}"
+           aria-label="Select {{ doc.title }}">
+  </div>
+
   <!-- Stale Badge (top-right corner, overlapping) -->
   {% if stale_doc_ids and doc.doc_id in stale_doc_ids %}
   <div class="absolute top-2 right-2">
@@ -101,7 +109,7 @@
     <p class="text-xs text-muted-foreground mt-2 italic">Content not yet generated</p>
   {% endif %}
 
-  <!-- Action Row: Generate/Regenerate + View -->
+  <!-- Action Row: Generate/Regenerate + View + Export -->
   <div class="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2">
     <!-- Generate/Regenerate Button -->
     <div id="doc-generate-btn-{{ doc.slug }}">
@@ -122,20 +130,31 @@
               hx-trigger="click"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity"
               aria-label="Regenerate documentation">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.003 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
         Regenerate
       </button>
       {% endif %}
     </div>
 
-    <!-- View Button -->
-    <a href="/project/{{ current_project.id if current_project else doc.project_id }}/docs/{{ doc.doc_id }}"
-       class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 transition-colors">
-      View
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-      </svg>
-    </a>
+    <!-- View + Export Buttons -->
+    <div class="flex items-center gap-2">
+      <a href="/project/{{ current_project.id if current_project else doc.project_id }}/docs/{{ doc.doc_id }}"
+         class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 transition-colors">
+        View
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </a>
+      <a href="/api/project/{{ current_project.id if current_project else doc.project_id }}/docs/{{ doc.doc_id }}/export"
+         download
+         class="inline-flex items-center gap-1 px-3 py-1.5 border border-border rounded-md text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+         aria-label="Export {{ doc.title }}">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+        Export
+      </a>
+    </div>
   </div>
 </div>
 
@@ -164,50 +183,24 @@ document.body.addEventListener('docJobFailed', function(e) {
   }
   htmx.ajax('GET', '/api/project/{{ current_project.id if current_project else doc.project_id }}/docs/' + detail.doc_id + '/card', {target: '#' + cardId, swap: 'outerHTML'});
 });
+
+// Update checkbox visibility when select mode changes
+document.addEventListener('DOMContentLoaded', function() {
+  var observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      if (mutation.attributeName === 'data-select-mode') {
+        var selectMode = mutation.target.dataset.selectMode === 'true';
+        var checkbox = mutation.target.querySelector('.doc-select-checkbox-container');
+        if (checkbox) {
+          checkbox.style.display = selectMode ? 'block' : 'none';
+        }
+      }
+    });
+  });
+  
+  var grid = document.getElementById('docs-grid');
+  if (grid) {
+    observer.observe(grid, { attributes: true });
+  }
+});
 </script>
-
-  <!-- Title -->
-  <h3 class="text-lg font-semibold text-foreground mb-1 line-clamp-2">
-    <a href="/project/{{ current_project.id if current_project else doc.project_id }}/docs/{{ doc.doc_id }}"
-       class="hover:text-primary transition-colors">
-      {{ doc.title }}
-    </a>
-  </h3>
-
-  <!-- Editorial Category -->
-  <p class="text-sm text-muted-foreground mb-3">
-    {{ doc.editorial_category.value|title }}
-  </p>
-
-  <!-- Footer Row: Version + Time + Sources -->
-  <div class="mt-auto flex items-center justify-between text-xs text-muted-foreground">
-    <div class="flex items-center gap-2">
-      <span class="font-mono">v{{ doc.version }}</span>
-      {% if doc.generated_at %}
-        <span>·</span>
-        <span title="{{ doc.generated_at | localdt('%Y-%m-%d %H:%M:%S') }}">
-          {{ doc.generated_at | localdt('%b %d') }}
-        </span>
-      {% endif %}
-    </div>
-    <span>{{ doc.source_paths|length if doc.source_paths else 0 }} sources</span>
-  </div>
-
-  <!-- Content Preview (if available) -->
-  {% if doc.content %}
-    <p class="text-xs text-muted-foreground mt-2 line-clamp-2">{{ doc.content[:200] }}</p>
-  {% else %}
-    <p class="text-xs text-muted-foreground/60 mt-2 italic">Content not yet generated</p>
-  {% endif %}
-
-  <!-- View Button -->
-  <div class="mt-4 pt-3 border-t border-border">
-    <a href="/project/{{ current_project.id if current_project else doc.project_id }}/docs/{{ doc.doc_id }}"
-       class="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 transition-colors">
-      View
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-      </svg>
-    </a>
-  </div>
-</div>

@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+import difflib
 import fnmatch
 import hashlib
+import io
 import re
 import subprocess
+import zipfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import httpx
 import yaml
 from sqlalchemy import func, select, text
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from sqlalchemy.orm import Session
 
 from orch.db.models import (
@@ -551,3 +558,236 @@ class DocService:
 
     def get_doc_job(self, job_id: str) -> DocGenerationJob | None:
         return self._session.get(DocGenerationJob, job_id)
+
+    def diff_versions(
+        self,
+        project_id: str,
+        doc_id: str,
+        version_old: int,
+        version_new: int,
+    ) -> list[str]:
+        id_ = f"{project_id}:{doc_id}"
+        result_old = self._session.execute(
+            select(ProjectDocVersion)
+            .where(ProjectDocVersion.doc_id == id_)
+            .where(ProjectDocVersion.version == version_old)
+        )
+        version_old_record = result_old.scalar_one_or_none()
+        if version_old_record is None:
+            raise KeyError(f"Version {version_old} not found for doc '{id_}'")
+
+        result_new = self._session.execute(
+            select(ProjectDocVersion)
+            .where(ProjectDocVersion.doc_id == id_)
+            .where(ProjectDocVersion.version == version_new)
+        )
+        version_new_record = result_new.scalar_one_or_none()
+        if version_new_record is None:
+            raise KeyError(f"Version {version_new} not found for doc '{id_}'")
+
+        if version_old >= version_new:
+            raise ValueError("version_old must be less than version_new")
+
+        old_content = version_old_record.content or ""
+        new_content = version_new_record.content or ""
+
+        return list(
+            difflib.unified_diff(
+                old_content.splitlines(keepends=True),
+                new_content.splitlines(keepends=True),
+                fromfile=f"v{version_old}",
+                tofile=f"v{version_new}",
+                n=3,
+            )
+        )
+
+    def _is_ssrf_blocked(self, url: str) -> bool:
+        try:
+            parsed = re.match(r"https?://([^/:]+)", url)
+            if not parsed:
+                return True
+            hostname = parsed.group(1)
+
+            if hostname in ("localhost", "::1"):
+                return True
+            if hostname.startswith("127."):
+                return True
+            if hostname.endswith((".local", ".internal")):
+                return True
+
+            ssrf_blocks = (
+                "10.",
+                "172.16.",
+                "172.17.",
+                "172.18.",
+                "172.19.",
+                "172.20.",
+                "172.21.",
+                "172.22.",
+                "172.23.",
+                "172.24.",
+                "172.25.",
+                "172.26.",
+                "172.27.",
+                "172.28.",
+                "172.29.",
+                "172.30.",
+                "172.31.",
+                "192.168.",
+            )
+            return any(hostname.startswith(block) for block in ssrf_blocks)
+        except Exception:
+            return True
+
+    def validate_links(
+        self,
+        doc: ProjectDoc,
+        repo_root: str,
+        max_links: int = 20,
+    ) -> list[dict[str, str]]:
+        pattern = re.compile(r"!?\[([^\]]*)\]\(([^)]+)\)")
+        links = [(m.group(1), m.group(2)) for m in pattern.finditer(doc.content or "")]
+
+        broken: list[dict[str, str]] = []
+
+        for _, url in links[:max_links]:
+            if url.startswith(("http://", "https://")):
+                if self._is_ssrf_blocked(url):
+                    broken.append({"url": url, "type": "external", "status": "blocked_ssrf"})
+                    continue
+
+                try:
+                    response = httpx.head(url, timeout=5, follow_redirects=True)
+                    status = response.status_code
+                    if 200 <= status < 400:
+                        pass
+                    elif 400 <= status < 500:
+                        broken.append({"url": url, "type": "external", "status": str(status)})
+                    else:
+                        broken.append(
+                            {"url": url, "type": "external", "status": f"transient_{status}"}
+                        )
+                except httpx.HTTPStatusError as e:
+                    broken.append(
+                        {"url": url, "type": "external", "status": str(e.response.status_code)}
+                    )
+                except Exception:
+                    broken.append({"url": url, "type": "external", "status": "error"})
+            else:
+                path = Path(repo_root) / url
+                if path.exists():
+                    pass
+                else:
+                    broken.append({"url": url, "type": "internal", "status": "not_found"})
+
+        doc.broken_links = broken if broken else None
+        self._session.flush()
+
+        return broken
+
+    def export_bundle(
+        self,
+        _project_id: str,
+        doc_ids: list[str],
+        render_html_fn: Callable[[str, ProjectDoc], str],
+        render_pdf_fn: Callable[[str], bytes | None],
+    ) -> bytes:
+        buf = io.BytesIO()
+
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for doc_id in doc_ids:
+                doc = self._session.get(ProjectDoc, doc_id)
+                if doc is None or doc.content is None:
+                    continue
+
+                slug = doc.slug or doc.doc_id
+
+                html_content = render_html_fn(doc.content, doc)
+                pdf_bytes = render_pdf_fn(html_content)
+
+                if len(doc_ids) == 1:
+                    zf.writestr(f"{slug}.md", doc.content)
+                    zf.writestr(f"{slug}.html", html_content)
+                    if pdf_bytes is not None:
+                        zf.writestr(f"{slug}.pdf", pdf_bytes)
+                    zf.writestr(
+                        "_generation_notes.md",
+                        f"| Field | Value |\n|---|---|\n"
+                        f"| doc_id | {doc.doc_id} |\n"
+                        f"| project_id | {doc.project_id} |\n"
+                        f"| title | {doc.title} |\n"
+                        f"| version | {doc.version} |\n"
+                        f"| doc_type | {doc.doc_type.value} |\n"
+                        f"| generated_by | {doc.generated_by or ''} |\n"
+                        f"| generated_at | {doc.generated_at or ''} |\n"
+                        f"| pdf_available | {pdf_bytes is not None} |\n",
+                    )
+                else:
+                    zf.writestr(f"{slug}/{slug}.md", doc.content)
+                    zf.writestr(f"{slug}/{slug}.html", html_content)
+                    if pdf_bytes is not None:
+                        zf.writestr(f"{slug}/{slug}.pdf", pdf_bytes)
+                    zf.writestr(
+                        f"{slug}/_generation_notes.md",
+                        f"| Field | Value |\n|---|---|\n"
+                        f"| doc_id | {doc.doc_id} |\n"
+                        f"| project_id | {doc.project_id} |\n"
+                        f"| title | {doc.title} |\n"
+                        f"| version | {doc.version} |\n"
+                        f"| doc_type | {doc.doc_type.value} |\n"
+                        f"| generated_by | {doc.generated_by or ''} |\n"
+                        f"| generated_at | {doc.generated_at or ''} |\n"
+                        f"| pdf_available | {pdf_bytes is not None} |\n",
+                    )
+
+        buf.seek(0)
+        return buf.getvalue()
+
+    def search_docs_global(
+        self,
+        search: str,
+        doc_type: DocType | None = None,
+        status: DocStatus | None = None,
+        tier: DocTier | None = None,
+        project_id: str | None = None,
+        limit: int = 50,
+    ) -> list[tuple[ProjectDoc, str]]:
+        if not search or not search.strip():
+            return []
+
+        query = (
+            select(
+                ProjectDoc,
+                text(
+                    "ts_headline('english', content, plainto_tsquery('english', :search), "
+                    "'MaxWords=35, MinWords=20, ShortWord=3, MaxFragments=2, "
+                    'FragmentDelimiter=" ... "\') AS headline'
+                ).bindparams(search=search),
+            )
+            .join(Project, ProjectDoc.project_id == Project.id)
+            .where(ProjectDoc.content_search.op("@@")(func.plainto_tsquery("english", search)))
+        )
+
+        if doc_type is not None:
+            query = query.where(ProjectDoc.doc_type == doc_type)
+        if tier is not None:
+            query = query.where(ProjectDoc.tier == tier)
+        if project_id is not None:
+            query = query.where(ProjectDoc.project_id == project_id)
+
+        if status is None:
+            query = query.where(ProjectDoc.status != DocStatus.archived)
+        elif status != DocStatus.archived:
+            query = query.where(ProjectDoc.status == status)
+
+        query = query.order_by(
+            text("ts_rank(content_search, plainto_tsquery('english', :search)) DESC").bindparams(
+                search=search
+            )
+        )
+        query = query.limit(limit)
+
+        result = self._session.execute(query)
+        rows = result.all()
+
+        return [(row[0], row[1]) for row in rows]
