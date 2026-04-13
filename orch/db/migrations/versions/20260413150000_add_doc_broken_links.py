@@ -17,8 +17,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision: str = "20260413150000_add_doc_broken_links"
-down_revision: str | None = "20260413144705_add_doc_job_trigger_reason"
+revision: str = "add_doc_broken_links"
+down_revision: str | None = "add_doc_job_trigger_reason"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

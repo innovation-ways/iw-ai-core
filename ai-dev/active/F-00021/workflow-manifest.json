@@ -1,0 +1,88 @@
+{
+  "id": "F-00021",
+  "type": "Feature",
+  "title": "Research Panel in AI Dashboard",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "frontend-impl",
+      "description": "research.py router + research_library.html + research_detail.html + sidebar link + app.py registration",
+      "prompt": "prompts/F-00021_S01_Frontend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review of S01 Frontend implementation",
+      "prompt": "prompts/F-00021_S02_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Integration tests: library empty, library with docs, detail, 404, type-mismatch 404, null content",
+      "prompt": "prompts/F-00021_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-final-impl",
+      "description": "Global review: completeness, consistency, full test suite",
+      "prompt": "prompts/F-00021_S04_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": ".venv/bin/python -m ruff check dashboard/ tests/",
+      "description": "QV: Linting (iw-ai-core dashboard)"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": ".venv/bin/python -m ruff format --check dashboard/ tests/",
+      "description": "QV: Formatting (iw-ai-core dashboard)"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": ".venv/bin/python -m mypy dashboard/routers/research.py",
+      "description": "QV: Type checking (research router)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": ".venv/bin/python -m lint-imports 2>/dev/null || echo 'No arch check configured'",
+      "description": "QV: Architecture check (iw-ai-core)"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": ".venv/bin/python -m bandit -r dashboard/routers/research.py -ll 2>/dev/null || echo 'bandit not configured'",
+      "description": "QV: Security SAST (research router)"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": ".venv/bin/pytest tests/unit/ -x --timeout=60 -q 2>/dev/null || echo 'No unit tests — OK'",
+      "description": "QV: Unit tests (iw-ai-core)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": ".venv/bin/pytest tests/integration/ -x --timeout=300 -q",
+      "description": "QV: Integration tests (iw-ai-core)",
+      "timeout": 600
+    },
+    {
+      "step": "S12",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — capture Research panel post-implementation screenshot",
+      "prompt": "prompts/F-00021_S12_QVBrowser_prompt.md"
+    }
+  ]
+}

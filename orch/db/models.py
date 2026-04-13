@@ -155,6 +155,8 @@ class DocType(enum.Enum):
     error_catalog = "error_catalog"
     webhook_ref = "webhook_ref"
     user_guide = "user_guide"
+    product_overview = "product_overview"
+    feature_catalog = "feature_catalog"
 
 
 class DocTier(enum.Enum):

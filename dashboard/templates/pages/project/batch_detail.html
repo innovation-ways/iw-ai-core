@@ -58,7 +58,7 @@
         Download .drawio
       </a>
     </div>
-    <img src="/project/{{ current_project.id }}/batch/{{ batch.id }}/diagram.png"
+    <img src="/project/{{ current_project.id }}/batch/{{ batch.id }}/diagram.png?v={{ batch.updated_at.timestamp() | int }}"
          alt="{{ batch.id }} execution plan diagram"
          class="w-full rounded border border-border bg-white" />
   </div>
