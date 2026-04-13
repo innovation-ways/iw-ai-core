@@ -115,7 +115,8 @@ def research_html_view(
   body {{ font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 24px;
          color: #0F172A; line-height: 1.6; }}
   h1,h2,h3 {{ color: #1E293B; }} h2 {{ border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; }}
-  table {{ border-collapse: collapse; width: 100%; }} th,td {{ border: 1px solid #E2E8F0; padding: 8px 12px; }}
+  table {{ border-collapse: collapse; width: 100%; }} th,td
+           {{ border: 1px solid #E2E8F0; padding: 8px 12px; }}
   th {{ background: #F1F5F9; }} img {{ max-width: 100%; }}
   code {{ background: #F1F5F9; padding: 2px 5px; border-radius: 3px; font-size: 0.875em; }}
   pre {{ background: #F1F5F9; padding: 16px; border-radius: 6px; overflow-x: auto; }}
