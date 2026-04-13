@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IW AI Core — Platform Product Overview</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Inter, system-ui, sans-serif; color: #0F172A; background: #F8FAFC; line-height: 1.6; }
+  .page { max-width: 860px; margin: 0 auto; padding: 48px; background: #FFFFFF; }
+  header { border-bottom: 3px solid #3B82F6; padding-bottom: 24px; margin-bottom: 36px; display: flex; align-items: center; justify-content: space-between; }
+  .brand-name { font-size: 13px; font-weight: 600; color: #3B82F6; letter-spacing: 0.08em; text-transform: uppercase; }
+  .doc-meta { font-size: 12px; color: #64748B; }
+  h1 { font-size: 2rem; font-weight: 700; color: #1E293B; margin-bottom: 8px; line-height: 1.25; }
+  h2 { font-size: 1.25rem; font-weight: 600; color: #1E293B; margin-top: 36px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #E2E8F0; }
+  h3 { font-size: 1rem; font-weight: 600; color: #1E293B; margin-top: 20px; margin-bottom: 8px; }
+  p { margin-bottom: 14px; color: #1E293B; }
+  ul, ol { margin: 0 0 14px 24px; }
+  li { margin-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
+  th { background: #1E293B; color: #F8FAFC; text-align: left; padding: 10px 14px; font-weight: 600; }
+  td { padding: 9px 14px; border-bottom: 1px solid #E2E8F0; }
+  tr:nth-child(even) td { background: #F8FAFC; }
+  img { max-width: 100%; border: 1px solid #E2E8F0; border-radius: 6px; margin: 20px 0; }
+  hr { border: none; border-top: 1px solid #E2E8F0; margin: 28px 0; }
+  strong { font-weight: 600; color: #1E293B; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 2px solid #E2E8F0; font-size: 12px; color: #64748B; display: flex; justify-content: space-between; }
+  .badge { display: inline-block; background: #DBEAFE; color: #1E40AF; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.04em; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div>
+      <div class="brand-name">Innovation Ways</div>
+    </div>
+    <div class="doc-meta">
+      <span class="badge">MKT-001</span>&nbsp;&nbsp;
+      v1 &nbsp;·&nbsp; April 13, 2026 &nbsp;·&nbsp; Product Overview
+    </div>
+  </header>
+  <main>
+<hr>
+<p>id: MKT-001<br>
+title: "IW AI Core — Platform Product Overview"<br>
+version: "1.0"<br>
+date: 2026-04-13<br>
+author: Innovation Ways<br>
+audience:<br>
+  - executives<br>
+  - engineering-managers<br>
+  - stakeholders<br>
+status: draft<br>
+template: promotional.html<br>
+doc_type: product_overview</p>
+<hr>
+<h1>IW AI Core — Platform Product Overview</h1>
+<p>IW AI Core is Innovation Ways' orchestration platform for AI-assisted software development — a single, reliable backbone that manages how AI agents plan, execute, review, and ship code changes across any number of projects.</p>
+<hr>
+<h2>The Problem</h2>
+<p>Engineering teams adopting AI development tools quickly hit the same wall: the tools work in isolation but fall apart at scale. ID conflicts emerge when multiple agents run in parallel. Execution state scatters across JSON files and markdown directories. There is no unified view across projects. When something goes wrong mid-flight, recovery is manual and fragile.</p>
+<p>Building reliable, repeatable AI-assisted workflows on top of ad-hoc file systems is not a tooling problem — it is an infrastructure problem.</p>
+<hr>
+<h2>What It Is</h2>
+<p><strong>IW AI Core</strong> is a standalone platform that serves as the operational backbone for AI-assisted development. It replaces scattered file-based tracking with a database-backed system, giving every registered project atomic ID allocation, crash-safe execution, automated quality enforcement, and real-time visibility — all from a single installation.</p>
+<p>The platform is project-agnostic. Any software repository can register itself and immediately benefit from the full workflow pipeline without modifying its codebase.</p>
+<hr>
+<h2>How It Works</h2>
+<p><img alt="Platform Component Overview" src="_diagrams/platform-overview.png"></p>
+<p>The platform has four components that work together continuously:</p>
+<ul>
+<li>The <strong>Orchestration Daemon</strong> polls the database every 60 seconds, picks up approved work, launches AI agents in isolated workspaces, monitors progress, and merges completed work back to the project's main branch.</li>
+<li>The <strong><code>iw</code> CLI</strong> is the agent-to-platform bridge. AI agents call it to record each step they complete. It enforces all state transitions and writes every update atomically to the database.</li>
+<li>The <strong>Web Dashboard</strong> gives engineering teams real-time visibility into what every agent is doing across all projects, with controls to approve, pause, retry, or inspect any work item.</li>
+<li><strong>PostgreSQL</strong> is the single source of truth. No state lives in files. No state lives in memory. The daemon can restart at any point and resume exactly where it left off.</li>
+</ul>
+<hr>
+<h2>Key Capabilities</h2>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>What It Delivers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Multi-project orchestration</strong></td>
+<td>One platform installation manages unlimited registered projects simultaneously</td>
+</tr>
+<tr>
+<td><strong>Atomic ID allocation</strong></td>
+<td>Conflict-free, sequential IDs even when dozens of agents run in parallel</td>
+</tr>
+<tr>
+<td><strong>Batch execution</strong></td>
+<td>Group multiple work items, analyze dependencies, run independent items in parallel</td>
+</tr>
+<tr>
+<td><strong>Automated fix cycles</strong></td>
+<td>When a code review or quality check fails, the platform automatically retries — up to five attempts — before escalating to the team</td>
+</tr>
+<tr>
+<td><strong>Crash-safe resumption</strong></td>
+<td>If the daemon crashes mid-execution, agents keep running; the daemon resumes monitoring on restart without losing state</td>
+</tr>
+<tr>
+<td><strong>Full audit trail</strong></td>
+<td>Every step start, completion, and failure is recorded with timestamps, making every decision traceable</td>
+</tr>
+<tr>
+<td><strong>Skills distribution</strong></td>
+<td>Workflow templates and agent instructions are versioned in the platform and synced to each project automatically</td>
+</tr>
+<tr>
+<td><strong>Two-tier archiving</strong></td>
+<td>Completed work items are searchable in the database and their full artifacts are compressed for on-demand retrieval</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>Why It Matters</h2>
+<ul>
+<li><strong>Teams ship faster.</strong> AI agents handle the implementation, review, and quality validation loop. Engineers approve and steer — they do not babysit.</li>
+<li><strong>Nothing gets lost.</strong> Crash-safe design means a failed machine or interrupted session never orphans in-progress work.</li>
+<li><strong>Visibility replaces anxiety.</strong> The dashboard shows exactly what every agent is doing, what passed, what failed, and why — at any moment.</li>
+<li><strong>Scale without ceremony.</strong> Adding a new project takes minutes. The platform adapts to the project's existing workflow definition — no rewriting required.</li>
+<li><strong>Any AI agent works.</strong> The <code>iw</code> CLI is the only integration point. Claude Code, OpenCode, or any future tool that can run shell commands is immediately compatible.</li>
+</ul>
+<hr>
+<h2>Current Status</h2>
+<p>IW AI Core is production-ready and actively managing the InnoForge project. The database schema, daemon, CLI, dashboard, and executor scripts are all implemented and in daily use. The platform currently supports features, incidents, and change requests as work item types, with a full workflow pipeline covering implementation, code review, quality validation, and merge. Documentation, batch management, and real-time monitoring are live.</p>
+<hr>
+<p><em>Innovation Ways — Building the infrastructure that makes AI-assisted development reliable.</em></p>
+  </main>
+  <footer>
+    <span>Innovation Ways · IW AI Core Platform</span>
+    <span>Confidential — Internal Use</span>
+  </footer>
+</div>
+</body>
+</html>

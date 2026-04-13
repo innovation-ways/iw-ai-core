@@ -3,265 +3,298 @@
 {% block title %}{{ doc.title }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
 
 {% block content %}
-<div class="mb-6">
-  <div class="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-    <a href="/project/{{ current_project.id }}/docs" class="hover:text-foreground transition-colors">Docs</a>
-    <span>/</span>
-    <span class="text-foreground font-mono">{{ doc.doc_id }}</span>
+
+{# ── Breadcrumb ── #}
+<div class="flex items-center gap-2 text-xs text-muted-foreground mb-4">
+  <a href="/project/{{ current_project.id }}/docs" class="hover:text-foreground transition-colors">Docs</a>
+  <span>/</span>
+  <span class="text-foreground font-mono">{{ doc.doc_id }}</span>
+</div>
+
+{# ── Header: title + badges left | action buttons right ── #}
+<div class="flex flex-wrap items-start justify-between gap-4 mb-3">
+
+  {# Left: badges + title #}
+  <div class="min-w-0">
+    <div class="flex flex-wrap items-center gap-1.5 mb-2">
+      {% set type_colors = {
+        'module': 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200',
+        'api': 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200',
+        'architecture': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200',
+        'release_notes': 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200',
+        'error_catalog': 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200',
+        'webhook_ref': 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-200',
+        'user_guide': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
+        'product_overview': 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-200',
+        'feature_catalog': 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-200'
+      } %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ type_colors.get(doc.doc_type.value, 'bg-muted text-muted-foreground') }}">
+        {{ doc.doc_type.value|replace('_',' ')|title }}
+      </span>
+
+      {% set status_colors = {
+        'planned': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+        'draft': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200',
+        'published': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
+        'archived': 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'
+      } %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ status_colors.get(doc.status.value, 'bg-muted text-muted-foreground') }}">
+        {{ doc.status.value|title }}
+      </span>
+
+      {% set tier_colors = {
+        'fully_automated': 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-200',
+        'semi_automated': 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-200',
+        'human_authored': 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'
+      } %}
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium {{ tier_colors.get(doc.tier.value, 'bg-muted text-muted-foreground') }}">
+        {{ doc.tier.value|replace('_',' ')|title }}
+      </span>
+
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground font-mono">
+        v{{ doc.version }}
+      </span>
+    </div>
+    <h1 class="text-2xl font-bold text-foreground leading-tight">{{ doc.title }}</h1>
+  </div>
+
+  {# Right: compact action buttons #}
+  <div class="flex items-center gap-2 flex-shrink-0">
+
+    {# Download PDF #}
+    <a href="/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/pdf"
+       target="_blank"
+       class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:opacity-90 transition-opacity">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      Download PDF
+    </a>
+
+    {# Regenerate #}
+    <div id="detail-generate-btn">
+      {% if not doc.content %}
+      <button hx-post="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/generate"
+              hx-target="#detail-generate-btn"
+              hx-swap="innerHTML"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:opacity-90 transition-opacity"
+              aria-label="Generate documentation">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        Generate
+      </button>
+      {% else %}
+      <button hx-post="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/generate"
+              hx-target="#generation-progress"
+              hx-swap="innerHTML"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border bg-card text-foreground rounded-md text-xs font-medium hover:bg-muted transition-colors"
+              aria-label="Regenerate documentation">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        Regenerate
+      </button>
+      {% endif %}
+    </div>
+
+    {# Version History #}
+    <button hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/versions"
+            hx-target="#meta-drawer"
+            hx-swap="innerHTML"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border bg-card text-foreground rounded-md text-xs font-medium hover:bg-muted transition-colors">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      Versions
+    </button>
+
+    {# Job History #}
+    <button hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/jobs"
+            hx-target="#meta-drawer"
+            hx-swap="innerHTML"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border bg-card text-foreground rounded-md text-xs font-medium hover:bg-muted transition-colors">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+      </svg>
+      History
+    </button>
+
   </div>
 </div>
 
-<div class="flex flex-col lg:flex-row gap-6">
-  <!-- Left Column: Document Content -->
-  <div class="w-full lg:w-2/3">
-    <div class="bg-card border border-border rounded-lg overflow-hidden">
-      <!-- Document Header -->
-      <div class="p-6 border-b border-border">
-        <div class="flex flex-wrap items-center gap-2 mb-3">
-          <!-- Doc Type Badge -->
-          {% set type_colors = {
-            'module': 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200',
-            'api': 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200',
-            'architecture': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200',
-            'release_notes': 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200',
-            'error_catalog': 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200',
-            'webhook_ref': 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-200',
-            'user_guide': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
-            'product_overview': 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-200',
-            'feature_catalog': 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-200'
-          } %}
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium {{ type_colors.get(doc.doc_type.value, 'bg-muted text-muted-foreground') }}">
-            {{ doc.doc_type.value|title }}
-          </span>
+{# ── Notifications (generation progress, warnings) ── #}
+<div id="generation-progress" class="mb-2"></div>
 
-          <!-- Status Badge -->
-          {% set status_colors = {
-            'planned': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
-            'draft': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200',
-            'published': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
-            'archived': 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'
-          } %}
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium {{ status_colors.get(doc.status.value, 'bg-muted text-muted-foreground') }}">
-            {{ doc.status.value|title }}
-          </span>
+{% if doc.broken_links is not none %}
+<div id="broken-links-callout"
+     hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/validate-links"
+     hx-trigger="load"
+     hx-swap="innerHTML"
+     class="mb-2"></div>
+{% endif %}
 
-          <!-- Tier Badge -->
-          {% set tier_colors = {
-            'fully_automated': 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-200',
-            'semi_automated': 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-200',
-            'human_authored': 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'
-          } %}
-          <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-xs font-medium {{ tier_colors.get(doc.tier.value, 'bg-muted text-muted-foreground') }}">
-            {% if doc.tier.value == 'fully_automated' %}
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            {% elif doc.tier.value == 'semi_automated' %}
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707"/></svg>
-            {% else %}
-              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-            {% endif %}
-            {{ doc.tier.value|title }}
-          </span>
+<div id="lint-warnings-panel"
+     hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/lint-warnings"
+     hx-trigger="load"
+     hx-swap="innerHTML"
+     class="mb-2"></div>
 
-          <!-- Version Badge -->
-          <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground font-mono">
-            v{{ doc.version }}
-          </span>
-        </div>
+{# ── Expandable drawer (versions / job history) ── #}
+<div id="meta-drawer" class="mb-2"></div>
 
-        <h1 class="text-3xl font-bold text-foreground">{{ doc.title }}</h1>
-      </div>
+{# ── Viewer card ── #}
+<div class="bg-card border border-border rounded-lg overflow-hidden">
 
-      <!-- Broken Links Callout (htmx loaded) -->
-      {% if doc.broken_links is not none %}
-      <div id="broken-links-callout"
-           hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/validate-links"
-           hx-trigger="load"
-           hx-swap="innerHTML"></div>
-      {% endif %}
+  {% if doc.content %}
 
-      <!-- Lint Warnings (htmx loaded) -->
-      <div id="lint-warnings-panel"
-           hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/lint-warnings"
-           hx-trigger="load"
-           hx-swap="innerHTML"></div>
-
-      <!-- Document Content or Placeholder -->
-      <div id="doc-content-area" class="p-6">
-        {% if doc.content %}
-          <div class="prose-doc">
-            <style>
-              .prose-doc h1, .prose-doc h2, .prose-doc h3, .prose-doc h4 {
-                color: var(--foreground);
-                font-weight: 600;
-                margin-top: 1.5em;
-                margin-bottom: 0.5em;
-              }
-              .prose-doc h1 { font-size: 1.25rem; }
-              .prose-doc h2 { font-size: 1.1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
-              .prose-doc h3 { font-size: 1rem; }
-              .prose-doc p { color: var(--foreground); line-height: 1.7; margin-bottom: 0.75em; font-size: 0.875rem; }
-              .prose-doc ul, .prose-doc ol { padding-left: 1.5em; margin-bottom: 0.75em; font-size: 0.875rem; color: var(--foreground); }
-              .prose-doc li { margin-bottom: 0.25em; line-height: 1.6; }
-              .prose-doc code {
-                font-family: var(--font-mono);
-                font-size: 0.8rem;
-                background: var(--muted);
-                color: var(--foreground);
-                padding: 0.1em 0.3em;
-                border-radius: 3px;
-              }
-              .prose-doc pre {
-                background: var(--muted);
-                border: 1px solid var(--border);
-                border-radius: var(--radius);
-                padding: 1em;
-                overflow-x: auto;
-                margin-bottom: 1em;
-              }
-              .prose-doc pre code {
-                background: none;
-                padding: 0;
-                font-size: 0.8rem;
-                color: var(--foreground);
-              }
-              .prose-doc table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 0.875rem;
-                margin-bottom: 1em;
-              }
-              .prose-doc th, .prose-doc td {
-                border: 1px solid var(--border);
-                padding: 0.4em 0.75em;
-                text-align: left;
-              }
-              .prose-doc th { background: var(--muted); font-weight: 600; }
-              .prose-doc blockquote {
-                border-left: 3px solid var(--primary);
-                padding-left: 1em;
-                color: var(--muted-foreground);
-                margin: 1em 0;
-                font-style: italic;
-                font-size: 0.875rem;
-              }
-              .prose-doc a { color: var(--primary); text-decoration: underline; }
-            </style>
-            {{ content_html | safe }}
-          </div>
-        {% else %}
-          <div class="flex flex-col items-center justify-center py-12 text-center">
-            <span class="text-4xl mb-4">📄</span>
-            <h3 class="text-lg font-semibold text-foreground mb-2">Content not yet generated</h3>
-            <p class="text-muted-foreground text-sm mb-4">
-              This document is registered but has no content yet.
-            </p>
-            <code class="text-xs bg-muted text-muted-foreground px-3 py-2 rounded font-mono">
-              iw doc-update {{ current_project.id }} {{ doc.doc_id }} --content-file your-doc.md
-            </code>
-          </div>
-        {% endif %}
-      </div>
-    </div>
+  {# Tab strip #}
+  <div class="border-b border-border px-4 flex items-center gap-0" role="tablist" aria-label="Document view mode">
+    <button role="tab" aria-selected="true" aria-controls="view-markdown"
+            id="tab-markdown" onclick="switchDocTab('markdown')"
+            class="doc-tab px-4 py-2.5 text-sm font-medium border-b-2 border-primary text-primary transition-colors flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      Markdown
+    </button>
+    <button role="tab" aria-selected="false" aria-controls="view-html"
+            id="tab-html" onclick="switchDocTab('html')"
+            class="doc-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+      </svg>
+      HTML
+    </button>
+    <button role="tab" aria-selected="false" aria-controls="view-pdf"
+            id="tab-pdf" onclick="switchDocTab('pdf')"
+            class="doc-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+      </svg>
+      PDF
+    </button>
   </div>
 
-  <!-- Right Column: Metadata Sidebar -->
-  <div class="w-full lg:w-1/3">
-    <div class="lg:sticky lg:top-6 space-y-4">
-      <!-- Action Buttons -->
-      <div class="flex gap-2">
-        <a href="/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/pdf"
-           target="_blank"
-           class="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-          </svg>
-          Download PDF
-        </a>
-        <button hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/versions"
-                hx-target="#version-drawer"
-                hx-swap="innerHTML"
-                class="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          Version History
-        </button>
+  {# Viewer panels #}
+  <div id="doc-content-area">
+
+    {# Markdown panel #}
+    <div id="view-markdown" class="p-8 overflow-y-auto" style="max-height: calc(100vh - 220px);">
+      <div class="prose-doc max-w-4xl mx-auto">
+        <style>
+          .prose-doc h1,.prose-doc h2,.prose-doc h3,.prose-doc h4 { color:var(--foreground); font-weight:600; margin-top:1.5em; margin-bottom:0.5em; }
+          .prose-doc h1 { font-size:1.5rem; }
+          .prose-doc h2 { font-size:1.15rem; border-bottom:1px solid var(--border); padding-bottom:0.3em; }
+          .prose-doc h3 { font-size:1rem; }
+          .prose-doc p  { color:var(--foreground); line-height:1.75; margin-bottom:0.85em; font-size:0.9375rem; }
+          .prose-doc ul,.prose-doc ol { padding-left:1.5em; margin-bottom:0.75em; font-size:0.9375rem; color:var(--foreground); }
+          .prose-doc li { margin-bottom:0.3em; line-height:1.65; }
+          .prose-doc code { font-family:var(--font-mono); font-size:0.8rem; background:var(--muted); color:var(--foreground); padding:0.1em 0.35em; border-radius:3px; }
+          .prose-doc pre { background:var(--muted); border:1px solid var(--border); border-radius:var(--radius); padding:1em; overflow-x:auto; margin-bottom:1em; }
+          .prose-doc pre code { background:none; padding:0; font-size:0.8rem; }
+          .prose-doc table { width:100%; border-collapse:collapse; font-size:0.9rem; margin-bottom:1em; }
+          .prose-doc th,.prose-doc td { border:1px solid var(--border); padding:0.45em 0.8em; text-align:left; }
+          .prose-doc th { background:var(--muted); font-weight:600; }
+          .prose-doc blockquote { border-left:3px solid var(--primary); padding-left:1em; color:var(--muted-foreground); margin:1em 0; font-style:italic; font-size:0.9rem; }
+          .prose-doc a { color:var(--primary); text-decoration:underline; }
+          .prose-doc img { max-width:100%; border-radius:var(--radius); border:1px solid var(--border); margin:1em 0; }
+          .prose-doc hr { border:none; border-top:1px solid var(--border); margin:2em 0; }
+        </style>
+        {{ content_html | safe }}
       </div>
+    </div>
 
-      <!-- Version Drawer -->
-      <div id="version-drawer"></div>
+    {# HTML panel — lazy iframe #}
+    <div id="view-html" class="hidden">
+      <iframe id="html-frame"
+              src="about:blank"
+              data-src="/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/html-view"
+              class="w-full border-0 block"
+              style="height: calc(100vh - 220px);"
+              title="{{ doc.title }} — HTML view"></iframe>
+    </div>
 
-      <!-- Generation Progress Section -->
-      <div id="generation-progress"></div>
+    {# PDF panel — lazy iframe #}
+    <div id="view-pdf" class="hidden">
+      <iframe id="pdf-frame"
+              src="about:blank"
+              data-src="/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/pdf-view"
+              class="w-full border-0 block"
+              style="height: calc(100vh - 220px);"
+              title="{{ doc.title }} — PDF view"></iframe>
+    </div>
 
-      <!-- Generate/Regenerate Button -->
-      <div id="detail-generate-btn">
-        {% if not doc.content %}
-        <button hx-post="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/generate"
-                hx-target="#detail-generate-btn"
-                hx-swap="innerHTML"
-                class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity"
-                aria-label="Generate documentation">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-          Generate Documentation
-        </button>
-        {% else %}
-        <button hx-post="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/generate"
-                hx-target="#generation-progress"
-                hx-swap="innerHTML"
-                class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity"
-                aria-label="Regenerate documentation">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          Regenerate
-        </button>
-        {% endif %}
-      </div>
+  </div>
 
-      <!-- View History Button -->
-      <button hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/jobs"
-              hx-target="#job-history-panel"
+  {% else %}
+
+  {# No content placeholder #}
+  <div class="flex flex-col items-center justify-center py-20 text-center">
+    <svg class="w-12 h-12 text-muted-foreground mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+    </svg>
+    <h3 class="text-lg font-semibold text-foreground mb-2">Content not yet generated</h3>
+    <p class="text-muted-foreground text-sm mb-4">This document is registered but has no content yet.</p>
+    <div id="detail-generate-btn">
+      <button hx-post="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/generate"
+              hx-target="#detail-generate-btn"
               hx-swap="innerHTML"
-              class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-        </svg>
-        View History
+              class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        Generate Documentation
       </button>
-
-      <!-- Job History Panel -->
-      <div id="job-history-panel"></div>
     </div>
   </div>
+
+  {% endif %}
+
 </div>
 
 <script>
+function switchDocTab(mode) {
+  ['markdown','html','pdf'].forEach(function(v) {
+    var panel = document.getElementById('view-' + v);
+    var tab   = document.getElementById('tab-' + v);
+    if (!panel || !tab) return;
+    var active = v === mode;
+    panel.classList.toggle('hidden', !active);
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    if (active) {
+      tab.classList.add('border-primary','text-primary');
+      tab.classList.remove('border-transparent','text-muted-foreground','hover:text-foreground');
+    } else {
+      tab.classList.remove('border-primary','text-primary');
+      tab.classList.add('border-transparent','text-muted-foreground','hover:text-foreground');
+    }
+  });
+  // Lazy-load iframe on first activation
+  var frame = document.getElementById(mode + '-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') {
+    frame.setAttribute('src', frame.getAttribute('data-src'));
+  }
+}
+
 document.body.addEventListener('docJobCreated', function(e) {
   var detail = e.detail;
-  var progressEl = document.getElementById('generation-progress');
-  if (progressEl && detail.job_id) {
-    htmx.ajax('GET', '/api/project/{{ current_project.id }}/docs/jobs/' + detail.job_id + '/status', {target: '#generation-progress', swap: 'innerHTML'});
+  if (detail.job_id) {
+    htmx.ajax('GET', '/api/project/{{ current_project.id }}/docs/jobs/' + detail.job_id + '/status',
+              {target: '#generation-progress', swap: 'innerHTML'});
   }
 });
 
 document.body.addEventListener('docJobCompleted', function(e) {
-  var detail = e.detail;
-  var progressEl = document.getElementById('generation-progress');
-  if (progressEl) {
-    progressEl.innerHTML = '<div class="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-sm text-green-700 dark:text-green-300 flex items-center gap-2"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Documentation updated — refreshing...</div>';
-    setTimeout(function() {
-      htmx.trigger('#doc-content-area', 'refreshDoc');
-      window.location.reload();
-    }, 1500);
+  var el = document.getElementById('generation-progress');
+  if (el) {
+    el.innerHTML = '<div class="p-3 mb-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-sm text-green-700 dark:text-green-300 flex items-center gap-2"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Documentation updated — refreshing…</div>';
+    setTimeout(function() { window.location.reload(); }, 1500);
   }
 });
 
 document.body.addEventListener('docJobFailed', function(e) {
   var detail = e.detail;
-  var progressEl = document.getElementById('generation-progress');
-  if (progressEl && detail.error) {
-    var errorMsg = detail.error.length > 120 ? detail.error.substring(0, 120) + '...' : detail.error;
-    progressEl.innerHTML = '<div class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300"><span class="font-medium">Generation failed:</span> ' + errorMsg + '</div>';
+  var el = document.getElementById('generation-progress');
+  if (el && detail.error) {
+    var msg = detail.error.length > 120 ? detail.error.substring(0,120) + '…' : detail.error;
+    el.innerHTML = '<div class="p-3 mb-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300"><span class="font-medium">Generation failed:</span> ' + msg + '</div>';
   }
 });
 </script>
+
 {% endblock %}
