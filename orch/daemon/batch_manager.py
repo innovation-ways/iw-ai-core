@@ -163,6 +163,37 @@ class BatchManager:
             self._check_batch_completion(db, batch, items)
             return
 
+        # Block the current group from launching if any earlier group has failed items.
+        # A failed dependency means successor items cannot safely proceed.
+        failed_in_prior_group = any(
+            i.status == BatchItemStatus.failed and i.execution_group < current_group for i in items
+        )
+        if failed_in_prior_group:
+            # Mark all pending items in the current (and later) groups as failed.
+            for item in items:
+                if item.execution_group >= current_group and item.status == BatchItemStatus.pending:
+                    item.status = BatchItemStatus.failed
+                    item.notes = (
+                        f"Skipped: a dependency in execution_group "
+                        f"{item.execution_group - 1} failed before this item could start"
+                    )
+            db.commit()
+            _emit_event(
+                db,
+                self.project_id,
+                "batch_dependency_failed",
+                batch.id,
+                f"Batch {batch.id}: failed items in group {current_group - 1} "
+                f"block execution_group {current_group}+",
+            )
+            logger.warning(
+                "[%s] Batch %s: dependency failure blocks group %d — marking pending items failed",
+                self.project_id,
+                batch.id,
+                current_group,
+            )
+            return
+
         # Launch pending items in the current group up to max_parallel
         for item in items:
             if item.execution_group != current_group:
