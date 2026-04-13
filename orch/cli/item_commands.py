@@ -101,6 +101,7 @@ _ITEM_TYPE_MAP: dict[str, WorkItemType] = {
     "feature": WorkItemType.Feature,
     "incident": WorkItemType.Issue,
     "cr": WorkItemType.ChangeRequest,
+    "research": WorkItemType.Research,
 }
 
 _ACTIVE_BATCH_STATUSES: list[BatchStatus] = [
@@ -126,7 +127,7 @@ _ACTIVE_BATCH_STATUSES: list[BatchStatus] = [
     "--type",
     "item_type",
     required=True,
-    type=click.Choice(["feature", "incident", "cr"]),
+    type=click.Choice(["feature", "incident", "cr", "research"]),
     help="Work item type",
 )
 @click.option("--design-doc", default=None, help="Relative path to design document")

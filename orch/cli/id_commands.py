@@ -87,7 +87,7 @@ def current_project(ctx: click.Context) -> None:
     "--type",
     "item_type",
     required=True,
-    type=click.Choice(["feature", "incident", "cr", "batch"]),
+    type=click.Choice(["feature", "incident", "cr", "batch", "research"]),
     help="Work item type",
 )
 @click.pass_context

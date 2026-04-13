@@ -80,6 +80,7 @@ TYPE_TO_PREFIX: dict[str, str] = {
     "incident": "I",
     "cr": "CR",
     "batch": "BATCH",
+    "research": "R",
 }
 
 # Prefixes used when validating work item IDs (no batch type here)
@@ -87,6 +88,7 @@ TYPE_TO_ID_PREFIX: dict[str, str] = {
     "feature": "F-",
     "incident": "I-",
     "cr": "CR-",
+    "research": "R-",
 }
 
 
