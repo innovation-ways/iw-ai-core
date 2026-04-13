@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from dashboard.utils.markdown import render_markdown
-from orch.db.models import DocStatus, DocType, Project
+from orch.db.models import DocStatus, DocType, JobStatus, Project
 from orch.doc_service import DocService
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from fastapi.templating import Jinja2Templates
     from sqlalchemy.orm import Session
 
@@ -211,4 +214,229 @@ def docs_versions(
         request,
         "fragments/docs_version_drawer.html",
         {"versions": versions, "doc_id": doc_id, "project_id": project_id},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Doc generation job routes
+# ---------------------------------------------------------------------------
+
+_STREAM_TIMEOUT_SECONDS = 15 * 60
+
+
+@router.post("/api/project/{id}/docs/{doc_id}/generate")
+def docs_generate(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Create a DocGenerationJob for the given doc.
+
+    Returns htmx-compatible HTML fragment that replaces the Generate button with a spinner.
+    If a job is already running for this doc, returns 409.
+    """
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+
+    full_doc_id = f"{project_id}:{doc_id}"
+    from orch.db.models import DocGenerationJob
+
+    running_count = (
+        db.query(DocGenerationJob)
+        .filter(
+            DocGenerationJob.doc_id == full_doc_id,
+            DocGenerationJob.status == JobStatus.running,
+        )
+        .count()
+    )
+
+    if running_count > 0:
+        return JSONResponse(
+            {"error": "Generation already in progress"},
+            status_code=409,
+        )
+
+    job = svc.create_doc_job(project_id, doc_id)
+
+    templates: Jinja2Templates = request.app.state.templates
+    response = templates.TemplateResponse(
+        request,
+        "fragments/docs_generate_running.html",
+        {"job": job, "doc_id": doc_id, "project_id": project_id},
+    )
+    response.headers["HX-Trigger"] = (
+        f'{{"docJobCreated": {{"job_id": "{job.id}", "doc_id": "{doc_id}"}}}}'
+    )
+    return response
+
+
+async def _job_status_stream(job_id: str, request: Request) -> AsyncGenerator[str, None]:
+    """Async generator that polls job status every 2 seconds and yields SSE data."""
+    from orch.db.session import SessionLocal
+
+    start_time = asyncio.get_event_loop().time()
+    timeout_at = start_time + _STREAM_TIMEOUT_SECONDS
+
+    while True:
+        if asyncio.get_event_loop().time() >= timeout_at:
+            yield "event: timeout\ndata: {}\n\n"
+            break
+
+        if await request.is_disconnected():
+            break
+
+        db = SessionLocal()
+        try:
+            from orch.db.models import DocGenerationJob
+
+            job = db.get(DocGenerationJob, job_id)
+            if job is None:
+                yield "event: error\ndata: {'error': 'Job not found'}\n\n"
+                break
+
+            if job.status == JobStatus.running:
+                data = f'{{"event": "status", "status": "running", "job_id": "{job_id}"}}'
+                yield f"event: status\ndata: {data}\n\n"
+
+            elif job.status == JobStatus.completed:
+                doc_id_short = job.doc_id.split(":")[-1] if job.doc_id else ""
+                data = (
+                    f'{{"event": "completed", "status": "completed", "doc_id": "{doc_id_short}"}}'
+                )
+                yield f"event: completed\ndata: {data}\n\n"
+                break
+
+            elif job.status == JobStatus.failed:
+                error_msg = job.error or "unknown error"
+                doc_id_short = job.doc_id.split(":")[-1] if job.doc_id else ""
+                data = (
+                    f'{{"event": "failed", "status": "failed", '
+                    f'"error": "{error_msg}", "doc_id": "{doc_id_short}"}}'
+                )
+                yield f"event: failed\ndata: {data}\n\n"
+                break
+
+        finally:
+            db.close()
+
+        await asyncio.sleep(2)
+
+
+@router.get("/api/project/{id}/docs/jobs/{job_id}/stream")
+async def docs_job_stream(
+    project_id: str,
+    job_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """SSE stream for DocGenerationJob status updates.
+
+    Events emitted:
+    - status: every 2 seconds while job is running
+    - completed: when job finishes successfully
+    - failed: when job fails
+    - timeout: after 15 minutes
+    """
+    _get_project_or_404(project_id, db)
+    return StreamingResponse(
+        _job_status_stream(job_id, request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.get("/api/project/{id}/docs/jobs/{job_id}/status")
+def docs_job_status(
+    project_id: str,
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> JSONResponse:
+    """JSON poll endpoint for DocGenerationJob status."""
+    _get_project_or_404(project_id, db)
+    from orch.db.models import DocGenerationJob
+
+    job = db.get(DocGenerationJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+
+    duration_seconds = None
+    if job.duration_seconds is not None:
+        duration_seconds = job.duration_seconds
+    elif job.started_at is not None and job.completed_at is not None:
+        duration_seconds = int((job.completed_at - job.started_at).total_seconds())
+    elif job.started_at is not None:
+        duration_seconds = int((datetime.now(UTC) - job.started_at).total_seconds())
+
+    return JSONResponse(
+        {
+            "job_id": job.id,
+            "status": job.status.value,
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "duration_seconds": duration_seconds,
+            "skill_used": job.skill_used,
+            "error": job.error,
+        }
+    )
+
+
+@router.get("/api/project/{id}/docs/{doc_id}/jobs")
+def docs_job_history(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: last 10 DocGenerationJob records for this doc.
+
+    Ordered by requested_at DESC.
+    """
+    _get_project_or_404(project_id, db)
+    from orch.db.models import DocGenerationJob
+
+    full_doc_id = f"{project_id}:{doc_id}"
+    jobs = (
+        db.query(DocGenerationJob)
+        .filter(DocGenerationJob.doc_id == full_doc_id)
+        .order_by(DocGenerationJob.requested_at.desc())
+        .limit(10)
+        .all()
+    )
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_job_history.html",
+        {"jobs": jobs, "doc_id": doc_id, "project_id": project_id},
+    )
+
+
+@router.get("/api/project/{id}/docs/{doc_id}/card")
+def docs_card(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: a single docs_card.html for the given doc."""
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_card.html",
+        {"doc": doc, "current_project": db.get(Project, project_id)},
     )

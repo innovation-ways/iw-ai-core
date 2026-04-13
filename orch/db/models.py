@@ -924,6 +924,9 @@ class DocGenerationJob(Base):
         Text, nullable=True, comment="Raw agent stdout/result"
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    skill_used: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, nullable=False, server_default=func.now()
     )

@@ -1,17 +1,18 @@
-"""doc CLI commands: doc-update."""
+"""doc CLI commands: doc-update, doc-job-start, doc-job-done."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import click
 
 from orch.cli.utils import output_error, resolve_project
-from orch.db.models import DocStatus, DocTier, DocType, EditorialCategory  # noqa: F401
+from orch.db.models import DocStatus, DocTier, DocType, EditorialCategory, JobStatus  # noqa: F401
 from orch.doc_service import DocService
 
 _MAX_CONTENT_SIZE = 10 * 1024 * 1024
@@ -219,3 +220,109 @@ def doc_update(
 
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 3)
+
+
+# ---------------------------------------------------------------------------
+# doc-job-start: mark a queued DocGenerationJob as running
+# ---------------------------------------------------------------------------
+
+
+@click.command("doc-job-start")
+@click.argument("job_id")
+@click.option("--pid", "pid", type=int, default=None, help="Agent process ID")
+@click.option("--skill", "skill", default=None, help="Skill used (e.g., iw-doc-generator)")
+@click.pass_context
+def doc_job_start(ctx: click.Context, job_id: str, pid: int | None, skill: str | None) -> None:
+    """Mark a queued DocGenerationJob as running.
+
+    Transitions the job from 'queued' to 'running' and records the agent PID
+    and skill used. Idempotent — if the job is already running, exits 0 without
+    error.
+    """
+    get_session = ctx.obj["get_session"]
+
+    already_running = False
+
+    try:
+        with get_session() as session:
+            svc = DocService(session)
+            job = svc.get_doc_job(job_id)
+
+            if job is None:
+                output_error(ctx, f"Job '{job_id}' not found", 1)
+
+            if job.status == JobStatus.running:
+                already_running = True
+            elif job.status != JobStatus.queued:
+                output_error(
+                    ctx,
+                    (
+                        f"Job '{job_id}' is in status '{job.status.value}',"
+                        " expected 'queued' or 'running'"
+                    ),
+                    2,
+                )
+
+            if not already_running:
+                job.status = JobStatus.running
+                job.started_at = datetime.now(UTC)
+                job.agent_pid = pid
+                job.skill_used = skill
+                session.flush()
+
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 3)
+
+    click.echo(json.dumps({"job_id": job_id, "status": "running"}))
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
+# doc-job-done: mark a running DocGenerationJob as completed or failed
+# ---------------------------------------------------------------------------
+
+
+@click.command("doc-job-done")
+@click.argument("job_id")
+@click.option("--error", "error", default=None, help="Error message if the job failed")
+@click.pass_context
+def doc_job_done(ctx: click.Context, job_id: str, error: str | None) -> None:
+    """Mark a running DocGenerationJob as completed (or failed with --error).
+
+    Idempotent — calling this on an already-completed or already-failed job
+    exits 0 without error.
+    """
+    get_session = ctx.obj["get_session"]
+
+    try:
+        with get_session() as session:
+            svc = DocService(session)
+            job = svc.get_doc_job(job_id)
+
+            if job is None:
+                output_error(ctx, f"Job '{job_id}' not found", 1)
+
+            if job.status in (JobStatus.completed, JobStatus.failed):
+                final_status = job.status.value
+                click.echo(json.dumps({"job_id": job_id, "status": final_status}))
+                sys.exit(0)
+
+            job.completed_at = datetime.now(UTC)
+            if error is None:
+                job.status = JobStatus.completed
+                final_status = "completed"
+            else:
+                job.status = JobStatus.failed
+                job.error = error
+                final_status = "failed"
+
+            if job.started_at is not None:
+                job.duration_seconds = int((job.completed_at - job.started_at).total_seconds())
+
+            session.flush()
+
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 3)
+
+    click.echo(json.dumps({"job_id": job_id, "status": final_status}))
+    sys.exit(0)

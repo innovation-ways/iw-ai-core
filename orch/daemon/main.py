@@ -28,6 +28,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from orch.daemon.batch_manager import BatchManager
+from orch.daemon.doc_job_poller import DocJobPoller
 from orch.daemon.project_registry import ProjectConfig, ProjectRegistry, sync_project_to_db
 from orch.db.models import DaemonEvent, StepRun, StepStatus, WorkflowStep
 
@@ -129,6 +130,7 @@ class Daemon:
         self.registry = ProjectRegistry(config.projects_toml)
         self.projects: dict[str, ProjectConfig] = {}
         self.managers: dict[str, BatchManager] = {}
+        self.doc_job_poller: DocJobPoller | None = None
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -220,6 +222,8 @@ class Daemon:
         """Load projects.toml and sync each project to the DB."""
         self.projects = self.registry.load()
         logger.info("Loaded %d project(s) from %s", len(self.projects), self.config.projects_toml)
+
+        self.doc_job_poller = DocJobPoller(self._session_factory, self.config)
 
         with self._session_factory() as db:
             for project_id, cfg in self.projects.items():
@@ -368,7 +372,14 @@ class Daemon:
                 except Exception:
                     logger.exception("Failed to emit project_error event for %r", project_id)
 
-        # Phase 3: Emit poll heartbeat so daemon status can report activity
+        # Phase 3: Doc generation job polling
+        if self.doc_job_poller is not None:
+            try:
+                self.doc_job_poller.poll()
+            except Exception:
+                logger.exception("Error in doc job poller — continuing")
+
+        # Phase 4: Emit poll heartbeat so daemon status can report activity
         try:
             with self._session_factory() as db:
                 emit_event(
