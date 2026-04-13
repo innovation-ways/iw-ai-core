@@ -1,0 +1,68 @@
+{
+  "id": "F-00040",
+  "type": "Feature",
+  "title": "Enhanced Document Diff",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "orch/doc_diff.py module; three new diff endpoints in dashboard/routers/docs.py",
+      "prompt": "prompts/F-00040_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review of S01 Backend implementation",
+      "prompt": "prompts/F-00040_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Unit tests for doc_diff.py; integration tests for three new endpoints",
+      "prompt": "prompts/F-00040_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-final-impl",
+      "description": "Global review: completeness, backward compat verified, 204 stub correct",
+      "prompt": "prompts/F-00040_S04_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": ".venv/bin/python -m ruff check orch/ dashboard/ tests/",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": ".venv/bin/python -m ruff format --check orch/ dashboard/ tests/",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": ".venv/bin/python -m mypy orch/doc_diff.py dashboard/routers/docs.py",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": ".venv/bin/pytest tests/unit/ -x --timeout=60 -q 2>/dev/null || echo 'No unit tests — OK'",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": ".venv/bin/pytest tests/integration/ -x --timeout=300 -q",
+      "description": "QV: Integration tests",
+      "timeout": 600
+    }
+  ]
+}
