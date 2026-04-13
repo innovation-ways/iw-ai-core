@@ -130,6 +130,12 @@ def _run_archive(project_id: str, batch_id: str, *, run_post_commands: bool = Tr
                     batch_id,
                 )
 
+        # --- Step 2.5: Commit deleted work item folders to git ---
+        if archived:
+            commit_error = _git_commit_archive(repo_root, batch_id, archived, project_id)
+            if commit_error:
+                item_errors.append(commit_error)
+
         # --- Step 3: Transition batch to archived ---
         now = datetime.now(UTC)
         batch.status = BatchStatus.archived
@@ -173,6 +179,61 @@ def _run_archive(project_id: str, batch_id: str, *, run_post_commands: bool = Tr
         db.commit()
 
     return archived
+
+
+def _git_commit_archive(
+    repo_root: Path, batch_id: str, archived_items: list[str], project_id: str
+) -> str | None:
+    """Stage deleted work item folders and commit to git. Returns error string or None."""
+    items_str = ", ".join(archived_items)
+    commit_msg = f"Archive {batch_id}: remove {items_str}"
+    logger.info("[%s] Committing archive deletions for batch %s", project_id, batch_id)
+    try:
+        add_result = subprocess.run(  # noqa: S602
+            "git add -A",
+            shell=True,
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if add_result.returncode != 0:
+            error = f"git add failed: {(add_result.stderr or add_result.stdout).strip()[:300]}"
+            logger.error("[%s] %s", project_id, error)
+            return error
+
+        commit_result = subprocess.run(  # noqa: S602
+            ["git", "commit", "-m", commit_msg],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if commit_result.returncode != 0:
+            output = (commit_result.stderr or commit_result.stdout).strip()[:300]
+            # "nothing to commit" is not an error
+            if "nothing to commit" in output:
+                logger.info("[%s] Nothing to commit for batch %s archive", project_id, batch_id)
+                return None
+            error = f"git commit failed: {output}"
+            logger.error("[%s] %s", project_id, error)
+            return error
+
+        logger.info(
+            "[%s] Committed archive deletions for batch %s: %s",
+            project_id,
+            batch_id,
+            items_str,
+        )
+        return None
+    except subprocess.TimeoutExpired:
+        error = "git commit timed out after 60s"
+        logger.error("[%s] %s", project_id, error)
+        return error
+    except Exception as exc:
+        error = f"git commit raised {exc}"
+        logger.exception("[%s] %s", project_id, error)
+        return error
 
 
 def _run_command(cmd: str, cwd: Path, project_id: str) -> str | None:
