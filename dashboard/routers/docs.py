@@ -1037,8 +1037,8 @@ def docs_guide_section_post(
 
     sections = extract_sections(doc.content or "")
     section_guides: dict[str, str] = {}
-    for s_name, _guide_md in svc.list_section_guides(project_id, doc_id):
-        section_guides[s_name] = _guide_md
+    for sg in svc.list_section_guides(project_id, doc_id):
+        section_guides[sg.section_name] = sg.guide_md
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
