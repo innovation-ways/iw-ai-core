@@ -1,80 +1,50 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00020",
-  "title": "Add Research Work Item Type to iw-ai-core",
+  "id": "F-00022",
+  "title": "iw-research Skill",
   "status": "approved",
   "phase": "active",
-  "total_steps": 10,
+  "total_steps": 5,
   "completed_steps": 0,
   "current_step": null,
   "batch_id": "BATCH-00019",
   "worktree": null,
-  "created_at": "2026-04-13T18:53:37.179018+00:00",
-  "updated_at": "2026-04-13T18:53:37.179018+00:00",
+  "created_at": "2026-04-13T18:53:44.018548+00:00",
+  "updated_at": "2026-04-13T18:53:44.018548+00:00",
   "steps": [
     {
       "step_id": "S01",
-      "label": "Database",
-      "type": "implementation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S02",
       "label": "Backend",
       "type": "implementation",
       "status": "pending"
     },
     {
-      "step_id": "S03",
+      "step_id": "S02",
       "label": "CodeReview",
       "type": "code_review",
       "status": "pending"
     },
     {
-      "step_id": "S04",
-      "label": "Tests",
-      "type": "implementation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S05",
+      "step_id": "S03",
       "label": "CodeReviewFinal",
       "type": "code_review_final",
       "status": "pending"
     },
     {
-      "step_id": "S06",
+      "step_id": "S04",
       "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
     },
     {
-      "step_id": "S07",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S08",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S09",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S10",
+      "step_id": "S05",
       "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
     }
   ],
-  "branch": "agent/F-00020-add-research-work-item-type-to",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00020",
+  "branch": "agent/F-00022-iw-research-skill",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00022",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-13T20:02:43Z"
+  "brief_generated_at": "2026-04-14T07:00:59Z"
 }
