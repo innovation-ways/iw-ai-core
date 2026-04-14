@@ -608,7 +608,7 @@ async def create_batch_from_selection(
     # blocked while Pillow/drawio rendering runs (~5-30s for large batches).
     import asyncio as _asyncio
 
-    def _build_plan() -> tuple:
+    def _build_plan() -> tuple[Any, Any, Any, Any]:
         _analysis = analyze_dependencies(items_data, active_items_data)
         _md = generate_execution_plan_md(batch_id, _analysis, 4)
         _drawio = generate_drawio(batch_id, _analysis, 4)

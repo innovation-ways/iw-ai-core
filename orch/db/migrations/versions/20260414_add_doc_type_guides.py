@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 from alembic import op
+from sqlalchemy import text
 
 revision: str = "add_doc_type_guides"
 down_revision: str | None = "add_section_guides_snapshot_to_jobs"
@@ -128,12 +129,14 @@ def upgrade() -> None:
     op.execute("COMMENT ON COLUMN doc_type_guides.updated_at IS 'Timestamp of last guide edit.'")
 
     op.execute(
-        "INSERT INTO doc_type_guides (doc_type, guide_md) VALUES ('_default', %s)",
-        (_DEFAULT_GUIDE,),
+        text(
+            "INSERT INTO doc_type_guides (doc_type, guide_md) VALUES (:doc_type, :guide_md)"
+        ).bindparams(doc_type="_default", guide_md=_DEFAULT_GUIDE)
     )
     op.execute(
-        "INSERT INTO doc_type_guides (doc_type, guide_md) VALUES ('marketing', %s)",
-        (_MARKETING_GUIDE,),
+        text(
+            "INSERT INTO doc_type_guides (doc_type, guide_md) VALUES (:doc_type, :guide_md)"
+        ).bindparams(doc_type="marketing", guide_md=_MARKETING_GUIDE)
     )
 
 

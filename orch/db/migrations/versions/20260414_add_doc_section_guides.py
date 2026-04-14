@@ -60,10 +60,11 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("idx_doc_section_guides_doc_id", "doc_section_guides", ["doc_id"])
-    op.create_unique_index(
+    op.create_index(
         "uq_doc_section_guides_doc_section",
         "doc_section_guides",
         ["doc_id", "section_name"],
+        unique=True,
     )
     op.execute(
         "COMMENT ON TABLE doc_section_guides IS 'Per-section editorial guidelines keyed by (doc_id, section_name).';"
