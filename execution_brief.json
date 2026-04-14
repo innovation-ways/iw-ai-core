@@ -1,74 +1,44 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00041",
-  "title": "Interactive Document IDE — Guide Editor and Diff Viewer UI",
+  "id": "F-00023",
+  "title": "iw-research-quick Skill",
   "status": "approved",
   "phase": "active",
-  "total_steps": 9,
+  "total_steps": 4,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00020",
-  "worktree": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00041",
-  "created_at": "2026-04-13T21:25:08.142135+00:00",
-  "updated_at": "2026-04-13T21:25:08.142135+00:00",
+  "batch_id": "BATCH-00019",
+  "worktree": null,
+  "created_at": "2026-04-13T18:53:44.291137+00:00",
+  "updated_at": "2026-04-13T18:53:44.291137+00:00",
   "steps": [
     {
       "step_id": "S01",
-      "label": "Frontend",
+      "label": "Backend",
       "type": "implementation",
       "status": "pending"
     },
     {
       "step_id": "S02",
-      "label": "CodeReview",
-      "type": "code_review",
-      "status": "pending"
-    },
-    {
-      "step_id": "S03",
-      "label": "Tests",
-      "type": "implementation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S04",
       "label": "CodeReviewFinal",
       "type": "code_review_final",
       "status": "pending"
     },
     {
-      "step_id": "S05",
+      "step_id": "S03",
       "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
     },
     {
-      "step_id": "S06",
+      "step_id": "S04",
       "label": "QvGate",
       "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S07",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S08",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S09",
-      "label": "QvBrowser",
-      "type": "browser_verification",
       "status": "pending"
     }
   ],
-  "branch": "agent/F-00041-interactive-document-ide-guide",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00041",
+  "branch": "agent/F-00023-iw-research-quick-skill",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00023",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-14T05:30:57Z"
+  "brief_generated_at": "2026-04-14T07:14:02Z"
 }
