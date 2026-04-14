@@ -87,6 +87,11 @@ def create_app() -> FastAPI:
     templates.env.filters["urlencode"] = quote
     app.state.templates = templates
 
+    # Health check endpoint (used by browser_verification steps and monitoring)
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "service": "iw-ai-core-dashboard"}
+
     # Register routers
     app.include_router(projects.router)
     app.include_router(running.router)

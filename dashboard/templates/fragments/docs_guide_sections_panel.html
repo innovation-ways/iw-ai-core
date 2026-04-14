@@ -1,0 +1,30 @@
+<div class="space-y-4">
+  {% if sections == ["Document"] %}
+  <div class="text-xs text-muted-foreground mb-3">No H2 headings — editing 'Document' guide</div>
+  {% endif %}
+
+  {% for section_name in sections %}
+  <div class="border rounded-lg p-3 bg-card">
+    <h4 class="font-medium text-sm mb-2 text-foreground">{{ section_name }}</h4>
+    <form hx-post="/project/{{ project_id }}/api/docs/{{ doc_id }}/guide/sections/{{ section_name | urlencode }}"
+          hx-target="this" hx-swap="outerHTML">
+      <textarea name="guide_md" rows="6"
+                class="w-full font-mono text-xs border rounded p-2 bg-background resize-y"
+                placeholder="No guide for this section.">{{ section_guides.get(section_name, '') or '' }}</textarea>
+      <div class="flex items-center gap-2 mt-2">
+        <button type="submit"
+                class="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90">
+          Save
+        </button>
+        <button type="button"
+                hx-delete="/project/{{ project_id }}/api/docs/{{ doc_id }}/guide/sections/{{ section_name | urlencode }}"
+                hx-target="this"
+                hx-swap="outerHTML"
+                class="px-3 py-1.5 text-xs border border-red-200 text-red-600 rounded hover:bg-red-50">
+          Clear
+        </button>
+      </div>
+    </form>
+  </div>
+  {% endfor %}
+</div>
