@@ -944,11 +944,6 @@ class DocGenerationJob(Base):
         comment="List of lint warning objects {rule, message, section}",
     )
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    section_guides_snapshot: Mapped[dict[str, str] | None] = mapped_column(
-        JSONB,
-        nullable=True,
-        comment="Section guides snapshotted at job creation: {section_name: guide_md, ...}.",
-    )
     created_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, nullable=False, server_default=func.now()
     )
@@ -963,34 +958,61 @@ class DocGenerationJob(Base):
     )
 
 
-class DocSectionGuide(Base):
-    """Per-section editorial guidelines, keyed by (doc_id, section_name)."""
+class DocTypeGuide(Base):
+    """Editable editorial guideline per DocType (type-level default)."""
 
-    __tablename__ = "doc_section_guides"
+    __tablename__ = "doc_type_guides"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    doc_id: Mapped[str] = mapped_column(
-        Text, nullable=False, comment="FK to project_docs.id (composite: project_id:doc_id)."
+    doc_type: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        comment="DocType value (e.g. 'api', 'module')",
     )
-    section_name: Mapped[str] = mapped_column(
-        Text, nullable=False, comment="H2 heading text, or 'Document' if no H2 headings exist."
-    )
-    guide_md: Mapped[str] = mapped_column(
-        Text, nullable=False, comment="Markdown editorial guidelines for this specific section."
-    )
+    guide_md: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        _TIMESTAMPTZ,
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-        comment="Timestamp of last guide edit.",
+        _TIMESTAMPTZ, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = {"comment": "Editable editorial guideline per DocType"}
+
+
+class DocInstanceGuide(Base):
+    """Instance-level guide override for a specific ProjectDoc."""
+
+    __tablename__ = "doc_instance_guides"
+
+    doc_id: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        comment="FK to project_docs.id",
+    )
+    guide_md: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
     __table_args__ = (
         ForeignKeyConstraint(["doc_id"], ["project_docs.id"], ondelete="CASCADE"),
-        UniqueConstraint("doc_id", "section_name", name="uq_doc_section_guides_doc_section"),
+        {"comment": "Instance-level guide override for a specific ProjectDoc"},
+    )
+
+
+class DocSectionGuide(Base):
+    """Section-level guide override for a specific section of a ProjectDoc."""
+
+    __tablename__ = "doc_section_guides"
+
+    doc_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    section_name: Mapped[str] = mapped_column(Text, primary_key=True)
+    guide_md: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(["doc_id"], ["project_docs.id"], ondelete="CASCADE"),
         Index("idx_doc_section_guides_doc_id", "doc_id"),
-        {"comment": "Per-section editorial guidelines keyed by (doc_id, section_name)."},
+        {"comment": "Section-level guide override for a specific section of a ProjectDoc"},
     )
 
 

@@ -121,8 +121,8 @@ def docs_html_view(
   body {{ font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 24px;
          color: #0F172A; line-height: 1.6; }}
   h1,h2,h3 {{ color: #1E293B; }} h2 {{ border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; }}
-  table {{ border-collapse: collapse; width: 100%; }}
-  th,td {{ border: 1px solid #E2E8F0; padding: 8px 12px; }}
+   table {{ border-collapse: collapse; width: 100%; }}
+   th,td {{ border: 1px solid #E2E8F0; padding: 8px 12px; }}
   th {{ background: #F1F5F9; }} img {{ max-width: 100%; }}
   code {{ background: #F1F5F9; padding: 2px 5px; border-radius: 3px; font-size: 0.875em; }}
   pre {{ background: #F1F5F9; padding: 16px; border-radius: 6px; overflow-x: auto; }}
@@ -166,11 +166,11 @@ def docs_pdf_view(
     )
 
     try:
-        from weasyprint import HTML
+        from weasyprint import HTML  # type: ignore
 
         pdf_bytes = HTML(string=html_content).write_pdf()
-    except Exception as err:
-        raise HTTPException(status_code=501, detail="WeasyPrint not installed") from err
+    except ImportError as exc:
+        raise HTTPException(status_code=501, detail="WeasyPrint not installed") from exc
 
     return Response(content=pdf_bytes, media_type="application/pdf")
 
@@ -214,7 +214,7 @@ def docs_pdf(
     )
 
     try:
-        from weasyprint import HTML  # type: ignore
+        from weasyprint import HTML
 
         def generate_pdf() -> bytes:
             return HTML(string=html_content).write_pdf()  # type: ignore[no-any-return]
@@ -826,6 +826,7 @@ def docs_ide_tab(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: full IDE tab with guide editor and diff viewer."""
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
@@ -839,23 +840,25 @@ def docs_ide_tab(
             "doc": doc,
             "doc_id": doc_id,
             "project_id": project_id,
+            "current_project": _get_project_or_404(project_id, db),
         },
     )
 
 
 @router.get("/api/docs/{doc_id}/guide/type", response_class=HTMLResponse)
-def docs_guide_type_editor(
+def docs_guide_type_get(
     project_id: str,
     doc_id: str,
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: type guide editor panel."""
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
-    guide_md = svc.get_type_guide(doc.doc_type.value) if hasattr(svc, "get_type_guide") else None
+    guide_md = svc.get_type_guide(doc.doc_type.value) or ""
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -871,20 +874,20 @@ def docs_guide_type_editor(
 
 
 @router.post("/api/docs/{doc_id}/guide/type", response_class=HTMLResponse)
-def docs_guide_type_save(
+def docs_guide_type_post(
     project_id: str,
     doc_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    guide_md: str = Form(""),
+    guide_md: str = Form(...),
 ) -> Any:
+    """htmx endpoint: save type guide."""
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
-    if hasattr(svc, "save_type_guide"):
-        svc.save_type_guide(doc.doc_type.value, guide_md)
+    svc.save_type_guide(doc.doc_type.value, guide_md)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -900,20 +903,19 @@ def docs_guide_type_save(
 
 
 @router.get("/api/docs/{doc_id}/guide/instance", response_class=HTMLResponse)
-def docs_guide_instance_editor(
+def docs_guide_instance_get(
     project_id: str,
     doc_id: str,
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: instance guide editor panel."""
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
-    instance_guide = None
-    if hasattr(svc, "get_instance_guide"):
-        instance_guide = svc.get_instance_guide(project_id, doc_id)
+    instance_guide = svc.get_instance_guide(project_id, doc_id)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -928,20 +930,20 @@ def docs_guide_instance_editor(
 
 
 @router.post("/api/docs/{doc_id}/guide/instance", response_class=HTMLResponse)
-def docs_guide_instance_save(
+def docs_guide_instance_post(
     project_id: str,
     doc_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    guide_md: str = Form(""),
+    guide_md: str = Form(...),
 ) -> Any:
+    """htmx endpoint: save instance guide."""
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
-    if hasattr(svc, "save_instance_guide"):
-        svc.save_instance_guide(project_id, doc_id, guide_md)
+    svc.save_instance_guide(project_id, doc_id, guide_md)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -962,13 +964,13 @@ def docs_guide_instance_delete(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx endpoint: delete instance guide override."""
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
-    if hasattr(svc, "delete_instance_guide"):
-        svc.delete_instance_guide(project_id, doc_id)
+    svc.delete_instance_guide(project_id, doc_id)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -983,29 +985,24 @@ def docs_guide_instance_delete(
 
 
 @router.get("/api/docs/{doc_id}/guide/sections", response_class=HTMLResponse)
-def docs_guide_sections_panel(
+def docs_guide_sections_get(
     project_id: str,
     doc_id: str,
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: section guide list panel."""
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
-    sections: list[str] = []
-    try:
-        from orch.doc_sections import extract_sections  # type: ignore[import-untyped]
+    from orch.doc_sections import extract_sections
 
-        if doc.content:
-            sections = extract_sections(doc.content)
-    except ImportError:
-        sections = []
-    section_guides: dict[str, str | None] = {}
-    if hasattr(svc, "get_section_guide"):
-        for section_name in sections:
-            section_guides[section_name] = svc.get_section_guide(project_id, doc_id, section_name)
+    sections = extract_sections(doc.content or "")
+    section_guides: dict[str, str] = {}
+    for section_name, _guide_md in svc.list_section_guides(project_id, doc_id):
+        section_guides[section_name] = _guide_md
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -1021,21 +1018,27 @@ def docs_guide_sections_panel(
 
 
 @router.post("/api/docs/{doc_id}/guide/sections/{section_name}", response_class=HTMLResponse)
-def docs_guide_section_save(
+def docs_guide_section_post(
     project_id: str,
     doc_id: str,
     section_name: str,
     request: Request,
     db: Session = Depends(get_db),
-    guide_md: str = Form(""),
+    guide_md: str = Form(...),
 ) -> Any:
+    """htmx endpoint: save a section guide."""
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
-    if hasattr(svc, "save_section_guide"):
-        svc.save_section_guide(project_id, doc_id, section_name, guide_md)
+    svc.save_section_guide(project_id, doc_id, section_name, guide_md)
+    from orch.doc_sections import extract_sections
+
+    sections = extract_sections(doc.content or "")
+    section_guides: dict[str, str] = {}
+    for s_name, _guide_md in svc.list_section_guides(project_id, doc_id):
+        section_guides[s_name] = _guide_md
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -1044,8 +1047,8 @@ def docs_guide_section_save(
             "doc": doc,
             "doc_id": doc_id,
             "project_id": project_id,
-            "sections": [section_name],
-            "section_guides": {section_name: guide_md},
+            "sections": sections,
+            "section_guides": section_guides,
         },
     )
 
@@ -1057,11 +1060,11 @@ def docs_guide_section_delete(
     section_name: str,
     db: Session = Depends(get_db),
 ) -> Response:
+    """htmx endpoint: delete a section guide."""
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
-    if hasattr(svc, "delete_section_guide"):
-        svc.delete_section_guide(project_id, doc_id, section_name)
+    svc.delete_section_guide(project_id, doc_id, section_name)
     return Response(status_code=204)

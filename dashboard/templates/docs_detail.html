@@ -183,6 +183,16 @@
       </svg>
       PDF
     </button>
+    <button id="ide-tab-btn"
+            hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/ide"
+            hx-target="#ide-panel"
+            hx-swap="innerHTML"
+            hx-trigger="click once"
+            role="tab"
+            aria-selected="false"
+            class="doc-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+      IDE
+    </button>
   </div>
 
   {# Viewer panels #}
@@ -234,7 +244,8 @@
               title="{{ doc.title }} — PDF view"></iframe>
     </div>
 
-  </div>
+    {# IDE tab content panel (lazy-loaded via htmx) #}
+    <div id="ide-panel" class="hidden px-4 py-6"></div>
 
   {% else %}
 
