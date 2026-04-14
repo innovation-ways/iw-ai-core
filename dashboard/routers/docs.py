@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from sqlalchemy import select
 
@@ -816,3 +816,251 @@ def docs_lint_warnings(
         "fragments/docs_lint_warnings.html",
         {"lint_warnings": job.lint_warnings},
     )
+
+
+@router.get("/api/docs/{doc_id}/ide", response_class=HTMLResponse)
+def docs_ide_tab(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_ide_tab.html",
+        {
+            "doc": doc,
+            "doc_id": doc_id,
+            "project_id": project_id,
+        },
+    )
+
+
+@router.get("/api/docs/{doc_id}/guide/type", response_class=HTMLResponse)
+def docs_guide_type_editor(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    guide_md = svc.get_type_guide(doc.doc_type.value) if hasattr(svc, "get_type_guide") else None
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_guide_type_editor.html",
+        {
+            "doc": doc,
+            "doc_id": doc_id,
+            "project_id": project_id,
+            "doc_type": doc.doc_type.value,
+            "guide_md": guide_md,
+        },
+    )
+
+
+@router.post("/api/docs/{doc_id}/guide/type", response_class=HTMLResponse)
+def docs_guide_type_save(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    guide_md: str = Form(""),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    if hasattr(svc, "save_type_guide"):
+        svc.save_type_guide(doc.doc_type.value, guide_md)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_guide_type_editor.html",
+        {
+            "doc": doc,
+            "doc_id": doc_id,
+            "project_id": project_id,
+            "doc_type": doc.doc_type.value,
+            "guide_md": guide_md,
+        },
+    )
+
+
+@router.get("/api/docs/{doc_id}/guide/instance", response_class=HTMLResponse)
+def docs_guide_instance_editor(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    instance_guide = None
+    if hasattr(svc, "get_instance_guide"):
+        instance_guide = svc.get_instance_guide(project_id, doc_id)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_guide_instance_editor.html",
+        {
+            "doc": doc,
+            "doc_id": doc_id,
+            "project_id": project_id,
+            "instance_guide": instance_guide,
+        },
+    )
+
+
+@router.post("/api/docs/{doc_id}/guide/instance", response_class=HTMLResponse)
+def docs_guide_instance_save(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    guide_md: str = Form(""),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    if hasattr(svc, "save_instance_guide"):
+        svc.save_instance_guide(project_id, doc_id, guide_md)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_guide_instance_editor.html",
+        {
+            "doc": doc,
+            "doc_id": doc_id,
+            "project_id": project_id,
+            "instance_guide": guide_md,
+        },
+    )
+
+
+@router.delete("/api/docs/{doc_id}/guide/instance", response_class=HTMLResponse)
+def docs_guide_instance_delete(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    if hasattr(svc, "delete_instance_guide"):
+        svc.delete_instance_guide(project_id, doc_id)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_guide_instance_editor.html",
+        {
+            "doc": doc,
+            "doc_id": doc_id,
+            "project_id": project_id,
+            "instance_guide": None,
+        },
+    )
+
+
+@router.get("/api/docs/{doc_id}/guide/sections", response_class=HTMLResponse)
+def docs_guide_sections_panel(
+    project_id: str,
+    doc_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    sections: list[str] = []
+    try:
+        from orch.doc_sections import extract_sections  # type: ignore[import-untyped]
+
+        if doc.content:
+            sections = extract_sections(doc.content)
+    except ImportError:
+        sections = []
+    section_guides: dict[str, str | None] = {}
+    if hasattr(svc, "get_section_guide"):
+        for section_name in sections:
+            section_guides[section_name] = svc.get_section_guide(project_id, doc_id, section_name)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_guide_sections_panel.html",
+        {
+            "doc": doc,
+            "doc_id": doc_id,
+            "project_id": project_id,
+            "sections": sections,
+            "section_guides": section_guides,
+        },
+    )
+
+
+@router.post("/api/docs/{doc_id}/guide/sections/{section_name}", response_class=HTMLResponse)
+def docs_guide_section_save(
+    project_id: str,
+    doc_id: str,
+    section_name: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    guide_md: str = Form(""),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    if hasattr(svc, "save_section_guide"):
+        svc.save_section_guide(project_id, doc_id, section_name, guide_md)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_guide_sections_panel.html",
+        {
+            "doc": doc,
+            "doc_id": doc_id,
+            "project_id": project_id,
+            "sections": [section_name],
+            "section_guides": {section_name: guide_md},
+        },
+    )
+
+
+@router.delete("/api/docs/{doc_id}/guide/sections/{section_name}")
+def docs_guide_section_delete(
+    project_id: str,
+    doc_id: str,
+    section_name: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    _get_project_or_404(project_id, db)
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    if hasattr(svc, "delete_section_guide"):
+        svc.delete_section_guide(project_id, doc_id, section_name)
+    return Response(status_code=204)
