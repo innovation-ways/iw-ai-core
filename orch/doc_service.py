@@ -22,13 +22,14 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
-from orch.doc_sections import extract_sections, split_by_sections
 from orch.db.models import (
     DocGenerationJob,
+    DocInstanceGuide,
     DocSectionGuide,
     DocStatus,
     DocTier,
     DocType,
+    DocTypeGuide,
     EditorialCategory,
     JobStatus,
     Project,
@@ -470,13 +471,6 @@ class DocService:
         )
         self._session.add(job)
         self._session.flush()
-        if doc is not None:
-            section_rows = self.list_section_guides(project_id, doc_id)
-            if section_rows:
-                job.section_guides_snapshot = {
-                    row.section_name: row.guide_md for row in section_rows
-                }
-        self._session.flush()
         return job
 
     def start_doc_job(
@@ -801,57 +795,91 @@ class DocService:
 
         return [(row[0], row[1]) for row in rows]
 
+    # -----------------------------------------------------------------------
+    # Type Guide
+    # -----------------------------------------------------------------------
+
+    def get_type_guide(self, doc_type: str) -> str | None:
+        guide = self._session.get(DocTypeGuide, doc_type)
+        return guide.guide_md if guide is not None else None
+
+    def save_type_guide(self, doc_type: str, guide_md: str) -> DocTypeGuide:
+        guide = self._session.get(DocTypeGuide, doc_type)
+        if guide is None:
+            guide = DocTypeGuide(doc_type=doc_type, guide_md=guide_md)
+            self._session.add(guide)
+        else:
+            guide.guide_md = guide_md
+        self._session.flush()
+        return guide
+
+    # -----------------------------------------------------------------------
+    # Instance Guide
+    # -----------------------------------------------------------------------
+
+    def get_instance_guide(self, project_id: str, doc_id: str) -> str | None:
+        full_id = f"{project_id}:{doc_id}"
+        guide = self._session.get(DocInstanceGuide, full_id)
+        return guide.guide_md if guide is not None else None
+
+    def save_instance_guide(self, project_id: str, doc_id: str, guide_md: str) -> DocInstanceGuide:
+        full_id = f"{project_id}:{doc_id}"
+        guide = self._session.get(DocInstanceGuide, full_id)
+        if guide is None:
+            guide = DocInstanceGuide(doc_id=full_id, guide_md=guide_md)
+            self._session.add(guide)
+        else:
+            guide.guide_md = guide_md
+        self._session.flush()
+        return guide
+
+    def delete_instance_guide(self, project_id: str, doc_id: str) -> bool:
+        full_id = f"{project_id}:{doc_id}"
+        guide = self._session.get(DocInstanceGuide, full_id)
+        if guide is None:
+            return True
+        self._session.delete(guide)
+        self._session.flush()
+        return True
+
+    def _effective_guide(self, project_id: str, doc_id: str, doc_type: str) -> str | None:
+        instance = self.get_instance_guide(project_id, doc_id)
+        if instance is not None:
+            return instance
+        return self.get_type_guide(doc_type)
+
+    # -----------------------------------------------------------------------
+    # Section Guide
+    # -----------------------------------------------------------------------
+
+    def list_section_guides(self, project_id: str, doc_id: str) -> list[tuple[str, str]]:
+        full_id = f"{project_id}:{doc_id}"
+        rows = self._session.query(DocSectionGuide).filter(DocSectionGuide.doc_id == full_id).all()
+        return [(r.section_name, r.guide_md) for r in rows]
+
     def get_section_guide(self, project_id: str, doc_id: str, section_name: str) -> str | None:
-        """Return the editorial guide for a specific section, or None if not set."""
-        composite_id = f"{project_id}:{doc_id}"
-        row = self._session.execute(
-            select(DocSectionGuide)
-            .where(DocSectionGuide.doc_id == composite_id)
-            .where(DocSectionGuide.section_name == section_name)
-        ).scalar_one_or_none()
-        return row.guide_md if row else None
+        full_id = f"{project_id}:{doc_id}"
+        guide = self._session.get(DocSectionGuide, (full_id, section_name))
+        return guide.guide_md if guide is not None else None
 
     def save_section_guide(
         self, project_id: str, doc_id: str, section_name: str, guide_md: str
     ) -> DocSectionGuide:
-        """Create or update the section guide for the given (doc, section) pair."""
-        composite_id = f"{project_id}:{doc_id}"
-        row = self._session.execute(
-            select(DocSectionGuide)
-            .where(DocSectionGuide.doc_id == composite_id)
-            .where(DocSectionGuide.section_name == section_name)
-        ).scalar_one_or_none()
-        if row is None:
-            row = DocSectionGuide(doc_id=composite_id, section_name=section_name, guide_md=guide_md)
-            self._session.add(row)
+        full_id = f"{project_id}:{doc_id}"
+        guide = self._session.get(DocSectionGuide, (full_id, section_name))
+        if guide is None:
+            guide = DocSectionGuide(doc_id=full_id, section_name=section_name, guide_md=guide_md)
+            self._session.add(guide)
         else:
-            row.guide_md = guide_md
+            guide.guide_md = guide_md
         self._session.flush()
-        return row
+        return guide
 
     def delete_section_guide(self, project_id: str, doc_id: str, section_name: str) -> bool:
-        """Remove the section guide for a (doc, section) pair. Returns True if deleted."""
-        composite_id = f"{project_id}:{doc_id}"
-        row = self._session.execute(
-            select(DocSectionGuide)
-            .where(DocSectionGuide.doc_id == composite_id)
-            .where(DocSectionGuide.section_name == section_name)
-        ).scalar_one_or_none()
-        if row is not None:
-            self._session.delete(row)
-            self._session.flush()
+        full_id = f"{project_id}:{doc_id}"
+        guide = self._session.get(DocSectionGuide, (full_id, section_name))
+        if guide is None:
             return True
-        return False
-
-    def list_section_guides(self, project_id: str, doc_id: str) -> list[DocSectionGuide]:
-        """Return all section guides for the given document, ordered by section_name."""
-        composite_id = f"{project_id}:{doc_id}"
-        return list(
-            self._session.execute(
-                select(DocSectionGuide)
-                .where(DocSectionGuide.doc_id == composite_id)
-                .order_by(DocSectionGuide.section_name)
-            )
-            .scalars()
-            .all()
-        )
+        self._session.delete(guide)
+        self._session.flush()
+        return True
