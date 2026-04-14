@@ -1,4 +1,10 @@
 <!-- Worktree health table fragment — auto-refreshes every 30 s via htmx -->
+{% if prune_errors %}
+<div class="mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-2 text-xs text-destructive space-y-0.5">
+  <p class="font-medium">git worktree prune failed for some projects:</p>
+  {% for err in prune_errors %}<p class="font-mono">{{ err }}</p>{% endfor %}
+</div>
+{% endif %}
 <div id="worktree-table"
      hx-get="/system/worktrees/table"
      hx-trigger="every 30s, worktree-committed from:body"

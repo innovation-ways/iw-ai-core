@@ -522,3 +522,28 @@ async def worktrees_commit(
     # Tell the worktree table to refresh immediately
     response.headers["HX-Trigger"] = "worktree-committed"
     return response
+
+
+@router.post("/worktrees/prune", response_class=HTMLResponse)
+def worktrees_prune(request: Request, db: Session = Depends(get_db)) -> Any:
+    """Run `git worktree prune` on all enabled projects and refresh the table."""
+    projects = db.scalars(select(Project).where(Project.enabled.is_(True))).all()
+    errors: list[str] = []
+    for project in projects:
+        r = subprocess.run(  # noqa: S603
+            ["git", "-C", project.repo_root, "worktree", "prune"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if r.returncode != 0:
+            errors.append(f"{project.id}: {r.stderr.strip()}")
+
+    templates: Jinja2Templates = request.app.state.templates
+    worktrees = _collect_worktrees(db)
+    response = templates.TemplateResponse(
+        request,
+        "fragments/worktree_table.html",
+        {"worktrees": worktrees, "prune_errors": errors},
+    )
+    return response
