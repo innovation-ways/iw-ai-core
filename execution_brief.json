@@ -1,20 +1,20 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00022",
-  "title": "iw-research Skill",
+  "id": "F-00021",
+  "title": "Research Dashboard Panel in iw-ai-core",
   "status": "approved",
   "phase": "active",
-  "total_steps": 5,
+  "total_steps": 12,
   "completed_steps": 0,
   "current_step": null,
   "batch_id": "BATCH-00019",
-  "worktree": null,
-  "created_at": "2026-04-13T18:53:44.018548+00:00",
-  "updated_at": "2026-04-13T18:53:44.018548+00:00",
+  "worktree": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00021",
+  "created_at": "2026-04-13T18:53:40.107050+00:00",
+  "updated_at": "2026-04-13T18:53:40.107050+00:00",
   "steps": [
     {
       "step_id": "S01",
-      "label": "Backend",
+      "label": "Frontend",
       "type": "implementation",
       "status": "pending"
     },
@@ -26,14 +26,14 @@
     },
     {
       "step_id": "S03",
-      "label": "CodeReviewFinal",
-      "type": "code_review_final",
+      "label": "Tests",
+      "type": "implementation",
       "status": "pending"
     },
     {
       "step_id": "S04",
-      "label": "QvGate",
-      "type": "quality_validation",
+      "label": "CodeReviewFinal",
+      "type": "code_review_final",
       "status": "pending"
     },
     {
@@ -41,10 +41,52 @@
       "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
+    },
+    {
+      "step_id": "S06",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S07",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S08",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S09",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S10",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S11",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S12",
+      "label": "QvBrowser",
+      "type": "browser_verification",
+      "status": "pending"
     }
   ],
-  "branch": "agent/F-00022-iw-research-skill",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00022",
+  "branch": "agent/F-00021-research-dashboard-panel-in-iw",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00021",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-14T07:00:59Z"
+  "brief_generated_at": "2026-04-13T20:47:46Z"
 }

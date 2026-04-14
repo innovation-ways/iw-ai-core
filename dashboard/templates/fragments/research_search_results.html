@@ -1,0 +1,58 @@
+{% if docs %}
+<div class="overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead class="bg-muted border-b border-border">
+      <tr>
+        <th class="text-left px-4 py-3 font-medium text-muted-foreground">ID</th>
+        <th class="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
+        <th class="text-left px-4 py-3 font-medium text-muted-foreground">Mode</th>
+        <th class="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+        <th class="text-left px-4 py-3 font-medium text-muted-foreground">Created</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-border">
+      {% for doc in docs %}
+      <tr class="hover:bg-muted/50 transition-colors">
+        <td class="px-4 py-3 font-mono text-xs text-muted-foreground">
+          <a href="/project/{{ current_project.id }}/research/{{ doc.doc_id }}" class="hover:text-primary">{{ doc.doc_id }}</a>
+        </td>
+        <td class="px-4 py-3">
+          <a href="/project/{{ current_project.id }}/research/{{ doc.doc_id }}" class="font-medium text-foreground hover:text-primary">
+            {{ doc.title }}
+          </a>
+        </td>
+        <td class="px-4 py-3">
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
+            {{ doc.editorial_category.value|replace('_',' ')|title if doc.editorial_category else '—' }}
+          </span>
+        </td>
+        <td class="px-4 py-3">
+          {% set status_colors = {
+            'planned': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+            'draft': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200',
+            'published': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
+            'archived': 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'
+          } %}
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ status_colors.get(doc.status.value, 'bg-muted text-muted-foreground') }}">
+            {{ doc.status.value|title }}
+          </span>
+        </td>
+        <td class="px-4 py-3 text-muted-foreground">
+          {{ doc.created_at.strftime('%Y-%m-%d') if doc.created_at else '—' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="flex flex-col items-center justify-center py-16 text-center">
+  <svg class="w-12 h-12 text-muted-foreground/50 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+  </svg>
+  <h3 class="text-lg font-semibold text-foreground mb-2">No research documents found</h3>
+  <p class="text-muted-foreground text-sm max-w-sm">
+    Try adjusting your search or filters.
+  </p>
+</div>
+{% endif %}
