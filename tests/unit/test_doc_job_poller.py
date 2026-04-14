@@ -117,12 +117,14 @@ class TestDocJobPollerSkillSelection:
 
 class TestDocServiceJobLifecycle:
     def test_create_doc_job(self, tmp_path: Path) -> None:
+        from orch.db.models import DocType
         from orch.doc_service import DocService
 
         mock_db = MagicMock()
         mock_doc = MagicMock(spec=ProjectDoc)
         mock_doc.id = "test-proj:doc001"
-        mock_db.get.return_value = mock_doc
+        mock_doc.doc_type = DocType.api
+        mock_db.execute.return_value.scalar_one_or_none.return_value = mock_doc
 
         svc = DocService(mock_db)
         job = svc.create_doc_job("test-proj", "doc001")
