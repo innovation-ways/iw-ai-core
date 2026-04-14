@@ -1,35 +1,26 @@
-<div class="space-y-3">
-  <div class="flex items-center gap-2 text-sm">
-    <label class="text-muted-foreground">Compare:</label>
-    <input type="number" name="v1" min="0" placeholder="v1"
-           class="w-16 px-2 py-1 text-xs border rounded bg-background">
-    <span class="text-muted-foreground">to</span>
-    <input type="number" name="v2" min="0" placeholder="v2"
-           class="w-16 px-2 py-1 text-xs border rounded bg-background">
-    <button type="button"
-            class="px-3 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
-            onclick="loadSectionDiff()">
-      Compare
-    </button>
+<div class="p-4 border rounded-lg bg-card">
+  <h3 class="font-semibold text-sm mb-3">Section Diff</h3>
+  <div class="space-y-2 mb-3">
+    <div class="flex gap-2 items-center">
+      <label class="text-xs text-muted-foreground">v1</label>
+      <input type="number" id="diff-v1" min="1" value="1"
+             class="w-16 text-xs border rounded px-2 py-1 bg-background" />
+      <label class="text-xs text-muted-foreground ml-2">v2</label>
+      <input type="number" id="diff-v2" min="2" value="2"
+             class="w-16 text-xs border rounded px-2 py-1 bg-background" />
+      <button type="button"
+              hx-get="/project/{{ project_id }}/api/docs/{{ doc_id }}/diff/sections"
+              hx-include="[id='diff-v1'],[id='diff-v2']"
+              hx-vals='{"v1": document.getElementById("diff-v1").value, "v2": document.getElementById("diff-v2").value}'
+              hx-trigger="click"
+              hx-target="#diff-sections-result"
+              hx-swap="innerHTML"
+              class="px-3 py-1 text-xs bg-secondary text-secondary-foreground rounded hover:bg-secondary/80">
+        Compare
+      </button>
+    </div>
   </div>
-
-  <div id="section-diff-results" class="text-sm text-muted-foreground text-center py-4">
-    Select versions and click Compare to see section diff
+  <div id="diff-sections-result" class="text-xs text-muted-foreground">
+    <p class="text-center py-4">Enter version numbers and click Compare.</p>
   </div>
 </div>
-
-<script>
-function loadSectionDiff() {
-  const v1 = document.querySelector('[name="v1"]').value;
-  const v2 = document.querySelector('[name="v2"]').value;
-  if (!v1 || !v2) {
-    document.getElementById('section-diff-results').innerHTML = 
-      '<div class="text-red-500 text-xs">Please enter both version numbers</div>';
-    return;
-  }
-  htmx.ajax('GET', 
-    '/project/{{ project_id }}/api/docs/{{ doc_id }}/diff/sections?v1=' + v1 + '&v2=' + v2,
-    {target: '#section-diff-results', swap: 'innerHTML'}
-  );
-}
-</script>
