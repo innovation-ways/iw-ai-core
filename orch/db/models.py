@@ -949,6 +949,11 @@ class DocGenerationJob(Base):
         nullable=True,
         comment="Section guides snapshotted at job creation: {section_name: guide_md, ...}.",
     )
+    guide_snapshot: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Guide content snapshotted at job creation time for audit purposes.",
+    )
     created_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, nullable=False, server_default=func.now()
     )

@@ -473,6 +473,7 @@ class DocService:
             section_guides_snapshot={row.section_name: row.guide_md for row in section_rows}
             if section_rows
             else None,
+            guide_snapshot=self.get_type_guide(doc.doc_type.value),
         )
         self._session.add(job)
         self._session.flush()
