@@ -22,8 +22,10 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
+from orch.doc_sections import extract_sections, split_by_sections
 from orch.db.models import (
     DocGenerationJob,
+    DocSectionGuide,
     DocStatus,
     DocTier,
     DocType,
@@ -468,6 +470,13 @@ class DocService:
         )
         self._session.add(job)
         self._session.flush()
+        if doc is not None:
+            section_rows = self.list_section_guides(project_id, doc_id)
+            if section_rows:
+                job.section_guides_snapshot = {
+                    row.section_name: row.guide_md for row in section_rows
+                }
+        self._session.flush()
         return job
 
     def start_doc_job(
@@ -791,3 +800,58 @@ class DocService:
         rows = result.all()
 
         return [(row[0], row[1]) for row in rows]
+
+    def get_section_guide(self, project_id: str, doc_id: str, section_name: str) -> str | None:
+        """Return the editorial guide for a specific section, or None if not set."""
+        composite_id = f"{project_id}:{doc_id}"
+        row = self._session.execute(
+            select(DocSectionGuide)
+            .where(DocSectionGuide.doc_id == composite_id)
+            .where(DocSectionGuide.section_name == section_name)
+        ).scalar_one_or_none()
+        return row.guide_md if row else None
+
+    def save_section_guide(
+        self, project_id: str, doc_id: str, section_name: str, guide_md: str
+    ) -> DocSectionGuide:
+        """Create or update the section guide for the given (doc, section) pair."""
+        composite_id = f"{project_id}:{doc_id}"
+        row = self._session.execute(
+            select(DocSectionGuide)
+            .where(DocSectionGuide.doc_id == composite_id)
+            .where(DocSectionGuide.section_name == section_name)
+        ).scalar_one_or_none()
+        if row is None:
+            row = DocSectionGuide(doc_id=composite_id, section_name=section_name, guide_md=guide_md)
+            self._session.add(row)
+        else:
+            row.guide_md = guide_md
+        self._session.flush()
+        return row
+
+    def delete_section_guide(self, project_id: str, doc_id: str, section_name: str) -> bool:
+        """Remove the section guide for a (doc, section) pair. Returns True if deleted."""
+        composite_id = f"{project_id}:{doc_id}"
+        row = self._session.execute(
+            select(DocSectionGuide)
+            .where(DocSectionGuide.doc_id == composite_id)
+            .where(DocSectionGuide.section_name == section_name)
+        ).scalar_one_or_none()
+        if row is not None:
+            self._session.delete(row)
+            self._session.flush()
+            return True
+        return False
+
+    def list_section_guides(self, project_id: str, doc_id: str) -> list[DocSectionGuide]:
+        """Return all section guides for the given document, ordered by section_name."""
+        composite_id = f"{project_id}:{doc_id}"
+        return list(
+            self._session.execute(
+                select(DocSectionGuide)
+                .where(DocSectionGuide.doc_id == composite_id)
+                .order_by(DocSectionGuide.section_name)
+            )
+            .scalars()
+            .all()
+        )
