@@ -258,7 +258,10 @@ def test_get_sections_panel_with_h2_headings(client: TestClient, db_session: Ses
         db_session,
         project_id=proj.id,
         doc_id="doc-9",
-        content="# Test Doc\n\n## Purpose\nSome purpose content.\n\n## Architecture\nArchitecture details.",
+        content=(
+            "# Test Doc\n\n## Purpose\nSome purpose"
+            "\ncontent.\n\n## Architecture\nArchitecture details."
+        ),
     )
 
     resp = client.get(f"/project/{proj.id}/api/docs/{doc.doc_id}/guide/sections")
@@ -281,11 +284,6 @@ def test_get_sections_panel_no_h2_sections(client: TestClient, db_session: Sessi
     resp = client.get(f"/project/{proj.id}/api/docs/{doc.doc_id}/guide/sections")
     assert resp.status_code == 200
     assert '<div class="space-y-4">' in resp.text
-
-
-# ---------------------------------------------------------------------------
-# POST /project/{id}/api/docs/{doc_id}/guide/sections/{section_name}
-# ---------------------------------------------------------------------------
 
 
 def test_save_section_guide(client: TestClient, db_session: Session) -> None:
@@ -335,11 +333,6 @@ def test_save_section_guide_url_encoded_special_chars(
     )
     assert resp.status_code == 200
     assert "API &amp; Changelog Guide" in resp.text
-
-
-# ---------------------------------------------------------------------------
-# DELETE /project/{id}/api/docs/{doc_id}/guide/sections/{section_name}
-# ---------------------------------------------------------------------------
 
 
 def test_delete_section_guide(client: TestClient, db_session: Session) -> None:
