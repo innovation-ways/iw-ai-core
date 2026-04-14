@@ -171,7 +171,41 @@ def _generate_batch_plan(
             }
         )
 
-    analysis = analyze_deps(items_data)
+    # Collect items currently executing in other batches for cross-batch overlap detection
+    new_item_ids = {item.id for item in items}
+    active_batch_items = (
+        session.execute(
+            select(BatchItem).where(
+                BatchItem.project_id == project_id,
+                BatchItem.status.in_(
+                    [
+                        BatchItemStatus.setting_up,
+                        BatchItemStatus.executing,
+                        BatchItemStatus.completed,
+                        BatchItemStatus.merging,
+                    ]
+                ),
+                BatchItem.work_item_id.not_in(new_item_ids),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    active_items_data: list[dict[str, Any]] = []
+    for abi in active_batch_items:
+        from orch.db.models import WorkItem as _WorkItem
+
+        wi = session.get(_WorkItem, (project_id, abi.work_item_id))
+        if wi and wi.design_doc_content:
+            active_items_data.append(
+                {
+                    "id": abi.work_item_id,
+                    "batch_id": abi.batch_id,
+                    "design_doc_content": wi.design_doc_content,
+                }
+            )
+
+    analysis = analyze_deps(items_data, active_items_data)
 
     # Update group assignments from the richer analysis (may differ due to
     # file-overlap and DB-step sequencing detected by the planner)

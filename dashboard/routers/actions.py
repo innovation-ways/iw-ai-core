@@ -571,12 +571,45 @@ async def create_batch_from_selection(
             }
         )
 
+    # Collect items currently executing in other batches for cross-batch overlap detection
+    active_batch_items = list(
+        db.scalars(
+            select(BatchItem).where(
+                BatchItem.project_id == project_id,
+                BatchItem.status.in_(
+                    [
+                        BatchItemStatus.setting_up,
+                        BatchItemStatus.executing,
+                        BatchItemStatus.completed,
+                        BatchItemStatus.merging,
+                    ]
+                ),
+            )
+        )
+    )
+    active_items_data = []
+    for abi in active_batch_items:
+        wi = db.scalar(
+            select(WorkItem).where(
+                WorkItem.project_id == project_id,
+                WorkItem.id == abi.work_item_id,
+            )
+        )
+        if wi and wi.design_doc_content:
+            active_items_data.append(
+                {
+                    "id": abi.work_item_id,
+                    "batch_id": abi.batch_id,
+                    "design_doc_content": wi.design_doc_content,
+                }
+            )
+
     # Run all CPU-bound plan generation in a thread so the event loop isn't
     # blocked while Pillow/drawio rendering runs (~5-30s for large batches).
     import asyncio as _asyncio
 
     def _build_plan() -> tuple:
-        _analysis = analyze_dependencies(items_data)
+        _analysis = analyze_dependencies(items_data, active_items_data)
         _md = generate_execution_plan_md(batch_id, _analysis, 4)
         _drawio = generate_drawio(batch_id, _analysis, 4)
         _png = generate_png(batch_id, _analysis, 4)
