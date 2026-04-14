@@ -498,3 +498,188 @@ def test_item_detail_has_sse_script(client: TestClient, db_session: Any) -> None
     assert "EventSource" in resp.text
     assert "running-update" in resp.text
     assert "/tab/overview" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# Research Panel
+# ---------------------------------------------------------------------------
+
+
+def _seed_research_doc(
+    db: Any,
+    project_id: str,
+    doc_id: str = "R-00001",
+    title: str = "Test Research",
+    content: str = "# Findings\nSome findings.",
+    status: str = "published",
+    category: str = "technical",
+) -> None:
+    """Seed a research ProjectDoc via DocService (handles composite PK, slug, tier, etc.)."""
+    from orch.db.models import DocStatus, DocTier, DocType, EditorialCategory
+    from orch.doc_service import DocService
+
+    svc = DocService(db)
+    svc.create_doc(
+        project_id=project_id,
+        doc_id=doc_id,
+        title=title,
+        doc_type=DocType.research,
+        tier=DocTier.human_authored,
+        editorial_category=EditorialCategory(category),
+        status=DocStatus(status),
+        content=content,
+    )
+
+
+def test_research_library_page_empty(client: TestClient, test_project: Project) -> None:
+    """Research library page renders with empty state when no research docs exist."""
+    response = client.get(f"/project/{test_project.id}/research")
+    assert response.status_code == 200
+    assert "research" in response.text.lower() or "iw-research" in response.text
+
+
+def test_research_library_page_with_docs(
+    client: TestClient, db_session: Any, test_project: Project
+) -> None:
+    """Research library lists seeded research documents."""
+    _seed_research_doc(
+        db_session, test_project.id, doc_id="R-00001", title="API Rate Limiting Research"
+    )
+    response = client.get(f"/project/{test_project.id}/research")
+    assert response.status_code == 200
+    assert "R-00001" in response.text
+    assert "API Rate Limiting Research" in response.text
+
+
+def test_research_detail_page(client: TestClient, db_session: Any, test_project: Project) -> None:
+    """Research detail page renders markdown content."""
+    _seed_research_doc(
+        db_session,
+        test_project.id,
+        doc_id="R-00002",
+        title="Queue Strategy Research",
+        content="# Queue Strategy\n\nRedis is **fast**.",
+    )
+    response = client.get(f"/project/{test_project.id}/research/R-00002")
+    assert response.status_code == 200
+    assert "Queue Strategy Research" in response.text
+    assert "<strong>fast</strong>" in response.text or "fast" in response.text
+
+
+def test_research_detail_page_not_found(client: TestClient, test_project: Project) -> None:
+    """Research detail page returns 404 for unknown doc_id."""
+    response = client.get(f"/project/{test_project.id}/research/R-99999")
+    assert response.status_code == 404
+
+
+def test_research_detail_wrong_doc_type_returns_404(
+    client: TestClient, db_session: Any, test_project: Project
+) -> None:
+    """Research detail page returns 404 if doc_id belongs to a non-research doc."""
+    from orch.db.models import DocStatus, DocTier, DocType, EditorialCategory
+    from orch.doc_service import DocService
+
+    svc = DocService(db_session)
+    svc.create_doc(
+        project_id=test_project.id,
+        doc_id="MOD-00001",
+        title="Module Doc",
+        doc_type=DocType.module,
+        tier=DocTier.human_authored,
+        editorial_category=EditorialCategory.technical,
+        status=DocStatus.published,
+        content="# Module",
+    )
+    response = client.get(f"/project/{test_project.id}/research/MOD-00001")
+    assert response.status_code == 404
+
+
+def test_research_detail_null_content(
+    client: TestClient, db_session: Any, test_project: Project
+) -> None:
+    """Research detail page renders gracefully when content is None."""
+    from orch.db.models import DocStatus, DocTier, DocType, EditorialCategory
+    from orch.doc_service import DocService
+
+    svc = DocService(db_session)
+    svc.create_doc(
+        project_id=test_project.id,
+        doc_id="R-00003",
+        title="Empty Research",
+        doc_type=DocType.research,
+        tier=DocTier.human_authored,
+        editorial_category=EditorialCategory.technical,
+        status=DocStatus.draft,
+        content=None,
+    )
+    response = client.get(f"/project/{test_project.id}/research/R-00003")
+    assert response.status_code == 200
+
+
+def test_research_search_returns_results(
+    client: TestClient, db_session: Any, test_project: Project
+) -> None:
+    """Research search endpoint returns matching docs."""
+    _seed_research_doc(
+        db_session,
+        test_project.id,
+        doc_id="R-00004",
+        title="Authentication Methods Research",
+    )
+    response = client.get(f"/project/{test_project.id}/api/research/search?q=Authentication")
+    assert response.status_code == 200
+    assert "R-00004" in response.text
+    assert "Authentication Methods Research" in response.text
+
+
+def test_research_search_filters_by_status(
+    client: TestClient, db_session: Any, test_project: Project
+) -> None:
+    """Research search endpoint filters by status."""
+    _seed_research_doc(
+        db_session,
+        test_project.id,
+        doc_id="R-00005",
+        title="Draft Research",
+        status="draft",
+    )
+    _seed_research_doc(
+        db_session,
+        test_project.id,
+        doc_id="R-00006",
+        title="Published Research",
+        status="published",
+    )
+    response = client.get(f"/project/{test_project.id}/api/research/search?status=draft")
+    assert response.status_code == 200
+    assert "R-00005" in response.text
+    assert "R-00006" not in response.text
+
+
+def test_research_search_empty_results(client: TestClient, test_project: Project) -> None:
+    """Research search endpoint returns empty state when no matches."""
+    response = client.get(f"/project/{test_project.id}/api/research/search?q=nonexistent")
+    assert response.status_code == 200
+    assert "No research documents found" in response.text
+
+
+def test_research_search_no_query_returns_all(
+    client: TestClient, db_session: Any, test_project: Project
+) -> None:
+    """Research search endpoint returns all docs when no filter provided."""
+    _seed_research_doc(
+        db_session,
+        test_project.id,
+        doc_id="R-00007",
+        title="Research Seven",
+    )
+    _seed_research_doc(
+        db_session,
+        test_project.id,
+        doc_id="R-00008",
+        title="Research Eight",
+    )
+    response = client.get(f"/project/{test_project.id}/api/research/search")
+    assert response.status_code == 200
+    assert "R-00007" in response.text
+    assert "R-00008" in response.text

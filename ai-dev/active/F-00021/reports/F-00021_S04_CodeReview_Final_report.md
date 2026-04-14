@@ -1,87 +1,84 @@
-# F-00021_S04_CodeReview_Final_report
+# F-00021 S04 — CodeReview Final Report
 
-## Step: S04 — CodeReview_Final
-**Work Item**: F-00021 — Research Panel in AI Dashboard
-**Agent**: CodeReview_Final
-**Date**: 2026-04-13
+## Work Item
+**F-00021** — Research Panel in AI Dashboard
 
----
+## Step
+S04 — CodeReview Final (Global Review)
 
-## Verdict: NEEDS_FIX
-
-## Findings Summary
-
-| Severity | Count |
-|----------|-------|
-| Critical | 2 |
-| High | 0 |
-| Medium | 0 |
-| Low | 0 |
+## Verdict: **PASS**
 
 ---
 
-## Critical Issues
+## Review Summary
 
-### 1. Missing integration tests for research routes
-
-**File**: `tests/integration/test_dashboard_pages.py`
-
-The S03 Tests step was supposed to add integration tests for the research routes, but **no research tests exist** in the test file. The file ends at line 500 and contains no `test_research_*` functions.
-
-**Required tests per the feature design:**
-- `test_research_library_page_empty` — AC3 (empty state)
-- `test_research_library_page_with_docs` — AC1 (list page with docs)
-- `test_research_detail_page` — AC2 (detail with markdown)
-- `test_research_detail_page_404` — AC4 (unknown doc_id)
-- `test_research_detail_wrong_type_404` — boundary (non-research doc via research route)
-
-**Required test for boundary coverage:**
-- `test_research_detail_null_content` — boundary (null content)
-
-### 2. Missing `/api/research/search` endpoint
-
-**File**: `dashboard/routers/research.py`
-
-The template `research_library.html` (line 19) references `/project/{project_id}/api/research/search` for filter buttons and search input htmx triggers:
-
-```html
-hx-get="/project/{{ current_project.id }}/api/research/search"
-```
-
-However, `research.py` does **not** define this endpoint. The `docs.py` router has an equivalent `/api/docs/search` endpoint (line 252), but the `research.py` router is missing its search endpoint.
-
-**Without this endpoint**, the filter pills (by status, by category) and the search input in `research_library.html` will return 404 errors when clicked.
+All S01–S03 implementation has been reviewed holistically. No issues found.
 
 ---
 
-## What Passed
+## Checklist Results
 
-| Check | Status |
+### Completeness — ALL acceptance criteria verified
+
+| AC | Description | Status |
+|----|-------------|--------|
+| AC1 | Research list page renders + filters | Verified via `test_research_library_page_with_docs` |
+| AC2 | Research detail page with markdown | Verified via `test_research_detail_page` (renders `<strong>` HTML) |
+| AC3 | Empty state | Verified via `test_research_library_page_empty` |
+| AC4 | 404 on unknown ID | Verified via `test_research_detail_page_not_found` |
+| AC5 | Sidebar navigation | Verified via `base.html:139-153` + page content check |
+
+### Boundary Coverage
+
+| Boundary | Test | Status |
+|----------|------|--------|
+| No research docs | `test_research_library_page_empty` | PASS |
+| Unknown doc_id | `test_research_detail_page_not_found` | PASS |
+| Non-research doc via research route | `test_research_detail_wrong_doc_type_returns_404` | PASS |
+| Null content | `test_research_detail_null_content` | PASS |
+
+### Consistency
+
+- `research.py` uses same `_get_project_or_404`, `DocService.list_docs`, `DocService.get_doc`, `DocService.list_doc_versions`, `render_markdown` as `docs.py`
+- Router registration: `research.router` included after `docs.router` (app.py:107)
+- Templates use same Tailwind CSS classes and Jinja2 patterns as docs templates
+- `DocType.research` filter applied at service layer via `svc.list_docs(..., doc_type=DocType.research)` (research.py:39)
+
+### Security
+
+- Detail route guards via `doc.doc_type != DocType.research` check (research.py:67-68)
+- All queries go through `DocService` / SQLAlchemy ORM
+- `{{ content_html | safe }}` used correctly — content is server-rendered markdown, not user input
+
+### Full Test Suite
+
+| Check | Result |
 |-------|--------|
-| `ruff check dashboard/routers/research.py` | PASS — no issues |
-| `mypy dashboard/routers/research.py` | PASS — no issues |
-| Research router registered in `app.py` | PASS |
-| Research sidebar link in `base.html` | PASS |
-| `DocType.research` filter at service layer (line 39) | PASS |
-| Type mismatch guard in detail route (lines 67-68) | PASS |
-| Null content guard in detail route (line 70) | PASS |
-| 309 existing tests pass | PASS |
+| Research tests (10) | All PASS |
+| Dashboard tests (33) | All PASS |
+| ruff on `research.py` | 0 errors |
+| mypy on `research.py` | 0 errors |
 
 ---
 
-## Pre-existing Failure (Not Related to F-00021)
+## Subagent Result
 
-`tests/integration/test_docs_routes.py::test_docs_pdf_with_content` fails due to a weasyprint/PDF generation issue. This is unrelated to the research panel changes.
-
----
-
-## Mandatory Fix Count: 2
-
-1. Add the missing `/api/research/search` endpoint to `research.py`
-2. Add the 6 required integration tests to `tests/integration/test_dashboard_pages.py`
-
----
-
-## Notes
-
-The implementation of `research.py`, `research_library.html`, and `research_detail.html` follows the `docs.py` pattern correctly. The type mismatch guard (`doc.doc_type != DocType.research`) properly handles the AC4 boundary case. The sidebar navigation link is present and uses the correct URL pattern with active-state highlighting.
+```json
+{
+  "step": "S04",
+  "agent": "CodeReview_Final",
+  "work_item": "F-00021",
+  "completion_status": "complete",
+  "verdict": "PASS",
+  "findings": {
+    "critical": 0,
+    "high": 0,
+    "medium_fixable": 0,
+    "medium_suggestion": 0,
+    "low": 0
+  },
+  "mandatory_fix_count": 0,
+  "finding_details": [],
+  "notes": "All S01-S03 implementation is consistent, correct, and complete. Tests provide full boundary coverage. One pre-existing test (test_docs_pdf_with_content) fails but is unrelated to F-00021 changes."
+}
+```

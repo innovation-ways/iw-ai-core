@@ -115,8 +115,8 @@ def research_html_view(
   body {{ font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 24px;
          color: #0F172A; line-height: 1.6; }}
   h1,h2,h3 {{ color: #1E293B; }} h2 {{ border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; }}
-  table {{ border-collapse: collapse; width: 100%; }} th,td
-           {{ border: 1px solid #E2E8F0; padding: 8px 12px; }}
+  table {{ border-collapse: collapse; width: 100%; }}
+  th,td {{ border: 1px solid #E2E8F0; padding: 8px 12px; }}
   th {{ background: #F1F5F9; }} img {{ max-width: 100%; }}
   code {{ background: #F1F5F9; padding: 2px 5px; border-radius: 3px; font-size: 0.875em; }}
   pre {{ background: #F1F5F9; padding: 16px; border-radius: 6px; overflow-x: auto; }}
@@ -128,3 +128,50 @@ def research_html_view(
     from fastapi.responses import Response
 
     return Response(content=fallback_html, media_type="text/html")
+
+
+@router.get("/api/research/search", response_class=HTMLResponse)
+def research_search(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    q: str | None = None,
+    status: str | None = None,
+    category: str | None = None,
+) -> Any:
+    project = _get_project_or_404(project_id, db)
+    svc = DocService(db)
+
+    status_enum: DocStatus | None = None
+    if status:
+        for ds in DocStatus:
+            if ds.value == status:
+                status_enum = ds
+                break
+
+    category_enum: EditorialCategory | None = None
+    if category:
+        for ec in EditorialCategory:
+            if ec.value == category:
+                category_enum = ec
+                break
+
+    docs = svc.list_docs(
+        project_id,
+        doc_type=DocType.research,
+        status=status_enum,
+        search=q,
+    )
+
+    if category_enum:
+        docs = [d for d in docs if d.editorial_category == category_enum]
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/research_search_results.html",
+        {
+            "docs": docs,
+            "current_project": project,
+        },
+    )
