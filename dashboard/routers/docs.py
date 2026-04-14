@@ -676,6 +676,136 @@ def docs_diff(
     )
 
 
+@router.get("/api/docs/{doc_id}/diff/sections")
+def docs_diff_sections(
+    project_id: str,
+    doc_id: str,
+    db: Session = Depends(get_db),
+    v1: int = 0,
+    v2: int = 0,
+) -> Any:
+    """Return a structured section-level diff as JSON."""
+    _get_project_or_404(project_id, db)
+    if v1 >= v2:
+        raise HTTPException(status_code=422, detail=f"v1 ({v1}) must be less than v2 ({v2})")
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    from sqlalchemy import select as sa_select
+
+    from orch.db.models import ProjectDocVersion
+
+    def _get_ver(v: int) -> str:
+        composite = f"{project_id}:{doc_id}"
+        row = db.execute(
+            sa_select(ProjectDocVersion)
+            .where(ProjectDocVersion.doc_id == composite)
+            .where(ProjectDocVersion.version == v)
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Version {v} not found for doc '{doc_id}'")
+        return row.content or ""
+
+    old_content = _get_ver(v1)
+    new_content = _get_ver(v2)
+    from orch.doc_diff import DocDiff, diff_document_versions
+
+    result: DocDiff = diff_document_versions(old_content, new_content, v1, v2)
+    return {
+        "version_old": result.version_old,
+        "version_new": result.version_new,
+        "sections": [
+            {
+                "section_name": s.section_name,
+                "status": s.status,
+                "unified_diff": s.unified_diff,
+            }
+            for s in result.sections
+        ],
+    }
+
+
+@router.get("/api/docs/{doc_id}/diff/sections/{section_name}", response_class=HTMLResponse)
+def docs_diff_section(
+    project_id: str,
+    doc_id: str,
+    section_name: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    v1: int = 0,
+    v2: int = 0,
+) -> Any:
+    """Return an HTML fragment showing the unified diff for a single named section."""
+    import urllib.parse
+
+    section_name = urllib.parse.unquote(section_name)
+    _get_project_or_404(project_id, db)
+    if v1 >= v2:
+        raise HTTPException(status_code=422, detail="v1 must be less than v2")
+    svc = DocService(db)
+    doc = svc.get_doc(project_id, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
+    from sqlalchemy import select as sa_select
+
+    from orch.db.models import ProjectDocVersion
+
+    def _get_ver(v: int) -> str:
+        composite = f"{project_id}:{doc_id}"
+        row = db.execute(
+            sa_select(ProjectDocVersion)
+            .where(ProjectDocVersion.doc_id == composite)
+            .where(ProjectDocVersion.version == v)
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Version {v} not found for doc '{doc_id}'")
+        return row.content or ""
+
+    old_content = _get_ver(v1)
+    new_content = _get_ver(v2)
+    from orch.doc_diff import diff_document_versions
+
+    result = diff_document_versions(old_content, new_content, v1, v2)
+    section_diff = next((s for s in result.sections if s.section_name == section_name), None)
+    if section_diff is None:
+        raise HTTPException(status_code=404, detail=f"Section '{section_name}' not found in diff")
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_diff.html",
+        {
+            "diff_lines": section_diff.unified_diff,
+            "v1": v1,
+            "v2": v2,
+            "doc_id": doc_id,
+            "project_id": project_id,
+        },
+    )
+
+
+@router.get("/api/docs/{doc_id}/diff/ai-summary")
+def docs_diff_ai_summary(
+    project_id: str,
+    doc_id: str,  # noqa: ARG001
+    db: Session = Depends(get_db),
+    v1: int = 0,  # noqa: ARG001
+    v2: int = 0,  # noqa: ARG001
+) -> Any:
+    """Stub endpoint for AI-powered diff summarization (F-00025 not yet shipped).
+
+    Always returns HTTP 204 with X-Stub header until F-00025 provides the
+    real implementation. No body is returned. Callers should handle 204 gracefully.
+    """
+    from fastapi.responses import Response
+
+    _get_project_or_404(project_id, db)
+    return Response(
+        status_code=204,
+        headers={"X-Stub": "waiting-for-F-00025"},
+    )
+
+
 def _make_render_pdf_fn() -> Any:
     def render_pdf(html_content: str) -> bytes | None:
         try:
@@ -1001,8 +1131,8 @@ def docs_guide_sections_get(
 
     sections = extract_sections(doc.content or "")
     section_guides: dict[str, str] = {}
-    for section_name, _guide_md in svc.list_section_guides(project_id, doc_id):
-        section_guides[section_name] = _guide_md
+    for sg in svc.list_section_guides(project_id, doc_id):
+        section_guides[sg.section_name] = sg.guide_md
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
