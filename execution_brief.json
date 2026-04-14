@@ -1,16 +1,16 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00023",
-  "title": "iw-research-quick Skill",
+  "id": "F-00039",
+  "title": "Section-Level Guide",
   "status": "approved",
   "phase": "active",
   "total_steps": 4,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00019",
+  "batch_id": "BATCH-00020",
   "worktree": null,
-  "created_at": "2026-04-13T18:53:44.291137+00:00",
-  "updated_at": "2026-04-13T18:53:44.291137+00:00",
+  "created_at": "2026-04-13T21:25:07.602240+00:00",
+  "updated_at": "2026-04-13T21:25:07.602240+00:00",
   "steps": [
     {
       "step_id": "S01",
@@ -37,8 +37,8 @@
       "status": "pending"
     }
   ],
-  "branch": "agent/F-00023-iw-research-quick-skill",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00023",
+  "branch": "agent/F-00039-section-level-guide",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00039",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-14T07:14:02Z"
+  "brief_generated_at": "2026-04-14T07:10:01Z"
 }
