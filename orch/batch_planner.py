@@ -57,6 +57,7 @@ class ItemAnalysis:
         "has_database_step",
         "affected_files",
         "overlap_with",
+        "cross_batch_conflicts",
         "group",
     )
 
@@ -76,6 +77,7 @@ class ItemAnalysis:
         self.has_database_step = has_database_step
         self.affected_files = affected_files
         self.overlap_with: list[str] = []
+        self.cross_batch_conflicts: list[tuple[str, str, list[str]]] = []
         self.group = 0
 
 
@@ -143,12 +145,17 @@ def has_database_step(steps: list[dict[str, Any]]) -> bool:
 
 def analyze_dependencies(
     items_data: list[dict[str, Any]],
+    active_items_data: list[dict[str, Any]] | None = None,
 ) -> dict[str, ItemAnalysis]:
     """Analyze dependencies between items.
 
     items_data is a list of dicts with keys:
         id, title, type, depends_on (list[str]),
         design_doc_content (str|None), steps (list of step dicts)
+
+    active_items_data is an optional list of items currently executing in other
+    batches, used for cross-batch file overlap detection. Each dict needs:
+        id, batch_id, design_doc_content (str|None)
 
     Returns a dict mapping item_id to its ItemAnalysis.
     """
@@ -179,7 +186,7 @@ def analyze_dependencies(
         if dep not in analysis[db_items[i]].depends_on:
             analysis[db_items[i]].depends_on.append(dep)
 
-    # Phase 3: File overlap detection
+    # Phase 3: File overlap detection (intra-batch)
     for i, id_a in enumerate(item_ids):
         for id_b in item_ids[i + 1 :]:
             files_a = set(analysis[id_a].affected_files)
@@ -190,6 +197,21 @@ def analyze_dependencies(
                 analysis[id_b].overlap_with.append(id_a)
                 if id_a not in analysis[id_b].depends_on:
                     analysis[id_b].depends_on.append(id_a)
+
+    # Phase 3b: Cross-batch file overlap detection (warning only — no sequencing possible)
+    if active_items_data:
+        for active in active_items_data:
+            active_files = set(extract_affected_files(active.get("design_doc_content")))
+            if not active_files:
+                continue
+            active_batch_id = active.get("batch_id", "?")
+            active_item_id = active.get("id", "?")
+            for iid in item_ids:
+                overlap = set(analysis[iid].affected_files) & active_files
+                if overlap:
+                    analysis[iid].cross_batch_conflicts.append(
+                        (active_batch_id, active_item_id, sorted(overlap))
+                    )
 
     # Phase 4: Break circular dependencies
     _break_cycles(analysis, item_ids)
@@ -298,7 +320,7 @@ def generate_execution_plan_md(
             lines.append(f"- **{iid}**: {info.title}")
         lines.append("")
 
-    # Warnings
+    # Intra-batch warnings
     warnings = []
     for iid, info in analysis.items():
         if info.overlap_with:
@@ -316,6 +338,30 @@ def generate_execution_plan_md(
         lines.extend(warnings)
     else:
         lines.append("- None \u2014 all items are independent.")
+    lines.append("")
+
+    # Cross-batch conflict warnings
+    cross_batch: list[tuple[str, str, str, list[str]]] = []  # (new_id, batch_id, active_id, files)
+    for iid, info in analysis.items():
+        for batch_id, active_id, files in info.cross_batch_conflicts:
+            cross_batch.append((iid, batch_id, active_id, files))
+
+    lines.append("## \u26a0\ufe0f Cross-Batch Conflicts")
+    lines.append("")
+    if cross_batch:
+        lines.append(
+            "> These items share files with items currently executing in another batch. "
+            "Merging both batches will require a rebase. "
+            "Consider waiting for the active batch to finish before approving this one."
+        )
+        lines.append("")
+        for new_id, batch_id, active_id, files in cross_batch:
+            file_list = ", ".join(f"`{f}`" for f in files[:5])
+            if len(files) > 5:
+                file_list += f" (+{len(files) - 5} more)"
+            lines.append(f"- **{new_id}** conflicts with **{active_id}** ({batch_id}): {file_list}")
+    else:
+        lines.append("- None \u2014 no file overlap with currently active batches.")
     lines.append("")
 
     return "\n".join(lines)
