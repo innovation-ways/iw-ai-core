@@ -128,11 +128,11 @@ def upgrade() -> None:
     op.execute("COMMENT ON COLUMN doc_type_guides.updated_at IS 'Timestamp of last guide edit.'")
 
     op.execute(
-        f"INSERT INTO doc_type_guides (doc_type, guide_md) VALUES ('_default', %s)",
+        "INSERT INTO doc_type_guides (doc_type, guide_md) VALUES ('_default', %s)",
         (_DEFAULT_GUIDE,),
     )
     op.execute(
-        f"INSERT INTO doc_type_guides (doc_type, guide_md) VALUES ('marketing', %s)",
+        "INSERT INTO doc_type_guides (doc_type, guide_md) VALUES ('marketing', %s)",
         (_MARKETING_GUIDE,),
     )
 

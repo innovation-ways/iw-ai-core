@@ -266,7 +266,7 @@ def test_get_sections_panel_with_h2_headings(client: TestClient, db_session: Ses
 
     resp = client.get(f"/project/{proj.id}/api/docs/{doc.doc_id}/guide/sections")
     assert resp.status_code == 200
-    assert '<div class="space-y-4">' in resp.text
+    assert '<div class="space-y-3">' in resp.text
 
 
 def test_get_sections_panel_no_h2_sections(client: TestClient, db_session: Session) -> None:
@@ -283,7 +283,7 @@ def test_get_sections_panel_no_h2_sections(client: TestClient, db_session: Sessi
 
     resp = client.get(f"/project/{proj.id}/api/docs/{doc.doc_id}/guide/sections")
     assert resp.status_code == 200
-    assert '<div class="space-y-4">' in resp.text
+    assert '<div class="space-y-3">' in resp.text
 
 
 def test_save_section_guide(client: TestClient, db_session: Session) -> None:
