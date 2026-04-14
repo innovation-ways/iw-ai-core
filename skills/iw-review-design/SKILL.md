@@ -45,6 +45,7 @@ Check the design document against its template. Every required section must be p
 - [ ] **Description** section is non-empty (at least 2 sentences)
 - [ ] **Implementation Plan / Fix Plan** table present
 - [ ] **File Manifest** section present with file listing table
+- [ ] **File Manifest** lists at least one concrete file path — if zero file paths are found anywhere in the design doc, flag as a WARNING (the batch planner uses these paths for conflict detection; a doc with no paths will be invisible to the overlap analysis)
 - [ ] **Notes** section present
 
 ### Incident-Specific Checks
