@@ -1,6 +1,6 @@
 {% from "components/step_pipeline.html" import step_pipeline %}
 {% from "components/status_badge.html" import status_badge %}
-{% from "components/action_button.html" import restart_button, skip_button, kill_button %}
+{% from "components/action_button.html" import restart_button, skip_button, kill_button, restart_merge_button %}
 
 <!-- Step pipeline overview -->
 <div class="mb-6">
@@ -80,7 +80,11 @@
             {{ step.error_message or '—' }}
           </td>
           <td class="px-4 py-2 text-right">
-            {% if not step.is_synthetic %}
+            {% if step.step_id == 'MERGE' and step.status == 'failed' %}
+              <div class="flex items-center justify-end gap-1">
+                {{ restart_merge_button(item.project_id, item.id) }}
+              </div>
+            {% elif not step.is_synthetic %}
               {% if step.status in ('failed', 'needs_fix') %}
                 <div class="flex items-center justify-end gap-1">
                   {{ restart_button(item.project_id, item.id, step.step_id) }}

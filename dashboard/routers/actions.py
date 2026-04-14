@@ -110,6 +110,13 @@ _ITEM_ACTION_LABELS: dict[str, tuple[str, str, str, bool]] = {
         "OK",
         True,
     ),
+    "restart-merge": (
+        "Restart merge?",
+        "Resets the merge failure so the daemon retries the squash-merge on the next poll. "
+        "Make sure any git conflicts in the worktree are resolved before restarting.",
+        "Restart Merge",
+        False,
+    ),
 }
 
 
@@ -813,6 +820,66 @@ def restart_item(
 
     return _action_response(
         f"Item {item_id} restarted from {first_failed.step_id} ({len(downstream)} steps reset).",
+        toast_type="success",
+        reload=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Restart merge (failed → completed, daemon retries squash-merge)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/item/{item_id}/restart-merge", response_class=Response)
+def restart_merge(
+    project_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    batch_item = db.scalar(
+        select(BatchItem).where(
+            BatchItem.project_id == project_id,
+            BatchItem.work_item_id == item_id,
+            BatchItem.status == BatchItemStatus.failed,
+        )
+    )
+    if batch_item is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No failed batch item found for {item_id}",
+        )
+
+    notes = batch_item.notes or ""
+    if not notes.startswith("Merge failed"):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Batch item failed during setup or execution, not merge "
+                f"(notes: {notes!r}). Use item restart instead."
+            ),
+        )
+
+    # Reset back to completed so process_merge_queue picks it up again
+    batch_item.status = BatchItemStatus.completed
+    batch_item.notes = None
+    batch_item.merge_info = {}
+
+    # Re-open the batch if it closed with errors
+    batch = db.scalar(
+        select(Batch).where(
+            Batch.project_id == project_id,
+            Batch.id == batch_item.batch_id,
+        )
+    )
+    if batch is not None and batch.status == BatchStatus.completed_with_errors:
+        batch.status = BatchStatus.approved
+        batch.completed_at = None
+
+    _emit(db, "merge_restarted", project_id, item_id, f"Merge restart requested for {item_id}")
+    db.commit()
+
+    return _action_response(
+        f"Merge queued for retry — daemon will pick up {item_id} on next poll.",
         toast_type="success",
         reload=True,
     )
