@@ -1,0 +1,35 @@
+<div class="space-y-3">
+  <div class="flex items-center gap-2 text-sm">
+    <label class="text-muted-foreground">Compare:</label>
+    <input type="number" name="v1" min="0" placeholder="v1"
+           class="w-16 px-2 py-1 text-xs border rounded bg-background">
+    <span class="text-muted-foreground">to</span>
+    <input type="number" name="v2" min="0" placeholder="v2"
+           class="w-16 px-2 py-1 text-xs border rounded bg-background">
+    <button type="button"
+            class="px-3 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
+            onclick="loadSectionDiff()">
+      Compare
+    </button>
+  </div>
+
+  <div id="section-diff-results" class="text-sm text-muted-foreground text-center py-4">
+    Select versions and click Compare to see section diff
+  </div>
+</div>
+
+<script>
+function loadSectionDiff() {
+  const v1 = document.querySelector('[name="v1"]').value;
+  const v2 = document.querySelector('[name="v2"]').value;
+  if (!v1 || !v2) {
+    document.getElementById('section-diff-results').innerHTML = 
+      '<div class="text-red-500 text-xs">Please enter both version numbers</div>';
+    return;
+  }
+  htmx.ajax('GET', 
+    '/project/{{ project_id }}/api/docs/{{ doc_id }}/diff/sections?v1=' + v1 + '&v2=' + v2,
+    {target: '#section-diff-results', swap: 'innerHTML'}
+  );
+}
+</script>

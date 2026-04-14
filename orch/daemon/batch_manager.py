@@ -247,10 +247,13 @@ class BatchManager:
                     self.config,
                     worktree_info,
                 )
+            elif fix_cycle.should_retry_step(db, has_failed, self.project_config):
+                # Transient failure (e.g. browser_verification env not ready) — retry
+                fix_cycle.retry_step(db, has_failed, self.project_id)
             else:
-                # Max fix cycles exhausted — leave for user intervention
+                # Step is not fixable and not retryable, or retries exhausted
                 logger.warning(
-                    "[%s] Max fix cycles exhausted for %s/%s — needs human review",
+                    "[%s] Step %s/%s failed and cannot be auto-recovered — needs human review",
                     self.project_id,
                     batch_item.work_item_id,
                     has_failed.step_id,

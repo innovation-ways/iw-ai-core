@@ -44,6 +44,10 @@ _FIXABLE_STEP_TYPES = frozenset(
     {StepType.code_review, StepType.code_review_final, StepType.quality_validation}
 )
 
+# Step types that get plain retries (no LLM fix agent — just reset to pending)
+_RETRYABLE_STEP_TYPES = frozenset({StepType.browser_verification})
+_DEFAULT_BROWSER_VERIFY_MAX_RETRIES = 3
+
 _TRIGGER_MAP: dict[StepType, FixTrigger] = {
     StepType.code_review: FixTrigger.code_review,
     StepType.code_review_final: FixTrigger.code_review_final,
@@ -87,6 +91,68 @@ def should_attempt_fix(
         return False
 
     return True
+
+
+def should_retry_step(
+    db: Session,
+    step: WorkflowStep,
+    project_config: ProjectConfig,
+) -> bool:
+    """Return True if this failed step should be retried (reset to pending) without a fix cycle.
+
+    Used for browser_verification and other environment-dependent steps where the
+    failure is transient (e.g. dashboard not yet up) rather than a code defect.
+    """
+    if step.step_type not in _RETRYABLE_STEP_TYPES:
+        return False
+
+    max_retries = project_config.config.get(
+        "browser_verify_max_retries", _DEFAULT_BROWSER_VERIFY_MAX_RETRIES
+    )
+    run_count = db.query(StepRun).filter(StepRun.step_id == step.id).count()
+
+    if run_count >= max_retries:
+        logger.warning(
+            "Max retries (%d) exhausted for step %d (%s/%s)",
+            max_retries,
+            step.id,
+            step.work_item_id,
+            step.step_id,
+        )
+        return False
+
+    return True
+
+
+def retry_step(
+    db: Session,
+    step: WorkflowStep,
+    project_id: str,
+) -> None:
+    """Reset a retryable failed step back to pending so the daemon re-launches it."""
+    run_count = db.query(StepRun).filter(StepRun.step_id == step.id).count()
+
+    step.status = StepStatus.pending
+    step.started_at = None
+    step.completed_at = None
+
+    _emit_event(
+        db,
+        project_id,
+        "step_retry_scheduled",
+        step.work_item_id,
+        f"Step {step.step_id} reset to pending for retry (attempt {run_count + 1})",
+        {"step_id": step.step_id, "attempt": run_count + 1},
+    )
+    db.commit()
+
+    logger.info(
+        "[%s] Step %s/%s reset to pending for retry (attempt %d)",
+        project_id,
+        step.work_item_id,
+        step.step_id,
+        run_count + 1,
+    )
 
 
 def attempt_fix_cycle(

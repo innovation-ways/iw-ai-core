@@ -94,6 +94,19 @@
       {% endif %}
     </div>
 
+    {# IDE #}
+    <button id="ide-tab-btn"
+            hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/ide"
+            hx-target="#ide-panel"
+            hx-swap="innerHTML"
+            hx-trigger="click once"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border bg-card text-foreground rounded-md text-xs font-medium hover:bg-muted transition-colors">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+      </svg>
+      IDE
+    </button>
+
     {# Version History #}
     <button hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/versions"
             hx-target="#meta-drawer"
@@ -246,6 +259,9 @@
   {% endif %}
 
 </div>
+
+{# ── IDE Panel (lazy-loaded via htmx) ── #}
+<div id="ide-panel" class="mt-4"></div>
 
 <script>
 function switchDocTab(mode) {
