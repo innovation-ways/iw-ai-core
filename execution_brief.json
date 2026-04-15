@@ -1,16 +1,16 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00038",
-  "title": "Instance Guide Overlay",
+  "id": "F-00045",
+  "title": "Code Understanding: Foundation",
   "status": "approved",
   "phase": "active",
   "total_steps": 10,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00020",
+  "batch_id": "BATCH-00021",
   "worktree": null,
-  "created_at": "2026-04-13T21:25:02.251304+00:00",
-  "updated_at": "2026-04-13T21:25:02.251304+00:00",
+  "created_at": "2026-04-15T20:08:20.762301+00:00",
+  "updated_at": "2026-04-15T20:08:20.762301+00:00",
   "steps": [
     {
       "step_id": "S01",
@@ -20,20 +20,20 @@
     },
     {
       "step_id": "S02",
-      "label": "Backend",
-      "type": "implementation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S03",
       "label": "CodeReview",
       "type": "code_review",
       "status": "pending"
     },
     {
-      "step_id": "S04",
-      "label": "Tests",
+      "step_id": "S03",
+      "label": "Backend",
       "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S04",
+      "label": "CodeReview",
+      "type": "code_review",
       "status": "pending"
     },
     {
@@ -73,8 +73,8 @@
       "status": "pending"
     }
   ],
-  "branch": "agent/F-00038-instance-guide-overlay",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00038",
+  "branch": "agent/F-00045-code-understanding-foundation",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00045",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-14T09:26:08Z"
+  "brief_generated_at": "2026-04-15T21:18:32Z"
 }
