@@ -25,7 +25,7 @@
     </button>
     <!-- Settings Gear Icon -->
     <button
-      hx-get="/api/project/{{ current_project.id }}/docs/config"
+      hx-get="/project/{{ current_project.id }}/api/docs/config"
       hx-target="#docs-config-overlay"
       hx-swap="innerHTML"
       class="p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-md hover:bg-gray-100"
@@ -39,7 +39,7 @@
 <div id="docs-config-overlay"></div>
 
 <!-- Stale Summary Row (htmx loaded) -->
-<div id="stale-summary" hx-get="/api/project/{{ current_project.id }}/docs/stale" hx-trigger="load" hx-swap="innerHTML"></div>
+<div id="stale-summary" hx-get="/project/{{ current_project.id }}/api/docs/stale" hx-trigger="load" hx-swap="innerHTML"></div>
 
 <!-- Filter Bar -->
 <div class="mb-6 space-y-3">

@@ -323,7 +323,7 @@ def docs_versions(
 _STREAM_TIMEOUT_SECONDS = 15 * 60
 
 
-@router.post("/api/project/{id}/docs/{doc_id}/generate")
+@router.post("/api/docs/{doc_id}/generate")
 def docs_generate(
     project_id: str,
     doc_id: str,
@@ -361,6 +361,7 @@ def docs_generate(
         )
 
     job = svc.create_doc_job(project_id, doc_id)
+    db.commit()
 
     templates: Jinja2Templates = request.app.state.templates
     response = templates.TemplateResponse(
@@ -426,7 +427,7 @@ async def _job_status_stream(job_id: str, request: Request) -> AsyncGenerator[st
         await asyncio.sleep(2)
 
 
-@router.get("/api/project/{id}/docs/jobs/{job_id}/stream")
+@router.get("/api/docs/jobs/{job_id}/stream")
 async def docs_job_stream(
     project_id: str,
     job_id: str,
@@ -453,7 +454,7 @@ async def docs_job_stream(
     )
 
 
-@router.get("/api/project/{id}/docs/jobs/{job_id}/status")
+@router.get("/api/docs/jobs/{job_id}/status")
 def docs_job_status(
     project_id: str,
     job_id: str,
@@ -488,7 +489,50 @@ def docs_job_status(
     )
 
 
-@router.get("/api/project/{id}/docs/{doc_id}/jobs")
+@router.get("/api/docs/jobs/{job_id}/panel", response_class=HTMLResponse)
+def docs_job_panel(
+    project_id: str,
+    job_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: SSE status panel for a running DocGenerationJob."""
+    _get_project_or_404(project_id, db)
+    from orch.db.models import DocGenerationJob
+
+    job = db.get(DocGenerationJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_job_status.html",
+        {"job_id": job_id, "project_id": project_id},
+    )
+
+
+@router.delete("/api/docs/jobs/{job_id}", response_class=HTMLResponse)
+def docs_job_cancel(
+    project_id: str,
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Cancel a running DocGenerationJob."""
+    _get_project_or_404(project_id, db)
+    from orch.db.models import DocGenerationJob
+
+    job = db.get(DocGenerationJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+    if job.status != JobStatus.running:
+        raise HTTPException(status_code=409, detail="Job is not running")
+    job.status = JobStatus.failed
+    job.error = "Cancelled by user"
+    db.commit()
+    return HTMLResponse("")
+
+
+@router.get("/api/docs/{doc_id}/jobs")
 def docs_job_history(
     project_id: str,
     doc_id: str,
@@ -519,7 +563,7 @@ def docs_job_history(
     )
 
 
-@router.get("/api/project/{id}/docs/{doc_id}/card")
+@router.get("/api/docs/{doc_id}/card")
 def docs_card(
     project_id: str,
     doc_id: str,
@@ -550,7 +594,7 @@ def docs_card(
     )
 
 
-@router.get("/api/project/{id}/docs/config", response_class=HTMLResponse)
+@router.get("/api/docs/config", response_class=HTMLResponse)
 def docs_config_get(
     project_id: str,
     request: Request,
@@ -567,7 +611,7 @@ def docs_config_get(
     )
 
 
-@router.post("/api/project/{id}/docs/config")
+@router.post("/api/docs/config")
 async def docs_config_post(
     project_id: str,
     request: Request,
@@ -592,7 +636,7 @@ async def docs_config_post(
             phrases = [p.strip() for p in phrases.split(",") if p.strip()]
         cfg["forbidden_phrases"] = phrases
 
-    db.flush()
+    db.commit()
     return HTMLResponse(
         '<div class="p-4 bg-green-50 border border-green-200 rounded-lg '
         'text-sm text-green-700">Settings saved ✓</div>',
@@ -600,7 +644,7 @@ async def docs_config_post(
     )
 
 
-@router.get("/api/project/{id}/docs/stale", response_class=HTMLResponse)
+@router.get("/api/docs/stale", response_class=HTMLResponse)
 def docs_stale_summary(
     project_id: str,
     request: Request,
@@ -618,7 +662,7 @@ def docs_stale_summary(
     )
 
 
-@router.post("/api/project/{id}/docs/regenerate-stale", response_class=HTMLResponse)
+@router.post("/api/docs/regenerate-stale", response_class=HTMLResponse)
 def docs_regenerate_stale(
     project_id: str,
     db: Session = Depends(get_db),
@@ -631,6 +675,7 @@ def docs_regenerate_stale(
     for doc, _, _ in stale_docs:
         svc.create_doc_job(project_id, doc.doc_id, trigger_reason="user:regenerate-stale")
         created_count += 1
+    db.commit()
     return HTMLResponse(
         f'<div class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg '
         f'text-sm text-green-700">Queued {created_count} job'
@@ -916,7 +961,7 @@ async def docs_validate_links(
     )
 
 
-@router.get("/api/project/{id}/docs/{doc_id}/lint-warnings", response_class=HTMLResponse)
+@router.get("/api/docs/{doc_id}/lint-warnings", response_class=HTMLResponse)
 def docs_lint_warnings(
     project_id: str,
     doc_id: str,
@@ -1018,6 +1063,7 @@ def docs_guide_type_post(
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
     svc.save_type_guide(doc.doc_type.value, guide_md)
+    db.commit()
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -1074,6 +1120,7 @@ def docs_guide_instance_post(
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
     svc.save_instance_guide(project_id, doc_id, guide_md)
+    db.commit()
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -1101,6 +1148,7 @@ def docs_guide_instance_delete(
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
     svc.delete_instance_guide(project_id, doc_id)
+    db.commit()
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -1163,6 +1211,7 @@ def docs_guide_section_post(
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
     svc.save_section_guide(project_id, doc_id, section_name, guide_md)
+    db.commit()
     from orch.doc_sections import extract_sections
 
     sections = extract_sections(doc.content or "")
@@ -1197,4 +1246,5 @@ def docs_guide_section_delete(
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
     svc.delete_section_guide(project_id, doc_id, section_name)
+    db.commit()
     return Response(status_code=204)

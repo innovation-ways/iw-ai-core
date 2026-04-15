@@ -74,7 +74,14 @@
               —
             {% endif %}
           </td>
-          <td class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">{{ step.run_count }}</td>
+          <td class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">
+            {{ step.run_count }}
+            {% if step.fix_cycle_count > 0 %}
+              <span class="ml-1 inline-flex items-center px-1 py-0.5 rounded text-xs font-medium bg-warning/20 text-warning-foreground border border-warning/30" title="{{ step.fix_cycle_count }} fix cycle{{ 's' if step.fix_cycle_count != 1 else '' }}">
+                {{ step.fix_cycle_count }}&#x21bb;
+              </span>
+            {% endif %}
+          </td>
           <td class="px-4 py-2 text-xs text-muted-foreground max-w-xs truncate hidden md:table-cell"
               title="{{ step.error_message or '' }}">
             {{ step.error_message or '—' }}

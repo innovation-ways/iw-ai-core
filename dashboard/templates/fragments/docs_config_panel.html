@@ -7,7 +7,7 @@
       </button>
     </div>
 
-    <form hx-post="/api/project/{{ project_id }}/docs/config"
+    <form hx-post="/project/{{ project_id }}/api/docs/config"
           hx-encoding="application/json"
           hx-target="#docs-config-overlay"
           hx-swap="innerHTML"

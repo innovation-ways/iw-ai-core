@@ -3,7 +3,7 @@
   <div class="flex items-center gap-2 mb-2">
     <span class="text-orange-600">⚠</span>
     <h4 class="font-semibold text-orange-800 dark:text-orange-300">{{ broken_links|length }} Broken Link{{ 's' if broken_links|length != 1 else '' }}</h4>
-    <button hx-get="/api/project/{{ project_id }}/docs/{{ doc_id }}/validate-links"
+    <button hx-get="/project/{{ project_id }}/api/docs/{{ doc_id }}/validate-links"
             hx-target="#broken-links-callout"
             hx-swap="innerHTML"
             class="ml-auto text-sm text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-300 underline">

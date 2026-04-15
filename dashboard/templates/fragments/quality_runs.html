@@ -8,6 +8,7 @@
           {% set cols = [
             ("id", "#", true),
             ("category", "Category", false),
+            ("mode", "Mode", false),
             ("status", "Status", false),
             ("duration", "Duration", true),
             ("started", "Started", false),
@@ -35,12 +36,22 @@
           <tr class="border-b border-border last:border-0 hover:bg-muted/20"
               data-sort-id="{{ run.id }}"
               data-sort-category="{{ run.category }}"
+              data-sort-mode="{{ run.triggered_by }}"
               data-sort-status="{{ run.status }}"
               data-sort-duration="{{ run.duration_secs if run.duration_secs is not none else -1 }}"
               data-sort-started="{{ run.started_at.isoformat() if run.started_at else '' }}"
               data-sort-exit="{{ run.exit_code if run.exit_code is not none else -999 }}">
             <td class="px-4 py-2 font-mono text-xs text-muted-foreground">{{ run.id }}</td>
             <td class="px-4 py-2 text-xs font-medium text-foreground">{{ run.category }}</td>
+            <td class="px-4 py-2 text-xs">
+              {% if run.triggered_by == 'autofix' %}
+                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-warning/20 text-warning-foreground border border-warning/30">
+                  auto-fix
+                </span>
+              {% else %}
+                <span class="text-muted-foreground">manual</span>
+              {% endif %}
+            </td>
             <td class="px-4 py-2">{{ status_badge(run.status) }}</td>
             <td class="px-4 py-2 text-xs text-muted-foreground">
               {% if run.duration_secs is not none %}
@@ -98,6 +109,8 @@
     </table>
 
     <script>
+    /* NOTE: #log-modal is defined outside this fragment in quality.html
+       so that SSE-driven tab reloads don't destroy an open log modal. */
     (function() {
       var currentSort = null;
       var currentDir = 'asc';
@@ -154,5 +167,3 @@
   {% endif %}
 </div>
 
-<!-- Log modal container -->
-<div id="log-modal"></div>

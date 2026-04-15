@@ -56,6 +56,7 @@ class StepDetail:
     description: str | None = None
     report_content: str | None = None
     is_synthetic: bool = False
+    fix_cycle_count: int = 0
 
 
 @dataclass
@@ -232,6 +233,25 @@ class ItemMetrics:
     steps_total: int
 
 
+@dataclass
+class FixCycleDetail:
+    """A single fix cycle record for the fix-cycles tab."""
+
+    id: int
+    db_step_id: int
+    step_id: str
+    agent_label: str
+    cycle_number: int
+    trigger_type: str
+    status: str
+    started_at: datetime | None
+    completed_at: datetime | None
+    duration_secs: float | None
+    log_content: str | None
+    log_modified: str | None
+    is_running: bool
+
+
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
@@ -284,6 +304,19 @@ def _get_steps(
             .order_by(WorkflowStep.step_number)
         ).all()
     )
+    # Bulk-query fix cycle counts per step db id
+    step_db_ids = [s.id for s in workflow_steps]
+    fix_cycle_counts: dict[int, int] = {}
+    if step_db_ids:
+        from sqlalchemy import func
+
+        rows = db.execute(
+            select(FixCycle.step_id, func.count(FixCycle.id).label("cnt"))
+            .where(FixCycle.step_id.in_(step_db_ids))
+            .group_by(FixCycle.step_id)
+        ).all()
+        fix_cycle_counts = {row.step_id: row.cnt for row in rows}
+
     result: list[StepDetail] = [_synthetic_setup_step(bi)]
     for step in workflow_steps:
         # Get run count and last error from step_runs
@@ -317,6 +350,7 @@ def _get_steps(
                 step_label=step.step_label,
                 description=step.description,
                 report_content=report,
+                fix_cycle_count=fix_cycle_counts.get(step.id, 0),
             )
         )
     result.append(_synthetic_merge_step(bi))
@@ -663,6 +697,61 @@ def _get_log_sections(project_id: str, item_id: str, db: Session) -> list[LogSec
     return sections
 
 
+def _get_fix_cycles(project_id: str, item_id: str, db: Session) -> list[FixCycleDetail]:
+    """Return all fix cycles for a work item, ordered by step then cycle number."""
+    workflow_steps = list(
+        db.scalars(
+            select(WorkflowStep)
+            .where(
+                WorkflowStep.project_id == project_id,
+                WorkflowStep.work_item_id == item_id,
+            )
+            .order_by(WorkflowStep.step_number)
+        ).all()
+    )
+    if not workflow_steps:
+        return []
+
+    step_map = {s.id: s for s in workflow_steps}
+    fix_cycles = list(
+        db.scalars(
+            select(FixCycle)
+            .where(FixCycle.step_id.in_(list(step_map.keys())))
+            .order_by(FixCycle.step_id, FixCycle.cycle_number)
+        ).all()
+    )
+
+    result: list[FixCycleDetail] = []
+    for fc in fix_cycles:
+        step = step_map.get(fc.step_id)
+        dur: float | None = None
+        if fc.started_at and fc.completed_at:
+            dur = (fc.completed_at - fc.started_at).total_seconds()
+
+        log_file = (fc.fix_metadata or {}).get("log_file")
+        raw_log = _read_log_file(log_file)
+        log_content = _reverse_log(raw_log) if raw_log else None
+
+        result.append(
+            FixCycleDetail(
+                id=fc.id,
+                db_step_id=fc.step_id,
+                step_id=step.step_id if step else "?",
+                agent_label=step.agent_label if step else "?",
+                cycle_number=fc.cycle_number,
+                trigger_type=fc.trigger_type.value,
+                status=fc.status.value,
+                started_at=fc.started_at,
+                completed_at=fc.completed_at,
+                duration_secs=dur,
+                log_content=log_content,
+                log_modified=_get_log_modified(log_file),
+                is_running=fc.status.value == "in_progress",
+            )
+        )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -905,6 +994,29 @@ def item_tab_logs(
             "item": item,
             "log_sections": log_sections,
             "project_id": project_id,
+        },
+    )
+
+
+@router.get("/item/{item_id}/tab/fix-cycles", response_class=HTMLResponse)
+def item_tab_fix_cycles(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+    fix_cycles = _get_fix_cycles(project_id, item_id, db)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/item_fix_cycles.html",
+        {
+            "item": item,
+            "project_id": project_id,
+            "fix_cycles": fix_cycles,
         },
     )
 

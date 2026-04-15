@@ -20,7 +20,7 @@ from dashboard.routers._run_helpers import (
     group_cards,
 )
 from orch.db.models import Project, TestRun, TestRunStatus
-from orch.test_runner import kill_test_run, launch_test_run
+from orch.test_runner import kill_test_run, launch_quality_fix_run, launch_test_run
 
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates
@@ -229,6 +229,63 @@ def launch_quality_gate(
 
     return action_response(
         f"Quality run #{run.id} launched ({cat_config.get('label', category)}).", reload=True
+    )
+
+
+@router.post("/api/quality/launch-fix/{category}", response_class=Response)
+def launch_quality_gate_fix(
+    project_id: str,
+    category: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Launch a Claude agent that runs the gate command and auto-fixes errors in a loop."""
+    project = get_project_or_404(project_id, db)
+    quality_config = _get_quality_config(project)
+    categories = quality_config.get("categories", {})
+
+    if category not in categories:
+        raise HTTPException(status_code=400, detail=f"Unknown quality category: {category}")
+
+    # Block if any run (plain or autofix) is already active for this category
+    existing = db.scalar(
+        select(TestRun).where(
+            TestRun.project_id == project_id,
+            TestRun.category == category,
+            TestRun.run_type == _RUN_TYPE,
+            TestRun.status.in_([TestRunStatus.pending, TestRunStatus.running]),
+        )
+    )
+    if existing:
+        return action_response(
+            f"A {category} quality run is already in progress (#{existing.id}).",
+            toast_type="warning",
+        )
+
+    cat_config = categories[category]
+    command = cat_config["command"]
+
+    run = TestRun(
+        project_id=project_id,
+        category=category,
+        status=TestRunStatus.pending,
+        command=command,
+        triggered_by="autofix",
+        run_type=_RUN_TYPE,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    thread = threading.Thread(
+        target=launch_quality_fix_run,
+        args=(run.id,),
+        daemon=True,
+        name=f"quality-fix-{run.id}",
+    )
+    thread.start()
+
+    return action_response(
+        f"Quality auto-fix #{run.id} launched ({cat_config.get('label', category)}).", reload=True
     )
 
 
