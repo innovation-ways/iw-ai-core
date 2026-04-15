@@ -116,7 +116,7 @@
     <!-- Generate/Regenerate Button -->
     <div id="doc-generate-btn-{{ doc.slug }}">
       {% if not doc.content or doc.status.value == 'planned' %}
-      <button hx-post="/api/project/{{ current_project.id if current_project else doc.project_id }}/docs/{{ doc.doc_id }}/generate"
+      <button hx-post="/project/{{ current_project.id if current_project else doc.project_id }}/api/docs/{{ doc.doc_id }}/generate"
               hx-target="#doc-generate-btn-{{ doc.slug }}"
               hx-swap="innerHTML"
               hx-trigger="click"
@@ -126,7 +126,7 @@
         Generate
       </button>
       {% else %}
-      <button hx-post="/api/project/{{ current_project.id if current_project else doc.project_id }}/docs/{{ doc.doc_id }}/generate"
+      <button hx-post="/project/{{ current_project.id if current_project else doc.project_id }}/api/docs/{{ doc.doc_id }}/generate"
               hx-target="#doc-generate-btn-{{ doc.slug }}"
               hx-swap="innerHTML"
               hx-trigger="click"

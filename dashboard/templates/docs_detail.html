@@ -74,7 +74,7 @@
     {# Regenerate #}
     <div id="detail-generate-btn">
       {% if not doc.content %}
-      <button hx-post="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/generate"
+      <button hx-post="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/generate"
               hx-target="#detail-generate-btn"
               hx-swap="innerHTML"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:opacity-90 transition-opacity"
@@ -83,7 +83,7 @@
         Generate
       </button>
       {% else %}
-      <button hx-post="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/generate"
+      <button hx-post="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/generate"
               hx-target="#generation-progress"
               hx-swap="innerHTML"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border bg-card text-foreground rounded-md text-xs font-medium hover:bg-muted transition-colors"
@@ -119,7 +119,7 @@
     </button>
 
     {# Job History #}
-    <button hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/jobs"
+    <button hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/jobs"
             hx-target="#meta-drawer"
             hx-swap="innerHTML"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border bg-card text-foreground rounded-md text-xs font-medium hover:bg-muted transition-colors">
@@ -137,14 +137,14 @@
 
 {% if doc.broken_links is not none %}
 <div id="broken-links-callout"
-     hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/validate-links"
+     hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/validate-links"
      hx-trigger="load"
      hx-swap="innerHTML"
      class="mb-2"></div>
 {% endif %}
 
 <div id="lint-warnings-panel"
-     hx-get="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/lint-warnings"
+     hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/lint-warnings"
      hx-trigger="load"
      hx-swap="innerHTML"
      class="mb-2"></div>
@@ -257,7 +257,7 @@
     <h3 class="text-lg font-semibold text-foreground mb-2">Content not yet generated</h3>
     <p class="text-muted-foreground text-sm mb-4">This document is registered but has no content yet.</p>
     <div id="detail-generate-btn">
-      <button hx-post="/api/project/{{ current_project.id }}/docs/{{ doc.doc_id }}/generate"
+      <button hx-post="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/generate"
               hx-target="#detail-generate-btn"
               hx-swap="innerHTML"
               class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
@@ -301,7 +301,7 @@ function switchDocTab(mode) {
 document.body.addEventListener('docJobCreated', function(e) {
   var detail = e.detail;
   if (detail.job_id) {
-    htmx.ajax('GET', '/api/project/{{ current_project.id }}/docs/jobs/' + detail.job_id + '/status',
+    htmx.ajax('GET', '/project/{{ current_project.id }}/api/docs/jobs/' + detail.job_id + '/panel',
               {target: '#generation-progress', swap: 'innerHTML'});
   }
 });

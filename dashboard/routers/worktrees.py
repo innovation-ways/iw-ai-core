@@ -541,9 +541,8 @@ def worktrees_prune(request: Request, db: Session = Depends(get_db)) -> Any:
 
     templates: Jinja2Templates = request.app.state.templates
     worktrees = _collect_worktrees(db)
-    response = templates.TemplateResponse(
+    return templates.TemplateResponse(
         request,
         "fragments/worktree_table.html",
         {"worktrees": worktrees, "prune_errors": errors},
     )
-    return response

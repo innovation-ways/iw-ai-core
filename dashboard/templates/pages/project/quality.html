@@ -65,6 +65,9 @@
     {% endif %}
   </div>
 {% endif %}
+
+<!-- Log modal container — outside #tab-content so SSE reloads don't destroy an open modal -->
+<div id="log-modal"></div>
 {% endblock %}
 
 {% block scripts %}
