@@ -68,6 +68,9 @@ class DaemonConfig:
     log_level: str
     log_file: str
 
+    # Code Understanding
+    index_path: str = "~/.iw-ai-core/indexes"
+
     # Project registry
     projects_toml: Path = field(default_factory=lambda: _ENV_FILE.parent / "projects.toml")
 
@@ -99,6 +102,7 @@ def load_config() -> DaemonConfig:
         archive_ttl=int(_require("IW_CORE_ARCHIVE_TTL")),
         log_level=_require("IW_CORE_LOG_LEVEL"),
         log_file=_require("IW_CORE_LOG_FILE"),
+        index_path=os.environ.get("IW_CORE_INDEX_PATH", "~/.iw-ai-core/indexes"),
         projects_toml=Path(
             os.environ.get("IW_CORE_PROJECTS_TOML", str(_ENV_FILE.parent / "projects.toml"))
         ),
