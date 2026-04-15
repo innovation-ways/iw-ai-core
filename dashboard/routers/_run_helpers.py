@@ -74,6 +74,7 @@ class RunRow:
     exit_code: int | None
     has_report: bool
     has_log: bool
+    triggered_by: str = "user"
 
 
 def build_category_cards(
@@ -133,6 +134,7 @@ def build_run_rows(project_id: str, db: Session, *, run_type: str = "test") -> l
             exit_code=r.exit_code,
             has_report=bool(r.allure_report_dir and Path(r.allure_report_dir).is_dir()),
             has_log=bool(r.log_path and Path(r.log_path).is_file()),
+            triggered_by=r.triggered_by,
         )
         for r in runs
     ]

@@ -217,6 +217,234 @@ def launch_test_run(run_id: int) -> None:
         db.close()
 
 
+_DEFAULT_FIX_TIMEOUT_SECS = 1800  # 30 minutes
+_DEFAULT_FIX_MAX_ITERATIONS = 5
+
+
+def launch_quality_fix_run(run_id: int) -> None:
+    """Execute a quality-fix run: launch a Claude agent that runs the gate command
+    and fixes errors in a loop until it passes or exhausts max iterations.
+
+    Opens its own DB session. Updates status through the lifecycle:
+    pending -> running -> passed/failed/error.
+    """
+    db = SessionLocal()
+    prompt_path: Path | None = None
+    try:
+        run = db.scalar(select(TestRun).where(TestRun.id == run_id))
+        if run is None:
+            logger.error("TestRun %d not found", run_id)
+            return
+
+        project_id = run.project_id
+        project = db.scalar(select(Project).where(Project.id == project_id))
+        if project is None:
+            logger.error("Project %s not found for TestRun %d", project_id, run_id)
+            run.status = TestRunStatus.error
+            run.finished_at = datetime.now(UTC)
+            db.commit()
+            return
+
+        execution_dir = _resolve_execution_dir(run, db)
+        if execution_dir is None:
+            run.status = TestRunStatus.error
+            run.finished_at = datetime.now(UTC)
+            _emit_event(
+                db, project_id, "quality_failed", str(run_id), "No execution_dir configured"
+            )
+            db.commit()
+            return
+
+        # Prepare log directory
+        log_dir = Path(execution_dir) / "logs" / "test_runs" / project_id
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / f"{run_id}.log"
+        prompt_path = log_dir / f"{run_id}_fix_prompt.md"
+
+        # Resolve config
+        cat_config = _resolve_category_config(run, db)
+        project_config = project.config or {}
+        quality_config = project_config.get("quality_config", {})
+        max_iterations = int(quality_config.get("fix_max_iterations", _DEFAULT_FIX_MAX_ITERATIONS))
+        fix_timeout = int(quality_config.get("fix_timeout_secs", _DEFAULT_FIX_TIMEOUT_SECS))
+        cli_tool: str = project_config.get("cli_tool", "claude")
+
+        command = run.command
+        cat_label = cat_config.get("label", run.category)
+
+        # Write fix prompt
+        prompt_content = f"""\
+You are a quality-gate fixer. Run the quality gate command and fix any errors, \
+repeating until it passes or you exhaust the maximum iterations.
+
+## Gate
+- **Label**: {cat_label}
+- **Command**: `{command}`
+- **Max iterations**: {max_iterations}
+
+## Instructions
+
+1. Run the command exactly as given. If exit code is 0 — it passed. Report success and stop.
+2. If it fails, read the error output carefully. Fix **only** the exact errors reported:
+   - Edit only the files and lines flagged as errors
+   - Do NOT refactor, rename, or change behavior beyond what the tool demands
+   - Do NOT fix warnings that are not blocking the gate
+3. Run the command again after each fix to check progress.
+4. Repeat up to {max_iterations} total attempts.
+5. Write a brief final summary: passed/failed, iterations used, what was fixed.
+
+## Rules
+- Fix only what is reported — no speculative cleanup
+- Stop immediately on first successful run
+- Preserve existing behavior
+"""
+        prompt_path.write_text(prompt_content, encoding="utf-8")
+
+        # Update status to running
+        run.status = TestRunStatus.running
+        run.started_at = datetime.now(UTC)
+        run.log_path = str(log_path)
+        db.commit()
+
+        _emit_event(
+            db,
+            project_id,
+            "quality_started",
+            str(run_id),
+            f"Quality-fix run {run_id} started: {run.category}",
+        )
+
+        # Build agent command
+        if cli_tool == "opencode":
+            agent_command = (
+                f"opencode run \"$(cat '{prompt_path}')\" --dangerously-skip-permissions"
+            )
+        else:
+            agent_command = f"claude -p \"$(cat '{prompt_path}')\" --dangerously-skip-permissions"
+
+        # Launch agent subprocess
+        start_time = time.monotonic()
+        try:
+            with Path(log_path).open("w") as log_file:
+                proc = subprocess.Popen(
+                    agent_command,
+                    shell=True,
+                    cwd=execution_dir,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    preexec_fn=os.setsid,
+                )
+
+            run.pid = proc.pid
+            db.commit()
+
+            try:
+                proc.wait(timeout=fix_timeout)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Quality-fix run %d timed out after %ds — killing process group",
+                    run_id,
+                    fix_timeout,
+                )
+                with contextlib.suppress(ProcessLookupError, PermissionError):
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                time.sleep(3)
+                with contextlib.suppress(ProcessLookupError, PermissionError):
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                proc.wait()
+                run.status = TestRunStatus.error
+                run.finished_at = datetime.now(UTC)
+                run.duration_secs = time.monotonic() - start_time
+                run.pid = None
+                _emit_event(
+                    db,
+                    project_id,
+                    "quality_failed",
+                    str(run_id),
+                    f"Quality-fix run timed out after {fix_timeout}s",
+                )
+                db.commit()
+                return
+        except Exception as exc:
+            logger.exception("Subprocess error for quality-fix run %d", run_id)
+            run.status = TestRunStatus.error
+            run.finished_at = datetime.now(UTC)
+            run.duration_secs = time.monotonic() - start_time
+            _emit_event(db, project_id, "quality_failed", str(run_id), f"Subprocess error: {exc}")
+            db.commit()
+            return
+
+        # Check if cancelled while running
+        current_status = db.scalar(select(TestRun.status).where(TestRun.id == run_id))
+        if current_status == TestRunStatus.cancelled:
+            return
+
+        # Agent finished — run the gate command one final time for authoritative result
+        elapsed = time.monotonic() - start_time
+        try:
+            with Path(log_path).open("a") as log_file:
+                log_file.write(f"\n\n{'=' * 60}\nFINAL VERIFICATION RUN\n{'=' * 60}\n")
+                verify_proc = subprocess.run(
+                    command,
+                    shell=True,
+                    cwd=execution_dir,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    timeout=300,
+                )
+            final_exit_code = verify_proc.returncode
+        except Exception as exc:
+            logger.warning("Final verification run failed for quality-fix %d: %s", run_id, exc)
+            final_exit_code = 1
+
+        run.exit_code = final_exit_code
+        run.finished_at = datetime.now(UTC)
+        run.duration_secs = elapsed
+        run.pid = None
+
+        if final_exit_code == 0:
+            run.status = TestRunStatus.passed
+            _emit_event(
+                db,
+                project_id,
+                "quality_completed",
+                str(run_id),
+                f"Quality-fix passed ({run.category})",
+            )
+        else:
+            run.status = TestRunStatus.failed
+            _emit_event(
+                db,
+                project_id,
+                "quality_failed",
+                str(run_id),
+                f"Quality-fix failed ({run.category}, exit code {final_exit_code})",
+            )
+
+        db.commit()
+    except Exception:
+        logger.exception("Unhandled error in launch_quality_fix_run(%d)", run_id)
+        try:
+            db.rollback()
+            run = db.scalar(select(TestRun).where(TestRun.id == run_id))
+            if run and run.status not in (
+                TestRunStatus.cancelled,
+                TestRunStatus.passed,
+                TestRunStatus.failed,
+            ):
+                run.status = TestRunStatus.error
+                run.finished_at = datetime.now(UTC)
+                db.commit()
+        except Exception:
+            logger.exception("Failed to mark quality-fix run %d as error", run_id)
+    finally:
+        # Clean up temp prompt file
+        if prompt_path is not None:
+            with contextlib.suppress(OSError):
+                prompt_path.unlink(missing_ok=True)
+        db.close()
+
+
 def kill_test_run(run_id: int) -> bool:
     """Kill a running test by sending SIGTERM to its process group.
 
@@ -292,20 +520,28 @@ def parse_allure_summary(report_dir: str | None) -> dict[str, Any] | None:
 
 
 def mark_orphaned_runs() -> int:
-    """Mark any 'running' test runs as 'error' (stale PIDs after restart).
+    """Mark any 'running' test runs as 'error' if their process is no longer alive.
 
-    Returns count of orphaned runs found.
+    Skips runs whose PID is still running (e.g. quality-fix agents launched before
+    a dashboard hot-reload). Returns count of orphaned runs marked.
     """
     db = SessionLocal()
     try:
         runs = list(db.scalars(select(TestRun).where(TestRun.status == TestRunStatus.running)))
+        orphaned = 0
         for run in runs:
+            if run.pid is not None and _pid_is_alive(run.pid):
+                logger.info(
+                    "TestRun %d (pid=%d) is still alive — skipping orphan mark", run.id, run.pid
+                )
+                continue
             run.status = TestRunStatus.error
             run.finished_at = datetime.now(UTC)
             run.pid = None
-        if runs:
+            orphaned += 1
+        if orphaned:
             db.commit()
-        return len(runs)
+        return orphaned
     finally:
         db.close()
 
@@ -313,6 +549,18 @@ def mark_orphaned_runs() -> int:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _pid_is_alive(pid: int) -> bool:
+    """Return True if a process with the given PID exists and is not a zombie."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Process exists but we can't signal it — still alive
+        return True
 
 
 def _resolve_execution_dir(run: TestRun, db: Any) -> str | None:

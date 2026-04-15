@@ -64,6 +64,17 @@
           class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
     Logs
   </button>
+  <button id="tab-fix-cycles-btn"
+          hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/fix-cycles"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+    Fix Cycles
+    {% if metrics.fix_cycles_count > 0 %}
+      <span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-xs font-bold bg-warning text-warning-foreground">{{ metrics.fix_cycles_count }}</span>
+    {% endif %}
+  </button>
 </div>
 
 <!-- Tab content area (initially loaded with overview) -->
@@ -87,6 +98,11 @@ function setActiveTab(btn) {
   btn.classList.add('border-b-2', 'border-primary', 'text-primary', 'font-medium');
   btn.classList.remove('text-muted-foreground');
   _activeTabUrl = btn.getAttribute('hx-get') || _activeTabUrl;
+}
+
+function activateFixCyclesTab() {
+  var btn = document.getElementById('tab-fix-cycles-btn');
+  if (btn) setActiveTab(btn);
 }
 
 // SSE for live step status updates

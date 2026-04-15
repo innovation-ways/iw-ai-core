@@ -61,7 +61,7 @@
           </div>
         {% endif %}
 
-        <!-- Launch / Running button -->
+        <!-- Launch / Running buttons -->
         {% if card.last_run and card.last_run.status.value in ('pending', 'running') %}
           <div class="flex items-center gap-2">
             <div class="flex items-center gap-2 text-sm text-primary">
@@ -69,7 +69,9 @@
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
               </svg>
-              <span>Running...</span>
+              <span>
+                {% if card.last_run.triggered_by == 'autofix' %}Auto-fix running...{% else %}Running...{% endif %}
+              </span>
             </div>
             <button hx-post="/project/{{ current_project.id }}/api/quality/kill/{{ card.last_run.id }}"
                     hx-swap="none"
@@ -80,14 +82,26 @@
             </button>
           </div>
         {% else %}
-          <button hx-post="/project/{{ current_project.id }}/api/quality/launch/{{ card.key }}"
-                  hx-swap="none"
-                  hx-on::after-request="window.location.reload()"
-                  hx-confirm="Launch {{ card.label }}?"
-                  class="w-full px-3 py-2 rounded-md text-sm font-medium hover:opacity-90 transition-opacity
-                         bg-primary text-primary-foreground">
-            Launch
-          </button>
+          <div class="flex gap-2">
+            <button hx-post="/project/{{ current_project.id }}/api/quality/launch/{{ card.key }}"
+                    hx-swap="none"
+                    hx-on::after-request="window.location.reload()"
+                    hx-confirm="Launch {{ card.label }}?"
+                    class="flex-1 px-3 py-2 rounded-md text-sm font-medium hover:opacity-90 transition-opacity
+                           bg-primary text-primary-foreground"
+                    title="Run the gate command directly">
+              Launch
+            </button>
+            <button hx-post="/project/{{ current_project.id }}/api/quality/launch-fix/{{ card.key }}"
+                    hx-swap="none"
+                    hx-on::after-request="window.location.reload()"
+                    hx-confirm="Launch {{ card.label }} with auto-fix? Claude will run the gate and fix any errors automatically."
+                    class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors
+                           border border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                    title="Run the gate and automatically fix errors using Claude">
+              Auto-fix
+            </button>
+          </div>
         {% endif %}
       </div>
       {% endfor %}

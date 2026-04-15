@@ -58,6 +58,8 @@ def create_app() -> FastAPI:
         description="Real-time management interface for IW AI Core orchestration platform.",
         version="0.1.0",
         lifespan=_lifespan,
+        docs_url="/api-docs",
+        redoc_url="/api-redoc",
     )
 
     # Mount static files

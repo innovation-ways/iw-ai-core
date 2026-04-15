@@ -86,31 +86,61 @@ class DocJobPoller:
                 return
 
             slots_available = self.MAX_CONCURRENT_JOBS_PER_PROJECT - running_count
-            queued = svc.get_queued_jobs(project_id, limit=slots_available)
+            queued_ids = [
+                (j.id, j.doc_id) for j in svc.get_queued_jobs(project_id, limit=slots_available)
+            ]
 
-        for job in queued:
+        for job_id, doc_id in queued_ids:
+            job = None
             doc = None
             project_cfg = None
             with self._session_factory() as db:
-                doc = db.get(ProjectDoc, job.doc_id) if job.doc_id else None
+                job = db.get(DocGenerationJob, job_id)
+                doc = db.get(ProjectDoc, doc_id) if doc_id else None
                 project_cfg = db.get(Project, project_id)
 
-            if doc is None or project_cfg is None:
-                logger.warning(
-                    "Job %s references missing doc=%s or project=%s",
+                if job is None or doc is None or project_cfg is None:
+                    logger.warning(
+                        "Job %s references missing job/doc=%s or project=%s",
+                        job_id,
+                        doc_id,
+                        project_id,
+                    )
+                    continue
+
+                # Force-load all attributes needed outside this session, then expunge
+                # so the objects remain accessible after the session closes.
+                _ = (
                     job.id,
                     job.doc_id,
-                    project_id,
+                    job.status,
+                    job.trigger_reason,
+                    job.guide_snapshot,
+                    job.section_guides_snapshot,
                 )
-                continue
+                _ = (
+                    doc.doc_id,
+                    doc.editorial_category,
+                    doc.doc_type,
+                    doc.project_id,
+                )
+                _ = (
+                    project_cfg.id,
+                    project_cfg.repo_root,
+                    project_cfg.config,
+                    project_cfg.display_name,
+                )
+                db.expunge(job)
+                db.expunge(doc)
+                db.expunge(project_cfg)
 
             try:
                 self._launch_job(job, doc, project_cfg)
             except Exception:
                 logger.exception(
                     "Failed to launch job %s for doc %s",
-                    job.id,
-                    job.doc_id,
+                    job_id,
+                    doc_id,
                 )
 
     def _launch_job(
@@ -123,11 +153,6 @@ class DocJobPoller:
         from orch.doc_service import DocService
 
         skill = self._select_skill(doc.editorial_category)
-
-        with self._session_factory() as db:
-            svc = DocService(db)
-            svc.start_doc_job(job.id, pid=None, skill_used=skill)
-            db.commit()
 
         cmd = self._build_agent_command(job, doc, project, skill)
         worktree_path = project.repo_root
@@ -149,16 +174,16 @@ class DocJobPoller:
         with self._session_factory() as db:
             svc = DocService(db)
             svc.start_doc_job(job.id, pid=proc.pid, skill_used=skill)
+            _emit_event(
+                db,
+                project.id,
+                "doc_job_launched",
+                job.id,
+                f"Doc job {job.id} launched (PID {proc.pid}, skill={skill})",
+                {"doc_id": doc.doc_id, "pid": proc.pid, "skill": skill},
+            )
             db.commit()
 
-        _emit_event(
-            db,
-            project.id,
-            "doc_job_launched",
-            job.id,
-            f"Doc job {job.id} launched (PID {proc.pid}, skill={skill})",
-            {"doc_id": doc.doc_id, "pid": proc.pid, "skill": skill},
-        )
         logger.info(
             "Launched doc job %s for doc %s (PID %d, skill=%s)",
             job.id,
@@ -196,12 +221,9 @@ class DocJobPoller:
         cli_tool = project.config.get("cli_tool", "opencode") if project.config else "opencode"
 
         if cli_tool == "opencode":
-            cmd = (
-                f'opencode run "/execute {job.id}" '
-                f"--dangerously-skip-permissions "
-                f'--on-complete "{on_complete_cmd}" '
-                f'--on-error "{on_error_cmd}"'
-            )
+            # opencode run does not support --on-complete/--on-error;
+            # the skill is responsible for calling `iw doc-job-done` on completion.
+            cmd = f'opencode run "/execute {job.id}" --dangerously-skip-permissions'
         else:
             cmd = (
                 f'claude -p "/execute {job.id}" '
