@@ -11,8 +11,22 @@ from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from dashboard.utils.markdown import render_markdown
-from orch.db.models import DocStatus, DocType, EditorialCategory, Project
+from orch.db.models import DocStatus, DocType, EditorialCategory, Project, ProjectDoc
 from orch.doc_service import DocService
+
+_SORT_KEYS: dict[str, Any] = {
+    "doc_id": lambda d: d.doc_id or "",
+    "title": lambda d: (d.title or "").lower(),
+    "editorial_category": lambda d: d.editorial_category.value if d.editorial_category else "",
+    "status": lambda d: d.status.value if d.status else "",
+    "created_at": lambda d: d.created_at,
+}
+
+
+def _sort_docs(docs: list[ProjectDoc], sort: str, sort_dir: str) -> list[ProjectDoc]:
+    key = _SORT_KEYS.get(sort, _SORT_KEYS["doc_id"])
+    return sorted(docs, key=key, reverse=(sort_dir == "desc"))
+
 
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates
@@ -33,10 +47,15 @@ def research_library(
     project_id: str,
     request: Request,
     db: Session = Depends(get_db),
+    sort: str = "doc_id",
+    sort_dir: str = "desc",
 ) -> Any:
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
-    docs = svc.list_docs(project_id, doc_type=DocType.research)
+    raw_docs = svc.list_docs(project_id, doc_type=DocType.research)
+    valid_sort = sort if sort in _SORT_KEYS else "doc_id"
+    valid_dir = sort_dir if sort_dir in ("asc", "desc") else "desc"
+    docs = _sort_docs(raw_docs, valid_sort, valid_dir)
     statuses = [ds.value for ds in DocStatus]
     categories = [c.value for c in EditorialCategory]
     templates: Jinja2Templates = request.app.state.templates
@@ -48,6 +67,11 @@ def research_library(
             "docs": docs,
             "statuses": statuses,
             "categories": categories,
+            "sort": valid_sort,
+            "sort_dir": valid_dir,
+            "current_status": "",
+            "current_category": "",
+            "current_q": "",
         },
     )
 
@@ -138,6 +162,8 @@ def research_search(
     q: str | None = None,
     status: str | None = None,
     category: str | None = None,
+    sort: str = "doc_id",
+    sort_dir: str = "asc",
 ) -> Any:
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
@@ -156,7 +182,7 @@ def research_search(
                 category_enum = ec
                 break
 
-    docs = svc.list_docs(
+    raw_docs = svc.list_docs(
         project_id,
         doc_type=DocType.research,
         status=status_enum,
@@ -164,7 +190,11 @@ def research_search(
     )
 
     if category_enum:
-        docs = [d for d in docs if d.editorial_category == category_enum]
+        raw_docs = [d for d in raw_docs if d.editorial_category == category_enum]
+
+    valid_sort = sort if sort in _SORT_KEYS else "doc_id"
+    valid_dir = sort_dir if sort_dir in ("asc", "desc") else "asc"
+    docs = _sort_docs(raw_docs, valid_sort, valid_dir)
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -173,5 +203,10 @@ def research_search(
         {
             "docs": docs,
             "current_project": project,
+            "sort": valid_sort,
+            "sort_dir": valid_dir,
+            "current_status": status or "",
+            "current_category": category or "",
+            "current_q": q or "",
         },
     )

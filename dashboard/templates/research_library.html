@@ -12,36 +12,12 @@
 
 <!-- Filter Bar -->
 <div class="mb-6 space-y-3">
-  <!-- Status Filters -->
-  <div class="flex flex-wrap items-center gap-2">
-    <span class="text-xs text-muted-foreground font-medium mr-1">Status:</span>
-    <button
-      hx-get="/project/{{ current_project.id }}/api/research/search"
-      hx-vals='{"status": ""}'
-      hx-target="#research-grid"
-      hx-swap="innerHTML"
-      class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
-             bg-card text-muted-foreground hover:bg-muted">
-      All
-    </button>
-    {% for s in statuses %}
-    <button
-      hx-get="/project/{{ current_project.id }}/api/research/search"
-      hx-vals='{"status": "{{ s }}"}'
-      hx-target="#research-grid"
-      hx-swap="innerHTML"
-      class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
-             bg-card text-muted-foreground hover:bg-muted">
-      {{ s|title }}
-    </button>
-    {% endfor %}
-  </div>
-
   <!-- Category Filters -->
   <div class="flex flex-wrap items-center gap-2">
     <span class="text-xs text-muted-foreground font-medium mr-1">Mode:</span>
     <button
       hx-get="/project/{{ current_project.id }}/api/research/search"
+      hx-include="#research-state, [name='q']"
       hx-vals='{"category": ""}'
       hx-target="#research-grid"
       hx-swap="innerHTML"
@@ -52,6 +28,7 @@
     {% for c in categories %}
     <button
       hx-get="/project/{{ current_project.id }}/api/research/search"
+      hx-include="#research-state, [name='q']"
       hx-vals='{"category": "{{ c }}"}'
       hx-target="#research-grid"
       hx-swap="innerHTML"
@@ -72,6 +49,7 @@
       name="q"
       placeholder="Search research…"
       hx-get="/project/{{ current_project.id }}/api/research/search"
+      hx-include="#research-state"
       hx-trigger="input changed delay:300ms"
       hx-target="#research-grid"
       hx-swap="innerHTML"
@@ -84,22 +62,62 @@
 
 <!-- Research Table -->
 <div id="research-grid" class="bg-card border border-border rounded-lg overflow-hidden">
+  {# Hidden state form — replaced by fragment on every partial update #}
+  <form id="research-state" class="hidden">
+    <input type="hidden" name="status"   value="{{ current_status }}">
+    <input type="hidden" name="category" value="{{ current_category }}">
+    <input type="hidden" name="sort"     value="{{ sort }}">
+    <input type="hidden" name="sort_dir" value="{{ sort_dir }}">
+  </form>
+
   {% if docs %}
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead class="bg-muted border-b border-border">
         <tr>
-          <th class="text-left px-4 py-3 font-medium text-muted-foreground">ID</th>
-          <th class="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
-          <th class="text-left px-4 py-3 font-medium text-muted-foreground">Mode</th>
-          <th class="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-          <th class="text-left px-4 py-3 font-medium text-muted-foreground">Created</th>
+          {% set cols = [('ID','doc_id'),('Title','title'),('Mode','editorial_category'),('Created','created_at')] %}
+          {% for label, field in cols %}
+          {% set is_active = sort == field %}
+          {% set next_dir = 'desc' if (is_active and sort_dir == 'asc') else 'asc' %}
+          <th class="text-left px-4 py-3 font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
+              hx-get="/project/{{ current_project.id }}/api/research/search"
+              hx-include="#research-state, [name='q']"
+              hx-vals='{"sort": "{{ field }}", "sort_dir": "{{ next_dir }}"}'
+              hx-target="#research-grid"
+              hx-swap="innerHTML">
+            <span class="flex items-center gap-1">
+              {{ label }}
+              {% if is_active %}
+                <span>{% if sort_dir == 'asc' %}↑{% else %}↓{% endif %}</span>
+              {% else %}
+                <span class="opacity-30">↕</span>
+              {% endif %}
+            </span>
+          </th>
+          {% endfor %}
         </tr>
       </thead>
       <tbody class="divide-y divide-border">
+        {% set border_colors = {
+          'technical':  'border-l-2 border-blue-400/70',
+          'functional': 'border-l-2 border-emerald-400/70',
+          'marketing':  'border-l-2 border-rose-400/70',
+          'compliance': 'border-l-2 border-amber-400/70',
+          'guide':      'border-l-2 border-violet-400/70',
+          'release':    'border-l-2 border-teal-400/70',
+        } %}
+        {% set badge_colors = {
+          'technical':  'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+          'functional': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+          'marketing':  'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+          'compliance': 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+          'guide':      'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+          'release':    'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
+        } %}
         {% for doc in docs %}
+        {% set cat = doc.editorial_category.value if doc.editorial_category else '' %}
         <tr class="hover:bg-muted/50 transition-colors">
-          <td class="px-4 py-3 font-mono text-xs text-muted-foreground">
+          <td class="px-4 py-3 font-mono text-xs text-muted-foreground {{ border_colors.get(cat, '') }}">
             <a href="/project/{{ current_project.id }}/research/{{ doc.doc_id }}" class="hover:text-primary">{{ doc.doc_id }}</a>
           </td>
           <td class="px-4 py-3">
@@ -108,19 +126,8 @@
             </a>
           </td>
           <td class="px-4 py-3">
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
-              {{ doc.editorial_category.value|replace('_',' ')|title if doc.editorial_category else '—' }}
-            </span>
-          </td>
-          <td class="px-4 py-3">
-            {% set status_colors = {
-              'planned': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
-              'draft': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200',
-              'published': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
-              'archived': 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'
-            } %}
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ status_colors.get(doc.status.value, 'bg-muted text-muted-foreground') }}">
-              {{ doc.status.value|title }}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ badge_colors.get(cat, 'bg-muted text-muted-foreground') }}">
+              {{ cat|replace('_',' ')|title if cat else '—' }}
             </span>
           </td>
           <td class="px-4 py-3 text-muted-foreground">

@@ -122,7 +122,8 @@
            class="space-y-0.5">
       </div>
 
-      <!-- Documentation section (always visible) -->
+      <!-- Documentation section (only on global pages — project pages use the sub-nav) -->
+      {% if not current_project %}
       <div class="border-t border-sidebar-border my-2 pt-1">
         <a href="/docs"
            class="flex items-center px-2 py-1.5 rounded text-sm transition-colors
@@ -136,22 +137,8 @@
           </svg>
           <span>Docs</span>
         </a>
-        {% if current_project %}
-        <a href="/project/{{ current_project.id }}/research"
-           class="flex items-center px-2 py-1.5 rounded text-sm transition-colors
-                  {% if request.url.path.startswith('/project') and '/research' in request.url.path %}
-                    bg-sidebar-accent text-sidebar-accent-foreground font-medium
-                  {% else %}
-                    text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
-                  {% endif %}">
-          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
-          </svg>
-          <span>Research</span>
-        </a>
-        {% endif %}
       </div>
+      {% endif %}
 
       <!-- System section (always visible) -->
       <div class="border-t border-sidebar-border my-2 pt-1">

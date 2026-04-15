@@ -38,11 +38,13 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 
-def _make_project(session: Session, project_id: str = "test-proj") -> Project:
+def _make_project(
+    session: Session, project_id: str = "test-proj", repo_root: str = "/repos/test"
+) -> Project:
     project = Project(
         id=project_id,
         display_name="Test Project",
-        repo_root="/repos/test",
+        repo_root=repo_root,
         config={},
     )
     session.add(project)
@@ -163,9 +165,9 @@ def test_full_job_lifecycle_failure(db_session: Session) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_concurrent_job_limit(db_session: Session) -> None:
+def test_concurrent_job_limit(db_session: Session, tmp_path: Any) -> None:
     """Poller does not start a 3rd job when 2 are already running."""
-    _make_project(db_session)
+    _make_project(db_session, repo_root=str(tmp_path))
     _make_doc(db_session, doc_id="doc1", content=None)
     _make_doc(db_session, doc_id="doc2", content=None)
     _make_doc(db_session, doc_id="doc3", content=None)
@@ -183,7 +185,9 @@ def test_concurrent_job_limit(db_session: Session) -> None:
     svc.start_doc_job(job2_id, skill_used="iw-doc-generator")
     db_session.flush()
 
-    with patch("subprocess.Popen"):
+    mock_proc = MagicMock()
+    mock_proc.pid = 99999
+    with patch("subprocess.Popen", return_value=mock_proc):
         poller = DocJobPoller(lambda: db_session, _make_mock_config())
         poller.poll()
 
@@ -194,7 +198,7 @@ def test_concurrent_job_limit(db_session: Session) -> None:
     svc.complete_doc_job(job1_id)
     db_session.flush()
 
-    with patch("subprocess.Popen"):
+    with patch("subprocess.Popen", return_value=mock_proc):
         poller.poll()
 
     job3_refresh = svc.get_doc_job(job3_id)

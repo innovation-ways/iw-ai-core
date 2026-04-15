@@ -1,9 +1,9 @@
 """Integration tests for doc generation dashboard routes.
 
 Tests verify:
-- POST /api/project/{id}/docs/{doc_id}/generate — creates job, returns 200
-- GET /api/project/{id}/docs/jobs/{job_id}/status — JSON status poll
-- GET /api/project/{id}/docs/{doc_id}/jobs — job history HTML fragment
+- POST /project/{id}/api/docs/{doc_id}/generate — creates job, returns 200
+- GET /project/{id}/api/docs/jobs/{job_id}/status — JSON status poll
+- GET /project/{id}/api/docs/{doc_id}/jobs — job history HTML fragment
 
 Note: SSE stream tests are excluded because the SSE endpoint creates its own
 SessionLocal session (bypassing FastAPI DI), making testcontainer integration
@@ -94,7 +94,7 @@ def test_docs_generate_creates_job(client: TestClient, db_session: Session) -> N
     _make_project(db_session)
     _make_doc(db_session, content=None)
 
-    resp = client.post("/project/test-proj/api/project/test-proj/docs/module-auth/generate")
+    resp = client.post("/project/test-proj/api/docs/module-auth/generate")
     assert resp.status_code == 200
 
 
@@ -109,14 +109,14 @@ def test_docs_generate_returns_409_when_job_running(
     svc.start_doc_job(job.id)
     db_session.flush()
 
-    resp = client.post("/project/test-proj/api/project/test-proj/docs/module-auth/generate")
+    resp = client.post("/project/test-proj/api/docs/module-auth/generate")
     assert resp.status_code == 409
     assert "in progress" in resp.text.lower()
 
 
 def test_docs_generate_unknown_project_404(client: TestClient) -> None:
     """Generate endpoint returns 404 for unknown project."""
-    resp = client.post("/project/nonexistent/api/project/nonexistent/docs/doc1/generate")
+    resp = client.post("/project/nonexistent/api/docs/doc1/generate")
     assert resp.status_code == 404
 
 
@@ -124,7 +124,7 @@ def test_docs_generate_unknown_doc_404(client: TestClient, db_session: Session) 
     """Generate endpoint returns 404 for unknown doc."""
     _make_project(db_session)
 
-    resp = client.post("/project/test-proj/api/project/test-proj/docs/nonexistent/generate")
+    resp = client.post("/project/test-proj/api/docs/nonexistent/generate")
     assert resp.status_code == 404
 
 
@@ -137,7 +137,7 @@ def test_status_poll_route_queued(client: TestClient, db_session: Session) -> No
     db_session.flush()
     job_id = job.id
 
-    resp = client.get(f"/project/test-proj/api/project/test-proj/docs/jobs/{job_id}/status")
+    resp = client.get(f"/project/test-proj/api/docs/jobs/{job_id}/status")
     assert resp.status_code == 200
     data = resp.json()
     assert data["job_id"] == job_id
@@ -156,7 +156,7 @@ def test_status_poll_route_running(client: TestClient, db_session: Session) -> N
     db_session.flush()
     job_id = job.id
 
-    resp = client.get(f"/project/test-proj/api/project/test-proj/docs/jobs/{job_id}/status")
+    resp = client.get(f"/project/test-proj/api/docs/jobs/{job_id}/status")
     assert resp.status_code == 200
     data = resp.json()
     assert data["job_id"] == job_id
@@ -177,7 +177,7 @@ def test_status_poll_route_completed(client: TestClient, db_session: Session) ->
     db_session.flush()
     job_id = job.id
 
-    resp = client.get(f"/project/test-proj/api/project/test-proj/docs/jobs/{job_id}/status")
+    resp = client.get(f"/project/test-proj/api/docs/jobs/{job_id}/status")
     assert resp.status_code == 200
     data = resp.json()
     assert data["job_id"] == job_id
@@ -197,7 +197,7 @@ def test_status_poll_route_failed(client: TestClient, db_session: Session) -> No
     db_session.flush()
     job_id = job.id
 
-    resp = client.get(f"/project/test-proj/api/project/test-proj/docs/jobs/{job_id}/status")
+    resp = client.get(f"/project/test-proj/api/docs/jobs/{job_id}/status")
     assert resp.status_code == 200
     data = resp.json()
     assert data["job_id"] == job_id
@@ -208,7 +208,7 @@ def test_status_poll_route_failed(client: TestClient, db_session: Session) -> No
 def test_status_poll_route_unknown_job_404(client: TestClient, db_session: Session) -> None:
     """Status poll returns 404 for unknown job_id."""
     _make_project(db_session)
-    resp = client.get("/project/test-proj/api/project/test-proj/docs/jobs/nonexistent-job/status")
+    resp = client.get("/project/test-proj/api/docs/jobs/nonexistent-job/status")
     assert resp.status_code == 404
 
 
@@ -231,13 +231,13 @@ def test_job_history_route(client: TestClient, db_session: Session) -> None:
     svc.create_doc_job("test-proj", "module-auth")
     db_session.flush()
 
-    resp = client.get("/project/test-proj/api/project/test-proj/docs/module-auth/jobs")
+    resp = client.get("/project/test-proj/api/docs/module-auth/jobs")
     assert resp.status_code == 200
 
 
 def test_job_history_route_unknown_project_404(client: TestClient) -> None:
     """Job history returns 404 for unknown project."""
-    resp = client.get("/project/nonexistent/api/project/nonexistent/docs/module-auth/jobs")
+    resp = client.get("/project/nonexistent/api/docs/module-auth/jobs")
     assert resp.status_code == 404
 
 
@@ -246,5 +246,5 @@ def test_job_history_route_empty(client: TestClient, db_session: Session) -> Non
     _make_project(db_session)
     _make_doc(db_session, content=None)
 
-    resp = client.get("/project/test-proj/api/project/test-proj/docs/module-auth/jobs")
+    resp = client.get("/project/test-proj/api/docs/module-auth/jobs")
     assert resp.status_code == 200

@@ -1,0 +1,81 @@
+{
+  "id": "F-00047",
+  "type": "Feature",
+  "title": "Code Understanding: Dashboard Code Tab + Job UI",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "api-impl",
+      "description": "SSE job stream endpoint + status/action endpoints in dashboard/routers/code_ui.py",
+      "prompt": "prompts/F-00047_S01_API_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 API work",
+      "prompt": "prompts/F-00047_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "frontend-impl",
+      "description": "Code tab templates + job UI + Mermaid rendering + htmx wiring + SSE client JS + nav update",
+      "prompt": "prompts/F-00047_S03_Frontend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 frontend work",
+      "prompt": "prompts/F-00047_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-agent review of all S01+S03 changes",
+      "prompt": "prompts/F-00047_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "uv run ruff check .",
+      "description": "QV: Lint"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "uv run mypy orch/ dashboard/",
+      "description": "QV: Type check"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "uv run pytest tests/unit/ -v",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "uv run pytest tests/integration/ -v --alluredir=allure-results",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "qv-browser",
+      "prompt": "prompts/F-00047_S11_Browser_prompt.md",
+      "description": "QV: Browser verification (playwright-cli)",
+      "timeout": 600
+    }
+  ]
+}

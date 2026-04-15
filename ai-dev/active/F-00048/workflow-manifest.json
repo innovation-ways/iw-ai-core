@@ -1,0 +1,20 @@
+{
+  "id": "F-00048",
+  "type": "Feature",
+  "title": "Code Understanding: Module + Symbol Views",
+  "browser_verification": true,
+  "steps": [
+    {"step": "S01", "agent": "backend-impl", "description": "ModuleGenerator + SymbolGenerator + module parser", "prompt": "prompts/F-00048_S01_Backend_prompt.md"},
+    {"step": "S02", "agent": "code-review-impl", "description": "Review S01", "prompt": "prompts/F-00048_S02_CodeReview_prompt.md"},
+    {"step": "S03", "agent": "api-impl", "description": "Module + symbol API endpoints", "prompt": "prompts/F-00048_S03_API_prompt.md"},
+    {"step": "S04", "agent": "code-review-impl", "description": "Review S03", "prompt": "prompts/F-00048_S04_CodeReview_prompt.md"},
+    {"step": "S05", "agent": "frontend-impl", "description": "Module cards + Level 2 view + Level 3 inline + breadcrumb", "prompt": "prompts/F-00048_S05_Frontend_prompt.md"},
+    {"step": "S06", "agent": "code-review-impl", "description": "Review S05", "prompt": "prompts/F-00048_S06_CodeReview_prompt.md"},
+    {"step": "S07", "agent": "code-review-final-impl", "description": "Final cross-agent review", "prompt": "prompts/F-00048_S07_CodeReview_Final_prompt.md"},
+    {"step": "S08", "agent": "qv-gate", "gate": "lint", "command": "uv run ruff check .", "description": "QV: Lint"},
+    {"step": "S09", "agent": "qv-gate", "gate": "format", "command": "uv run ruff format --check .", "description": "QV: Format"},
+    {"step": "S10", "agent": "qv-gate", "gate": "typecheck", "command": "uv run mypy orch/ dashboard/", "description": "QV: Type check"},
+    {"step": "S11", "agent": "qv-gate", "gate": "unit-tests", "command": "uv run pytest tests/unit/ -v", "description": "QV: Unit tests"},
+    {"step": "S12", "agent": "qv-gate", "gate": "integration-tests", "command": "uv run pytest tests/integration/ -v --alluredir=allure-results", "description": "QV: Integration tests", "timeout": 900}
+  ]
+}

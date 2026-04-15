@@ -843,7 +843,7 @@ class DocService:
         full_id = f"{project_id}:{doc_id}"
         guide = self._session.get(DocInstanceGuide, full_id)
         if guide is None:
-            return True  # idempotent: already gone
+            return False
         self._session.delete(guide)
         self._session.flush()
         return True
