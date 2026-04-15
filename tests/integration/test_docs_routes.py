@@ -30,6 +30,7 @@ from orch.doc_service import DocService
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+    from pathlib import Path
 
     from sqlalchemy.orm import Session
 
@@ -48,11 +49,13 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     app.dependency_overrides.clear()
 
 
-def make_project(db: Session, project_id: str = "test-proj") -> Project:
+def make_project(
+    db: Session, project_id: str = "test-proj", repo_root: str = "/repos/test"
+) -> Project:
     project = Project(
         id=project_id,
         display_name="Test Project",
-        repo_root="/repos/test",
+        repo_root=repo_root,
         config={},
     )
     db.add(project)
@@ -330,9 +333,9 @@ def test_docs_pdf_not_found(client: TestClient, db_session: Session) -> None:
     assert resp.status_code == 404
 
 
-def test_docs_pdf_with_content(client: TestClient, db_session: Session) -> None:
+def test_docs_pdf_with_content(client: TestClient, db_session: Session, tmp_path: Path) -> None:
     """PDF download returns 501 if WeasyPrint not installed, or PDF bytes if installed."""
-    make_project(db_session)
+    make_project(db_session, repo_root=str(tmp_path))
     make_doc(
         db_session,
         doc_id="module-auth",
@@ -344,7 +347,7 @@ def test_docs_pdf_with_content(client: TestClient, db_session: Session) -> None:
     if resp.status_code == 200:
         assert resp.headers["content-type"] == "application/pdf"
         assert "Content-Disposition" in resp.headers
-        assert "auth-module" in resp.headers["Content-Disposition"]
+        assert "module-auth" in resp.headers["Content-Disposition"]
     elif resp.status_code == 501:
         assert "WeasyPrint" in resp.text or "not available" in resp.text
     else:

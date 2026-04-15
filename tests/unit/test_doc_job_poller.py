@@ -287,13 +287,16 @@ class TestDocJobPollerLaunch:
 
         mock_db = MagicMock()
         mock_project = make_project()
+        mock_project.repo_root = str(tmp_path)
         mock_doc = make_doc()
         mock_job = make_job(status=JobStatus.queued)
 
         mock_query = MagicMock()
         mock_db.query.return_value = mock_query
         mock_db.get.side_effect = lambda model, key: (
-            mock_project
+            mock_job
+            if model.__name__ == "DocGenerationJob" and key == mock_job.id
+            else mock_project
             if model.__name__ == "Project" and key == "test-proj"
             else mock_doc
             if model.__name__ == "ProjectDoc" and key == mock_job.doc_id

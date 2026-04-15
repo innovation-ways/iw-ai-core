@@ -1054,7 +1054,7 @@ def docs_guide_type_post(
     doc_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    guide_md: str = Form(...),
+    guide_md: str = Form(default=""),
 ) -> Any:
     """htmx endpoint: save type guide."""
     _get_project_or_404(project_id, db)

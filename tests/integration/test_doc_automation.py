@@ -591,9 +591,7 @@ def foo():
         svc.complete_doc_job(job.id)
         db_session.flush()
 
-        response = client.get(
-            "/project/test-proj/api/project/test-proj/docs/module-auth/lint-warnings"
-        )
+        response = client.get("/project/test-proj/api/docs/module-auth/lint-warnings")
         assert response.status_code == 200
 
 
@@ -613,12 +611,12 @@ class TestConfigPanel:
         db_session.flush()
 
         response = client.post(
-            "/project/test-proj/api/project/test-proj/docs/config",
+            "/project/test-proj/api/docs/config",
             json={"auto_trigger_on_merge": True},
         )
         assert response.status_code == 200
 
-        response = client.get("/project/test-proj/api/project/test-proj/docs/config")
+        response = client.get("/project/test-proj/api/docs/config")
         assert response.status_code == 200
         assert "auto_trigger_on_merge" in response.text
         assert "true" in response.text.lower()
@@ -631,12 +629,12 @@ class TestConfigPanel:
         db_session.flush()
 
         response = client.post(
-            "/project/test-proj/api/project/test-proj/docs/config",
+            "/project/test-proj/api/docs/config",
             json={"forbidden_phrases": "foo,bar,baz"},
         )
         assert response.status_code == 200
 
-        response = client.get("/project/test-proj/api/project/test-proj/docs/config")
+        response = client.get("/project/test-proj/api/docs/config")
         assert response.status_code == 200
 
     def test_regenerate_stale_creates_jobs(
@@ -675,7 +673,7 @@ class TestConfigPanel:
         )
         db_session.flush()
 
-        response = client.post("/project/test-proj/api/project/test-proj/docs/regenerate-stale")
+        response = client.post("/project/test-proj/api/docs/regenerate-stale")
         assert response.status_code == 200
 
         svc = DocService(db_session)
@@ -712,7 +710,7 @@ class TestConfigPanel:
         )
         db_session.flush()
 
-        response = client.get("/project/test-proj/api/project/test-proj/docs/stale")
+        response = client.get("/project/test-proj/api/docs/stale")
         assert response.status_code == 200
 
 
@@ -851,5 +849,5 @@ class TestConfigDefaultsWhenNotSet:
         _make_project(db_session, config={})
         db_session.flush()
 
-        response = client.get("/project/test-proj/api/project/test-proj/docs/config")
+        response = client.get("/project/test-proj/api/docs/config")
         assert response.status_code == 200

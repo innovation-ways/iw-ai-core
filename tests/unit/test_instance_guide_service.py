@@ -77,14 +77,14 @@ class TestDeleteInstanceGuide:
         session.delete.assert_called_once_with(existing)
         session.flush.assert_called_once()
 
-    def test_delete_instance_guide_returns_true_when_missing(self) -> None:
+    def test_delete_instance_guide_returns_false_when_missing(self) -> None:
         session = MagicMock()
         session.get.return_value = None
 
         svc = DocService(session)
         result = svc.delete_instance_guide("test-proj", "doc001")
 
-        assert result is True
+        assert result is False
         session.delete.assert_not_called()
 
 
