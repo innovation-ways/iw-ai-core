@@ -1,0 +1,41 @@
+<div id="code-module-detail"
+     class="bg-card border border-border rounded-lg overflow-hidden"
+     data-project-id="{{ project_id }}"
+     data-module-slug="{{ module.slug }}"
+     data-was-cached="{{ 'true' if was_cached else 'false' }}"
+     data-generating="{{ 'true' if generating else 'false' }}">
+  <div class="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+    <a href="#" hx-get="/api/projects/{{ project_id }}/code/modules"
+       hx-target="#code-components-section" hx-swap="innerHTML"
+       class="hover:text-primary">Architecture</a>
+    <span>&gt;</span>
+    <span>{{ module.path }}</span>
+  </div>
+  <div class="px-4 py-2 border-b border-border flex items-center justify-between">
+    <h3 class="text-sm font-semibold">{{ module.name }}</h3>
+    <button hx-post="/api/projects/{{ project_id }}/code/modules/{{ module.slug }}/generate"
+            hx-target="#code-detail-panel"
+            hx-swap="innerHTML"
+            class="text-xs text-muted-foreground hover:text-primary">
+      ↻ Regenerate
+    </button>
+    {% if was_cached %}
+    <span class="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">cached</span>
+    {% else %}
+    <span class="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded">freshly generated</span>
+    {% endif %}
+  </div>
+  <div class="p-4">
+    {% if generating %}
+    <div hx-trigger="load delay:2s" hx-get="/api/projects/{{ project_id }}/code/modules/{{ module.slug }}" hx-target="#code-module-detail" hx-swap="outerHTML">
+      <div class="flex items-center gap-2 text-muted-foreground text-sm">
+        <span class="animate-pulse">Generating module documentation...</span>
+      </div>
+    </div>
+    {% elif doc_html %}
+    <div class="prose-doc text-sm">{{ doc_html | safe }}</div>
+    {% else %}
+    <p class="text-sm text-muted-foreground">No documentation available.</p>
+    {% endif %}
+  </div>
+</div>
