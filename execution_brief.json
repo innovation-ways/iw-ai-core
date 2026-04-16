@@ -1,20 +1,20 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00046",
-  "title": "Code Understanding: Indexing Engine + Level 1 Map Generation",
+  "id": "F-00047",
+  "title": "Code Understanding: Dashboard Code Tab + Job UI",
   "status": "approved",
   "phase": "active",
-  "total_steps": 12,
+  "total_steps": 10,
   "completed_steps": 0,
   "current_step": null,
   "batch_id": "BATCH-00021",
-  "worktree": null,
-  "created_at": "2026-04-15T20:10:34.883327+00:00",
-  "updated_at": "2026-04-15T20:10:34.883327+00:00",
+  "worktree": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00047",
+  "created_at": "2026-04-15T20:09:37.995818+00:00",
+  "updated_at": "2026-04-15T20:09:37.995818+00:00",
   "steps": [
     {
       "step_id": "S01",
-      "label": "Backend",
+      "label": "Api",
       "type": "implementation",
       "status": "pending"
     },
@@ -26,7 +26,7 @@
     },
     {
       "step_id": "S03",
-      "label": "Api",
+      "label": "Frontend",
       "type": "implementation",
       "status": "pending"
     },
@@ -38,20 +38,20 @@
     },
     {
       "step_id": "S05",
-      "label": "Tests",
-      "type": "implementation",
+      "label": "CodeReviewFinal",
+      "type": "code_review_final",
       "status": "pending"
     },
     {
       "step_id": "S06",
-      "label": "CodeReview",
-      "type": "code_review",
+      "label": "QvGate",
+      "type": "quality_validation",
       "status": "pending"
     },
     {
       "step_id": "S07",
-      "label": "CodeReviewFinal",
-      "type": "code_review_final",
+      "label": "QvGate",
+      "type": "quality_validation",
       "status": "pending"
     },
     {
@@ -71,22 +71,10 @@
       "label": "QvGate",
       "type": "quality_validation",
       "status": "pending"
-    },
-    {
-      "step_id": "S11",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S12",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
     }
   ],
-  "branch": "agent/F-00046-code-understanding-indexing-en",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00046",
+  "branch": "agent/F-00047-code-understanding-dashboard-c",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00047",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-15T21:35:34Z"
+  "brief_generated_at": "2026-04-16T09:24:44Z"
 }
