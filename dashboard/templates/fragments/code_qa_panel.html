@@ -1,0 +1,249 @@
+{# Q&A Panel — included in project_code.html via {% include %} #}
+<div id="qa-panel" class="border border-border rounded-lg bg-card mt-4">
+
+  {# Header #}
+  <div id="qa-panel-header"
+       class="flex items-center justify-between px-4 py-3 cursor-pointer select-none"
+       onclick="qaTogglePanel()">
+    <div class="flex items-center gap-2">
+      <span id="qa-toggle-icon" class="text-muted-foreground text-xs">▼</span>
+      <span class="text-sm font-medium">Ask about this codebase</span>
+    </div>
+    <span id="qa-collapse-label" class="text-xs text-muted-foreground">collapse</span>
+  </div>
+
+  {# Body #}
+  <div id="qa-panel-body" class="px-4 pb-4 border-t border-border">
+
+    {# Conversation area #}
+    <div id="qa-conversation"
+         class="space-y-3 max-h-72 overflow-y-auto py-3 mb-3 min-h-[2rem]">
+    </div>
+
+    {# Context indicator #}
+    <div class="text-xs text-muted-foreground mb-2">
+      Context: <span id="qa-context-label" class="font-medium">Architecture</span>
+    </div>
+
+    {# Input row #}
+    <div class="flex gap-2">
+      <input id="qa-input"
+             type="text"
+             placeholder="Ask a question about the codebase..."
+             class="flex-1 border border-border rounded-md px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+             maxlength="1000" />
+      <button id="qa-submit-btn"
+              onclick="qaSubmit()"
+              class="px-4 py-1.5 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50">
+        Ask →
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function() {
+  var qaHistory = [];
+  var qaIsPanelCollapsed = false;
+  var qaBubbleCounter = 0;
+  var QA_PROJECT_ID = "{{ current_project.id }}";
+  var QA_MAX_HISTORY = 10;
+
+  function qaTogglePanel() {
+    qaIsPanelCollapsed = !qaIsPanelCollapsed;
+    var body = document.getElementById('qa-panel-body');
+    var icon = document.getElementById('qa-toggle-icon');
+    var label = document.getElementById('qa-collapse-label');
+    if (qaIsPanelCollapsed) {
+      body.classList.add('hidden');
+      icon.textContent = '▶';
+      label.textContent = 'expand';
+    } else {
+      body.classList.remove('hidden');
+      icon.textContent = '▼';
+      label.textContent = 'collapse';
+    }
+  }
+
+  function qaUpdateContextLabel() {
+    var root = document.getElementById('code-content-root');
+    if (!root) return;
+    var level = root.dataset.contextLevel || 'architecture';
+    var modulePath = root.dataset.modulePath || '';
+    var label = document.getElementById('qa-context-label');
+    if (!label) return;
+    if (level === 'module' && modulePath) {
+      label.textContent = modulePath + ' module';
+    } else {
+      label.textContent = 'Architecture';
+    }
+  }
+
+  function qaAppendUserBubble(question) {
+    var conv = document.getElementById('qa-conversation');
+    var div = document.createElement('div');
+    div.className = 'bg-muted rounded-lg px-3 py-2 text-sm text-right ml-8';
+    var span = document.createElement('span');
+    span.className = 'font-medium text-xs text-muted-foreground block mb-1';
+    span.textContent = 'You';
+    var text = document.createElement('span');
+    text.textContent = question;
+    div.appendChild(span);
+    div.appendChild(text);
+    conv.appendChild(div);
+  }
+
+  function qaAppendAssistantBubble() {
+    var conv = document.getElementById('qa-conversation');
+    qaBubbleCounter++;
+    var div = document.createElement('div');
+    div.className = 'bg-background border border-border rounded-lg px-3 py-2 text-sm mr-8';
+    div.id = 'qa-bubble-' + qaBubbleCounter;
+    var span = document.createElement('span');
+    span.className = 'font-medium text-xs text-muted-foreground block mb-1';
+    span.textContent = 'Assistant';
+    var text = document.createElement('span');
+    text.className = 'qa-response-text';
+    text.id = 'qa-response-' + qaBubbleCounter;
+    div.appendChild(span);
+    div.appendChild(text);
+    conv.appendChild(div);
+    return text;
+  }
+
+  function qaAppendErrorBubble(message) {
+    var conv = document.getElementById('qa-conversation');
+    var div = document.createElement('div');
+    div.className = 'rounded-lg px-3 py-2 text-sm mr-8 bg-destructive/10 border border-destructive/20 text-destructive';
+    div.textContent = '⚠ ' + message;
+    conv.appendChild(div);
+  }
+
+  function qaSetLoading(isLoading) {
+    var input = document.getElementById('qa-input');
+    var btn = document.getElementById('qa-submit-btn');
+    if (input) input.disabled = isLoading;
+    if (btn) {
+      btn.disabled = isLoading;
+      btn.textContent = isLoading ? '...' : 'Ask →';
+    }
+  }
+
+  function qaScrollBottom() {
+    var conv = document.getElementById('qa-conversation');
+    if (conv) conv.scrollTop = conv.scrollHeight;
+  }
+
+  function qaErrorBubbleHtml(message) {
+    return '<div class="rounded-lg px-3 py-2 text-sm mr-8 bg-destructive/10 border border-destructive/20 text-destructive">⚠ ' + message + '</div>';
+  }
+
+  function qaSubmit() {
+    var input = document.getElementById('qa-input');
+    var question = input.value.trim();
+    if (!question) return;
+
+    var root = document.getElementById('code-content-root');
+    var contextLevel = (root && root.dataset.contextLevel) || 'architecture';
+    var contextDocId = (root && root.dataset.contextDocId) || null;
+    var modulePath = (root && root.dataset.modulePath) || null;
+
+    qaAppendUserBubble(question);
+    var responseSpan = qaAppendAssistantBubble();
+    qaScrollBottom();
+    qaSetLoading(true);
+    input.value = '';
+
+    var body = JSON.stringify({
+      question: question,
+      context_level: contextLevel,
+      context_doc_id: contextDocId || null,
+      module_path: modulePath || null,
+      conversation_history: qaHistory
+    });
+
+    var fullResponse = '';
+    fetch('/api/projects/' + QA_PROJECT_ID + '/code/qa', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: body
+    }).then(function(response) {
+      if (!response.ok) {
+        responseSpan.textContent = 'Error: ' + response.status + ' ' + response.statusText;
+        qaSetLoading(false);
+        return;
+      }
+      var reader = response.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+
+      function readChunk() {
+        reader.read().then(function(result) {
+          if (result.done) {
+            qaHistory.push({role: 'user', content: question});
+            qaHistory.push({role: 'assistant', content: fullResponse});
+            if (qaHistory.length > QA_MAX_HISTORY) {
+              qaHistory = qaHistory.slice(qaHistory.length - QA_MAX_HISTORY);
+            }
+            qaSetLoading(false);
+            return;
+          }
+          buffer += decoder.decode(result.value, {stream: true});
+          var lines = buffer.split('\n');
+          buffer = lines.pop();
+          lines.forEach(function(line) {
+            if (!line.startsWith('data: ')) return;
+            var jsonStr = line.slice(6);
+            try {
+              var data = JSON.parse(jsonStr);
+              if (data.token !== undefined) {
+                fullResponse += data.token;
+                responseSpan.textContent += data.token;
+                qaScrollBottom();
+              } else if (data.event === 'done') {
+                qaHistory.push({role: 'user', content: question});
+                qaHistory.push({role: 'assistant', content: data.full_response || fullResponse});
+                if (qaHistory.length > QA_MAX_HISTORY) {
+                  qaHistory = qaHistory.slice(qaHistory.length - QA_MAX_HISTORY);
+                }
+                qaSetLoading(false);
+              } else if (data.event === 'error') {
+                var errorDiv = document.createElement('div');
+                errorDiv.className = 'rounded-lg px-3 py-2 text-sm mr-8 bg-destructive/10 border border-destructive/20 text-destructive';
+                errorDiv.textContent = '⚠ ' + (data.message || 'Local AI unavailable. Check that Ollama is running.');
+                var bubble = responseSpan.parentElement;
+                bubble.parentElement.replaceChild(errorDiv, bubble);
+                qaSetLoading(false);
+              }
+            } catch (e) {
+            }
+          });
+          readChunk();
+        }).catch(function(err) {
+          responseSpan.textContent = 'Connection error.';
+          qaSetLoading(false);
+        });
+      }
+      readChunk();
+    }).catch(function(err) {
+      responseSpan.textContent = 'Failed to connect to server.';
+      qaSetLoading(false);
+    });
+  }
+
+  var input = document.getElementById('qa-input');
+  if (input) {
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !input.disabled) {
+        qaSubmit();
+      }
+    });
+  }
+
+  qaUpdateContextLabel();
+  document.body.addEventListener('htmx:afterSwap', function(e) {
+    qaUpdateContextLabel();
+  });
+})();
+</script>
