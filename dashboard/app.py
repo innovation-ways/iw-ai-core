@@ -19,6 +19,7 @@ from dashboard.routers import (
     actions,
     batches,
     code,
+    code_qa,
     code_ui,
     daemon_control,
     docs,
@@ -142,6 +143,7 @@ def create_app() -> FastAPI:
     app.include_router(docs_global.router)
     app.include_router(code.router)
     app.include_router(code_ui.router)
+    app.include_router(code_qa.router)
     app.include_router(research.router)
 
     return app

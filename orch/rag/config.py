@@ -52,7 +52,8 @@ class CodeUnderstandingConfig(BaseModel):
                 "llm_model": null,
                 "embed_model": null,
                 "index_tier": "balanced",
-                "ollama_url": "http://localhost:11434"
+                "ollama_url": "http://localhost:11434",
+                "index_path": "/var/lib/iw-ai/core/code-index"
             }
         }
     """
@@ -62,6 +63,7 @@ class CodeUnderstandingConfig(BaseModel):
     embed_model: str | None = None
     index_tier: IndexTier = IndexTier.BALANCED
     ollama_url: str = "http://localhost:11434"
+    index_path: str = "/var/lib/iw-ai/core/code-index"
 
     def resolved_llm_model(self) -> str:
         """Return the effective LLM model: explicit value or tier default."""
