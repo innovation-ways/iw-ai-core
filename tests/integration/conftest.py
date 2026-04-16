@@ -86,16 +86,6 @@ def db_session_factory(db_engine: Engine):
 
 
 @pytest.fixture
-def db_session_factory(db_engine: Engine):
-    """Return a sessionmaker bound to the test engine.
-
-    This can be used to patch SessionLocal for tests that need the background
-    thread to use the testcontainer.
-    """
-    return sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
-
-
-@pytest.fixture
 def db_session(db_engine: Engine) -> Generator[Session, None, None]:
     """Provide a transactional DB session that rolls back after each test.
 

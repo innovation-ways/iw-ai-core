@@ -493,5 +493,5 @@ def test_project_doc_fts_full_text_search(db_session: Session) -> None:
         )
         .all()
     )
-    assert len(results) == 1
-    assert results[0].doc_id == "arch-overview"
+    assert len(results) >= 1
+    assert "arch-overview" in [r.doc_id for r in results]

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Code — {{ current_project.display_name }}{% endblock %}
+
+{% block content %}
+
+<!-- Page Header -->
+<div class="mb-6 flex items-start justify-between">
+  <div>
+    <h1 class="text-2xl font-semibold text-foreground">Code Understanding</h1>
+    {% if index_status %}
+    <p class="text-muted-foreground text-sm mt-1">
+      Provider: {{ index_status.provider }} · {{ index_status.llm_model }} · {{ index_status.embed_model }}
+      · Last indexed: {{ index_status.last_indexed_at | timeago }} · {{ index_status.files_count }} files · {{ index_status.chunks_count | intcomma }} chunks
+    </p>
+    {% endif %}
+  </div>
+
+  <!-- Dropdown action button (right side) -->
+  <div id="code-action-dropdown" class="relative">
+    <button onclick="toggleCodeDropdown()"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity"
+            aria-expanded="false"
+            aria-haspopup="true"
+            aria-label="Code actions">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+      Generate Code Map
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+      </svg>
+    </button>
+    <div id="code-dropdown-menu"
+         class="hidden absolute right-0 mt-2 w-56 bg-card border border-border rounded-lg shadow-lg z-50"
+         role="menu">
+      <div class="py-1">
+        <button hx-post="/project/{{ current_project.id }}/api/code/index"
+                hx-target="#code-status-panel"
+                hx-swap="innerHTML"
+                class="w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2"
+                role="menuitem">
+          <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          Generate Code Map
+        </button>
+        <button hx-post="/project/{{ current_project.id }}/api/code/reindex"
+                hx-target="#code-status-panel"
+                hx-swap="innerHTML"
+                class="w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2"
+                role="menuitem">
+          <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Re-index changed files
+        </button>
+        <button hx-post="/project/{{ current_project.id }}/api/code/regen-map"
+                hx-target="#code-status-panel"
+                hx-swap="innerHTML"
+                class="w-full text-left px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2"
+                role="menuitem">
+          <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Regenerate Map
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Job status panel (live updates) -->
+<div id="code-status-panel" class="mb-4">
+  {% if running_job %}
+    {% include "fragments/code_job_status.html" %}
+  {% elif last_completed_job and last_completed_recent %}
+    {% include "fragments/code_job_report.html" %}
+  {% endif %}
+</div>
+
+<!-- Architecture panel -->
+<div id="code-architecture-panel">
+  {% if content_html %}
+    {% include "fragments/code_architecture_view.html" %}
+  {% else %}
+    {% include "fragments/code_empty_state.html" %}
+  {% endif %}
+</div>
+
+<script>
+function toggleCodeDropdown() {
+  var menu = document.getElementById('code-dropdown-menu');
+  var btn = document.querySelector('#code-action-dropdown button');
+  menu.classList.toggle('hidden');
+  if (btn) {
+    btn.setAttribute('aria-expanded', menu.classList.contains('hidden') ? 'false' : 'true');
+  }
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#code-action-dropdown')) {
+    var menu = document.getElementById('code-dropdown-menu');
+    var btn = document.querySelector('#code-action-dropdown button');
+    if (menu) menu.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+});
+
+document.body.addEventListener('htmx:beforeRequest', function(e) {
+  if (e.detail.elt.closest('#code-action-dropdown')) {
+    document.querySelectorAll('#code-action-dropdown button').forEach(function(b) {
+      b.disabled = true;
+      b.classList.add('opacity-60', 'cursor-not-allowed');
+    });
+  }
+});
+document.body.addEventListener('htmx:afterRequest', function(e) {
+  if (e.detail.elt.closest('#code-action-dropdown')) {
+    document.querySelectorAll('#code-action-dropdown button').forEach(function(b) {
+      b.disabled = false;
+      b.classList.remove('opacity-60', 'cursor-not-allowed');
+    });
+    toggleCodeDropdown();
+  }
+});
+</script>
+
+{% endblock %}

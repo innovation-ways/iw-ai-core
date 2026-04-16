@@ -18,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 from dashboard.routers import (
     actions,
     batches,
+    code_ui,
     daemon_control,
     docs,
     docs_global,
@@ -84,6 +85,33 @@ def create_app() -> FastAPI:
             return ""
         return dt.astimezone().strftime(fmt)
 
+    def _timeago(dt: object) -> str:
+        import datetime as _dt_module
+
+        if not isinstance(dt, _dt_module.datetime):
+            return ""
+        now = _dt_module.datetime.now(tz=_dt_module.UTC)
+        diff = now - dt.astimezone(tz=_dt_module.UTC)
+        seconds = diff.total_seconds()
+        if seconds < 60:
+            return "just now"
+        minutes = int(seconds / 60)
+        if minutes < 60:
+            return f"{minutes}m ago"
+        hours = int(minutes / 60)
+        if hours < 24:
+            return f"{hours}h ago"
+        days = int(hours / 24)
+        if days < 30:
+            return f"{days}d ago"
+        months = int(days / 30)
+        if months < 12:
+            return f"{months}mo ago"
+        years = int(months / 12)
+        return f"{years}y ago"
+
+    templates.env.filters["intcomma"] = lambda n: f"{n:,}" if isinstance(n, int) else str(n)
+    templates.env.filters["timeago"] = _timeago
     templates.env.filters["fmt_ts_time"] = _fmt_ts_time
     templates.env.filters["localdt"] = _localdt
     templates.env.filters["urlencode"] = quote
@@ -111,6 +139,7 @@ def create_app() -> FastAPI:
     app.include_router(worktrees.router)
     app.include_router(docs.router)
     app.include_router(docs_global.router)
+    app.include_router(code_ui.router)
     app.include_router(research.router)
 
     return app
