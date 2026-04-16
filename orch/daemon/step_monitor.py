@@ -122,14 +122,27 @@ def monitor_running_steps(
 
 
 def _is_pid_alive(pid: int | None) -> bool:
-    """Return True if the process is alive (kill -0)."""
+    """Return True if the process is alive and not a zombie.
+
+    Uses /proc/{pid}/stat on Linux to detect zombie state (state 'Z').
+    Zombie processes pass kill -0 but are effectively dead — their parent
+    has not yet called wait(), so the process table entry lingers.
+    """
     if pid is None:
         return False
     try:
         os.kill(pid, 0)
-        return True
     except (ProcessLookupError, PermissionError):
         return False
+    # kill -0 succeeded — but the process may be a zombie
+    try:
+        stat = open(f"/proc/{pid}/stat").read()  # noqa: PTH123, SIM115, WPS515
+        # Field 3 in /proc/pid/stat is the process state (Z = zombie)
+        state = stat.split("(", 1)[-1].rsplit(")", 1)[-1].split()[0]
+        return state != "Z"
+    except OSError:
+        # /proc not available (non-Linux) — assume alive
+        return True
 
 
 def _check_step_health(
