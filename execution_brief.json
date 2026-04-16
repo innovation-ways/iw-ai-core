@@ -1,7 +1,7 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00048",
-  "title": "Code Understanding: Module + Symbol Views",
+  "id": "F-00049",
+  "title": "Code Understanding: Q&A Panel (SSE Streaming)",
   "status": "approved",
   "phase": "active",
   "total_steps": 12,
@@ -9,8 +9,8 @@
   "current_step": null,
   "batch_id": "BATCH-00021",
   "worktree": null,
-  "created_at": "2026-04-15T20:12:51.667744+00:00",
-  "updated_at": "2026-04-15T20:12:51.667744+00:00",
+  "created_at": "2026-04-15T20:13:39.658539+00:00",
+  "updated_at": "2026-04-15T20:13:39.658539+00:00",
   "steps": [
     {
       "step_id": "S01",
@@ -85,8 +85,8 @@
       "status": "pending"
     }
   ],
-  "branch": "agent/F-00048-code-understanding-module-symb",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00048",
+  "branch": "agent/F-00049-code-understanding-q-a-panel-s",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00049",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-16T13:05:35Z"
+  "brief_generated_at": "2026-04-16T13:05:36Z"
 }
