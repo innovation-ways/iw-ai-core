@@ -1,0 +1,262 @@
+"""CodeIndexer — indexes codebase into LanceDB using LlamaIndex CodeSplitter + Ollama embeddings."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from llama_index.core.node_parser import CodeSplitter, SentenceSplitter
+from llama_index.vector_stores.lancedb import LanceDBVectorStore
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from llama_index.core.schema import BaseNode
+
+    from orch.rag.config import CodeUnderstandingConfig
+
+
+@dataclass
+class IndexResult:
+    files_indexed: int
+    chunks_created: int
+    files_skipped: int
+    errors: list[str] = field(default_factory=list)
+
+
+class CodeIndexer:
+    def __init__(
+        self,
+        project_id: str,
+        config: CodeUnderstandingConfig,
+        index_path: str,
+    ) -> None:
+        self.project_id = project_id
+        self.config = config
+        self.index_path = index_path
+
+    def _get_manifest_path(self) -> Path:
+        return Path(self.index_path) / self.project_id / "manifest.json"
+
+    def _load_manifest(self) -> dict[str, str]:
+        path = self._get_manifest_path()
+        if not path.exists():
+            return {}
+        with path.open("r", encoding="utf-8") as f:
+            return json.load(f)  # type: ignore[no-any-return]
+
+    def _save_manifest(self, manifest: dict[str, str]) -> None:
+        path = self._get_manifest_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(manifest, f)
+
+    def _compute_sha(self, file_path: Path) -> str:
+        return hashlib.sha256(file_path.read_bytes()).hexdigest()
+
+    def _get_changed_files(self, repo_path: str, manifest: dict[str, str]) -> list[Path]:
+        changed: list[Path] = []
+        repo = Path(repo_path)
+        for file_path in repo.rglob("*.py"):
+            if any(
+                part.startswith(".") or part in ("__pycache__", ".venv", "node_modules")
+                for part in file_path.parts
+            ):
+                continue
+            rel = str(file_path)
+            if manifest.get(rel) != self._compute_sha(file_path):
+                changed.append(file_path)
+        for file_path in repo.rglob("*.cpp"):
+            if any(
+                part.startswith(".") or part in ("__pycache__", ".venv", "node_modules")
+                for part in file_path.parts
+            ):
+                continue
+            rel = str(file_path)
+            if manifest.get(rel) != self._compute_sha(file_path):
+                changed.append(file_path)
+        for file_path in repo.rglob("*.hpp"):
+            if any(
+                part.startswith(".") or part in ("__pycache__", ".venv", "node_modules")
+                for part in file_path.parts
+            ):
+                continue
+            rel = str(file_path)
+            if manifest.get(rel) != self._compute_sha(file_path):
+                changed.append(file_path)
+        for file_path in repo.rglob("*.h"):
+            if any(
+                part.startswith(".") or part in ("__pycache__", ".venv", "node_modules")
+                for part in file_path.parts
+            ):
+                continue
+            rel = str(file_path)
+            if manifest.get(rel) != self._compute_sha(file_path):
+                changed.append(file_path)
+        return changed
+
+    async def index(
+        self,
+        repo_path: str,
+        _job_id: str,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> IndexResult:
+        repo = Path(repo_path)
+        discovered: list[Path] = []
+        for pattern in ("*.py", "*.cpp", "*.hpp", "*.h"):
+            for fp in repo.rglob(pattern):
+                if any(
+                    part.startswith(".") or part in ("__pycache__", ".venv", "node_modules")
+                    for part in fp.parts
+                ):
+                    continue
+                discovered.append(fp)
+
+        manifest: dict[str, str] = {}
+        files_indexed = 0
+        chunks_created = 0
+        errors: list[str] = []
+
+        store_path = Path(self.index_path) / self.project_id / "vectors"
+        store_path.mkdir(parents=True, exist_ok=True)
+        table_name = f"code_{self.project_id.replace('-', '_')}"
+
+        vector_store = LanceDBVectorStore(
+            uri=str(store_path),
+            table_name=table_name,
+        )
+
+        for _i, file_path in enumerate(discovered):
+            if progress_callback:
+                await asyncio.to_thread(
+                    progress_callback,
+                    {
+                        "event": "progress",
+                        "files_indexed": files_indexed,
+                        "files_total": len(discovered),
+                        "chunks_created": chunks_created,
+                        "phase": "indexing",
+                    },
+                )
+            rel = str(file_path)
+            try:
+                chunks = await asyncio.to_thread(self._split_file, file_path)
+                if chunks:
+                    await asyncio.to_thread(vector_store.add, chunks)
+                    chunks_created += len(chunks)
+                manifest[rel] = self._compute_sha(file_path)
+                files_indexed += 1
+            except Exception as e:
+                errors.append(f"{rel}: {e}")
+
+        self._save_manifest(manifest)
+
+        return IndexResult(
+            files_indexed=files_indexed,
+            chunks_created=chunks_created,
+            files_skipped=0,
+            errors=errors,
+        )
+
+    async def reindex_changed(
+        self,
+        repo_path: str,
+        _job_id: str,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> IndexResult:
+        manifest = self._load_manifest()
+        changed = self._get_changed_files(repo_path, manifest)
+
+        store_path = Path(self.index_path) / self.project_id / "vectors"
+        store_path.mkdir(parents=True, exist_ok=True)
+        table_name = f"code_{self.project_id.replace('-', '_')}"
+
+        vector_store = LanceDBVectorStore(
+            uri=str(store_path),
+            table_name=table_name,
+        )
+
+        files_indexed = 0
+        chunks_created = 0
+        errors: list[str] = []
+
+        all_files: list[Path] = []
+        repo = Path(repo_path)
+        for pattern in ("*.py", "*.cpp", "*.hpp", "*.h"):
+            for fp in repo.rglob(pattern):
+                if any(
+                    part.startswith(".") or part in ("__pycache__", ".venv", "node_modules")
+                    for part in fp.parts
+                ):
+                    continue
+                all_files.append(fp)
+        total = len(all_files)
+
+        for file_path in changed:
+            if progress_callback:
+                await asyncio.to_thread(
+                    progress_callback,
+                    {
+                        "event": "progress",
+                        "files_indexed": files_indexed,
+                        "files_total": total,
+                        "chunks_created": chunks_created,
+                        "phase": "indexing",
+                    },
+                )
+            rel = str(file_path)
+            try:
+                chunks = await asyncio.to_thread(self._split_file, file_path)
+                if chunks:
+                    await asyncio.to_thread(vector_store.add, chunks)
+                    chunks_created += len(chunks)
+                manifest[rel] = self._compute_sha(file_path)
+                files_indexed += 1
+            except Exception as e:
+                errors.append(f"{rel}: {e}")
+
+        self._save_manifest(manifest)
+
+        return IndexResult(
+            files_indexed=files_indexed,
+            chunks_created=chunks_created,
+            files_skipped=len(all_files) - len(changed),
+            errors=errors,
+        )
+
+    def _split_file(self, file_path: Path) -> list[BaseNode]:
+        suffix = file_path.suffix.lower()
+        if suffix == ".py":
+            language = "python"
+        elif suffix in (".cpp", ".hpp", ".h"):
+            language = "cpp"
+        else:
+            language = None
+
+        try:
+            if language:
+                code_splitter = CodeSplitter(
+                    chunk_lines=40,
+                    chunk_lines_overlap=5,
+                    language=language,
+                )
+                text = file_path.read_text(encoding="utf-8", errors="replace")
+                return code_splitter.split_text(text)  # type: ignore[return-value]
+
+            sent_splitter = SentenceSplitter(
+                chunk_size=500,
+                chunk_overlap=50,
+            )
+            text = file_path.read_text(encoding="utf-8", errors="replace")
+            return sent_splitter.split_text(text)  # type: ignore[return-value]
+        except Exception:
+            sent_splitter = SentenceSplitter(
+                chunk_size=500,
+                chunk_overlap=50,
+            )
+            text = file_path.read_text(encoding="utf-8", errors="replace")
+            return sent_splitter.split_text(text)  # type: ignore[return-value]
