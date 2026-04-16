@@ -132,23 +132,7 @@
            class="space-y-0.5">
       </div>
 
-      <!-- Documentation section (only on global pages — project pages use the sub-nav) -->
-      {% if not current_project %}
-      <div class="border-t border-sidebar-border my-2 pt-1">
-        <a href="/docs"
-           class="flex items-center px-2 py-1.5 rounded text-sm transition-colors
-                  {% if request.url.path.startswith('/docs') %}
-                    bg-sidebar-accent text-sidebar-accent-foreground font-medium
-                  {% else %}
-                    text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
-                  {% endif %}">
-          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
-          </svg>
-          <span>Docs</span>
-        </a>
-      </div>
-      {% endif %}
+
 
       <!-- System section (always visible) -->
       <div class="border-t border-sidebar-border my-2 pt-1">

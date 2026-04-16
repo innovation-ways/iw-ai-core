@@ -41,8 +41,8 @@ def docs_library(
 ) -> Any:
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
-    docs = svc.list_docs(project_id)
-    doc_types = [dt.value for dt in DocType]
+    docs = [d for d in svc.list_docs(project_id) if d.doc_type != DocType.research]
+    doc_types = [dt.value for dt in DocType if dt != DocType.research]
     statuses = [ds.value for ds in DocStatus]
     stale_docs = svc.get_stale_docs(project_id, project.repo_root)
     stale_doc_ids = {doc.doc_id for doc, _, _ in stale_docs}
@@ -276,12 +276,16 @@ def docs_search(
                 status_enum = ds
                 break
 
-    docs = svc.list_docs(
-        project_id,
-        doc_type=doc_type_enum,
-        status=status_enum,
-        search=q,
-    )
+    docs = [
+        d
+        for d in svc.list_docs(
+            project_id,
+            doc_type=doc_type_enum,
+            status=status_enum,
+            search=q,
+        )
+        if doc_type_enum is not None or d.doc_type != DocType.research
+    ]
     stale_docs = svc.get_stale_docs(project_id, project.repo_root)
     stale_doc_ids = {doc.doc_id for doc, _, _ in stale_docs}
     stale_source_map = {doc.doc_id: path for doc, path, _ in stale_docs}
