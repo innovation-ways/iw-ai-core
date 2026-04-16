@@ -28,4 +28,17 @@
       {{ content_html | safe }}
     </div>
   </div>
+
+  <div
+    id="code-components-section"
+    hx-get="/api/projects/{{ project_id }}/code/modules"
+    hx-trigger="load"
+    hx-swap="innerHTML"
+  ></div>
+
+  <div id="code-detail-panel" class="mt-6"></div>
+
+  <div id="code-loading-spinner" class="htmx-indicator hidden">
+    {% include "fragments/code_module_spinner.html" %}
+  </div>
 </div>

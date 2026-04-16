@@ -18,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 from dashboard.routers import (
     actions,
     batches,
+    code,
     code_ui,
     daemon_control,
     docs,
@@ -139,6 +140,7 @@ def create_app() -> FastAPI:
     app.include_router(worktrees.router)
     app.include_router(docs.router)
     app.include_router(docs_global.router)
+    app.include_router(code.router)
     app.include_router(code_ui.router)
     app.include_router(research.router)
 
