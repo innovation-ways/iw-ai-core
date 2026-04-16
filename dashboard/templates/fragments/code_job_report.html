@@ -1,0 +1,20 @@
+<div class="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+  <div class="flex items-center gap-2 mb-2">
+    <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    </svg>
+    <span class="font-medium text-green-700 dark:text-green-300">Code map generated successfully</span>
+  </div>
+  <div class="text-sm text-green-700 dark:text-green-300 space-y-1">
+    {% if last_completed_duration %}
+    <p>Duration: {{ last_completed_duration }}</p>
+    {% endif %}
+    <p>Files indexed: {{ last_completed_job.files_indexed }}  ·  Chunks: {{ last_completed_job.chunks_created | intcomma }}</p>
+    {% if last_completed_job.languages_detected %}
+    <p>Languages: {{ last_completed_job.languages_detected | join(", ") }}</p>
+    {% endif %}
+    {% if last_completed_job.llm_model %}
+    <p>Model: {{ last_completed_job.llm_model }} · Embed: {{ last_completed_job.embed_model }}</p>
+    {% endif %}
+  </div>
+</div>

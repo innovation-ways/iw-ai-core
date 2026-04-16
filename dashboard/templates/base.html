@@ -76,6 +76,16 @@
   <!-- marked.js for markdown rendering in artifact viewer -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
+  <!-- Mermaid.js for code architecture diagrams -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      if (typeof mermaid !== 'undefined') {
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+      }
+    });
+  </script>
+
   {% block head %}{% endblock %}
 </head>
 <body class="bg-background text-foreground font-sans antialiased">
@@ -260,6 +270,16 @@
   document.getElementById('sidebar').addEventListener('click', function(e) {
     if (e.target.closest('a') && window.innerWidth < 1024) {
       toggleSidebar();
+    }
+  });
+</script>
+<script>
+  document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (typeof mermaid !== 'undefined' && e.detail.target) {
+      var nodes = e.detail.target.querySelectorAll('.mermaid:not([data-processed])');
+      if (nodes.length > 0) {
+        mermaid.init(undefined, nodes);
+      }
     }
   });
 </script>
