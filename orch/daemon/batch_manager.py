@@ -466,7 +466,20 @@ class BatchManager:
         else:
             command = f'claude -p "$(cat {prompt_file})" --dangerously-skip-permissions'
 
-        timeout = get_timeout(self.project_config, step.step_type.value)
+        step_config: dict[str, Any] | None = None
+        manifest_path = (
+            Path(worktree_path) / "ai-dev" / "active" / step.work_item_id / "workflow-manifest.json"
+        )
+        if manifest_path.exists():
+            import json
+
+            manifest = json.loads(manifest_path.read_text())
+            for s in manifest.get("steps", []):
+                if s.get("step") == step.step_id:
+                    if "timeout" in s:
+                        step_config = {"timeout_secs": int(s["timeout"])}
+                    break
+        timeout = get_timeout(self.project_config, step.step_type.value, step_config=step_config)
 
         log_dir = Path(worktree_path) / "ai-dev" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
