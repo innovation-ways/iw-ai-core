@@ -9,13 +9,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.core.node_parser import CodeSplitter, SentenceSplitter
+from llama_index.core.schema import TextNode
+from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.vector_stores.lancedb import LanceDBVectorStore
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    from llama_index.core.schema import BaseNode
 
     from orch.rag.config import CodeUnderstandingConfig
 
@@ -99,6 +100,19 @@ class CodeIndexer:
                 changed.append(file_path)
         return changed
 
+    def _build_index(self, store_path: Path) -> tuple[VectorStoreIndex, LanceDBVectorStore]:
+        """Create or open a LanceDB-backed VectorStoreIndex with Ollama embeddings."""
+        store_path.mkdir(parents=True, exist_ok=True)
+        table_name = f"code_{self.project_id.replace('-', '_')}"
+        embed = OllamaEmbedding(
+            model_name=self.config.resolved_embed_model(),
+            base_url=self.config.ollama_url,
+        )
+        vector_store = LanceDBVectorStore(uri=str(store_path), table_name=table_name)
+        storage_context = StorageContext.from_defaults(vector_store=vector_store)
+        index = VectorStoreIndex([], storage_context=storage_context, embed_model=embed)
+        return index, vector_store
+
     async def index(
         self,
         repo_path: str,
@@ -116,21 +130,15 @@ class CodeIndexer:
                     continue
                 discovered.append(fp)
 
+        store_path = Path(self.index_path) / self.project_id / "vectors"
+        index, _ = await asyncio.to_thread(self._build_index, store_path)
+
         manifest: dict[str, str] = {}
         files_indexed = 0
         chunks_created = 0
         errors: list[str] = []
 
-        store_path = Path(self.index_path) / self.project_id / "vectors"
-        store_path.mkdir(parents=True, exist_ok=True)
-        table_name = f"code_{self.project_id.replace('-', '_')}"
-
-        vector_store = LanceDBVectorStore(
-            uri=str(store_path),
-            table_name=table_name,
-        )
-
-        for _i, file_path in enumerate(discovered):
+        for file_path in discovered:
             if progress_callback:
                 await asyncio.to_thread(
                     progress_callback,
@@ -144,10 +152,10 @@ class CodeIndexer:
                 )
             rel = str(file_path)
             try:
-                chunks = await asyncio.to_thread(self._split_file, file_path)
-                if chunks:
-                    await asyncio.to_thread(vector_store.add, chunks)
-                    chunks_created += len(chunks)
+                nodes = await asyncio.to_thread(self._split_file, file_path)
+                if nodes:
+                    await asyncio.to_thread(index.insert_nodes, nodes)
+                    chunks_created += len(nodes)
                 manifest[rel] = self._compute_sha(file_path)
                 files_indexed += 1
             except Exception as e:
@@ -172,13 +180,7 @@ class CodeIndexer:
         changed = self._get_changed_files(repo_path, manifest)
 
         store_path = Path(self.index_path) / self.project_id / "vectors"
-        store_path.mkdir(parents=True, exist_ok=True)
-        table_name = f"code_{self.project_id.replace('-', '_')}"
-
-        vector_store = LanceDBVectorStore(
-            uri=str(store_path),
-            table_name=table_name,
-        )
+        index, _ = await asyncio.to_thread(self._build_index, store_path)
 
         files_indexed = 0
         chunks_created = 0
@@ -210,10 +212,10 @@ class CodeIndexer:
                 )
             rel = str(file_path)
             try:
-                chunks = await asyncio.to_thread(self._split_file, file_path)
-                if chunks:
-                    await asyncio.to_thread(vector_store.add, chunks)
-                    chunks_created += len(chunks)
+                nodes = await asyncio.to_thread(self._split_file, file_path)
+                if nodes:
+                    await asyncio.to_thread(index.insert_nodes, nodes)
+                    chunks_created += len(nodes)
                 manifest[rel] = self._compute_sha(file_path)
                 files_indexed += 1
             except Exception as e:
@@ -228,7 +230,7 @@ class CodeIndexer:
             errors=errors,
         )
 
-    def _split_file(self, file_path: Path) -> list[BaseNode]:
+    def _split_file(self, file_path: Path) -> list[TextNode]:
         suffix = file_path.suffix.lower()
         if suffix == ".py":
             language = "python"
@@ -237,26 +239,28 @@ class CodeIndexer:
         else:
             language = None
 
+        metadata = {"file_path": str(file_path), "language": language or "text"}
+
         try:
             if language:
-                code_splitter = CodeSplitter(
+                splitter = CodeSplitter(
                     chunk_lines=40,
                     chunk_lines_overlap=5,
                     language=language,
                 )
                 text = file_path.read_text(encoding="utf-8", errors="replace")
-                return code_splitter.split_text(text)  # type: ignore[return-value]
-
-            sent_splitter = SentenceSplitter(
-                chunk_size=500,
-                chunk_overlap=50,
-            )
-            text = file_path.read_text(encoding="utf-8", errors="replace")
-            return sent_splitter.split_text(text)  # type: ignore[return-value]
+                texts = splitter.split_text(text)
+            else:
+                splitter = SentenceSplitter(chunk_size=500, chunk_overlap=50)
+                text = file_path.read_text(encoding="utf-8", errors="replace")
+                texts = splitter.split_text(text)
         except Exception:
-            sent_splitter = SentenceSplitter(
-                chunk_size=500,
-                chunk_overlap=50,
-            )
+            splitter = SentenceSplitter(chunk_size=500, chunk_overlap=50)
             text = file_path.read_text(encoding="utf-8", errors="replace")
-            return sent_splitter.split_text(text)  # type: ignore[return-value]
+            texts = splitter.split_text(text)
+
+        return [
+            TextNode(text=chunk, metadata={**metadata, "chunk_index": i})
+            for i, chunk in enumerate(texts)
+            if chunk.strip()
+        ]
