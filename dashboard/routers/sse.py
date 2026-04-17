@@ -87,6 +87,8 @@ _TOAST_EVENTS = frozenset(
         # Step actions
         "step_restarted",
         "step_skipped",
+        # Lifecycle events
+        "code_map_completed",
     }
 )
 # Test-specific events that trigger test tab refresh
@@ -132,6 +134,8 @@ _TOAST_SEVERITY: dict[str, str] = {
     "batch_cancelled": "warning",
     "step_restarted": "info",
     "step_skipped": "info",
+    # Lifecycle events
+    "code_map_completed": "success",
 }
 
 

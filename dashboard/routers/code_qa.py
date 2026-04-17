@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import queue
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -57,14 +58,14 @@ def _run_qa_in_thread(
     conversation_history: list[dict[str, str]],
     db_session: Session,
     config: CodeUnderstandingConfig,
-) -> list[str]:
-    """Run QAEngine.answer_stream() in a thread, collecting tokens into a list."""
+    q: queue.Queue[str | None],
+) -> None:
+    """Run QAEngine.answer_stream() in a daemon thread, pushing tokens into a queue."""
     from orch.rag.qa import QAEngine
 
     engine = QAEngine(project_id=project_id, config=config)
 
-    async def collect_tokens() -> list[str]:
-        collected: list[str] = []
+    async def produce_tokens() -> None:
         try:
             async for token in engine.answer_stream(
                 question=question,
@@ -74,12 +75,18 @@ def _run_qa_in_thread(
                 conversation_history=conversation_history,
                 session=db_session,  # type: ignore[arg-type]
             ):
-                collected.append(token)
+                q.put(token)
         except (ConnectionRefusedError, OSError):
-            collected.append("__ERROR__:Local AI unavailable. Check that Ollama is running.")
-        return collected
+            q.put("__ERROR__:Local AI unavailable. Check that Ollama is running.")
+        finally:
+            q.put(None)
+            loop.stop()
 
-    return asyncio.run(collect_tokens())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.create_task(produce_tokens())
+    loop.run_forever()
+    loop.close()
 
 
 async def _sse_generator(
@@ -93,9 +100,13 @@ async def _sse_generator(
     config: CodeUnderstandingConfig,
 ) -> AsyncGenerator[str, None]:
     """Async generator that runs QAEngine in a thread and yields SSE-formatted strings."""
+    import concurrent.futures
+
+    q: queue.Queue[str | None] = queue.Queue()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
     loop = asyncio.get_event_loop()
-    tokens: list[str] = await loop.run_in_executor(
-        None,
+    executor.submit(
         _run_qa_in_thread,
         project_id,
         question,
@@ -105,11 +116,15 @@ async def _sse_generator(
         conversation_history,
         db_session,
         config,
+        q,
     )
 
     full_response_parts: list[str] = []
 
-    for token in tokens:
+    while True:
+        token = await loop.run_in_executor(None, q.get)
+        if token is None:
+            break
         if token.startswith("__ERROR__:"):
             error_msg = token[len("__ERROR__:") :]
             payload = json.dumps({"event": "error", "message": error_msg})
@@ -118,6 +133,8 @@ async def _sse_generator(
         full_response_parts.append(token)
         payload = json.dumps({"token": token})
         yield f"data: {payload}\n\n"
+
+    executor.shutdown(wait=False, cancel_futures=True)
 
     full_response = "".join(full_response_parts)
     payload = json.dumps({"event": "done", "full_response": full_response})

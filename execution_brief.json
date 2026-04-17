@@ -1,16 +1,16 @@
 {
   "project_id": "iw-ai-core",
-  "id": "F-00049",
-  "title": "Code Understanding: Q&A Panel (SSE Streaming)",
+  "id": "CR-00006",
+  "title": "Code view UX — Jobs view, streaming Q&A, markdown rendering",
   "status": "approved",
   "phase": "active",
-  "total_steps": 12,
+  "total_steps": 11,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00021",
+  "batch_id": "BATCH-00022",
   "worktree": null,
-  "created_at": "2026-04-15T20:13:39.658539+00:00",
-  "updated_at": "2026-04-15T20:13:39.658539+00:00",
+  "created_at": "2026-04-17T08:26:43.765560+00:00",
+  "updated_at": "2026-04-17T08:26:43.765560+00:00",
   "steps": [
     {
       "step_id": "S01",
@@ -20,8 +20,8 @@
     },
     {
       "step_id": "S02",
-      "label": "CodeReview",
-      "type": "code_review",
+      "label": "BackendReview",
+      "type": "implementation",
       "status": "pending"
     },
     {
@@ -32,8 +32,8 @@
     },
     {
       "step_id": "S04",
-      "label": "CodeReview",
-      "type": "code_review",
+      "label": "ApiReview",
+      "type": "implementation",
       "status": "pending"
     },
     {
@@ -44,49 +44,43 @@
     },
     {
       "step_id": "S06",
-      "label": "CodeReview",
-      "type": "code_review",
+      "label": "FrontendReview",
+      "type": "implementation",
       "status": "pending"
     },
     {
       "step_id": "S07",
+      "label": "Tests",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S08",
+      "label": "TestsReview",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S09",
       "label": "CodeReviewFinal",
       "type": "code_review_final",
       "status": "pending"
     },
     {
-      "step_id": "S08",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S09",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
       "step_id": "S10",
-      "label": "QvGate",
-      "type": "quality_validation",
+      "label": "CodeReviewFixFinal",
+      "type": "code_review_fix_final",
       "status": "pending"
     },
     {
       "step_id": "S11",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S12",
-      "label": "QvGate",
+      "label": "QualityValidation",
       "type": "quality_validation",
       "status": "pending"
     }
   ],
-  "branch": "agent/F-00049-code-understanding-q-a-panel-s",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/F-00049",
+  "branch": "agent/CR-00006-code-view-ux-jobs-view-streami",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00006",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-16T13:05:36Z"
+  "brief_generated_at": "2026-04-17T08:42:53Z"
 }

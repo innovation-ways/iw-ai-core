@@ -1,0 +1,529 @@
+"""Read-only aggregation of all job tables into a unified view.
+
+Job sources and status normalisation
+------------------------------------
+
+:code_mapping: ``code_index_jobs.status`` is a TEXT column with values
+  ``queued``, ``running``, ``completed``, ``failed``, ``cancelled``.
+  These are passed through unchanged.
+
+:doc_generation: ``doc_generation_jobs.status`` is a :class:`JobStatus` enum.
+  Normalised values:
+
+  - ``JobStatus.queued`` → ``queued``
+  - ``JobStatus.running`` → ``running``
+  - ``JobStatus.completed`` → ``completed``
+  - ``JobStatus.failed`` → ``failed``
+
+:batch_execution: ``batches.status`` is a :class:`BatchStatus` enum.
+  Normalised values:
+
+  - ``BatchStatus.planning`` → ``queued``
+  - ``BatchStatus.approved`` → ``queued``
+  - ``BatchStatus.executing`` → ``running``
+  - ``BatchStatus.paused`` → ``paused``
+  - ``BatchStatus.completed`` → ``completed``
+  - ``BatchStatus.completed_with_errors`` → ``failed``
+  - ``BatchStatus.publishing`` → ``running``
+  - ``BatchStatus.published`` → ``completed``
+  - ``BatchStatus.publish_failed`` → ``failed``
+  - ``BatchStatus.blocked`` → ``failed``
+  - ``BatchStatus.archived`` → ``completed``
+  - ``BatchStatus.cancelled`` → ``cancelled``
+
+:research: ``project_docs.doc_type = 'research'`` rows.
+  Uses :class:`DocStatus` enum; normalised:
+
+  - ``DocStatus.planned`` → ``queued``
+  - ``DocStatus.draft`` → ``running``
+  - ``DocStatus.published`` → ``completed``
+  - ``DocStatus.archived`` → ``completed``
+
+Title normalisation
+-------------------
+
+:code_mapping: ``"Code map — " + COALESCE(index_tier, "default")``
+:doc_generation: ``ProjectDoc.title`` via ``doc_id`` join, fallback
+  ``"Doc generation (orphan)"`` when doc is deleted
+:batch_execution: ``"Batch " + id``
+:research: ``ProjectDoc.title``
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import TYPE_CHECKING, Literal
+
+from sqlalchemy import select
+
+from orch.db.models import (
+    Batch,
+    BatchStatus,
+    CodeIndexJob,
+    DocGenerationJob,
+    DocStatus,
+    JobStatus,
+    ProjectDoc,
+)
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from sqlalchemy.orm import Session
+
+from orch.db.models import DocType
+
+
+class JobType(StrEnum):
+    code_mapping = "code_mapping"
+    doc_generation = "doc_generation"
+    batch_execution = "batch_execution"
+    research = "research"
+
+
+@dataclass(frozen=True)
+class JobRow:
+    job_type: JobType
+    job_id: str
+    project_id: str
+    title: str
+    status: str
+    started_at: datetime | None
+    finished_at: datetime | None
+    triggered_by: str | None
+    raw: dict[str, object]
+
+
+@dataclass(frozen=True)
+class JobListResult:
+    rows: list[JobRow]
+    total: int
+    page: int
+    page_size: int
+
+
+def _normalise_doc_status(status: DocStatus) -> str:
+    mapping = {
+        DocStatus.planned: "queued",
+        DocStatus.draft: "running",
+        DocStatus.published: "completed",
+        DocStatus.archived: "completed",
+    }
+    return mapping.get(status, status.name)
+
+
+def _normalise_job_status(status: JobStatus) -> str:
+    return status.value
+
+
+def _normalise_batch_status(status: BatchStatus) -> str:
+    mapping = {
+        BatchStatus.planning: "queued",
+        BatchStatus.approved: "queued",
+        BatchStatus.executing: "running",
+        BatchStatus.paused: "paused",
+        BatchStatus.completed: "completed",
+        BatchStatus.completed_with_errors: "failed",
+        BatchStatus.publishing: "running",
+        BatchStatus.published: "completed",
+        BatchStatus.publish_failed: "failed",
+        BatchStatus.blocked: "failed",
+        BatchStatus.archived: "completed",
+        BatchStatus.cancelled: "cancelled",
+    }
+    return mapping.get(status, status.value)
+
+
+class JobsAggregator:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list_jobs(
+        self,
+        *,
+        project_id: str,
+        types: list[JobType] | None = None,
+        statuses: list[str] | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        page: int = 1,
+        page_size: int = 25,
+        sort_by: Literal["started_at", "finished_at", "status", "job_type"] = "started_at",
+        sort_dir: Literal["asc", "desc"] = "desc",
+    ) -> JobListResult:
+        rows: list[JobRow] = []
+        raw_rows: list[tuple[JobRow, dict[str, object]]] = []
+
+        if types is None or JobType.code_mapping in types:
+            raw_rows.extend(self._fetch_code_mapping(project_id, date_from, date_to))
+
+        if types is None or JobType.doc_generation in types:
+            raw_rows.extend(self._fetch_doc_generation(project_id, date_from, date_to))
+
+        if types is None or JobType.batch_execution in types:
+            raw_rows.extend(self._fetch_batch_execution(project_id, date_from, date_to))
+
+        if types is None or JobType.research in types:
+            raw_rows.extend(self._fetch_research(project_id, date_from, date_to))
+
+        for row, _ in raw_rows:
+            if statuses and row.status not in statuses:
+                continue
+            rows.append(row)
+
+        rows.sort(
+            key=lambda r: (
+                getattr(r, sort_by)
+                if sort_by in ("started_at", "finished_at")
+                else getattr(r, sort_by),
+            ),
+            reverse=(sort_dir == "desc"),
+        )
+
+        total = len(rows)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated = rows[start:end]
+
+        return JobListResult(rows=paginated, total=total, page=page, page_size=page_size)
+
+    def get_job(
+        self,
+        *,
+        project_id: str,
+        job_type: JobType,
+        job_id: str,
+    ) -> JobRow | None:
+        if job_type == JobType.code_mapping:
+            return self._get_code_mapping(project_id, job_id)
+        if job_type == JobType.doc_generation:
+            return self._get_doc_generation(project_id, job_id)
+        if job_type == JobType.batch_execution:
+            return self._get_batch_execution(project_id, job_id)
+        if job_type == JobType.research:
+            return self._get_research(project_id, job_id)
+        return None
+
+    def _fetch_code_mapping(
+        self,
+        project_id: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> list[tuple[JobRow, dict[str, object]]]:
+        stmt = select(CodeIndexJob).where(CodeIndexJob.project_id == project_id)
+        if date_from:
+            stmt = stmt.where(CodeIndexJob.triggered_at >= date_from)
+        if date_to:
+            stmt = stmt.where(CodeIndexJob.triggered_at <= date_to)
+        jobs = self._session.scalars(stmt).all()
+        results = []
+        for job in jobs:
+            title = f"Code map — {job.index_tier or 'default'}"
+            raw: dict[str, object] = {
+                "id": job.id,
+                "project_id": job.project_id,
+                "status": job.status,
+                "provider": job.provider,
+                "llm_model": job.llm_model,
+                "embed_model": job.embed_model,
+                "index_tier": job.index_tier,
+                "files_discovered": job.files_discovered,
+                "files_indexed": job.files_indexed,
+                "chunks_created": job.chunks_created,
+                "languages_detected": job.languages_detected,
+                "errors": job.errors,
+                "doc_id": job.doc_id,
+                "triggered_at": job.triggered_at,
+                "completed_at": job.completed_at,
+                "created_at": job.created_at,
+                "updated_at": job.updated_at,
+            }
+            results.append(
+                (
+                    JobRow(
+                        job_type=JobType.code_mapping,
+                        job_id=job.id,
+                        project_id=job.project_id,
+                        title=title,
+                        status=job.status,
+                        started_at=job.triggered_at,
+                        finished_at=job.completed_at,
+                        triggered_by=None,
+                        raw=raw,
+                    ),
+                    raw,
+                )
+            )
+        return results
+
+    def _fetch_doc_generation(
+        self,
+        project_id: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> list[tuple[JobRow, dict[str, object]]]:
+        stmt = select(DocGenerationJob).where(DocGenerationJob.project_id == project_id)
+        if date_from:
+            stmt = stmt.where(
+                (DocGenerationJob.started_at >= date_from)
+                | (DocGenerationJob.requested_at >= date_from)
+                | (DocGenerationJob.created_at >= date_from)
+            )
+        if date_to:
+            stmt = stmt.where(
+                (DocGenerationJob.started_at <= date_to)
+                | (DocGenerationJob.requested_at <= date_to)
+                | (DocGenerationJob.created_at <= date_to)
+            )
+        jobs = self._session.scalars(stmt).all()
+
+        doc_ids = [job.doc_id for job in jobs if job.doc_id]
+        doc_titles: dict[str, str] = {}
+        if doc_ids:
+            docs = self._session.scalars(select(ProjectDoc).where(ProjectDoc.id.in_(doc_ids))).all()
+            doc_titles = {doc.id: doc.title for doc in docs}
+
+        results = []
+        for job in jobs:
+            title = (
+                doc_titles.get(job.doc_id, "Doc generation (orphan)")
+                if job.doc_id
+                else "Doc generation (orphan)"
+            )
+            status_norm = _normalise_job_status(job.status)
+            started = job.started_at or job.requested_at or job.created_at
+            triggered_by = job.skill_used or job.trigger_reason
+            raw: dict[str, object] = {
+                "id": job.id,
+                "project_id": job.project_id,
+                "doc_id": job.doc_id,
+                "status": job.status.value,
+                "requested_at": job.requested_at,
+                "started_at": job.started_at,
+                "completed_at": job.completed_at,
+                "agent_output": job.agent_output,
+                "error": job.error,
+                "agent_pid": job.agent_pid,
+                "skill_used": job.skill_used,
+                "trigger_reason": job.trigger_reason,
+                "lint_warnings": job.lint_warnings,
+                "duration_seconds": job.duration_seconds,
+                "section_guides_snapshot": job.section_guides_snapshot,
+                "guide_snapshot": job.guide_snapshot,
+                "created_at": job.created_at,
+            }
+            results.append(
+                (
+                    JobRow(
+                        job_type=JobType.doc_generation,
+                        job_id=job.id,
+                        project_id=job.project_id,
+                        title=title,
+                        status=status_norm,
+                        started_at=started,
+                        finished_at=job.completed_at,
+                        triggered_by=triggered_by,
+                        raw=raw,
+                    ),
+                    raw,
+                )
+            )
+        return results
+
+    def _fetch_batch_execution(
+        self,
+        project_id: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> list[tuple[JobRow, dict[str, object]]]:
+        stmt = select(Batch).where(Batch.project_id == project_id)
+        if date_from:
+            stmt = stmt.where(Batch.created_at >= date_from)
+        if date_to:
+            stmt = stmt.where(Batch.created_at <= date_to)
+        batches = self._session.scalars(stmt).all()
+        results = []
+        for batch in batches:
+            status_norm = _normalise_batch_status(batch.status)
+            raw: dict[str, object] = {
+                "id": batch.id,
+                "project_id": batch.project_id,
+                "status": batch.status.value,
+                "max_parallel": batch.max_parallel,
+                "cli_tool": batch.cli_tool,
+                "auto_publish": batch.auto_publish,
+                "plan_path": batch.plan_path,
+                "diagram_path": batch.diagram_path,
+                "execution_plan_md": batch.execution_plan_md,
+                "created_at": batch.created_at,
+                "updated_at": batch.updated_at,
+                "completed_at": batch.completed_at,
+                "archived_at": batch.archived_at,
+            }
+            results.append(
+                (
+                    JobRow(
+                        job_type=JobType.batch_execution,
+                        job_id=batch.id,
+                        project_id=batch.project_id,
+                        title=f"Batch {batch.id}",
+                        status=status_norm,
+                        started_at=batch.created_at,
+                        finished_at=batch.completed_at,
+                        triggered_by=None,
+                        raw=raw,
+                    ),
+                    raw,
+                )
+            )
+        return results
+
+    def _fetch_research(
+        self,
+        project_id: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> list[tuple[JobRow, dict[str, object]]]:
+        stmt = select(ProjectDoc).where(
+            ProjectDoc.project_id == project_id,
+            ProjectDoc.doc_type == DocType.research,
+        )
+        if date_from:
+            stmt = stmt.where(ProjectDoc.created_at >= date_from)
+        if date_to:
+            stmt = stmt.where(ProjectDoc.created_at <= date_to)
+        docs = self._session.scalars(stmt).all()
+        results = []
+        for doc in docs:
+            status_norm = _normalise_doc_status(doc.status)
+            finished_at = doc.generated_at if doc.status == DocStatus.published else None
+            raw: dict[str, object] = {
+                "id": doc.id,
+                "project_id": doc.project_id,
+                "doc_id": doc.doc_id,
+                "title": doc.title,
+                "slug": doc.slug,
+                "doc_type": doc.doc_type.value,
+                "tier": doc.tier.value,
+                "editorial_category": doc.editorial_category.value,
+                "status": doc.status.value,
+                "audience": doc.audience,
+                "source_paths": doc.source_paths,
+                "content": doc.content,
+                "version": doc.version,
+                "generated_at": doc.generated_at,
+                "generated_by": doc.generated_by,
+                "html_path": doc.html_path,
+                "pdf_path": doc.pdf_path,
+                "broken_links": doc.broken_links,
+                "created_at": doc.created_at,
+                "updated_at": doc.updated_at,
+            }
+            results.append(
+                (
+                    JobRow(
+                        job_type=JobType.research,
+                        job_id=doc.id,
+                        project_id=doc.project_id,
+                        title=doc.title,
+                        status=status_norm,
+                        started_at=doc.created_at,
+                        finished_at=finished_at,
+                        triggered_by=doc.generated_by,
+                        raw=raw,
+                    ),
+                    raw,
+                )
+            )
+        return results
+
+    def _get_code_mapping(self, project_id: str, job_id: str) -> JobRow | None:
+        job = self._session.get(CodeIndexJob, job_id)
+        if job is None or job.project_id != project_id:
+            return None
+        raw: dict[str, object] = {
+            "id": job.id,
+            "project_id": job.project_id,
+            "status": job.status,
+            "provider": job.provider,
+            "llm_model": job.llm_model,
+            "embed_model": job.embed_model,
+            "index_tier": job.index_tier,
+            "files_discovered": job.files_discovered,
+            "files_indexed": job.files_indexed,
+            "chunks_created": job.chunks_created,
+            "languages_detected": job.languages_detected,
+            "errors": job.errors,
+            "doc_id": job.doc_id,
+            "triggered_at": job.triggered_at,
+            "completed_at": job.completed_at,
+            "created_at": job.created_at,
+            "updated_at": job.updated_at,
+        }
+        return JobRow(
+            job_type=JobType.code_mapping,
+            job_id=job.id,
+            project_id=job.project_id,
+            title=f"Code map — {job.index_tier or 'default'}",
+            status=job.status,
+            started_at=job.triggered_at,
+            finished_at=job.completed_at,
+            triggered_by=None,
+            raw=raw,
+        )
+
+    def _get_doc_generation(self, project_id: str, job_id: str) -> JobRow | None:
+        job = self._session.get(DocGenerationJob, job_id)
+        if job is None or job.project_id != project_id:
+            return None
+        doc_title = None
+        if job.doc_id:
+            doc = self._session.get(ProjectDoc, job.doc_id)
+            if doc:
+                doc_title = doc.title
+        title = doc_title or "Doc generation (orphan)"
+        return JobRow(
+            job_type=JobType.doc_generation,
+            job_id=job.id,
+            project_id=job.project_id,
+            title=title,
+            status=_normalise_job_status(job.status),
+            started_at=job.started_at or job.requested_at or job.created_at,
+            finished_at=job.completed_at,
+            triggered_by=job.skill_used or job.trigger_reason,
+            raw={"id": job.id, "project_id": job.project_id, "status": job.status.value},
+        )
+
+    def _get_batch_execution(self, project_id: str, job_id: str) -> JobRow | None:
+        batch = self._session.get(Batch, (project_id, job_id))
+        if batch is None:
+            return None
+        return JobRow(
+            job_type=JobType.batch_execution,
+            job_id=batch.id,
+            project_id=batch.project_id,
+            title=f"Batch {batch.id}",
+            status=_normalise_batch_status(batch.status),
+            started_at=batch.created_at,
+            finished_at=batch.completed_at,
+            triggered_by=None,
+            raw={"id": batch.id, "project_id": batch.project_id, "status": batch.status.value},
+        )
+
+    def _get_research(self, project_id: str, job_id: str) -> JobRow | None:
+        doc = self._session.get(ProjectDoc, job_id)
+        if doc is None or doc.project_id != project_id:
+            return None
+        status_norm = _normalise_doc_status(doc.status)
+        return JobRow(
+            job_type=JobType.research,
+            job_id=doc.id,
+            project_id=doc.project_id,
+            title=doc.title,
+            status=status_norm,
+            started_at=doc.created_at,
+            finished_at=doc.generated_at if doc.status == DocStatus.published else None,
+            triggered_by=doc.generated_by,
+            raw={"id": doc.id, "project_id": doc.project_id, "status": doc.status.value},
+        )

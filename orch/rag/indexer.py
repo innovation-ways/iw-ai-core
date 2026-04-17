@@ -257,21 +257,18 @@ class CodeIndexer:
 
         try:
             if language:
-                splitter = CodeSplitter(
+                text = file_path.read_text(encoding="utf-8", errors="replace")
+                texts = CodeSplitter(
                     chunk_lines=40,
                     chunk_lines_overlap=5,
                     language=language,
-                )
-                text = file_path.read_text(encoding="utf-8", errors="replace")
-                texts = splitter.split_text(text)
+                ).split_text(text)
             else:
-                splitter = SentenceSplitter(chunk_size=500, chunk_overlap=50)
                 text = file_path.read_text(encoding="utf-8", errors="replace")
-                texts = splitter.split_text(text)
+                texts = SentenceSplitter(chunk_size=500, chunk_overlap=50).split_text(text)
         except Exception:
-            splitter = SentenceSplitter(chunk_size=500, chunk_overlap=50)
             text = file_path.read_text(encoding="utf-8", errors="replace")
-            texts = splitter.split_text(text)
+            texts = SentenceSplitter(chunk_size=500, chunk_overlap=50).split_text(text)
 
         return [
             TextNode(text=chunk, metadata={**metadata, "chunk_index": i})
