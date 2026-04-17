@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+
+{% macro fmt_duration(start, end) -%}
+  {%- if start and end -%}
+    {%- set diff = end - start -%}
+    {%- set seconds = diff.total_seconds() -%}
+    {%- set mins = (seconds // 60)|int -%}
+    {%- if mins >= 60 -%}
+      {{ (mins // 60) }}h{{ "%02dm"|format(mins % 60) }}
+    {%- else -%}
+      {{ "%dm%02ds"|format(mins, (seconds % 60)|int) }}
+    {%- endif -%}
+  {%- elif start -%}
+    —
+  {%- else -%}
+    —
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro type_chip(job_type) -%}
+  {% set colors = {
+    'code_mapping': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    'doc_generation': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    'batch_execution': 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+    'research': 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
+  } %}
+  <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium {{ colors.get(job_type, 'bg-muted text-muted-foreground') }}">
+    {{ job_type }}
+  </span>
+{%- endmacro %}
+
+{% block title %}Jobs — {{ current_project.display_name if current_project else '' }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-semibold text-foreground">Jobs</h1>
+  <p class="text-muted-foreground text-sm mt-1">Background operations across this project</p>
+</div>
+
+<!-- Filters -->
+<form method="get" class="flex flex-wrap gap-3 mb-4 items-end">
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">Type</label>
+    <div class="flex flex-wrap gap-2">
+      {% for t in job_types %}
+        <label class="inline-flex items-center gap-1 text-xs cursor-pointer">
+          <input type="checkbox" name="type" value="{{ t }}"
+                 {% if t in type_filter %}checked{% endif %}
+                 class="accent-primary">
+          {{ t }}
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">Status</label>
+    <div class="flex flex-wrap gap-2">
+      {% for s in job_statuses %}
+        <label class="inline-flex items-center gap-1 text-xs cursor-pointer">
+          <input type="checkbox" name="status" value="{{ s }}"
+                 {% if s in status_filter %}checked{% endif %}
+                 class="accent-primary">
+          {{ s }}
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">From</label>
+    <input type="date" name="date_from" value="{{ date_from }}"
+           class="px-3 py-1.5 bg-input border border-border rounded-md text-sm text-foreground
+                  focus:outline-none focus:ring-2 focus:ring-ring">
+  </div>
+
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">To</label>
+    <input type="date" name="date_to" value="{{ date_to }}"
+           class="px-3 py-1.5 bg-input border border-border rounded-md text-sm text-foreground
+                  focus:outline-none focus:ring-2 focus:ring-ring">
+  </div>
+
+  <button type="submit"
+          class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md text-sm
+                 hover:opacity-90 transition-opacity">
+    Filter
+  </button>
+
+  {% if type_filter or status_filter or date_from or date_to %}
+    <a href="?"
+       class="px-3 py-1.5 text-muted-foreground text-sm hover:text-foreground transition-colors">
+      Clear
+    </a>
+  {% endif %}
+</form>
+
+<!-- Results count -->
+<p class="text-xs text-muted-foreground mb-3">
+  {{ total }} items
+</p>
+
+<!-- Table — delegates to fragment for htmx refresh -->
+{% include "fragments/jobs_table.html" %}
+
+{% endblock %}

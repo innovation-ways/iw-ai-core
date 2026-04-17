@@ -1,20 +1,19 @@
-<div class="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-  <div class="flex items-center gap-2 mb-2">
-    <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+{# Neutral "Last run" summary for the most recent completed code map job.
+   Replaces the former persistent success banner; success toast is emitted
+   via DaemonEvent(code_map_completed) and shown by components/toast.html. #}
+<div class="flex items-center justify-between px-3 py-2 bg-muted/30 border border-border rounded-lg text-xs text-muted-foreground">
+  <div class="flex items-center gap-2 min-w-0">
+    <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
     </svg>
-    <span class="font-medium text-green-700 dark:text-green-300">Code map generated successfully</span>
+    <span class="truncate">
+      Last run
+      {% if last_completed_duration %}· {{ last_completed_duration }}{% endif %}
+      · {{ last_completed_job.files_indexed }} files · {{ last_completed_job.chunks_created | intcomma }} chunks
+    </span>
   </div>
-  <div class="text-sm text-green-700 dark:text-green-300 space-y-1">
-    {% if last_completed_duration %}
-    <p>Duration: {{ last_completed_duration }}</p>
-    {% endif %}
-    <p>Files indexed: {{ last_completed_job.files_indexed }}  ·  Chunks: {{ last_completed_job.chunks_created | intcomma }}</p>
-    {% if last_completed_job.languages_detected %}
-    <p>Languages: {{ last_completed_job.languages_detected | join(", ") }}</p>
-    {% endif %}
-    {% if last_completed_job.llm_model %}
-    <p>Model: {{ last_completed_job.llm_model }} · Embed: {{ last_completed_job.embed_model }}</p>
-    {% endif %}
-  </div>
+  <a href="/project/{{ current_project.id }}/jobs/code_mapping/{{ last_completed_job.id }}"
+     class="text-primary hover:underline flex-shrink-0 ml-2">
+    View →
+  </a>
 </div>

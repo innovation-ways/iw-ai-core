@@ -9,9 +9,8 @@ from orch.db.session import SessionLocal
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
     from sqlalchemy.orm import Session
-    from sqlalchemy.ext.asyncio import async_sessionmaker
 
 
 def get_db() -> Generator[Session, None, None]:

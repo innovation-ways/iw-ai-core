@@ -24,6 +24,7 @@ from dashboard.routers import (
     daemon_control,
     docs,
     items,
+    jobs_ui,
     project_dashboard,
     project_pages,
     projects,
@@ -136,6 +137,7 @@ def create_app() -> FastAPI:
     app.include_router(tests.router)
     app.include_router(quality.router)
     app.include_router(project_pages.router)
+    app.include_router(jobs_ui.router)
     app.include_router(search.router)
     app.include_router(worktrees.router)
     app.include_router(docs.router)
