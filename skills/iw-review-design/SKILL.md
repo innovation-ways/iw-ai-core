@@ -41,45 +41,58 @@ Check the design document against its template. Every required section must be p
 
 ### Common Checks (all types)
 
-- [ ] **Metadata block** present (Type, Created, Status)
+- [ ] **Metadata block** present (Type, Created, Status; plus type-specific fields: Priority/Severity/Reason, Reported By for Issues)
 - [ ] **Description** section is non-empty (at least 2 sentences)
+- [ ] **Project Context** section present (points to the project's `CLAUDE.md`)
 - [ ] **Implementation Plan / Fix Plan** table present
 - [ ] **File Manifest** section present with file listing table
 - [ ] **File Manifest** lists at least one concrete file path — if zero file paths are found anywhere in the design doc, flag as a WARNING (the batch planner uses these paths for conflict detection; a doc with no paths will be invisible to the overlap analysis)
+- [ ] **Acceptance Criteria** — at least one `Given/When/Then` block (all types)
+- [ ] **Dependencies** section present (Depends on / Blocks, even if "None")
+- [ ] **TDD Approach** section present (all types)
 - [ ] **Notes** section present
 
 ### Incident-Specific Checks
 
 - [ ] **Bug Description** — what is broken and expected behavior
-- [ ] **Steps to Reproduce** — numbered sequence
+- [ ] **Steps to Reproduce** — numbered sequence with Expected/Actual
 - [ ] **Root Cause Analysis** with file:line references
-- [ ] **Reproduction Test** — failing test proving the bug exists
+- [ ] **Affected Components** table
+- [ ] **Test to Reproduce** — failing test proving the bug exists
+- [ ] **Regression Prevention** section
+- [ ] **Acceptance Criteria** includes at least AC1 "Bug is fixed" and AC2 "Regression test exists"
 - [ ] **Tests agent step** — in the Fix Plan (mandatory)
 - [ ] **Semantic Correctness Warning** in the Tests prompt (I003 lesson)
+- [ ] If UI-visible: **Browser Evidence** and **Browser Verification Script** sections present
 
 ### Feature-Specific Checks
 
 - [ ] **Scope** section with in scope / out of scope
-- [ ] **Acceptance Criteria** with Given/When/Then
-- [ ] **TDD Approach** section
+- [ ] **Boundary Behavior** table — edge cases covered (every row should be a mandatory test case)
+- [ ] **Invariants** numbered list (each maps to a test)
 
 ### CR-Specific Checks
 
-- [ ] **Current vs Desired Behavior** clearly documented
-- [ ] **Breaking Changes** assessment
-- [ ] **Rollback Plan** present
+- [ ] **Current Behavior** and **Desired Behavior** as **separate** sections (flag as FAIL if collapsed into a single paragraph)
+- [ ] **Impact Analysis** — Affected Components table, Breaking Changes, Data Migration
+- [ ] **Rollback Plan** — Database / Code / Data all addressed
 
 ## Step 3: Validate the Workflow Manifest
 
 Check `ai-dev/active/{ID}/workflow-manifest.json`:
 
-- [ ] Required fields: `id`, `type`, `title`, `steps`
+- [ ] Required top-level fields: `id`, `type`, `title`, `browser_verification`, `steps`
 - [ ] `id` matches the work item ID
-- [ ] All steps have: `step`, `agent`, `description`
-- [ ] Agent slugs are valid (database-impl, backend-impl, api-impl, frontend-impl, tests-impl, code-review-impl, code-review-final-impl, qv-gate, qv-browser)
-- [ ] QV gate steps present after CodeReview_Final
-- [ ] QV gate steps have `gate` and `command` fields (no prompt file)
-- [ ] All non-QV steps have `prompt` field pointing to a file that exists
+- [ ] `type` is one of `Feature` | `Issue` | `ChangeRequest` (matches the ID prefix)
+- [ ] `browser_verification` is a boolean (not omitted, not a string)
+- [ ] All steps use the canonical shape `{step, agent, description, ...}` — **FAIL** if any step uses legacy fields like `work_item_id`, `step_number`, `agent_label`, `opencode_agent`, or an aggregate `gates[]` array
+- [ ] Step IDs are `S01`, `S02`, … sequential and zero-padded
+- [ ] Agent slugs are from the canonical set: `database-impl`, `backend-impl`, `api-impl`, `frontend-impl`, `tests-impl`, `pipeline-impl`, `template-impl`, `code-review-impl`, `code-review-final-impl`, `code-review-fix-impl`, `code-review-fix-final-impl`, `qv-gate`, `qv-browser`
+- [ ] QV gate steps present after `code-review-final-impl` (one step per gate — NOT a single aggregate step)
+- [ ] QV gate steps have `gate` and `command` fields (no `prompt` field)
+- [ ] All non-QV-gate steps have a `prompt` field pointing to a file that exists under `prompts/`
+- [ ] If `browser_verification: true`, a `qv-browser` step exists (with `prompt` field) at the end of the QV sequence
+- [ ] If `browser_verification: false`, no `qv-browser` step is present
 
 ## Step 4: Validate Prompt Files
 

@@ -174,21 +174,25 @@ Then create the design document at:
 ai-dev/active/{ID}/{ID}_Issue_Design.md
 ```
 
-Use the template from `ai-dev/templates/Issue_Design_Template.md`. Fill in ALL sections:
+Use the template from `ai-dev/templates/Issue_Design_Template.md`. Fill in ALL sections (every one below is required — mark optional browser sub-sections N/A when backend-only):
 
-- **Description**: What is broken and expected behavior (2-3 sentences)
-- **Severity**: Based on impact assessment
-- **Reported By**: Source of the bug report
-- **Browser Evidence** (UI-visible only): Reference screenshot and snapshot files from `ai-dev/active/{ID}/evidences/pre/`
-- **Steps to Reproduce**: Numbered sequence with Expected/Actual
-- **Browser Verification Script** (UI-visible only): Exact Playwright CLI commands to reproduce the bug
-- **Root Cause Analysis**: Why this is happening, with file:line references
-- **Affected Components**: Table of components, files, and impact
-- **Fix Plan**: Agent execution order with step numbers
-- **Changes Required**: Specific file changes needed
-- **Test to Reproduce**: A failing test proving the bug exists (TDD RED phase)
-- **Browser Verification Test** (UI-visible only): Playwright CLI commands to verify the fix works
-- **Regression Prevention**: What tests ensure this bug cannot recur
+- **Metadata block** — Type, Severity, Created, Reported By, Status
+- **Description** — what is broken and user-visible impact (2-3 sentences)
+- **Project Context** — one-liner pointing to the project's `CLAUDE.md` (architecture, conventions, hard rules)
+- **Browser Evidence** (UI-visible only) — reference screenshot and snapshot files from `ai-dev/active/{ID}/evidences/pre/`
+- **Steps to Reproduce** — numbered sequence, plus explicit **Expected** / **Actual** lines
+- **Browser Verification Script** (UI-visible only) — exact Playwright CLI commands to reproduce the bug
+- **Root Cause Analysis** — why the bug occurs, with concrete `file:line` references
+- **Affected Components** — table of components, files, and impact
+- **Fix Plan** — agent execution order table (must include a `tests-impl` step; see Fix Plan Structure below)
+- **File Manifest** — table of every file to create/modify (design, manifest, prompts). The batch planner uses these paths for overlap analysis
+- **Test to Reproduce** — a failing test that proves the bug exists (TDD RED phase)
+- **Browser Verification Test** (UI-visible only) — Playwright CLI commands that verify the fix
+- **Acceptance Criteria** — Given/When/Then blocks. Every incident must have at least: AC1 "Bug is fixed" and AC2 "Regression test exists"
+- **Regression Prevention** — what structural changes, validations, or tests prevent this class of bug from recurring
+- **Dependencies** — Depends on / Blocks (F/I/CR numbers or "None")
+- **TDD Approach** — reproducing test, unit tests, integration tests
+- **Notes** — additional context, risks, or decisions (use "None" if truly empty)
 
 ### Test Semantic Correctness Requirement (LESSON FROM I003)
 

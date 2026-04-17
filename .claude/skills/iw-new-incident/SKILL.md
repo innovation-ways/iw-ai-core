@@ -174,21 +174,25 @@ Then create the design document at:
 ai-dev/active/{ID}/{ID}_Issue_Design.md
 ```
 
-Use the template from `ai-dev/templates/Issue_Design_Template.md`. Fill in ALL sections:
+Use the template from `ai-dev/templates/Issue_Design_Template.md`. Fill in ALL sections (every one below is required — mark optional browser sub-sections N/A when backend-only):
 
-- **Description**: What is broken and expected behavior (2-3 sentences)
-- **Severity**: Based on impact assessment
-- **Reported By**: Source of the bug report
-- **Browser Evidence** (UI-visible only): Reference screenshot and snapshot files from `ai-dev/active/{ID}/evidences/pre/`
-- **Steps to Reproduce**: Numbered sequence with Expected/Actual
-- **Browser Verification Script** (UI-visible only): Exact Playwright CLI commands to reproduce the bug
-- **Root Cause Analysis**: Why this is happening, with file:line references
-- **Affected Components**: Table of components, files, and impact
-- **Fix Plan**: Agent execution order with step numbers
-- **Changes Required**: Specific file changes needed
-- **Test to Reproduce**: A failing test proving the bug exists (TDD RED phase)
-- **Browser Verification Test** (UI-visible only): Playwright CLI commands to verify the fix works
-- **Regression Prevention**: What tests ensure this bug cannot recur
+- **Metadata block** — Type, Severity, Created, Reported By, Status
+- **Description** — what is broken and user-visible impact (2-3 sentences)
+- **Project Context** — one-liner pointing to the project's `CLAUDE.md` (architecture, conventions, hard rules)
+- **Browser Evidence** (UI-visible only) — reference screenshot and snapshot files from `ai-dev/active/{ID}/evidences/pre/`
+- **Steps to Reproduce** — numbered sequence, plus explicit **Expected** / **Actual** lines
+- **Browser Verification Script** (UI-visible only) — exact Playwright CLI commands to reproduce the bug
+- **Root Cause Analysis** — why the bug occurs, with concrete `file:line` references
+- **Affected Components** — table of components, files, and impact
+- **Fix Plan** — agent execution order table (must include a `tests-impl` step; see Fix Plan Structure below)
+- **File Manifest** — table of every file to create/modify (design, manifest, prompts). The batch planner uses these paths for overlap analysis
+- **Test to Reproduce** — a failing test that proves the bug exists (TDD RED phase)
+- **Browser Verification Test** (UI-visible only) — Playwright CLI commands that verify the fix
+- **Acceptance Criteria** — Given/When/Then blocks. Every incident must have at least: AC1 "Bug is fixed" and AC2 "Regression test exists"
+- **Regression Prevention** — what structural changes, validations, or tests prevent this class of bug from recurring
+- **Dependencies** — Depends on / Blocks (F/I/CR numbers or "None")
+- **TDD Approach** — reproducing test, unit tests, integration tests
+- **Notes** — additional context, risks, or decisions (use "None" if truly empty)
 
 ### Test Semantic Correctness Requirement (LESSON FROM I003)
 
@@ -292,7 +296,23 @@ Create `CodeReview_Final_prompt.md`. The global review MUST verify:
 
 QV gates are **script-driven** — no QV prompt file needed for gate steps.
 
-**If `browser_verification: true`**, create a browser verification prompt.
+**If `browser_verification: true`**, create a browser verification prompt at `ai-dev/active/{ID}/prompts/{ID}_S{N}_BrowserVerification_prompt.md` and reference it from the workflow manifest:
+
+```json
+{"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — verify fix end-to-end in isolated worktree stack", "prompt": "prompts/{ID}_S{N}_BrowserVerification_prompt.md"}
+```
+
+To create the prompt file, **copy `ai-dev/templates/QVBrowser_Prompt_Template.md`** (synced from `templates/design/` by `iw init-project` / `iw skills sync`) and fill in ONLY the `{{ID}}`, `{{STEP}}`, `{{TITLE}}`, `{{TYPE}}`, input-files list, and V1..V(n) sections. The V(n) verifications must cover:
+
+1. **The reproduction case** — navigate to the exact URL/interaction that triggered the bug and verify it now behaves correctly.
+2. **Adjacent flows (No Regressions)** — confirm the fix didn't break neighboring functionality, and no new console errors appeared.
+
+Leave the Environment, Prerequisites, Pass Criteria, Report, and Result Contract sections of the template untouched.
+
+**Hard rules for the QV Browser prompt:**
+- **NEVER** hardcode URLs, ports, or credentials. No `localhost:5173`, no `localhost:5174`, no literal passwords. The IW daemon spins up an isolated e2e stack built from the worktree's source and exports `$IW_BROWSER_BASE_URL`, `$IW_BROWSER_E2E_USER`, `$IW_BROWSER_E2E_PASSWORD`, `$IW_ITEM_ID`, and `$IW_STEP_ID` at runtime. Use those env vars (or the equivalent `{{IW_BROWSER_BASE_URL}}` placeholder, which the daemon substitutes at launch).
+- **NEVER** instruct the agent to run `make dev`, `make e2e-up`, `docker compose`, or any install command — the stack is already up and will be torn down afterwards.
+- Use `playwright-cli` exclusively (not `agent-browser`, not direct `chromium.launch()`).
 
 ## Step 5b: Generate Workflow Manifest (only after GO)
 

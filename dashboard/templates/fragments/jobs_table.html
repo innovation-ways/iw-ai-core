@@ -105,6 +105,13 @@
 </div>
 
 {# Pagination #}
+{% macro page_url(target_page) -%}
+  ?page={{ target_page }}
+  {%- for t in type_filter %}&type={{ t | urlencode }}{% endfor -%}
+  {%- for s in status_filter %}&status={{ s | urlencode }}{% endfor -%}
+  {%- if date_from %}&date_from={{ date_from | urlencode }}{% endif -%}
+  {%- if date_to %}&date_to={{ date_to | urlencode }}{% endif -%}
+{%- endmacro %}
 {% if total > page_size %}
 <div class="flex items-center justify-between text-sm">
   <span class="text-muted-foreground text-xs">
@@ -112,13 +119,13 @@
   </span>
   <div class="flex gap-1">
     {% if page > 1 %}
-      <a href="?{{ {'page': page - 1, 'type': type_filter, 'status': status_filter, 'date_from': date_from, 'date_to': date_to} | urlencode }}"
+      <a href="{{ page_url(page - 1) }}"
          class="px-3 py-1 border border-border rounded-md text-sm hover:bg-muted/30 transition-colors">
         ← Prev
       </a>
     {% endif %}
     {% if (page * page_size) < total %}
-      <a href="?{{ {'page': page + 1, 'type': type_filter, 'status': status_filter, 'date_from': date_from, 'date_to': date_to} | urlencode }}"
+      <a href="{{ page_url(page + 1) }}"
          class="px-3 py-1 border border-border rounded-md text-sm hover:bg-muted/30 transition-colors">
         Next →
       </a>

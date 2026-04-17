@@ -129,6 +129,50 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
     toggleCodeDropdown();
   }
 });
+
+// --- Module detail: immediate feedback + error handling ---
+function _targetsDetailPanel(elt) {
+  return elt && elt.getAttribute && elt.getAttribute('hx-target') === '#code-detail-panel';
+}
+
+document.body.addEventListener('htmx:beforeRequest', function(e) {
+  if (!_targetsDetailPanel(e.detail.elt)) return;
+  var panel = document.getElementById('code-detail-panel');
+  if (!panel) return;
+  panel.innerHTML =
+    '<div class="bg-card border border-border rounded-lg p-6 flex items-center gap-3 text-sm text-muted-foreground">' +
+    '  <span class="inline-block w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>' +
+    '  <span>Loading module detail…</span>' +
+    '</div>';
+  panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+
+document.body.addEventListener('htmx:afterSwap', function(e) {
+  if (e.detail.target && e.detail.target.id === 'code-detail-panel') {
+    e.detail.target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+});
+
+document.body.addEventListener('htmx:responseError', function(e) {
+  if (!_targetsDetailPanel(e.detail.elt)) return;
+  var status = (e.detail.xhr && e.detail.xhr.status) || '?';
+  var panel = document.getElementById('code-detail-panel');
+  if (panel) {
+    panel.innerHTML =
+      '<div class="bg-card border border-destructive/40 rounded-lg p-4 flex items-start gap-3">' +
+      '  <span class="text-destructive text-sm font-bold mt-0.5">!</span>' +
+      '  <div class="flex-1 text-sm">' +
+      '    <p class="font-medium text-destructive mb-0.5">Failed to load module</p>' +
+      '    <p class="text-xs text-muted-foreground">Server returned ' + status + '. Check dashboard logs.</p>' +
+      '  </div>' +
+      '</div>';
+  }
+  if (typeof showToast === 'function') {
+    showToast({ type: 'error', message: 'Module load failed (HTTP ' + status + ')' });
+  }
+});
 </script>
+
+{% include "components/toast.html" %}
 
 {% endblock %}

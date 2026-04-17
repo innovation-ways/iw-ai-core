@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from orch.db.models import Project
@@ -22,7 +23,7 @@ router = APIRouter(prefix="/project/{project_id}")
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
-    project: Project | None = db.scalar(Project.__table__.select().where(Project.id == project_id))
+    project: Project | None = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
     return project

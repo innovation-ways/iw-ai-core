@@ -29,40 +29,55 @@ def parse_modules_from_level1(doc_content: str) -> list[dict[str, str]]:
 
 def _parse_modules_safe(doc_content: str) -> list[dict[str, str]]:
     lines = doc_content.split("\n")
-    section_started = False
-    section_lines: list[str] = []
 
-    header_pattern = re.compile(
+    matching_header = re.compile(
         r"^#{1,6}\s+.*?(component|architecture|module|structure)",
         re.IGNORECASE,
     )
+    any_header = re.compile(r"^#{1,6}\s+")
+
+    sections: list[list[str]] = []
+    current: list[str] | None = None
 
     for line in lines:
-        if header_pattern.search(line):
-            section_started = True
-            section_lines = []
-        elif section_started:
-            if line.startswith("#"):
-                break
-            section_lines.append(line)
+        if matching_header.search(line):
+            if current is not None:
+                sections.append(current)
+            current = []
+        elif any_header.match(line):
+            if current is not None:
+                sections.append(current)
+                current = None
+        elif current is not None:
+            current.append(line)
 
-    if not section_lines:
-        return []
+    if current is not None:
+        sections.append(current)
 
-    modules: list[dict[str, str]] = []
+    for section_lines in sections:
+        modules: list[dict[str, str]] = []
+        for line in section_lines:
+            entry = _try_parse_line(line)
+            if entry is not None:
+                modules.append(entry)
+        if modules:
+            return modules
 
-    for line in section_lines:
-        entry = _try_parse_line(line)
-        if entry is not None:
-            modules.append(entry)
-
-    return modules
+    return []
 
 
 def _try_parse_line(line: str) -> dict[str, str] | None:
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None
+
+    m = _match_bold_with_path_inside(stripped)
+    if m:
+        name = m.group(1).strip()
+        path = m.group(2)
+        description = m.group(3)
+        slug = _make_slug(path)
+        return {"name": name, "path": path, "description": description, "slug": slug}
 
     m = _match_backtick_with_description(stripped)
     if m:
@@ -92,15 +107,22 @@ def _try_parse_line(line: str) -> dict[str, str] | None:
 
 
 def _match_backtick_with_description(line: str) -> re.Match[str] | None:
-    return re.match(r"^- `([^`]+)`\s*--?\s*(.+)$", line)
+    return re.match(r"^[-*]\s+`([^`]+)`\s*--?\s*(.+)$", line)
 
 
 def _match_bold_name_with_path(line: str) -> re.Match[str] | None:
-    return re.match(r"^- \*\*([^*]+)\*\*\s*\(`([^)]+)`\):\s*(.+)$", line)
+    return re.match(r"^[-*]\s+\*\*([^*]+)\*\*\s*\(`([^)]+)`\):\s*(.+)$", line)
+
+
+def _match_bold_with_path_inside(line: str) -> re.Match[str] | None:
+    return re.match(
+        r"^[-*]\s+\*\*([^*(]+?)\s*\(`([^`]+)`\)\*\*\s*:\s*(.+)$",
+        line,
+    )
 
 
 def _match_plain_format(line: str) -> re.Match[str] | None:
-    return re.match(r"^- ([^ ]+/)\s*--?\s*(.+)$", line)
+    return re.match(r"^[-*]\s+([^ ]+/)\s*--?\s*(.+)$", line)
 
 
 def _extract_name_from_description(description: str, path: str) -> str:
