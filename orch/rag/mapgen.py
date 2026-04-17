@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from llama_index.core import VectorStoreIndex
@@ -50,8 +51,13 @@ class MapGenerator:
         cancel_check: Callable[[], bool] | None = None,
         db_session_factory: Any | None = None,
     ) -> ProjectDoc:
-        store_path = f"~/.iw-ai-core/indexes/{project_id}/vectors"
+        store_path = str(Path(config.index_path) / project_id / "vectors")
         table_name = f"code_{project_id.replace('-', '_')}"
+
+        llm = Ollama(
+            model=config.resolved_llm_model(),
+            base_url=config.ollama_url,
+        )
 
         embed = OllamaEmbedding(
             model_name=config.resolved_embed_model(),
@@ -64,7 +70,7 @@ class MapGenerator:
         )
 
         index = VectorStoreIndex.from_vector_store(vector_store, embed_model=embed)
-        query_engine = index.as_query_engine()
+        query_engine = index.as_query_engine(llm=llm)
 
         answers: dict[str, str] = {}
 
@@ -74,10 +80,11 @@ class MapGenerator:
             response = query_engine.query(question)
             answers[key] = str(response)
 
-        mermaid = self._build_mermaid(answers["components"])
+        mermaid = self._build_mermaid(answers["components"], config)
         markdown = self._assemble_markdown(answers, mermaid)
 
         def do_upsert() -> ProjectDoc:
+            from orch.db.models import DocTier, DocType, EditorialCategory
             from orch.db.session import SessionLocal as DefaultSessionLocal
 
             factory = db_session_factory or DefaultSessionLocal
@@ -87,22 +94,39 @@ class MapGenerator:
                     raise ValueError(f"Project {project_id} not found")
 
                 doc_service = DocService(session)
-                doc, _ = doc_service.upsert_doc(
-                    project_id=project_id,
-                    doc_id="architecture-map",
-                    title=f"{project.display_name} — Architecture Map",
-                    content=markdown,
-                    generated_by="code-understanding:level1",
-                )
+                existing = doc_service.get_doc(project_id, "architecture-map")
+                if existing is None:
+                    doc = doc_service.create_doc(
+                        project_id=project_id,
+                        doc_id="architecture-map",
+                        title=f"{project.display_name} — Architecture Map",
+                        doc_type=DocType.architecture,
+                        tier=DocTier.fully_automated,
+                        editorial_category=EditorialCategory.technical,
+                        content=markdown,
+                        generated_by="code-understanding:level1",
+                    )
+                else:
+                    doc = doc_service.update_doc(
+                        project_id=project_id,
+                        doc_id="architecture-map",
+                        title=f"{project.display_name} — Architecture Map",
+                        tier=DocTier.fully_automated,
+                        editorial_category=EditorialCategory.technical,
+                        content=markdown,
+                        generated_by="code-understanding:level1",
+                    )
                 session.commit()
+                session.refresh(doc)
+                session.expunge(doc)
                 return doc
 
         return await asyncio.to_thread(do_upsert)
 
-    def _build_mermaid(self, components_answer: str) -> str:
+    def _build_mermaid(self, components_answer: str, config: CodeUnderstandingConfig) -> str:
         llm = Ollama(
-            model="gemma4:e4b",
-            base_url="http://localhost:11434",
+            model=config.resolved_llm_model(),
+            base_url=config.ollama_url,
         )
         prompt = (
             f"Given these components: {components_answer}\n"

@@ -102,7 +102,9 @@ def load_config() -> DaemonConfig:
         archive_ttl=int(_require("IW_CORE_ARCHIVE_TTL")),
         log_level=_require("IW_CORE_LOG_LEVEL"),
         log_file=_require("IW_CORE_LOG_FILE"),
-        index_path=os.environ.get("IW_CORE_INDEX_PATH", "~/.iw-ai-core/indexes"),
+        index_path=str(
+            Path(os.environ.get("IW_CORE_INDEX_PATH", "~/.iw-ai-core/indexes")).expanduser()
+        ),
         projects_toml=Path(
             os.environ.get("IW_CORE_PROJECTS_TOML", str(_ENV_FILE.parent / "projects.toml"))
         ),
