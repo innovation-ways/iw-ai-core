@@ -201,3 +201,32 @@ class TestIndexResult:
         assert result.chunks_created == 20
         assert result.files_skipped == 0
         assert result.errors == []
+
+    def test_index_result_defaults_for_new_fields(self) -> None:
+        from orch.rag.indexer import IndexResult
+
+        result = IndexResult(
+            files_indexed=5,
+            chunks_created=20,
+            files_skipped=0,
+        )
+
+        assert result.files_discovered == 0
+        assert result.languages_detected == []
+        assert result.errors == []
+
+    def test_index_result_accepts_discovery_and_languages(self) -> None:
+        from orch.rag.indexer import IndexResult
+
+        result = IndexResult(
+            files_indexed=10,
+            chunks_created=40,
+            files_skipped=2,
+            files_discovered=12,
+            languages_detected=["python", "cpp"],
+            errors=["some error"],
+        )
+
+        assert result.files_discovered == 12
+        assert result.languages_detected == ["python", "cpp"]
+        assert result.errors == ["some error"]

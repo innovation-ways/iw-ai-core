@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from orch.db.models import CodeIndexJob, Project
@@ -55,20 +56,26 @@ class CodeIndexJobRunner:
             await self._db_set_status_async(self.job_id, "running")
 
             if self.mapgen_only:
+                prev = await asyncio.to_thread(self._read_counters, self.job_id)
                 self._queue.put_nowait(
                     {
                         "event": "progress",
                         "phase": "mapgen",
-                        "files_indexed": 0,
-                        "files_total": 0,
-                        "chunks_created": 0,
+                        "files_indexed": prev["files_indexed"],
+                        "files_total": prev["files_discovered"] or prev["files_indexed"],
+                        "chunks_created": prev["chunks_created"],
                     }
                 )
                 if self._cancel_requested:
                     await self._handle_cancel()
                     return
-                await self._run_mapgen(0, 0)
-                await self._db_set_status_async(self.job_id, "completed")
+                await self._run_mapgen(
+                    prev["files_indexed"],
+                    prev["chunks_created"],
+                    prev["files_discovered"],
+                    prev["languages_detected"],
+                )
+                await self._db_set_status_async(self.job_id, "completed", completed=True)
                 self._queue.put_nowait({"event": "progress", "phase": "done"})
                 return
 
@@ -98,19 +105,34 @@ class CodeIndexJobRunner:
                 await self._handle_cancel()
                 return
 
+            await asyncio.to_thread(
+                self._persist_counters,
+                self.job_id,
+                result.files_indexed,
+                result.chunks_created,
+                result.files_discovered,
+                result.languages_detected,
+                list(result.errors),
+            )
+
             self._queue.put_nowait(
                 {
                     "event": "progress",
                     "phase": "mapgen",
                     "files_indexed": result.files_indexed,
-                    "files_total": result.files_indexed,
+                    "files_total": result.files_discovered or result.files_indexed,
                     "chunks_created": result.chunks_created,
                 }
             )
 
-            await self._run_mapgen(result.files_indexed, result.chunks_created)
+            await self._run_mapgen(
+                result.files_indexed,
+                result.chunks_created,
+                result.files_discovered,
+                list(result.languages_detected),
+            )
 
-            await self._db_set_status_async(self.job_id, "completed")
+            await self._db_set_status_async(self.job_id, "completed", completed=True)
             self._queue.put_nowait({"event": "progress", "phase": "done"})
 
         except asyncio.CancelledError:
@@ -123,11 +145,17 @@ class CodeIndexJobRunner:
                     "message": str(e),
                 }
             )
-            await self._db_set_status_async(self.job_id, "failed", error=str(e))
+            await self._db_set_status_async(self.job_id, "failed", error=str(e), completed=True)
         finally:
             JOB_REGISTRY.pop(self.project_id, None)
 
-    async def _run_mapgen(self, files_indexed: int, chunks_created: int) -> None:
+    async def _run_mapgen(
+        self,
+        files_indexed: int,
+        chunks_created: int,
+        files_discovered: int,
+        languages_detected: list[str],
+    ) -> None:
         from orch.rag.mapgen import MapGenerator
 
         def cancel_check() -> bool:
@@ -150,12 +178,73 @@ class CodeIndexJobRunner:
                     job.doc_id = doc.id if doc is not None else None
                     job.files_indexed = files_indexed
                     job.chunks_created = chunks_created
+                    job.files_discovered = files_discovered
+                    if languages_detected:
+                        job.languages_detected = list(languages_detected)
                     session.commit()
 
         await asyncio.to_thread(do_update)
 
+    def _persist_counters(
+        self,
+        job_id: str,
+        files_indexed: int,
+        chunks_created: int,
+        files_discovered: int,
+        languages_detected: list[str],
+        errors: list[str],
+    ) -> None:
+        from orch.db import session as db_session_module
+
+        factory = self._db_session_factory or db_session_module.SessionLocal
+        with factory() as session:
+            job = session.get(CodeIndexJob, job_id)
+            if job is None:
+                return
+            job.files_indexed = files_indexed
+            job.chunks_created = chunks_created
+            job.files_discovered = files_discovered
+            if languages_detected:
+                job.languages_detected = list(languages_detected)
+            if errors:
+                merged = list(job.errors) if job.errors else []
+                merged.extend(errors)
+                job.errors = merged
+            session.commit()
+
+    def _read_counters(self, job_id: str) -> dict[str, Any]:
+        from sqlalchemy import select
+
+        from orch.db import session as db_session_module
+
+        factory = self._db_session_factory or db_session_module.SessionLocal
+        with factory() as session:
+            last_completed = session.scalar(
+                select(CodeIndexJob)
+                .where(
+                    CodeIndexJob.project_id == self.project_id,
+                    CodeIndexJob.status == "completed",
+                    CodeIndexJob.id != job_id,
+                )
+                .order_by(CodeIndexJob.triggered_at.desc())
+                .limit(1)
+            )
+            if last_completed is None:
+                return {
+                    "files_indexed": 0,
+                    "chunks_created": 0,
+                    "files_discovered": 0,
+                    "languages_detected": [],
+                }
+            return {
+                "files_indexed": last_completed.files_indexed or 0,
+                "chunks_created": last_completed.chunks_created or 0,
+                "files_discovered": last_completed.files_discovered or 0,
+                "languages_detected": list(last_completed.languages_detected or []),
+            }
+
     async def _handle_cancel(self) -> None:
-        await self._db_set_status_async(self.job_id, "cancelled", cancelled=True)
+        await self._db_set_status_async(self.job_id, "cancelled", cancelled=True, completed=True)
         self._queue.put_nowait(
             {
                 "event": "progress",
@@ -169,6 +258,7 @@ class CodeIndexJobRunner:
         status: str,
         error: str | None = None,
         cancelled: bool = False,
+        completed: bool = False,
     ) -> None:
         from orch.db import session as db_session_module
 
@@ -188,6 +278,10 @@ class CodeIndexJobRunner:
                     errors = list(job.errors) if job.errors else []
                     errors.append("cancelled by user")
                     job.errors = errors
+                now = datetime.now(UTC)
+                job.updated_at = now
+                if completed:
+                    job.completed_at = now
                 session.commit()
 
         await asyncio.to_thread(do_update)
@@ -198,6 +292,7 @@ class CodeIndexJobRunner:
         status: str,
         error: str | None = None,
         cancelled: bool = False,
+        completed: bool = False,
     ) -> None:
         from orch.db import session as db_session_module
 
@@ -215,6 +310,10 @@ class CodeIndexJobRunner:
                 errors = list(job.errors) if job.errors else []
                 errors.append("cancelled by user")
                 job.errors = errors
+            now = datetime.now(UTC)
+            job.updated_at = now
+            if completed:
+                job.completed_at = now
             session.commit()
 
 
