@@ -22,6 +22,7 @@ from dashboard.utils.markdown import render_markdown
 from orch.db.models import Project, ProjectDoc
 from orch.doc_service import DocService
 from orch.rag.module_gen import ModuleGenerator
+from orch.rag.module_progress import get_or_start_task, get_progress
 from orch.rag.parser import parse_modules_from_level1
 from orch.rag.symbol_gen import SymbolGenerator
 
@@ -125,14 +126,12 @@ async def get_module(
     module_name = module_entry.get("name", module_path)
 
     gen = ModuleGenerator()
+    slug = gen._make_slug(project_id, module_path)  # noqa: SLF001
 
-    async def generate() -> tuple[ProjectDoc, bool]:
-        return await gen.get_or_generate(project_id, module_path, module_name, config, db)
-
-    task = asyncio.create_task(generate())
-    try:
-        doc, was_cached = await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
-        doc_html = render_markdown(doc.content) if doc.content else None
+    # Fast path: doc already generated — return cached content.
+    cached = DocService(db).get_doc(project_id, slug)
+    if cached is not None:
+        doc_html = render_markdown(cached.content) if cached.content else None
         templates = request.app.state.templates
         return templates.TemplateResponse(
             request,
@@ -141,11 +140,28 @@ async def get_module(
                 "project_id": project_id,
                 "module": module_entry,
                 "doc_html": doc_html,
-                "was_cached": was_cached,
+                "was_cached": True,
                 "generating": False,
+                "progress": None,
+                "error": None,
             },
         )
+
+    # Slow path: launch (or reuse) a background task with its own DB session.
+    async def _launch() -> None:
+        await gen.run_standalone(project_id, module_path, module_name, config)
+
+    task = get_or_start_task(project_id, module_path, _launch)
+
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
     except TimeoutError:
+        pass
+
+    # Re-check cache after the short wait — may have just completed.
+    fresh = DocService(db).get_doc(project_id, slug)
+    if fresh is not None:
+        doc_html = render_markdown(fresh.content) if fresh.content else None
         templates = request.app.state.templates
         return templates.TemplateResponse(
             request,
@@ -153,11 +169,31 @@ async def get_module(
             {
                 "project_id": project_id,
                 "module": module_entry,
-                "doc_html": None,
+                "doc_html": doc_html,
                 "was_cached": False,
-                "generating": True,
+                "generating": False,
+                "progress": None,
+                "error": None,
             },
         )
+
+    progress = get_progress(project_id, module_path)
+    error_msg = progress.error if progress and progress.error else None
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/code_module_detail.html",
+        {
+            "project_id": project_id,
+            "module": module_entry,
+            "doc_html": None,
+            "was_cached": False,
+            "generating": error_msg is None,
+            "progress": progress,
+            "error": error_msg,
+        },
+    )
 
 
 @router.post("/modules/{module_slug}/generate", response_class=HTMLResponse)

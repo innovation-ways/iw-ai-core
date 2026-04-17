@@ -45,7 +45,29 @@ Present what you understood from `$ARGUMENTS`, then ask the user to confirm or c
 
 ### Determine UI Visibility
 
-If the change affects what users see in the browser, mark `browser_verification: true` and capture browser evidence of the current state before proposing changes.
+If the change affects what users see in the browser (Frontend layer affected), mark `browser_verification: true` and capture browser evidence of the **current state** before proposing changes.
+
+**When `browser_verification: true`** — MANDATORY before GO:
+
+1. Check dev environment health:
+   ```bash
+   ./innoforge.sh --health
+   ```
+
+2. Navigate to the affected area and screenshot the current behavior:
+   ```bash
+   playwright-cli open http://localhost:5173
+   # Navigate to the affected page/component
+   playwright-cli screenshot ai-dev/active/{ID}/evidences/pre/{ID}-before.png
+   playwright-cli close
+   ```
+
+3. Record the evidence status for the GO/NO-GO checkpoint:
+   - `Captured` — screenshot saved to `evidences/pre/`
+   - `Deferred` — dev environment not running (note in design doc)
+   - `N/A` — no frontend changes (backend-only CR)
+
+**If the dev environment is not running**, skip browser capture and note it as "deferred" in the design document.
 
 ## Step 3: Analyze Current Implementation
 
@@ -73,6 +95,7 @@ Present a summary:
 **Priority**: {Critical / High / Medium / Low}
 **Breaking changes**: {Yes / No — describe if yes}
 **Data migration**: {Required / Not required}
+**Browser Evidence**: {Captured / Deferred / N/A — backend-only}
 
 ### Proposed Change Plan
 | Step | Agent | Description |
@@ -101,6 +124,8 @@ Create the folder structure:
 
 ```bash
 mkdir -p ai-dev/active/{ID}/prompts/
+mkdir -p ai-dev/active/{ID}/evidences/pre/
+mkdir -p ai-dev/active/{ID}/evidences/post/
 ```
 
 Then create the design document at:
@@ -108,14 +133,21 @@ Then create the design document at:
 ai-dev/active/{ID}/{ID}_CR_Design.md
 ```
 
-Use the template from `ai-dev/templates/CR_Design_Template.md`. Fill in ALL sections including:
+Use the template from `ai-dev/templates/CR_Design_Template.md`. Fill in ALL sections (every one below is required):
 
-- **Description** — current behavior → desired behavior
-- **Reason** — why this change is needed
-- **Impact Assessment** — breaking changes, migration needs
-- **Change Plan** — agent steps
-- **Rollback Plan** — how to revert if needed
-- **Test Strategy** — updating existing tests + new coverage
+- **Metadata block** — Type, Priority, Reason, Created, Status
+- **Description** — what is being changed and why (2-3 sentences)
+- **Project Context** — one-liner pointing to the project's `CLAUDE.md` (architecture, conventions, hard rules)
+- **Current Behavior** — how the system works today in the area being changed (separate section — do NOT collapse with Desired Behavior)
+- **Desired Behavior** — how the system should work after the change (separate section)
+- **Impact Analysis** — Affected Components table, Breaking Changes, Data Migration (including reversibility)
+- **Implementation Plan** — agent steps table with parallelism + Database/API/Frontend change summaries
+- **File Manifest** — table of every file to create/modify (design, manifest, prompts). The batch planner uses these paths for overlap analysis
+- **Acceptance Criteria** — one Given/When/Then block per criterion (AC1, AC2, …)
+- **Rollback Plan** — how to revert: Database (reverse migration / manual SQL / N/A), Code (revert commit / feature flag), Data (no loss / backup restore)
+- **Dependencies** — Depends on / Blocks (F/I/CR numbers or "None")
+- **TDD Approach** — unit tests, integration tests, existing tests that need updating
+- **Notes** — additional context, risks, or decisions (use "None" if truly empty)
 
 ## Step 6: Generate ALL Prompt Files (only after GO)
 
@@ -130,7 +162,8 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state l
   "id": "{ID}",
   "type": "ChangeRequest",
   "title": "{One-line CR title}",
-  "browser_verification": false,
+  "browser_verification": true,
+  // set to false for backend-only CRs (no Frontend step)
   "steps": [
     {
       "step": "S01",
@@ -143,6 +176,19 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state l
 ```
 
 Add QV gate steps after CodeReview_Final (same as iw-new-incident pattern).
+
+When `browser_verification: true`, add a QV Browser step after all QV gates:
+```json
+{"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — verify change end-to-end in isolated worktree stack", "prompt": "prompts/{ID}_S{N}_BrowserVerification_prompt.md"}
+```
+
+To create the prompt file, **copy `ai-dev/templates/QVBrowser_Prompt_Template.md`** (synced from `templates/design/` by `iw init-project` / `iw skills sync`) to `ai-dev/active/{ID}/prompts/{ID}_S{N}_BrowserVerification_prompt.md` and fill in ONLY the `{{ID}}`, `{{STEP}}`, `{{TITLE}}`, `{{TYPE}}`, input-files list, and V1..V(n) sections with concrete acceptance criteria for the change. Leave the Environment, Prerequisites, Pass Criteria, Report, and Result Contract sections untouched.
+
+**Hard rules for the QV Browser prompt:**
+- **NEVER** hardcode URLs, ports, or credentials. No `localhost:5173`, no `localhost:5174`, no literal passwords. The IW daemon spins up an isolated e2e stack built from the worktree's source and exports `$IW_BROWSER_BASE_URL`, `$IW_BROWSER_E2E_USER`, `$IW_BROWSER_E2E_PASSWORD`, `$IW_ITEM_ID`, and `$IW_STEP_ID` at runtime. Use those env vars (or the equivalent `{{IW_BROWSER_BASE_URL}}` placeholder, which the daemon substitutes at launch).
+- **NEVER** instruct the agent to run `make dev`, `make e2e-up`, `docker compose`, or any install command — the stack is already up and will be torn down afterwards.
+- Use `playwright-cli` exclusively (not `agent-browser`, not direct `chromium.launch()`).
+- Include a **No Regressions** verification (V(n)) covering adjacent flows and console-error checks.
 
 ## Step 8: Register in Platform
 

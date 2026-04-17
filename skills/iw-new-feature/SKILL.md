@@ -132,16 +132,20 @@ Then create the design document at:
 ai-dev/active/{ID}/{ID}_Feature_Design.md
 ```
 
-Use the template from `ai-dev/templates/Feature_Design_Template.md`. Fill in ALL sections:
+Use the template from `ai-dev/templates/Feature_Design_Template.md`. Fill in ALL sections (every one below is required):
 
+- **Metadata block** — Type, Priority, Created, Status
 - **Description** — what this feature does (2-3 sentences)
-- **Scope** — in scope / out of scope
-- **Architecture References** — existing files/patterns this builds on
-- **Acceptance Criteria** — Given/When/Then scenarios
-- **Boundary Behavior** — edge cases table
-- **Implementation Plan** — agent steps with parallelism
-- **File Manifest** — all files to create/modify
-- **TDD Approach** — testing strategy
+- **Project Context** — one-liner pointing reviewers/agents to the project's `CLAUDE.md` (architecture, conventions, hard rules)
+- **Scope** — in scope / out of scope (concrete deliverables, not prose)
+- **Implementation Plan** — agent steps table with parallelism + Database/API/Frontend change summaries
+- **File Manifest** — table of every file to create/modify (design doc, manifest, each prompt). The batch planner uses these paths for conflict detection — a doc with zero file paths is invisible to overlap analysis
+- **Acceptance Criteria** — one Given/When/Then block per criterion (AC1, AC2, …)
+- **Boundary Behavior** — edge cases table; every row becomes a mandatory test case
+- **Invariants** — numbered list of conditions that must hold true after implementation; each maps to a test
+- **Dependencies** — Depends on / Blocks (F/I/CR numbers or "None")
+- **TDD Approach** — unit / integration / edge-case test strategy
+- **Notes** — additional context, risks, or decisions (never leave blank; use "None" if truly empty)
 
 ### Agent Selection
 

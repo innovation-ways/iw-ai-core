@@ -42,6 +42,32 @@ Present what you understood from `$ARGUMENTS`, then ask the user to confirm or c
 
 **WAIT for user answers before proceeding.**
 
+## Step 2b: Browser Evidence Capture (Frontend features only — MANDATORY before GO)
+
+**When the feature affects what users see in the browser** (Frontend layer is in scope), you MUST capture the current UI state BEFORE presenting the GO/NO-GO checkpoint.
+
+Evidence files are an exception to the "no files before GO" rule — they are investigation artifacts, not design documents.
+
+1. Check dev environment health:
+   ```bash
+   ./innoforge.sh --health
+   ```
+
+2. If healthy, navigate to the affected area and screenshot the **current state** (before the feature exists):
+   ```bash
+   playwright-cli open http://localhost:5173
+   # Navigate to the relevant page/section
+   playwright-cli screenshot ai-dev/active/{ID}/evidences/pre/{ID}-before.png
+   playwright-cli close
+   ```
+
+3. Store the evidence status for the GO/NO-GO checkpoint:
+   - `Captured` — screenshot saved to `evidences/pre/`
+   - `Deferred` — dev environment not running (note in design doc)
+   - `N/A` — no frontend changes (backend-only feature)
+
+**If the dev environment is not running**, skip browser capture and note it as "deferred — dev environment not available" in the design document.
+
 ## Step 3: Analyze Codebase
 
 Before writing the design, examine relevant existing code:
@@ -65,6 +91,7 @@ Present a summary:
 **Feature**: {1-2 sentence description}
 **Layers affected**: {Database / Backend / API / Frontend / Pipeline / Template}
 **Priority**: {Critical / High / Medium / Low}
+**Browser Evidence**: {Captured / Deferred / N/A — backend-only}
 
 ### Proposed Implementation Plan
 | Step | Agent | Description | Parallel With |
@@ -96,6 +123,8 @@ Create the folder structure:
 
 ```bash
 mkdir -p ai-dev/active/{ID}/prompts/
+mkdir -p ai-dev/active/{ID}/evidences/pre/
+mkdir -p ai-dev/active/{ID}/evidences/post/
 ```
 
 Then create the design document at:
@@ -103,16 +132,20 @@ Then create the design document at:
 ai-dev/active/{ID}/{ID}_Feature_Design.md
 ```
 
-Use the template from `ai-dev/templates/Feature_Design_Template.md`. Fill in ALL sections:
+Use the template from `ai-dev/templates/Feature_Design_Template.md`. Fill in ALL sections (every one below is required):
 
+- **Metadata block** — Type, Priority, Created, Status
 - **Description** — what this feature does (2-3 sentences)
-- **Scope** — in scope / out of scope
-- **Architecture References** — existing files/patterns this builds on
-- **Acceptance Criteria** — Given/When/Then scenarios
-- **Boundary Behavior** — edge cases table
-- **Implementation Plan** — agent steps with parallelism
-- **File Manifest** — all files to create/modify
-- **TDD Approach** — testing strategy
+- **Project Context** — one-liner pointing reviewers/agents to the project's `CLAUDE.md` (architecture, conventions, hard rules)
+- **Scope** — in scope / out of scope (concrete deliverables, not prose)
+- **Implementation Plan** — agent steps table with parallelism + Database/API/Frontend change summaries
+- **File Manifest** — table of every file to create/modify (design doc, manifest, each prompt). The batch planner uses these paths for conflict detection — a doc with zero file paths is invisible to overlap analysis
+- **Acceptance Criteria** — one Given/When/Then block per criterion (AC1, AC2, …)
+- **Boundary Behavior** — edge cases table; every row becomes a mandatory test case
+- **Invariants** — numbered list of conditions that must hold true after implementation; each maps to a test
+- **Dependencies** — Depends on / Blocks (F/I/CR numbers or "None")
+- **TDD Approach** — unit / integration / edge-case test strategy
+- **Notes** — additional context, risks, or decisions (never leave blank; use "None" if truly empty)
 
 ### Agent Selection
 
@@ -140,7 +173,21 @@ S05: Frontend — UI components
 S06: Tests — Integration + unit tests
 S07: CodeReview_Final — Global review
 S08..S16: QV Gates
+S17: QV Browser — Post-implementation screenshot (Frontend features only)
 ```
+
+**QV Browser step** (include when `browser_verification: true`):
+```json
+{"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — verify feature end-to-end in isolated worktree stack", "prompt": "prompts/{ID}_S{N}_BrowserVerification_prompt.md"}
+```
+
+To create the prompt file, **copy `ai-dev/templates/QVBrowser_Prompt_Template.md`** (synced from `templates/design/` by `iw init-project` / `iw skills sync`) to `ai-dev/active/{ID}/prompts/{ID}_S{N}_BrowserVerification_prompt.md` and fill in ONLY the `{{ID}}`, `{{STEP}}`, `{{TITLE}}`, `{{TYPE}}`, input-files list, and V1..V(n) sections with concrete acceptance criteria from the feature design. Leave the Environment, Prerequisites, Pass Criteria, Report, and Result Contract sections untouched.
+
+**Hard rules for the QV Browser prompt:**
+- **NEVER** hardcode URLs, ports, or credentials. No `localhost:5173`, no `localhost:5174`, no literal passwords. The IW daemon spins up an isolated e2e stack built from the worktree's source and exports `$IW_BROWSER_BASE_URL`, `$IW_BROWSER_E2E_USER`, `$IW_BROWSER_E2E_PASSWORD`, `$IW_ITEM_ID`, and `$IW_STEP_ID` at runtime. Use those env vars (or the equivalent `{{IW_BROWSER_BASE_URL}}` placeholder, which the daemon substitutes at launch).
+- **NEVER** instruct the agent to run `make dev`, `make e2e-up`, `docker compose`, or any install command — the stack is already up and will be torn down afterwards.
+- Use `playwright-cli` exclusively (not `agent-browser`, not direct `chromium.launch()`).
+- The V(n) section must include a **No Regressions** verification covering adjacent flows and console-error checks.
 
 ## Step 6: Generate ALL Prompt Files (only after GO)
 
@@ -157,7 +204,8 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state l
   "id": "{ID}",
   "type": "Feature",
   "title": "{One-line feature title}",
-  "browser_verification": false,
+  "browser_verification": true,
+  // set to false for backend-only features (no Frontend step)
   "steps": [
     {
       "step": "S01",
