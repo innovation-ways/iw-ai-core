@@ -282,6 +282,34 @@ class CodeIndexJobRunner:
                 job.updated_at = now
                 if completed:
                     job.completed_at = now
+                if status == "completed" and completed:
+                    from orch.db.models import DaemonEvent
+
+                    session.add(
+                        DaemonEvent(
+                            project_id=job.project_id,
+                            event_type="code_map_completed",
+                            entity_id=job.id,
+                            message=(
+                                f"Code map generated — "
+                                f"{job.files_indexed} files, "
+                                f"{job.chunks_created} chunks"
+                            ),
+                            event_metadata={
+                                "job_id": job.id,
+                                "llm_model": job.llm_model,
+                                "embed_model": job.embed_model,
+                                "index_tier": job.index_tier,
+                                "files_indexed": job.files_indexed,
+                                "chunks_created": job.chunks_created,
+                                "duration_seconds": (
+                                    int((job.completed_at - job.triggered_at).total_seconds())
+                                    if job.completed_at and job.triggered_at
+                                    else None
+                                ),
+                            },
+                        )
+                    )
                 session.commit()
 
         await asyncio.to_thread(do_update)
