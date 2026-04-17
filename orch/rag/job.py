@@ -68,6 +68,7 @@ class CodeIndexJobRunner:
                     await self._handle_cancel()
                     return
                 await self._run_mapgen(0, 0)
+                await self._db_set_status_async(self.job_id, "completed")
                 self._queue.put_nowait({"event": "progress", "phase": "done"})
                 return
 
@@ -231,20 +232,24 @@ def start_index_job(
     project_config: dict[str, Any] = project.config or {}
     code_config = project_config.get("code_understanding", {})
 
+    if runner is None:
+        from orch.config import load_config
+
+        cfg = load_config()
+        index_path = code_config.get("index_path") or cfg.index_path
+    else:
+        index_path = runner.index_path
+
     config = CodeUnderstandingConfig(
         provider=code_config.get("provider", "local"),
         llm_model=code_config.get("llm_model"),
         embed_model=code_config.get("embed_model"),
         index_tier=code_config.get("index_tier", "balanced"),
         ollama_url=code_config.get("ollama_url", "http://localhost:11434"),
+        index_path=index_path,
     )
 
     if runner is None:
-        from orch.config import load_config
-
-        cfg = load_config()
-        index_path = cfg.index_path
-
         runner = CodeIndexJobRunner(
             job_id=job.id,
             project_id=project.id,

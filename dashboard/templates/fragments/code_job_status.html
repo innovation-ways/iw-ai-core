@@ -75,7 +75,7 @@
             htmx.ajax('GET', '/project/' + projectId + '/api/code/status',
                       {target: '#code-status-panel', swap: 'innerHTML'});
             htmx.ajax('GET', '/project/' + projectId + '/api/code/architecture',
-                      {target: '#code-architecture-panel', swap: 'innerHTML'});
+                      {target: '#code-content-root', swap: 'innerHTML'});
           }
         } catch (err) {}
       };

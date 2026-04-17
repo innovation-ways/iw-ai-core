@@ -132,6 +132,7 @@ def code_page(
         "project_code.html",
         {
             "current_project": project,
+            "project_id": project_id,
             "index_status": index_status,
             "running_job": running_job,
             "last_completed_job": last_completed_job,
@@ -322,7 +323,8 @@ def _trigger_job(
     background_tasks.add_task(runner.run)
 
     return HTMLResponse(
-        '<div hx-swap-oob="true" id="code-status-panel">Job started</div>',
+        f'<div hx-get="/project/{project_id}/api/code/status" '
+        f'hx-trigger="load" hx-target="this" hx-swap="outerHTML"></div>',
         headers={"HX-Trigger": '{"codeJobStarted": {}}'},
     )
 

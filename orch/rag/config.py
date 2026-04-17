@@ -8,6 +8,7 @@ block in a project's config JSONB column.
 from __future__ import annotations
 
 from enum import StrEnum
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -63,7 +64,7 @@ class CodeUnderstandingConfig(BaseModel):
     embed_model: str | None = None
     index_tier: IndexTier = IndexTier.BALANCED
     ollama_url: str = "http://localhost:11434"
-    index_path: str = "/var/lib/iw-ai/core/code-index"
+    index_path: str = str(Path.home() / ".local" / "share" / "iw-ai-core" / "code-index")
 
     def resolved_llm_model(self) -> str:
         """Return the effective LLM model: explicit value or tier default."""
