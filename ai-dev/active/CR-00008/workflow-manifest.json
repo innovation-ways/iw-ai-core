@@ -1,0 +1,121 @@
+{
+  "id": "CR-00008",
+  "type": "ChangeRequest",
+  "title": "Code module chat: docked panel, streaming markdown, beautiful diagrams (MVP)",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "api-impl",
+      "description": "API: SSE wire format — base64 tokens, named events (token/citation/done/error), citation payload schema, multipart image 501-stub",
+      "prompt": "prompts/CR-00008_S01_Api_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review: S01 (API wire format)",
+      "prompt": "prompts/CR-00008_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "frontend-impl",
+      "description": "Frontend: docked right panel + resize + localStorage + Cmd+\\ + drawer fallback + scroll + keyboard + image paste chip + slash menu + SSE client stream parser (rendering hooks as TODO)",
+      "prompt": "prompts/CR-00008_S03_Frontend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review: S03 (layout / scroll / composer / keyboard / image paste)",
+      "prompt": "prompts/CR-00008_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "frontend-impl",
+      "description": "Frontend: vendored markdown pipeline (Streamdown or streaming-markdown+DOMPurify+Highlight.js) + code/table/citation partials + per-message actions + vendor LICENSES.md",
+      "prompt": "prompts/CR-00008_S05_Frontend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Code review: S05 (rich content rendering + sanitization + vendoring + licenses)",
+      "prompt": "prompts/CR-00008_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "frontend-impl",
+      "description": "Frontend: Mermaid vendored + ELK loader + themeVariables from iw-brand-config + sandboxed iframe + parse-validate + failure chip with retry",
+      "prompt": "prompts/CR-00008_S07_Frontend_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Code review: S07 (Mermaid ELK + brand + sandbox + license compliance)",
+      "prompt": "prompts/CR-00008_S08_CodeReview_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "tests-impl",
+      "description": "Tests: SSE wire format, Jinja partial render, accessibility, security, license assertions, and Playwright browser smoke",
+      "prompt": "prompts/CR-00008_S09_Tests_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "code-review-impl",
+      "description": "Code review: S09 (test coverage vs. acceptance criteria)",
+      "prompt": "prompts/CR-00008_S10_CodeReview_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-agent review: contract seams, sanitization end-to-end, licenses, accessibility, AC coverage",
+      "prompt": "prompts/CR-00008_S11_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "code-review-fix-final-impl",
+      "description": "Fix CRITICAL and HIGH findings from S11",
+      "prompt": "prompts/CR-00008_S12_CodeReview_Fix_Final_prompt.md"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "uv run ruff check .",
+      "description": "QV: Lint (ruff)"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format (ruff)"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "uv run mypy orch/ dashboard/",
+      "description": "QV: Typecheck (mypy)"
+    },
+    {
+      "step": "S16",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S17",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests"
+    },
+    {
+      "step": "S18",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — verify change end-to-end in isolated worktree stack",
+      "prompt": "prompts/CR-00008_S18_BrowserVerification_prompt.md"
+    }
+  ]
+}
