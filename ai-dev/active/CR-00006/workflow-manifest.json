@@ -1,0 +1,74 @@
+{
+  "id": "CR-00006",
+  "type": "ChangeRequest",
+  "title": "Code view UX — Jobs view, streaming Q&A, markdown rendering",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Fix non-buffering Q&A streaming bridge in dashboard/routers/code_qa.py; add orch/jobs/aggregator.py (read-only union of code_index_jobs + doc_generation_jobs + batches + research project_docs); emit DaemonEvent(code_map_completed) on code index job completion",
+      "prompt": "prompts/CR-00006_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: streaming bridge non-buffering + wire-format preserved, aggregator correctness, DaemonEvent emission in-transaction with event_metadata attribute",
+      "prompt": "prompts/CR-00006_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "api-impl",
+      "description": "Add dashboard/routers/jobs_ui.py with /jobs list, fragment, and detail routes; extend dashboard/routers/sse.py with code_map_completed=success toast; register jobs_ui router in dashboard/app.py",
+      "prompt": "prompts/CR-00006_S03_Api_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: route typing + error contracts, SSE toast map extension, router registration",
+      "prompt": "prompts/CR-00006_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "frontend-impl",
+      "description": "Add DOMPurify CDN to base.html; wire sanitized markdown per-token in code_qa_panel.html; replace green banner in code_job_report.html with neutral Last-Run link; add Jobs link to nav_projects.html; create pages/project/jobs.html, pages/project/job_detail.html, fragments/jobs_table.html",
+      "prompt": "prompts/CR-00006_S05_Frontend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05: DOMPurify hook correctness, XSS vector handling, banner replacement, sidebar insertion, Jobs templates (list + fragment + detail) accessibility",
+      "prompt": "prompts/CR-00006_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "tests-impl",
+      "description": "Add unit + integration tests: streaming non-buffering, aggregator union/filter/sort/pagination/normalisation, Jobs API endpoints, markdown sanitization template wiring",
+      "prompt": "prompts/CR-00006_S07_Tests_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Review S07: coverage, isolation, adherence to testing hard rules (no live DB, no DB mocking, testcontainers, psycopg v3 URL)",
+      "prompt": "prompts/CR-00006_S08_CodeReview_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review: end-to-end streaming path, toast pipeline, Jobs round-trip, consistency, no regressions",
+      "prompt": "prompts/CR-00006_S09_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "code-review-fix-final-impl",
+      "description": "Apply fixes for CRITICAL/HIGH findings from S09; re-run quality + test gates",
+      "prompt": "prompts/CR-00006_S10_CodeReview_Fix_Final_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "quality-validation-impl",
+      "description": "QV gates: ruff check, ruff format, mypy, unit tests, integration tests, route registration smoke-test, banner-text absence, plus Playwright CLI browser verification of sidebar Jobs link, Jobs list, Code page banner removal, Q&A streaming, and Job detail navigation",
+      "prompt": "prompts/CR-00006_S11_QualityValidation_prompt.md"
+    }
+  ]
+}
