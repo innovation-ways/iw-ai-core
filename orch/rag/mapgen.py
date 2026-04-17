@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from llama_index.core import VectorStoreIndex
+from llama_index.core import PromptTemplate, VectorStoreIndex
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.lancedb import LanceDBVectorStore
@@ -22,26 +22,103 @@ if TYPE_CHECKING:
     from orch.rag.config import CodeUnderstandingConfig
 
 
+_SIMILARITY_TOP_K = 20
+
+
+_SECTION_TITLES: dict[str, str] = {
+    "purpose": "Purpose",
+    "components": "Components",
+    "entry_points": "Entry Points",
+    "databases": "Databases",
+    "external_services": "External Services",
+    "background_jobs": "Background Jobs",
+    "architecture_style": "Architecture Style",
+    "key_patterns": "Key Patterns",
+}
+
+
+_GROUNDING_TEMPLATE = PromptTemplate(
+    "You are a senior software architect documenting the architecture of a real "
+    "codebase. Below are code excerpts retrieved from that codebase.\n"
+    "-----------------\n"
+    "{context_str}\n"
+    "-----------------\n"
+    "Task: {query_str}\n\n"
+    "Rules:\n"
+    "- Ground your answer ONLY in concrete evidence from the code excerpts "
+    "(class names, function names, file paths, imports, SQL/ORM models, routes, "
+    "framework usage).\n"
+    "- Do NOT describe the prompt or the questions being asked. Do NOT mention "
+    "'context', 'excerpt', 'provided text', 'RAG', or 'MapGenerator'. Describe "
+    "the system itself.\n"
+    "- Write 2–5 concise sentences (or a short bulleted list where natural).\n"
+    "- If the excerpts are genuinely insufficient, answer with the strongest "
+    "observations you can make from what IS present — never refuse.\n\n"
+    "Answer:"
+)
+
+
 class MapGenerator:
-    QUESTIONS: list[tuple[str, str]] = [
-        ("purpose", "What is the overall purpose and main function of this system?"),
+    """Tuple items are (section_key, human_question, retrieval_query_text).
+
+    retrieval_query_text is a keyword/topical phrase used for vector search; it
+    deliberately avoids the verbatim interrogative form of the question so the
+    embedding does not collide with the QUESTIONS list inside this very module.
+    """
+
+    QUESTIONS: list[tuple[str, str, str]] = [
+        (
+            "purpose",
+            "Describe the overall purpose and main function of this codebase.",
+            "project mission high-level goals primary responsibilities README "
+            "package entry CLI daemon dashboard orchestration",
+        ),
         (
             "components",
-            "List the main components, services, or modules with a one-sentence "
-            "description of each.",
+            "List the main components, services, modules, or subpackages that "
+            "make up this codebase, with a short description of each.",
+            "top-level packages modules subpackages CLI commands routers "
+            "services daemon workers engines managers",
         ),
-        ("entry_points", "What are the main entry points of the application?"),
-        ("databases", "What databases or data stores are used and what data do they store?"),
+        (
+            "entry_points",
+            "Identify the real entry points of the application: CLI commands, "
+            "server endpoints, scripts, or background workers.",
+            "main function __main__ FastAPI app uvicorn Click Typer entry point "
+            "console_scripts pyproject scripts run",
+        ),
+        (
+            "databases",
+            "What databases or data stores does the system use, what tables or "
+            "collections exist, and what domain data is stored?",
+            "PostgreSQL SQLAlchemy ORM models tables columns migrations Alembic "
+            "JSONB vector store LanceDB schema",
+        ),
         (
             "external_services",
-            "What external services, APIs, or integrations does this system use?",
+            "Which external services, APIs, or third-party integrations does this system talk to?",
+            "HTTP client requests httpx OpenAI Anthropic Ollama LLM API "
+            "webhook external service integration subprocess git",
         ),
-        ("background_jobs", "What background jobs, workers, or async tasks exist?"),
+        (
+            "background_jobs",
+            "What background jobs, workers, polling loops, or async tasks run in this system?",
+            "background task asyncio loop daemon poll worker queue job runner "
+            "scheduler FastAPI BackgroundTasks",
+        ),
         (
             "architecture_style",
-            "What architectural pattern is used (e.g., microservices, monolith, event-driven)?",
+            "Describe the overall architectural style and runtime topology of this codebase.",
+            "monolith single process service layered architecture CLI daemon "
+            "web server event driven polling state machine",
         ),
-        ("key_patterns", "What are the most important design patterns or technical patterns used?"),
+        (
+            "key_patterns",
+            "Identify the most important technical patterns and conventions "
+            "used across this codebase.",
+            "repository pattern dependency injection session factory ORM "
+            "migrations state machine fix cycle retry audit append-only",
+        ),
     ]
 
     async def generate_level1(
@@ -57,6 +134,7 @@ class MapGenerator:
         llm = Ollama(
             model=config.resolved_llm_model(),
             base_url=config.ollama_url,
+            request_timeout=300.0,
         )
 
         embed = OllamaEmbedding(
@@ -70,17 +148,20 @@ class MapGenerator:
         )
 
         index = VectorStoreIndex.from_vector_store(vector_store, embed_model=embed)
-        query_engine = index.as_query_engine(llm=llm)
+        retriever = index.as_retriever(similarity_top_k=_SIMILARITY_TOP_K)
 
         answers: dict[str, str] = {}
 
-        for key, question in self.QUESTIONS:
+        for key, question, retrieval_query in self.QUESTIONS:
             if cancel_check and cancel_check():
                 raise asyncio.CancelledError("map generation cancelled")
-            response = query_engine.query(question)
-            answers[key] = str(response)
+            nodes = await asyncio.to_thread(retriever.retrieve, retrieval_query)
+            context_str = self._build_context_str(nodes)
+            prompt = _GROUNDING_TEMPLATE.format(context_str=context_str, query_str=question)
+            response = await asyncio.to_thread(llm.complete, prompt)
+            answers[key] = str(response).strip()
 
-        mermaid = self._build_mermaid(answers["components"], config)
+        mermaid = await asyncio.to_thread(self._build_mermaid, answers["components"], config)
         markdown = self._assemble_markdown(answers, mermaid)
 
         def do_upsert() -> ProjectDoc:
@@ -123,15 +204,33 @@ class MapGenerator:
 
         return await asyncio.to_thread(do_upsert)
 
+    @staticmethod
+    def _build_context_str(nodes: Any) -> str:
+        parts: list[str] = []
+        for n in nodes:
+            text = getattr(n.node, "get_content", lambda: "")()
+            if not text:
+                text = getattr(n.node, "text", "") or ""
+            meta = getattr(n.node, "metadata", {}) or {}
+            path = meta.get("file_path", "<unknown>")
+            lang = meta.get("language", "")
+            parts.append(f"// {path}  ({lang})\n{text}")
+        return "\n\n---\n\n".join(parts)
+
     def _build_mermaid(self, components_answer: str, config: CodeUnderstandingConfig) -> str:
         llm = Ollama(
             model=config.resolved_llm_model(),
             base_url=config.ollama_url,
+            request_timeout=300.0,
         )
         prompt = (
-            f"Given these components: {components_answer}\n"
-            "Generate a Mermaid graph TD diagram showing the relationships between components.\n"
-            "Output ONLY the Mermaid code block, no explanation.\n"
+            "You are generating a component diagram for a software system.\n"
+            f"Components and their descriptions:\n{components_answer}\n\n"
+            "Produce ONLY a valid Mermaid `graph TD` diagram showing the "
+            "relationships between these components. Use short alphanumeric "
+            "node IDs and put the human label in brackets, e.g. `CLI[iw CLI]`. "
+            "Wrap the diagram in a ```mermaid ... ``` fenced code block. "
+            "No prose, no explanation.\n"
         )
         response = llm.complete(prompt)
         text = response.text
@@ -142,13 +241,12 @@ class MapGenerator:
         return "graph TD\n  A[System]"
 
     def _assemble_markdown(self, answers: dict[str, str], mermaid: str) -> str:
-        section_keys = [k for k, _ in self.QUESTIONS]
         lines = ["# Architecture Map", ""]
-        for key in section_keys:
-            value = answers.get(key, "")
-            label = key.replace("_", " ").title()
+        for key, _question, _retrieval in self.QUESTIONS:
+            value = answers.get(key, "").strip()
+            label = _SECTION_TITLES.get(key, key.replace("_", " ").title())
             lines.append(f"## {label}")
-            lines.append(value)
+            lines.append(value if value else "_(no answer)_")
             lines.append("")
         lines.append("## Architecture Diagram")
         lines.append("")

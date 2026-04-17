@@ -26,6 +26,8 @@ class IndexResult:
     files_indexed: int
     chunks_created: int
     files_skipped: int
+    files_discovered: int = 0
+    languages_detected: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
 
@@ -137,6 +139,7 @@ class CodeIndexer:
         files_indexed = 0
         chunks_created = 0
         errors: list[str] = []
+        languages_seen: set[str] = set()
 
         for file_path in discovered:
             if progress_callback:
@@ -156,6 +159,9 @@ class CodeIndexer:
                 if nodes:
                     await asyncio.to_thread(index.insert_nodes, nodes)
                     chunks_created += len(nodes)
+                    lang = nodes[0].metadata.get("language")
+                    if lang:
+                        languages_seen.add(str(lang))
                 manifest[rel] = self._compute_sha(file_path)
                 files_indexed += 1
             except Exception as e:
@@ -167,6 +173,8 @@ class CodeIndexer:
             files_indexed=files_indexed,
             chunks_created=chunks_created,
             files_skipped=0,
+            files_discovered=len(discovered),
+            languages_detected=sorted(languages_seen),
             errors=errors,
         )
 
@@ -185,6 +193,7 @@ class CodeIndexer:
         files_indexed = 0
         chunks_created = 0
         errors: list[str] = []
+        languages_seen: set[str] = set()
 
         all_files: list[Path] = []
         repo = Path(repo_path)
@@ -216,6 +225,9 @@ class CodeIndexer:
                 if nodes:
                     await asyncio.to_thread(index.insert_nodes, nodes)
                     chunks_created += len(nodes)
+                    lang = nodes[0].metadata.get("language")
+                    if lang:
+                        languages_seen.add(str(lang))
                 manifest[rel] = self._compute_sha(file_path)
                 files_indexed += 1
             except Exception as e:
@@ -227,6 +239,8 @@ class CodeIndexer:
             files_indexed=files_indexed,
             chunks_created=chunks_created,
             files_skipped=len(all_files) - len(changed),
+            files_discovered=total,
+            languages_detected=sorted(languages_seen),
             errors=errors,
         )
 
