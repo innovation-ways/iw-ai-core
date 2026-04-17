@@ -6,7 +6,6 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import quote
 
 from fastapi import FastAPI
 
@@ -116,7 +115,6 @@ def create_app() -> FastAPI:
     templates.env.filters["timeago"] = _timeago
     templates.env.filters["fmt_ts_time"] = _fmt_ts_time
     templates.env.filters["localdt"] = _localdt
-    templates.env.filters["urlencode"] = quote
     app.state.templates = templates
 
     # Health check endpoint (used by browser_verification steps and monitoring)

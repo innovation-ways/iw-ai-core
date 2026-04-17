@@ -133,14 +133,21 @@ Then create the design document at:
 ai-dev/active/{ID}/{ID}_CR_Design.md
 ```
 
-Use the template from `ai-dev/templates/CR_Design_Template.md`. Fill in ALL sections including:
+Use the template from `ai-dev/templates/CR_Design_Template.md`. Fill in ALL sections (every one below is required):
 
-- **Description** — current behavior → desired behavior
-- **Reason** — why this change is needed
-- **Impact Assessment** — breaking changes, migration needs
-- **Change Plan** — agent steps
-- **Rollback Plan** — how to revert if needed
-- **Test Strategy** — updating existing tests + new coverage
+- **Metadata block** — Type, Priority, Reason, Created, Status
+- **Description** — what is being changed and why (2-3 sentences)
+- **Project Context** — one-liner pointing to the project's `CLAUDE.md` (architecture, conventions, hard rules)
+- **Current Behavior** — how the system works today in the area being changed (separate section — do NOT collapse with Desired Behavior)
+- **Desired Behavior** — how the system should work after the change (separate section)
+- **Impact Analysis** — Affected Components table, Breaking Changes, Data Migration (including reversibility)
+- **Implementation Plan** — agent steps table with parallelism + Database/API/Frontend change summaries
+- **File Manifest** — table of every file to create/modify (design, manifest, prompts). The batch planner uses these paths for overlap analysis
+- **Acceptance Criteria** — one Given/When/Then block per criterion (AC1, AC2, …)
+- **Rollback Plan** — how to revert: Database (reverse migration / manual SQL / N/A), Code (revert commit / feature flag), Data (no loss / backup restore)
+- **Dependencies** — Depends on / Blocks (F/I/CR numbers or "None")
+- **TDD Approach** — unit tests, integration tests, existing tests that need updating
+- **Notes** — additional context, risks, or decisions (use "None" if truly empty)
 
 ## Step 6: Generate ALL Prompt Files (only after GO)
 

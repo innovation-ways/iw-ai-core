@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,11 +13,51 @@ from sqlalchemy import select
 
 from orch.db.models import DocTier, DocType, EditorialCategory, ProjectDoc
 from orch.doc_service import DocService
+from orch.rag.module_progress import start_progress, update_progress
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from orch.rag.config import CodeUnderstandingConfig
+
+
+_STEP_LABELS: list[str] = [
+    "Primary responsibility",
+    "Key files",
+    "Dependencies",
+    "Design patterns",
+    "Entry points",
+]
+
+
+_FILLER_PREAMBLE_RE = re.compile(
+    r"^(?:"
+    r"based on|according to|from|looking at|as (?:per|shown|indicated) (?:by|in)|referring to"
+    r")\s+(?:the\s+|this\s+|these\s+)?"
+    r"(?:provided\s+|given\s+|above\s+|following\s+)?"
+    r"(?:code|context|excerpts?|information|snippets?|sources?|documentation)"
+    r"[^.:\n]*?:\s*\n?",
+    re.IGNORECASE,
+)
+
+
+def _strip_filler_preamble(text: str) -> str:
+    """Remove a leading list-intro preamble like 'Based on the provided code, X are:'.
+
+    Conservative: only strips when the filler phrase ends with a colon (i.e. it
+    introduces a list or section), which is the dominant pattern emitted by
+    smaller instruction-tuned LLMs. Prose openings that end with a period are
+    left alone to avoid deleting real content.
+    """
+    if not text:
+        return text
+    out = text.lstrip()
+    for _ in range(2):
+        new = _FILLER_PREAMBLE_RE.sub("", out, count=1)
+        if new == out:
+            break
+        out = new.lstrip()
+    return out
 
 
 class ModuleGenerator:
@@ -61,8 +101,7 @@ class ModuleGenerator:
         config: CodeUnderstandingConfig,
         session: Session,
     ) -> ProjectDoc:
-        index_path = os.environ.get("IW_CORE_INDEX_PATH", "~/.iw-ai-core/indexes")
-        store_path = Path(index_path).expanduser() / project_id / "vectors"
+        store_path = Path(config.index_path).expanduser() / project_id / "vectors"
         table_name = f"code_{project_id.replace('-', '_')}"
 
         db = lancedb.connect(str(store_path))
@@ -74,14 +113,21 @@ class ModuleGenerator:
 
         embed = OllamaEmbedding(model_name=embed_model, base_url=ollama_url)
 
+        safe_path = module_path.replace("'", "''")
+        path_filter = f"metadata.file_path LIKE '%{safe_path}%'"
+
+        start_progress(project_id, module_path, module_name, llm_model)
+
         answers: list[str] = []
-        for question_template in self.MODULE_QUESTIONS:
+        for idx, (question_template, label) in enumerate(
+            zip(self.MODULE_QUESTIONS, _STEP_LABELS, strict=True), start=1
+        ):
+            update_progress(project_id, module_path, step=idx, step_label=label)
+
             question = question_template.format(module=module_name)
             embedding = await embed.aget_text_embedding(question)
 
-            results = (
-                table.search(embedding).where(f"file_path LIKE '{module_path}%'").limit(5).to_list()
-            )
+            results = table.search(embedding).where(path_filter).limit(5).to_list()
 
             context_chunks = [r.get("text", "") for r in results if r.get("text")]
             context = "\n\n---\n\n".join(context_chunks)
@@ -89,6 +135,7 @@ class ModuleGenerator:
             answer = await self._call_ollama(question, context, llm_model, ollama_url)
             answers.append(answer)
 
+        update_progress(project_id, module_path, step=5, step_label="writing doc")
         content = self._assemble_markdown(module_name, module_path, answers)
 
         slug = self._make_slug(project_id, module_path)
@@ -107,16 +154,29 @@ class ModuleGenerator:
             generated_by="code-understanding:level2",
         )
         session.flush()
+        update_progress(project_id, module_path, step=5, step_label="complete", done=True)
         return doc
 
     async def _call_ollama(self, question: str, context: str, model: str, ollama_url: str) -> str:
-        prompt = f"""Context from the codebase:
+        prompt = f"""You are documenting one module of a real codebase.
 
+Code excerpts from the module:
+---
 {context}
+---
 
-Question: {question}
+Task: {question}
 
-Provide a concise, informative answer based on the context above."""
+Rules:
+- Answer directly. Do NOT restate the task, do NOT describe the excerpts.
+- Forbidden openers (do not begin your answer with these or anything similar):
+  "Based on the provided code", "According to the code", "The provided code shows",
+  "Looking at the excerpts", "From the context", "As shown in the code", "Here is".
+- Start with the substantive content itself — a concrete file path, class name,
+  function name, or claim drawn from the excerpts.
+- Cite specific identifiers (file paths, class/function names, imports) from the
+  excerpts. No speculation beyond what the excerpts show.
+- Use GitHub-flavored Markdown. Prefer short paragraphs and bullet lists over prose."""
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
@@ -126,7 +186,26 @@ Provide a concise, informative answer based on the context above."""
             response.raise_for_status()
             data: dict[str, str] = response.json()
             result: str = data.get("response", "")
-            return result
+            return _strip_filler_preamble(result)
+
+    async def run_standalone(
+        self,
+        project_id: str,
+        module_path: str,
+        module_name: str,
+        config: CodeUnderstandingConfig,
+    ) -> None:
+        """Run generate_level2 with a dedicated DB session.
+
+        Intended for background execution: the HTTP request's session closes as
+        soon as the response is returned, so we cannot reuse it for a 2-4-minute
+        Ollama-bound generation. Opens its own session, commits on success.
+        """
+        from orch.db.session import SessionLocal
+
+        with SessionLocal() as session:
+            await self.generate_level2(project_id, module_path, module_name, config, session)
+            session.commit()
 
     def _assemble_markdown(self, module_name: str, module_path: str, answers: list[str]) -> str:
         lines = [

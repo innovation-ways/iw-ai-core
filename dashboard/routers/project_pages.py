@@ -1,4 +1,4 @@
-"""Project-scoped pages: queue, history, analytics."""
+"""Project-scoped pages: queue, history."""
 
 from __future__ import annotations
 
@@ -279,15 +279,4 @@ def project_history(
             "sort_by": sort_by,
             "sort_dir": sort_dir,
         },
-    )
-
-
-@router.get("/analytics", response_class=HTMLResponse)
-def project_analytics(project_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
-    project = _get_project_or_404(project_id, db)
-    templates: Jinja2Templates = request.app.state.templates
-    return templates.TemplateResponse(
-        request,
-        "pages/project/analytics.html",
-        {"current_project": project, "running_count": 0},
     )
