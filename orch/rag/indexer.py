@@ -103,7 +103,13 @@ class CodeIndexer:
         return changed
 
     def _build_index(self, store_path: Path) -> tuple[VectorStoreIndex, LanceDBVectorStore]:
-        """Create or open a LanceDB-backed VectorStoreIndex with Ollama embeddings."""
+        """Create or open a LanceDB-backed VectorStoreIndex with Ollama embeddings.
+
+        Seeds an empty LanceDB table when one does not yet exist — the llama-index
+        LanceDB wrapper raises "Table X is not initialized" the moment a
+        VectorStoreIndex is constructed against a fresh URI, because it tries to
+        read the existing schema before we have any data to write.
+        """
         store_path.mkdir(parents=True, exist_ok=True)
         table_name = f"code_{self.project_id.replace('-', '_')}"
         embed = OllamaEmbedding(
@@ -111,9 +117,46 @@ class CodeIndexer:
             base_url=self.config.ollama_url,
         )
         vector_store = LanceDBVectorStore(uri=str(store_path), table_name=table_name)
+        self._ensure_lancedb_table(store_path, table_name, vector_store, embed)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
         index = VectorStoreIndex([], storage_context=storage_context, embed_model=embed)
         return index, vector_store
+
+    SEED_NODE_ID = "__iwcore_seed__"
+
+    def _ensure_lancedb_table(
+        self,
+        store_path: Path,
+        table_name: str,
+        vector_store: LanceDBVectorStore,
+        embed: OllamaEmbedding,
+    ) -> None:
+        try:
+            import lancedb  # type: ignore[import-untyped]
+
+            db = lancedb.connect(str(store_path))
+            if table_name in db.table_names():
+                return
+        except Exception:
+            # If the lancedb probe itself fails, let downstream calls raise so
+            # the real error surfaces instead of being masked here.
+            return
+        seed = TextNode(
+            id_=self.SEED_NODE_ID,
+            text=self.SEED_NODE_ID,
+            metadata={
+                "file_path": self.SEED_NODE_ID,
+                "language": "text",
+                "chunk_index": 0,
+            },
+        )
+        try:
+            seed.embedding = embed.get_text_embedding(seed.get_content())
+            vector_store.add([seed])
+        except Exception:
+            # Table creation is best-effort: if seeding fails (e.g., Ollama
+            # offline), let the outer indexer fail with its normal error path.
+            return
 
     async def index(
         self,

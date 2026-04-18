@@ -1,7 +1,5 @@
 """Unit tests for orch.rag.config — CodeUnderstandingConfig Pydantic model."""
 
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
@@ -123,7 +121,9 @@ class TestIndexPathConfig:
         from orch.config import load_config
 
         cfg = load_config()
-        assert cfg.index_path == str(Path("~/.iw-ai-core/indexes").expanduser())
+        from orch.rag.config import DEFAULT_INDEX_PATH
+
+        assert cfg.index_path == DEFAULT_INDEX_PATH
 
     def test_custom_index_path(self, monkeypatch):
         monkeypatch.setenv("IW_CORE_INDEX_PATH", "/data/indexes")

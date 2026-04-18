@@ -127,36 +127,69 @@ class TestGetModule:
         db_session: Session,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        async def mock_get_or_generate(*args: object, **kwargs: object) -> tuple[ProjectDoc, bool]:
-            return (_fake_doc(), False)
+        """Freshly-generated path: run_standalone inserts the doc within the
+        short timeout, so the route's post-wait cache re-check finds it and
+        renders the detail fragment with the "freshly generated" badge."""
+        from orch.doc_service import DocService
+        from orch.rag.module_gen import ModuleGenerator
+        from orch.rag.module_progress import clear_progress
 
-        from dashboard.routers import code as code_module
+        slug = ModuleGenerator()._make_slug(test_project.id, "engine/")  # noqa: SLF001
 
-        monkeypatch.setattr(code_module.ModuleGenerator, "get_or_generate", mock_get_or_generate)
+        async def fast_gen(
+            _self: ModuleGenerator, project_id: str, module_path: str, *_args: object
+        ) -> None:
+            DocService(db_session).create_doc(
+                project_id=project_id,
+                doc_id=slug,
+                title=f"Module: engine ({module_path})",
+                doc_type=DocType.research,
+                tier=DocTier.fully_automated,
+                editorial_category=EditorialCategory.technical,
+                slug=slug,
+                content="## engine\n\nGenerated content for test.",
+                generated_by="code-understanding:level2",
+            )
+            db_session.flush()
+
+        monkeypatch.setattr(ModuleGenerator, "run_standalone", fast_gen)
+        clear_progress(test_project.id, "engine/")
 
         _insert_level1_doc(db_session, test_project.id, FIXTURE_LEVEL1_DOC)
         resp = client.get(f"/api/projects/{test_project.id}/code/modules/engine")
         assert resp.status_code == 200
-        assert "freshly generated" in resp.text.lower() or "generating" in resp.text.lower()
+        assert "freshly generated" in resp.text.lower()
 
     def test_get_module_returns_cached_badge_on_hit(
         self,
         client: TestClient,
         test_project: Project,
         db_session: Session,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        async def mock_get_or_generate(*args: object, **kwargs: object) -> tuple[ProjectDoc, bool]:
-            return (_fake_doc(), True)
-
-        from dashboard.routers import code as code_module
-
-        monkeypatch.setattr(code_module.ModuleGenerator, "get_or_generate", mock_get_or_generate)
+        """Cache-hit path: pre-existing ProjectDoc short-circuits the generator
+        and the route renders the detail fragment with the "cached" badge."""
+        from orch.doc_service import DocService
+        from orch.rag.module_gen import ModuleGenerator
 
         _insert_level1_doc(db_session, test_project.id, FIXTURE_LEVEL1_DOC)
+
+        slug = ModuleGenerator()._make_slug(test_project.id, "engine/")  # noqa: SLF001
+        DocService(db_session).create_doc(
+            project_id=test_project.id,
+            doc_id=slug,
+            title="Module: engine (engine/)",
+            doc_type=DocType.research,
+            tier=DocTier.fully_automated,
+            editorial_category=EditorialCategory.technical,
+            slug=slug,
+            content="## engine\n\nCached content.",
+            generated_by="code-understanding:level2",
+        )
+        db_session.flush()
+
         resp = client.get(f"/api/projects/{test_project.id}/code/modules/engine")
         assert resp.status_code == 200
-        assert "cached" in resp.text.lower() or "cache" in resp.text.lower()
+        assert "cached" in resp.text.lower()
 
     def test_get_module_returns_generating_fragment_on_timeout(
         self,
@@ -165,13 +198,16 @@ class TestGetModule:
         db_session: Session,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        async def slow_gen(*args: object, **kwargs: object) -> tuple[ProjectDoc, bool]:
+        """Timeout path: run_standalone outlasts the 0.5s shield so the route
+        returns the "generating" fragment with an htmx poll trigger."""
+        from orch.rag.module_gen import ModuleGenerator
+        from orch.rag.module_progress import clear_progress
+
+        async def slow_gen(*_args: object, **_kwargs: object) -> None:
             await asyncio.sleep(2)
-            return (_fake_doc(), False)
 
-        from dashboard.routers import code as code_module
-
-        monkeypatch.setattr(code_module.ModuleGenerator, "get_or_generate", slow_gen)
+        monkeypatch.setattr(ModuleGenerator, "run_standalone", slow_gen)
+        clear_progress(test_project.id, "engine/")
 
         _insert_level1_doc(db_session, test_project.id, FIXTURE_LEVEL1_DOC)
         resp = client.get(f"/api/projects/{test_project.id}/code/modules/engine")

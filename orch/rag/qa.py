@@ -70,14 +70,17 @@ class QAEngine:
             db = lancedb.connect(db_path)
             table = db.open_table(table_name)
 
+            # Filter out the indexer's seed row (added to bootstrap the LanceDB
+            # schema on fresh tables — see CodeIndexer._ensure_lancedb_table).
+            seed_filter = "file_path != '__iwcore_seed__'"
             if context_level == "module" and module_path:
                 query = (
                     table.search(embedding_vector)
-                    .where(f"file_path LIKE '{module_path}%'")
+                    .where(f"file_path LIKE '{module_path}%' AND {seed_filter}")
                     .limit(self.TOP_K)
                 )
             else:
-                query = table.search(embedding_vector).limit(self.TOP_K)
+                query = table.search(embedding_vector).where(seed_filter).limit(self.TOP_K)
 
             results = query.to_pandas()
             chunks = list(results["text"].tolist())
