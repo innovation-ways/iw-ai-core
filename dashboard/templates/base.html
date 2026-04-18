@@ -73,20 +73,39 @@
   <!-- htmx -->
   <script src="https://unpkg.com/htmx.org@2.0.3" defer></script>
 
-  <!-- marked.js for markdown rendering in artifact viewer -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-
-  <!-- DOMPurify — sanitize LLM-rendered markdown output before injection -->
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
-
-  <!-- Mermaid.js for code architecture diagrams -->
-  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <!-- Highlight.js — vendored syntax highlighter (BSD-3-Clause) -->
+  <script src="/static/vendor/highlight.js/core.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      if (typeof mermaid !== 'undefined') {
-        mermaid.initialize({ startOnLoad: true, theme: 'default' });
-      }
+    // Load common languages on demand
+    window.addEventListener('DOMContentLoaded', function() {
+      var langs = ['python','javascript','typescript','bash','rust','go','json','markdown','sql','css','xml'];
+      langs.forEach(function(lang) {
+        var s = document.createElement('script');
+        s.src = '/static/vendor/highlight.js/' + lang + '.js';
+        s.onload = function() { try { hljs.registerLanguage(lang, window['hljs' + lang.charAt(0).toUpperCase() + lang.slice(1)] || hljs.listLanguages().indexOf(lang) >= 0 && hljs.highlight; } catch(e){} };
+        document.head.appendChild(s);
+      });
     });
+  </script>
+
+  <!-- DOMPurify — vendored HTML sanitizer (Apache-2.0) -->
+  <script src="/static/vendor/dompurify/purify.min.js"></script>
+
+  <!-- streaming-markdown — vendored markdown parser (MIT) -->
+  <script type="module" src="/static/chat/smd-loader.js"></script>
+  <!-- render.js bridges streaming-markdown + DOMPurify + Highlight.js (loaded after SMD ready) -->
+  <script>
+    window.addEventListener('iw-smd-ready', function() {
+      var s = document.createElement('script');
+      s.src = '/static/chat/render.js';
+      document.head.appendChild(s);
+    });
+    // Fallback: if event already fired, load immediately
+    if (window.__iwSMD) {
+      var s = document.createElement('script');
+      s.src = '/static/chat/render.js';
+      document.head.appendChild(s);
+    }
   </script>
 
   {% block head %}{% endblock %}

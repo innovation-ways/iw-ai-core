@@ -1,0 +1,82 @@
+<div class="chat-message-actions" role="group" aria-label="Message actions">
+  <button class="action-btn min-h-[44px] min-w-[44px]"
+          data-action="copy"
+          aria-label="Copy message"
+          title="Copy">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="9" y="9" width="13" height="13" rx="2" stroke-width="2"/>
+      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-width="2"/>
+    </svg>
+    <span>Copy</span>
+  </button>
+
+  <button class="action-btn action-btn--regenerate min-h-[44px] min-w-[44px]"
+          data-action="regenerate"
+          aria-label="Regenerate response"
+          title="Regenerate">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+    </svg>
+    <span>Regenerate</span>
+  </button>
+
+  <button class="action-btn min-h-[44px] min-w-[44px]"
+          data-action="thumbs-up"
+          aria-label="Good response"
+          title="Good">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905a3.61 3.61 0 01-.608 2.083L7 11v9"/>
+    </svg>
+    <span>Good</span>
+  </button>
+
+  <button class="action-btn min-h-[44px] min-w-[44px]"
+          data-action="thumbs-down"
+          aria-label="Bad response"
+          title="Bad">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v5a2 2 0 002 2h.095c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.083L21 11V9"/>
+    </svg>
+    <span>Bad</span>
+  </button>
+
+  <div class="thumbs-down-form hidden" role="region" aria-label="Feedback form">
+    <fieldset class="text-xs">
+      <legend class="sr-only">What was wrong with the response?</legend>
+      <label class="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" name="feedback-inaccurate" value="1" class="rounded"/>
+        Inaccurate
+      </label>
+      <label class="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" name="feedback-not-relevant" value="1" class="rounded"/>
+        Not relevant
+      </label>
+      <label class="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" name="feedback-incomplete" value="1" class="rounded"/>
+        Incomplete
+      </label>
+      <label class="flex items-center gap-1.5 cursor-pointer">
+        <input type="checkbox" name="feedback-harmful" value="1" class="rounded"/>
+        Harmful
+      </label>
+    </fieldset>
+    <textarea
+      class="mt-2 w-full text-xs border border-border rounded p-2 resize-none"
+      rows="2"
+      maxlength="280"
+      placeholder="Optional details (280 chars max)…"
+      aria-label="Additional feedback"></textarea>
+    <div class="flex gap-2 mt-2">
+      <button class="feedback-submit text-xs bg-primary text-primary-foreground rounded px-3 py-1.5 hover:bg-primary/90 transition-colors min-h-[44px]"
+              data-action="feedback-submit"
+              type="button">
+        Submit
+      </button>
+      <button class="feedback-cancel text-xs border border-border rounded px-3 py-1.5 hover:bg-muted transition-colors min-h-[44px]"
+              data-action="feedback-cancel"
+              type="button">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>

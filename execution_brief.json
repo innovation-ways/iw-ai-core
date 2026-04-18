@@ -1,39 +1,39 @@
 {
   "project_id": "iw-ai-core",
-  "id": "CR-00006",
-  "title": "Code view UX — Jobs view, streaming Q&A, markdown rendering",
+  "id": "CR-00008",
+  "title": "Code module chat: docked panel, streaming markdown, beautiful diagrams (MVP)",
   "status": "approved",
   "phase": "active",
-  "total_steps": 11,
+  "total_steps": 14,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00022",
-  "worktree": null,
-  "created_at": "2026-04-17T08:26:43.765560+00:00",
-  "updated_at": "2026-04-17T08:26:43.765560+00:00",
+  "batch_id": "BATCH-00024",
+  "worktree": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00008",
+  "created_at": "2026-04-17T21:48:15.003556+00:00",
+  "updated_at": "2026-04-17T21:48:15.003556+00:00",
   "steps": [
     {
       "step_id": "S01",
-      "label": "Backend",
-      "type": "implementation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S02",
-      "label": "BackendReview",
-      "type": "implementation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S03",
       "label": "Api",
       "type": "implementation",
       "status": "pending"
     },
     {
-      "step_id": "S04",
-      "label": "ApiReview",
+      "step_id": "S02",
+      "label": "CodeReview",
+      "type": "code_review",
+      "status": "pending"
+    },
+    {
+      "step_id": "S03",
+      "label": "Frontend",
       "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S04",
+      "label": "CodeReview",
+      "type": "code_review",
       "status": "pending"
     },
     {
@@ -44,43 +44,61 @@
     },
     {
       "step_id": "S06",
-      "label": "FrontendReview",
-      "type": "implementation",
+      "label": "CodeReview",
+      "type": "code_review",
       "status": "pending"
     },
     {
       "step_id": "S07",
-      "label": "Tests",
+      "label": "Frontend",
       "type": "implementation",
       "status": "pending"
     },
     {
       "step_id": "S08",
-      "label": "TestsReview",
-      "type": "implementation",
+      "label": "CodeReview",
+      "type": "code_review",
       "status": "pending"
     },
     {
       "step_id": "S09",
+      "label": "Tests",
+      "type": "implementation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S10",
+      "label": "CodeReview",
+      "type": "code_review",
+      "status": "pending"
+    },
+    {
+      "step_id": "S11",
       "label": "CodeReviewFinal",
       "type": "code_review_final",
       "status": "pending"
     },
     {
-      "step_id": "S10",
+      "step_id": "S12",
       "label": "CodeReviewFixFinal",
       "type": "code_review_fix_final",
       "status": "pending"
     },
     {
-      "step_id": "S11",
+      "step_id": "S13",
       "label": "QualityValidation",
       "type": "quality_validation",
       "status": "pending"
+    },
+    {
+      "step_id": "S14",
+      "label": "QvBrowser",
+      "type": "browser_verification",
+      "status": "pending"
     }
   ],
-  "branch": "agent/CR-00006-code-view-ux-jobs-view-streami",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00006",
+  "branch": "agent/CR-00008-code-module-chat-docked-panel-",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00008",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-17T08:42:53Z"
+  "brief_generated_at": "2026-04-17T23:18:10Z"
 }
