@@ -9,8 +9,11 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
+
+DEFAULT_INDEX_PATH: str = str(Path.home() / ".local" / "share" / "iw-ai-core" / "code-index")
 
 
 class CodeUnderstandingProvider(StrEnum):
@@ -64,7 +67,7 @@ class CodeUnderstandingConfig(BaseModel):
     embed_model: str | None = None
     index_tier: IndexTier = IndexTier.BALANCED
     ollama_url: str = "http://localhost:11434"
-    index_path: str = str(Path.home() / ".local" / "share" / "iw-ai-core" / "code-index")
+    index_path: str = DEFAULT_INDEX_PATH
 
     def resolved_llm_model(self) -> str:
         """Return the effective LLM model: explicit value or tier default."""
@@ -73,3 +76,19 @@ class CodeUnderstandingConfig(BaseModel):
     def resolved_embed_model(self) -> str:
         """Return the effective embedding model: explicit value or tier default."""
         return self.embed_model or TIER_DEFAULTS[self.index_tier]["embed_model"]
+
+
+def build_code_config_from_project(
+    project_config: dict[str, Any] | None,
+    fallback_index_path: str | None = None,
+) -> CodeUnderstandingConfig:
+    """Build a CodeUnderstandingConfig from a project's `config` JSONB.
+
+    Applies `fallback_index_path` when the project does not pin its own
+    `index_path`, so the read side (Q&A, modules) and the write side (indexer)
+    agree on where the LanceDB table lives.
+    """
+    code_cfg = dict((project_config or {}).get("code_understanding", {}) or {})
+    if fallback_index_path and not code_cfg.get("index_path"):
+        code_cfg["index_path"] = fallback_index_path
+    return CodeUnderstandingConfig(**code_cfg)

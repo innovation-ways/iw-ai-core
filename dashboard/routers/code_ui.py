@@ -14,9 +14,10 @@ from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from dashboard.utils.markdown import render_markdown
+from orch.config import load_config
 from orch.db.models import CodeIndexJob, Project
 from orch.doc_service import DocService
-from orch.rag.config import CodeUnderstandingConfig
+from orch.rag.config import build_code_config_from_project
 from orch.rag.job import JOB_REGISTRY, JobAlreadyRunningError, start_index_job
 
 if TYPE_CHECKING:
@@ -144,6 +145,30 @@ def code_page(
     )
 
 
+def _latest_job(db: Session, project_id: str, status: str) -> CodeIndexJob | None:
+    order_col = (
+        CodeIndexJob.completed_at.desc()
+        if status in ("completed", "failed", "cancelled")
+        else CodeIndexJob.triggered_at.desc()
+    )
+    return db.scalar(
+        select(CodeIndexJob)
+        .where(
+            CodeIndexJob.project_id == project_id,
+            CodeIndexJob.status == status,
+        )
+        .order_by(order_col)
+        .limit(1)
+    )
+
+
+def _last_error(job: CodeIndexJob | None) -> str | None:
+    if job is None or not job.errors:
+        return None
+    errors = list(job.errors)
+    return str(errors[-1]) if errors else None
+
+
 @router.get("/api/code/status", response_class=HTMLResponse)
 def code_status(
     project_id: str,
@@ -152,24 +177,9 @@ def code_status(
 ) -> Any:
     _get_project_or_404(project_id, db)
 
-    last_completed_job: CodeIndexJob | None = db.scalar(
-        select(CodeIndexJob)
-        .where(
-            CodeIndexJob.project_id == project_id,
-            CodeIndexJob.status == "completed",
-        )
-        .order_by(CodeIndexJob.completed_at.desc())
-        .limit(1)
-    )
-
-    running_job: CodeIndexJob | None = db.scalar(
-        select(CodeIndexJob)
-        .where(
-            CodeIndexJob.project_id == project_id,
-            CodeIndexJob.status == "running",
-        )
-        .limit(1)
-    )
+    running_job = _latest_job(db, project_id, "running")
+    last_completed_job = _latest_job(db, project_id, "completed")
+    last_failed_job = _latest_job(db, project_id, "failed")
 
     templates: Jinja2Templates = request.app.state.templates
 
@@ -180,13 +190,32 @@ def code_status(
             {"running_job": running_job, "project_id": project_id},
         )
 
+    # Show the failed banner only when the most recent terminal job failed.
+    # If a later completed job exists, the failure is stale.
+    failed_is_latest = last_failed_job is not None and (
+        last_completed_job is None
+        or (last_completed_job.completed_at or datetime.min.replace(tzinfo=UTC))
+        < (last_failed_job.completed_at or datetime.min.replace(tzinfo=UTC))
+    )
+    if failed_is_latest:
+        return templates.TemplateResponse(
+            request,
+            "fragments/code_job_failed.html",
+            {
+                "last_failed_job": last_failed_job,
+                "last_failed_error": _last_error(last_failed_job),
+                "project_id": project_id,
+            },
+        )
+
     if last_completed_job:
         return templates.TemplateResponse(
             request,
-            "fragments/code_job_status.html",
+            "fragments/code_job_report.html",
             {
-                "running_job": None,
                 "last_completed_job": last_completed_job,
+                "last_completed_duration": _format_duration(last_completed_job),
+                "current_project": _get_project_or_404(project_id, db),
                 "project_id": project_id,
             },
         )
@@ -231,10 +260,49 @@ def code_architecture(
 
 
 @router.get("/api/code/index/stream")
-async def code_index_stream(project_id: str) -> StreamingResponse:
+async def code_index_stream(
+    project_id: str,
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
     runner = JOB_REGISTRY.get(project_id)
 
     if runner is None:
+        # The job may have finished (including failing) before the browser
+        # opened this stream. Surface a terminal status from the DB so the UI
+        # doesn't idle-spin forever after a fast failure.
+        recent_cutoff = datetime.now(UTC) - timedelta(minutes=5)
+        recent_job: CodeIndexJob | None = db.scalar(
+            select(CodeIndexJob)
+            .where(
+                CodeIndexJob.project_id == project_id,
+                CodeIndexJob.completed_at.is_not(None),
+                CodeIndexJob.completed_at >= recent_cutoff,
+            )
+            .order_by(CodeIndexJob.completed_at.desc())
+            .limit(1)
+        )
+        if recent_job is not None and recent_job.status == "failed":
+            err = _last_error(recent_job) or "unknown error"
+            failed_payload = json.dumps(
+                {
+                    "event": "done",
+                    "status": "failed",
+                    "error": err,
+                    "job_id": recent_job.id,
+                }
+            )
+
+            async def failed_generator() -> AsyncGenerator[str, None]:
+                yield f"data: {failed_payload}\n\n"
+
+            return StreamingResponse(
+                failed_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                },
+            )
 
         async def idle_generator() -> AsyncGenerator[str, None]:
             yield 'data: {"event": "done", "status": "idle"}\n\n'
@@ -299,8 +367,8 @@ def _trigger_job(
 ) -> HTMLResponse:
     project = _get_project_or_404(project_id, db)
 
-    code_cfg_dict = (project.config or {}).get("code_understanding", {})
-    code_cfg = CodeUnderstandingConfig(**code_cfg_dict)
+    cfg = load_config()
+    code_cfg = build_code_config_from_project(project.config, cfg.index_path)
 
     job = CodeIndexJob(
         project_id=project_id,
