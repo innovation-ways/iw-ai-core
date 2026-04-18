@@ -161,13 +161,26 @@ class TestNoCdnReferences:
         assert not violations, "\n".join(violations)
 
     def test_no_marked_references_remain(self):
-        """No marked or marked.min.js references anywhere in templates."""
+        """No marked.js library references anywhere in templates.
+
+        Checks for the actual library (marked.js / marked.min.js / window.marked /
+        marked.parse / marked.setOptions), not the English word 'marked'.
+        """
         template_dir = Path(__file__).parent.parent.parent / "dashboard" / "templates"
+        # Library-specific patterns — not the English word
+        patterns = [
+            r"\bmarked\.min\.js\b",
+            r"\bmarked\.js\b",
+            r"\bwindow\.marked\b",
+            r"\bmarked\.(parse|setOptions|use|lexer|Renderer)\b",
+            r'(?:from|require)\([\'"]marked[\'"]\)',
+        ]
+        combined = re.compile("|".join(patterns))
         for html_path in template_dir.rglob("*.html"):
             content = html_path.read_text()
-            if "marked" in content.lower():
+            if combined.search(content):
                 rel = html_path.relative_to(template_dir)
-                raise AssertionError(f"marked reference found in {rel}")
+                raise AssertionError(f"marked.js library reference found in {rel}")
 
 
 class TestVendorLicenses:

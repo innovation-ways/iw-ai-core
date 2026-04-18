@@ -108,9 +108,9 @@
 
       if (action === 'regenerate') {
         btn.addEventListener('click', function () {
-          var panel = messageEl.closest('#chat-panel, #chat-drawer');
+          var panel = messageEl.closest('#chat-panel');
           if (!panel) return;
-          var composer = panel.querySelector('#chat-composer, #chat-composer-input');
+          var composer = panel.querySelector('#chat-composer');
           if (!composer) return;
           var lastUserMsg = panel.querySelector('[data-role="user"]:last-child');
           if (!lastUserMsg) return;

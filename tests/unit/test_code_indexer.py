@@ -148,6 +148,7 @@ class TestGetChangedFiles:
 
 class TestMermaid:
     def test_build_mermaid_contains_graph_td(self, tmp_path: Path) -> None:
+        from orch.rag.config import CodeUnderstandingConfig
         from orch.rag.mapgen import MapGenerator
 
         mock_response = MagicMock()
@@ -159,7 +160,9 @@ class TestMermaid:
             mock_ollama_class.return_value = mock_llm
 
             gen = MapGenerator()
-            result = gen._build_mermaid("main.py -> utils.py -> database")
+            result = gen._build_mermaid(
+                "main.py -> utils.py -> database", CodeUnderstandingConfig()
+            )
 
         assert "graph TD" in result
 

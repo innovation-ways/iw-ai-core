@@ -98,7 +98,7 @@ def get_or_start_task(
     if existing is not None and not existing.done():
         return existing
 
-    task = asyncio.create_task(coro_factory())
+    task: asyncio.Task[object] = asyncio.ensure_future(coro_factory())
     _TASKS[key] = task
 
     def _on_done(t: asyncio.Task[object]) -> None:
