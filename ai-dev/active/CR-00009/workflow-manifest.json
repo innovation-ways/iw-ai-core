@@ -1,0 +1,109 @@
+{
+  "id": "CR-00009",
+  "type": "ChangeRequest",
+  "title": "Chat panel context awareness: header label + module-aware system prompt + retrieval fallback",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Backend: extend orch/rag/qa.py — module block in system prompt, unfiltered retrieval fallback when module-filtered search yields zero chunks, retrieval-note signal",
+      "prompt": "prompts/CR-00009_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review: S01 (qa.py module context + fallback)",
+      "prompt": "prompts/CR-00009_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "api-impl",
+      "description": "API: extend QARequest with optional module_name; forward to QAEngine.answer_stream",
+      "prompt": "prompts/CR-00009_S03_Api_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review: S03 (code_qa.py QARequest + router wiring)",
+      "prompt": "prompts/CR-00009_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "frontend-impl",
+      "description": "Frontend: chat header label sync (Chat — <path> (<name>) / Chat — Architecture), data-module-name on #code-content-root, module-detail fragment propagation, composer module_name payload",
+      "prompt": "prompts/CR-00009_S05_Frontend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Code review: S05 (templates + static chat JS)",
+      "prompt": "prompts/CR-00009_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "tests-impl",
+      "description": "Tests: unit tests for _build_system_prompt branches + fallback; integration tests for QARequest module_name round-trip",
+      "prompt": "prompts/CR-00009_S07_Tests_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Code review: S07 (test coverage vs. acceptance criteria)",
+      "prompt": "prompts/CR-00009_S08_CodeReview_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-agent review: backend/API/frontend/tests integration, AC coverage, no regressions in chat panel",
+      "prompt": "prompts/CR-00009_S09_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "code-review-fix-final-impl",
+      "description": "Fix CRITICAL and HIGH findings from S09",
+      "prompt": "prompts/CR-00009_S10_CodeReview_Fix_Final_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "uv run ruff check .",
+      "description": "QV: Lint (ruff)"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format (ruff)"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "uv run mypy orch/ dashboard/",
+      "description": "QV: Typecheck (mypy)"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests"
+    },
+    {
+      "step": "S16",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — verify chat header updates on module navigation and chat replies reference the selected module in an isolated worktree stack",
+      "prompt": "prompts/CR-00009_S16_BrowserVerification_prompt.md"
+    }
+  ]
+}

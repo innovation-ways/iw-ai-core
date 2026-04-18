@@ -91,6 +91,39 @@
   <!-- DOMPurify — vendored HTML sanitizer (Apache-2.0) -->
   <script src="/static/vendor/dompurify/purify.min.js"></script>
 
+  <!-- Mermaid — vendored diagram renderer (MIT) -->
+  <script src="/static/vendor/mermaid/mermaid.min.js"></script>
+  <script>
+    if (typeof mermaid !== 'undefined') {
+      var isDark = document.documentElement.classList.contains('dark');
+      mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
+      // Render .mermaid nodes. We bypass mermaid.run() because it reads innerHTML
+      // (which HTML-escapes ">" as "&gt;") and breaks arrow syntax like "-->".
+      // Using mermaid.render() with textContent avoids that encoding issue.
+      window.iwRenderMermaid = async function(root) {
+        var scope = root || document;
+        var nodes = scope.querySelectorAll('.mermaid:not([data-processed])');
+        for (var i = 0; i < nodes.length; i++) {
+          var node = nodes[i];
+          var src = node.textContent;
+          var id = 'iw-mermaid-' + Math.random().toString(36).slice(2);
+          try {
+            var result = await mermaid.render(id, src);
+            node.innerHTML = result.svg;
+            if (result.bindFunctions) { result.bindFunctions(node); }
+            node.setAttribute('data-processed', 'true');
+          } catch (e) {
+            node.setAttribute('data-processed', 'true');
+            node.innerHTML = '<pre style="color:var(--destructive);font-size:12px;white-space:pre-wrap">Mermaid error: ' +
+              (e && e.message ? e.message : String(e)).replace(/[<>&]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}) +
+              '</pre>';
+          }
+        }
+      };
+      document.addEventListener('DOMContentLoaded', function() { window.iwRenderMermaid(); });
+    }
+  </script>
+
   <!-- streaming-markdown — vendored markdown parser (MIT) -->
   <script type="module" src="/static/chat/smd-loader.js"></script>
   <!-- render.js bridges streaming-markdown + DOMPurify + Highlight.js (loaded after SMD ready) -->
@@ -281,11 +314,8 @@
 </script>
 <script>
   document.body.addEventListener('htmx:afterSwap', function(e) {
-    if (typeof mermaid !== 'undefined' && e.detail.target) {
-      var nodes = e.detail.target.querySelectorAll('.mermaid:not([data-processed])');
-      if (nodes.length > 0) {
-        mermaid.init(undefined, nodes);
-      }
+    if (typeof window.iwRenderMermaid === 'function' && e.detail.target) {
+      window.iwRenderMermaid(e.detail.target);
     }
   });
 </script>

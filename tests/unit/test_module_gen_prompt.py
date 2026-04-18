@@ -85,3 +85,27 @@ def test_variety_of_openers(opener: str):
 
     text = f"{opener} the dependencies are:\n- a\n- b"
     assert _strip_filler_preamble(text) == "- a\n- b"
+
+
+class TestNormalizeModulePathForFilter:
+    def test_dotted_path_converted_to_slashes(self):
+        from orch.rag.module_gen import _normalize_module_path_for_filter
+
+        assert _normalize_module_path_for_filter("orch.daemon") == "orch/daemon"
+        assert _normalize_module_path_for_filter("orch.rag") == "orch/rag"
+        assert _normalize_module_path_for_filter("a.b.c") == "a/b/c"
+
+    def test_slash_path_left_alone(self):
+        from orch.rag.module_gen import _normalize_module_path_for_filter
+
+        assert _normalize_module_path_for_filter("orch/daemon") == "orch/daemon"
+        assert _normalize_module_path_for_filter("orch/daemon/") == "orch/daemon/"
+        assert _normalize_module_path_for_filter("orch/rag/module_gen.py") == (
+            "orch/rag/module_gen.py"
+        )
+
+    def test_single_segment_unchanged(self):
+        from orch.rag.module_gen import _normalize_module_path_for_filter
+
+        assert _normalize_module_path_for_filter("dashboard") == "dashboard"
+        assert _normalize_module_path_for_filter("") == ""
