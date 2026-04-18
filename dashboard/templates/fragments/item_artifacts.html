@@ -142,7 +142,15 @@
         }
         const text = await resp.text();
         if (fileType === 'markdown') {
-          viewer.innerHTML = marked.parse(text);
+          if (window.iwChat && window.iwChat.renderMarkdownStatic) {
+            var frag = window.iwChat.renderMarkdownStatic(text);
+            viewer.replaceChildren(frag);
+          } else {
+            // Fallback: safe text-only rendering
+            var p = document.createElement('p');
+            p.textContent = text;
+            viewer.replaceChildren(p);
+          }
         } else {
           // text / code — textContent escapes HTML automatically (XSS-safe)
           const pre = document.createElement('pre');

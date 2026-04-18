@@ -10,6 +10,7 @@ Extends the existing code.py router created by F-00046 with 4 new endpoints:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -153,10 +154,8 @@ async def get_module(
 
     task = get_or_start_task(project_id, module_path, _launch)
 
-    try:
+    with contextlib.suppress(TimeoutError):
         await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
-    except TimeoutError:
-        pass
 
     # Re-check cache after the short wait — may have just completed.
     fresh = DocService(db).get_doc(project_id, slug)
