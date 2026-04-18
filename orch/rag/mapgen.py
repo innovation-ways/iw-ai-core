@@ -76,7 +76,14 @@ class MapGenerator:
         (
             "components",
             "List the main components, services, modules, or subpackages that "
-            "make up this codebase, with a short description of each.",
+            "make up this codebase, with a short description of each. "
+            "Format each entry as a Markdown bullet of the form "
+            "`- **Component Name (`path/`)**: description.`, where the path "
+            "is the FILESYSTEM path to the directory (forward slashes, "
+            "trailing slash — e.g. `orch/daemon/`, `dashboard/`, `orch/rag/`). "
+            "Never emit Python dotted import paths like `orch.daemon`; the "
+            "path must be something that could be passed to `cd` from the "
+            "repository root.",
             "top-level packages modules subpackages CLI commands routers "
             "services daemon workers engines managers",
         ),
