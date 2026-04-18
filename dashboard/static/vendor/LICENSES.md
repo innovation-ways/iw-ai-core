@@ -9,6 +9,7 @@ This directory contains third-party libraries used for rich-content rendering in
 | Highlight.js | 11.x | BSD-3-Clause | BSD 3-Clause License | https://github.com/highlightjs/highlight.js |
 | mermaid | 11.14.0 | MIT | MIT License | https://github.com/mermaid-js/mermaid |
 | mermaid-elk | 0.9.3 | EPL-2.0 | Eclipse Public License 2.0 | https://github.com/kieler/elkjs |
+| htmx | 2.0.3 | 0BSD | Zero-Clause BSD | https://github.com/bigskysoftware/htmx |
 
 ---
 
@@ -85,3 +86,18 @@ This program and the accompanying materials are made available under the terms o
 
 SPDX-License-Identifier: EPL-2.0
 Source: https://github.com/kieler/elkjs
+
+---
+
+## htmx
+
+**Zero-Clause BSD (0BSD)**
+
+Copyright (c) 2020, Big Sky Software
+
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+SPDX-License-Identifier: 0BSD
+Source: https://github.com/bigskysoftware/htmx

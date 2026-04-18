@@ -313,9 +313,15 @@
       });
     }
 
+    function hideEmptyState() {
+      var empty = document.getElementById('chat-empty-state');
+      if (empty) empty.remove();
+    }
+
     function appendUserBubble(text) {
-      var messages = document.getElementById('chat-messages') || drawerMessages;
+      var messages = document.getElementById('chat-messages');
       if (!messages) return;
+      hideEmptyState();
       var article = document.createElement('article');
       article.className = 'bg-muted rounded-lg px-3 py-2 text-sm ml-8';
       article.dataset.role = 'user';
@@ -331,8 +337,9 @@
     }
 
     function appendAssistantBubble() {
-      var messages = document.getElementById('chat-messages') || drawerMessages;
+      var messages = document.getElementById('chat-messages');
       if (!messages) return;
+      hideEmptyState();
       var article = document.createElement('article');
       article.className = 'bg-background border border-border rounded-lg px-3 py-2 text-sm mr-8';
       article.dataset.role = 'assistant';
