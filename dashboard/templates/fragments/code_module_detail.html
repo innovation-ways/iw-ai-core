@@ -2,6 +2,8 @@
      class="bg-card border border-border rounded-lg overflow-hidden"
      data-project-id="{{ project_id }}"
      data-module-slug="{{ module.slug }}"
+     data-module-path="{{ module.path }}"
+     data-module-name="{{ module.name }}"
      data-was-cached="{{ 'true' if was_cached else 'false' }}"
      data-generating="{{ 'true' if generating else 'false' }}">
   <div class="flex items-center gap-1 text-xs text-muted-foreground mb-2 px-4 pt-3">
@@ -80,3 +82,15 @@
     {% endif %}
   </div>
 </div>
+<script>
+  (function () {
+    var detail = document.getElementById('code-module-detail');
+    var root = document.getElementById('code-content-root');
+    if (!detail || !root) return;
+    root.dataset.modulePath = detail.dataset.modulePath || '';
+    root.dataset.moduleName = detail.dataset.moduleName || '';
+    document.body.dispatchEvent(new CustomEvent('iw:code-context-changed', {
+      detail: { source: 'module-detail' }
+    }));
+  })();
+</script>

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  import('./vendor/streaming-markdown/smd.min.js')
+  import('/static/vendor/streaming-markdown/smd.min.js')
     .then(function (smd) {
       window.__iwSMD = smd;
       if (window.__iwChatOnSMDReady) {

@@ -110,6 +110,7 @@
         syncContextChip();
       }
     });
+    document.body.addEventListener('iw:code-context-changed', syncContextChip);
 
     if (imagePicker) {
       imagePicker.addEventListener('change', function () {
@@ -261,6 +262,7 @@
         var contextLevel = (root && root.dataset.contextLevel) || 'architecture';
         var contextDocId = (root && root.dataset.contextDocId) || null;
         var modulePath = (root && root.dataset.modulePath) || null;
+        var moduleName = (root && root.dataset.moduleName) || null;
         var projectId = root && root.dataset.projectId;
 
         var images = Array.from((imageChips && imageChips.querySelectorAll('img')) || [])
@@ -287,6 +289,7 @@
           context_level: contextLevel,
           context_doc_id: contextDocId,
           module_path: modulePath,
+          module_name: moduleName,
           conversation_history: conversationHistory,
           context_chips: contextChips_data,
         };
