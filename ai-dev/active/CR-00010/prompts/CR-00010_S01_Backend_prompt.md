@@ -89,8 +89,8 @@ In `orch/cli/item_commands.py`:
            return "Cannot unapprove research items — they do not use the approval workflow"
        # existing logic unchanged
    ```
-3. Update the `approve` Click command to pass `item.item_type` into the validator. Rename any local vars only if strictly necessary to avoid shadowing. The exit code for validation failure stays the same as the existing invalid-status-transition path (code 2). Use `output_error(ctx, message, 2)`.
-4. Update the `unapprove` Click command the same way.
+3. Update the `approve` Click command to pass `item.type` into the validator. **Important**: the `WorkItem` ORM attribute is named `type` (not `item_type`) — see `orch/db/models.py:291`. The function **parameter** name is `item_type` (the local argument name on the new validator signature); do not confuse the two. Rename any local vars only if strictly necessary to avoid shadowing. The exit code for validation failure is `1` — matching the existing `output_error(ctx, error, 1)` call in `approve` (`orch/cli/item_commands.py:325`). Use `output_error(ctx, message, 1)`.
+4. Update the `unapprove` Click command the same way — pass `item.type` into `validate_unapprove_transition`, use exit code `1` for the research rejection (matching the existing invalid-transition exit code at `orch/cli/item_commands.py:377`, NOT the batch-membership code `4`).
 5. Do NOT touch `_ITEM_TYPE_MAP`, `agent_to_step_type`, or unrelated helpers.
 
 ### 3. `iw doc-update` — auto-complete research work items
@@ -101,7 +101,7 @@ In `orch/cli/doc_commands.py`:
    - Initialize to `False`.
    - If `doc.doc_type == DocType.research`:
      - Look up the work item: `work_item = session.get(WorkItem, (project_id, doc_id))`.
-     - If `work_item is not None AND work_item.item_type == WorkItemType.Research AND work_item.status == WorkItemStatus.draft`:
+     - If `work_item is not None AND work_item.type == WorkItemType.Research AND work_item.status == WorkItemStatus.draft` (note: the ORM attribute is `.type`, not `.item_type`):
        - Use `validate_work_item_status(WorkItemStatus.draft, WorkItemStatus.completed, WorkItemType.Research)` — must not raise.
        - Set `work_item.status = WorkItemStatus.completed`.
        - Set `work_item.phase = WorkItemPhase.done` (research items skip the `work` phase — valid per the phase transition table? The existing `_WORK_ITEM_PHASE` requires `active → work → done`. Since research skips `work`, call `validate_work_item_phase(active, done, ...)` is NOT allowed. **Add a research-specific phase transition** in the same pass, OR skip the phase validator and set `phase` directly. **Prefer**: skip the phase validator for research only — set `work_item.phase = WorkItemPhase.done` directly with a comment `# research items transition phase directly to done — see CR-00010`.
@@ -121,7 +121,8 @@ In `orch/cli/batch_commands.py::batch_create`:
 1. Inside the validation loop (currently lines 247–258 where each item is fetched and status-checked):
    - **Before** the `if item.status != WorkItemStatus.approved` check, add:
      ```python
-     if item.item_type == WorkItemType.Research:
+     # Note: the WorkItem ORM attribute is named `type`, not `item_type`.
+     if item.type == WorkItemType.Research:
          output_error(
              ctx,
              f"Work item {iid} is a research item and cannot be added to a batch — "

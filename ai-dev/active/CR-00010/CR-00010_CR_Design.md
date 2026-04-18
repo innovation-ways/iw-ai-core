@@ -35,20 +35,20 @@ Read `CLAUDE.md` at the repo root for architecture, conventions, and hard rules.
 2. **`iw approve` / `iw unapprove` reject research**:
    - `validate_approve_transition(current_status, item_type=None)`: if `item_type == WorkItemType.Research`, return `"Cannot approve research items — they auto-complete when the research document is created via 'iw doc-update'"`.
    - `validate_unapprove_transition(current_status, active_batch_id, item_type=None)`: if `item_type == WorkItemType.Research`, return `"Cannot unapprove research items — they do not use the approval workflow"`.
-   - The `approve` and `unapprove` Click commands load the work item, call the type-aware validator, and `output_error` on the message. Exit code 2 (same as existing invalid-transition errors).
+   - The `approve` and `unapprove` Click commands load the work item, call the type-aware validator (passing `item.type` — the WorkItem ORM attribute is named `type`, not `item_type`), and `output_error` on the message. Exit code `1` (matches the existing invalid-transition exit code in `approve`/`unapprove`; see `orch/cli/item_commands.py:325,377`).
 3. **`iw doc-update` auto-completes research work items**:
    - After `svc.upsert_doc(...)` succeeds AND the resolved `DocType` is `research`, look up `WorkItem` with the same `project_id` and `id == doc_id`. If it exists and is `WorkItemType.Research` and its status is `draft`, transition it to `WorkItemStatus.completed`, set `phase = WorkItemPhase.done`, and set `completed_at = datetime.now(UTC)`.
    - Idempotent: if the work item is already `completed`, skip silently. If the work item is not of type `Research`, skip silently (some non-research doc may coincidentally share an ID with a non-research work item — do not touch it).
    - If no work item with that ID exists, skip silently (the user may use `iw doc-update` for ad-hoc research docs without registering a work item).
    - Emit the auto-complete in the JSON output: add `"work_item_auto_completed": true|false` alongside the existing `doc_id`, `project_id`, `version`, `status`, `snapshot_created` fields.
 4. **`iw batch-create` rejects research items**:
-   - Before the `status != approved` check, add a type check: if `item.item_type == WorkItemType.Research`, call `output_error(ctx, f"Work item {iid} is a research item and cannot be added to a batch — research items auto-complete via 'iw doc-update'", 1)`.
+   - Before the `status != approved` check, add a type check: if `item.type == WorkItemType.Research`, call `output_error(ctx, f"Work item {iid} is a research item and cannot be added to a batch — research items auto-complete via 'iw doc-update'", 1)`.
 5. **Dashboard — hide approve/unapprove**:
-   - On the work-item detail page, hide the approve and unapprove buttons/forms when `item.item_type == WorkItemType.Research`. Replace with an inline notice: `"Research items auto-complete when the research document is created."`.
+   - On the work-item detail page, hide the approve and unapprove buttons/forms when `item.type == WorkItemType.Research`. Replace with an inline notice: `"Research items auto-complete when the research document is created."`.
    - Wherever the dashboard lists work items with bulk or inline approve actions, exclude research items from those actions (or disable the action with the same notice).
 6. **Dashboard — batch-queue exclusion**:
-   - The batch-queue list (approved work items available to be added to a new batch) filters by both `status == approved` AND `item_type != Research`. This is defense-in-depth — research should never reach `approved`, but the filter makes the intent explicit and prevents leaks.
-   - The backend query that feeds the batch-queue template must add the `WorkItem.item_type != WorkItemType.Research` predicate.
+   - The batch-queue list (approved work items available to be added to a new batch) filters by both `status == approved` AND `WorkItem.type != WorkItemType.Research`. This is defense-in-depth — research should never reach `approved`, but the filter makes the intent explicit and prevents leaks.
+   - The backend query that feeds the batch-queue template must add the `WorkItem.type != WorkItemType.Research` predicate.
 7. **Skill update — `skills/iw-research/SKILL.md` Step 6**:
    - Update the `iw doc-update` example to reflect the new behavior: drop `--status draft` (the doc still defaults to `planned`; if the skill wants a non-default value, keep it, but the *work item* transition is automatic).
    - Add a note: "The work item transitions from `draft` to `completed` automatically when `iw doc-update` runs for a `research` doc. Do NOT call `iw approve`."
@@ -64,10 +64,10 @@ Read `CLAUDE.md` at the repo root for architecture, conventions, and hard rules.
 | `orch/daemon/state_machine.py` (new) | — | `_RESEARCH_WORK_ITEM_STATUS` table: `{draft: {completed}, completed: {}}` |
 | `orch/cli/item_commands.py::validate_approve_transition` | `(current_status) -> str \| None` | `(current_status, item_type: WorkItemType \| None = None) -> str \| None` |
 | `orch/cli/item_commands.py::validate_unapprove_transition` | `(current_status, active_batch_id) -> str \| None` | `(current_status, active_batch_id, item_type: WorkItemType \| None = None) -> str \| None` |
-| `orch/cli/item_commands.py::approve` / `unapprove` | Type-agnostic | Load item, pass `item.item_type` to validator, error on research |
+| `orch/cli/item_commands.py::approve` / `unapprove` | Type-agnostic | Load item, pass `item.type` to validator, error on research |
 | `orch/cli/doc_commands.py::doc_update` | Only upserts doc | After upsert, if `doc_type==research` AND matching research work item in `draft`, transition work item to `completed` |
-| `orch/cli/batch_commands.py::batch_create` | Rejects on `status != approved` | Rejects on `item_type == Research` first, then on `status != approved` |
-| `dashboard/routers/actions.py` (approve/unapprove endpoints) | Accept any item type | Return 400 / htmx error when `item.item_type == Research` |
+| `orch/cli/batch_commands.py::batch_create` | Rejects on `status != approved` | Rejects on `item.type == Research` first, then on `status != approved` |
+| `dashboard/routers/actions.py` (approve/unapprove endpoints) | Accept any item type | Return 400 / htmx error when `item.type == WorkItemType.Research` |
 | `dashboard/routers/project_pages.py` / batch queue endpoint | Lists all `approved` items | Excludes `WorkItemType.Research` from the batch-queue query |
 | `dashboard/templates/**` (item detail + batch queue) | Always render approve/unapprove UI; batch queue lists all approved items | Hide approve/unapprove for research; batch queue excludes research |
 | `skills/iw-research/SKILL.md` Step 6 | Tells user to register then doc-update with `--status draft`; no mention of auto-complete | Documents that `iw doc-update` auto-completes the work item; no `iw approve` step |
@@ -121,7 +121,7 @@ Read `CLAUDE.md` at the repo root for architecture, conventions, and hard rules.
 
 - **New components**: None
 - **Modified components**:
-  - `dashboard/templates/**` — item detail page template (whichever template renders the approve/unapprove forms) gains `{% if item.item_type.value != 'Research' %}` guards, plus an inline notice for research items.
+  - `dashboard/templates/**` — item detail page template (whichever template renders the approve/unapprove forms) gains `{% if item.type.value != 'Research' %}` guards (or `{% if item_type != 'Research' %}` where the route already passes the pre-computed string, e.g., via `dashboard/routers/items.py:782`), plus an inline notice for research items.
   - Batch-queue list template — reflects the backend filter change (research excluded).
 - **Removed components**: None
 
@@ -298,7 +298,8 @@ And   Step 6 states that "iw doc-update" auto-transitions the work item to "comp
 - **Why auto-complete triggers on `doc-update` (not on a dedicated `iw research-done` command)**: the trigger should match the *user's* mental model. Users don't think "I'm done researching"; they think "I wrote the document." `doc-update` IS the document-creation moment. Dedicated commands add ceremony without benefit.
 - **Why idempotent on already-complete**: the `iw-research` skill may re-run `doc-update` to refine content; the work item transition should fire exactly once and subsequent calls should be silent no-ops.
 - **Why exclude research from batches via backend filter AND frontend check AND CLI guard**: defense in depth. The CLI guard is the contract. The backend query filter prevents the dashboard from even offering research items as batch candidates. The frontend filter would be redundant once the backend filter lands; the frontend responsibility is the approve/unapprove button hiding, not the batch-queue list (that's backend).
-- **Risk — `doc_id` collision across types**: if a user registers a non-research work item (e.g., `F-00001`) AND a non-research doc with the same `doc_id == F-00001`, the new `doc-update` logic must NOT touch the work item because the doc's `doc_type` is not `research`. The guard is: `doc.doc_type == DocType.research AND work_item.item_type == WorkItemType.Research`. Both checks are required.
+- **Risk — `doc_id` collision across types**: if a user registers a non-research work item (e.g., `F-00001`) AND a non-research doc with the same `doc_id == F-00001`, the new `doc-update` logic must NOT touch the work item because the doc's `doc_type` is not `research`. The guard is: `doc.doc_type == DocType.research AND work_item.type == WorkItemType.Research` (note: the `WorkItem` ORM attribute is `type`, not `item_type`). Both checks are required.
 - **Risk — dashboard template divergence**: the approve/unapprove UI may appear in multiple templates (item detail, list views, context menus). S03 must `grep` for every approve action form and audit each.
 - **Risk — existing tests asserting the old flow**: the research type was introduced recently. S05 MUST run the full suite and fix every test that expects research items to go through `approved`. Do not skip tests; update them.
 - **Out of scope**: changing the flow for features, incidents, or other change requests. Changes to `iw-research-quick` (it doesn't create work items). Dashboard visual redesign.
+- **ORM attribute naming**: the `WorkItem` model attribute is `type` (not `item_type`) — see `orch/db/models.py:291` (`type: Mapped[WorkItemType]`). All attribute accesses across this CR use `item.type` / `work_item.type` / `WorkItem.type` (for SQLAlchemy column refs) / `{{ item.type.value }}` in Jinja. The Python **function parameter** name on the new type-aware validators is `item_type: WorkItemType | None = None` — unrelated to the ORM attribute name; do not confuse the two.
