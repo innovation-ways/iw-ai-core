@@ -39,7 +39,7 @@ Final cross-agent review of the complete CR-00010 change set. Per-agent reviews 
 
 Walk through every AC and confirm it is delivered end-to-end, not just in isolation:
 
-- **AC1** (approve rejects research): CLI validator + command + exit code 2 + error substring. Trace the path from user input to error output.
+- **AC1** (approve rejects research): CLI validator + command + exit code `1` (matches existing invalid-transition at `orch/cli/item_commands.py:325`) + error substring. Trace the path from user input to error output.
 - **AC2** (unapprove rejects research): same as AC1, different command.
 - **AC3** (doc-update auto-completes): CLI path from `iw doc-update R-00001 --doc-type research ...` through `DocService.upsert_doc` to the work-item transition. All four trigger conditions (doc_type=research, work_item found, item_type=Research, status=draft) enforced. `work_item_auto_completed: true` in the JSON output.
 - **AC4** (idempotent): second call on a completed research item returns `work_item_auto_completed: false` and does not raise `InvalidTransition`.
@@ -47,14 +47,14 @@ Walk through every AC and confirm it is delivered end-to-end, not just in isolat
 - **AC6** (batch-create rejects research): CLI validation order has research check BEFORE status check.
 - **AC7** (state machine): both `can_transition_work_item_status` and `validate_work_item_status` accept the optional `item_type` parameter; the research table is `{draft: {completed}, completed: {}}`; backward compat preserved.
 - **AC8** (dashboard hides approve/unapprove): template guard present; inline notice rendered. (Full verification in S14.)
-- **AC9** (batch-queue excludes research): backend query has `WorkItem.item_type != WorkItemType.Research` predicate.
+- **AC9** (batch-queue excludes research): backend query has `WorkItem.type != WorkItemType.Research` predicate (note: ORM attribute is `type`, not `item_type` — see `orch/db/models.py:291`).
 - **AC10** (skill docs): Step 6 updated; no `iw approve` instruction; callout added.
 
 Any AC without a clear implementation path is a CRITICAL finding + a `missing_requirements` entry.
 
 ### 2. Cross-Agent Consistency
 
-- **Enum value agreement**: `WorkItemType.Research.value == "Research"` (capital R). Jinja templates use `item.item_type.value != 'Research'`. Python routers use `item.item_type == WorkItemType.Research`. Python validators use `item_type == WorkItemType.Research`. Any case mismatch anywhere is CRITICAL.
+- **Enum value agreement**: `WorkItemType.Research.value == "Research"` (capital R). Jinja templates use `item.type.value != 'Research'` (ORM attribute is `.type`, not `.item_type`). Python routers use `item.type == WorkItemType.Research`. Python validators take a function **parameter** named `item_type` (distinct from the ORM attribute — don't conflate): `item_type == WorkItemType.Research`. Any case mismatch on the `'Research'` string, or any use of `.item_type` as an ORM attribute access, is CRITICAL.
 - **Error-message consistency**: CLI `approve`/`unapprove` message (from S01) and dashboard route rejection message (from S03) don't have to be byte-identical but they should convey the same information. Divergent wording that implies different semantics is MEDIUM.
 - **`work_item_auto_completed` JSON field**: backend (S01) emits it; tests (S05) assert on it. Name must match exactly in both.
 - **Filter predicate placement**: S01 rejects research in `batch-create` (CLI) with error; S03 excludes research from the batch-queue list (dashboard). These are two different contracts — confirm both exist. Removing one on the assumption the other covers it is HIGH.
@@ -81,7 +81,7 @@ Any AC without a clear implementation path is a CRITICAL finding + a `missing_re
 
 - User-controlled `doc_id` flows to `session.get(WorkItem, (project_id, doc_id))` — composite PK lookup, parameterized, safe.
 - No hardcoded secrets, ports, or URLs.
-- Jinja autoescape on — `{{ item.item_type.value }}` is safe in text context. No `| safe` filter on user data.
+- Jinja autoescape on — `{{ item.type.value }}` is safe in text context. No `| safe` filter on user data.
 
 ### 7. Regression Surface
 

@@ -26,7 +26,7 @@
 Review S01's backend changes. Scope:
 - New research-specific state-machine transition table + type-aware validators (`can_transition_work_item_status`, `validate_work_item_status`).
 - `validate_approve_transition` / `validate_unapprove_transition` reject research items.
-- `approve` / `unapprove` Click commands pass `item.item_type` into validators.
+- `approve` / `unapprove` Click commands pass `item.type` (the ORM attribute, not `item.item_type`) into validators.
 - `doc-update` auto-completes research work item on `doc_type=research` + matching work item in `draft`.
 - `batch-create` rejects research items.
 - `skills/iw-research/SKILL.md` Step 6 documents the new auto-complete flow.
@@ -47,14 +47,14 @@ Read the design doc first (especially AC1–AC7, AC10). Then diff and review.
 - **Order of checks**: in `validate_approve_transition`, the research check fires BEFORE the status check. An early `current_status != draft` check that runs first would return a misleading status error for a research item. HIGH if out of order.
 - **Error message**: includes the substring `"Cannot approve research items"` (AC1) and `"Cannot unapprove research items"` (AC2). Missing either substring is HIGH — the AC tests will grep for them.
 - **Backward compatibility**: calling `validate_approve_transition(status, item_type=None)` or without the second arg produces the exact same output as before for non-research types. CRITICAL if any existing non-research test regresses.
-- **Command wiring**: `approve` / `unapprove` Click commands load the work item first, then pass `item.item_type` into the validator. If the validator returns a non-None string, the command exits via `output_error(ctx, msg, 2)`. Any mismatch in exit code or in-band error handling is MEDIUM.
+- **Command wiring**: `approve` / `unapprove` Click commands load the work item first, then pass `item.type` (ORM attribute — see `orch/db/models.py:291`) into the validator. Using `item.item_type` is CRITICAL — that attribute does not exist on `WorkItem` and will raise `AttributeError`. If the validator returns a non-None string, the command exits via `output_error(ctx, msg, 1)` (exit code `1`, matching the existing invalid-transition paths at `orch/cli/item_commands.py:325` and `377`). Any mismatch in exit code (e.g., `2`) or in-band error handling is MEDIUM.
 
 ### 3. `doc-update` Auto-Complete (AC3, AC4, AC5)
 
 - **Trigger condition** — ALL of the following must hold for the transition to fire:
   - `doc.doc_type == DocType.research` (not `doc_type` input string — the resolved enum on the upserted doc, so default behavior is correct even when `--doc-type` flag was omitted and the upsert preserved the existing type)
   - `work_item is not None`
-  - `work_item.item_type == WorkItemType.Research`
+  - `work_item.type == WorkItemType.Research` (ORM attribute `.type`, not `.item_type`)
   - `work_item.status == WorkItemStatus.draft`
   Any trigger path that fires without ALL four conditions is HIGH.
 - **Idempotency (AC4)**: calling `doc-update` on a research item already in `completed` must NOT re-trigger the transition. The `status == draft` guard handles this — verify it is present.

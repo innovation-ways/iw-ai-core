@@ -34,30 +34,39 @@ Dashboard changes — the backend now rejects approve/unapprove and batch-create
 
 1. `grep -rn "approve\|unapprove" dashboard/templates/` — enumerate every template that renders an approve or unapprove button/form.
 2. List them in your report under `audited_templates:` so reviewers can verify coverage.
-3. For each one that renders on a work-item context (detail page, row action, etc.), add a Jinja guard:
-   ```jinja
-   {% if item.item_type.value != 'Research' %}
-     {# existing approve/unapprove form #}
-   {% else %}
-     <p class="text-sm text-muted">
-       Research items auto-complete when the research document is created.
-     </p>
-   {% endif %}
-   ```
-4. The guard predicate is `item.item_type.value != 'Research'`. Confirm the ORM enum serializes as the string `"Research"` in Jinja (`WorkItemType.Research.value == "Research"` per `orch/db/models.py:48-52`).
+3. For each one that renders on a work-item context (detail page, row action, etc.), add a Jinja guard. **Pick the predicate based on what the template actually receives**:
+   - **When the ORM `WorkItem` instance is in scope** (common — the template gets the object as `item`):
+     ```jinja
+     {% if item.type.value != 'Research' %}
+       {# existing approve/unapprove form #}
+     {% else %}
+       <p class="text-sm text-muted">
+         Research items auto-complete when the research document is created.
+       </p>
+     {% endif %}
+     ```
+     Note: the ORM attribute is `type` (not `item_type`) — see `orch/db/models.py:291`. Using `item.item_type` in Jinja silently resolves to `undefined` under `StrictUndefined`-off and is a runtime bug under strict mode. Verify by grepping existing templates: `item.type` is the established convention (`dashboard/templates/pages/project/queue.html:60`, `history.html:105,111`, `all_active.html:43`).
+   - **When the template receives a pre-computed `item_type` string context var** (e.g., `dashboard/routers/items.py:782,814` pass `"item_type": item.type.value` alongside the ORM `item`):
+     ```jinja
+     {% if item_type != 'Research' %}
+       {# ... #}
+     {% endif %}
+     ```
+     Here `item_type` is already a string, so no `.value` access.
+4. The comparison target is the string `'Research'` (capital R) — `WorkItemType.Research.value == "Research"` per `orch/db/models.py:48-52`.
 5. If multiple templates inherit from a shared partial that renders the action buttons, put the guard in the partial, not in every inheritor. Avoid duplication.
 
 ### 2. Batch-queue backend filter
 
-1. Find the route handler that feeds the batch-queue view — likely in `dashboard/routers/project_pages.py` or a sibling (`batch_pages.py`, `project_dashboard.py`). It will contain a SELECT that filters by `WorkItem.status == WorkItemStatus.approved`.
-2. Add `WorkItem.item_type != WorkItemType.Research` to the WHERE clause:
+1. Find the route handler that feeds the batch-queue view — likely in `dashboard/routers/project_pages.py` or a sibling (`batch_pages.py`, `project_dashboard.py`). It will contain a SELECT that filters by `WorkItem.status == WorkItemStatus.approved`. Cross-reference with `dashboard/routers/project_pages.py:128,155` which already uses `WorkItem.type` (confirming the column name).
+2. Add `WorkItem.type != WorkItemType.Research` to the WHERE clause (the SQLAlchemy column attribute is `type`, not `item_type` — see `orch/db/models.py:291` and the existing uses in `dashboard/routers/project_pages.py:128,155`):
    ```python
    stmt = (
        select(WorkItem)
        .where(
            WorkItem.project_id == project_id,
            WorkItem.status == WorkItemStatus.approved,
-           WorkItem.item_type != WorkItemType.Research,
+           WorkItem.type != WorkItemType.Research,
        )
        # ... existing order_by / limit
    )
@@ -67,21 +76,25 @@ Dashboard changes — the backend now rejects approve/unapprove and batch-create
 
 ### 3. Batch-queue template filter (defense in depth)
 
-1. In the template that renders the batch-queue list, wrap the row render in `{% if item.item_type.value != 'Research' %}` as a second line of defense. This also hides any research item that might have been included via a stale cache or manual DB edit.
+1. In the template that renders the batch-queue list (`dashboard/templates/pages/project/queue.html`), wrap the row render in `{% if item.type.value != 'Research' %}` as a second line of defense (use `.type`, not `.item_type` — the template already uses `item.type` at lines 60 and 136 for the type badge, so stay consistent). This also hides any research item that might have been included via a stale cache or manual DB edit.
 2. If the template already iterates over a backend-filtered list (step §2), the `{% if %}` never triggers in practice — but it documents intent and guards against the filter being accidentally removed.
 
 ### 4. Approve / Unapprove route rejection
 
 In `dashboard/routers/actions.py` (or wherever the POST handlers for approve/unapprove live):
 
-1. After loading the work item and confirming ownership, add a research guard BEFORE the existing status-transition logic:
+1. After loading the work item and confirming ownership, add a research guard BEFORE the existing status-transition logic (the ORM attribute is `type` — `dashboard/routers/actions.py` already uses `item.status`, `item.type.value` style for existing checks; follow that convention):
    ```python
-   if work_item.item_type == WorkItemType.Research:
-       # Match the existing invalid-transition HTTP contract — pick whichever
-       # response shape the other error branches already use (HTMLResponse with
-       # htmx hx-trigger, HTTPException, or a flash-message redirect).
-       return _research_action_rejected_response(...)
+   if item.type == WorkItemType.Research:
+       # Match the existing invalid-transition HTTP contract — the current
+       # approve_item / unapprove_item handlers use HTTPException(status_code=422, detail=...)
+       # (see dashboard/routers/actions.py:460-464). Mirror that shape:
+       raise HTTPException(
+           status_code=422,
+           detail="Research items cannot be approved — they auto-complete when the research document is created.",
+       )
    ```
+   Note: the local var name in `approve_item` / `unapprove_item` is `item` (per `dashboard/routers/actions.py:459,708`), not `work_item` — match the existing name.
 2. The response body/content should read:
    - For approve: `"Research items cannot be approved — they auto-complete when the research document is created."`
    - For unapprove: `"Research items do not use the approval workflow."`
@@ -113,7 +126,7 @@ Use the existing dashboard CSS utility classes. Do NOT add new CSS.
 Read `dashboard/CLAUDE.md`:
 
 - FastAPI + Jinja2 + htmx; no build step, no bundler.
-- Autoescape is on by default — `{{ item.item_type.value }}` is safe in text context. Do NOT use `| safe`.
+- Autoescape is on by default — `{{ item.type.value }}` is safe in text context. Do NOT use `| safe`.
 - Business logic stays in `orch/` — routers are thin glue, templates are presentation.
 - No inline JS in templates unless absolutely necessary (none needed here).
 
