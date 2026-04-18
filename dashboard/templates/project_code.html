@@ -2,6 +2,10 @@
 
 {% block title %}Code — {{ current_project.display_name }}{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="/static/chat.css" />
+{% endblock %}
+
 {% block content %}
 
 <!-- Page Header -->
@@ -79,20 +83,49 @@
   {% endif %}
 </div>
 
-<!-- Architecture panel -->
-<div id="code-content-root"
-     data-context-level="architecture"
-     data-context-doc-id="{{ index_status.level1_doc_id | default('') }}"
-     data-module-path="">
-  {% if content_html %}
-    {% include "fragments/code_architecture_view.html" %}
-  {% else %}
-    {% include "fragments/code_empty_state.html" %}
-  {% endif %}
+<!-- 2-column grid: reading surface + chat panel -->
+<div id="page-body" class="grid gap-0" style="grid-template-columns: 1fr var(--chat-width);">
+  <!-- Left: reading surface -->
+  <div id="code-content-root"
+       data-context-level="architecture"
+       data-context-doc-id="{{ index_status.level1_doc_id | default('') }}"
+       data-module-path=""
+       data-project-id="{{ current_project.id }}">
+    {% if content_html %}
+      {% include "fragments/code_architecture_view.html" %}
+    {% else %}
+      {% include "fragments/code_empty_state.html" %}
+    {% endif %}
+  </div>
 
-  {# Q&A Panel — context-aware code Q&A #}
-  {% include "fragments/code_qa_panel.html" %}
+  <!-- Right: chat panel -->
+  <aside id="chat-panel-slot"
+         class="border-l border-border flex flex-col overflow-hidden"
+         aria-label="Code module chat">
+    {% include "chat/panel.html" %}
+  </aside>
 </div>
+
+<script src="/static/chat/panel.js"></script>
+<script src="/static/chat/stream.js"></script>
+<script type="module">
+  import('/static/chat/smd-loader.js')
+    .then(function() {
+      var s1 = document.createElement('script');
+      s1.src = '/static/chat/render.js';
+      document.head.appendChild(s1);
+      s1.onload = function() {
+        var s2 = document.createElement('script');
+        s2.src = '/static/chat/actions.js';
+        document.head.appendChild(s2);
+        s2.onload = function() {
+          var s3 = document.createElement('script');
+          s3.src = '/static/chat/composer.js';
+          document.head.appendChild(s3);
+        };
+      };
+    });
+</script>
 
 <script>
 function toggleCodeDropdown() {

@@ -1,0 +1,8 @@
+<article data-role="{{ role }}" data-msg-id="{{ id }}" class="chat-message">
+  <header class="text-xs text-muted-foreground">{{ role_label }}</header>
+  <div class="chat-message-body">{{ content | safe }}</div>
+  {% if role == "assistant" %}
+    {% include "chat/parts/actions.html" %}
+    {% include "chat/parts/sources_panel.html" %}
+  {% endif %}
+</article>

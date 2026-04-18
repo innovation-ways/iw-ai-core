@@ -1,17 +1,20 @@
 """POST /api/projects/{project_id}/code/qa — SSE streaming endpoint for Code Q&A.
 
-Wraps QAEngine.answer_stream() in an SSE StreamingResponse.
+Wraps QAEngine.answer_stream() in an SSE StreamingResponse with named events
+and base64-encoded token payloads.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import queue
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -42,6 +45,23 @@ class QARequest(BaseModel):
 router = APIRouter(prefix="/api")
 
 
+@dataclass
+class _CitationTracker:
+    """De-duplicates citations by symbol identity and assigns monotonic 1-based indices."""
+
+    _seen: dict[str, int] = field(default_factory=dict)
+    _next: int = 1
+
+    def add(self, symbol_id: str) -> int | None:
+        """Add a symbol ID; return its 1-based index if new, None if already seen."""
+        if symbol_id in self._seen:
+            return None
+        idx = self._next
+        self._seen[symbol_id] = idx
+        self._next += 1
+        return idx
+
+
 def _get_project_or_404(project_id: str, db: Session) -> Project:
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
@@ -67,14 +87,15 @@ def _run_qa_in_thread(
 
     async def produce_tokens() -> None:
         try:
-            async for token in engine.answer_stream(
+            stream = engine.answer_stream(
                 question=question,
                 context_level=context_level,
                 context_doc_id=context_doc_id,
                 module_path=module_path,
                 conversation_history=conversation_history,
                 session=db_session,  # type: ignore[arg-type]
-            ):
+            )
+            async for token in stream:
                 q.put(token)
         except (ConnectionRefusedError, OSError):
             q.put("__ERROR__:Local AI unavailable. Check that Ollama is running.")
@@ -119,26 +140,24 @@ async def _sse_generator(
         q,
     )
 
-    full_response_parts: list[str] = []
-
     while True:
         token = await loop.run_in_executor(None, q.get)
         if token is None:
             break
         if token.startswith("__ERROR__:"):
             error_msg = token[len("__ERROR__:") :]
-            payload = json.dumps({"event": "error", "message": error_msg})
-            yield f"data: {payload}\n\n"
+            payload = json.dumps({"message": error_msg})
+            yield f"event: error\ndata: {payload}\n\n"
             return
-        full_response_parts.append(token)
-        payload = json.dumps({"token": token})
-        yield f"data: {payload}\n\n"
+
+        b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
+        payload = json.dumps({"b64": b64})
+        yield f"event: token\ndata: {payload}\n\n"
 
     executor.shutdown(wait=False, cancel_futures=True)
 
-    full_response = "".join(full_response_parts)
-    payload = json.dumps({"event": "done", "full_response": full_response})
-    yield f"data: {payload}\n\n"
+    done_payload = json.dumps({"ok": True})
+    yield f"event: done\ndata: {done_payload}\n\n"
 
 
 @router.post("/projects/{project_id}/code/qa")
@@ -182,4 +201,18 @@ async def code_qa(
             "X-Accel-Buffering": "no",
             "Connection": "keep-alive",
         },
+    )
+
+
+@router.post("/projects/{project_id}/code/qa-with-image")
+async def code_qa_with_image(
+    project_id: str,
+    db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+) -> StreamingResponse:
+    """Multipart image attachment stub — returns 501 Not Implemented."""
+    _ = project_id, db, file
+    raise HTTPException(
+        status_code=501,
+        detail="Image attachments coming soon",
     )
