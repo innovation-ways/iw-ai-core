@@ -70,7 +70,7 @@ class TestChatPanelTemplate:
         assert "translate-x-full" in chat_panel_html
 
     def test_drawer_close_button(self, chat_panel_html):
-        assert 'id="chat-drawer-close"' in chat_panel_html
+        assert 'id="chat-close-btn"' in chat_panel_html
 
 
 class TestChatComposerTemplate:
