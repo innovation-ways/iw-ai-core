@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1.6
+# Isolated E2E image for browser_verification steps.
+#
+# Runs the dashboard against a per-worktree postgres + Ollama stub,
+# both wired via docker-compose.e2e.yml. The CMD is overridden per service
+# (dashboard runs uvicorn; the Ollama stub runs scripts/e2e_ollama_stub.py).
+
+FROM python:3.12-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_SYSTEM_PYTHON=1 \
+    PATH="/root/.local/bin:${PATH}"
+
+# Install uv for dependency resolution.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install dependencies first so they are cached when source changes.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+# Bring in the source tree.
+COPY . .
+
+# Reinstall to register the project entry points against the source.
+RUN uv sync --frozen --no-dev
+
+EXPOSE 9900 11434
+
+# Default: dashboard. docker-compose.e2e.yml overrides for the Ollama stub.
+CMD ["/app/scripts/e2e_dashboard_entrypoint.sh"]

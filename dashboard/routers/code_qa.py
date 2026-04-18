@@ -40,6 +40,7 @@ class QARequest(BaseModel):
     context_level: str = Field(..., pattern="^(architecture|module)$")
     context_doc_id: str | None = None
     module_path: str | None = None
+    module_name: str | None = None
     conversation_history: list[ConversationMessage] = Field(default_factory=list)
 
 
@@ -76,6 +77,7 @@ def _run_qa_in_thread(
     context_level: str,
     context_doc_id: str | None,
     module_path: str | None,
+    module_name: str | None,
     conversation_history: list[dict[str, str]],
     db_session: Session,
     config: CodeUnderstandingConfig,
@@ -93,6 +95,7 @@ def _run_qa_in_thread(
                 context_level=context_level,
                 context_doc_id=context_doc_id,
                 module_path=module_path,
+                module_name=module_name,
                 conversation_history=conversation_history,
                 session=db_session,  # type: ignore[arg-type]
             )
@@ -117,6 +120,7 @@ async def _sse_generator(
     context_level: str,
     context_doc_id: str | None,
     module_path: str | None,
+    module_name: str | None,
     conversation_history: list[dict[str, str]],
     db_session: Session,
     config: CodeUnderstandingConfig,
@@ -135,6 +139,7 @@ async def _sse_generator(
         context_level,
         context_doc_id,
         module_path,
+        module_name,
         conversation_history,
         db_session,
         config,
@@ -195,6 +200,7 @@ async def code_qa(
             context_level=request.context_level,
             context_doc_id=request.context_doc_id,
             module_path=request.module_path,
+            module_name=request.module_name,
             conversation_history=[m.model_dump() for m in request.conversation_history],
             db_session=db,
             config=config,

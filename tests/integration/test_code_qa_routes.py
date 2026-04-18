@@ -279,3 +279,95 @@ def test_qa_empty_conversation_history(
     done_events = [e for e in events if e["event"] == "done"]
     assert len(done_events) == 1
     assert done_events[0]["data"] == {"ok": True}
+
+
+def test_post_qa_with_module_name_forwards_to_engine(
+    client: TestClient, test_project_with_index: Project, tmp_path: Path
+) -> None:
+    """AC7: module_name is forwarded to the QAEngine spy."""
+    project_index_path = tmp_path / "code-index" / test_project_with_index.id / "vectors"
+    project_index_path.mkdir(parents=True)
+
+    captured_kwargs: dict = {}
+
+    async def mock_answer_stream(**kwargs: object) -> AsyncGenerator[str, None]:
+        captured_kwargs.update(kwargs)
+        yield "Answer"
+
+    with patch("orch.rag.qa.QAEngine") as mock_qa_engine:
+        mock_engine = mock_qa_engine.return_value
+        mock_engine.answer_stream = mock_answer_stream
+
+        resp = client.post(
+            f"/api/projects/{test_project_with_index.id}/code/qa",
+            json={
+                "question": "What does it do?",
+                "context_level": "module",
+                "module_path": "orch/daemon/",
+                "module_name": "Orchestration Daemon",
+            },
+        )
+
+    assert resp.status_code == 200
+    assert captured_kwargs.get("module_name") == "Orchestration Daemon"
+
+
+def test_post_qa_without_module_name_still_accepted(
+    client: TestClient, test_project_with_index: Project, tmp_path: Path
+) -> None:
+    """AC7: Request without module_name is accepted and None is forwarded."""
+    project_index_path = tmp_path / "code-index" / test_project_with_index.id / "vectors"
+    project_index_path.mkdir(parents=True)
+
+    captured_kwargs: dict = {}
+
+    async def mock_answer_stream(**kwargs: object) -> AsyncGenerator[str, None]:
+        captured_kwargs.update(kwargs)
+        yield "Answer"
+
+    with patch("orch.rag.qa.QAEngine") as mock_qa_engine:
+        mock_engine = mock_qa_engine.return_value
+        mock_engine.answer_stream = mock_answer_stream
+
+        resp = client.post(
+            f"/api/projects/{test_project_with_index.id}/code/qa",
+            json={
+                "question": "What does it do?",
+                "context_level": "module",
+                "module_path": "orch/daemon/",
+            },
+        )
+
+    assert resp.status_code == 200
+    assert captured_kwargs.get("module_name") is None
+
+
+def test_post_qa_with_module_name_null_still_accepted(
+    client: TestClient, test_project_with_index: Project, tmp_path: Path
+) -> None:
+    """AC7: Request with explicit module_name=null is accepted and None is forwarded."""
+    project_index_path = tmp_path / "code-index" / test_project_with_index.id / "vectors"
+    project_index_path.mkdir(parents=True)
+
+    captured_kwargs: dict = {}
+
+    async def mock_answer_stream(**kwargs: object) -> AsyncGenerator[str, None]:
+        captured_kwargs.update(kwargs)
+        yield "Answer"
+
+    with patch("orch.rag.qa.QAEngine") as mock_qa_engine:
+        mock_engine = mock_qa_engine.return_value
+        mock_engine.answer_stream = mock_answer_stream
+
+        resp = client.post(
+            f"/api/projects/{test_project_with_index.id}/code/qa",
+            json={
+                "question": "What does it do?",
+                "context_level": "module",
+                "module_path": "orch/daemon/",
+                "module_name": None,
+            },
+        )
+
+    assert resp.status_code == 200
+    assert captured_kwargs.get("module_name") is None

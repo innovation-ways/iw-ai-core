@@ -110,4 +110,44 @@
   });
 
   applyCollapsedState(false);
+
+  function syncChatHeader() {
+    var root = document.getElementById('code-content-root');
+    var label = document.getElementById('chat-context-label');
+    if (!root || !label) return;
+    var path = (root.dataset.modulePath || '').trim();
+    var name = (root.dataset.moduleName || '').trim();
+    var text;
+    if (path) {
+      text = name ? 'Chat — ' + path + ' (' + name + ')' : 'Chat — ' + path;
+    } else {
+      text = 'Chat — Architecture';
+    }
+    label.textContent = text;
+    label.setAttribute('title', text);
+  }
+
+  syncChatHeader();
+  document.body.addEventListener('iw:code-context-changed', syncChatHeader);
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    if (e.detail && e.detail.target && e.detail.target.id === 'code-content-root') {
+      syncChatHeader();
+    }
+  });
+  document.body.addEventListener('htmx:afterSwap', function (e) {
+    var target = e.detail && e.detail.target;
+    if (!target) return;
+    var isComponentsSwap = target.id === 'code-components-section';
+    var isDetailPanelSwap = target.id === 'code-detail-panel';
+    if (isComponentsSwap || (isDetailPanelSwap && !target.querySelector('#code-module-detail'))) {
+      var root = document.getElementById('code-content-root');
+      if (root) {
+        root.dataset.modulePath = '';
+        root.dataset.moduleName = '';
+        document.body.dispatchEvent(new CustomEvent('iw:code-context-changed', {
+          detail: { source: 'architecture-reset' }
+        }));
+      }
+    }
+  });
 })();

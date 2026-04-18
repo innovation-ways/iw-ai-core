@@ -1,0 +1,68 @@
+# docker-compose.e2e.yml
+# Per-worktree isolated stack for browser_verification steps.
+#
+# NEVER runs in parallel with the production dashboard on :9900 / postgres :5433.
+# Ports are bound on 127.0.0.1 only, and each invocation sets its own:
+#   - COMPOSE_PROJECT_NAME  (isolates container names + network + volumes)
+#   - E2E_FRONTEND_PORT     (host port for the dashboard)
+#   - E2E_DB_PORT           (host port for the isolated postgres)
+#
+# The variables are allocated per (project_id, item_id) by
+# orch.daemon.browser_env.allocate_browser_env and scanned for freeness
+# before compose-up runs.
+
+services:
+  e2e-db:
+    image: postgres:15-alpine
+    restart: "no"
+    ports:
+      - "127.0.0.1:${E2E_DB_PORT}:5432"
+    environment:
+      POSTGRES_DB: iw_e2e
+      POSTGRES_USER: iw_e2e
+      POSTGRES_PASSWORD: iw_e2e_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iw_e2e -d iw_e2e"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  e2e-ollama:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    restart: "no"
+    command: ["uv", "run", "python", "scripts/e2e_ollama_stub.py", "--port", "11434"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:11434/', timeout=2).read()\""]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  e2e-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    restart: "no"
+    depends_on:
+      e2e-db:
+        condition: service_healthy
+      e2e-ollama:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${E2E_FRONTEND_PORT}:9900"
+    environment:
+      IW_CORE_DB_HOST: e2e-db
+      IW_CORE_DB_PORT: "5432"
+      IW_CORE_DB_NAME: iw_e2e
+      IW_CORE_DB_USER: iw_e2e
+      IW_CORE_DB_PASSWORD: iw_e2e_dev
+      IW_CORE_DASHBOARD_PORT: "9900"
+      IW_CORE_POLL_INTERVAL: "60"
+      IW_CORE_STALL_THRESHOLD: "300"
+      IW_E2E_OLLAMA_URL: "http://e2e-ollama:11434"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9900/health', timeout=2).read()\""]
+      interval: 3s
+      timeout: 5s
+      retries: 40
