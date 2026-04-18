@@ -21,12 +21,13 @@ from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from orch.db.models import Project
-from orch.rag.config import CodeUnderstandingConfig
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from sqlalchemy.orm import Session
+
+    from orch.rag.config import CodeUnderstandingConfig
 
 
 class ConversationMessage(BaseModel):
@@ -174,8 +175,11 @@ async def code_qa(
     """
     project = _get_project_or_404(project_id, db)
 
-    code_cfg_dict = (project.config or {}).get("code_understanding", {})
-    config = CodeUnderstandingConfig(**code_cfg_dict)
+    from orch.config import load_config
+    from orch.rag.config import build_code_config_from_project
+
+    cfg = load_config()
+    config = build_code_config_from_project(project.config, cfg.index_path)
 
     index_path = Path(config.index_path)
     if not (index_path / project_id / "vectors").exists():

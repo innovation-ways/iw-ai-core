@@ -12,10 +12,16 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from orch.rag.config import DEFAULT_INDEX_PATH
+
 # Load .env from the repo root (two levels up from this file: orch/config.py -> orch/ -> repo root)
 _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 CORE_ROOT: Path = _ENV_FILE.parent
 load_dotenv(_ENV_FILE)
+
+# Re-export the canonical default so `orch.config.DEFAULT_INDEX_PATH` and
+# `orch.rag.config.DEFAULT_INDEX_PATH` refer to the same value.
+__all__ = ("CORE_ROOT", "DEFAULT_INDEX_PATH", "DaemonConfig", "get_db_url", "load_config")
 
 
 def _require(name: str) -> str:
@@ -69,7 +75,7 @@ class DaemonConfig:
     log_file: str
 
     # Code Understanding
-    index_path: str = "~/.iw-ai-core/indexes"
+    index_path: str = DEFAULT_INDEX_PATH
 
     # Project registry
     projects_toml: Path = field(default_factory=lambda: _ENV_FILE.parent / "projects.toml")
@@ -102,9 +108,7 @@ def load_config() -> DaemonConfig:
         archive_ttl=int(_require("IW_CORE_ARCHIVE_TTL")),
         log_level=_require("IW_CORE_LOG_LEVEL"),
         log_file=_require("IW_CORE_LOG_FILE"),
-        index_path=str(
-            Path(os.environ.get("IW_CORE_INDEX_PATH", "~/.iw-ai-core/indexes")).expanduser()
-        ),
+        index_path=str(Path(os.environ.get("IW_CORE_INDEX_PATH", DEFAULT_INDEX_PATH)).expanduser()),
         projects_toml=Path(
             os.environ.get("IW_CORE_PROJECTS_TOML", str(_ENV_FILE.parent / "projects.toml"))
         ),

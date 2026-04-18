@@ -72,10 +72,19 @@
             updateUI(data);
           } else if (data.event === 'done') {
             es.close();
+            if (clearInterval && typeof timerId !== 'undefined') { clearInterval(timerId); }
+            if (data.status === 'failed' && typeof showToast === 'function') {
+              showToast({
+                type: 'error',
+                message: 'Code indexing failed: ' + (data.error || 'unknown error'),
+              });
+            }
             htmx.ajax('GET', '/project/' + projectId + '/api/code/status',
                       {target: '#code-status-panel', swap: 'innerHTML'});
-            htmx.ajax('GET', '/project/' + projectId + '/api/code/architecture',
-                      {target: '#code-content-root', swap: 'innerHTML'});
+            if (data.status !== 'failed') {
+              htmx.ajax('GET', '/project/' + projectId + '/api/code/architecture',
+                        {target: '#code-content-root', swap: 'innerHTML'});
+            }
           }
         } catch (err) {}
       };

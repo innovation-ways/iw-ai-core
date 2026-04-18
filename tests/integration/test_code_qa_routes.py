@@ -14,6 +14,7 @@ Mock QAEngine — never call real Ollama.
 
 from __future__ import annotations
 
+import base64
 import json
 from typing import TYPE_CHECKING
 from unittest.mock import patch
@@ -30,6 +31,31 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sqlalchemy.orm import Session
+
+
+def _parse_sse(body: str) -> list[dict[str, object]]:
+    """Parse SSE body into a list of {'event': str | None, 'data': dict} entries."""
+    events: list[dict[str, object]] = []
+    current_event: str | None = None
+    for raw in body.split("\n"):
+        line = raw.rstrip("\r")
+        if not line:
+            current_event = None
+            continue
+        if line.startswith("event: "):
+            current_event = line[len("event: ") :]
+        elif line.startswith("data: "):
+            payload = json.loads(line[len("data: ") :])
+            events.append({"event": current_event, "data": payload})
+    return events
+
+
+def _decode_token(entry: dict[str, object]) -> str:
+    data = entry["data"]
+    assert isinstance(data, dict)
+    b64 = data["b64"]
+    assert isinstance(b64, str)
+    return base64.b64decode(b64).decode("utf-8")
 
 
 @pytest.fixture
@@ -177,19 +203,17 @@ def test_qa_streams_tokens(
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "text/event-stream; charset=utf-8"
 
-    body = resp.text
-    data_lines = [line[6:] for line in body.split("\n") if line.startswith("data: ")]
-    payloads = [json.loads(line) for line in data_lines]
+    events = _parse_sse(resp.text)
 
-    token_payloads = [p for p in payloads if "token" in p]
-    assert len(token_payloads) == 3
-    assert token_payloads[0]["token"] == "Hello"  # noqa: S105
-    assert token_payloads[1]["token"] == " world"  # noqa: S105
-    assert token_payloads[2]["token"] == "!"  # noqa: S105
+    token_events = [e for e in events if e["event"] == "token"]
+    assert len(token_events) == 3
+    assert _decode_token(token_events[0]) == "Hello"
+    assert _decode_token(token_events[1]) == " world"
+    assert _decode_token(token_events[2]) == "!"
 
-    done_payloads = [p for p in payloads if p.get("event") == "done"]
-    assert len(done_payloads) == 1
-    assert done_payloads[0]["full_response"] == "Hello world!"
+    done_events = [e for e in events if e["event"] == "done"]
+    assert len(done_events) == 1
+    assert done_events[0]["data"] == {"ok": True}
 
 
 def test_qa_streams_error_event_on_ollama_down(
@@ -216,13 +240,12 @@ def test_qa_streams_error_event_on_ollama_down(
 
     assert resp.status_code == 200
 
-    body = resp.text
-    data_lines = [line[6:] for line in body.split("\n") if line.startswith("data: ")]
-    payloads = [json.loads(line) for line in data_lines]
-
-    error_payloads = [p for p in payloads if p.get("event") == "error"]
-    assert len(error_payloads) == 1
-    assert "Local AI unavailable" in error_payloads[0]["message"]
+    events = _parse_sse(resp.text)
+    error_events = [e for e in events if e["event"] == "error"]
+    assert len(error_events) == 1
+    error_data = error_events[0]["data"]
+    assert isinstance(error_data, dict)
+    assert "Local AI unavailable" in error_data["message"]
 
 
 def test_qa_empty_conversation_history(
@@ -249,9 +272,10 @@ def test_qa_empty_conversation_history(
         )
 
     assert resp.status_code == 200
-    body = resp.text
-    data_lines = [line[6:] for line in body.split("\n") if line.startswith("data: ")]
-    payloads = [json.loads(line) for line in data_lines]
-    done_payloads = [p for p in payloads if p.get("event") == "done"]
-    assert len(done_payloads) == 1
-    assert done_payloads[0]["full_response"] == "Answer"
+    events = _parse_sse(resp.text)
+    token_events = [e for e in events if e["event"] == "token"]
+    assert len(token_events) == 1
+    assert _decode_token(token_events[0]) == "Answer"
+    done_events = [e for e in events if e["event"] == "done"]
+    assert len(done_events) == 1
+    assert done_events[0]["data"] == {"ok": True}

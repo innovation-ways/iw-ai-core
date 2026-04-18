@@ -49,10 +49,11 @@ def _get_level1_doc(project_id: str, db: Session) -> ProjectDoc | None:
 
 
 def _build_code_config(project: Project) -> CodeUnderstandingConfig:
-    from orch.rag.config import CodeUnderstandingConfig
+    from orch.config import load_config
+    from orch.rag.config import build_code_config_from_project
 
-    code_cfg_dict = (project.config or {}).get("code_understanding", {})
-    return CodeUnderstandingConfig(**code_cfg_dict)
+    cfg = load_config()
+    return build_code_config_from_project(project.config, cfg.index_path)
 
 
 def _module_slug_to_path(module_slug: str, modules: list[dict[str, str]]) -> str | None:
