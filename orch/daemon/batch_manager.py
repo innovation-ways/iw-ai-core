@@ -389,10 +389,11 @@ class BatchManager:
         # ------------------------------------------------------------------
         agent_env: dict[str, str] | None = None
         if browser_env.is_browser_verification_step(step.step_type):
-            bv_env = browser_env.resolve_browser_env(
+            bv_env = browser_env.allocate_browser_env(
                 self.project_config,
                 self.project_id,
                 step.work_item_id,
+                worktree_path,
             )
             if bv_env is not None:
                 success, log_path = browser_env.run_env_up_hook(

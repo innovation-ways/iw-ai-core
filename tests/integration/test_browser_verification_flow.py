@@ -229,7 +229,9 @@ def test_launch_step_env_up_failure_marks_step_failed(
     worktree_path.mkdir(parents=True)
     worktree_info = {"path": str(worktree_path)}
 
+    fake_env = {"E2E_FRONTEND_PORT": "3137", "IW_BROWSER_BASE_URL": "http://localhost:3137"}
     with (
+        patch("orch.daemon.browser_env.allocate_browser_env", return_value=fake_env),
         patch("orch.daemon.browser_env.run_env_up_hook", return_value=(False, Path("/log.txt"))),
         patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen,
     ):
@@ -271,7 +273,7 @@ def test_launch_step_env_up_success_launches_agent_with_env(
 
     with (
         patch(
-            "orch.daemon.browser_env.resolve_browser_env",
+            "orch.daemon.browser_env.allocate_browser_env",
             return_value=fake_bv_env,
         ),
         patch(

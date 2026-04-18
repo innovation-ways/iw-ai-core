@@ -67,7 +67,7 @@ db-revision:
 
 # --- Services ---
 daemon-start:
-	uv run python -m orch.daemon.main &
+	uv run python -m orch.daemon &
 
 daemon-stop:
 	uv run iw daemon stop

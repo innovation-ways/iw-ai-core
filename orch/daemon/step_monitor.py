@@ -266,15 +266,16 @@ def _maybe_teardown_browser_env(
         if not browser_env.is_browser_verification_step(step.step_type):
             return
 
+        worktree_path = run.worktree_path or ""
         bv_env = browser_env.resolve_browser_env(
             project_config,
             project_id,
             step.work_item_id,
+            worktree_path=worktree_path,
         )
         if bv_env is None:
             return
 
-        worktree_path = run.worktree_path or ""
         browser_env.run_env_down_hook(
             project_config,
             worktree_path,

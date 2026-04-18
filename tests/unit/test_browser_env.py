@@ -10,12 +10,19 @@ All subprocess calls are patched. Tests verify:
 
 from __future__ import annotations
 
+import socket
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 from orch.daemon.browser_env import (
     _compute_port_offset,
+    _is_port_free,
+    _load_persisted_offset,
+    _pick_free_offset,
+    _save_persisted_offset,
+    _state_file_path,
+    allocate_browser_env,
     is_browser_verification_step,
     render_prompt_substitutions,
     resolve_browser_env,
@@ -348,3 +355,160 @@ def test_run_env_down_hook_exception_does_not_raise(tmp_path: Path) -> None:
     pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "make down"})
     with patch("orch.daemon.browser_env.subprocess.run", side_effect=OSError("docker not found")):
         run_env_down_hook(pc, str(tmp_path), {}, "F-00001", "S01")  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# _is_port_free
+# ---------------------------------------------------------------------------
+
+
+def _reserve_port() -> tuple[socket.socket, int]:
+    """Open a listening socket on an ephemeral port; caller closes."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    s.listen(1)
+    return s, s.getsockname()[1]
+
+
+def test_is_port_free_true_when_nothing_listens() -> None:
+    # Port 1 is almost certainly bound by no test process.
+    # Pick a random high port via OS, then close, then probe.
+    s, port = _reserve_port()
+    s.close()
+    assert _is_port_free(port) is True
+
+
+def test_is_port_free_false_when_port_in_use() -> None:
+    s, port = _reserve_port()
+    try:
+        assert _is_port_free(port) is False
+    finally:
+        s.close()
+
+
+# ---------------------------------------------------------------------------
+# _pick_free_offset
+# ---------------------------------------------------------------------------
+
+
+def test_pick_free_offset_returns_hash_offset_when_free() -> None:
+    """When the deterministic slot is free, the pick returns that offset."""
+    pool_cfg = {
+        "frontend_base": 49152,  # high range unlikely to be bound
+        "api_base": 49300,
+        "db_base": 49450,
+        "redis_base": 49600,
+        "pool_size": 50,
+    }
+    offset = _pick_free_offset(pool_cfg, "proj", "F-00001")
+    expected = _compute_port_offset("proj", "F-00001", 50)
+    assert offset == expected
+
+
+def test_pick_free_offset_scans_forward_on_collision() -> None:
+    """When the hash slot's frontend port is taken, the scan moves to the next offset."""
+    pool_cfg = {
+        "frontend_base": 49152,
+        "api_base": 49300,
+        "db_base": 49450,
+        "redis_base": 49600,
+        "pool_size": 50,
+    }
+    base = _compute_port_offset("proj", "F-00001", 50)
+    # Reserve the hash slot's frontend port
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", pool_cfg["frontend_base"] + base))
+    s.listen(1)
+    try:
+        offset = _pick_free_offset(pool_cfg, "proj", "F-00001")
+        assert offset is not None
+        assert offset != base
+    finally:
+        s.close()
+
+
+# ---------------------------------------------------------------------------
+# State-file persistence
+# ---------------------------------------------------------------------------
+
+
+def test_state_file_path_under_worktree_tmp(tmp_path: Path) -> None:
+    path = _state_file_path(str(tmp_path), "F-00001")
+    assert path == tmp_path / ".tmp" / "browser_env_F-00001.state"
+
+
+def test_save_and_load_persisted_offset_roundtrip(tmp_path: Path) -> None:
+    _save_persisted_offset(str(tmp_path), "F-00001", 42)
+    loaded = _load_persisted_offset(str(tmp_path), "F-00001")
+    assert loaded == 42
+
+
+def test_load_persisted_offset_none_when_missing(tmp_path: Path) -> None:
+    assert _load_persisted_offset(str(tmp_path), "F-00099") is None
+
+
+def test_load_persisted_offset_none_on_malformed_file(tmp_path: Path) -> None:
+    state = _state_file_path(str(tmp_path), "F-00001")
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text("{not json")
+    assert _load_persisted_offset(str(tmp_path), "F-00001") is None
+
+
+# ---------------------------------------------------------------------------
+# allocate_browser_env
+# ---------------------------------------------------------------------------
+
+
+def test_allocate_browser_env_returns_none_when_opted_out(tmp_path: Path) -> None:
+    pc = make_project_config(bv_cfg=None)
+    assert allocate_browser_env(pc, "innoforge", "F-00001", str(tmp_path)) is None
+
+
+def test_allocate_browser_env_writes_state_file(tmp_path: Path) -> None:
+    pc = make_project_config(bv_cfg={**_FULL_BV_CFG, "env_up_command": "/bin/true"})
+    env = allocate_browser_env(pc, "innoforge", "F-00001", str(tmp_path))
+    assert env is not None
+    loaded = _load_persisted_offset(str(tmp_path), "F-00001")
+    assert loaded is not None
+    # The env ports must agree with the persisted offset.
+    pool = _FULL_BV_CFG["port_pool"]
+    assert int(env["E2E_FRONTEND_PORT"]) == pool["frontend_base"] + loaded
+
+
+def test_allocate_browser_env_reuses_persisted_offset(tmp_path: Path) -> None:
+    """A second call with the same worktree must reuse the first offset."""
+    pc = make_project_config(bv_cfg={**_FULL_BV_CFG, "env_up_command": "/bin/true"})
+    first = allocate_browser_env(pc, "innoforge", "F-00001", str(tmp_path))
+    second = allocate_browser_env(pc, "innoforge", "F-00001", str(tmp_path))
+    assert first is not None
+    assert second is not None
+    assert first["E2E_FRONTEND_PORT"] == second["E2E_FRONTEND_PORT"]
+
+
+def test_resolve_browser_env_prefers_persisted_offset(tmp_path: Path) -> None:
+    """resolve_browser_env honours the state file over the hash offset."""
+    pc = make_project_config(bv_cfg={**_FULL_BV_CFG, "env_up_command": "/bin/true"})
+    # Save an offset that won't match the hash (use 0 — distinct from any non-zero hash).
+    _save_persisted_offset(str(tmp_path), "F-00001", 0)
+    env = resolve_browser_env(pc, "innoforge", "F-00001", worktree_path=str(tmp_path))
+    assert env is not None
+    pool = _FULL_BV_CFG["port_pool"]
+    assert int(env["E2E_FRONTEND_PORT"]) == pool["frontend_base"] + 0
+
+
+def test_resolve_browser_env_falls_back_to_hash_without_worktree() -> None:
+    """Without a worktree_path, resolve_browser_env uses the deterministic hash."""
+    pc = make_project_config(bv_cfg={**_FULL_BV_CFG, "env_up_command": "/bin/true"})
+    env = resolve_browser_env(pc, "innoforge", "F-00001")
+    assert env is not None
+    pool = _FULL_BV_CFG["port_pool"]
+    expected_offset = _compute_port_offset("innoforge", "F-00001", pool["pool_size"])
+    assert int(env["E2E_FRONTEND_PORT"]) == pool["frontend_base"] + expected_offset
+
+
+def test_run_env_down_hook_deletes_state_file(tmp_path: Path) -> None:
+    _save_persisted_offset(str(tmp_path), "F-00001", 7)
+    pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "/bin/true"})
+    run_env_down_hook(pc, str(tmp_path), {}, "F-00001", "S01")
+    # State file removed after teardown so the next run allocates fresh.
+    assert _load_persisted_offset(str(tmp_path), "F-00001") is None
