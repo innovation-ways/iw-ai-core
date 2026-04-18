@@ -172,16 +172,64 @@ def _seed_modules(db: Session) -> None:
         )
 
 
+def _seed_index_job(db: Session) -> None:
+    """Insert a completed CodeIndexJob so /code renders the architecture map.
+
+    The dashboard's code_page route only shows the Level-1 doc when a
+    CodeIndexJob with status='completed' exists that references it — without
+    this, the page shows the "No code map generated yet" empty state even
+    though the ProjectDoc exists.
+    """
+    # Import locally so the formatter doesn't strip these when the function
+    # is added incrementally — keeps the hook's ruff --fix from dropping
+    # symbols it can't trace from the top-level imports alone.
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from orch.db.models import CodeIndexJob  # noqa: PLC0415
+
+    arch_doc_pk = f"{PROJECT_ID}:architecture-map"
+    existing = db.scalar(
+        select(CodeIndexJob).where(
+            CodeIndexJob.project_id == PROJECT_ID,
+            CodeIndexJob.status == "completed",
+        )
+    )
+    now = datetime.now(UTC)
+    if existing is not None:
+        existing.doc_id = arch_doc_pk
+        existing.completed_at = now
+        return
+    db.add(
+        CodeIndexJob(
+            project_id=PROJECT_ID,
+            status="completed",
+            provider="local",
+            llm_model="stub:latest",
+            embed_model="stub:latest",
+            index_tier="fast",
+            files_discovered=42,
+            files_indexed=42,
+            chunks_created=100,
+            languages_detected=["python"],
+            doc_id=arch_doc_pk,
+            triggered_at=now,
+            completed_at=now,
+        )
+    )
+
+
 def seed() -> None:
     with get_session() as db:
         _seed_project(db)
         db.flush()
         _seed_level1(db)
         _seed_modules(db)
+        db.flush()
+        _seed_index_job(db)
         db.commit()
-    sys.stdout.write(
-        f"e2e_seed: project {PROJECT_ID} + architecture-map + {len(MODULE_DOCS)} modules\n"
-    )
+    sys.stdout.write(f"e2e_seed: project {PROJECT_ID} + {len(MODULE_DOCS)} modules + index job\n")
     sys.stdout.flush()
 
 

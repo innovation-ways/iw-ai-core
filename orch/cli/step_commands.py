@@ -145,7 +145,9 @@ def _run_browser_teardown_if_needed(
         if project_config is None:
             return
 
-        bv_env = browser_env.resolve_browser_env(project_config, project_id, item_id)
+        bv_env = browser_env.resolve_browser_env(
+            project_config, project_id, item_id, worktree_path=worktree_path
+        )
         if bv_env is None:
             return
 

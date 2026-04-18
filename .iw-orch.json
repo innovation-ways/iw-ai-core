@@ -3,7 +3,21 @@
   "cli_tool": "opencode",
   "max_parallel": 4,
   "auto_publish": false,
-  "browser_verification": false,
+  "browser_verification": {
+    "env_up_command": "scripts/e2e_up.sh",
+    "env_down_command": "scripts/e2e_down.sh",
+    "base_url_template": "http://localhost:${E2E_FRONTEND_PORT}",
+    "port_pool": {
+      "frontend_base": 9910,
+      "api_base": 9910,
+      "db_base": 5442,
+      "redis_base": 6389,
+      "pool_size": 50
+    },
+    "e2e_user": "dev@example.local",
+    "e2e_password": "DevPass2026!",
+    "compose_project_prefix": "iw-ai-core-e2e"
+  },
   "fix_cycle_max": 5,
   "post_archive_commands": [
     "uv run alembic upgrade head"

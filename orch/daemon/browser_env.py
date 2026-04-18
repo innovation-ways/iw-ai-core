@@ -47,8 +47,10 @@ Increase pool_size if you run many concurrent browser_verification steps.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
+import socket
 import subprocess
 from pathlib import Path
 from string import Template
@@ -97,45 +99,106 @@ def _compute_port_offset(project_id: str, item_id: str, pool_size: int) -> int:
 # ---------------------------------------------------------------------------
 
 
-def resolve_browser_env(
-    project_config: ProjectConfig,
-    project_id: str,
-    item_id: str,
-) -> dict[str, str] | None:
-    """Build the env-var dict for a browser_verification step.
+def _is_port_free(port: int) -> bool:
+    """Return True if the given TCP port on 127.0.0.1 is currently unbound.
 
-    Returns None if the project has no browser_verification config or if
-    ``env_up_command`` is missing (opt-out).
-
-    The ports are derived deterministically from (project_id, item_id) so
-    teardown does not need to persist state — it can recompute the same values.
+    Uses a non-reuseable bind: if another process holds the port (either
+    bound or in TIME_WAIT from a recent compose-down), this returns False
+    and the caller scans to the next offset.
     """
-    bv_cfg: dict[str, Any] = project_config.config.get("browser_verification", {})
-    if not bv_cfg or not bv_cfg.get("env_up_command"):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", port))
+            return True
+    except OSError:
+        return False
+
+
+def _ports_for_offset(pool_cfg: dict[str, Any], offset: int) -> list[int]:
+    return [
+        int(pool_cfg["frontend_base"]) + offset,
+        int(pool_cfg["api_base"]) + offset,
+        int(pool_cfg["db_base"]) + offset,
+        int(pool_cfg["redis_base"]) + offset,
+    ]
+
+
+def _pick_free_offset(pool_cfg: dict[str, Any], project_id: str, item_id: str) -> int | None:
+    """Scan forward from the hash offset until all four ports are free.
+
+    Returns None if every slot in the pool is taken — caller treats that
+    as a transient env-up failure (daemon will retry later).
+    """
+    pool_size = int(pool_cfg["pool_size"])
+    base = _compute_port_offset(project_id, item_id, pool_size)
+    for i in range(pool_size):
+        offset = (base + i) % pool_size
+        if all(_is_port_free(p) for p in _ports_for_offset(pool_cfg, offset)):
+            return offset
+    return None
+
+
+# ---------------------------------------------------------------------------
+# State file — persists the chosen offset so teardown uses the same ports
+# ---------------------------------------------------------------------------
+
+
+def _state_file_path(worktree_path: str, item_id: str) -> Path:
+    return Path(worktree_path) / ".tmp" / f"browser_env_{item_id}.state"
+
+
+def _load_persisted_offset(worktree_path: str, item_id: str) -> int | None:
+    state_path = _state_file_path(worktree_path, item_id)
+    if not state_path.exists():
+        return None
+    try:
+        data = json.loads(state_path.read_text())
+        offset = data.get("offset")
+        return int(offset) if offset is not None else None
+    except (json.JSONDecodeError, ValueError, OSError):
         return None
 
-    pool_cfg = {**_DEFAULT_PORT_POOL, **bv_cfg.get("port_pool", {})}
-    pool_size = int(pool_cfg["pool_size"])
-    offset = _compute_port_offset(project_id, item_id, pool_size)
 
-    frontend_port = int(pool_cfg["frontend_base"]) + offset
-    api_port = int(pool_cfg["api_base"]) + offset
-    db_port = int(pool_cfg["db_base"]) + offset
-    redis_port = int(pool_cfg["redis_base"]) + offset
+def _save_persisted_offset(worktree_path: str, item_id: str, offset: int) -> None:
+    state_path = _state_file_path(worktree_path, item_id)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps({"offset": offset}))
+
+
+def _delete_persisted_offset(worktree_path: str, item_id: str) -> None:
+    state_path = _state_file_path(worktree_path, item_id)
+    try:
+        state_path.unlink(missing_ok=True)
+    except OSError:
+        logger.debug("Could not delete state file %s (non-fatal)", state_path)
+
+
+# ---------------------------------------------------------------------------
+# Env dict builder (shared by resolve_browser_env / allocate_browser_env)
+# ---------------------------------------------------------------------------
+
+
+def _build_env(
+    bv_cfg: dict[str, Any],
+    project_id: str,
+    item_id: str,
+    offset: int,
+) -> dict[str, str]:
+    pool_cfg = {**_DEFAULT_PORT_POOL, **bv_cfg.get("port_pool", {})}
 
     compose_prefix = bv_cfg.get("compose_project_prefix") or f"{project_id}-e2e"
     compose_project_name = f"{compose_prefix}-{item_id.lower().replace('-', '')}"
 
+    ports = _ports_for_offset(pool_cfg, offset)
     env: dict[str, str] = {
-        "E2E_FRONTEND_PORT": str(frontend_port),
-        "E2E_API_PORT": str(api_port),
-        "E2E_DB_PORT": str(db_port),
-        "E2E_REDIS_PORT": str(redis_port),
+        "E2E_FRONTEND_PORT": str(ports[0]),
+        "E2E_API_PORT": str(ports[1]),
+        "E2E_DB_PORT": str(ports[2]),
+        "E2E_REDIS_PORT": str(ports[3]),
         "COMPOSE_PROJECT_NAME": compose_project_name,
         "IW_ITEM_ID": item_id,
     }
 
-    # base_url_template: supports ${VAR} substitution
     base_url_template = bv_cfg.get("base_url_template", "http://localhost:${E2E_FRONTEND_PORT}")
     env["IW_BROWSER_BASE_URL"] = Template(base_url_template).safe_substitute(env)
 
@@ -145,6 +208,78 @@ def resolve_browser_env(
         env["IW_BROWSER_E2E_PASSWORD"] = bv_cfg["e2e_password"]
 
     return env
+
+
+def resolve_browser_env(
+    project_config: ProjectConfig,
+    project_id: str,
+    item_id: str,
+    worktree_path: str | None = None,
+) -> dict[str, str] | None:
+    """Build the env-var dict for a browser_verification step.
+
+    Returns None if the project has no browser_verification config or if
+    ``env_up_command`` is missing (opt-out).
+
+    If ``worktree_path`` is provided and a persisted offset exists from a
+    prior ``allocate_browser_env`` call, that offset is used. Otherwise
+    falls back to the deterministic hash offset.  This is the *read*
+    entry point — teardown callers use it because they need to recover
+    the exact ports that were brought up.
+    """
+    bv_cfg: dict[str, Any] = project_config.config.get("browser_verification", {})
+    if not bv_cfg or not bv_cfg.get("env_up_command"):
+        return None
+
+    pool_cfg = {**_DEFAULT_PORT_POOL, **bv_cfg.get("port_pool", {})}
+    pool_size = int(pool_cfg["pool_size"])
+
+    offset: int | None = None
+    if worktree_path:
+        offset = _load_persisted_offset(worktree_path, item_id)
+    if offset is None:
+        offset = _compute_port_offset(project_id, item_id, pool_size)
+
+    return _build_env(bv_cfg, project_id, item_id, offset)
+
+
+def allocate_browser_env(
+    project_config: ProjectConfig,
+    project_id: str,
+    item_id: str,
+    worktree_path: str,
+) -> dict[str, str] | None:
+    """Allocate a free port slot for a browser_verification step.
+
+    Reuses the persisted offset if one exists (handles retries / replays).
+    Otherwise scans forward from the hash offset until all four ports are
+    free, then persists the chosen offset to ``.tmp/browser_env_<item>.state``
+    so teardown can recover it.
+
+    Returns None when the project is opted out, or when every slot in the
+    pool is occupied (treated as transient — daemon retries).
+    """
+    bv_cfg: dict[str, Any] = project_config.config.get("browser_verification", {})
+    if not bv_cfg or not bv_cfg.get("env_up_command"):
+        return None
+
+    persisted = _load_persisted_offset(worktree_path, item_id)
+    if persisted is not None:
+        return _build_env(bv_cfg, project_id, item_id, persisted)
+
+    pool_cfg = {**_DEFAULT_PORT_POOL, **bv_cfg.get("port_pool", {})}
+    offset = _pick_free_offset(pool_cfg, project_id, item_id)
+    if offset is None:
+        logger.warning(
+            "browser_env: no free port slot in pool (size=%d) for %s/%s",
+            int(pool_cfg["pool_size"]),
+            project_id,
+            item_id,
+        )
+        return None
+
+    _save_persisted_offset(worktree_path, item_id, offset)
+    return _build_env(bv_cfg, project_id, item_id, offset)
 
 
 # ---------------------------------------------------------------------------
@@ -343,3 +478,5 @@ def run_env_down_hook(
             step_id,
             exc,
         )
+    finally:
+        _delete_persisted_offset(worktree_path, item_id)
