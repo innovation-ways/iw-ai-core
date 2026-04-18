@@ -60,6 +60,24 @@ def _strip_filler_preamble(text: str) -> str:
     return out
 
 
+def _normalize_module_path_for_filter(module_path: str) -> str:
+    """Normalize a module_path for use as a `metadata.file_path LIKE '%X%'` filter.
+
+    The Level 1 architecture doc is LLM-generated and occasionally emits Python
+    import notation (`orch.daemon`) instead of filesystem notation (`orch/daemon`).
+    LanceDB stores `metadata.file_path` as a filesystem path, so a LIKE filter
+    built from the dotted form silently matches zero chunks.
+
+    Rule: if the path contains no slash, assume dots are directory separators
+    and convert them to slashes. Paths that already contain a slash are left
+    alone (they are already filesystem-shaped, and `foo/bar.py` must keep its
+    dot for the extension).
+    """
+    if not module_path or "/" in module_path:
+        return module_path
+    return module_path.replace(".", "/")
+
+
 class ModuleGenerator:
     MODULE_QUESTIONS: list[str] = [
         "What is the primary responsibility of the {module} component?",
@@ -113,7 +131,8 @@ class ModuleGenerator:
 
         embed = OllamaEmbedding(model_name=embed_model, base_url=ollama_url)
 
-        safe_path = module_path.replace("'", "''")
+        filter_path = _normalize_module_path_for_filter(module_path)
+        safe_path = filter_path.replace("'", "''")
         path_filter = f"metadata.file_path LIKE '%{safe_path}%'"
 
         start_progress(project_id, module_path, module_name, llm_model)
