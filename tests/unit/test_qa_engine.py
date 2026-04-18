@@ -5,13 +5,136 @@ from __future__ import annotations
 import asyncio
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
 
 class TestBuildSystemPrompt:
     """Tests for _build_system_prompt()."""
+
+    def test_system_prompt_no_module_is_byte_identical_to_pre_change_output(self) -> None:
+        """AC5: Verify exact pre-change output when no module context is provided.
+
+        Hard-codes the expected string to guard against textual drift.
+        """
+        from orch.rag.config import CodeUnderstandingConfig
+        from orch.rag.qa import QAEngine
+
+        config = MagicMock(spec=CodeUnderstandingConfig)
+        engine = QAEngine(project_id="test-project", config=config)
+
+        result = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a", "chunk-b"],
+            module_path=None,
+            module_name=None,
+            fallback_triggered=False,
+        )
+
+        expected = (
+            "You are a codebase expert assistant. "
+            "Answer questions about the codebase accurately and concisely.\n\n"
+            "## Architecture Context\n\n"
+            "## Architecture\nBlah\n\n"
+            "## Relevant Code Excerpts\n\n"
+            "---\nchunk-a\n"
+            "---\nchunk-b\n\n\n"
+            "Answer the user's question based on the above context. "
+            "If the context does not contain enough information, say so clearly."
+        )
+        assert result == expected
+
+    def test_system_prompt_emits_module_block_when_path_provided(self) -> None:
+        """AC3: Module block appears when module_path is set."""
+        from orch.rag.config import CodeUnderstandingConfig
+        from orch.rag.qa import QAEngine
+
+        config = MagicMock(spec=CodeUnderstandingConfig)
+        engine = QAEngine(project_id="test-project", config=config)
+
+        result = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a"],
+            module_path="orch/daemon/",
+            module_name="Orchestration Daemon",
+            fallback_triggered=False,
+        )
+
+        assert "## Current Focus — Module" in result
+        assert "orch/daemon/" in result
+        assert "Orchestration Daemon" in result
+        assert "Prioritize" in result
+
+    def test_system_prompt_module_block_without_name(self) -> None:
+        """Module block renders correctly when module_name is None."""
+        from orch.rag.config import CodeUnderstandingConfig
+        from orch.rag.qa import QAEngine
+
+        config = MagicMock(spec=CodeUnderstandingConfig)
+        engine = QAEngine(project_id="test-project", config=config)
+
+        result = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a"],
+            module_path="orch/daemon/",
+            module_name=None,
+            fallback_triggered=False,
+        )
+
+        assert "## Current Focus — Module" in result
+        assert "orch/daemon/" in result
+        assert "(No architecture document available)" not in result
+        assert "()" not in result
+        assert "( )" not in result
+
+    def test_system_prompt_retrieval_note_only_when_fallback_triggered(self) -> None:
+        """AC4 partial: Retrieval Note appears only when fallback_triggered=True."""
+        from orch.rag.config import CodeUnderstandingConfig
+        from orch.rag.qa import QAEngine
+
+        config = MagicMock(spec=CodeUnderstandingConfig)
+        engine = QAEngine(project_id="test-project", config=config)
+
+        result_with_fallback = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a"],
+            module_path="orch/daemon/",
+            module_name="Daemon",
+            fallback_triggered=True,
+        )
+        assert "## Retrieval Note" in result_with_fallback
+
+        result_without_fallback = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a"],
+            module_path="orch/daemon/",
+            module_name="Daemon",
+            fallback_triggered=False,
+        )
+        assert "## Retrieval Note" not in result_without_fallback
+
+    def test_system_prompt_no_module_block_when_path_empty_string(self) -> None:
+        """No module block when module_path is empty string."""
+        from orch.rag.config import CodeUnderstandingConfig
+        from orch.rag.qa import QAEngine
+
+        config = MagicMock(spec=CodeUnderstandingConfig)
+        engine = QAEngine(project_id="test-project", config=config)
+
+        result = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a"],
+            module_path="",
+            module_name=None,
+            fallback_triggered=False,
+        )
+
+        assert "## Current Focus — Module" not in result
 
     def test_build_system_prompt_includes_context_doc(self) -> None:
         """Given: context_doc_content = "MyApp is a web app", chunks = ["def foo(): pass"]
@@ -169,7 +292,7 @@ class TestAnswerStream:
         mock_table.search.return_value = mock_search
 
         mock_embedding_instance = MagicMock()
-        mock_embedding_instance.get_query_embedding = AsyncMock(return_value=[0.1] * 128)
+        mock_embedding_instance.get_query_embedding = MagicMock(return_value=[0.1] * 128)
 
         mock_chunks = [
             {"text": "def foo(): pass"},
@@ -243,7 +366,7 @@ class TestAnswerStream:
         mock_table.search = mock_search_method
 
         mock_embedding_instance = MagicMock()
-        mock_embedding_instance.get_query_embedding = AsyncMock(return_value=[0.1] * 128)
+        mock_embedding_instance.get_query_embedding = MagicMock(return_value=[0.1] * 128)
 
         async def mock_astream_chat_error(*args, **kwargs):
             raise httpx.ConnectError("Connection refused")
@@ -276,6 +399,335 @@ class TestAnswerStream:
 
             assert len(tokens) > 0
             assert tokens[0].startswith("__ERROR__:")
+
+    @pytest.mark.asyncio
+    async def test_answer_stream_falls_back_when_module_filter_empty(
+        self, mock_config: MagicMock
+    ) -> None:
+        """AC4: When module filter returns empty, fallback search runs."""
+        import pandas as pd
+
+        from orch.rag.qa import QAEngine
+
+        engine = QAEngine(project_id="test-project", config=mock_config)
+
+        mock_session = MagicMock()
+        mock_embedding_instance = MagicMock()
+        mock_embedding_instance.get_query_embedding = AsyncMock(return_value=[0.1] * 128)
+
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        class _FakeQuery:
+            def __init__(self, rows: list[str]) -> None:
+                self._rows = rows
+
+            def to_pandas(self) -> pd.DataFrame:
+                return pd.DataFrame({"text": self._rows})
+
+        class _FakeSearch:
+            def __init__(self, rows_per_where: dict[str, list[str]]) -> None:
+                self._rows_per_where = rows_per_where
+                self._last_where: str | None = None
+
+            def where(self, clause: str) -> _FakeSearch:
+                self._last_where = clause
+                return self
+
+            def limit(self, n: int) -> _FakeQuery:
+                return _FakeQuery(self._rows_per_where.get(self._last_where or "", []))
+
+        class _FakeTable:
+            def __init__(self, rows_per_where: dict[str, list[str]]) -> None:
+                self._rows_per_where = rows_per_where
+
+            def search(self, vec: list[float]) -> _FakeSearch:
+                return _FakeSearch(self._rows_per_where)
+
+        filtered_rows: dict[str, list[str]] = {
+            "file_path LIKE 'orch/daemon/%' AND file_path != '__iwcore_seed__'": [],
+            "file_path != '__iwcore_seed__'": ["chunk-a"],
+        }
+        mock_table = _FakeTable(filtered_rows)
+        mock_db = MagicMock()
+        mock_db.open_table.return_value = mock_table
+
+        captured_messages: list = []
+
+        class MockChunk:
+            def __init__(self, delta: str) -> None:
+                self.delta = delta
+
+        async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            yield MockChunk("Answer")
+
+        async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            captured_messages.extend(messages)
+            return mock_inner_generator()
+
+        mock_llm = MagicMock()
+        mock_llm.astream_chat = mock_astream_chat
+
+        with (
+            patch("lancedb.connect", return_value=mock_db),
+            patch(
+                "orch.rag.qa.OllamaEmbedding",
+                return_value=mock_embedding_instance,
+            ),
+            patch("orch.rag.qa.Ollama", return_value=mock_llm),
+            patch("asyncio.to_thread", side_effect=mock_to_thread),
+        ):
+            tokens = []
+            async for token in engine.answer_stream(
+                question="What does this do?",
+                context_level="module",
+                context_doc_id=None,
+                conversation_history=[],
+                session=mock_session,
+                module_path="orch/daemon/",
+                module_name="Daemon",
+            ):
+                tokens.append(token)
+
+        system_prompt = captured_messages[0].content
+        assert "## Retrieval Note" in system_prompt
+
+    @pytest.mark.asyncio
+    async def test_answer_stream_does_not_fall_back_when_module_filter_nonempty(
+        self, mock_config: MagicMock
+    ) -> None:
+        """AC5: When module filter returns results, no fallback and no Retrieval Note."""
+        import pandas as pd
+
+        from orch.rag.qa import QAEngine
+
+        engine = QAEngine(project_id="test-project", config=mock_config)
+
+        mock_session = MagicMock()
+        mock_embedding_instance = MagicMock()
+        mock_embedding_instance.get_query_embedding = AsyncMock(return_value=[0.1] * 128)
+
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        class _FakeQuery:
+            def __init__(self, rows: list[str]) -> None:
+                self._rows = rows
+
+            def to_pandas(self) -> pd.DataFrame:
+                return pd.DataFrame({"text": self._rows})
+
+        class _FakeSearch:
+            def __init__(self, rows_per_where: dict[str, list[str]]) -> None:
+                self._rows_per_where = rows_per_where
+                self._last_where: str | None = None
+
+            def where(self, clause: str) -> _FakeSearch:
+                self._last_where = clause
+                return self
+
+            def limit(self, n: int) -> _FakeQuery:
+                return _FakeQuery(self._rows_per_where.get(self._last_where or "", []))
+
+        class _FakeTable:
+            def __init__(self, rows_per_where: dict[str, list[str]]) -> None:
+                self._rows_per_where = rows_per_where
+
+            def search(self, vec: list[float]) -> _FakeSearch:
+                return _FakeSearch(self._rows_per_where)
+
+        filtered_rows: dict[str, list[str]] = {
+            "file_path LIKE 'orch/daemon/%' AND file_path != '__iwcore_seed__'": ["chunk-a"],
+            "file_path != '__iwcore_seed__'": [],
+        }
+        mock_table = _FakeTable(filtered_rows)
+        mock_db = MagicMock()
+        mock_db.open_table.return_value = mock_table
+
+        captured_messages: list = []
+
+        class MockChunk:
+            def __init__(self, delta: str) -> None:
+                self.delta = delta
+
+        async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            yield MockChunk("Answer")
+
+        async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            captured_messages.extend(messages)
+            return mock_inner_generator()
+
+        mock_llm = MagicMock()
+        mock_llm.astream_chat = mock_astream_chat
+
+        with (
+            patch("lancedb.connect", return_value=mock_db),
+            patch(
+                "orch.rag.qa.OllamaEmbedding",
+                return_value=mock_embedding_instance,
+            ),
+            patch("orch.rag.qa.Ollama", return_value=mock_llm),
+            patch("asyncio.to_thread", side_effect=mock_to_thread),
+        ):
+            tokens = []
+            async for token in engine.answer_stream(
+                question="What does this do?",
+                context_level="module",
+                context_doc_id=None,
+                conversation_history=[],
+                session=mock_session,
+                module_path="orch/daemon/",
+                module_name="Daemon",
+            ):
+                tokens.append(token)
+
+        system_prompt = captured_messages[0].content
+        assert "## Retrieval Note" not in system_prompt
+
+    @pytest.mark.asyncio
+    async def test_answer_stream_does_not_fall_back_for_architecture_context(
+        self, mock_config: MagicMock
+    ) -> None:
+        """architecture context level uses unfiltered search from the start; no fallback."""
+        import pandas as pd
+
+        from orch.rag.qa import QAEngine
+
+        engine = QAEngine(project_id="test-project", config=mock_config)
+
+        mock_session = MagicMock()
+        mock_embedding_instance = MagicMock()
+        mock_embedding_instance.get_query_embedding = AsyncMock(return_value=[0.1] * 128)
+
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        class _FakeQuery:
+            def __init__(self, rows: list[str]) -> None:
+                self._rows = rows
+
+            def to_pandas(self) -> pd.DataFrame:
+                return pd.DataFrame({"text": self._rows})
+
+        class _FakeSearch:
+            def __init__(self, rows: list[str]) -> None:
+                self._rows = rows
+
+            def where(self, clause: str) -> _FakeSearch:
+                return self
+
+            def limit(self, n: int) -> _FakeQuery:
+                return _FakeQuery(self._rows)
+
+        class _FakeTable:
+            def __init__(self, rows: list[str]) -> None:
+                self._rows = rows
+
+            def search(self, vec: list[float]) -> _FakeSearch:
+                return _FakeSearch(self._rows)
+
+        mock_table = _FakeTable(["chunk-a"])
+        mock_db = MagicMock()
+        mock_db.open_table.return_value = mock_table
+
+        captured_messages: list = []
+
+        class MockChunk:
+            def __init__(self, delta: str) -> None:
+                self.delta = delta
+
+        async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            yield MockChunk("Answer")
+
+        async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            captured_messages.extend(messages)
+            return mock_inner_generator()
+
+        mock_llm = MagicMock()
+        mock_llm.astream_chat = mock_astream_chat
+
+        with (
+            patch("lancedb.connect", return_value=mock_db),
+            patch(
+                "orch.rag.qa.OllamaEmbedding",
+                return_value=mock_embedding_instance,
+            ),
+            patch("orch.rag.qa.Ollama", return_value=mock_llm),
+            patch("asyncio.to_thread", side_effect=mock_to_thread),
+        ):
+            tokens = []
+            async for token in engine.answer_stream(
+                question="What does this do?",
+                context_level="architecture",
+                context_doc_id=None,
+                conversation_history=[],
+                session=mock_session,
+            ):
+                tokens.append(token)
+
+        system_prompt = captured_messages[0].content
+        assert "## Retrieval Note" not in system_prompt
+
+    @pytest.mark.asyncio
+    async def test_answer_stream_handles_lancedb_exception_without_claiming_fallback(
+        self, mock_config: MagicMock
+    ) -> None:
+        """When LanceDB raises, answer_stream still streams and does not claim fallback."""
+        from orch.rag.qa import QAEngine
+
+        engine = QAEngine(project_id="test-project", config=mock_config)
+
+        mock_session = MagicMock()
+        mock_embedding_instance = MagicMock()
+        mock_embedding_instance.get_query_embedding = MagicMock(return_value=[0.1] * 128)
+
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        captured_messages: list = []
+
+        class MockChunk:
+            def __init__(self, delta: str) -> None:
+                self.delta = delta
+
+        async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            yield MockChunk("Answer")
+
+        async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            captured_messages.extend(messages)
+            return mock_inner_generator()
+
+        mock_llm = MagicMock()
+        mock_llm.astream_chat = mock_astream_chat
+
+        with (
+            patch(
+                "lancedb.connect",
+                side_effect=RuntimeError("LanceDB unavailable"),
+            ),
+            patch(
+                "orch.rag.qa.OllamaEmbedding",
+                return_value=mock_embedding_instance,
+            ),
+            patch("orch.rag.qa.Ollama", return_value=mock_llm),
+            patch("asyncio.to_thread", side_effect=mock_to_thread),
+        ):
+            tokens = []
+            async for token in engine.answer_stream(
+                question="What does this do?",
+                context_level="module",
+                context_doc_id=None,
+                conversation_history=[],
+                session=mock_session,
+                module_path="orch/daemon/",
+                module_name="Daemon",
+            ):
+                tokens.append(token)
+
+        assert len(tokens) == 1
+        assert tokens[0] == "Answer"
+        system_prompt = captured_messages[0].content
+        assert "## Retrieval Note" not in system_prompt
 
 
 class TestQAEngineConstants:

@@ -41,6 +41,7 @@ class QAEngine:
         conversation_history: list[dict[str, str]],
         session: AsyncSession,
         module_path: str | None = None,
+        module_name: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Stream answer tokens for the given question using RAG retrieval.
@@ -64,14 +65,15 @@ class QAEngine:
         db_path = f"{self.config.index_path}/{self.project_id}/vectors/"
         table_name = f"code_{self.project_id.replace('-', '_')}"
 
+        chunks: list[str] = []
+        fallback_triggered = False
+
         try:
             import lancedb  # type: ignore[import-untyped]
 
             db = lancedb.connect(db_path)
             table = db.open_table(table_name)
 
-            # Filter out the indexer's seed row (added to bootstrap the LanceDB
-            # schema on fresh tables — see CodeIndexer._ensure_lancedb_table).
             seed_filter = "file_path != '__iwcore_seed__'"
             if context_level == "module" and module_path:
                 query = (
@@ -84,8 +86,16 @@ class QAEngine:
 
             results = query.to_pandas()
             chunks = list(results["text"].tolist())
+
+            if context_level == "module" and module_path and not chunks:
+                fallback_triggered = True
+                fallback_query = table.search(embedding_vector).where(seed_filter).limit(self.TOP_K)
+                fallback_results = fallback_query.to_pandas()
+                chunks = list(fallback_results["text"].tolist())
         except Exception:
-            chunks = []
+            import logging
+
+            logging.warning("LanceDB unavailable, skipping retrieval")
 
         context_doc_content = ""
         if context_doc_id is not None:
@@ -98,7 +108,9 @@ class QAEngine:
             if doc:
                 context_doc_content = doc.content or ""
 
-        system_prompt = self._build_system_prompt(context_doc_content, chunks)
+        system_prompt = self._build_system_prompt(
+            context_doc_content, chunks, module_path, module_name, fallback_triggered
+        )
 
         truncated_history = self._truncate_history(conversation_history)
 
@@ -121,25 +133,50 @@ class QAEngine:
         except (httpx.ConnectError, ConnectionRefusedError):
             yield "__ERROR__:Local AI unavailable. Check that Ollama is running."
 
-    def _build_system_prompt(self, context_doc_content: str, chunks: list[str]) -> str:
+    def _build_system_prompt(
+        self,
+        context_doc_content: str,
+        chunks: list[str],
+        module_path: str | None = None,
+        module_name: str | None = None,
+        fallback_triggered: bool = False,
+    ) -> str:
         """
-        Build the system prompt with architecture context and relevant code excerpts.
+        Build the system prompt with optional module-focus block, optional retrieval-note block,
+        architecture context, and relevant code excerpts.
 
-        Format:
-            You are a codebase expert assistant.
-            Answer questions about the codebase accurately and concisely.
-
-            ## Architecture Context
-
-            {context_doc_content if non-empty, else "(No architecture document available)"}
-
-            ## Relevant Code Excerpts
-
-            {for each chunk: "---\n{chunk}\n"}
-
-            Answer the user's question based on the above context.
-            If the context does not contain enough information, say so clearly.
+        The module block is emitted only when module_path is non-empty.
+        The retrieval-note block is emitted only when fallback_triggered is True.
         """
+        module_block = ""
+        if module_path:
+            if module_name:
+                module_block = f"""## Current Focus — Module
+
+The user is currently viewing the `{module_path}` module (\"{module_name}\").
+Prioritize this module in your answer. If the question is clearly about this module,
+ground your answer in the excerpts below and the module's role in the architecture.
+
+"""
+            else:
+                module_block = f"""## Current Focus — Module
+
+The user is currently viewing the `{module_path}` module.
+Prioritize this module in your answer. If the question is clearly about this module,
+ground your answer in the excerpts below and the module's role in the architecture.
+
+"""
+
+        retrieval_note = ""
+        if fallback_triggered:
+            retrieval_note = """## Retrieval Note
+
+No indexed content matched the current module on the first retrieval pass.
+The excerpts below come from a project-wide fallback search. If the excerpts do not
+cover the module directly, say so explicitly in your answer.
+
+"""
+
         ctx = context_doc_content if context_doc_content else "(No architecture document available)"
 
         excerpts = ""
@@ -149,6 +186,8 @@ class QAEngine:
         return (
             "You are a codebase expert assistant. "
             "Answer questions about the codebase accurately and concisely.\n\n"
+            f"{module_block}"
+            f"{retrieval_note}"
             "## Architecture Context\n\n"
             f"{ctx}\n\n"
             "## Relevant Code Excerpts\n\n"

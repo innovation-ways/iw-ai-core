@@ -11,6 +11,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from sqlalchemy import text as sa_text
 
 from orch.config import get_db_url
 from orch.db.models import Base
@@ -72,6 +73,18 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Alembic hardcodes VARCHAR(32) for version_num in version_table_impl,
+        # but several of this project's revision IDs exceed 32 chars
+        # (e.g. 'add_section_guides_snapshot_to_jobs'). Pre-create the table
+        # with VARCHAR(64) so alembic finds an existing-but-wider column.
+        connection.execute(
+            sa_text(
+                "CREATE TABLE IF NOT EXISTS alembic_version ("
+                "version_num VARCHAR(64) NOT NULL PRIMARY KEY)"
+            )
+        )
+        connection.commit()
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
