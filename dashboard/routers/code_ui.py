@@ -109,6 +109,7 @@ def code_page(
             "files_count": last_completed_job.files_indexed or 0,
             "chunks_count": last_completed_job.chunks_created or 0,
             "languages_detected": last_completed_job.languages_detected or [],
+            "level1_doc_id": arch_doc.id if arch_doc else None,
             "level1_doc_markdown": arch_doc.content if arch_doc else None,
         }
 

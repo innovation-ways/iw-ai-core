@@ -148,7 +148,7 @@
       });
 
       input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !slashMenuOpen) {
           e.preventDefault();
           sendBtn && sendBtn.click();
           return;
@@ -277,6 +277,8 @@
         var conversationHistory = [];
 
         appendUserBubble(question);
+        input.value = '';
+        closeSlashMenu();
 
         var assistantBubble = appendAssistantBubble();
 
@@ -326,12 +328,13 @@
       if (!messages) return;
       hideEmptyState();
       var article = document.createElement('article');
-      article.className = 'bg-muted rounded-lg px-3 py-2 text-sm ml-8';
+      article.className = 'chat-message bg-muted rounded-lg px-3 py-2 text-sm ml-8';
       article.dataset.role = 'user';
-      var label = document.createElement('span');
+      var label = document.createElement('header');
       label.className = 'font-medium text-xs text-muted-foreground block mb-1';
       label.textContent = 'You';
-      var content = document.createElement('span');
+      var content = document.createElement('div');
+      content.className = 'chat-message-body';
       content.textContent = text;
       article.appendChild(label);
       article.appendChild(content);
@@ -344,13 +347,13 @@
       if (!messages) return;
       hideEmptyState();
       var article = document.createElement('article');
-      article.className = 'bg-background border border-border rounded-lg px-3 py-2 text-sm mr-8';
+      article.className = 'chat-message bg-background border border-border rounded-lg px-3 py-2 text-sm mr-8';
       article.dataset.role = 'assistant';
-      var label = document.createElement('span');
+      var label = document.createElement('header');
       label.className = 'font-medium text-xs text-muted-foreground block mb-1';
       label.textContent = 'Assistant';
-      var content = document.createElement('span');
-      content.className = 'text-sm leading-relaxed';
+      var content = document.createElement('div');
+      content.className = 'chat-message-body text-sm leading-relaxed';
       content.id = 'chat-current-response';
       article.appendChild(label);
       article.appendChild(content);
