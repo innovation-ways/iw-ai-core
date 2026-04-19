@@ -39,28 +39,59 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Step types that can trigger fix cycles
+# Step types that can trigger fix cycles.
+# browser_verification is fixable because V1..V(n) failures are real code
+# defects caught by E2E checks, not transient environment issues — plain
+# retries against unchanged code just re-fail three times and give up.
 _FIXABLE_STEP_TYPES = frozenset(
-    {StepType.code_review, StepType.code_review_final, StepType.quality_validation}
+    {
+        StepType.code_review,
+        StepType.code_review_final,
+        StepType.quality_validation,
+        StepType.browser_verification,
+    }
 )
 
-# Step types that get plain retries (no LLM fix agent — just reset to pending)
-_RETRYABLE_STEP_TYPES = frozenset({StepType.browser_verification})
+# Step types that get plain retries (no LLM fix agent — just reset to pending).
+# Currently empty — browser_verification used to live here, but failures there
+# are almost always code defects surfaced by the browser checks, not transient
+# environment issues. Kept as a hook for future step types (e.g. flaky external
+# API smoke tests) that genuinely need plain retry.
+_RETRYABLE_STEP_TYPES: frozenset[StepType] = frozenset()
 _DEFAULT_BROWSER_VERIFY_MAX_RETRIES = 3
 
 _TRIGGER_MAP: dict[StepType, FixTrigger] = {
     StepType.code_review: FixTrigger.code_review,
     StepType.code_review_final: FixTrigger.code_review_final,
     StepType.quality_validation: FixTrigger.quality_validation,
+    StepType.browser_verification: FixTrigger.browser_verification,
 }
 
 _FIX_TIMEOUT_MAP: dict[StepType, str] = {
     StepType.code_review: "code_review_fix",
     StepType.code_review_final: "code_review_fix_final",
     StepType.quality_validation: "qv_fix",
+    StepType.browser_verification: "qv_browser_fix",
 }
 
 _DEFAULT_FIX_CYCLE_MAX = 5
+# Browser fix cycles rebuild the full E2E docker-compose stack on every
+# re-run, which is expensive; cap them separately from the generic limit.
+_DEFAULT_BROWSER_FIX_CYCLE_MAX = 2
+
+
+# ---------------------------------------------------------------------------
+# Internal: configured cycle limits
+# ---------------------------------------------------------------------------
+
+
+def _max_cycles_for(step_type: StepType, project_config: ProjectConfig) -> int:
+    """Resolve max fix cycles for a step type (browser has a stricter default)."""
+    if step_type is StepType.browser_verification:
+        return int(
+            project_config.config.get("browser_fix_cycle_max", _DEFAULT_BROWSER_FIX_CYCLE_MAX)
+        )
+    return int(project_config.config.get("fix_cycle_max", _DEFAULT_FIX_CYCLE_MAX))
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +108,7 @@ def should_attempt_fix(
     if step.step_type not in _FIXABLE_STEP_TYPES:
         return False
 
-    max_cycles = project_config.config.get("fix_cycle_max", _DEFAULT_FIX_CYCLE_MAX)
+    max_cycles = _max_cycles_for(step.step_type, project_config)
     existing = db.query(FixCycle).filter(FixCycle.step_id == step.id).count()
 
     if existing >= max_cycles:
@@ -171,7 +202,7 @@ def attempt_fix_cycle(
         )
         return
 
-    max_cycles = project_config.config.get("fix_cycle_max", _DEFAULT_FIX_CYCLE_MAX)
+    max_cycles = _max_cycles_for(step.step_type, project_config)
     existing_count = db.query(FixCycle).filter(FixCycle.step_id == step.id).count()
     cycle_number = existing_count + 1
 
@@ -406,6 +437,12 @@ def _get_review_findings(db: Session, step: WorkflowStep, worktree_path: str) ->
     if step.step_type == StepType.quality_validation:
         return _get_qv_findings(db, step, worktree_path)
 
+    # Browser verification reports have structured V1..V(n) tables + a root cause
+    # section with file:line refs; the fix agent needs all of it, not just the
+    # extracted severity blocks.
+    if step.step_type == StepType.browser_verification:
+        return _get_browser_findings(db, step, worktree_path)
+
     # Try report file first (structured content)
     if step.report_file:
         report_path = Path(worktree_path) / step.report_file
@@ -436,6 +473,49 @@ def _get_review_findings(db: Session, step: WorkflowStep, worktree_path: str) ->
         return latest_run.error_message
 
     return "No findings available — review the code for issues flagged by the previous review."
+
+
+def _get_browser_findings(db: Session, step: WorkflowStep, worktree_path: str) -> str:
+    """Return the full browser_verification report (V table + root cause + refs).
+
+    Browser reports are short and highly structured — we pass the whole thing so
+    the fix agent sees failed Vs, expected vs. actual, screenshot paths, and any
+    file:line references the qv-browser agent logged.
+    """
+    # Prefer the report file on disk
+    if step.report_file:
+        report_path = Path(worktree_path) / step.report_file
+        if report_path.exists():
+            content = report_path.read_text()
+            return _truncate(content, 8000)
+
+    # Fall back to DB-stored report content
+    if step.report_content:
+        return _truncate(step.report_content, 8000)
+
+    # Last resort: latest failed StepRun's error_message
+    latest_run = db.execute(
+        select(StepRun)
+        .where(
+            StepRun.step_id == step.id,
+            StepRun.status.in_([RunStatus.failed, RunStatus.timeout]),
+        )
+        .order_by(StepRun.run_number.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if latest_run and latest_run.error_message:
+        return latest_run.error_message
+
+    return (
+        "No browser report available — inspect the latest qv-browser run log "
+        "and infer the defect from the V(n) FAILED messages."
+    )
+
+
+def _truncate(content: str, limit: int) -> str:
+    if len(content) <= limit:
+        return content
+    return content[:limit] + "\n\n...(report truncated for prompt length)..."
 
 
 def _get_qv_findings(db: Session, step: WorkflowStep, worktree_path: str) -> str:  # noqa: ARG001
@@ -516,11 +596,15 @@ def _generate_fix_prompt(
     item_id = step.work_item_id
     step_id = step.step_id
 
-    # Build the prompt content — QV steps get a command-aware prompt
+    # Build the prompt content — QV and browser steps get step-specific prompts
     if step.step_type == StepType.quality_validation:
         gate_command = _get_gate_command(step, worktree_path)
         prompt = _build_qv_fix_prompt_content(
             item_id, step_id, cycle_number, findings, max_cycles, gate_command
+        )
+    elif step.step_type == StepType.browser_verification:
+        prompt = _build_browser_fix_prompt_content(
+            item_id, step_id, cycle_number, findings, max_cycles
         )
     else:
         prompt = _build_fix_prompt_content(
@@ -598,6 +682,67 @@ def _build_qv_fix_prompt_content(
         f"{escalation}\n\n"
         f"**IMPORTANT**: Do NOT call `iw step-done` or `iw step-fail`. "
         f"Simply apply the fixes and exit. The orchestrator handles the rest.\n"
+    )
+
+
+def _build_browser_fix_prompt_content(
+    item_id: str,
+    step_id: str,
+    cycle_number: int,
+    findings: str,
+    max_cycles: int,
+) -> str:
+    """Build a fix prompt for a browser_verification failure.
+
+    The V(n) FAILED messages and the report's root-cause section point at a
+    real code defect (template/router/CLI). The fix agent applies the minimum
+    patch; the daemon re-launches the browser step, which rebuilds the E2E
+    stack with ``docker compose up --build`` and re-runs V1..V(n).
+    """
+    escalation = ""
+    if cycle_number == max_cycles:
+        escalation = (
+            f"\n\n**ESCALATION**: This is the FINAL browser fix cycle "
+            f"({cycle_number}/{max_cycles}). If you cannot resolve every failing "
+            "verification, document which remain and why so the human reviewer "
+            "can act on the evidence."
+        )
+
+    return (
+        f"# {item_id} {step_id} Browser Verification Fix Cycle "
+        f"{cycle_number}/{max_cycles}\n\n"
+        f"The end-to-end browser verification for step {step_id} of work item "
+        f"{item_id} failed. The qv-browser agent ran V1..V(n) against the "
+        f"isolated E2E stack (dashboard + DB built from this worktree) and "
+        f"reported code defects. Apply the minimum patch to make every failing "
+        f"V pass; the daemon will rebuild the E2E stack and re-run the browser "
+        f"checks.\n\n"
+        f"## Browser Verification Report\n\n{findings}\n\n"
+        f"## Where to look\n\n"
+        f"1. Read the **Issues Found** section above for a root-cause diagnosis "
+        f"and `file:line` references. Trust it and start there.\n"
+        f"2. Screenshots are under "
+        f"`ai-dev/active/{item_id}/evidences/post/` — open the ones named in "
+        f"the report's `v1_*`, `v2_*`, ... columns to see expected vs. actual.\n"
+        f"3. The failing Vs map to files typically in:\n"
+        f"   - `dashboard/templates/**` — if the UI rendered the wrong element\n"
+        f"   - `dashboard/routers/**` — if an HTTP route returned the wrong status/fragment\n"
+        f"   - `orch/cli/**` — if a CLI command emitted the wrong exit code or message\n"
+        f"   - `orch/daemon/**` or `orch/db/**` — if a state transition is wrong\n\n"
+        f"## Constraints\n\n"
+        f"1. **Only fix the reported V(n) failures.** Do not refactor unrelated code.\n"
+        f"2. **Preserve existing behavior** for every V that already passed — "
+        f"the report table flags passing Vs; do not regress them.\n"
+        f"3. **Follow project conventions.** Read `CLAUDE.md` for patterns.\n"
+        f"4. Do **NOT** start/stop `docker compose`, run `make e2e-up`, or "
+        f"invoke `playwright-cli` — the orchestrator owns the E2E stack and "
+        f"will rebuild it before the next browser run.\n"
+        f"5. Run any fast unit tests near the code you touched to catch "
+        f"regressions before the expensive E2E re-run.\n"
+        f"{escalation}\n\n"
+        f"**IMPORTANT**: Do NOT call `iw step-done` or `iw step-fail`. "
+        f"Simply apply the fixes and exit. The orchestrator re-launches the "
+        f"browser verification automatically.\n"
     )
 
 
