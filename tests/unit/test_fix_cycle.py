@@ -31,6 +31,13 @@ def test_fixable_step_types_includes_quality_validation() -> None:
     assert StepType.quality_validation in _FIXABLE_STEP_TYPES
 
 
+def test_fixable_step_types_includes_browser_verification() -> None:
+    # Browser verification is fixable: V(n) failures are real code defects,
+    # not transient environment issues, so the daemon opens a fix cycle
+    # instead of plain-retrying the same browser prompt.
+    assert StepType.browser_verification in _FIXABLE_STEP_TYPES
+
+
 # ---------------------------------------------------------------------------
 # _extract_mandatory_findings
 # ---------------------------------------------------------------------------
