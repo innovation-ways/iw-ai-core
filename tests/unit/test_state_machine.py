@@ -30,6 +30,7 @@ from orch.db.models import (
     StepStatus,
     WorkItemPhase,
     WorkItemStatus,
+    WorkItemType,
 )
 
 # ---------------------------------------------------------------------------
@@ -328,3 +329,65 @@ def test_invalid_transition_message_includes_entity_type() -> None:
     with pytest.raises(InvalidTransition) as exc_info:
         validate_step_status(StepStatus.completed, StepStatus.pending)
     assert "StepStatus" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Research work-item type-aware transitions (AC7)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("from_s", "to_s", "item_type", "expected"),
+    [
+        # Research: only draft → completed is valid
+        (WorkItemStatus.draft, WorkItemStatus.completed, WorkItemType.Research, True),
+        (WorkItemStatus.draft, WorkItemStatus.approved, WorkItemType.Research, False),
+        (WorkItemStatus.draft, WorkItemStatus.in_progress, WorkItemType.Research, False),
+        (WorkItemStatus.draft, WorkItemStatus.failed, WorkItemType.Research, False),
+        (WorkItemStatus.draft, WorkItemStatus.paused, WorkItemType.Research, False),
+        (WorkItemStatus.completed, WorkItemStatus.draft, WorkItemType.Research, False),
+        (WorkItemStatus.completed, WorkItemStatus.approved, WorkItemType.Research, False),
+        (WorkItemStatus.completed, WorkItemStatus.in_progress, WorkItemType.Research, False),
+        # Non-research: existing table unchanged
+        (WorkItemStatus.draft, WorkItemStatus.approved, WorkItemType.Feature, True),
+        (WorkItemStatus.draft, WorkItemStatus.completed, WorkItemType.Feature, False),
+        (WorkItemStatus.draft, WorkItemStatus.in_progress, WorkItemType.Feature, False),
+        (WorkItemStatus.approved, WorkItemStatus.in_progress, WorkItemType.ChangeRequest, True),
+        (WorkItemStatus.approved, WorkItemStatus.draft, WorkItemType.Issue, True),
+        (WorkItemStatus.in_progress, WorkItemStatus.completed, WorkItemType.Feature, True),
+        # Backward compat: item_type=None routes to the generic table
+        (WorkItemStatus.draft, WorkItemStatus.approved, None, True),
+        (WorkItemStatus.draft, WorkItemStatus.completed, None, False),
+        (WorkItemStatus.draft, WorkItemStatus.in_progress, None, False),
+    ],
+)
+def test_work_item_status_transitions_type_aware(
+    from_s: WorkItemStatus, to_s: WorkItemStatus, item_type: WorkItemType | None, expected: bool
+) -> None:
+    assert can_transition_work_item_status(from_s, to_s, item_type) is expected
+
+
+@pytest.mark.parametrize(
+    ("from_s", "to_s", "item_type", "expected"),
+    [
+        # True cases — should not raise
+        (WorkItemStatus.draft, WorkItemStatus.completed, WorkItemType.Research, True),
+        (WorkItemStatus.draft, WorkItemStatus.approved, WorkItemType.Feature, True),
+        (WorkItemStatus.approved, WorkItemStatus.in_progress, WorkItemType.ChangeRequest, True),
+        (WorkItemStatus.draft, WorkItemStatus.approved, None, True),
+        # False cases — should raise InvalidTransition
+        (WorkItemStatus.draft, WorkItemStatus.approved, WorkItemType.Research, False),
+        (WorkItemStatus.draft, WorkItemStatus.in_progress, WorkItemType.Research, False),
+        (WorkItemStatus.completed, WorkItemStatus.draft, WorkItemType.Research, False),
+        (WorkItemStatus.draft, WorkItemStatus.completed, WorkItemType.Feature, False),
+        (WorkItemStatus.draft, WorkItemStatus.in_progress, None, False),
+    ],
+)
+def test_validate_work_item_status_type_aware(
+    from_s: WorkItemStatus, to_s: WorkItemStatus, item_type: WorkItemType | None, expected: bool
+) -> None:
+    if expected:
+        validate_work_item_status(from_s, to_s, item_type)
+    else:
+        with pytest.raises(InvalidTransition):
+            validate_work_item_status(from_s, to_s, item_type)

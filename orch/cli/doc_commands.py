@@ -12,6 +12,7 @@ from typing import Any
 import click
 
 from orch.cli.utils import output_error, resolve_project
+from orch.daemon.state_machine import validate_work_item_status
 from orch.db.models import (  # noqa: F401
     DocStatus,
     DocTier,
@@ -19,6 +20,10 @@ from orch.db.models import (  # noqa: F401
     EditorialCategory,
     JobStatus,
     Project,
+    WorkItem,
+    WorkItemPhase,
+    WorkItemStatus,
+    WorkItemType,
 )
 from orch.doc_service import DocService
 
@@ -213,6 +218,24 @@ def doc_update(
                 new_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
                 snapshot_created = old_content_hash != new_hash
 
+            work_item_auto_completed = False
+            if doc.doc_type == DocType.research:
+                work_item = session.get(WorkItem, (project_id, doc_id))
+                if (
+                    work_item is not None
+                    and work_item.type == WorkItemType.Research
+                    and work_item.status == WorkItemStatus.draft
+                ):
+                    validate_work_item_status(
+                        WorkItemStatus.draft, WorkItemStatus.completed, WorkItemType.Research
+                    )
+                    work_item.status = WorkItemStatus.completed
+                    work_item.phase = (
+                        WorkItemPhase.done
+                    )  # research items transition phase directly to done — see CR-00010
+                    work_item.completed_at = datetime.now(UTC)
+                    work_item_auto_completed = True
+
             click.echo(
                 json.dumps(
                     {
@@ -221,6 +244,7 @@ def doc_update(
                         "version": doc.version,
                         "status": doc.status.value,
                         "snapshot_created": snapshot_created,
+                        "work_item_auto_completed": work_item_auto_completed,
                     }
                 )
             )

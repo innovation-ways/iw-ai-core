@@ -1,16 +1,16 @@
 {
   "project_id": "iw-ai-core",
-  "id": "CR-00009",
-  "title": "Chat panel context awareness: header label + module-aware system prompt + retrieval fallback",
+  "id": "CR-00010",
+  "title": "Research items auto-complete without manual approval",
   "status": "approved",
   "phase": "active",
-  "total_steps": 16,
+  "total_steps": 14,
   "completed_steps": 0,
   "current_step": null,
-  "batch_id": "BATCH-00025",
-  "worktree": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00009",
-  "created_at": "2026-04-18T18:59:14.739450+00:00",
-  "updated_at": "2026-04-18T18:59:14.739450+00:00",
+  "batch_id": "BATCH-00026",
+  "worktree": null,
+  "created_at": "2026-04-18T20:29:24.011191+00:00",
+  "updated_at": "2026-04-18T20:29:24.011191+00:00",
   "steps": [
     {
       "step_id": "S01",
@@ -26,7 +26,7 @@
     },
     {
       "step_id": "S03",
-      "label": "Api",
+      "label": "Frontend",
       "type": "implementation",
       "status": "pending"
     },
@@ -38,7 +38,7 @@
     },
     {
       "step_id": "S05",
-      "label": "Frontend",
+      "label": "Tests",
       "type": "implementation",
       "status": "pending"
     },
@@ -50,26 +50,26 @@
     },
     {
       "step_id": "S07",
-      "label": "Tests",
-      "type": "implementation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S08",
-      "label": "CodeReview",
-      "type": "code_review",
-      "status": "pending"
-    },
-    {
-      "step_id": "S09",
       "label": "CodeReviewFinal",
       "type": "code_review_final",
       "status": "pending"
     },
     {
-      "step_id": "S10",
+      "step_id": "S08",
       "label": "CodeReviewFixFinal",
       "type": "code_review_fix_final",
+      "status": "pending"
+    },
+    {
+      "step_id": "S09",
+      "label": "QvGate",
+      "type": "quality_validation",
+      "status": "pending"
+    },
+    {
+      "step_id": "S10",
+      "label": "QvGate",
+      "type": "quality_validation",
       "status": "pending"
     },
     {
@@ -92,25 +92,13 @@
     },
     {
       "step_id": "S14",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S15",
-      "label": "QvGate",
-      "type": "quality_validation",
-      "status": "pending"
-    },
-    {
-      "step_id": "S16",
       "label": "QvBrowser",
       "type": "browser_verification",
       "status": "pending"
     }
   ],
-  "branch": "agent/CR-00009-chat-panel-context-awareness-h",
-  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00009",
+  "branch": "agent/CR-00010-research-items-auto-complete-w",
+  "worktree_path": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00010",
   "iw_core_root": "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core",
-  "brief_generated_at": "2026-04-18T19:19:11Z"
+  "brief_generated_at": "2026-04-18T21:46:10Z"
 }
