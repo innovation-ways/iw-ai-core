@@ -30,8 +30,15 @@ from orch.db.models import (
 # ---------------------------------------------------------------------------
 
 
-def validate_approve_transition(current_status: WorkItemStatus) -> str | None:
+def validate_approve_transition(
+    current_status: WorkItemStatus, item_type: WorkItemType | None = None
+) -> str | None:
     """Return an error message if approve is invalid, or None if OK."""
+    if item_type == WorkItemType.Research:
+        return (
+            "Cannot approve research items — they auto-complete when the "
+            "research document is created via 'iw doc-update'"
+        )
     if current_status != WorkItemStatus.draft:
         return f"Cannot approve: current status is '{current_status.value}'"
     return None
@@ -40,8 +47,11 @@ def validate_approve_transition(current_status: WorkItemStatus) -> str | None:
 def validate_unapprove_transition(
     current_status: WorkItemStatus,
     active_batch_id: str | None,
+    item_type: WorkItemType | None = None,
 ) -> str | None:
     """Return an error message if unapprove is invalid, or None if OK."""
+    if item_type == WorkItemType.Research:
+        return "Cannot unapprove research items — they do not use the approval workflow"
     if current_status != WorkItemStatus.approved:
         return f"Cannot unapprove: current status is '{current_status.value}'"
     if active_batch_id:
@@ -320,7 +330,7 @@ def approve(ctx: click.Context, item_id: str) -> None:
             if item is None:
                 output_error(ctx, f"Work item {item_id} not found in project {project_id}", 1)
 
-            error = validate_approve_transition(item.status)
+            error = validate_approve_transition(item.status, item.type)
             if error:
                 output_error(ctx, error, 1)
 
@@ -371,7 +381,7 @@ def unapprove(ctx: click.Context, item_id: str) -> None:
                 active_batch_item.batch_id if active_batch_item is not None else None
             )
 
-            error = validate_unapprove_transition(item.status, active_batch_id)
+            error = validate_unapprove_transition(item.status, active_batch_id, item.type)
             if error:
                 exit_code = 4 if active_batch_id else 1
                 output_error(ctx, error, exit_code)

@@ -32,6 +32,7 @@ from orch.db.models import (
     WorkflowStep,
     WorkItem,
     WorkItemStatus,
+    WorkItemType,
 )
 
 if TYPE_CHECKING:
@@ -457,6 +458,14 @@ def approve_item(
     db: Session = Depends(get_db),
 ) -> Any:
     item = _get_item(db, project_id, item_id)
+    if item.type == WorkItemType.Research:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Research items cannot be approved — they auto-complete when"
+                " the research document is created."
+            ),
+        )
     if item.status != WorkItemStatus.draft:
         raise HTTPException(
             status_code=422,
@@ -707,6 +716,11 @@ def unapprove_item(
     db: Session = Depends(get_db),
 ) -> Any:
     item = _get_item(db, project_id, item_id)
+    if item.type == WorkItemType.Research:
+        raise HTTPException(
+            status_code=422,
+            detail="Research items do not use the approval workflow.",
+        )
     if item.status != WorkItemStatus.approved:
         raise HTTPException(
             status_code=422,

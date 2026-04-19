@@ -289,3 +289,56 @@ def test_type_to_id_prefix_research() -> None:
 
 def test_item_type_map_research() -> None:
     assert _ITEM_TYPE_MAP.get("research") == WorkItemType.Research
+
+
+# ---------------------------------------------------------------------------
+# validate_approve_transition — research rejection (AC1)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_approve_transition_rejects_research() -> None:
+    msg = validate_approve_transition(WorkItemStatus.draft, WorkItemType.Research)
+    assert msg is not None
+    assert "Cannot approve research items" in msg
+
+
+def test_validate_approve_transition_non_research_draft_ok() -> None:
+    assert validate_approve_transition(WorkItemStatus.draft) is None
+    assert validate_approve_transition(WorkItemStatus.draft, WorkItemType.Feature) is None
+    assert validate_approve_transition(WorkItemStatus.draft, WorkItemType.ChangeRequest) is None
+    assert validate_approve_transition(WorkItemStatus.draft, WorkItemType.Issue) is None
+
+
+def test_validate_approve_transition_research_check_fires_before_status_check() -> None:
+    msg = validate_approve_transition(WorkItemStatus.approved, WorkItemType.Research)
+    assert msg is not None
+    assert "Cannot approve research items" in msg
+
+
+# ---------------------------------------------------------------------------
+# validate_unapprove_transition — research rejection (AC2)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_unapprove_transition_rejects_research() -> None:
+    msg = validate_unapprove_transition(WorkItemStatus.approved, None, WorkItemType.Research)
+    assert msg is not None
+    assert "Cannot unapprove research items" in msg
+
+
+def test_validate_unapprove_transition_non_research_approved_ok() -> None:
+    assert validate_unapprove_transition(WorkItemStatus.approved, None) is None
+    assert (
+        validate_unapprove_transition(WorkItemStatus.approved, None, WorkItemType.Feature) is None
+    )
+    assert validate_unapprove_transition(WorkItemStatus.approved, None, WorkItemType.Issue) is None
+    assert (
+        validate_unapprove_transition(WorkItemStatus.approved, None, WorkItemType.ChangeRequest)
+        is None
+    )
+
+
+def test_validate_unapprove_transition_research_check_fires_before_status_check() -> None:
+    msg = validate_unapprove_transition(WorkItemStatus.draft, None, WorkItemType.Research)
+    assert msg is not None
+    assert "Cannot unapprove research items" in msg

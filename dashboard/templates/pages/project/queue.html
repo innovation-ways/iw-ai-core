@@ -124,46 +124,48 @@
           </tr>
         </thead>
         <tbody>
-          {% for item in draft_items %}
-            <tr class="border-b border-border last:border-0 hover:bg-muted/20">
-              <td class="px-4 py-2">
-                <a href="/project/{{ current_project.id }}/item/{{ item.id }}"
-                   class="font-mono text-xs font-semibold text-primary hover:underline">
-                  {{ item.id }}
-                </a>
-              </td>
-              <td class="px-4 py-2">
-                {{ status_badge(item.type) }}
-              </td>
-              <td class="px-4 py-2 text-xs text-foreground">
-                <a href="/project/{{ current_project.id }}/item/{{ item.id }}"
-                   class="hover:text-primary transition-colors">
-                  {{ item.title }}
-                </a>
-              </td>
-              <td class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">
-                {{ item.created_at | localdt('%b %d') }}
-              </td>
-              <td class="px-4 py-2 flex gap-2">
-                <button
-                  hx-post="/project/{{ current_project.id }}/api/item/{{ item.id }}/approve"
-                  hx-swap="none"
-                  hx-on::after-request="window.location.reload()"
-                  class="px-2 py-1 bg-success text-success-foreground rounded text-xs
-                         hover:opacity-90 transition-opacity font-medium">
-                  Approve
-                </button>
-                <button
-                  hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
-                  hx-target="#confirm-dialog"
-                  hx-swap="innerHTML"
-                  class="px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs
-                         hover:opacity-90 transition-opacity font-medium">
-                  Cancel
-                </button>
-              </td>
-            </tr>
-          {% endfor %}
+{% for item in draft_items %}
+              {% if item.type != 'Research' %}
+              <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+                <td class="px-4 py-2">
+                  <a href="/project/{{ current_project.id }}/item/{{ item.id }}"
+                     class="font-mono text-xs font-semibold text-primary hover:underline">
+                    {{ item.id }}
+                  </a>
+                </td>
+                <td class="px-4 py-2">
+                  {{ status_badge(item.type) }}
+                </td>
+                <td class="px-4 py-2 text-xs text-foreground">
+                  <a href="/project/{{ current_project.id }}/item/{{ item.id }}"
+                     class="hover:text-primary transition-colors">
+                    {{ item.title }}
+                  </a>
+                </td>
+                <td class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">
+                  {{ item.created_at | localdt('%b %d') }}
+                </td>
+                <td class="px-4 py-2 flex gap-2">
+                  <button
+                    hx-post="/project/{{ current_project.id }}/api/item/{{ item.id }}/approve"
+                    hx-swap="none"
+                    hx-on::after-request="window.location.reload()"
+                    class="px-2 py-1 bg-success text-success-foreground rounded text-xs
+                           hover:opacity-90 transition-opacity font-medium">
+                    Approve
+                  </button>
+                  <button
+                    hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+                    hx-target="#confirm-dialog"
+                    hx-swap="innerHTML"
+                    class="px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs
+                           hover:opacity-90 transition-opacity font-medium">
+                    Cancel
+                  </button>
+                </td>
+              </tr>
+              {% endif %}
+            {% endfor %}
         </tbody>
       </table>
     {% else %}

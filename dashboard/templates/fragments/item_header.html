@@ -26,8 +26,15 @@
     {% endif %}
 
     {# ── Item-level action buttons (contextual by status) ── #}
+    {# Research items bypass the approval workflow entirely — they auto-complete when #}
+    {# the research document is created via iw doc-update, so no approve/unapprove UI. #}
     <div class="flex items-center gap-2 ml-auto">
-      {% if item_status == 'draft' %}
+      {% if item_type == 'Research' %}
+        <p class="text-xs text-muted-foreground ml-auto">
+          Research items auto-complete when the research document is created via
+          <code class="font-mono">iw doc-update</code>. They do not use the approval workflow.
+        </p>
+      {% elif item_status == 'draft' %}
         <button
           hx-get="/project/{{ current_project.id }}/api/confirm-item/approve/{{ item.id }}"
           hx-target="#confirm-dialog"

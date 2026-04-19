@@ -38,6 +38,62 @@ def invoke(
     )
 
 
+def _register_research(cli_get_session: Any) -> str:
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "next-id", "--type", "research"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    research_id = json.loads(result.output)["id"]
+
+    result = runner.invoke(
+        cli,
+        [
+            "--project",
+            "test-proj",
+            "--json",
+            "register",
+            research_id,
+            "Test Research",
+            "--type",
+            "research",
+        ],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    return research_id
+
+
+def _register_and_approve_feature(cli_get_session: Any) -> str:
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "next-id", "--type", "feature"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    feature_id = json.loads(result.output)["id"]
+
+    runner.invoke(
+        cli,
+        ["--project", "test-proj", "register", feature_id, "Test Feature", "--type", "feature"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    runner.invoke(
+        cli,
+        ["--project", "test-proj", "approve", feature_id],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    return feature_id
+
+
 def make_item(
     db_session: Any,
     item_id: str,
@@ -479,3 +535,32 @@ def test_batch_full_lifecycle(
 
     db_session.refresh(batch)
     assert batch.status == BatchStatus.executing
+
+
+# ---------------------------------------------------------------------------
+# Research item batch rejection (AC6)
+# ---------------------------------------------------------------------------
+
+
+def test_batch_create_rejects_research_item(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    research_id = _register_research(cli_get_session)
+    feature_id = _register_and_approve_feature(cli_get_session)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "batch-create", research_id, feature_id],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0, result.output
+    err = result.stderr or result.output
+    assert "research item" in err
+    assert "cannot be added to a batch" in err
+
+    batches = db_session.query(Batch).filter(Batch.project_id == "test-proj").all()
+    assert len(batches) == 0
