@@ -59,7 +59,7 @@ def create_session_factory(db_url: str) -> SessionFactory:
         try:
             yield session
             session.commit()
-        except Exception:
+        except BaseException:
             session.rollback()
             raise
         finally:
