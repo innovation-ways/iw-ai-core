@@ -78,6 +78,7 @@ def _queue_items(project_id: str, db: Session) -> tuple[list[QueueItem], list[Qu
         .where(
             WorkItem.project_id == project_id,
             WorkItem.status.in_([WorkItemStatus.approved, WorkItemStatus.draft]),
+            WorkItem.type != WorkItemType.Research,
             ~in_active_batch,
         )
         .order_by(WorkItem.created_at.desc())

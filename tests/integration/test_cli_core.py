@@ -1,5 +1,7 @@
 """Integration tests for CLI core commands against a real PostgreSQL testcontainer."""
 
+from __future__ import annotations
+
 import json
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -18,6 +20,7 @@ from orch.db.models import (
     Project,
     WorkflowStep,
     WorkItem,
+    WorkItemPhase,
     WorkItemStatus,
 )
 
@@ -566,3 +569,240 @@ def test_full_flow_next_id_register_approve(
     assert item is not None
     assert item.status == WorkItemStatus.approved
     assert item.title == "Full flow test"
+
+
+# ---------------------------------------------------------------------------
+# Research item flow — AC1, AC2, AC3, AC4, AC5
+# ---------------------------------------------------------------------------
+
+
+def _register_research(runner: CliRunner, get_session: Any) -> str:
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "next-id", "--type", "research"],
+        obj={"get_session": get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    research_id = json.loads(result.output)["id"]
+    assert research_id.startswith("R-")
+
+    result = runner.invoke(
+        cli,
+        [
+            "--project",
+            "test-proj",
+            "--json",
+            "register",
+            research_id,
+            "Test Research",
+            "--type",
+            "research",
+        ],
+        obj={"get_session": get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    return research_id
+
+
+def test_research_auto_complete_end_to_end(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    """AC1 + AC3: register → doc-update → completed, approve is rejected."""
+    runner = CliRunner()
+    research_id = _register_research(runner, cli_get_session)
+
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "-j", "item-status", research_id],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert '"status": "draft"' in result.output
+
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "approve", research_id],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0
+    output = result.stderr or result.output
+    assert "Cannot approve research items" in output
+
+    result = runner.invoke(
+        cli,
+        [
+            "--project",
+            "test-proj",
+            "--json",
+            "doc-update",
+            research_id,
+            "--doc-type",
+            "research",
+            "--title",
+            "Test Research",
+            "--tier",
+            "human_authored",
+            "--editorial-category",
+            "technical",
+            "--content",
+            "# Research content",
+        ],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.stderr or result.output
+    output = json.loads(result.output)
+    assert output.get("work_item_auto_completed") is True
+
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "-j", "item-status", research_id],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert '"status": "completed"' in result.output
+
+    item = db_session.get(WorkItem, ("test-proj", research_id))
+    assert item is not None
+    assert item.status == WorkItemStatus.completed
+    assert item.phase == WorkItemPhase.done
+    assert item.completed_at is not None
+
+
+def test_research_doc_update_idempotent(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    """AC4: second doc-update on completed research has work_item_auto_completed=false."""
+    runner = CliRunner()
+    research_id = _register_research(runner, cli_get_session)
+
+    runner.invoke(
+        cli,
+        [
+            "--project",
+            "test-proj",
+            "doc-update",
+            research_id,
+            "--doc-type",
+            "research",
+            "--title",
+            "Test Research",
+            "--tier",
+            "human_authored",
+            "--editorial-category",
+            "technical",
+            "--content",
+            "# First version",
+        ],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            "--project",
+            "test-proj",
+            "--json",
+            "doc-update",
+            research_id,
+            "--title",
+            "Test Research",
+            "--content",
+            "# Second version",
+        ],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.stderr or result.output
+    output = json.loads(result.output)
+    assert output.get("work_item_auto_completed") is False
+
+    item = db_session.get(WorkItem, ("test-proj", research_id))
+    assert item is not None
+    assert item.status == WorkItemStatus.completed
+
+
+def test_research_unapprove_errors(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    """AC2: unapprove a research item errors with the correct message."""
+    runner = CliRunner()
+    research_id = _register_research(runner, cli_get_session)
+
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "unapprove", research_id],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0
+    output = result.stderr or result.output
+    assert "Cannot unapprove research items" in output
+
+
+def test_doc_update_non_research_does_not_autocomplete(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    """AC5: doc-update for non-research doc does not touch non-research work item."""
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "--project",
+            "test-proj",
+            "--json",
+            "register",
+            "F-00001",
+            "Test Feature",
+            "--type",
+            "feature",
+        ],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.stderr or result.output
+
+    result = runner.invoke(
+        cli,
+        [
+            "--project",
+            "test-proj",
+            "--json",
+            "doc-update",
+            "F-00001",
+            "--doc-type",
+            "module",
+            "--title",
+            "Tech Design",
+            "--tier",
+            "human_authored",
+            "--editorial-category",
+            "technical",
+            "--content",
+            "# Tech",
+        ],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.stderr or result.output
+    output = json.loads(result.output)
+    assert output.get("work_item_auto_completed") is False
+
+    item = db_session.get(WorkItem, ("test-proj", "F-00001"))
+    assert item is not None
+    assert item.status == WorkItemStatus.draft

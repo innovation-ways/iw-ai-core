@@ -184,9 +184,10 @@ iw doc-update {ID} \
   --doc-type research \
   --editorial-category {technical|marketing|functional} \
   --title "{Title}" \
-  --status draft \
   --content-file docs/research/{ID}-{slug}.md
 ```
+
+> **Work item auto-completion**: When `iw doc-update` runs for a `--doc-type research` document whose `doc_id` matches a registered research work item, the work item transitions from `draft` to `completed` automatically. Do **NOT** run `iw approve` on research items — the command will error.
 
 **Editorial category mapping**:
 

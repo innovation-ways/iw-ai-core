@@ -14,6 +14,7 @@ from orch.db.models import (
     StepStatus,
     WorkItemPhase,
     WorkItemStatus,
+    WorkItemType,
 )
 
 
@@ -33,6 +34,11 @@ _WORK_ITEM_STATUS: dict[WorkItemStatus, frozenset[WorkItemStatus]] = {
     ),
     WorkItemStatus.paused: frozenset({WorkItemStatus.in_progress}),
     WorkItemStatus.failed: frozenset({WorkItemStatus.in_progress}),
+    WorkItemStatus.completed: frozenset(),
+}
+
+_RESEARCH_WORK_ITEM_STATUS: dict[WorkItemStatus, frozenset[WorkItemStatus]] = {
+    WorkItemStatus.draft: frozenset({WorkItemStatus.completed}),
     WorkItemStatus.completed: frozenset(),
 }
 
@@ -124,14 +130,20 @@ def _validate(
 # ---------------------------------------------------------------------------
 
 
-def can_transition_work_item_status(from_s: WorkItemStatus, to_s: WorkItemStatus) -> bool:
+def can_transition_work_item_status(
+    from_s: WorkItemStatus, to_s: WorkItemStatus, item_type: WorkItemType | None = None
+) -> bool:
     """Return True if the work item status transition is valid."""
-    return _can(_WORK_ITEM_STATUS, from_s, to_s)  # type: ignore[arg-type]
+    table = _RESEARCH_WORK_ITEM_STATUS if item_type == WorkItemType.Research else _WORK_ITEM_STATUS
+    return _can(table, from_s, to_s)  # type: ignore[arg-type]
 
 
-def validate_work_item_status(from_s: WorkItemStatus, to_s: WorkItemStatus) -> None:
+def validate_work_item_status(
+    from_s: WorkItemStatus, to_s: WorkItemStatus, item_type: WorkItemType | None = None
+) -> None:
     """Raise InvalidTransition if the work item status transition is invalid."""
-    _validate("WorkItemStatus", _WORK_ITEM_STATUS, from_s, to_s)  # type: ignore[arg-type]
+    table = _RESEARCH_WORK_ITEM_STATUS if item_type == WorkItemType.Research else _WORK_ITEM_STATUS
+    _validate("WorkItemStatus", table, from_s, to_s)  # type: ignore[arg-type]
 
 
 def can_transition_work_item_phase(from_s: WorkItemPhase, to_s: WorkItemPhase) -> bool:

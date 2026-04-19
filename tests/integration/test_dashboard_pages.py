@@ -70,12 +70,13 @@ def make_item(
     item_id: str = "I-00001",
     title: str = "Test Item",
     status: WorkItemStatus = WorkItemStatus.in_progress,
+    item_type: WorkItemType = WorkItemType.Issue,
     design_doc_content: str | None = None,
 ) -> WorkItem:
     item = WorkItem(
         project_id=project_id,
         id=item_id,
-        type=WorkItemType.Issue,
+        type=item_type,
         title=title,
         status=status,
         phase=WorkItemPhase.active,
@@ -683,3 +684,66 @@ def test_research_search_no_query_returns_all(
     assert response.status_code == 200
     assert "R-00007" in response.text
     assert "R-00008" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Research item batch-queue exclusion (AC9)
+# ---------------------------------------------------------------------------
+
+
+def test_batch_queue_excludes_research_items(
+    client: TestClient, db_session: Any, test_project: Project
+) -> None:
+    """AC9: Research items in approved status do NOT appear in batch-queue list."""
+    from dashboard.routers.project_pages import _queue_items
+
+    _item_research = make_item(
+        db_session,
+        item_id="R-00001",
+        title="Research Item",
+        status=WorkItemStatus.approved,
+        item_type=WorkItemType.Research,
+    )
+    _item_feature = make_item(
+        db_session,
+        item_id="F-00001",
+        title="Feature Item",
+        status=WorkItemStatus.approved,
+        item_type=WorkItemType.Feature,
+    )
+    db_session.flush()
+
+    approved, drafts = _queue_items(test_project.id, db_session)
+    approved_ids = [item.id for item in approved]
+
+    assert "R-00001" not in approved_ids
+    assert "F-00001" in approved_ids
+
+
+def test_batch_queue_draft_items_excludes_research(
+    client: TestClient, db_session: Any, test_project: Project
+) -> None:
+    """Research items in draft status are excluded from draft queue items."""
+    from dashboard.routers.project_pages import _queue_items
+
+    _item_research = make_item(
+        db_session,
+        item_id="R-00002",
+        title="Research Draft",
+        status=WorkItemStatus.draft,
+        item_type=WorkItemType.Research,
+    )
+    _item_feature = make_item(
+        db_session,
+        item_id="F-00002",
+        title="Feature Draft",
+        status=WorkItemStatus.draft,
+        item_type=WorkItemType.Feature,
+    )
+    db_session.flush()
+
+    approved, drafts = _queue_items(test_project.id, db_session)
+    draft_ids = [item.id for item in drafts]
+
+    assert "R-00002" not in draft_ids
+    assert "F-00002" in draft_ids

@@ -22,6 +22,7 @@ from orch.db.models import (
     DaemonEvent,
     WorkItem,
     WorkItemStatus,
+    WorkItemType,
 )
 
 # ---------------------------------------------------------------------------
@@ -249,6 +250,13 @@ def batch_create(
                 item = session.get(WorkItem, (project_id, iid))
                 if item is None:
                     output_error(ctx, f"Work item {iid} not found in project {project_id}", 1)
+                if item.type == WorkItemType.Research:
+                    output_error(
+                        ctx,
+                        f"Work item {iid} is a research item and cannot be added to a batch — "
+                        "research items auto-complete via 'iw doc-update'",
+                        1,
+                    )
                 if item.status != WorkItemStatus.approved:
                     output_error(
                         ctx,
