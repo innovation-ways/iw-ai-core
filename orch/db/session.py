@@ -43,7 +43,7 @@ def get_session() -> Generator[Session, None, None]:
     try:
         yield session
         session.commit()
-    except Exception:
+    except BaseException:
         session.rollback()
         raise
     finally:

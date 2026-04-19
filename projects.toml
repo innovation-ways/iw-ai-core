@@ -10,3 +10,8 @@ enabled = true
 display_name = "IW AI Core Platform"
 repo_root = "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core"
 enabled = true
+
+[projects.cv]
+display_name = "Curriculum Vitae"
+repo_root = "/home/sergiog/dev/iw-doc-plan/main/cv"
+enabled = true
