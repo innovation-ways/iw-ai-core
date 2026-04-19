@@ -14,9 +14,30 @@ from sqlalchemy import select
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.orm import Session
 
     from orch.rag.config import CodeUnderstandingConfig
+
+
+def _module_path_to_file_prefix(module_path: str) -> str:
+    """Normalize a module path (dotted Python name or filesystem path) to a filesystem
+    prefix suitable for a LanceDB ``file_path LIKE '<prefix>/%'`` filter.
+
+    Examples:
+        ``orch.daemon``   -> ``orch/daemon``
+        ``orch/daemon/``  -> ``orch/daemon``
+        ``orch.rag.qa``   -> ``orch/rag/qa``
+        ``dashboard``     -> ``dashboard``
+
+    Leading/trailing slashes are stripped. If the path already contains ``/`` it is
+    assumed to be a filesystem path and dots are preserved (e.g. ``docs/readme.md``).
+    """
+    p = module_path.strip().strip("/")
+    if not p:
+        return ""
+    if "/" not in p and "." in p:
+        p = p.replace(".", "/")
+    return p
 
 
 class QAEngine:
@@ -39,9 +60,10 @@ class QAEngine:
         context_level: str,
         context_doc_id: str | None,
         conversation_history: list[dict[str, str]],
-        session: AsyncSession,
+        session: Session,
         module_path: str | None = None,
         module_name: str | None = None,
+        context_chips: list[str] | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Stream answer tokens for the given question using RAG retrieval.
@@ -76,9 +98,11 @@ class QAEngine:
 
             seed_filter = "file_path != '__iwcore_seed__'"
             if context_level == "module" and module_path:
+                prefix = _module_path_to_file_prefix(module_path)
+                safe_prefix = prefix.replace("'", "''")
                 query = (
                     table.search(embedding_vector)
-                    .where(f"file_path LIKE '{module_path}%' AND {seed_filter}")
+                    .where(f"file_path LIKE '{safe_prefix}/%' AND {seed_filter}")
                     .limit(self.TOP_K)
                 )
             else:
@@ -98,18 +122,24 @@ class QAEngine:
             logging.warning("LanceDB unavailable, skipping retrieval")
 
         context_doc_content = ""
-        if context_doc_id is not None:
+        if context_doc_id:
             from orch.db.models import ProjectDoc
 
-            result = await session.execute(
-                select(ProjectDoc).where(ProjectDoc.id == context_doc_id)
+            result = await asyncio.to_thread(
+                session.execute,
+                select(ProjectDoc).where(ProjectDoc.id == context_doc_id),
             )
             doc = result.scalar_one_or_none()
             if doc:
                 context_doc_content = doc.content or ""
 
         system_prompt = self._build_system_prompt(
-            context_doc_content, chunks, module_path, module_name, fallback_triggered
+            context_doc_content,
+            chunks,
+            module_path,
+            module_name,
+            fallback_triggered,
+            context_chips,
         )
 
         truncated_history = self._truncate_history(conversation_history)
@@ -133,6 +163,36 @@ class QAEngine:
         except (httpx.ConnectError, ConnectionRefusedError):
             yield "__ERROR__:Local AI unavailable. Check that Ollama is running."
 
+    RENDERING_CAPABILITIES_BLOCK: str = (
+        "## Rendering Capabilities\n\n"
+        "The chat UI renders your markdown response inline. Use these features "
+        "directly when they help — never tell the user to paste code into an "
+        "external editor or live-preview site:\n"
+        "- Mermaid diagrams — emit a fenced ```mermaid block. The UI renders it "
+        "as an interactive SVG with expand and retry controls. Supported types: "
+        "flowchart, sequenceDiagram, classDiagram, erDiagram, stateDiagram-v2, gantt.\n"
+        "- Tables — use GitHub-flavored markdown tables when comparing multiple "
+        "items side by side.\n"
+        "- Code — use fenced blocks with a language tag (```python, ```typescript, "
+        "etc.) so syntax highlighting applies.\n\n"
+        "Do not preface answers with disclaimers about being a text-based AI; "
+        "emit diagrams and code directly in the response.\n\n"
+    )
+
+    DIAGRAM_DIRECTIVE_BLOCK: str = (
+        "## Respond With a Diagram\n\n"
+        "The user invoked /diagram. Make the primary content of your answer a "
+        "Mermaid diagram in a fenced ```mermaid code block. Choose the type that "
+        "best fits the question:\n"
+        "- sequenceDiagram — for request/response flows, interactions over time\n"
+        "- classDiagram — for class/interface hierarchies and relationships\n"
+        "- erDiagram — for database schema / table relationships\n"
+        "- stateDiagram-v2 — for state machines / status transitions\n"
+        "- flowchart — for architecture, component wiring, control flow (default)\n"
+        "Keep accompanying prose to one short paragraph before and a brief caption "
+        "after. Do not apologize or suggest external tools.\n\n"
+    )
+
     def _build_system_prompt(
         self,
         context_doc_content: str,
@@ -140,13 +200,15 @@ class QAEngine:
         module_path: str | None = None,
         module_name: str | None = None,
         fallback_triggered: bool = False,
+        context_chips: list[str] | None = None,
     ) -> str:
         """
         Build the system prompt with optional module-focus block, optional retrieval-note block,
-        architecture context, and relevant code excerpts.
+        architecture context, relevant code excerpts, and UI rendering capabilities.
 
         The module block is emitted only when module_path is non-empty.
         The retrieval-note block is emitted only when fallback_triggered is True.
+        The diagram directive block is emitted only when "diagram" appears in context_chips.
         """
         module_block = ""
         if module_path:
@@ -183,6 +245,10 @@ cover the module directly, say so explicitly in your answer.
         for chunk in chunks:
             excerpts += f"---\n{chunk}\n"
 
+        diagram_block = ""
+        if context_chips and "diagram" in context_chips:
+            diagram_block = self.DIAGRAM_DIRECTIVE_BLOCK
+
         return (
             "You are a codebase expert assistant. "
             "Answer questions about the codebase accurately and concisely.\n\n"
@@ -192,6 +258,8 @@ cover the module directly, say so explicitly in your answer.
             f"{ctx}\n\n"
             "## Relevant Code Excerpts\n\n"
             f"{excerpts}\n\n"
+            f"{self.RENDERING_CAPABILITIES_BLOCK}"
+            f"{diagram_block}"
             "Answer the user's question based on the above context. "
             "If the context does not contain enough information, say so clearly."
         )

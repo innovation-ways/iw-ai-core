@@ -1,0 +1,122 @@
+{
+  "id": "F-00055",
+  "type": "Feature",
+  "title": "Work-item-aware code chat: functional behavior Q&A linked to work-item history",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "pipeline-impl",
+      "description": "Pipeline: extend orch/rag/job.py + orch/rag/indexer.py to populate LanceDB docs_{project_id} table with design-doc embeddings for every work item with design_doc_content; keyed by (project_id, work_item_id) with type/title/summary/dates metadata; full + incremental modes",
+      "prompt": "prompts/F-00055_S01_Pipeline_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review: S01 (indexer extension)",
+      "prompt": "prompts/F-00055_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Backend: phase-aware QAEngine state machine; hybrid retrieval (code LanceDB + docs LanceDB + Postgres FTS); git-log file→work-item resolver; LLM query classifier; citation allowlist enforcement",
+      "prompt": "prompts/F-00055_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review: S03 (QAEngine phase+retrieval+classifier)",
+      "prompt": "prompts/F-00055_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "api-impl",
+      "description": "API: extend /api/projects/{id}/code/qa SSE with phase event type; extend _CitationTracker and citation event payload with work_item_type/work_item_id; consolidate /findusages routing into the new pipeline",
+      "prompt": "prompts/F-00055_S05_API_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Code review: S05 (SSE protocol extension)",
+      "prompt": "prompts/F-00055_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "frontend-impl",
+      "description": "Frontend: stream.js phase handler; render.js work-item chip variant; new chat/parts work_item_chip.html, work_item_feed.html, phase_strip.html; composer.js /why /history slash aliases + tone-switch chip; citation popover links to item detail page",
+      "prompt": "prompts/F-00055_S07_Frontend_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Code review: S07 (frontend extension)",
+      "prompt": "prompts/F-00055_S08_CodeReview_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "tests-impl",
+      "description": "Tests: unit tests (phase events, classifier, citation allowlist, git-log resolver, hybrid retrieval merge); integration tests (full SSE flow, slash override, classifier auto-detect, findusages, no regression); eval set of ≥10 (question, expected-shape, must-cite) tuples against current iw-ai-core baseline",
+      "prompt": "prompts/F-00055_S09_Tests_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "code-review-impl",
+      "description": "Code review: S09 (test coverage vs AC)",
+      "prompt": "prompts/F-00055_S10_CodeReview_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-agent review: pipeline ↔ backend ↔ api ↔ frontend ↔ tests integration, AC coverage, no regressions to default code-only chat",
+      "prompt": "prompts/F-00055_S11_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "code-review-fix-final-impl",
+      "description": "Fix CRITICAL and HIGH findings from S11",
+      "prompt": "prompts/F-00055_S12_CodeReview_Fix_Final_prompt.md"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "uv run ruff check .",
+      "description": "QV: Lint (ruff)"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format (ruff)"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "uv run mypy orch/ dashboard/",
+      "description": "QV: Typecheck (mypy)"
+    },
+    {
+      "step": "S16",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S17",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S18",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — /why slash command produces phase events, work-item feed, and citation chips linking to item detail pages; default code question has no regressions",
+      "prompt": "prompts/F-00055_S18_BrowserVerification_prompt.md"
+    }
+  ]
+}

@@ -144,6 +144,8 @@
       if (root) {
         root.dataset.modulePath = '';
         root.dataset.moduleName = '';
+        root.dataset.contextLevel = 'architecture';
+        root.dataset.contextDocId = root.dataset.archContextDocId || '';
         document.body.dispatchEvent(new CustomEvent('iw:code-context-changed', {
           detail: { source: 'architecture-reset' }
         }));

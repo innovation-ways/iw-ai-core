@@ -42,6 +42,7 @@ class QARequest(BaseModel):
     module_path: str | None = None
     module_name: str | None = None
     conversation_history: list[ConversationMessage] = Field(default_factory=list)
+    context_chips: list[str] = Field(default_factory=list)
 
 
 router = APIRouter(prefix="/api")
@@ -82,6 +83,7 @@ def _run_qa_in_thread(
     db_session: Session,
     config: CodeUnderstandingConfig,
     q: queue.Queue[str | None],
+    context_chips: list[str] | None = None,
 ) -> None:
     """Run QAEngine.answer_stream() in a daemon thread, pushing tokens into a queue."""
     from orch.rag.qa import QAEngine
@@ -97,7 +99,8 @@ def _run_qa_in_thread(
                 module_path=module_path,
                 module_name=module_name,
                 conversation_history=conversation_history,
-                session=db_session,  # type: ignore[arg-type]
+                session=db_session,
+                context_chips=context_chips,
             )
             async for token in stream:
                 q.put(token)
@@ -124,6 +127,7 @@ async def _sse_generator(
     conversation_history: list[dict[str, str]],
     db_session: Session,
     config: CodeUnderstandingConfig,
+    context_chips: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that runs QAEngine in a thread and yields SSE-formatted strings."""
     import concurrent.futures
@@ -144,6 +148,7 @@ async def _sse_generator(
         db_session,
         config,
         q,
+        context_chips,
     )
 
     while True:
@@ -202,6 +207,7 @@ async def code_qa(
             module_path=request.module_path,
             module_name=request.module_name,
             conversation_history=[m.model_dump() for m in request.conversation_history],
+            context_chips=request.context_chips,
             db_session=db,
             config=config,
         ),

@@ -14,13 +14,71 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
 
+class TestModulePathToFilePrefix:
+    """Tests for _module_path_to_file_prefix()."""
+
+    def test_dotted_path_converts_to_filesystem_prefix(self) -> None:
+        from orch.rag.qa import _module_path_to_file_prefix
+
+        assert _module_path_to_file_prefix("orch.daemon") == "orch/daemon"
+
+    def test_nested_dotted_path_converts_all_segments(self) -> None:
+        from orch.rag.qa import _module_path_to_file_prefix
+
+        assert _module_path_to_file_prefix("orch.rag.indexer") == "orch/rag/indexer"
+
+    def test_slash_path_kept_as_is(self) -> None:
+        from orch.rag.qa import _module_path_to_file_prefix
+
+        assert _module_path_to_file_prefix("orch/daemon") == "orch/daemon"
+
+    def test_trailing_slash_stripped(self) -> None:
+        from orch.rag.qa import _module_path_to_file_prefix
+
+        assert _module_path_to_file_prefix("orch/daemon/") == "orch/daemon"
+
+    def test_leading_slash_stripped(self) -> None:
+        from orch.rag.qa import _module_path_to_file_prefix
+
+        assert _module_path_to_file_prefix("/orch/daemon") == "orch/daemon"
+
+    def test_single_segment_preserved(self) -> None:
+        from orch.rag.qa import _module_path_to_file_prefix
+
+        assert _module_path_to_file_prefix("dashboard") == "dashboard"
+
+    def test_path_with_slash_preserves_dots(self) -> None:
+        """A path that already contains a slash is assumed to be a filesystem path; dots
+        (e.g. file extensions) are left alone."""
+        from orch.rag.qa import _module_path_to_file_prefix
+
+        assert _module_path_to_file_prefix("docs/readme.md") == "docs/readme.md"
+
+    def test_empty_returns_empty(self) -> None:
+        from orch.rag.qa import _module_path_to_file_prefix
+
+        assert _module_path_to_file_prefix("") == ""
+
+    def test_whitespace_only_returns_empty(self) -> None:
+        from orch.rag.qa import _module_path_to_file_prefix
+
+        assert _module_path_to_file_prefix("   ") == ""
+
+    def test_only_slashes_returns_empty(self) -> None:
+        from orch.rag.qa import _module_path_to_file_prefix
+
+        assert _module_path_to_file_prefix("///") == ""
+
+
 class TestBuildSystemPrompt:
     """Tests for _build_system_prompt()."""
 
-    def test_system_prompt_no_module_is_byte_identical_to_pre_change_output(self) -> None:
-        """AC5: Verify exact pre-change output when no module context is provided.
+    def test_system_prompt_no_module_baseline_structure(self) -> None:
+        """Verify baseline output structure when no module context is provided.
 
-        Hard-codes the expected string to guard against textual drift.
+        Hard-codes the expected string (composed with the published constants) to
+        guard against textual drift in the static scaffolding around the inserted
+        retrieval content.
         """
         from orch.rag.config import CodeUnderstandingConfig
         from orch.rag.qa import QAEngine
@@ -44,6 +102,7 @@ class TestBuildSystemPrompt:
             "## Relevant Code Excerpts\n\n"
             "---\nchunk-a\n"
             "---\nchunk-b\n\n\n"
+            f"{QAEngine.RENDERING_CAPABILITIES_BLOCK}"
             "Answer the user's question based on the above context. "
             "If the context does not contain enough information, say so clearly."
         )
@@ -156,6 +215,91 @@ class TestBuildSystemPrompt:
         assert "def foo(): pass" in result
         assert "Architecture Context" in result
         assert "Relevant Code Excerpts" in result
+
+    def test_system_prompt_always_includes_rendering_capabilities_block(self) -> None:
+        """The Rendering Capabilities block is present in every prompt so the LLM
+        knows the UI renders Mermaid/tables/code inline and never tells the user
+        to paste DSL into an external editor."""
+        from orch.rag.config import CodeUnderstandingConfig
+        from orch.rag.qa import QAEngine
+
+        config = MagicMock(spec=CodeUnderstandingConfig)
+        engine = QAEngine(project_id="test-project", config=config)
+
+        result = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a"],
+            module_path=None,
+            module_name=None,
+            fallback_triggered=False,
+        )
+
+        assert "## Rendering Capabilities" in result
+        assert "```mermaid" in result
+        assert "Do not preface answers with disclaimers" in result
+
+    def test_system_prompt_omits_diagram_directive_without_chip(self) -> None:
+        """Without the /diagram chip, the diagram directive block is absent."""
+        from orch.rag.config import CodeUnderstandingConfig
+        from orch.rag.qa import QAEngine
+
+        config = MagicMock(spec=CodeUnderstandingConfig)
+        engine = QAEngine(project_id="test-project", config=config)
+
+        result = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a"],
+            module_path=None,
+            module_name=None,
+            fallback_triggered=False,
+            context_chips=None,
+        )
+        assert "## Respond With a Diagram" not in result
+
+        result_empty = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a"],
+            module_path=None,
+            module_name=None,
+            fallback_triggered=False,
+            context_chips=[],
+        )
+        assert "## Respond With a Diagram" not in result_empty
+
+        result_other_chip = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a"],
+            module_path=None,
+            module_name=None,
+            fallback_triggered=False,
+            context_chips=["explain"],
+        )
+        assert "## Respond With a Diagram" not in result_other_chip
+
+    def test_system_prompt_includes_diagram_directive_with_diagram_chip(self) -> None:
+        """When the /diagram chip is present, inject the diagram directive that
+        tells the model to respond primarily with a Mermaid diagram."""
+        from orch.rag.config import CodeUnderstandingConfig
+        from orch.rag.qa import QAEngine
+
+        config = MagicMock(spec=CodeUnderstandingConfig)
+        engine = QAEngine(project_id="test-project", config=config)
+
+        result = engine._build_system_prompt(
+            context_doc_content="## Architecture\nBlah",
+            chunks=["chunk-a"],
+            module_path=None,
+            module_name=None,
+            fallback_triggered=False,
+            context_chips=["diagram"],
+        )
+
+        assert "## Respond With a Diagram" in result
+        assert "sequenceDiagram" in result
+        assert "classDiagram" in result
+        assert "erDiagram" in result
+        assert "stateDiagram-v2" in result
+        assert "flowchart" in result
 
     def test_build_system_prompt_empty_context_doc(self) -> None:
         """Given: context_doc_content = "", chunks = ["def bar(): ..."]
@@ -491,6 +635,108 @@ class TestAnswerStream:
 
         system_prompt = captured_messages[0].content
         assert "## Retrieval Note" in system_prompt
+
+    @pytest.mark.asyncio
+    async def test_answer_stream_translates_dotted_module_path_to_filesystem_filter(
+        self, mock_config: MagicMock
+    ) -> None:
+        """When module_path is a dotted Python name (``orch.daemon``), the LanceDB filter
+        must use the filesystem prefix (``orch/daemon/%``) — otherwise no chunks match."""
+        import pandas as pd
+
+        from orch.rag.qa import QAEngine
+
+        engine = QAEngine(project_id="test-project", config=mock_config)
+
+        mock_session = MagicMock()
+        mock_embedding_instance = MagicMock()
+        mock_embedding_instance.get_query_embedding = AsyncMock(return_value=[0.1] * 128)
+
+        async def mock_to_thread(func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        class _FakeQuery:
+            def __init__(self, rows: list[str]) -> None:
+                self._rows = rows
+
+            def to_pandas(self) -> pd.DataFrame:
+                return pd.DataFrame({"text": self._rows})
+
+        captured_where: list[str] = []
+
+        class _FakeSearch:
+            def __init__(self, rows_per_where: dict[str, list[str]]) -> None:
+                self._rows_per_where = rows_per_where
+                self._last_where: str | None = None
+
+            def where(self, clause: str) -> _FakeSearch:
+                captured_where.append(clause)
+                self._last_where = clause
+                return self
+
+            def limit(self, n: int) -> _FakeQuery:
+                return _FakeQuery(self._rows_per_where.get(self._last_where or "", []))
+
+        class _FakeTable:
+            def __init__(self, rows_per_where: dict[str, list[str]]) -> None:
+                self._rows_per_where = rows_per_where
+
+            def search(self, vec: list[float]) -> _FakeSearch:
+                return _FakeSearch(self._rows_per_where)
+
+        filtered_rows: dict[str, list[str]] = {
+            "file_path LIKE 'orch/daemon/%' AND file_path != '__iwcore_seed__'": [
+                "chunk-translated"
+            ],
+            "file_path != '__iwcore_seed__'": [],
+        }
+        mock_table = _FakeTable(filtered_rows)
+        mock_db = MagicMock()
+        mock_db.open_table.return_value = mock_table
+
+        captured_messages: list = []
+
+        class MockChunk:
+            def __init__(self, delta: str) -> None:
+                self.delta = delta
+
+        async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            yield MockChunk("Answer")
+
+        async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            captured_messages.extend(messages)
+            return mock_inner_generator()
+
+        mock_llm = MagicMock()
+        mock_llm.astream_chat = mock_astream_chat
+
+        with (
+            patch("lancedb.connect", return_value=mock_db),
+            patch(
+                "orch.rag.qa.OllamaEmbedding",
+                return_value=mock_embedding_instance,
+            ),
+            patch("orch.rag.qa.Ollama", return_value=mock_llm),
+            patch("asyncio.to_thread", side_effect=mock_to_thread),
+        ):
+            tokens = []
+            async for token in engine.answer_stream(
+                question="What does this module do?",
+                context_level="module",
+                context_doc_id=None,
+                conversation_history=[],
+                session=mock_session,
+                module_path="orch.daemon",
+                module_name="Orchestration Daemon",
+            ):
+                tokens.append(token)
+
+        assert any("file_path LIKE 'orch/daemon/%'" in clause for clause in captured_where), (
+            f"Expected dotted path to be translated to 'orch/daemon/%', got {captured_where!r}"
+        )
+        system_prompt = captured_messages[0].content
+        assert "## Retrieval Note" not in system_prompt
+        assert "chunk-translated" in system_prompt
 
     @pytest.mark.asyncio
     async def test_answer_stream_does_not_fall_back_when_module_filter_nonempty(
