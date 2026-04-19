@@ -38,6 +38,7 @@ PLATFORM_TIMEOUT_DEFAULTS: dict[str, int] = {
     "quality_validation": 600,
     "qv_fix": 1800,
     "browser_verification": 1800,
+    "qv_browser_fix": 2700,
 }
 _FALLBACK_TIMEOUT = 1800
 

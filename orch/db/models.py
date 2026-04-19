@@ -102,6 +102,7 @@ class FixTrigger(enum.Enum):
     code_review = "code_review"
     code_review_final = "code_review_final"
     quality_validation = "quality_validation"
+    browser_verification = "browser_verification"
 
 
 class FixStatus(enum.Enum):
