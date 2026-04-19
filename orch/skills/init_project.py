@@ -102,10 +102,18 @@ def init_project(
     session.flush()
     result.db_rows_created.append(f"projects[{project_id}]")
 
-    for prefix in _ID_PREFIXES:
+    from sqlalchemy import select
+
+    existing_prefixes = set(
+        session.execute(
+            select(IdSequence.prefix).where(IdSequence.prefix.in_(_ID_PREFIXES))
+        ).scalars()
+    )
+    new_prefixes = [p for p in _ID_PREFIXES if p not in existing_prefixes]
+    for prefix in new_prefixes:
         session.add(IdSequence(prefix=prefix, next_number=1))
     session.flush()
-    result.db_rows_created.extend([f"id_sequences[{p}]" for p in _ID_PREFIXES])
+    result.db_rows_created.extend([f"id_sequences[{p}]" for p in new_prefixes])
 
     lock_row = MigrationLock(project_id=project_id, current_holder=None)
     session.add(lock_row)
