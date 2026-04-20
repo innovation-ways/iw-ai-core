@@ -1,0 +1,124 @@
+{
+  "_comment": "Curation file for F-00055 eval set. Run scripts/regen_eval_set_f00055.py to fill in titles/summaries.",
+  "_instructions": "Each entry has question + must_cite IDs. The script fills in titles/summaries/expected_terms from the DB.",
+  "project_id": "iw-ai-core",
+  "queries": [
+    {
+      "question": "why is the daemon polling interval 60 seconds?",
+      "context_chips": ["why"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["poll", "60", "daemon", "interval"],
+      "register": "functional",
+      "notes": "Core F-00055 feature - daemon polling behavior"
+    },
+    {
+      "question": "how does the work-item-aware code chat work?",
+      "context_chips": ["why"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["work-item", "chat", "code", "question"],
+      "register": "functional",
+      "notes": "Core F-00055 feature - behavior description"
+    },
+    {
+      "question": "what features were added in F-00055?",
+      "context_chips": ["why"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["F-00055", "work-item", "aware", "chat"],
+      "register": "functional",
+      "notes": "Core F-00055 feature - feature history"
+    },
+    {
+      "question": "show me the signature of parse_id",
+      "context_chips": [],
+      "must_cite_work_items": [],
+      "may_cite_work_items": [],
+      "expected_terms": ["parse_id", "def", "function"],
+      "register": "technical",
+      "notes": "Code-only negative control - should NOT emit phase events"
+    },
+    {
+      "question": "where is CodeIndexJob defined?",
+      "context_chips": [],
+      "must_cite_work_items": [],
+      "may_cite_work_items": [],
+      "expected_terms": ["CodeIndexJob", "class", "defined"],
+      "register": "technical",
+      "notes": "Code-only negative control - should NOT emit phase events"
+    },
+    {
+      "question": "what does the batch approval workflow do?",
+      "context_chips": ["why"],
+      "must_cite_work_items": [],
+      "may_cite_work_items": [],
+      "expected_terms": ["batch", "approval", "workflow"],
+      "register": "functional",
+      "notes": "Functional query - should route to work-item-aware pipeline"
+    },
+    {
+      "question": "/findusages CodeIndexJob",
+      "context_chips": ["findusages"],
+      "must_cite_work_items": [],
+      "may_cite_work_items": [],
+      "expected_terms": ["CodeIndexJob", "findusages"],
+      "register": "technical",
+      "notes": "/findusages slash override - should emit phase events"
+    },
+    {
+      "question": "why does the rerender cache have a 64-item limit?",
+      "context_chips": ["why"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["rerender", "cache", "64", "limit"],
+      "register": "functional",
+      "notes": "F-00055 implementation detail"
+    },
+    {
+      "question": "how is the classifier LLM timeout handled?",
+      "context_chips": ["why"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["classifier", "timeout", "fallback", "code_only"],
+      "register": "technical",
+      "notes": "F-00055 classifier fallback behavior"
+    },
+    {
+      "question": "what is the citation allowlist pattern?",
+      "context_chips": [],
+      "must_cite_work_items": [],
+      "may_cite_work_items": ["F-00055"],
+      "expected_terms": ["citation", "allowlist", "pattern", "F-"],
+      "register": "technical",
+      "notes": "Technical query that might cite F-00055"
+    },
+    {
+      "question": "where is the evidence bundle defined?",
+      "context_chips": [],
+      "must_cite_work_items": [],
+      "may_cite_work_items": [],
+      "expected_terms": ["evidence", "bundle", "EvidenceBundle"],
+      "register": "technical",
+      "notes": "Code-only negative control"
+    },
+    {
+      "question": "why does the SSE stream include phase events?",
+      "context_chips": ["why"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["SSE", "phase", "stream", "event"],
+      "register": "functional",
+      "notes": "F-00055 phase event behavior"
+    },
+    {
+      "question": "show me the hybrid retrieval merge logic",
+      "context_chips": [],
+      "must_cite_work_items": [],
+      "may_cite_work_items": ["F-00055"],
+      "expected_terms": ["hybrid", "retrieval", "merge", "alpha", "beta", "gamma"],
+      "register": "technical",
+      "notes": "Technical query - code retrieval"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
   window.iwChat = window.iwChat || {};
 
   window.iwChat.streamAnswer = function (_a) {
-    var projectId = _a.projectId, body = _a.body, _b = _a.onToken, onToken = _b === void 0 ? function () {} : _b, _c = _a.onCitation, onCitation = _c === void 0 ? function () {} : _c, _d = _a.onDone, onDone = _d === void 0 ? function () {} : _d, _e = _a.onError, onError = _e === void 0 ? function () {} : _e;
+    var projectId = _a.projectId, body = _a.body, _b = _a.onToken, onToken = _b === void 0 ? function () {} : _b, _c = _a.onCitation, onCitation = _c === void 0 ? function () {} : _c, _d = _a.onDone, onDone = _d === void 0 ? function () {} : _d, _e = _a.onError, onError = _e === void 0 ? function () {} : _e, _f = _a.onPhase, onPhase = _f === void 0 ? function () {} : _f, _g = _a.onWorkItemCitation, onWorkItemCitation = _g === void 0 ? function () {} : _g;
     var controller = new AbortController();
     window.__iwChatCancel = function () {
       controller.abort();
@@ -50,7 +50,13 @@
                   accumulated += utf8;
                   onToken(utf8);
                 } else if (data.n !== undefined && eventType === 'citation') {
-                  onCitation({ n: data.n, label: data.label, url: data.url, snippet: data.snippet });
+                  var citationData = { n: data.n, label: data.label, url: data.url, snippet: data.snippet, work_item_type: data.work_item_type, work_item_id: data.work_item_id };
+                  onCitation(citationData);
+                  if (data.work_item_type !== undefined && data.work_item_id !== undefined) {
+                    onWorkItemCitation({ work_item_type: data.work_item_type, work_item_id: data.work_item_id, label: data.label, url: data.url, snippet: data.snippet });
+                  }
+                } else if (data.name !== undefined && eventType === 'phase') {
+                  onPhase({ name: data.name, detail: data.detail || {} });
                 }
               } catch (err) {}
             });
