@@ -460,7 +460,8 @@ class BatchManager:
         prompt_file.write_text(prompt)
 
         if cli_tool == "opencode":
-            agent_args = f"--agent {step.agent_label}" if step.agent_label else ""
+            agent_name = step.opencode_agent or step.agent_label
+            agent_args = f"--agent {agent_name}" if agent_name else ""
             command = (
                 f'opencode run "$(cat {prompt_file})" --dangerously-skip-permissions {agent_args}'
             ).strip()
