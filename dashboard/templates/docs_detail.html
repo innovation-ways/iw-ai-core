@@ -17,41 +17,25 @@
   {# Left: badges + title #}
   <div class="min-w-0">
     <div class="flex flex-wrap items-center gap-1.5 mb-2">
-      {% set type_colors = {
-        'module': 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200',
-        'api': 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200',
-        'architecture': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200',
-        'release_notes': 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200',
-        'error_catalog': 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200',
-        'webhook_ref': 'bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-200',
-        'user_guide': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
-        'product_overview': 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-200',
-        'feature_catalog': 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-200'
-      } %}
-      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ type_colors.get(doc.doc_type.value, 'bg-muted text-muted-foreground') }}">
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">
         {{ doc.doc_type.value|replace('_',' ')|title }}
       </span>
 
       {% set status_colors = {
-        'planned': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
-        'draft': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200',
-        'published': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
-        'archived': 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'
+        'planned': 'bg-muted text-muted-foreground border border-border',
+        'draft': 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 dark:border-amber-600/30',
+        'published': 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 dark:border-emerald-600/30',
+        'archived': 'bg-muted text-muted-foreground border border-border'
       } %}
-      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ status_colors.get(doc.status.value, 'bg-muted text-muted-foreground') }}">
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ status_colors.get(doc.status.value, 'bg-muted text-muted-foreground border border-border') }}">
         {{ doc.status.value|title }}
       </span>
 
-      {% set tier_colors = {
-        'fully_automated': 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-200',
-        'semi_automated': 'bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-200',
-        'human_authored': 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'
-      } %}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium {{ tier_colors.get(doc.tier.value, 'bg-muted text-muted-foreground') }}">
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">
         {{ doc.tier.value|replace('_',' ')|title }}
       </span>
 
-      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground font-mono">
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border font-mono">
         v{{ doc.version }}
       </span>
     </div>
