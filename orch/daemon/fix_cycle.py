@@ -99,6 +99,25 @@ def _max_cycles_for(step_type: StepType, project_config: ProjectConfig) -> int:
 # ---------------------------------------------------------------------------
 
 
+_ENV_DATA_MISSING_PREFIX = "ENV_DATA_MISSING:"
+
+
+def _latest_failure_reason(db: Session, step: WorkflowStep) -> str | None:
+    """Return the error_message of the latest failed StepRun, or None."""
+    latest = (
+        db.query(StepRun)
+        .filter(
+            StepRun.step_id == step.id,
+            StepRun.status.in_([RunStatus.failed, RunStatus.timeout]),
+        )
+        .order_by(StepRun.run_number.desc())
+        .first()
+    )
+    if latest is None:
+        return None
+    return latest.error_message
+
+
 def should_attempt_fix(
     db: Session,
     step: WorkflowStep,
@@ -107,6 +126,20 @@ def should_attempt_fix(
     """Return True if this failed step is a review that can be auto-fixed."""
     if step.step_type not in _FIXABLE_STEP_TYPES:
         return False
+
+    # Browser verification: ENV_DATA_MISSING failures cannot be fixed by editing
+    # code — the qv-browser agent flagged the issue as a missing E2E DB seed
+    # row. Skip the fix cycle so we don't burn retries on a no-op patch.
+    if step.step_type is StepType.browser_verification:
+        reason = _latest_failure_reason(db, step)
+        if reason and reason.lstrip().startswith(_ENV_DATA_MISSING_PREFIX):
+            logger.warning(
+                "Skipping fix cycle for %s/%s: ENV_DATA_MISSING (add an "
+                "ai-dev/active/<id>/e2e_fixtures/*.py file)",
+                step.work_item_id,
+                step.step_id,
+            )
+            return False
 
     max_cycles = _max_cycles_for(step.step_type, project_config)
     existing = db.query(FixCycle).filter(FixCycle.step_id == step.id).count()

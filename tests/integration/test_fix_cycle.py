@@ -191,6 +191,71 @@ def test_should_attempt_fix_under_max(
     assert should_attempt_fix(db_session, step, _project_config(fix_cycle_max=5)) is True
 
 
+def test_should_skip_fix_for_browser_env_data_missing(
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    """Browser failures prefixed ENV_DATA_MISSING: are seed gaps, not code defects.
+
+    Looping a fix agent on these wastes cycles — the daemon should refuse the
+    fix cycle so the human reviewer sees the failure and adds an e2e_fixtures
+    file.
+    """
+    _make_item(db_session)
+    step = _make_step(
+        db_session,
+        step_type=StepType.browser_verification,
+        step_id="S18",
+    )
+    _make_step_run(
+        db_session,
+        step,
+        status=RunStatus.failed,
+        error_message="ENV_DATA_MISSING: V1 expects F-00055 step_runs",
+    )
+    assert should_attempt_fix(db_session, step, _project_config()) is False
+
+
+def test_should_attempt_fix_for_browser_normal_failure(
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    """Plain browser failures (without ENV_DATA_MISSING:) still get a fix cycle."""
+    _make_item(db_session)
+    step = _make_step(
+        db_session,
+        step_type=StepType.browser_verification,
+        step_id="S18",
+    )
+    _make_step_run(
+        db_session,
+        step,
+        status=RunStatus.failed,
+        error_message="V1 returned 500 on /tab/execution-report",
+    )
+    assert should_attempt_fix(db_session, step, _project_config()) is True
+
+
+def test_should_skip_fix_for_browser_env_data_missing_with_leading_whitespace(
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    """The ENV_DATA_MISSING prefix is recognised even with leading whitespace."""
+    _make_item(db_session)
+    step = _make_step(
+        db_session,
+        step_type=StepType.browser_verification,
+        step_id="S18",
+    )
+    _make_step_run(
+        db_session,
+        step,
+        status=RunStatus.failed,
+        error_message="  ENV_DATA_MISSING: trimmed prefix should still match",
+    )
+    assert should_attempt_fix(db_session, step, _project_config()) is False
+
+
 # ---------------------------------------------------------------------------
 # attempt_fix_cycle
 # ---------------------------------------------------------------------------

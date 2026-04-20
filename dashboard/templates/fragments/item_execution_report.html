@@ -1,0 +1,310 @@
+<style>
+  .gantt-track {
+    position: relative;
+    height: 28px;
+    background: hsl(var(--muted) / 0.3);
+    border: 1px solid hsl(var(--border) / 0.3);
+    border-radius: 4px;
+    overflow: visible;
+  }
+  .gantt-bar {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 18px;
+    border-radius: 3px;
+    min-width: 3px;
+    display: block;
+    text-decoration: none;
+    cursor: default;
+  }
+  .gantt-bar--completed   { background: #10b981; }
+  .gantt-bar--failed      { background: #ef4444; }
+  .gantt-bar--retry       { background: #f59e0b; }
+  .gantt-bar--skipped     { background: #9ca3af; }
+  .gantt-bar--in-progress {
+    background: repeating-linear-gradient(
+      45deg,
+      #f59e0b, #f59e0b 6px,
+      #d97706 6px, #d97706 12px
+    );
+  }
+  .gantt-gridline {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: hsl(var(--border) / 0.5);
+  }
+  .gantt-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 28px;
+    margin-bottom: 4px;
+  }
+  .gantt-row--qv-gate .gantt-track { background: rgb(248 250 252 / 0.6); }
+  .gantt-label {
+    width: 220px;
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .gantt-label a { color: var(--primary); text-decoration: none; }
+  .gantt-label a:hover { text-decoration: underline; }
+  .gantt-flex { flex: 1; min-width: 0; }
+  .gantt-fix-marker {
+    position: absolute;
+    height: 4px;
+    border-radius: 2px;
+    background: #fbbf24;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .gantt-axis {
+    display: flex;
+    padding-left: calc(220px + 0.5rem);
+    margin-bottom: 4px;
+  }
+  .gantt-axis-inner {
+    flex: 1;
+    position: relative;
+    height: 1.25rem;
+    min-width: 0;
+  }
+  .gantt-axis-inner span {
+    position: absolute;
+    font-size: 0.65rem;
+    color: var(--muted-foreground);
+    white-space: nowrap;
+  }
+  @media (max-width: 720px) {
+    .gantt-row  { height: 24px; }
+    .gantt-track { height: 24px; }
+    .gantt-bar  { height: 14px; }
+    .gantt-label { width: 120px; }
+    .gantt-axis  { padding-left: calc(120px + 0.5rem); }
+  }
+</style>
+
+{% set total_secs = execution_report.total_duration_secs %}
+
+{# ── Summary card ─────────────────────────────────────────────────────────── #}
+<div class="bg-card border border-border rounded-lg p-4 mb-4">
+  <div class="flex items-center gap-3 mb-3">
+    <span class="inline-flex items-center px-2 py-1 rounded text-sm font-semibold
+      {%- if execution_report.verdict == 'completed' %} bg-success/20 text-success
+      {%- elif execution_report.verdict == 'failed' %} bg-destructive/20 text-destructive
+      {%- elif execution_report.verdict == 'in_progress' %} bg-primary/20 text-primary
+      {%- elif execution_report.verdict == 'stalled' %} bg-warning/20 text-warning
+      {%- else %} bg-muted text-muted-foreground{%- endif %}">
+      {{ execution_report.verdict_badge }}
+    </span>
+  </div>
+
+  <div class="grid grid-cols-3 gap-4 mb-4">
+    <div>
+      <span class="text-xs text-muted-foreground block mb-0.5">Started</span>
+      <span class="font-mono text-xs text-foreground">
+        {%- if execution_report.item_started_at %}{{ execution_report.item_started_at.strftime('%Y-%m-%d %H:%M:%S') }}{%- else %}—{%- endif %}
+      </span>
+    </div>
+    <div>
+      <span class="text-xs text-muted-foreground block mb-0.5">Completed</span>
+      <span class="font-mono text-xs text-foreground">
+        {%- if execution_report.item_completed_at %}{{ execution_report.item_completed_at.strftime('%Y-%m-%d %H:%M:%S') }}{%- else %}—{%- endif %}
+      </span>
+    </div>
+    <div>
+      <span class="text-xs text-muted-foreground block mb-0.5">Total duration</span>
+      <span class="font-mono text-xs text-foreground">
+        {%- set s = execution_report.total_duration_secs -%}
+        {%- if s >= 3600 -%}
+          {{ (s // 3600)|int }}h {{ ((s % 3600) // 60)|int }}m {{ (s % 60)|int }}s
+        {%- elif s >= 60 -%}
+          {{ (s // 60)|int }}m {{ "%02d"|format((s % 60)|int) }}s
+        {%- else -%}
+          {{ s|round(0)|int }}s
+        {%- endif -%}
+      </span>
+    </div>
+  </div>
+
+  <div>
+    <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Retry Hotspots</h4>
+    {% if not execution_report.hotspots %}
+      <p class="text-sm text-muted-foreground italic">No retries — clean run.</p>
+    {% else %}
+      <ul class="space-y-1">
+        {% for h in execution_report.hotspots %}
+          <li class="text-sm">
+            <strong>{{ h.step_id }}</strong>
+            <code class="text-xs bg-muted px-1 py-0.5 rounded">{{ h.display_label }}</code>
+            × {{ h.retry_count }}
+            <span class="text-muted-foreground text-xs">(final: {{ h.final_status }})</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Gantt chart ───────────────────────────────────────────────────────────── #}
+<div class="bg-card border border-border rounded-lg p-4 mb-4">
+  <h3 class="text-sm font-semibold text-foreground mb-3">Step Gantt Chart</h3>
+
+  {% if total_secs > 0 and execution_report.steps %}
+    {# Time axis #}
+    <div class="gantt-axis">
+      <div class="gantt-axis-inner">
+        {% for pct in [25, 50, 75, 100] %}
+          {%- set tick_secs = total_secs * pct / 100 -%}
+          {%- if total_secs <= 3600 -%}
+            {%- set tick_label = "%dm %02ds"|format((tick_secs // 60)|int, (tick_secs % 60)|int) -%}
+          {%- else -%}
+            {%- set tick_label = "%dh %dm"|format((tick_secs // 3600)|int, ((tick_secs % 3600) // 60)|int) -%}
+          {%- endif -%}
+          <span style="left: {{ pct }}%; transform: translateX(-50%){% if pct == 100 %} translateX(-50%){% endif %}">{{ tick_label }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Step rows #}
+    {% for step_row in execution_report.steps %}
+      <div class="gantt-row{% if step_row.step_type == 'quality_validation' %} gantt-row--qv-gate{% endif %}">
+        <div class="gantt-label" title="{{ step_row.step_id }} {{ step_row.display_label }}">
+          <a href="#timeline-{{ step_row.step_id }}">{{ step_row.step_id }} {{ step_row.display_label }}</a>
+        </div>
+        <div class="gantt-flex">
+          <div class="gantt-track">
+            {# Grid lines at 25%, 50%, 75% #}
+            {% for gp in [25, 50, 75] %}
+              <div class="gantt-gridline" style="left: {{ gp }}%;"></div>
+            {% endfor %}
+            {# Run segments #}
+            {% for seg in step_row.runs %}
+              {%- set dur_display = (seg.duration_secs|round(1))|string ~ "s" if seg.duration_secs is not none else "?s" -%}
+              {%- set err_snippet = ", error: " ~ seg.error_message[:60] if seg.error_message else "" -%}
+              {%- set bar_title = step_row.step_id ~ " run " ~ seg.run_number ~ ": " ~ seg.status.value ~ ", " ~ dur_display ~ err_snippet -%}
+              <a class="gantt-bar gantt-bar--{{ seg.gantt_class }}"
+                 style="left: {{ seg.left_pct|round(2) }}%; width: {{ seg.width_pct|round(2) }}%;"
+                 title="{{ bar_title }}"
+                 aria-label="{{ bar_title }}"
+                 tabindex="0"
+                 href="#timeline-{{ step_row.step_id }}"></a>
+            {% endfor %}
+            {# Fix cycle markers #}
+            {% for fc in step_row.fix_cycles %}
+              {%- set fc_title = "Fix cycle " ~ fc.cycle_number ~ ": " ~ fc.trigger_type ~ ", " ~ fc.status.value -%}
+              <div class="gantt-fix-marker"
+                   style="left: {{ fc.left_pct|round(2) }}%; width: {{ fc.width_pct|round(2) }}%;"
+                   title="{{ fc_title }}"></div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+
+    {# Legend #}
+    <div class="flex flex-wrap items-center gap-4 mt-4 pt-3 border-t border-border">
+      <span class="text-xs text-muted-foreground">Legend:</span>
+      {% for cls, label in [('completed','Completed'),('retry','Retry'),('failed','Failed'),('skipped','Skipped'),('in-progress','In Progress')] %}
+        <div class="flex items-center gap-1.5">
+          <div class="gantt-bar gantt-bar--{{ cls }}"
+               style="position: static; transform: none; width: 1rem; height: 0.75rem; border-radius: 2px; display: inline-block;"></div>
+          <span class="text-xs text-muted-foreground">{{ label }}</span>
+        </div>
+      {% endfor %}
+      <div class="flex items-center gap-1.5">
+        <div style="width: 1rem; height: 4px; border-radius: 2px; background: #fbbf24; display: inline-block;"></div>
+        <span class="text-xs text-muted-foreground">Fix cycle</span>
+      </div>
+    </div>
+  {% else %}
+    <p class="text-sm text-muted-foreground text-center">No execution data available yet.</p>
+  {% endif %}
+</div>
+
+{# ── Retry timeline ────────────────────────────────────────────────────────── #}
+{% set hotspot_steps = execution_report.steps | selectattr('is_hotspot') | list %}
+{% if hotspot_steps %}
+  <div class="bg-card border border-border rounded-lg p-4">
+    <h3 class="text-sm font-semibold text-foreground mb-3">Retry Timeline</h3>
+    <div class="space-y-2">
+      {% for step_row in hotspot_steps %}
+        <details id="timeline-{{ step_row.step_id }}" class="border border-border rounded-lg">
+          <summary class="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-muted/20 transition-colors list-none">
+            <span class="text-xs font-mono text-muted-foreground">&#9654;</span>
+            <span class="font-mono text-xs font-semibold">{{ step_row.step_id }}</span>
+            <span class="text-xs text-foreground">{{ step_row.display_label }}</span>
+            <span class="text-xs text-muted-foreground">— {{ step_row.max_run_number }} attempts, final: {{ step_row.final_status.value }}</span>
+          </summary>
+          <div class="border-t border-border px-4 py-3 space-y-3">
+            {% for seg in step_row.runs %}
+              <div class="text-xs space-y-1 pl-2 border-l-2 border-border">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-mono font-semibold">Run {{ seg.run_number }}</span>
+                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
+                    {%- if seg.gantt_class == 'completed' %} bg-success/20 text-success
+                    {%- elif seg.gantt_class == 'failed' %} bg-destructive/20 text-destructive
+                    {%- elif seg.gantt_class == 'retry' %} bg-warning/20 text-warning
+                    {%- elif seg.gantt_class == 'in_progress' %} bg-primary/20 text-primary
+                    {%- else %} bg-muted text-muted-foreground{%- endif %}">
+                    {{ seg.status.value }}
+                  </span>
+                  {%- if seg.duration_secs is not none %}
+                    <span class="font-mono text-muted-foreground">{{ seg.duration_secs|round(1) }}s</span>
+                  {%- endif %}
+                  {%- if seg.started_at %}
+                    <span class="text-muted-foreground">{{ seg.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                  {%- endif %}
+                </div>
+                {%- if seg.error_message %}
+                  <div class="bg-destructive/10 border border-destructive/30 rounded px-2 py-1 text-destructive font-mono whitespace-pre-wrap break-words">{{ seg.error_message }}</div>
+                {%- endif %}
+                {%- if seg.report_file %}
+                  <div><a href="{{ seg.report_file }}" class="text-primary hover:underline text-xs">View report →</a></div>
+                {%- endif %}
+              </div>
+              {# Fix cycle that follows this non-final run #}
+              {%- if not seg.is_final_attempt %}
+                {%- for fc in step_row.fix_cycles %}
+                  {%- if fc.cycle_number == seg.run_number %}
+                    <div class="ml-4 pl-3 border-l-2 border-warning/50 text-xs space-y-1">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-semibold text-warning">Fix Cycle {{ fc.cycle_number }}</span>
+                        <span class="text-muted-foreground">{{ fc.trigger_type | replace('_', ' ') }}</span>
+                        <span class="text-muted-foreground">{{ fc.status.value }}</span>
+                        {%- if fc.duration_secs is not none %}
+                          <span class="font-mono text-muted-foreground">{{ fc.duration_secs|round(1) }}s</span>
+                        {%- endif %}
+                        {%- if fc.started_at %}
+                          <span class="text-muted-foreground">{{ fc.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                        {%- endif %}
+                      </div>
+                      <blockquote class="border-l-2 border-border pl-3 text-muted-foreground italic text-xs">
+                        {%- if fc.fix_summary %}
+                          {{ fc.fix_summary }}
+                        {%- else %}
+                          <em>no fix summary captured (pre-F-00056)</em>
+                        {%- endif %}
+                      </blockquote>
+                    </div>
+                  {%- endif %}
+                {%- endfor %}
+              {%- endif %}
+            {% endfor %}
+          </div>
+        </details>
+      {% endfor %}
+    </div>
+  </div>
+{% else %}
+  <div class="bg-card border border-border rounded-lg p-4">
+    <h3 class="text-sm font-semibold text-foreground mb-2">Retry Timeline</h3>
+    <p class="text-sm text-muted-foreground italic">No retried steps — all steps completed on first attempt.</p>
+  </div>
+{% endif %}
