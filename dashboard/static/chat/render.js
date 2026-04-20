@@ -221,6 +221,10 @@
       var p = parser(renderer);
       var citationMap = new Map();
       var done = false;
+      var phaseStrip = null;
+      var phaseData = {};
+      var feedItems = [];
+      var workItemFeedEl = null;
 
       function updateCitations() {
         var chips = bodyEl.querySelectorAll('[data-cite]');
@@ -240,12 +244,16 @@
               popover.setAttribute('aria-label', 'Citation ' + n);
               var inner = '<div class="bg-card border border-border rounded-lg p-4 max-w-sm shadow-lg relative">' +
                 '<button class="citation-popover-close absolute top-2 right-2 text-muted-foreground hover:text-foreground text-2xl leading-none" aria-label="Close" type="button">&times;</button>' +
-                '<strong class="block mb-1">' + escapeHTML(cite.label) + '</strong>';
+                '<strong class="block mb-1">' + escapeHTML(cite.label || '') + '</strong>';
               if (cite.snippet) {
                 inner += '<p class="text-xs text-muted-foreground mt-1 mb-2 max-h-32 overflow-y-auto">' + escapeHTML(cite.snippet.substring(0, 240)) + '</p>';
               }
               if (cite.url) {
                 inner += '<a href="' + escapeHTML(cite.url) + '" class="text-xs text-primary hover:underline" target="_blank" rel="noopener noreferrer">Open source →</a>';
+              }
+              if (cite.work_item_type) {
+                var typeLabel = cite.work_item_type === 'feature' ? 'Feature' : (cite.work_item_type === 'change_request' ? 'Change Request' : 'Incident');
+                inner += '<p class="text-xs text-muted-foreground mt-1">' + typeLabel + ' · ' + escapeHTML(cite.work_item_id || '') + '</p>';
               }
               inner += '</div>';
               popover.innerHTML = inner;
@@ -271,6 +279,151 @@
         }
       }
 
+      function createPhaseStrip() {
+        phaseStrip = document.createElement('div');
+        phaseStrip.className = 'phase-strip';
+        phaseStrip.setAttribute('role', 'status');
+        phaseStrip.setAttribute('aria-live', 'polite');
+        messageEl.insertBefore(phaseStrip, bodyEl);
+      }
+
+      function updatePhaseStrip() {
+        if (!phaseStrip) return;
+        var labels = {
+          retrieving: 'Looking up related code\u2026',
+          finding_items: 'Finding related items\u2026' + (phaseData.detail && phaseData.detail.count ? ' (' + phaseData.detail.count + ')' : ''),
+          reading_docs: 'Reading design documents\u2026' + (phaseData.detail && phaseData.detail.count ? ' (' + phaseData.detail.count + ')' : ''),
+          composing: 'Writing answer\u2026',
+        };
+        phaseStrip.textContent = labels[phaseData.name] || phaseData.name || '';
+        if (phaseData.name === 'composing') {
+          phaseStrip.classList.add('phase-strip--quiet');
+        }
+      }
+
+      function collapsePhaseStrip() {
+        if (!phaseStrip || phaseStrip.classList.contains('phase-strip--collapsed')) return;
+        phaseStrip.classList.add('phase-strip--collapsed');
+        var count = phaseData.detail && phaseData.detail.count ? phaseData.detail.count : 0;
+        phaseStrip.textContent = 'Based on ' + count + ' work items.';
+      }
+
+      function updateWorkItemFeed() {
+        if (!workItemFeedEl && feedItems.length > 0) {
+          workItemFeedEl = document.createElement('section');
+          workItemFeedEl.className = 'work-item-feed';
+          workItemFeedEl.setAttribute('aria-label', 'Work item history');
+          messageEl.appendChild(workItemFeedEl);
+        }
+        if (!workItemFeedEl) return;
+        var header = '<header class="work-item-feed-header"><h3 class="text-sm font-medium">History</h3></header>';
+        var items = feedItems.slice(0, 5);
+        var itemsHtml = items.map(function (item) {
+          var glyph = item.work_item_type === 'feature' ? 'F' : (item.work_item_type === 'change_request' ? 'CR' : 'I');
+          var typeLabel = item.work_item_type === 'feature' ? 'Feature' : (item.work_item_type === 'change_request' ? 'Change Request' : 'Incident');
+          var createdAt = item.created_at || item.createdAt || '';
+          var projectId = item.project_id || (window.location.pathname.split('/')[2]) || '';
+          return '<li class="work-item-feed-item" data-workitem-id="' + escapeHTML(item.work_item_id || item.workItemId || '') + '">' +
+            '<div class="work-item-feed-meta">' +
+            '<time datetime="' + escapeHTML(createdAt) + '">' + escapeHTML(createdAt) + '</time>' +
+            '<a href="/project/' + escapeHTML(projectId) + '/item/' + escapeHTML(item.work_item_id || item.workItemId || '') + '" class="work-item-feed-id">' + escapeHTML(item.work_item_id || item.workItemId || '') + '</a>' +
+            '</div>' +
+            '<h4 class="work-item-feed-title">' + escapeHTML(item.title || item.label || '') + '</h4>' +
+            '<p class="work-item-feed-summary">' + escapeHTML(item.summary || item.snippet || '(no summary available)') + '</p>' +
+            '</li>';
+        }).join('');
+        workItemFeedEl.innerHTML = header + '<ol class="work-item-feed-list">' + itemsHtml + '</ol>';
+      }
+
+      function finalizeWorkItemFeed() {
+        if (!workItemFeedEl) return;
+        workItemFeedEl.classList.add('work-item-feed--done');
+      }
+
+      window.iwChat = window.iwChat || {};
+
+      window.iwChat.injectToneSwitchChip = function (messageEl, renderId, currentTone) {
+        var existing = messageEl.querySelector('.tone-switch-chip');
+        if (existing) existing.remove();
+        var chip = document.createElement('button');
+        chip.className = 'tone-switch-chip';
+        chip.dataset.renderId = renderId;
+        chip.dataset.currentTone = currentTone;
+        var label = currentTone === 'technical' ? 'Show functional summary' : 'Show implementation details';
+        chip.textContent = label;
+        chip.setAttribute('aria-label', label);
+        chip.setAttribute('disabled', 'true');
+        messageEl.appendChild(chip);
+        setTimeout(function () { chip.removeAttribute('disabled'); }, 2000);
+        chip.addEventListener('click', function () {
+          var projectId = window.location.pathname.split('/')[2];
+          var url = '/api/projects/' + projectId + '/code/qa/rerender';
+          var newTone = chip.dataset.currentTone === 'technical' ? 'functional' : 'technical';
+          chip.setAttribute('disabled', 'true');
+          chip.textContent = 'Re-running\u2026';
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ render_id: renderId, tone: newTone }),
+          }).then(function (response) {
+            if (response.status === 410) {
+              window.location.reload();
+              return;
+            }
+            if (!response.ok) {
+              chip.textContent = 'Error';
+              return;
+            }
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder('utf-8');
+            var buffer = '';
+            var rerenderBodyEl = messageEl.querySelector('.chat-message-body');
+            if (rerenderBodyEl) rerenderBodyEl.innerHTML = '';
+            function read() {
+              reader.read().then(function (result) {
+                if (result.done) {
+                  chip.dataset.currentTone = newTone;
+                  chip.textContent = newTone === 'technical' ? 'Show functional summary' : 'Show implementation details';
+                  chip.removeAttribute('disabled');
+                  return;
+                }
+                buffer += decoder.decode(result.value, { stream: true });
+                var lines = buffer.split('\n');
+                buffer = lines.pop();
+                lines.forEach(function (line) {
+                  if (line.startsWith('event:')) {
+                    return;
+                  }
+                  if (line.startsWith('data: ')) {
+                    try {
+                      var data = JSON.parse(line.slice(6));
+                      if (data.b64) {
+                        var txt = atob(data.b64);
+                        if (rerenderBodyEl) {
+                          rerenderBodyEl.innerHTML += txt;
+                        }
+                      } else if (data.name !== undefined) {
+                        if (renderer && renderer.onPhase) {
+                          renderer.onPhase({ name: data.name, detail: data.detail || {} });
+                        }
+                      } else if (data.n !== undefined) {
+                        if (renderer && renderer.onCitation) {
+                          renderer.onCitation({ n: data.n, label: data.label, url: data.url, snippet: data.snippet, work_item_type: data.work_item_type, work_item_id: data.work_item_id });
+                        }
+                      }
+                    } catch (err) {}
+                  }
+                });
+                read();
+              });
+            }
+            read();
+          }).catch(function () {
+            chip.textContent = 'Error';
+          });
+        });
+      };
+
       return {
         onToken: function (deltaText) {
           buffer += deltaText;
@@ -287,10 +440,24 @@
           }
           finalizeCodeBlocks(bodyEl);
           updateCitations();
+          if (phaseStrip) {
+            collapsePhaseStrip();
+          }
         },
         onCitation: function (data) {
           citationMap.set(String(data.n), data);
           updateCitations();
+        },
+        onPhase: function (data) {
+          phaseData = data;
+          if (!phaseStrip) {
+            createPhaseStrip();
+          }
+          updatePhaseStrip();
+        },
+        onWorkItemCitation: function (data) {
+          feedItems.push(data);
+          updateWorkItemFeed();
         },
         onDone: function () {
           done = true;
@@ -307,6 +474,7 @@
           if (window.iwChat && window.iwChat.upgradeAllMermaidBlocks) {
             window.iwChat.upgradeAllMermaidBlocks(bodyEl);
           }
+          finalizeWorkItemFeed();
         },
         onError: function (data) {
           if (done) return;
