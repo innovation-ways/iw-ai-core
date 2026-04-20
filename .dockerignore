@@ -21,6 +21,16 @@ build/
 # Local dev artefacts
 ai-dev/active/
 ai-dev/completed/
+
+# BUT: include e2e_fixtures/ subtrees — these declare the DB rows a work
+# item's browser verification needs (see scripts/e2e_seed.py fixture
+# discovery). Without this line, fixtures never reach the E2E container
+# and verifications that depend on seed data silently fail.
+!ai-dev/active/*/e2e_fixtures/
+!ai-dev/active/*/e2e_fixtures/**
+!ai-dev/archive/*/e2e_fixtures/
+!ai-dev/archive/*/e2e_fixtures/**
+
 .tmp/
 .env
 .env.local

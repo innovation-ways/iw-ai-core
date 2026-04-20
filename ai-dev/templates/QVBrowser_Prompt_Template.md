@@ -59,6 +59,32 @@ Rules for interacting with the page:
 2. Wait for navigation/transitions to settle before snapshotting again.
 3. Screenshots go under `ai-dev/active/{{ID}}/evidences/post/` with descriptive filenames.
 
+## E2E DB seed data
+
+The E2E stack starts with a **fresh PostgreSQL** that has the project's
+schema and migrations applied, plus the baseline seed in
+`scripts/e2e_seed.py` (project row, architecture map, three demo work
+items: F-00055, CR-00001, I-00001). It does **not** mirror the production
+database.
+
+If any of your verifications require historical data (work-item history,
+step retries, fix-cycle records, dashboard tables that aggregate past
+runs, anything that reads `step_runs` / `fix_cycles`), add a fixture file:
+
+```
+ai-dev/active/{{ID}}/e2e_fixtures/001_<descriptive_name>.py
+```
+
+The file must export `def seed(db: Session) -> None` and is auto-run by
+`scripts/e2e_seed.py` after the central seed. Make seeding idempotent
+(check `db.get(...)` before insert) — `e2e_up.sh` may re-run on retry.
+Multiple files load in lexical order; use `001_`, `002_`, … prefixes.
+
+If your verifications can't be satisfied with seed data alone (e.g. they
+require a live agent run), call `iw step-fail` with reason prefixed
+`ENV_DATA_MISSING:` (see Pass Criteria) — the daemon recognises this as
+an environment gap, not a code defect, and skips the fix cycle.
+
 ## Verification Steps
 
 Replace the V1..V(n) below with concrete, per-acceptance-criterion verifications derived from the feature design. Each verification must state:
@@ -93,6 +119,21 @@ Replace the V1..V(n) below with concrete, per-acceptance-criterion verifications
 ## Pass Criteria
 
 All V1..V(n) must pass. Any failure -- including a partial or ambiguous result -- requires calling `iw step-fail` with a reason. There is no "mostly passed"; if an expected element cannot be found, snapshot the page, attach the screenshot, and fail the step.
+
+### Distinguishing code defects from environment gaps
+
+Before failing the step, classify the failure:
+
+- **CODE DEFECT** -- the page returned an HTTP error, threw a console exception, rendered the wrong element, or showed broken UI. The fix-cycle agent can patch this. Use a normal `--reason`.
+- **ENV_DATA_MISSING** -- the page rendered cleanly with HTTP 200 but showed an empty-state message ("No items yet", "No retries — clean run", "0 results") because the E2E DB lacks the historical rows the verification expects. The fix-cycle agent **cannot** fix this by editing code; it needs an `e2e_fixtures` file. Prefix the reason with `ENV_DATA_MISSING:` so the daemon recognises the class:
+
+  ```bash
+  uv run iw step-fail "$IW_ITEM_ID" --step "$IW_STEP_ID" \
+    --reason "ENV_DATA_MISSING: V1 expects F-00055 step_runs (S13×3, S10×2) — add ai-dev/active/{{ID}}/e2e_fixtures/001_f00055_history.py" \
+    --report ai-dev/active/{{ID}}/reports/{{ID}}_{{STEP}}_BrowserVerification_Report.md
+  ```
+
+  The reason is for the human reviewer; the fix path is to add a fixture, not to retry.
 
 ## Report
 

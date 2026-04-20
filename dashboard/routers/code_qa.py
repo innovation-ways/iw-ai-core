@@ -108,8 +108,9 @@ def _run_qa_in_thread(
     conversation_history: list[dict[str, str]],
     db_session: Session,
     config: CodeUnderstandingConfig,
-    q: queue.Queue[str | None],
+    q: queue.Queue[str | None | dict[str, object]],
     context_chips: list[str] | None = None,
+    symbol_hint: str | None = None,
 ) -> None:
     """Run QAEngine.answer_stream_v2() in a daemon thread, pushing events into a queue."""
     from orch.rag.qa import QAEngine
@@ -124,13 +125,16 @@ def _run_qa_in_thread(
                 context_doc_id=context_doc_id,
                 conversation_history=conversation_history,
                 session=db_session,
+                module_path=module_path,
+                module_name=module_name,
                 context_chips=context_chips,
+                symbol_hint=symbol_hint,
             )
             async for event in stream:
-                q.put(event)
+                q.put(event)  # type: ignore[arg-type]
         except (ConnectionRefusedError, OSError):
             q.put(
-                {"kind": "error", "message": "Local AI unavailable. Check that Ollama is running."}
+                {"kind": "error", "message": "Local AI unavailable. Check that Ollama is running."}  # type: ignore[arg-type]
             )
         finally:
             q.put(None)

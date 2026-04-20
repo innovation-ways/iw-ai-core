@@ -75,6 +75,13 @@
       <span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-xs font-bold bg-warning text-warning-foreground">{{ metrics.fix_cycles_count }}</span>
     {% endif %}
   </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/execution-report"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
+    Execution Report
+  </button>
 </div>
 
 <!-- Tab content area (initially loaded with overview) -->

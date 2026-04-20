@@ -331,8 +331,23 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
 @click.argument("item_id")
 @click.option("--step", "step_id", required=True, help="Step ID (e.g., S01)")
 @click.option("--reason", required=True, help="Human-readable failure reason")
+@click.option(
+    "--report",
+    "report_path",
+    default=None,
+    help=(
+        "Relative path to the failure report file. Required for browser_verification "
+        "steps so the fix-cycle agent sees the full V-table and root-cause section."
+    ),
+)
 @click.pass_context
-def step_fail(ctx: click.Context, item_id: str, step_id: str, reason: str) -> None:
+def step_fail(
+    ctx: click.Context,
+    item_id: str,
+    step_id: str,
+    reason: str,
+    report_path: str | None,
+) -> None:
     """Mark a workflow step as failed (in_progress → failed)."""
     project_id = resolve_project(ctx)
     get_session = ctx.obj["get_session"]
@@ -356,6 +371,14 @@ def step_fail(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
 
             step.status = StepStatus.failed
             _step_type_val = step.step_type
+            if report_path is not None:
+                step.report_file = report_path
+                # Read file content for fix-cycle prompt assembly (Tier 1)
+                full_path = Path(report_path)
+                if not full_path.is_absolute():
+                    full_path = Path.cwd() / full_path
+                if full_path.exists():
+                    step.report_content = full_path.read_text(encoding="utf-8")
             session.flush()
 
             # Store reason in the current running step_run (if daemon created one)
@@ -373,6 +396,8 @@ def step_fail(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
                 step_run.error_message = reason
                 step_run.status = RunStatus.failed
                 step_run.completed_at = datetime.now(UTC)
+                if report_path is not None:
+                    step_run.report_file = report_path
                 capture_log_content(step_run)
                 _worktree_path = step_run.worktree_path or ""
 
@@ -402,6 +427,7 @@ def step_fail(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
                     "step_id": step_id,
                     "status": "failed",
                     "reason": reason,
+                    "report_file": report_path,
                 }
             )
         )

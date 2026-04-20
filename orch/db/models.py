@@ -550,6 +550,14 @@ class FixCycle(Base):
     fix_report: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="Path to the fix agent report"
     )
+    fix_summary: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "Fix agent's 1-3 bullet summary of what changed and why; "
+            "NULL for pre-F-00056 cycles or when the agent did not emit a summary"
+        ),
+    )
     status: Mapped[FixStatus] = mapped_column(
         _fix_status_col, nullable=False, server_default=text("'pending'")
     )

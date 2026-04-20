@@ -16,13 +16,28 @@ The Level-1 markdown mirrors the shape expected by orch/rag/parser.py
 (backtick-with-description rows), matching what integration tests use
 (see tests/integration/test_code_module_routes.py:42).
 
+## Per-item fixtures
+
+After the central seed runs, this script discovers and executes per-item
+fixture files matching ``ai-dev/{active,archive}/<item>/e2e_fixtures/*.py``.
+Each fixture file must export a ``seed(db: Session) -> None`` function.
+Files within a directory load in lexical order (use numeric prefixes:
+``001_workflow.py``, ``002_runs.py``).
+
+Fixtures are how a work item that depends on historical data declares the
+DB rows its browser verification needs. The mechanism solves the recurring
+QvBrowser failure where verifications expect data the fresh E2E DB does
+not contain.
+
 Run with:  uv run python scripts/e2e_seed.py
 """
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orch.db.models import (
@@ -299,6 +314,63 @@ def _seed_work_items(db: Session) -> None:
         )
 
 
+def _repo_root() -> Path:
+    """Return the repository root (the parent of scripts/)."""
+    return Path(__file__).resolve().parent.parent
+
+
+def _discover_fixture_files(repo_root: Path) -> list[Path]:
+    """Find all per-item fixture files in lexical order.
+
+    Looks under both ``ai-dev/active`` and ``ai-dev/archive`` so a verifying
+    item can declare data it needs from any other item (active or archived).
+    Returns an empty list if no ``ai-dev`` directory exists (e.g. fresh
+    project with no work items yet).
+    """
+    fixtures: list[Path] = []
+    for parent in ("active", "archive"):
+        base = repo_root / "ai-dev" / parent
+        if not base.exists():
+            continue
+        # */e2e_fixtures/*.py — sorted so file order is deterministic
+        for fixture_file in sorted(base.glob("*/e2e_fixtures/*.py")):
+            if fixture_file.name.startswith("_"):
+                continue  # skip __init__.py and private modules
+            fixtures.append(fixture_file)
+    return fixtures
+
+
+def _run_fixture(fixture_path: Path, db: Session) -> None:
+    """Load a fixture file and call its ``seed(db)`` function.
+
+    Raises if the fixture has no ``seed`` callable or if ``seed(db)`` raises —
+    fixtures must opt out via guard rather than swallow errors, otherwise
+    silent partial seeds reintroduce the empty-DB QvBrowser failure class.
+    """
+    module_name = f"e2e_fixture_{fixture_path.parent.parent.name}_{fixture_path.stem}"
+    spec = importlib.util.spec_from_file_location(module_name, fixture_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load fixture spec for {fixture_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    seed_fn = getattr(module, "seed", None)
+    if seed_fn is None or not callable(seed_fn):
+        raise RuntimeError(f"Fixture {fixture_path} has no callable seed(db: Session) -> None")
+    seed_fn(db)
+
+
+def _seed_per_item_fixtures(db: Session) -> int:
+    """Discover and run all per-item fixture files. Returns count run."""
+    fixtures = _discover_fixture_files(_repo_root())
+    for fixture_path in fixtures:
+        sys.stdout.write(f"e2e_seed: running fixture {fixture_path.relative_to(_repo_root())}\n")
+        sys.stdout.flush()
+        _run_fixture(fixture_path, db)
+        db.flush()
+    return len(fixtures)
+
+
 def seed() -> None:
     with get_session() as db:
         _seed_project(db)
@@ -309,9 +381,12 @@ def seed() -> None:
         _seed_index_job(db)
         db.flush()
         _seed_work_items(db)
+        db.flush()
+        fixtures_run = _seed_per_item_fixtures(db)
         db.commit()
     sys.stdout.write(
-        f"e2e_seed: project {PROJECT_ID} + {len(MODULE_DOCS)} modules + index job + work items\n"
+        f"e2e_seed: project {PROJECT_ID} + {len(MODULE_DOCS)} modules + index job "
+        f"+ work items + {fixtures_run} per-item fixture(s)\n"
     )
     sys.stdout.flush()
 

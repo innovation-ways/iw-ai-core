@@ -74,6 +74,7 @@ class QAEngine:
         module_path: str | None = None,
         module_name: str | None = None,
         context_chips: list[str] | None = None,
+        symbol_hint: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Stream answer tokens for the given question using RAG retrieval.
@@ -343,7 +344,10 @@ cover the module directly, say so explicitly in your answer.
         context_doc_id: str | None,
         conversation_history: list[dict[str, str]],
         session: Session,
+        module_path: str | None = None,
+        module_name: str | None = None,
         context_chips: list[str] | None = None,
+        symbol_hint: str | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
         from orch.rag.classifier import classify_query
 
@@ -355,16 +359,21 @@ cover the module directly, say so explicitly in your answer.
                 context_doc_id=context_doc_id,
                 conversation_history=conversation_history,
                 session=session,
+                module_path=module_path,
+                module_name=module_name,
                 context_chips=context_chips,
+                symbol_hint=symbol_hint,
             ):
                 yield {"kind": "token", "text": token}
             return
 
-        yield _emit_phase("retrieving", {"count": 0})
+        yield _emit_phase("retrieving", {"count": 0, "symbol": symbol_hint or ""})
         bundle = await self._retrieve_evidence_bundle(
             self.project_id, question, session, context_level
         )
-        yield _emit_phase("finding_items", {"count": len(bundle.work_items)})
+        yield _emit_phase(
+            "finding_items", {"count": len(bundle.work_items), "symbol": symbol_hint or ""}
+        )
 
         full_items = await self._fetch_full_work_items(bundle.work_items, session)
         await self._get_repo_root(self.project_id, session)
@@ -389,7 +398,10 @@ cover the module directly, say so explicitly in your answer.
             context_doc_id=context_doc_id,
             conversation_history=conversation_history,
             session=session,
+            module_path=module_path,
+            module_name=module_name,
             context_chips=context_chips,
+            symbol_hint=symbol_hint,
         ):
             yield {"kind": "token", "text": token}
 
