@@ -46,7 +46,8 @@ Port 5433: pre-existing `postgres` Docker container (not docker-compose managed)
 uv run iw --help                                    # CLI help
 make test-unit                                      # Fast tests (no containers)
 make test-integration                               # Tests with PostgreSQL testcontainer
-make quality                                        # ruff + mypy
+make lint                                           # ruff + node --check on dashboard/static/**/*.js
+make quality                                        # lint (ruff + JS syntax) + format-check + mypy
 make check                                          # quality + all tests
 make db-migrate                                     # alembic upgrade head
 make daemon-start                                   # Start orchestration daemon
