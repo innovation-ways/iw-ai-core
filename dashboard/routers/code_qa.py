@@ -131,10 +131,10 @@ def _run_qa_in_thread(
                 symbol_hint=symbol_hint,
             )
             async for event in stream:
-                q.put(event)  # type: ignore[arg-type]
+                q.put(event)
         except (ConnectionRefusedError, OSError):
             q.put(
-                {"kind": "error", "message": "Local AI unavailable. Check that Ollama is running."}  # type: ignore[arg-type]
+                {"kind": "error", "message": "Local AI unavailable. Check that Ollama is running."}
             )
         finally:
             q.put(None)
@@ -162,7 +162,7 @@ async def _sse_generator(
     """Async generator that runs QAEngine in a thread and yields SSE-formatted strings."""
     import concurrent.futures
 
-    q: queue.Queue[str | None] | queue.Queue[dict[str, object]] = queue.Queue()
+    q: queue.Queue[str | None | dict[str, object]] = queue.Queue()
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     loop = asyncio.get_event_loop()
@@ -192,7 +192,7 @@ async def _sse_generator(
                 yield f"event: error\ndata: {payload}\n\n"
                 return
             if kind == "token":
-                token_text = event.get("text", "")
+                token_text = str(event.get("text", ""))
                 b64 = base64.b64encode(token_text.encode("utf-8")).decode("ascii")
                 payload = json.dumps({"b64": b64})
                 yield f"event: token\ndata: {payload}\n\n"
