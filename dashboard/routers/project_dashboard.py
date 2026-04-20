@@ -58,6 +58,7 @@ class ActivityEntry:
     timestamp: datetime
     event_type: str
     entity_id: str | None
+    entity_type: str | None
     message: str | None
 
 
@@ -145,6 +146,7 @@ def _recent_activity(project_id: str, db: Session, limit: int = 20) -> list[Acti
             timestamp=e.created_at,
             event_type=e.event_type,
             entity_id=e.entity_id,
+            entity_type=e.entity_type,
             message=e.message,
         )
         for e in events

@@ -100,7 +100,14 @@ def _merge_item(
 
     batch_item.status = BatchItemStatus.merging
     db.commit()
-    _emit_event(db, project_id, "merge_started", item_id, f"Merging {item_id} from {worktree_path}")
+    _emit_event(
+        db,
+        project_id,
+        "merge_started",
+        item_id,
+        "work_item",
+        f"Merging {item_id} from {worktree_path}",
+    )
     logger.info("[%s] Merging %s (worktree: %s)", project_id, item_id, worktree_path)
 
     try:
@@ -118,7 +125,9 @@ def _merge_item(
         batch_item.merged_at = datetime.now(UTC)
         batch_item.merge_info = {"stdout": result.stdout[:1000]}
         db.commit()
-        _emit_event(db, project_id, "item_merged", item_id, f"Merged {item_id} successfully")
+        _emit_event(
+            db, project_id, "item_merged", item_id, "work_item", f"Merged {item_id} successfully"
+        )
         logger.info("[%s] Merged %s", project_id, item_id)
 
         _cleanup_worktree(item_id, worktree_path, project_config.working_dir)
@@ -131,7 +140,7 @@ def _merge_item(
         batch_item.status = BatchItemStatus.failed
         batch_item.notes = f"Merge failed: {e}"
         db.commit()
-        _emit_event(db, project_id, "merge_conflict", item_id, str(e))
+        _emit_event(db, project_id, "merge_conflict", item_id, "work_item", str(e))
         logger.error("[%s] Merge failed for %s: %s", project_id, item_id, e)
 
 
@@ -154,6 +163,7 @@ def _emit_event(
     project_id: str,
     event_type: str,
     entity_id: str | None,
+    entity_type: str | None = None,
     message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
@@ -162,6 +172,7 @@ def _emit_event(
         project_id=project_id,
         event_type=event_type,
         entity_id=entity_id,
+        entity_type=entity_type,
         message=message,
         event_metadata=metadata or {},
     )

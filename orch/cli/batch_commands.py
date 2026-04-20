@@ -390,6 +390,7 @@ def batch_approve(ctx: click.Context, batch_id: str) -> None:
                     project_id=project_id,
                     event_type="batch_approved",
                     entity_id=batch_id,
+                    entity_type="batch",
                     message=f"Batch {batch_id} approved for execution",
                 )
             )
