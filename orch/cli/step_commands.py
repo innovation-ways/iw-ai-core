@@ -299,6 +299,7 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
                     project_id=project_id,
                     event_type="step_completed",
                     entity_id=item_id,
+                    entity_type="work_item",
                     message=f"Step {step_id} completed",
                     event_metadata={"step_id": step_id},
                 )
@@ -406,6 +407,7 @@ def step_fail(
                     project_id=project_id,
                     event_type="step_failed",
                     entity_id=item_id,
+                    entity_type="work_item",
                     message=f"Step {step_id} failed: {reason}",
                     event_metadata={"step_id": step_id, "reason": reason},
                 )

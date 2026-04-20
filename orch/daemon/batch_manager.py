@@ -109,6 +109,7 @@ class BatchManager:
                         self.project_id,
                         "batch_executing",
                         batch.id,
+                        "batch",
                         f"Batch {batch.id} now executing",
                     )
 
@@ -183,6 +184,7 @@ class BatchManager:
                 self.project_id,
                 "batch_dependency_failed",
                 batch.id,
+                "batch",
                 f"Batch {batch.id}: failed items in group {current_group - 1} "
                 f"block execution_group {current_group}+",
             )
@@ -275,7 +277,12 @@ class BatchManager:
         batch_item.status = BatchItemStatus.setting_up
         db.commit()
         _emit_event(
-            db, self.project_id, "item_setup_started", item_id, f"Setting up worktree for {item_id}"
+            db,
+            self.project_id,
+            "item_setup_started",
+            item_id,
+            "work_item",
+            f"Setting up worktree for {item_id}",
         )
 
         try:
@@ -287,7 +294,9 @@ class BatchManager:
             work_item = db.query(WorkItem).filter_by(project_id=self.project_id, id=item_id).one()
             work_item.status = WorkItemStatus.failed
             db.commit()
-            _emit_event(db, self.project_id, "item_failed", item_id, str(e), {"phase": "setup"})
+            _emit_event(
+                db, self.project_id, "item_failed", item_id, "work_item", str(e), {"phase": "setup"}
+            )
             return
 
         # Phase 2: Transition to executing
@@ -300,6 +309,7 @@ class BatchManager:
             self.project_id,
             "item_setup_completed",
             item_id,
+            "work_item",
             f"Worktree ready for {item_id}",
             {"worktree_path": worktree_info.get("path")},
         )
@@ -434,6 +444,7 @@ class BatchManager:
                         self.project_id,
                         "step_failed",
                         step.work_item_id,
+                        "work_item",
                         f"Step {step.step_id} failed: browser env setup failed",
                         {
                             "reason": "browser_env_setup_failed",
@@ -537,6 +548,7 @@ class BatchManager:
             self.project_id,
             "step_launched",
             step.work_item_id,
+            "work_item",
             f"Step {step.step_id} launched (PID {proc.pid})",
             {"step_id": step.step_id, "pid": proc.pid, "timeout_secs": timeout},
         )
@@ -653,6 +665,7 @@ class BatchManager:
             self.project_id,
             "item_completed",
             item_id,
+            "work_item",
             f"All steps done for {item_id} — entering merge queue",
         )
         logger.info("[%s] Item %s completed — queued for merge", self.project_id, item_id)
@@ -671,6 +684,7 @@ class BatchManager:
                 self.project_id,
                 "batch_completed",
                 batch.id,
+                "batch",
                 f"Batch {batch.id} completed — all items merged",
             )
             logger.info("[%s] Batch %s completed", self.project_id, batch.id)
@@ -688,6 +702,7 @@ class BatchManager:
                 self.project_id,
                 "batch_completed_with_errors",
                 batch.id,
+                "batch",
                 f"Batch {batch.id} done with errors: {failed}",
                 {"failed_items": failed},
             )
@@ -737,6 +752,7 @@ def _emit_event(
     project_id: str,
     event_type: str,
     entity_id: str | None,
+    entity_type: str | None = None,
     message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
@@ -745,6 +761,7 @@ def _emit_event(
         project_id=project_id,
         event_type=event_type,
         entity_id=entity_id,
+        entity_type=entity_type,
         message=message,
         event_metadata=metadata or {},
     )

@@ -162,6 +162,7 @@ def _emit(
     event_type: str,
     project_id: str,
     entity_id: str,
+    entity_type: str | None = None,
     message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
@@ -170,6 +171,7 @@ def _emit(
             project_id=project_id,
             event_type=event_type,
             entity_id=entity_id,
+            entity_type=entity_type,
             message=message,
             event_metadata=metadata or {},
         )
@@ -280,7 +282,7 @@ def kill_step(
     step.status = StepStatus.failed
     step.completed_at = now
 
-    _emit(db, "step_killed", project_id, item_id, f"Step {step_id} killed by user")
+    _emit(db, "step_killed", project_id, item_id, "work_item", f"Step {step_id} killed by user")
     db.commit()
 
     return _action_response(f"Step {step_id} killed.", toast_type="warning")
@@ -334,7 +336,9 @@ def restart_step(
     if item.status == WorkItemStatus.failed:
         item.status = WorkItemStatus.in_progress
 
-    _emit(db, "step_restarted", project_id, item_id, f"Step {step_id} restarted by user")
+    _emit(
+        db, "step_restarted", project_id, item_id, "work_item", f"Step {step_id} restarted by user"
+    )
     db.commit()
 
     return _action_response(f"Step {step_id} queued for restart.", toast_type="success")
@@ -368,7 +372,7 @@ def skip_step(
     step.status = StepStatus.skipped
     step.completed_at = datetime.now(UTC)
 
-    _emit(db, "step_skipped", project_id, item_id, f"Step {step_id} skipped by user")
+    _emit(db, "step_skipped", project_id, item_id, "work_item", f"Step {step_id} skipped by user")
     db.commit()
 
     return _action_response(f"Step {step_id} skipped.", toast_type="info")
@@ -435,6 +439,7 @@ def restart_from_step(
         "step_restarted",
         project_id,
         item_id,
+        "work_item",
         f"Restarted from step {step_id} by user",
         {"from_step": step_id, "steps_reset": len(downstream_steps)},
     )
@@ -472,7 +477,7 @@ def approve_item(
             detail=f"Cannot approve: item status is '{item.status.value}' (must be draft)",
         )
     item.status = WorkItemStatus.approved
-    _emit(db, "item_approved", project_id, item_id, f"Item {item_id} approved by user")
+    _emit(db, "item_approved", project_id, item_id, "work_item", f"Item {item_id} approved by user")
     db.commit()
     return _action_response(f"Item {item_id} approved.", toast_type="success", reload=True)
 
@@ -490,7 +495,9 @@ def cancel_item(
             detail=f"Cannot cancel: status '{item.status.value}' (must be draft or approved)",
         )
     item.status = WorkItemStatus.cancelled
-    _emit(db, "item_cancelled", project_id, item_id, f"Item {item_id} cancelled by user")
+    _emit(
+        db, "item_cancelled", project_id, item_id, "work_item", f"Item {item_id} cancelled by user"
+    )
     db.commit()
     return _action_response(f"Item {item_id} cancelled.", toast_type="info", reload=True)
 
@@ -645,6 +652,7 @@ async def create_batch_from_selection(
         "batch_created",
         project_id,
         batch_id,
+        "batch",
         f"Batch {batch_id} created with plan from {len(items)} items by user",
         {"item_ids": [i.id for i in items]},
     )
@@ -727,7 +735,14 @@ def unapprove_item(
             detail=f"Cannot unapprove: item status is '{item.status.value}' (must be approved)",
         )
     item.status = WorkItemStatus.draft
-    _emit(db, "item_unapproved", project_id, item_id, f"Item {item_id} unapproved by user")
+    _emit(
+        db,
+        "item_unapproved",
+        project_id,
+        item_id,
+        "work_item",
+        f"Item {item_id} unapproved by user",
+    )
     db.commit()
     return _action_response(f"Item {item_id} reverted to draft.", toast_type="info", reload=True)
 
@@ -806,6 +821,7 @@ def restart_item(
             "item_restarted",
             project_id,
             item_id,
+            "work_item",
             f"Item {item_id} restarted (failed at setup, no steps ran)",
         )
         db.commit()
@@ -860,6 +876,7 @@ def restart_item(
         "item_restarted",
         project_id,
         item_id,
+        "work_item",
         f"Item {item_id} restarted by user from step {first_failed.step_id}",
         {"from_step": first_failed.step_id, "steps_reset": len(downstream)},
     )
@@ -922,7 +939,14 @@ def restart_merge(
         batch.status = BatchStatus.approved
         batch.completed_at = None
 
-    _emit(db, "merge_restarted", project_id, item_id, f"Merge restart requested for {item_id}")
+    _emit(
+        db,
+        "merge_restarted",
+        project_id,
+        item_id,
+        "work_item",
+        f"Merge restart requested for {item_id}",
+    )
     db.commit()
 
     return _action_response(
@@ -950,7 +974,7 @@ def pause_item(
             detail=f"Cannot pause: item status is '{item.status.value}' (must be in_progress)",
         )
     item.status = WorkItemStatus.paused
-    _emit(db, "item_paused", project_id, item_id, f"Item {item_id} paused by user")
+    _emit(db, "item_paused", project_id, item_id, "work_item", f"Item {item_id} paused by user")
     db.commit()
     return _action_response(f"Item {item_id} paused.", toast_type="warning", reload=True)
 
@@ -973,7 +997,7 @@ def resume_item(
             detail=f"Cannot resume: item status is '{item.status.value}' (must be paused)",
         )
     item.status = WorkItemStatus.in_progress
-    _emit(db, "item_resumed", project_id, item_id, f"Item {item_id} resumed by user")
+    _emit(db, "item_resumed", project_id, item_id, "work_item", f"Item {item_id} resumed by user")
     db.commit()
     return _action_response(f"Item {item_id} resumed.", toast_type="success", reload=True)
 
@@ -1085,6 +1109,7 @@ def full_restart_item(
         "item_full_restarted",
         project_id,
         item_id,
+        "work_item",
         f"Item {item_id} fully restarted by user (worktree deleted, logs cleared)",
         {"worktree_path": worktree_path, "steps_reset": len(steps)},
     )
@@ -1223,7 +1248,7 @@ def approve_batch(
         )
     batch.status = BatchStatus.approved
     batch.updated_at = datetime.now(UTC)
-    _emit(db, "batch_approved", project_id, batch_id, f"Batch {batch_id} approved by user")
+    _emit(db, "batch_approved", project_id, batch_id, "batch", f"Batch {batch_id} approved by user")
     db.commit()
     return _action_response(f"Batch {batch_id} approved.", toast_type="success", reload=True)
 
@@ -1247,7 +1272,7 @@ def pause_batch(
         )
     batch.status = BatchStatus.paused
     batch.updated_at = datetime.now(UTC)
-    _emit(db, "batch_paused", project_id, batch_id, f"Batch {batch_id} paused by user")
+    _emit(db, "batch_paused", project_id, batch_id, "batch", f"Batch {batch_id} paused by user")
     db.commit()
     return _action_response(f"Batch {batch_id} paused.", toast_type="warning", reload=True)
 
@@ -1271,7 +1296,7 @@ def resume_batch(
         )
     batch.status = BatchStatus.executing
     batch.updated_at = datetime.now(UTC)
-    _emit(db, "batch_resumed", project_id, batch_id, f"Batch {batch_id} resumed by user")
+    _emit(db, "batch_resumed", project_id, batch_id, "batch", f"Batch {batch_id} resumed by user")
     db.commit()
     return _action_response(f"Batch {batch_id} resumed.", toast_type="success", reload=True)
 
@@ -1298,7 +1323,9 @@ def cancel_batch(
         )
     batch.status = BatchStatus.cancelled
     batch.updated_at = datetime.now(UTC)
-    _emit(db, "batch_cancelled", project_id, batch_id, f"Batch {batch_id} cancelled by user")
+    _emit(
+        db, "batch_cancelled", project_id, batch_id, "batch", f"Batch {batch_id} cancelled by user"
+    )
     db.commit()
     return _action_response(f"Batch {batch_id} cancelled.", toast_type="warning", reload=True)
 
@@ -1329,6 +1356,7 @@ def archive_batch_endpoint(
         "batch_archiving",
         project_id,
         batch_id,
+        "batch",
         f"Batch {batch_id} archiving started",
     )
     db.commit()

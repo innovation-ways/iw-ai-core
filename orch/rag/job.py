@@ -290,6 +290,7 @@ class CodeIndexJobRunner:
                             project_id=job.project_id,
                             event_type="code_map_completed",
                             entity_id=job.id,
+                            entity_type="doc_job",
                             message=(
                                 f"Code map generated — "
                                 f"{job.files_indexed} files, "

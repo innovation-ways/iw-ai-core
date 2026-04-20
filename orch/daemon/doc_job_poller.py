@@ -179,6 +179,7 @@ class DocJobPoller:
                 project.id,
                 "doc_job_launched",
                 job.id,
+                "doc_job",
                 f"Doc job {job.id} launched (PID {proc.pid}, skill={skill})",
                 {"doc_id": doc.doc_id, "pid": proc.pid, "skill": skill},
             )
@@ -241,6 +242,7 @@ def _emit_event(
     project_id: str | None,
     event_type: str,
     entity_id: str | None,
+    entity_type: str | None = None,
     message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
@@ -249,6 +251,7 @@ def _emit_event(
         project_id=project_id,
         event_type=event_type,
         entity_id=entity_id,
+        entity_type=entity_type,
         message=message,
         event_metadata=metadata or {},
     )
