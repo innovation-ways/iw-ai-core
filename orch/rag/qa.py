@@ -74,7 +74,7 @@ class QAEngine:
         module_path: str | None = None,
         module_name: str | None = None,
         context_chips: list[str] | None = None,
-        symbol_hint: str | None = None,
+        symbol_hint: str | None = None,  # noqa: ARG002
     ) -> AsyncGenerator[str, None]:
         """
         Stream answer tokens for the given question using RAG retrieval.
