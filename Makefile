@@ -2,7 +2,7 @@
 # IW AI Core — Developer Commands
 # ============================================================
 
-.PHONY: install lint format typecheck quality \
+.PHONY: install lint lint-js format typecheck quality \
         test-unit test-integration test check \
         db-up db-down db-migrate db-revision \
         daemon-start daemon-stop dashboard-start
@@ -13,8 +13,15 @@ install:
 	uv run alembic upgrade head
 
 # --- Quality ---
-lint:
+lint: lint-js
 	uv run ruff check .
+
+# Syntax-check every hand-written dashboard JS file (excludes vendor/).
+# Fails fast on unclosed braces / stray tokens that would otherwise only
+# surface at browser_verification time (e.g. see F-00055 post-mortem).
+lint-js:
+	@command -v node >/dev/null 2>&1 || { echo "ERROR: 'node' is required for lint-js (dashboard JS syntax check)"; exit 1; }
+	@find dashboard/static -name '*.js' -not -path '*/vendor/*' -print0 | xargs -0 -r -n1 node --check
 
 format:
 	uv run ruff format --check .
