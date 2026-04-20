@@ -14,6 +14,7 @@ from orch.db.models import (
     BatchItem,
     BatchItemStatus,
     BatchStatus,
+    DaemonEvent,
     Project,
     StepStatus,
     StepType,
@@ -152,6 +153,26 @@ def make_batch_item(
     return bi
 
 
+def make_daemon_event(
+    db: Any,
+    project_id: str = "test-proj",
+    event_type: str = "batch.started",
+    entity_id: str | None = "BATCH-00001",
+    entity_type: str | None = "batch",
+    message: str | None = "Batch started",
+) -> DaemonEvent:
+    event = DaemonEvent(
+        project_id=project_id,
+        event_type=event_type,
+        entity_id=entity_id,
+        entity_type=entity_type,
+        message=message,
+    )
+    db.add(event)
+    db.flush()
+    return event
+
+
 # ---------------------------------------------------------------------------
 # Project Dashboard
 # ---------------------------------------------------------------------------
@@ -178,6 +199,95 @@ def test_project_dashboard_shows_active_batches(client: TestClient, db_session: 
 def test_project_dashboard_404_for_unknown_project(client: TestClient, db_session: Any) -> None:
     resp = client.get("/project/no-such-project/")
     assert resp.status_code == 404
+
+
+def test_recent_activity_batch_event_links_to_batch_route(
+    client: TestClient, db_session: Any
+) -> None:
+    make_project(db_session)
+    make_daemon_event(
+        db_session,
+        event_type="batch.started",
+        entity_id="BATCH-00001",
+        entity_type="batch",
+        message="Batch started",
+    )
+
+    resp = client.get("/project/test-proj/")
+    assert resp.status_code == 200
+    assert 'href="/project/test-proj/batch/BATCH-00001"' in resp.text
+    assert "BATCH-00001" in resp.text
+
+
+def test_recent_activity_doc_job_event_links_to_doc_job_route(
+    client: TestClient, db_session: Any
+) -> None:
+    make_project(db_session)
+    make_daemon_event(
+        db_session,
+        event_type="doc_job.started",
+        entity_id="DOCJOB-00001",
+        entity_type="doc_job",
+        message="Doc job started",
+    )
+
+    resp = client.get("/project/test-proj/")
+    assert resp.status_code == 200
+    assert 'href="/project/test-proj/jobs/doc/DOCJOB-00001"' in resp.text
+    assert "DOCJOB-00001" in resp.text
+
+
+def test_recent_activity_work_item_event_links_to_item_route(
+    client: TestClient, db_session: Any
+) -> None:
+    make_project(db_session)
+    make_daemon_event(
+        db_session,
+        event_type="work_item.started",
+        entity_id="I-00001",
+        entity_type="work_item",
+        message="Work item started",
+    )
+
+    resp = client.get("/project/test-proj/")
+    assert resp.status_code == 200
+    assert 'href="/project/test-proj/item/I-00001"' in resp.text
+    assert "I-00001" in resp.text
+
+
+def test_recent_activity_unknown_entity_type_falls_back_to_item_route(
+    client: TestClient, db_session: Any
+) -> None:
+    make_project(db_session)
+    make_daemon_event(
+        db_session,
+        event_type="step.completed",
+        entity_id="I-99999",
+        entity_type=None,
+        message="Step completed",
+    )
+
+    resp = client.get("/project/test-proj/")
+    assert resp.status_code == 200
+    assert 'href="/project/test-proj/item/I-99999"' in resp.text
+
+
+def test_recent_activity_no_link_renders_when_entity_id_is_null(
+    client: TestClient, db_session: Any
+) -> None:
+    make_project(db_session)
+    make_daemon_event(
+        db_session,
+        event_type="daemon.started",
+        entity_id=None,
+        entity_type=None,
+        message="Daemon started",
+    )
+
+    resp = client.get("/project/test-proj/")
+    assert resp.status_code == 200
+    assert "Daemon started" in resp.text
+    assert 'href="/project/test-proj/item/' not in resp.text
 
 
 # ---------------------------------------------------------------------------

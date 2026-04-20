@@ -78,6 +78,7 @@ def emit_event(
     project_id: str | None,
     event_type: str,
     entity_id: str | None = None,
+    entity_type: str | None = None,
     message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
@@ -86,6 +87,7 @@ def emit_event(
         project_id=project_id,
         event_type=event_type,
         entity_id=entity_id,
+        entity_type=entity_type,
         message=message,
         event_metadata=metadata or {},
     )

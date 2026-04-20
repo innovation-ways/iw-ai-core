@@ -741,6 +741,11 @@ class DaemonEvent(Base):
         nullable=True,
         comment="Related entity: work item ID, batch ID, or step ID",
     )
+    entity_type: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Type of entity_id: work_item, batch, step, doc_job, or NULL",
+    )
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     event_metadata: Mapped[Any] = mapped_column(
         "metadata", JSONB, nullable=True, server_default=text("'{}'")

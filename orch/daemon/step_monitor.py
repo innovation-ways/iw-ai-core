@@ -205,7 +205,19 @@ def _handle_crashed(
     # Tear down browser env if applicable (before emitting event)
     _maybe_teardown_browser_env(db, run, project_id, project_config)
 
-    _emit_event(db, project_id, "step_crashed", str(run.id), msg, {"pid": run.pid})
+    # Look up work_item_id for correct entity routing
+    step = db.get(WorkflowStep, run.step_id)
+    work_item_id = step.work_item_id if step else None
+
+    _emit_event(
+        db,
+        project_id,
+        "step_crashed",
+        work_item_id,
+        message=msg,
+        entity_type="work_item",
+        metadata={"pid": run.pid},
+    )
     logger.warning("step_run %d crashed: %s", run.id, msg)
 
 
@@ -233,13 +245,18 @@ def _handle_timeout(
     # Tear down browser env if applicable (before emitting event)
     _maybe_teardown_browser_env(db, run, project_id, project_config)
 
+    # Look up work_item_id for correct entity routing
+    step = db.get(WorkflowStep, run.step_id)
+    work_item_id = step.work_item_id if step else None
+
     _emit_event(
         db,
         project_id,
         "step_timeout",
-        str(run.id),
-        msg,
-        {"pid": run.pid, "elapsed_secs": elapsed, "timeout_secs": run.timeout_secs},
+        work_item_id,
+        message=msg,
+        entity_type="work_item",
+        metadata={"pid": run.pid, "elapsed_secs": elapsed, "timeout_secs": run.timeout_secs},
     )
     logger.warning("step_run %d timed out: %s", run.id, msg)
 
@@ -303,7 +320,19 @@ def _handle_stall(
     run.status = RunStatus.stalled
     run.error_message = msg
 
-    _emit_event(db, project_id, "step_stalled", str(run.id), msg, {"pid": run.pid})
+    # Look up work_item_id for correct entity routing
+    step = db.get(WorkflowStep, run.step_id)
+    work_item_id = step.work_item_id if step else None
+
+    _emit_event(
+        db,
+        project_id,
+        "step_stalled",
+        work_item_id,
+        message=msg,
+        entity_type="work_item",
+        metadata={"pid": run.pid},
+    )
     logger.warning("step_run %d stalled: %s", run.id, msg)
 
 
@@ -330,7 +359,8 @@ def _emit_event(
     project_id: str,
     event_type: str,
     entity_id: str | None,
-    message: str,
+    entity_type: str | None = None,
+    message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
     """Insert a DaemonEvent row (caller is responsible for committing)."""
@@ -338,6 +368,7 @@ def _emit_event(
         project_id=project_id,
         event_type=event_type,
         entity_id=entity_id,
+        entity_type=entity_type,
         message=message,
         event_metadata=metadata or {},
     )

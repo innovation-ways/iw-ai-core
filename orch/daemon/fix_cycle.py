@@ -205,6 +205,7 @@ def retry_step(
         project_id,
         "step_retry_scheduled",
         step.work_item_id,
+        "work_item",
         f"Step {step.step_id} reset to pending for retry (attempt {run_count + 1})",
         {"step_id": step.step_id, "attempt": run_count + 1},
     )
@@ -296,6 +297,7 @@ def attempt_fix_cycle(
         project_id,
         "fix_cycle_started",
         step.work_item_id,
+        "work_item",
         f"Fix cycle {cycle_number}/{max_cycles} for {step.step_id} (PID {pid})",
         {
             "step_id": step.step_id,
@@ -408,6 +410,7 @@ def _complete_fix_cycle(
         project_id,
         "fix_cycle_completed",
         step.work_item_id if step else None,
+        "work_item",
         f"Fix cycle {cycle.cycle_number} completed — re-running review",
         {"cycle_id": cycle.id, "cycle_number": cycle.cycle_number},
     )
@@ -447,6 +450,7 @@ def _fail_fix_cycle(
         project_id,
         "fix_cycle_failed",
         step.work_item_id if step else None,
+        "work_item",
         f"Fix cycle {cycle.cycle_number} failed: {reason}",
         {"cycle_id": cycle.id, "cycle_number": cycle.cycle_number, "reason": reason},
     )
@@ -921,13 +925,15 @@ def _emit_event(
     project_id: str,
     event_type: str,
     entity_id: str | None,
-    message: str,
+    entity_type: str | None = None,
+    message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
     event = DaemonEvent(
         project_id=project_id,
         event_type=event_type,
         entity_id=entity_id,
+        entity_type=entity_type,
         message=message,
         event_metadata=metadata or {},
     )

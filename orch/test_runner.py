@@ -670,13 +670,21 @@ def _generate_allure_report(results_dir: str, report_dir: str | None, cwd: str) 
         return False
 
 
-def _emit_event(db: Any, project_id: str, event_type: str, entity_id: str, message: str) -> None:
+def _emit_event(
+    db: Any,
+    project_id: str,
+    event_type: str,
+    entity_id: str,
+    message: str,
+    entity_type: str | None = None,
+) -> None:
     """Insert a DaemonEvent for SSE consumption."""
     db.add(
         DaemonEvent(
             project_id=project_id,
             event_type=event_type,
             entity_id=entity_id,
+            entity_type=entity_type,
             message=message,
         )
     )
