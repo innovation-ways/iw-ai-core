@@ -78,9 +78,12 @@
       { label: '/explain', name: 'explain', description: 'Explain this module' },
       { label: '/findusages', name: 'findusages', description: 'Find usages of a symbol' },
       { label: '/diagram', name: 'diagram', description: 'Generate a diagram' },
+      { label: '/why', name: 'why', description: 'Explain with work item context' },
+      { label: '/history', name: 'history', description: 'Explain with history context' },
     ];
     var selectedSlashIndex = -1;
     var slashMenuOpen = false;
+    var currentFiltered = [];
 
     function syncContextChip() {
       var root = document.getElementById('code-content-root');
@@ -155,7 +158,7 @@
         }
         if (slashMenuOpen && e.key === 'ArrowDown') {
           e.preventDefault();
-          selectedSlashIndex = Math.min(selectedSlashIndex + 1, slashCommands.length - 1);
+          selectedSlashIndex = Math.min(selectedSlashIndex + 1, currentFiltered.length - 1);
           updateSlashMenuSelection();
           return;
         }
@@ -189,15 +192,15 @@
     }
 
     function openSlashMenu(prefix) {
-      var filtered = slashCommands.filter(function (cmd) {
+      currentFiltered = slashCommands.filter(function (cmd) {
         return cmd.label.toLowerCase().startsWith('/' + prefix.toLowerCase());
       });
-      if (filtered.length === 0) {
+      if (currentFiltered.length === 0) {
         closeSlashMenu();
         return;
       }
       slashMenu.innerHTML = '';
-      filtered.forEach(function (cmd, i) {
+      currentFiltered.forEach(function (cmd, i) {
         var item = document.createElement('div');
         item.className = 'px-3 py-1.5 text-sm cursor-pointer';
         item.dataset.index = i;
@@ -215,6 +218,7 @@
       slashMenu.classList.add('hidden');
       slashMenuOpen = false;
       selectedSlashIndex = -1;
+      currentFiltered = [];
     }
 
     function updateSlashMenuSelection() {
@@ -230,7 +234,7 @@
     }
 
     function acceptSlashCommand(index) {
-      var cmd = slashCommands[index];
+      var cmd = currentFiltered[index];
       if (!cmd) return;
       var value = input.value;
       var lastWordStart = value.lastIndexOf('/');
@@ -302,6 +306,8 @@
             var assistantArticle = assistantBubble.parentElement;
             renderer = window.iwChat.createAssistantRenderer(assistantArticle);
           }
+          var renderId = null;
+          var lastPhaseName = null;
           window.iwChat.streamAnswer({
             projectId: projectId || (window.location.pathname.split('/')[2]),
             body: body,
@@ -309,7 +315,26 @@
               assistantBubble.textContent += text;
             },
             onCitation: renderer ? renderer.onCitation : function () {},
-            onDone: renderer ? renderer.onDone : function () {},
+            onWorkItemCitation: renderer ? renderer.onWorkItemCitation : function () {},
+            onPhase: function (data) {
+              lastPhaseName = data.name;
+              if (data.name === 'composing' && data.detail && data.detail.render_id) {
+                renderId = data.detail.render_id;
+              }
+              if (renderer && renderer.onPhase) {
+                renderer.onPhase(data);
+              }
+            },
+            onDone: function (result) {
+              if (renderer && renderer.onDone) {
+                renderer.onDone(result);
+              }
+              if (renderId && window.iwChat && window.iwChat.injectToneSwitchChip) {
+                var assistantArticle = assistantBubble.parentElement;
+                var tone = lastPhaseName === 'composing' ? 'technical' : 'functional';
+                window.iwChat.injectToneSwitchChip(assistantArticle, renderId, tone);
+              }
+            },
             onError: renderer ? renderer.onError : function (err) {
               if (assistantBubble) assistantBubble.textContent = 'Error: ' + err.message;
             },

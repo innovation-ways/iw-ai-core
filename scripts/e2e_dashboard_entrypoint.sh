@@ -45,5 +45,13 @@ uv run alembic upgrade head
 echo "[e2e] seeding project + architecture map..."
 uv run python scripts/e2e_seed.py
 
+# Create an empty LanceDB vectors dir so the /code/qa index-exists check
+# passes. Matches the CodeIndexJob(status=completed) row inserted by the
+# seed. The work-item-aware pipeline reads from Postgres FTS + design docs,
+# not from a populated LanceDB, so an empty dir is sufficient for S18.
+INDEX_DIR="${IW_CORE_INDEX_PATH:-/tmp/iw-core-e2e-index}/iw-ai-core/vectors"
+echo "[e2e] ensuring LanceDB vectors dir exists at ${INDEX_DIR}..."
+mkdir -p "${INDEX_DIR}"
+
 echo "[e2e] starting dashboard on :9900..."
 exec uv run uvicorn dashboard.app:create_app --factory --host 0.0.0.0 --port 9900

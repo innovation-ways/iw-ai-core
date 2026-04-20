@@ -10,6 +10,7 @@ import asyncio
 import base64
 import json
 import queue
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -30,6 +31,9 @@ if TYPE_CHECKING:
     from orch.rag.config import CodeUnderstandingConfig
 
 
+WORK_ITEM_ID_RE = re.compile(r"^(F|I|CR)-\d{5}$")
+
+
 class ConversationMessage(BaseModel):
     role: str
     content: str
@@ -45,6 +49,11 @@ class QARequest(BaseModel):
     context_chips: list[str] = Field(default_factory=list)
 
 
+class QARerenderRequest(BaseModel):
+    render_id: str = Field(..., min_length=1)
+    tone: str = Field(..., pattern="^(technical|functional)$")
+
+
 router = APIRouter(prefix="/api")
 
 
@@ -54,6 +63,7 @@ class _CitationTracker:
 
     _seen: dict[str, int] = field(default_factory=dict)
     _next: int = 1
+    _work_items: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     def add(self, symbol_id: str) -> int | None:
         """Add a symbol ID; return its 1-based index if new, None if already seen."""
@@ -63,6 +73,22 @@ class _CitationTracker:
         self._seen[symbol_id] = idx
         self._next += 1
         return idx
+
+    def add_work_item(self, work_item_id: str, work_item_type: str) -> int | None:
+        """Add a work-item citation; return its 1-based index if new, None if duplicate."""
+        if not WORK_ITEM_ID_RE.match(work_item_id):
+            raise ValueError(f"Invalid work_item_id format: {work_item_id!r}")
+        if work_item_id in self._work_items:
+            return None
+        idx = self._next
+        self._seen[work_item_id] = idx
+        self._work_items[work_item_id] = (work_item_type, work_item_id)
+        self._next += 1
+        return idx
+
+    def get_work_item(self, work_item_id: str) -> tuple[str, str] | None:
+        """Return (type, id) tuple for a seen work item, or None if not found."""
+        return self._work_items.get(work_item_id)
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
@@ -85,27 +111,27 @@ def _run_qa_in_thread(
     q: queue.Queue[str | None],
     context_chips: list[str] | None = None,
 ) -> None:
-    """Run QAEngine.answer_stream() in a daemon thread, pushing tokens into a queue."""
+    """Run QAEngine.answer_stream_v2() in a daemon thread, pushing events into a queue."""
     from orch.rag.qa import QAEngine
 
     engine = QAEngine(project_id=project_id, config=config)
 
     async def produce_tokens() -> None:
         try:
-            stream = engine.answer_stream(
+            stream = engine.answer_stream_v2(
                 question=question,
                 context_level=context_level,
                 context_doc_id=context_doc_id,
-                module_path=module_path,
-                module_name=module_name,
                 conversation_history=conversation_history,
                 session=db_session,
                 context_chips=context_chips,
             )
-            async for token in stream:
-                q.put(token)
+            async for event in stream:
+                q.put(event)
         except (ConnectionRefusedError, OSError):
-            q.put("__ERROR__:Local AI unavailable. Check that Ollama is running.")
+            q.put(
+                {"kind": "error", "message": "Local AI unavailable. Check that Ollama is running."}
+            )
         finally:
             q.put(None)
             loop.stop()
@@ -132,7 +158,7 @@ async def _sse_generator(
     """Async generator that runs QAEngine in a thread and yields SSE-formatted strings."""
     import concurrent.futures
 
-    q: queue.Queue[str | None] = queue.Queue()
+    q: queue.Queue[str | None] | queue.Queue[dict[str, object]] = queue.Queue()
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     loop = asyncio.get_event_loop()
@@ -152,18 +178,39 @@ async def _sse_generator(
     )
 
     while True:
-        token = await loop.run_in_executor(None, q.get)
-        if token is None:
+        event = await loop.run_in_executor(None, q.get)
+        if event is None:
             break
-        if token.startswith("__ERROR__:"):
-            error_msg = token[len("__ERROR__:") :]
-            payload = json.dumps({"message": error_msg})
-            yield f"event: error\ndata: {payload}\n\n"
-            return
-
-        b64 = base64.b64encode(token.encode("utf-8")).decode("ascii")
-        payload = json.dumps({"b64": b64})
-        yield f"event: token\ndata: {payload}\n\n"
+        if isinstance(event, dict):
+            kind = event.get("kind", "token")
+            if kind == "error":
+                payload = json.dumps({"message": event.get("message", "Unknown error")})
+                yield f"event: error\ndata: {payload}\n\n"
+                return
+            if kind == "token":
+                token_text = event.get("text", "")
+                b64 = base64.b64encode(token_text.encode("utf-8")).decode("ascii")
+                payload = json.dumps({"b64": b64})
+                yield f"event: token\ndata: {payload}\n\n"
+            elif kind == "phase":
+                payload = json.dumps({"name": event.get("name"), "detail": event.get("detail", {})})
+                yield f"event: phase\ndata: {payload}\n\n"
+            elif kind == "citation":
+                payload = json.dumps(
+                    {
+                        "n": event.get("n"),
+                        "work_item_type": event.get("work_item_type"),
+                        "work_item_id": event.get("work_item_id"),
+                        "label": event.get("label"),
+                        "url": event.get("url"),
+                        "snippet": event.get("snippet"),
+                    }
+                )
+                yield f"event: citation\ndata: {payload}\n\n"
+        else:
+            b64 = base64.b64encode(str(event).encode("utf-8")).decode("ascii")
+            payload = json.dumps({"b64": b64})
+            yield f"event: token\ndata: {payload}\n\n"
 
     executor.shutdown(wait=False, cancel_futures=True)
 

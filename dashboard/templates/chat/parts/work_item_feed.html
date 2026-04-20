@@ -1,0 +1,23 @@
+<section class="work-item-feed" aria-label="Work item history">
+  <header class="work-item-feed-header">
+    <h3 class="text-sm font-medium">History</h3>
+    {% if count or retrieval_cutoff %}
+    <div class="work-item-feed-trust-strip text-xs text-muted-foreground">
+      {% if count %}Based on {{ count }} work items merged up to {{ retrieval_cutoff }}.{% endif %}
+      {% if confidence %} Confidence: {{ confidence }}{% endif %}
+    </div>
+    {% endif %}
+  </header>
+  <ol class="work-item-feed-list">
+    {% for item in items %}
+    <li class="work-item-feed-item" data-workitem-id="{{ item.id }}">
+      <div class="work-item-feed-meta">
+        <time datetime="{{ item.created_at }}">{{ item.created_at }}</time>
+        <a href="/project/{{ project_id }}/item/{{ item.id }}" class="work-item-feed-id">{{ item.id }}</a>
+      </div>
+      <h4 class="work-item-feed-title">{{ item.title }}</h4>
+      <p class="work-item-feed-summary">{{ item.summary or "(no summary available)" }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+</section>

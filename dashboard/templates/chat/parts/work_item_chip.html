@@ -1,0 +1,9 @@
+<button class="citation-chip citation-chip--workitem citation-chip--{{ work_item_type }}"
+        aria-haspopup="dialog"
+        data-cite="{{ n }}"
+        data-workitem-id="{{ work_item_id }}"
+        data-workitem-type="{{ work_item_type }}"
+        aria-label="Work item {{ work_item_id }}">
+  <span class="citation-chip-glyph" aria-hidden="true">{{ "F" if work_item_type == "feature" else ("CR" if work_item_type == "change_request" else "I") }}</span>
+  <span class="citation-chip-id">{{ work_item_id }}</span>
+</button>

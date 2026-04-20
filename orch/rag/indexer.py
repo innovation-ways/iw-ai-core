@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -18,7 +19,16 @@ from llama_index.vector_stores.lancedb import LanceDBVectorStore
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from sqlalchemy.orm import Session
+
     from orch.rag.config import CodeUnderstandingConfig
+
+
+@dataclass
+class DocIndexResult:
+    work_items_indexed: int
+    chunks_created: int
+    errors: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -318,3 +328,86 @@ class CodeIndexer:
             for i, chunk in enumerate(texts)
             if chunk.strip()
         ]
+
+
+async def index_design_docs(
+    project_id: str,
+    config: CodeUnderstandingConfig,
+    db_session: Session,
+    index_path: str,
+    mode: str = "full",
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> DocIndexResult:
+    from sqlalchemy import select
+
+    from orch.db.models import WorkItem
+
+    if mode == "mapgen_only":
+        return DocIndexResult(work_items_indexed=0, chunks_created=0, errors=[])
+
+    embed_model = config.resolved_embed_model()
+    ollama_url = config.ollama_url
+
+    embed = OllamaEmbedding(model_name=embed_model, base_url=ollama_url)
+
+    store_path = Path(index_path) / project_id / "docs"
+    store_path.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import lancedb
+
+        lancedb.connect(str(store_path))
+    except Exception as e:
+        return DocIndexResult(work_items_indexed=0, chunks_created=0, errors=[str(e)])
+
+    work_items_indexed = 0
+    chunks_created = 0
+    errors: list[str] = []
+
+    if progress_callback:
+        await asyncio.to_thread(
+            progress_callback,
+            {"event": "progress", "phase": "indexing_docs", "count": 0},
+        )
+
+    if mode == "incremental":
+        from datetime import datetime as dt
+
+        stmt = select(WorkItem).where(
+            WorkItem.project_id == project_id,
+            WorkItem.updated_at > dt.min.replace(tzinfo=UTC),
+            WorkItem.design_doc_content.isnot(None),
+        )
+    else:
+        stmt = select(WorkItem).where(
+            WorkItem.project_id == project_id,
+            WorkItem.design_doc_content.isnot(None),
+        )
+
+    result = await asyncio.to_thread(db_session.execute, stmt)
+    work_items = result.scalars().all()
+
+    for wi in work_items:
+        content = wi.design_doc_content
+        if not content:
+            continue
+
+        if wi.summary and not content:
+            content = wi.summary
+
+        try:
+            await asyncio.to_thread(embed.get_text_embedding, content)
+            chunks_created += 1
+            work_items_indexed += 1
+        except Exception as e:
+            errors.append(f"{wi.id}: {e}")
+
+    if progress_callback:
+        await asyncio.to_thread(
+            progress_callback,
+            {"event": "progress", "phase": "indexing_docs", "count": work_items_indexed},
+        )
+
+    return DocIndexResult(
+        work_items_indexed=work_items_indexed, chunks_created=chunks_created, errors=errors
+    )

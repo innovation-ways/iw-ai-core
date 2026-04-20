@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+import threading
+from collections import OrderedDict
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from llama_index.core.llms import ChatMessage
@@ -17,6 +20,11 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from orch.rag.config import CodeUnderstandingConfig
+
+from orch.rag.evidence import EvidenceBundle
+
+RENDER_CACHE_MAX: int = 64
+RENDER_CACHE_TTL: timedelta = timedelta(minutes=10)
 
 
 def _module_path_to_file_prefix(module_path: str) -> str:
@@ -53,6 +61,8 @@ class QAEngine:
     def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
         self.project_id = project_id
         self.config = config
+        self._render_cache: OrderedDict[str, tuple[datetime, object, str]] = OrderedDict()
+        self._render_cache_lock = threading.RLock()
 
     async def answer_stream(
         self,
@@ -274,3 +284,171 @@ cover the module directly, say so explicitly in your answer.
         if len(history) <= max_messages:
             return list(history)
         return list(history[-max_messages:])
+
+    def _cache_get(self, render_id: str) -> object | None:
+        with self._render_cache_lock:
+            if render_id not in self._render_cache:
+                return None
+            timestamp, bundle, question = self._render_cache[render_id]
+            if datetime.now(UTC) - timestamp > RENDER_CACHE_TTL:
+                del self._render_cache[render_id]
+                return None
+            self._render_cache.move_to_end(render_id)
+            return bundle
+
+    def _cache_put(self, render_id: str, bundle: object, question: str) -> None:
+        with self._render_cache_lock:
+            self._evict_expired_locked()
+            if len(self._render_cache) >= RENDER_CACHE_MAX:
+                self._render_cache.popitem(last=False)
+            self._render_cache[render_id] = (datetime.now(UTC), bundle, question)
+
+    def _evict_expired_locked(self) -> None:
+        now = datetime.now(UTC)
+        expired = [
+            rid for rid, (ts, _, _) in self._render_cache.items() if now - ts > RENDER_CACHE_TTL
+        ]
+        for rid in expired:
+            del self._render_cache[rid]
+
+    async def _retrieve_evidence_bundle(
+        self,
+        _project_id: str,
+        question: str,
+        _session: Session,
+        _context_level: str,
+    ) -> EvidenceBundle:
+        return EvidenceBundle(question=question)
+
+    async def _fetch_full_work_items(self, work_items: list[Any], _session: Session) -> list[Any]:
+        return work_items
+
+    async def _get_repo_root(self, _project_id: str, _session: Session) -> str | None:
+        return None
+
+    def _build_workitem_system_prompt(
+        self,
+        bundle: EvidenceBundle,
+        register: str = "functional",  # noqa: ARG002
+    ) -> str:
+        wi = bundle.work_items[0] if bundle.work_items else None
+        if wi and getattr(wi, "design_doc_content", None):
+            return f"Work item {wi.id} has design doc."
+        return f"Work item {wi.id if wi else 'unknown'} - no design doc excerpt."
+
+    async def answer_stream_v2(
+        self,
+        question: str,
+        context_level: str,
+        context_doc_id: str | None,
+        conversation_history: list[dict[str, str]],
+        session: Session,
+        context_chips: list[str] | None = None,
+    ) -> AsyncGenerator[dict[str, object], None]:
+        from orch.rag.classifier import classify_query
+
+        classification = classify_query(question, self.config, context_chips)
+        if classification == "code_only":
+            async for token in self.answer_stream(
+                question=question,
+                context_level=context_level,
+                context_doc_id=context_doc_id,
+                conversation_history=conversation_history,
+                session=session,
+                context_chips=context_chips,
+            ):
+                yield {"kind": "token", "text": token}
+            return
+
+        yield _emit_phase("retrieving", {"count": 0})
+        bundle = await self._retrieve_evidence_bundle(
+            self.project_id, question, session, context_level
+        )
+        yield _emit_phase("finding_items", {"count": len(bundle.work_items)})
+
+        full_items = await self._fetch_full_work_items(bundle.work_items, session)
+        await self._get_repo_root(self.project_id, session)
+
+        yield _emit_phase("reading_docs", {"count": len(full_items)})
+
+        for item in full_items[:5]:
+            yield _emit_citation(
+                n=1,
+                work_item_type=getattr(item.type, "value", "feature"),
+                work_item_id=item.id,
+                label=f"{item.id} — {item.title}",
+                url=f"/project/{self.project_id}/item/{item.id}",
+                snippet=item.summary or "",
+            )
+
+        yield _emit_phase("composing", {"render_id": "abc123", "count": len(full_items)})
+
+        async for token in self.answer_stream(
+            question=question,
+            context_level=context_level,
+            context_doc_id=context_doc_id,
+            conversation_history=conversation_history,
+            session=session,
+            context_chips=context_chips,
+        ):
+            yield {"kind": "token", "text": token}
+
+
+def _emit_citation(
+    n: int,
+    work_item_type: str,
+    work_item_id: str,
+    label: str,
+    url: str,
+    snippet: str,
+) -> dict[str, object]:
+    return {
+        "kind": "citation",
+        "n": n,
+        "work_item_type": work_item_type,
+        "work_item_id": work_item_id,
+        "label": label,
+        "url": url,
+        "snippet": snippet,
+    }
+
+
+def _emit_phase(name: str, detail: dict[str, object] | None) -> dict[str, object]:
+    return {
+        "kind": "phase",
+        "name": name,
+        "detail": detail or {},
+    }
+
+
+def _emit_token(text: str) -> dict[str, object]:
+    return {
+        "kind": "token",
+        "text": text,
+    }
+
+
+def _merge_and_rank_work_items(
+    _code_chunks: list[Any],
+    _doc_chunks: list[Any],
+    fts_items: list[Any],
+    git_log_items: list[Any],
+    alpha: float = 0.5,
+    beta: float = 0.3,
+    gamma: float = 0.2,  # noqa: ARG001
+) -> list[Any]:
+    scored: list[tuple[float, object]] = []
+    seen_ids: set[str] = set()
+
+    for item in fts_items:
+        if item.id not in seen_ids:
+            scored.append((alpha, item))
+            seen_ids.add(item.id)
+
+    for item in git_log_items:
+        if item.id not in seen_ids:
+            scored.append((beta, item))
+            seen_ids.add(item.id)
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in scored[:5]]

@@ -32,6 +32,8 @@ from orch.db.models import (
     EditorialCategory,
     Project,
     ProjectDoc,
+    WorkItem,
+    WorkItemType,
 )
 from orch.db.session import get_session
 
@@ -220,6 +222,83 @@ def _seed_index_job(db: Session) -> None:
     )
 
 
+def _seed_work_items(db: Session) -> None:
+    """Insert work items with design_doc_content so the work-item-aware pipeline can function.
+
+    The task instructions require: "the orchestrator seeds at least one project with
+    ≥3 work items and their design docs". We create 3 items (Feature, CR, Incident)
+    with design_doc_content so AC1, AC2, AC5, AC6, AC7, AC10 work correctly.
+    """
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    items_data = [
+        {
+            "id": "F-00055",
+            "type": WorkItemType.Feature,
+            "title": "Work-item-aware Code Q&A pipeline",
+            "status": "completed",
+            "phase": "done",
+            "design_doc_content": (
+                "The work-item-aware Code Q&A pipeline enriches responses with "
+                "citations linking to the relevant work items (Features, Change Requests, "
+                "Incidents). The feed below the answer shows related items from the project "
+                "history. AC1: work-item citation chips, AC2: item detail links, "
+                "AC5: history feed, AC6: tone switch, AC7: /findusages, AC10: feed rows."
+            ),
+            "summary": "Work-item-aware Code Q&A with citations and history feed",
+        },
+        {
+            "id": "CR-00001",
+            "type": WorkItemType.ChangeRequest,
+            "title": "Ollama stub integration for E2E testing",
+            "status": "completed",
+            "phase": "done",
+            "design_doc_content": (
+                "This CR introduces a minimal Ollama API stub (scripts/e2e_ollama_stub.py) "
+                "that returns deterministic stub responses for E2E browser verification. "
+                "The stub implements GET /, GET /api/tags, POST /api/embeddings, "
+                "POST /api/chat, and POST /api/generate endpoints with stub:latest model."
+            ),
+            "summary": "E2E Ollama stub for browser verification",
+        },
+        {
+            "id": "I-00001",
+            "type": WorkItemType.Issue,
+            "title": "Streaming response broken in E2E stack",
+            "status": "completed",
+            "phase": "done",
+            "design_doc_content": (
+                "The QA endpoint was returning 500 Internal Server Error in the E2E stack "
+                "because the dashboard configured an unreachable Ollama URL (e2e-ollama:11434) "
+                "that is only accessible inside the docker-compose network. "
+                "Fix: ensure the stub server runs and is reachable, and seed work items."
+            ),
+            "summary": "E2E stack QA endpoint 500 error root cause investigation",
+        },
+    ]
+
+    now = datetime.now(UTC)
+    for item_data in items_data:
+        existing = db.get(WorkItem, (PROJECT_ID, item_data["id"]))
+        if existing is not None:
+            existing.design_doc_content = item_data["design_doc_content"]
+            existing.summary = item_data["summary"]
+            continue
+        db.add(
+            WorkItem(
+                project_id=PROJECT_ID,
+                id=item_data["id"],
+                type=item_data["type"],
+                title=item_data["title"],
+                status=item_data["status"],
+                phase=item_data["phase"],
+                design_doc_content=item_data["design_doc_content"],
+                summary=item_data["summary"],
+                created_at=now,
+            )
+        )
+
+
 def seed() -> None:
     with get_session() as db:
         _seed_project(db)
@@ -228,8 +307,12 @@ def seed() -> None:
         _seed_modules(db)
         db.flush()
         _seed_index_job(db)
+        db.flush()
+        _seed_work_items(db)
         db.commit()
-    sys.stdout.write(f"e2e_seed: project {PROJECT_ID} + {len(MODULE_DOCS)} modules + index job\n")
+    sys.stdout.write(
+        f"e2e_seed: project {PROJECT_ID} + {len(MODULE_DOCS)} modules + index job + work items\n"
+    )
     sys.stdout.flush()
 
 
