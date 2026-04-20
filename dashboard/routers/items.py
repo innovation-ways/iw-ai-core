@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from dashboard.utils.markdown import render_markdown
+from orch.daemon.execution_report import assemble_execution_report
 from orch.db.models import (
     BatchItem,
     BatchItemStatus,
@@ -1017,6 +1018,51 @@ def item_tab_fix_cycles(
             "item": item,
             "project_id": project_id,
             "fix_cycles": fix_cycles,
+        },
+    )
+
+
+@router.get("/item/{item_id}/execution-report", response_class=HTMLResponse)
+def item_execution_report(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+    execution_report = assemble_execution_report(db, project_id, item_id)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "pages/project/item_execution_report.html",
+        {
+            "current_project": _get_project_or_404(project_id, db),
+            "item": item,
+            "execution_report": execution_report,
+        },
+    )
+
+
+@router.get("/item/{item_id}/tab/execution-report", response_class=HTMLResponse)
+def item_tab_execution_report(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+    execution_report = assemble_execution_report(db, project_id, item_id)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/item_execution_report.html",
+        {
+            "item": item,
+            "execution_report": execution_report,
         },
     )
 

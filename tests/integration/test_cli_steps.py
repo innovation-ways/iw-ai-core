@@ -301,6 +301,74 @@ def test_step_fail_rejects_non_in_progress(
     assert result.exit_code == 1
 
 
+def test_step_fail_with_report_stores_path_and_content(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+    tmp_path: Any,
+) -> None:
+    """step-fail --report stores both report_file and report_content (mirrors step-done).
+
+    Without this, fix-cycle prompts for browser_verification only see the
+    one-line --reason text and apply guesswork patches.
+    """
+    make_item(db_session)
+    step = make_step(db_session, status=StepStatus.in_progress)
+    step_run = make_step_run(db_session, step, status=RunStatus.running)
+
+    report_file = tmp_path / "S01_browser_report.md"
+    report_file.write_text("# Browser Report\n\n| V1 | FAIL | tab missing |\n")
+
+    runner = CliRunner()
+    result = invoke(
+        runner,
+        [
+            "step-fail",
+            "I-00001",
+            "--step",
+            "S01",
+            "--reason",
+            "V1 failed",
+            "--report",
+            str(report_file),
+        ],
+        cli_get_session,
+    )
+    assert result.exit_code == 0, result.output
+
+    db_session.refresh(step)
+    db_session.refresh(step_run)
+    assert step.status == StepStatus.failed
+    assert step.report_file == str(report_file)
+    assert step.report_content is not None
+    assert "V1" in step.report_content
+    assert step_run.report_file == str(report_file)
+    assert step_run.error_message == "V1 failed"
+
+
+def test_step_fail_without_report_leaves_fields_null(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    """step-fail without --report keeps report_file/report_content as None."""
+    make_item(db_session)
+    step = make_step(db_session, status=StepStatus.in_progress)
+
+    runner = CliRunner()
+    result = invoke(
+        runner,
+        ["step-fail", "I-00001", "--step", "S01", "--reason", "agent error"],
+        cli_get_session,
+    )
+    assert result.exit_code == 0
+
+    db_session.refresh(step)
+    assert step.status == StepStatus.failed
+    assert step.report_file is None
+    assert step.report_content is None
+
+
 # ---------------------------------------------------------------------------
 # Full lifecycle: start → done
 # ---------------------------------------------------------------------------
