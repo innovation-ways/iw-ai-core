@@ -75,6 +75,7 @@ _FIX_TIMEOUT_MAP: dict[StepType, str] = {
 }
 
 _DEFAULT_FIX_CYCLE_MAX = 5
+_MAX_FIX_SUMMARY_LEN = 20000
 # Browser fix cycles rebuild the full E2E docker-compose stack on every
 # re-run, which is expensive; cap them separately from the generic limit.
 _DEFAULT_BROWSER_FIX_CYCLE_MAX = 2
@@ -933,3 +934,39 @@ def _emit_event(
         event_metadata=metadata or {},
     )
     db.add(event)
+
+
+def _parse_and_store_fix_summary(cycle: Any) -> None:
+    """Read fix_summary from the fix agent's JSON log file and store it on the cycle.
+
+    Silently handles all errors (missing key, malformed JSON, file not found) so the
+    caller never throws — the fix summary is best-effort only.
+    """
+    import json  # noqa: PLC0415
+
+    meta = cycle.fix_metadata
+    if not meta:
+        return
+    log_file = meta.get("log_file")
+    if not log_file:
+        return
+
+    try:
+        content = Path(log_file).read_text(encoding="utf-8")
+    except OSError:
+        return
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        return
+
+    summary = data.get("fix_summary")
+    if not isinstance(summary, str):
+        return
+    if not summary or not summary.strip():
+        return
+
+    if len(summary) > _MAX_FIX_SUMMARY_LEN:
+        summary = summary[:_MAX_FIX_SUMMARY_LEN]
+    cycle.fix_summary = summary
