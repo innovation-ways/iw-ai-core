@@ -1,0 +1,15 @@
+# CODEOWNERS for {{project_name}}
+# Documentation: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Syntax: path/pattern  @owner1 @owner2
+# Order matters — later rules override earlier ones for the same path.
+
+# Global ownership: every file is owned by the maintainers team unless overridden below.
+*                           @{{company_github_org}}/maintainers
+
+# Security-sensitive areas (optional; uncomment and customize as your team grows):
+# /SECURITY.md               @{{company_github_org}}/security
+# /.github/workflows/        @{{company_github_org}}/security @{{company_github_org}}/maintainers
+# /LICENSE                   @{{company_github_org}}/legal
+# /NOTICE                    @{{company_github_org}}/legal
+# /TRADEMARK.md              @{{company_github_org}}/legal

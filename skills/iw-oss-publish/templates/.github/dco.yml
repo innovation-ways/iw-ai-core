@@ -1,0 +1,15 @@
+# CNCF dco2 GitHub App configuration
+# App install: https://github.com/apps/dco
+# Docs: https://github.com/cncf/dco2
+#
+# When installed at the org level, all PRs require each commit to include
+# a "Signed-off-by:" trailer matching the commit author.
+
+require:
+  members: true
+
+# Allow remediation via an empty commit that retroactively signs off earlier
+# commits in the PR. See: https://github.com/cncf/dco2#remediation-commits
+allowRemediationCommits:
+  individual: true
+  thirdParty: true

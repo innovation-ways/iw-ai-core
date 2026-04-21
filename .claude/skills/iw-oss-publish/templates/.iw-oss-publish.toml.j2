@@ -1,0 +1,43 @@
+# iw-oss-publish resolved configuration
+# Written once by `iw-oss-publish make_oss`; edit as needed for subsequent runs.
+# Location: .iw/oss-publish.toml
+
+project_name         = "{{project_name}}"
+project_description  = "{{project_description}}"
+license              = "{{license}}"
+company_legal_name   = "{{company_legal_name}}"
+company_brand        = "{{company_brand}}"
+company_github_org   = "{{company_github_org}}"
+company_contact_email = "{{company_contact_email}}"
+homepage             = "{{homepage}}"
+contributor_agreement = "{{contributor_agreement}}"  # DCO | CLA
+coc_version          = "{{coc_version}}"
+sbom_formats         = ["spdx", "cyclonedx"]
+internal_email_domains = ["innovation-ways.com"]
+internal_fqdn_suffixes = [".internal", ".corp", ".local", ".lan", ".intranet"]
+
+[history]
+# Set once during `publish` mode; persisted so re-runs don't re-prompt.
+# strategy = "nuke"  # nuke | filter-repo | preserve
+# decided_at = ""
+# rationale = ""
+
+[export_control]
+# Set to true after human review confirms only standard cryptography is used.
+# standard_crypto_only = true
+# non_standard_crypto_notified = false  # BIS/NSA notification confirmation
+
+[trademark]
+# Record of manual trademark searches (fill after running).
+# uspto_searched = "YYYY-MM-DD"
+# wipo_searched  = "YYYY-MM-DD"
+# name_collision_accepted = []  # e.g., ["pypi"] if an existing PyPI name is tolerated
+
+[checks]
+# disabled = []
+# demoted = { }  # e.g., {"OSS-LIC-08" = "MAY"}
+
+[tools]
+# Override tool paths or disable specific tools.
+# disabled = { licensee = "Ruby unavailable in CI" }
+# override = { gitleaks = "/custom/path/to/gitleaks" }
