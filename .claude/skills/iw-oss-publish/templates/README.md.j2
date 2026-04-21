@@ -1,0 +1,78 @@
+# {{project_name}}
+
+[![License: {{license}}](https://img.shields.io/badge/License-{{license_badge_slug}}-blue.svg)](LICENSE)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/{{company_github_org}}/{{project_name}}/badge)](https://securityscorecards.dev/viewer/?uri=github.com/{{company_github_org}}/{{project_name}})
+{% if ci_workflow -%}
+[![CI](https://github.com/{{company_github_org}}/{{project_name}}/actions/workflows/{{ci_workflow}}/badge.svg)](https://github.com/{{company_github_org}}/{{project_name}}/actions/workflows/{{ci_workflow}})
+{%- endif %}
+
+{{project_description | default("One-line description of what this project does. (Replace this placeholder.)")}}
+
+Maintained by [{{company_brand}}]({{homepage}}).
+
+---
+
+## Overview
+
+<!-- TODO: 2-4 paragraphs explaining what the project does, why it exists, and who should use it. -->
+
+## Installation
+
+<!-- TODO: Installation instructions per supported environment. Examples below. -->
+
+```bash
+# Python (pip)
+pip install {{project_name}}
+
+# Python (uv)
+uv add {{project_name}}
+
+# From source
+git clone https://github.com/{{company_github_org}}/{{project_name}}.git
+cd {{project_name}}
+# ... build/install steps
+```
+
+## Usage
+
+<!-- TODO: Minimal working example. Show what a user types and what they get back. -->
+
+```bash
+{{project_name}} --help
+```
+
+## Documentation
+
+<!-- TODO: Link to full docs if hosted; otherwise link to key docs/ files. -->
+
+- [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to open issues and pull requests.
+
+All commits must be signed-off per the [Developer Certificate of Origin](https://developercertificate.org/):
+
+```bash
+git commit -s -m "your message"
+```
+
+## Code of Conduct
+
+This project adopts the [Contributor Covenant {{coc_version}}](CODE_OF_CONDUCT.md). By participating, you agree to abide by its terms. Report concerns to {{company_contact_email}}.
+
+## Security
+
+Please do not file public issues for security vulnerabilities. See [SECURITY.md](SECURITY.md) for our reporting process.
+
+## License
+
+This project is licensed under the [{{license}}](LICENSE) license.
+
+Copyright © {{year}} {{company_legal_name}}.
+
+## Trademark
+
+"{{company_brand}}"{% if project_is_trademark %} and "{{project_name}}"{% endif %} are trademarks of {{company_legal_name}}. See [TRADEMARK.md](TRADEMARK.md) for permitted uses.
