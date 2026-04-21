@@ -1,0 +1,110 @@
+{
+  "id": "F-00058",
+  "type": "Feature",
+  "title": "OSS compliance dashboard view + status pill",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Database: project_oss_job table + ORM model (async job tracking for scan/prepare/publish)",
+      "prompt": "prompts/F-00058_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review: S01 (table shape, FKs, enums, downgradeable migration)",
+      "prompt": "prompts/F-00058_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Backend service: dashboard/services/oss_service.py — job queue/executor, throwaway worktree lifecycle, SSE helpers, Tier-1 probe, freshness helper, orphan recovery",
+      "prompt": "prompts/F-00058_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review: S03 (subprocess hygiene, worktree cleanup, SSE backpressure, monotonic state transitions, orphan recovery)",
+      "prompt": "prompts/F-00058_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "api-impl",
+      "description": "API: dashboard/routers/oss.py (page + 8 endpoints including SSE); register router in app.py",
+      "prompt": "prompts/F-00058_S05_API_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "frontend-impl",
+      "description": "Frontend: pages/project/oss.html + 7 fragments (pill, status frame, domain card, tool-run card, install modal, CLI block, scan progress); add OSS frame under Git Status; conditional OSS tab",
+      "prompt": "prompts/F-00058_S06_Frontend_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-impl",
+      "description": "Joint code review: S05 (API) + S06 (Frontend) for API↔template contract, htmx headers, SSE integration, accessibility",
+      "prompt": "prompts/F-00058_S07_CodeReview_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "tests-impl",
+      "description": "Tests: boundary + SSE + invariant integration tests (test_oss_dashboard_boundary, test_oss_dashboard_sse, invariant coverage)",
+      "prompt": "prompts/F-00058_S08_Tests_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-impl",
+      "description": "Code review: S08 (Boundary Behavior + Invariant coverage, testcontainer compliance, red-before-green)",
+      "prompt": "prompts/F-00058_S09_CodeReview_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-layer review: DB → service → API → template coherence, AC coverage (AC1–AC7), no regressions, CLAUDE.md compliance",
+      "prompt": "prompts/F-00058_S10_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint (ruff + JS syntax)"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format (ruff)"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "uv run mypy orch/ dashboard/",
+      "description": "QV: Typecheck (mypy)"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S16",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — pill rendering, Install modal flow, Scan + SSE progress, results tree, Prepare/Publish CLI block, stale banner, no regressions on sibling views",
+      "prompt": "prompts/F-00058_S16_BrowserVerification_prompt.md"
+    }
+  ]
+}
