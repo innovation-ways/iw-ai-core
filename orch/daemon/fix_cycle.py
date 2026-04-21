@@ -666,12 +666,7 @@ def _get_gate_command(step: WorkflowStep, worktree_path: str) -> str:
     import json  # noqa: PLC0415
 
     manifest_path = (
-        Path(worktree_path)
-        / "ai-dev"
-        / "design"
-        / "active"
-        / step.work_item_id
-        / "workflow-manifest.json"
+        Path(worktree_path) / "ai-dev" / "active" / step.work_item_id / "workflow-manifest.json"
     )
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text())
