@@ -12,6 +12,11 @@ from sqlalchemy import select
 
 from orch.archive import archive_all_completed, archive_work_item
 from orch.cli.utils import TYPE_TO_ID_PREFIX, output_error, resolve_project, validate_id_prefix
+from orch.daemon.execution_report import (
+    assemble_execution_report,
+    render_execution_report_markdown,
+    write_execution_report,
+)
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -573,3 +578,42 @@ def item_status(ctx: click.Context, item_id: str, json_output: bool) -> None:
         created = (result.get("created_at") or "")[:16]
         updated = (result.get("updated_at") or "")[:16]
         click.echo(f"  Created: {created} | Updated: {updated}")
+
+
+@click.command("item-report")
+@click.argument("item_id")
+@click.option("--stdout", is_flag=True, help="Print report to stdout instead of writing to disk")
+@click.option(
+    "--archive-dir",
+    envvar="IW_CORE_ARCHIVE_DIR",
+    default=None,
+    help="Archive directory override",
+)
+@click.pass_context
+def item_report(ctx: click.Context, item_id: str, stdout: bool, archive_dir: str | None) -> None:
+    """Generate and write the execution report for a work item."""
+    from orch.daemon.execution_report import ExecutionReportResolutionError
+
+    project_id = resolve_project(ctx)
+    get_session = ctx.obj["get_session"]
+
+    try:
+        with get_session() as session:
+            item = session.get(WorkItem, (project_id, item_id))
+            if item is None:
+                output_error(ctx, f"Work item {item_id} not found in project {project_id}", 1)
+
+            data = assemble_execution_report(session, project_id, item_id)
+
+            if stdout:
+                markdown = render_execution_report_markdown(data)
+                click.echo(markdown)
+                return
+
+            path = write_execution_report(session, project_id, item_id)
+            click.echo(f"Report written to {path}")
+
+    except ExecutionReportResolutionError as exc:
+        output_error(ctx, str(exc), 2)
+    except Exception as exc:
+        output_error(ctx, f"Report error: {exc}", 1)

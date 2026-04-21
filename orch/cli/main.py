@@ -14,7 +14,7 @@ from orch.cli.batch_commands import (
 from orch.cli.daemon_commands import daemon
 from orch.cli.doc_commands import doc_job_done, doc_job_start, doc_update, docs_export
 from orch.cli.id_commands import current_project, next_id
-from orch.cli.item_commands import approve, archive, item_status, register, unapprove
+from orch.cli.item_commands import approve, archive, item_report, item_status, register, unapprove
 from orch.cli.lock_commands import migration_lock
 from orch.cli.project_commands import projects
 from orch.cli.search_commands import search
@@ -63,6 +63,7 @@ cli.add_command(approve)
 cli.add_command(unapprove)
 cli.add_command(archive)
 cli.add_command(item_status)
+cli.add_command(item_report)
 cli.add_command(step_start)
 cli.add_command(step_done)
 cli.add_command(step_fail)

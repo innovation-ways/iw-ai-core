@@ -158,6 +158,7 @@ async def _sse_generator(
     db_session: Session,
     config: CodeUnderstandingConfig,
     context_chips: list[str] | None = None,
+    symbol_hint: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that runs QAEngine in a thread and yields SSE-formatted strings."""
     import concurrent.futures
@@ -179,6 +180,7 @@ async def _sse_generator(
         config,
         q,
         context_chips,
+        symbol_hint,
     )
 
     while True:
@@ -249,6 +251,8 @@ async def code_qa(
             detail="No code index found for this project",
         )
 
+    symbol_hint = request.question.strip() if "findusages" in request.context_chips else None
+
     return StreamingResponse(
         _sse_generator(
             project_id=project_id,
@@ -259,6 +263,7 @@ async def code_qa(
             module_name=request.module_name,
             conversation_history=[m.model_dump() for m in request.conversation_history],
             context_chips=request.context_chips,
+            symbol_hint=symbol_hint,
             db_session=db,
             config=config,
         ),

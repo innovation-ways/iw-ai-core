@@ -15,3 +15,73 @@ enabled = true
 display_name = "Curriculum Vitae"
 repo_root = "/home/sergiog/dev/iw-doc-plan/main/cv"
 enabled = true
+
+[projects.test-create-project]
+display_name = "Test Create Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1468/test_valid_creation_redirects0/my-repo"
+enabled = true
+
+[projects.test-db-project]
+display_name = "Test DB Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1468/test_project_created_in_db0/my-repo"
+enabled = true
+
+[projects.test-create-project]
+display_name = "Test Create Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1470/test_valid_creation_redirects0/my-repo"
+enabled = true
+
+[projects.test-db-project]
+display_name = "Test DB Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1470/test_project_created_in_db0/my-repo"
+enabled = true
+
+[projects.test-create-project]
+display_name = "Test Create Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1472/test_valid_creation_redirects0/my-repo"
+enabled = true
+
+[projects.test-db-project]
+display_name = "Test DB Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1472/test_project_created_in_db0/my-repo"
+enabled = true
+
+[projects.test-create-project]
+display_name = "Test Create Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1478/test_valid_creation_redirects0/my-repo"
+enabled = true
+
+[projects.test-db-project]
+display_name = "Test DB Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1478/test_project_created_in_db0/my-repo"
+enabled = true
+
+[projects.test-create-project]
+display_name = "Test Create Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1482/test_valid_creation_redirects0/my-repo"
+enabled = true
+
+[projects.test-db-project]
+display_name = "Test DB Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1482/test_project_created_in_db0/my-repo"
+enabled = true
+
+[projects.test-create-project]
+display_name = "Test Create Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1490/test_valid_creation_redirects0/my-repo"
+enabled = true
+
+[projects.test-db-project]
+display_name = "Test DB Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1490/test_project_created_in_db0/my-repo"
+enabled = true
+
+[projects.test-create-project]
+display_name = "Test Create Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1491/test_valid_creation_redirects0/my-repo"
+enabled = true
+
+[projects.test-db-project]
+display_name = "Test DB Project"
+repo_root = "/tmp/pytest-of-sergiog/pytest-1491/test_project_created_in_db0/my-repo"
+enabled = true

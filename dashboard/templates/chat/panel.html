@@ -1,3 +1,10 @@
+<style>
+  #chat-panel[data-collapsed="true"] #chat-context-label,
+  #chat-panel[data-collapsed="true"] #chat-messages,
+  #chat-panel[data-collapsed="true"] #chat-scroll-to-bottom-wrap,
+  #chat-panel[data-collapsed="true"] #chat-composer { display: none; }
+  #chat-panel[data-collapsed="true"] #chat-collapse-btn svg { transform: rotate(180deg); }
+</style>
 <div id="chat-panel"
      class="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-card border-l border-border flex flex-col
             translate-x-full transition-transform duration-200 ease-in-out

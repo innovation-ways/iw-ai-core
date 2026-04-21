@@ -18,9 +18,11 @@
     if (!panel) return;
     panel.dataset.collapsed = collapsed;
     if (collapsed) {
+      document.documentElement.style.setProperty('--chat-width', '48px');
       panel.style.width = '48px';
       if (collapseBtn) collapseBtn.setAttribute('aria-label', 'Expand chat panel (Cmd+\\)');
     } else {
+      document.documentElement.style.setProperty('--chat-width', chatWidth + 'px');
       panel.style.width = '';
       if (collapseBtn) collapseBtn.setAttribute('aria-label', 'Collapse chat panel (Cmd+\\)');
     }
