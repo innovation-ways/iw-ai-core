@@ -153,6 +153,7 @@ class DocType(enum.Enum):
     module = "module"
     api = "api"
     architecture = "architecture"
+    code_components = "code_components"
     release_notes = "release_notes"
     error_catalog = "error_catalog"
     webhook_ref = "webhook_ref"
