@@ -165,7 +165,7 @@ class ModuleGenerator:
             project_id=project_id,
             doc_id=slug,
             title=title,
-            doc_type=DocType.code_components,
+            doc_type=DocType.research,
             tier=DocTier.fully_automated,
             editorial_category=EditorialCategory.technical,
             slug=slug,

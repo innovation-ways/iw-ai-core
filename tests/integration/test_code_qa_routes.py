@@ -179,18 +179,18 @@ def test_qa_validation_invalid_context_level(client: TestClient, test_project: P
 def test_qa_streams_tokens(
     client: TestClient, test_project_with_index: Project, tmp_path: Path
 ) -> None:
-    """Given valid project + mocked index + mocked answer_stream, SSE tokens stream correctly."""
+    """Given valid project + mocked index + mocked answer_stream_v2, SSE tokens stream correctly."""
     project_index_path = tmp_path / "code-index" / test_project_with_index.id / "vectors"
     project_index_path.mkdir(parents=True)
 
-    async def mock_answer_stream(**kwargs: object) -> AsyncGenerator[str, None]:
-        yield "Hello"
-        yield " world"
-        yield "!"
+    async def mock_answer_stream_v2(**kwargs: object) -> AsyncGenerator[dict[str, object], None]:
+        yield {"kind": "token", "text": "Hello"}
+        yield {"kind": "token", "text": " world"}
+        yield {"kind": "token", "text": "!"}
 
     with patch("orch.rag.qa.QAEngine") as mock_qa_engine:
         mock_engine = mock_qa_engine.return_value
-        mock_engine.answer_stream = mock_answer_stream
+        mock_engine.answer_stream_v2 = mock_answer_stream_v2
 
         resp = client.post(
             f"/api/projects/{test_project_with_index.id}/code/qa",
@@ -223,12 +223,12 @@ def test_qa_streams_error_event_on_ollama_down(
     project_index_path = tmp_path / "code-index" / test_project_with_index.id / "vectors"
     project_index_path.mkdir(parents=True)
 
-    async def mock_answer_stream_error(**kwargs: object) -> AsyncGenerator[str, None]:
-        yield "__ERROR__:Local AI unavailable. Check that Ollama is running."
+    async def mock_answer_stream_v2_error(**kwargs: object) -> AsyncGenerator[dict[str, object], None]:
+        yield {"kind": "error", "message": "Local AI unavailable. Check that Ollama is running."}
 
     with patch("orch.rag.qa.QAEngine") as mock_qa_engine:
         mock_engine = mock_qa_engine.return_value
-        mock_engine.answer_stream = mock_answer_stream_error
+        mock_engine.answer_stream_v2 = mock_answer_stream_v2_error
 
         resp = client.post(
             f"/api/projects/{test_project_with_index.id}/code/qa",
@@ -255,12 +255,12 @@ def test_qa_empty_conversation_history(
     project_index_path = tmp_path / "code-index" / test_project_with_index.id / "vectors"
     project_index_path.mkdir(parents=True)
 
-    async def mock_answer_stream(**kwargs: object) -> AsyncGenerator[str, None]:
-        yield "Answer"
+    async def mock_answer_stream_v2(**kwargs: object) -> AsyncGenerator[dict[str, object], None]:
+        yield {"kind": "token", "text": "Answer"}
 
     with patch("orch.rag.qa.QAEngine") as mock_qa_engine:
         mock_engine = mock_qa_engine.return_value
-        mock_engine.answer_stream = mock_answer_stream
+        mock_engine.answer_stream_v2 = mock_answer_stream_v2
 
         resp = client.post(
             f"/api/projects/{test_project_with_index.id}/code/qa",
@@ -290,13 +290,13 @@ def test_post_qa_with_module_name_forwards_to_engine(
 
     captured_kwargs: dict = {}
 
-    async def mock_answer_stream(**kwargs: object) -> AsyncGenerator[str, None]:
+    async def mock_answer_stream_v2(**kwargs: object) -> AsyncGenerator[dict[str, object], None]:
         captured_kwargs.update(kwargs)
-        yield "Answer"
+        yield {"kind": "token", "text": "Answer"}
 
     with patch("orch.rag.qa.QAEngine") as mock_qa_engine:
         mock_engine = mock_qa_engine.return_value
-        mock_engine.answer_stream = mock_answer_stream
+        mock_engine.answer_stream_v2 = mock_answer_stream_v2
 
         resp = client.post(
             f"/api/projects/{test_project_with_index.id}/code/qa",

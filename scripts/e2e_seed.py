@@ -179,7 +179,7 @@ def _seed_modules(db: Session) -> None:
                 doc_id=doc_id,
                 title=module["title"],
                 slug=f"{PROJECT_ID}-{module['slug']}",
-                doc_type=DocType.code_components,
+                doc_type=DocType.module,
                 tier=DocTier.fully_automated,
                 editorial_category=EditorialCategory.technical,
                 status=DocStatus.published,
