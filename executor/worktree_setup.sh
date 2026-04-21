@@ -142,44 +142,7 @@ if [[ -f "$PROJECT_REPO_ROOT/.env" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 6: Write execution_brief.json from DB data
-# ---------------------------------------------------------------------------
-# The execution_brief.json gives the agent context about what to do:
-# item title, type, all steps (with status), and worktree/branch info.
-cd "$WORKTREE_DIR"
-TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-# Re-fetch item status from within the worktree so auto-detection finds .iw-orch.json
-ITEM_JSON_FRESH=$(iw item-status "$ITEM_ID" --json 2>/dev/null) || ITEM_JSON_FRESH="$ITEM_JSON"
-
-echo "$ITEM_JSON_FRESH" | jq \
-    --arg branch "$BRANCH" \
-    --arg wt "$WORKTREE_DIR" \
-    --arg ts "$TIMESTAMP" \
-    --arg iw_core "$IW_CORE_ROOT" \
-    '. + {
-        "branch": $branch,
-        "worktree_path": $wt,
-        "iw_core_root": $iw_core,
-        "brief_generated_at": $ts
-    }' \
-    > "$WORKTREE_DIR/execution_brief.json" 2>/dev/null || {
-    # Fallback: write minimal brief if jq fails
-    cat > "$WORKTREE_DIR/execution_brief.json" << BRIEFEOF
-{
-  "id": "${ITEM_ID}",
-  "branch": "${BRANCH}",
-  "worktree_path": "${WORKTREE_DIR}",
-  "iw_core_root": "${IW_CORE_ROOT}",
-  "brief_generated_at": "${TIMESTAMP}"
-}
-BRIEFEOF
-}
-
-echo "Wrote execution_brief.json" >&2
-
-# ---------------------------------------------------------------------------
-# Step 7: Sync skills from iw-ai-core
+# Step 6: Sync skills from iw-ai-core
 # ---------------------------------------------------------------------------
 SKILLS_SRC="$IW_CORE_ROOT/skills"
 SKILLS_DST="$WORKTREE_DIR/.claude/skills"
