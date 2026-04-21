@@ -364,16 +364,124 @@ def emit_punchlist(ctx, findings, applied, branch_name):
     return out
 
 
+def run_publish(ctx, args) -> int:
+    """Emit publish-playbook scripts + checklist for flipping the repo public.
+
+    Never executes destructive git operations or `gh repo edit --visibility public`.
+    The user runs the generated shell scripts manually.
+    """
+    from lib.publish import (
+        suggest_history_strategy,
+        write_filter_repo_script,
+        write_gh_playbook,
+        write_nuke_script,
+        write_publish_checklist,
+    )
+    from lib.types import Severity, Status
+
+    # ------------------------------------------------------------------
+    # Preconditions
+    # ------------------------------------------------------------------
+    if ctx.repo.visibility == "public" and not args.force:
+        print(
+            "error: repo is already public. Use `scan` mode for ongoing compliance, "
+            "or run with --force to regenerate the playbook.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # ------------------------------------------------------------------
+    # Pre-publish scan
+    # ------------------------------------------------------------------
+    logger.info("running pre-publish scan…")
+    exit_code, findings, md_path, _ = run_scan(ctx)
+
+    blockers = [
+        f
+        for f in findings
+        if f.severity == Severity.MUST and f.status in (Status.FAIL, Status.HUMAN_REQUIRED)
+    ]
+
+    # ------------------------------------------------------------------
+    # Extract signals for the history-strategy suggestion
+    # ------------------------------------------------------------------
+    history_secrets = 0
+    non_noreply_emails = 0
+    large_blobs = 0
+    for f in findings:
+        if f.id == "OSS-SEC-02" and f.status == Status.FAIL:
+            history_secrets = f.evidence.get("finding_count", 0) or 0
+        if f.id == "OSS-HIST-03" and f.status == Status.HUMAN_REQUIRED:
+            non_noreply_emails = len(f.evidence.get("non_noreply_emails", []))
+        if f.id == "OSS-HYG-04" and f.status == Status.FAIL:
+            large_blobs = len(f.evidence.get("large_objects", []))
+
+    pre_existing = ctx.config.get("history", {}).get("strategy")
+    strategy = suggest_history_strategy(
+        history_secrets, non_noreply_emails, large_blobs, pre_existing
+    )
+
+    # ------------------------------------------------------------------
+    # Emit artifacts
+    # ------------------------------------------------------------------
+    nuke_path = write_nuke_script(ctx, history_secrets, 0)
+    filter_path = write_filter_repo_script(ctx)
+    playbook_path = write_gh_playbook(ctx, has_history_rewrite=(history_secrets > 0))
+    checklist_path = write_publish_checklist(
+        ctx,
+        blockers=blockers,
+        history_strategy_suggested=strategy,
+        history_secrets=history_secrets,
+        artifacts={
+            "compliance report": md_path,
+            "nuke-and-reinit script": nuke_path,
+            "filter-repo surgical script": filter_path,
+            "gh flip-to-public playbook": playbook_path,
+        },
+    )
+
+    # ------------------------------------------------------------------
+    # Hard-block if MUST findings remain
+    # ------------------------------------------------------------------
+    if blockers and not args.force:
+        print("")
+        print(f"✗ Pre-publish scan has {len(blockers)} MUST finding(s) unresolved.")
+        for f in blockers[:5]:
+            print(f"    - {f.id}: {f.summary}")
+        if len(blockers) > 5:
+            print(f"    … and {len(blockers) - 5} more (see checklist)")
+        print("")
+        print(f"Full list: {checklist_path}")
+        print("")
+        print("Run `iw-oss-publish make_oss` first, then re-run `publish`.")
+        return 1
+
+    # ------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------
+    print("")
+    print(f"→ publish checklist:  {checklist_path}")
+    print(f"→ compliance report:  {md_path}")
+    print(f"→ nuke script:        {nuke_path}")
+    print(f"→ filter-repo script: {filter_path}")
+    print(f"→ gh playbook:        {playbook_path}")
+    print("")
+    print(f"Suggested history strategy: {strategy.upper()}")
+    if history_secrets > 0:
+        print(f"⚠  {history_secrets} secret(s) in history — PRESERVE is NOT an option.")
+    print("")
+    print("Next: review the checklist, run the chosen history-rewrite script,")
+    print("then run `bash .iw/publish-playbook.sh` to flip public.")
+
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
-
-    if args.mode == "publish":
-        print("mode 'publish' not yet implemented (Phase 3)", file=sys.stderr)
-        return 2
 
     ctx = build_context(args.target, args.mode)
     _print_missing_tools(ctx.tools)
@@ -392,6 +500,10 @@ def main() -> int:
     if args.mode == "make_oss":
         logger.info("preparing %s for OSS release (mode=make_oss)", ctx.target)
         return run_make_oss(ctx, args)
+
+    if args.mode == "publish":
+        logger.info("preparing publish playbook for %s (mode=publish)", ctx.target)
+        return run_publish(ctx, args)
 
     return 2
 
