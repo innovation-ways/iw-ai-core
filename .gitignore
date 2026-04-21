@@ -60,3 +60,4 @@ execution_brief.json
 # Claude Code harness lock (per-session, causes merge conflicts)
 .claude/scheduled_tasks.lock
 
+.iw/
