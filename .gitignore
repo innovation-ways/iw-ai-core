@@ -54,6 +54,9 @@ Thumbs.db
 # IW platform runtime state (auto-updated by iw sync-skills, causes merge conflicts)
 .iw-skills-lock.json
 
+# Legacy per-worktree execution brief (no longer generated; prevent reintroduction)
+execution_brief.json
+
 # Claude Code harness lock (per-session, causes merge conflicts)
 .claude/scheduled_tasks.lock
 

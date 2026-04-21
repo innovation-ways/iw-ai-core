@@ -272,24 +272,9 @@ executor/worktree_setup.sh I001 /home/sergiog/dev/iw-doc-plan/main/iw-doc-plan
 2. Copies design files from `ai-dev/design/active/I001/` into the worktree
 3. Installs dependencies (Python venv + npm)
 4. Syncs platform skills into worktree's `.claude/skills/`
-5. Writes `execution_brief.json` (read-only agent context):
-   ```json
-   {
-     "item_id": "I001",
-     "project_id": "innoforge",
-     "title": "Fix template rendering timeout",
-     "design_doc": "ai-dev/design/active/I001/I001_Issue_Design.md",
-     "steps": [
-       {
-         "step_id": "S01",
-         "agent_label": "Backend",
-         "prompt_file": "ai-dev/design/active/I001/prompts/I001_S01_Backend_prompt.md",
-         "status": "pending"
-       }
-     ]
-   }
-   ```
-6. Updates DB: `batch_items.status = 'setting_up'` -> `'executing'`
+5. Updates DB: `batch_items.status = 'setting_up'` -> `'executing'`
+
+The agent reads live step state at runtime via `iw item-status --json` — there is no static brief file.
 
 #### Step 4.3: Agent Launch
 
@@ -308,7 +293,7 @@ cd .worktrees/I001 && claude -p '/execute I001'
 The agent runs inside the worktree, which is a full checkout of the InnoForge repo. It has:
 - The project's `CLAUDE.md` (full project context)
 - The project's `.claude/skills/` (project-specific + synced base skills)
-- The `execution_brief.json` (what to do)
+- Live step state from `iw item-status --json` (what to do)
 - The design doc and prompts (how to do it)
 
 #### Step 4.4: Agent Step Execution
@@ -1150,7 +1135,7 @@ Deterministic bash scripts. No LLM involvement. Project-agnostic.
 
 | Script | Purpose |
 |--------|---------|
-| `worktree_setup.sh` | Create worktree, install deps, write execution_brief.json, sync skills |
+| `worktree_setup.sh` | Create worktree, install deps, sync skills |
 | `step_executor.sh` | Launch LLM agent for a step, handle timeouts, parse results |
 | `worktree_commit.sh` | Squash-merge worktree branch to project's main |
 | `batch_dispatcher.sh` | Legacy compatibility wrapper (daemon now handles this directly) |
@@ -1686,7 +1671,7 @@ Run Alembic migrations to create all tables.
 | `scripts/ai_dev_daemon/` | `orch/` | Add `project_id` parameter to all functions |
 | `scripts/ai_dashboard/` | `dashboard/` | Convert to FastAPI, add project selector, DB queries |
 | `scripts/step_executor.sh` | `executor/step_executor.sh` | Add `project_repo_root` parameter |
-| `scripts/worktree_setup.sh` | `executor/worktree_setup.sh` | Add skill sync, execution_brief generation |
+| `scripts/worktree_setup.sh` | `executor/worktree_setup.sh` | Add skill sync |
 | `.claude/skills/iw-*` | `skills/iw-*` | Update to use `iw` CLI instead of file-based tracking |
 | `ai-dev/templates/` | `templates/` | Move default templates |
 
@@ -1761,7 +1746,7 @@ Run Alembic migrations to create all tables.
 | **Design created** | work_items: status=draft | Design doc + prompts | Project repo: `ai-dev/design/active/I001/` |
 | **Approved** | work_items: status=approved | Unchanged | Project repo (same) |
 | **Batch planned** | batches + batch_items created | No new content | DB only |
-| **Worktree created** | batch_items: status=setting_up | execution_brief.json | Worktree (`.worktrees/I001/`) |
+| **Worktree created** | batch_items: status=setting_up | Worktree checkout + synced skills | Worktree (`.worktrees/I001/`) |
 | **Agent executing** | workflow_steps: in_progress | Code changes + reports | Worktree |
 | **Step completed** | workflow_steps: completed | Report file written | Worktree |
 | **All steps done** | work_items: completed | All reports exist | Worktree |

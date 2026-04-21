@@ -175,7 +175,7 @@ Port in this order (each is independently testable):
 - [ ] `executor/step_executor_lib.sh` — port from `scripts/step_executor_lib.sh`
   - Changes: replace `set_step_status` (manifest write) with `iw step-done`/`iw step-fail` calls
 - [ ] `executor/worktree_setup.sh` — port from `scripts/worktree_setup.sh`
-  - Changes: write `execution_brief.json` from DB data, sync skills from iw-ai-core
+  - Changes: sync skills from iw-ai-core (live step state is read from DB via `iw item-status --json` at agent runtime)
 - [ ] `executor/worktree_commit.sh` — port from `scripts/worktree_commit.sh`
   - Changes: minimal — squash-merge logic stays the same
 - [ ] Test executor scripts manually against InnoForge repo

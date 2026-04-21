@@ -113,8 +113,8 @@ fi
 # ---------------------------------------------------------------------------
 # Build agent instruction
 # ---------------------------------------------------------------------------
-# The /execute skill in the worktree knows how to read execution_brief.json
-# and execute the step. We pass the item_id and step_id as arguments.
+# The /execute skill reads live state via `iw item-status --json`.
+# We pass the item_id and step_id as arguments.
 INSTRUCTION="/execute ${ITEM_ID} ${STEP_ID}"
 
 # ---------------------------------------------------------------------------
