@@ -66,9 +66,22 @@ Create `project_oss_job` per design doc's *Database Changes* section:
 - `back_populates` to `Project.oss_jobs`.
 - Optional relationship to `OssScan` (when `scan_id` set).
 
-### 3. Migration lock coordination
+### 3. Migration authoring contract (CR-00017)
 
-Use `iw migration-lock` before running `alembic revision --autogenerate`; release on completion. Per CLAUDE.md, never run migrations against the live DB during tests.
+You WRITE the migration file. You DO NOT apply it to the live orchestration DB.
+The daemon applies it post-squash-merge via the 3-phase pipeline (Phase 1 dry-run
+on a testcontainer → Phase 2 apply to live DB → Phase 3 auto-rollback on failure).
+
+- Running `uv run alembic revision --autogenerate -m "..."` is allowed — it
+  only writes a file. It may need to read the live DB's current schema to
+  compute the diff; that's a read, not a mutation, and is permitted.
+- Running `uv run alembic upgrade head` against the live DB is **forbidden**.
+  See `docs/IW_AI_Core_Agent_Constraints.md` (R2).
+- Your integration tests (see §TDD Requirement) apply the migration to a
+  **testcontainer** DB via pytest fixtures — that path is allowed and is
+  how you verify the migration works before the daemon runs Phase 1.
+- You do NOT need to acquire `iw migration-lock`. That lock is now
+  daemon-owned; it is held during Phase 2 by the daemon, not by you.
 
 ## Project Conventions
 
