@@ -25,6 +25,7 @@
 
 ### 2. Code Quality
 - Enum names match PG enum type names.
+- `project_oss_job_kind` includes all four values: `scan`, `prepare`, `publish`, `install`.
 - Monotonic status progression is documented (even if not enforced at DB level).
 - `stdout_tail` column type is TEXT (not TEXT[], not JSON).
 

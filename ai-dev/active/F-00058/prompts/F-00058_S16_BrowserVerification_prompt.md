@@ -103,13 +103,19 @@ Exporting `def seed(db: Session) -> None`, idempotent. Required if any of V1..V7
 4. **Verify:** a modal opens listing Tier-1 tools; each missing tool has a copy-able install command.
 5. **Screenshot:** `ai-dev/active/F-00058/evidences/post/F-00058_v2_install_modal.png`.
 
-### V3: Enable flow flips flag + shows gray pill (AC2)
+### V3: Install-now + Enable flow flips flag + shows gray pill (AC2)
 
-1. Continuing from V2, close the modal (if tools are present) or simulate install complete, then click "Enable OSS".
-2. **Verify:** modal dismisses; OSS Status frame switches to a ⚫ gray pill with "not yet scanned" text; a new "OSS" tab appears in the project tab row.
-3. Navigate to `/oss` via the new tab.
-4. **Verify:** the OSS view page loads with the Scan / Prepare / Publish action row, each with its collapsible "Run it yourself" CLI block.
-5. **Screenshot:** `ai-dev/active/F-00058/evidences/post/F-00058_v3_enabled_gray_pill.png`.
+1. Continuing from V2, in the install modal click "Install now".
+2. **Verify:** the button is replaced by a live progress strip that streams installer stdout line-by-line (SSE). Wait for `complete` (≤120s in E2E).
+3. **Verify:** after completion the tool list re-fetches automatically; every Tier-1 tool shows ✅; the "Enable OSS" button is now enabled (was disabled before).
+4. **Screenshot:** `ai-dev/active/F-00058/evidences/post/F-00058_v3a_install_complete.png`.
+5. Click "Enable OSS".
+6. **Verify:** modal dismisses; OSS Status frame switches to a ⚫ gray pill with "not yet scanned" text; a new "OSS" tab appears in the project tab row.
+7. Navigate to `/oss` via the new tab.
+8. **Verify:** the OSS view page loads with the Scan / Prepare / Publish action row, each with its collapsible "Run it yourself" CLI block.
+9. **Screenshot:** `ai-dev/active/F-00058/evidences/post/F-00058_v3_enabled_gray_pill.png`.
+
+Note: if the E2E environment already has all Tier-1 tools installed, the "Install now" button is a no-op — in that case skip steps 1–4 and proceed from step 5, but record this in the report so a separate env without the tools can exercise the install path.
 
 ### V4: Scan + SSE progress (AC3)
 
@@ -196,7 +202,7 @@ Always include the `--report` path on both success and failure so the orchestrat
   "verifications": [
     {"id": "V1", "name": "frame on each page", "status": "pass|fail", "screenshot": "", "notes": ""},
     {"id": "V2", "name": "disabled state + install modal", "status": "pass|fail", "screenshot": "", "notes": ""},
-    {"id": "V3", "name": "enable flow", "status": "pass|fail", "screenshot": "", "notes": ""},
+    {"id": "V3", "name": "install-now + enable flow", "status": "pass|fail", "screenshot": "", "notes": ""},
     {"id": "V4", "name": "scan + SSE", "status": "pass|fail", "screenshot": "", "notes": ""},
     {"id": "V5", "name": "results tree", "status": "pass|fail", "screenshot": "", "notes": ""},
     {"id": "V6", "name": "prepare + CLI block", "status": "pass|fail", "screenshot": "", "notes": ""},

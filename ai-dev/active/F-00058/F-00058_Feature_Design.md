@@ -21,7 +21,7 @@ Read the project's `CLAUDE.md` and `dashboard/CLAUDE.md` for architecture, htmx 
 
 - New DB table `project_oss_job` for async job tracking (queue + status + stdout tail).
 - New dashboard service `dashboard/services/oss_service.py`: enqueue jobs, spawn `iw oss` subprocesses in throwaway worktrees, stream job status to DB, freshness helper, Tier-1 probe wrapper.
-- New HTTP router `dashboard/routers/oss.py` with 7 endpoints (page, status fragment, enable, scan, prepare, publish, tools, SSE stream).
+- New HTTP router `dashboard/routers/oss.py` with 10 endpoints (page, status fragment, tools, install, enable, disable, scan, prepare, publish, SSE stream).
 - New templates under `dashboard/templates/pages/project/oss.html` + fragments (pill, domain cards, tool cards, install modal, CLI block, scan progress).
 - OSS Status frame added under Git Status on every project page (its own frame, not inline).
 - "OSS" tab in the project sidebar/tab row visible only when `project.oss_enabled=true`.
@@ -41,11 +41,11 @@ Read the project's `CLAUDE.md` and `dashboard/CLAUDE.md` for architecture, htmx 
 
 | Step | Agent | Scope | Parallel With |
 |------|-------|-------|---------------|
-| S01 | database-impl | `project_oss_job` table + ORM model (id, project_id FK, kind [scan/prepare/publish], status [queued/running/complete/error], stdout_tail, started/completed_at, exit_code) | — |
+| S01 | database-impl | `project_oss_job` table + ORM model (id, project_id FK, kind [scan/prepare/publish/install], status [queued/running/complete/error/cancelled], stdout_tail, started/completed_at, exit_code) | — |
 | S02 | code-review-impl | Review S01 | — |
 | S03 | backend-impl | `dashboard/services/oss_service.py`: job enqueue/execute (subprocess of `uv run iw oss …`), throwaway worktree provisioning via `git worktree add`, SSE message emission helpers, Tier-1 probe wrapper (delegates to `orch.oss.tool_probe`), freshness helper | — |
 | S04 | code-review-impl | Review S03 (subprocess hygiene, worktree cleanup, SSE backpressure, error paths) | — |
-| S05 | api-impl | `dashboard/routers/oss.py`: `GET /projects/{id}/oss` (HTML page), `GET /projects/{id}/oss/status` (htmx fragment), `POST /projects/{id}/oss/enable` / `scan` / `prepare` / `publish`, `GET /projects/{id}/oss/tools`, `GET /projects/{id}/oss/stream/{job_id}` (SSE) | S06 |
+| S05 | api-impl | `dashboard/routers/oss.py`: `GET /projects/{id}/oss` (HTML page), `GET /projects/{id}/oss/status` (htmx fragment), `GET /projects/{id}/oss/tools`, `POST /projects/{id}/oss/install` / `enable` / `disable` / `scan` / `prepare` / `publish`, `GET /projects/{id}/oss/stream/{job_id}` (SSE) | S06 |
 | S06 | frontend-impl | Templates + htmx + CSS: `pages/project/oss.html`, fragments (`oss_status_pill.html`, `oss_status_frame.html`, `oss_domain_card.html`, `oss_tool_run_card.html`, `oss_install_modal.html`, `oss_cli_block.html`, `oss_scan_progress.html`). Add "OSS Status" frame underneath the Git Status frame in the project header; show "OSS" tab when `oss_enabled=true` | S05 |
 | S07 | code-review-impl | Joint review of S05 + S06 (API↔template contract, htmx headers, form action alignment) | — |
 | S08 | tests-impl | Integration tests: API routes, htmx fragment renders, SSE job lifecycle, Jinja reproduction tests for pill color mapping + domain-card empty-state + install-modal | — |
@@ -62,7 +62,7 @@ Read the project's `CLAUDE.md` and `dashboard/CLAUDE.md` for architecture, htmx 
 
 - **New tables**: `project_oss_job`.
 - **Modified tables**: none in this Feature (F-00057 adds `project.oss_enabled`).
-- **Migration notes**: Alembic migration, downgradeable. Uses PG enum `project_oss_job_kind` (`scan`/`prepare`/`publish`) and `project_oss_job_status` (`queued`/`running`/`complete`/`error`/`cancelled`).
+- **Migration notes**: Alembic migration, downgradeable. Uses PG enum `project_oss_job_kind` (`scan`/`prepare`/`publish`/`install`) and `project_oss_job_status` (`queued`/`running`/`complete`/`error`/`cancelled`).
 
 `project_oss_job` columns:
 - `id BIGSERIAL PRIMARY KEY`
@@ -73,7 +73,7 @@ Read the project's `CLAUDE.md` and `dashboard/CLAUDE.md` for architecture, htmx 
 - `started_at TIMESTAMPTZ NULL`
 - `completed_at TIMESTAMPTZ NULL`
 - `exit_code INT NULL`
-- `worktree_path TEXT NULL` (temp path used for prepare/publish)
+- `worktree_path TEXT NULL` (temp path used for prepare/publish only; null for scan/install)
 - `scan_id BIGINT NULL` (FK → `oss_scan.id` when kind=scan)
 - `stdout_tail TEXT NULL` (last 16KB of combined stdout/stderr)
 - `error_message TEXT NULL`
@@ -86,6 +86,7 @@ All under `/projects/{project_id}/oss`:
 - `GET ` → HTML page (renders `pages/project/oss.html`)
 - `GET /status` → htmx fragment (pill + summary) — polled or pushed via SSE
 - `GET /tools` → htmx fragment / JSON — Tier-1 tool availability
+- `POST /install` → enqueue a Tier-1 tool install job (runs `uv run iw oss install --project {slug}`); returns `{job_id, stream_url}`; on SSE `complete`, the client re-fetches `GET /tools`. No worktree — affects machine-level binary state. If the installer requires sudo (per F-00057 AC3 semantics), the job terminates with a non-zero exit code and the error is surfaced via the SSE stream / `stdout_tail`.
 - `POST /enable` → create `.iw/oss-publish.toml`, set `project.oss_enabled=true`
 - `POST /disable` → unset flag (keep `.iw/` on disk)
 - `POST /scan` → enqueue scan job, return job_id + SSE stream URL
@@ -173,9 +174,17 @@ Given   a project with oss_enabled=false
 When    I click "Install OSS" in the OSS Status frame
 Then    a modal opens listing every Tier-1 tool with status (installed | missing)
 And     missing tools each show a copy-able install command
-And     a single "Install now" button runs the installer on the server
-And     after install (or skip), clicking "Enable OSS" flips oss_enabled=true,
-        writes .iw/oss-publish.toml, and dismisses the modal
+And     a single "Install now" button POSTs to /oss/install which creates a
+        project_oss_job (kind='install') and streams installer stdout to the
+        modal via SSE (heartbeat + progress + complete events)
+And     on SSE complete with exit_code=0 the tools list re-fetches from
+        GET /oss/tools and every Tier-1 tool shows ✅; on non-zero exit the
+        modal surfaces the last stdout_tail lines with a retry button
+And     the "Enable OSS" button is enabled only when all required Tier-1 tools
+        are present (either pre-existing or after a successful install)
+And     after install (or skip when all tools already present), clicking
+        "Enable OSS" flips oss_enabled=true, writes .iw/oss-publish.toml,
+        and dismisses the modal
 And     the OSS Status frame becomes a gray pill "not yet scanned"
 And     the "OSS" tab appears in the project tab row
 ```
@@ -249,6 +258,9 @@ And     the OSS Status frame appears underneath consistently on every project pa
 | Scan errored | `status='error'` | Pill stays prior color (or gray if first scan); banner surfaces `stdout_tail` last lines + re-scan button |
 | HEAD advanced since last scan | Live `rev-parse HEAD` ≠ `oss_scan.head_sha` | Banner "stale: last scan at abc123, HEAD now def456"; pill annotated with ⚠ |
 | Tier-1 tool missing on server | `oss_service.probe()` returns at least one missing | Install modal preselected on first visit; Scan button disabled with tooltip |
+| Install job in progress | Existing install job `status='running'` for the project | POST /install returns 409 Conflict + `{running_job_id}`; UI surfaces "install already in progress" inline |
+| Install job finishes with non-zero exit | e.g. installer hits sudo-required path | SSE emits `complete` with `exit_code != 0`; modal shows `stdout_tail` last lines and a Retry button; tools list re-fetched still shows missing tools |
+| Install job finishes successfully | SSE complete + exit_code=0 | Tools list re-fetched; every Tier-1 tool shows ✅; "Enable OSS" button becomes enabled |
 | Concurrent scan request | Existing job `status='running'` | POST /scan returns 409 Conflict + `{running_job_id}`; UI shows "scan already in progress" toast |
 | SSE disconnect mid-scan | Client reconnects | New SSE stream replays `project_oss_job.stdout_tail` from last persisted offset then subscribes live |
 | Prepare on repo with dirty tree | N/A — we use a throwaway worktree | Prepare still works; user's tree untouched |
@@ -256,7 +268,7 @@ And     the OSS Status frame appears underneath consistently on every project pa
 
 ## Invariants
 
-1. No dashboard request ever modifies the developer's working tree directly; Prepare/Publish always use `git worktree add` + cleanup on completion.
+1. No dashboard request ever modifies the developer's working tree directly; Prepare/Publish always use `git worktree add` + cleanup on completion. Install jobs do not create a worktree (they modify machine-level binary state, not the repo).
 2. `project_oss_job.status` transitions are monotonic: `queued → running → {complete, error, cancelled}` — no regressions.
 3. On server shutdown mid-scan, orphaned `running` jobs are marked `error` at next startup with `error_message='orphaned by server restart'`.
 4. SSE stream per job is idempotent: reconnecting replays from persisted `stdout_tail` then joins live stream.
@@ -296,7 +308,8 @@ And     the OSS Status frame appears underneath consistently on every project pa
 - SSE implementation: reuse the existing pattern from `dashboard/routers/sse.py` if one exists; otherwise a small new `EventSourceResponse` helper. Heartbeat every 20s to prevent proxy timeouts.
 - Throwaway worktree lifecycle: `git worktree add /tmp/oss-{uuid} HEAD` before run, `git worktree remove --force` after. Cleanup on any exit path (success, error, cancel, server shutdown via signal handler). Orphaned worktrees cleaned up at service startup.
 - The OSS Status frame is cheap to render: it queries the latest `oss_scan` row for the project (indexed lookup) + compares HEAD. No subprocess call per page view.
-- **Security**: enabling OSS or triggering scans on a project requires the same authorization as other project actions (dashboard already enforces this; reuse existing guard).
+- **Security**: enabling OSS or triggering scans on a project requires the same authorization as other project actions (dashboard already enforces this; reuse existing guard). The `/install` endpoint carries machine-level side effects (modifies `$HOME/.local/bin` via `scripts/install_tools.sh` — never sudo, per F-00057 AC3). It is gated by the same guard as `/scan`; 409 on concurrent install *per project*. Cross-project concurrent installs on the same machine are not explicitly locked (the installer is idempotent in its success path).
+- **Install endpoint behavior**: `POST /install` wraps `uv run iw oss install --project {slug}`. It uses the same `project_oss_job` + SSE plumbing as scan/prepare/publish but with `kind='install'`, no worktree, and no `scan_id` linkage. On `complete`, the UI re-fetches `GET /tools` so the modal reflects the post-install state. If the installer fails because sudo would be required (per F-00057 Notes line 287), the job completes with a non-zero exit and the modal surfaces the error — the user then runs the missing command manually.
 - The "Fix via Prepare" link on auto-fixable findings is a shortcut that triggers the Prepare flow scoped to that single finding. V1 can do full-Prepare; scoped-Prepare is nice-to-have.
 - CSS: no new JS framework added. Use existing tailwind (or htmx + hyperscript if that's what the project uses — confirm during S06 by reading existing fragments).
 - Design doc will be extended with wireframe references once S06 starts; for this Feature's planning we describe the layout in prose.

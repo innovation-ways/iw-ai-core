@@ -26,7 +26,7 @@ F-00057 adds `project.oss_enabled` + `oss_scan`/`oss_finding`/`oss_tool_run` tab
 
 Create `project_oss_job` per design doc's *Database Changes* section:
 - BIGSERIAL PK, `project_id` FK (`ON DELETE CASCADE`).
-- `kind` enum (`scan`/`prepare`/`publish`) named `project_oss_job_kind`.
+- `kind` enum (`scan`/`prepare`/`publish`/`install`) named `project_oss_job_kind`. `install` tracks Tier-1 tool installation jobs triggered by the dashboard's Install-now button; it wraps `iw oss install` from F-00057. No worktree — install jobs leave `worktree_path` null.
 - `status` enum (`queued`/`running`/`complete`/`error`/`cancelled`) named `project_oss_job_status`.
 - `scan_id` nullable FK → `oss_scan.id`, `ON DELETE SET NULL`.
 - `stdout_tail TEXT` (16KB cap enforced at app layer, not DB).

@@ -32,7 +32,8 @@ All mounted under `/projects/{project_id}/oss`:
 |--------|------|---------|---------|
 | GET | `/` | `pages/project/oss.html` | OSS view page |
 | GET | `/status` | `fragments/oss_status_frame.html` (htmx) | Pill + summary — refreshed on HTMX requests, included on every project page |
-| GET | `/tools` | `fragments/oss_install_modal.html` or JSON | Tier-1 tool availability |
+| GET | `/tools` | `fragments/oss_install_modal.html` or JSON | Tier-1 tool availability (wraps `orch.oss.tool_probe.probe_tier1`) |
+| POST | `/install` | JSON `{job_id, stream_url}` | Enqueue a Tier-1 tool install job (wraps `iw oss install`). No worktree. 409 on existing running install job for this project. |
 | POST | `/enable` | redirect to `/`, flash | Flip flag + write `.iw/oss-publish.toml` |
 | POST | `/disable` | redirect to `/`, flash | Flip flag off |
 | POST | `/scan` | JSON `{job_id, stream_url}` | Enqueue scan job |
@@ -43,10 +44,11 @@ All mounted under `/projects/{project_id}/oss`:
 ### Behavior
 
 - All POST handlers delegate to `dashboard.services.oss_service.*`; no business logic in routers.
-- 409 Conflict if a job of the same kind is already `running` for the project.
+- 409 Conflict if a job of the same kind is already `running` for the project (applies to scan, prepare, publish, and install).
 - HTMX partial responses set `HX-Trigger` to let the pill refresh.
-- SSE endpoint streams events from `oss_service.job_event_stream(...)`.
+- SSE endpoint streams events from `oss_service.job_event_stream(...)` for any kind (scan/prepare/publish/install).
 - Authorization: reuse existing project-access guard used by `quality.py` / `tests.py`.
+- `POST /install`: returns `{job_id, stream_url}` exactly like scan/prepare/publish. Client subscribes to `/stream/{job_id}`; on `complete` event, client re-fetches `/tools` to refresh the install modal.
 
 ### Page header integration
 
@@ -64,7 +66,9 @@ Tests (parallel with S06, so use stub templates if S06 not yet ready — asserts
 - `tests/integration/test_oss_dashboard_routes.py`:
   - each endpoint returns correct status code for valid + invalid inputs
   - 409 on concurrent scan
-  - SSE emits events in expected order
+  - 409 on concurrent install (second POST /install while the first is `running`)
+  - POST /install returns `{job_id, stream_url}` and creates a `project_oss_job` row with `kind='install'`, `worktree_path=null`
+  - SSE emits events in expected order (for at least one of: scan, install)
   - enable endpoint flips flag + writes toml
   - disable keeps `.iw/` on disk
 

@@ -36,9 +36,10 @@ async def cancel_job(session, job_id: int) -> None: ...
   - Sets `status='running'`, `started_at=now()`.
   - For `kind='scan'`: runs `uv run iw oss scan --project {slug}` against the live working dir (read-only).
   - For `kind='prepare'`/`'publish'`: `git worktree add /tmp/oss-{uuid} HEAD` → cd into worktree → `uv run iw oss prepare|publish --project {slug}` → record worktree_path → cleanup `git worktree remove --force` on any exit.
+  - For `kind='install'`: runs `uv run iw oss install --project {slug}` (from F-00057; wraps `scripts/install_tools.sh`). No worktree (install mutates machine-level `$HOME/.local/bin` state, not the repo). `worktree_path` stays null. `scan_id` stays null. A non-zero exit code (e.g. sudo-required path per F-00057 Notes) is recorded as `status='error'` with the installer output captured in `stdout_tail` — this is NOT a service bug, it's legitimate installer feedback that the dashboard surfaces to the user.
   - Streams combined stdout/stderr; persists latest 16KB tail to `stdout_tail` every ~1s.
   - On completion: sets `status` to `complete`/`error`, `exit_code`, `completed_at`. If scan completed and F-00057 persisted an `oss_scan` row, store the scan_id FK.
-- `cancel_job`: sends SIGTERM, waits, sends SIGKILL if needed; sets `status='cancelled'`; cleans worktree.
+- `cancel_job`: sends SIGTERM, waits, sends SIGKILL if needed; sets `status='cancelled'`; cleans worktree if one was provisioned.
 
 ### 2. Server-shutdown safety
 
@@ -78,8 +79,10 @@ def scan_summary(session, project): # returns the AC1 contract shape
 
 Tests to add/drive:
 - `tests/integration/test_oss_dashboard_service.py`:
-  - enqueue → run_job → status transitions
-  - cancellation terminates subprocess + cleans worktree
+  - enqueue → run_job → status transitions (all four kinds: scan, prepare, publish, install)
+  - `kind='install'` does NOT create a worktree; `worktree_path` remains null; `scan_id` remains null
+  - `kind='install'` with simulated non-zero exit → `status='error'` with `stdout_tail` populated (not a service crash)
+  - cancellation terminates subprocess + cleans worktree (worktree cleanup only applies to prepare/publish)
   - orphan recovery on startup
   - SSE stream replay + live update
 - Unit:
