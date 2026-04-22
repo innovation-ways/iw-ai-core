@@ -23,6 +23,7 @@ from dashboard.routers import (
     daemon_control,
     docs,
     docs_global,
+    healthz,
     items,
     jobs_ui,
     project_dashboard,
@@ -37,6 +38,8 @@ from dashboard.routers import (
     tests,
     worktrees,
 )
+from orch.db.identity import verify_instance_identity
+from orch.db.session import SessionLocal
 from orch.test_runner import mark_orphaned_runs
 
 _HERE = Path(__file__).resolve().parent
@@ -51,6 +54,23 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     count = mark_orphaned_runs()
     if count:
         logger.warning("Marked %d orphaned test run(s) as error on startup", count)
+
+    session = SessionLocal()
+    try:
+        identity_status = verify_instance_identity(session)
+        if identity_status.mode == "match":
+            logger.info("Dashboard: DB identity verified (%s)", str(identity_status.actual)[:8])
+        elif identity_status.mode == "bootstrap":
+            logger.info(
+                "Dashboard: %s",
+                identity_status.message,
+            )
+    except Exception as exc:
+        logger.error("Dashboard: %s", exc)
+        raise
+    finally:
+        session.close()
+
     yield
 
 
@@ -124,6 +144,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "service": "iw-ai-core-dashboard"}
 
     # Register routers
+    app.include_router(healthz.router)
     app.include_router(projects.router)
     app.include_router(running.router)
     app.include_router(actions.router)
