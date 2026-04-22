@@ -190,7 +190,9 @@ def _history_items(
     else:
         col = _SORT_COLUMNS.get(sort_by, WorkItem.created_at)
         direction = col.desc().nulls_last() if sort_dir == "desc" else col.asc().nulls_last()
-        base = base.order_by(direction, WorkItem.id.desc() if sort_dir == "desc" else WorkItem.id.asc())
+        base = base.order_by(
+            direction, WorkItem.id.desc() if sort_dir == "desc" else WorkItem.id.asc()
+        )
 
     # Pagination
     offset = (max(page, 1) - 1) * _HISTORY_PAGE_SIZE
@@ -278,6 +280,7 @@ def project_history(
             "item_types": [t.value for t in WorkItemType],
             "item_statuses": [s.value for s in [WorkItemStatus.completed, WorkItemStatus.failed]],
             "page": page,
+            "page_size": _HISTORY_PAGE_SIZE,
             "sort_by": sort_by,
             "sort_dir": sort_dir,
         },

@@ -139,6 +139,30 @@
   </table>
 </div>
 
+{# Pagination #}
+{% if total > page_size %}
+{% set total_pages = ((total - 1) // page_size + 1) %}
+<div class="flex items-center justify-between text-sm">
+  <span class="text-muted-foreground text-xs">
+    {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, total] | min }} of {{ total }}
+  </span>
+  <div class="flex gap-1">
+    {% if page > 1 %}
+    <a href="?page={{ page - 1 }}{% if type_filter %}&type={{ type_filter | urlencode }}{% endif %}{% if status_filter %}&status={{ status_filter | urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from | urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to | urlencode }}{% endif %}{% if sort_by != 'created_at' %}&sort_by={{ sort_by | urlencode }}{% endif %}{% if sort_dir != 'desc' %}&sort_dir={{ sort_dir | urlencode }}{% endif %}"
+       class="px-3 py-1 border border-border rounded-md text-sm hover:bg-muted/30 transition-colors">
+      Prev
+    </a>
+    {% endif %}
+    {% if page < total_pages %}
+    <a href="?page={{ page + 1 }}{% if type_filter %}&type={{ type_filter | urlencode }}{% endif %}{% if status_filter %}&status={{ status_filter | urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from | urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to | urlencode }}{% endif %}{% if sort_by != 'created_at' %}&sort_by={{ sort_by | urlencode }}{% endif %}{% if sort_dir != 'desc' %}&sort_dir={{ sort_dir | urlencode }}{% endif %}"
+       class="px-3 py-1 border border-border rounded-md text-sm hover:bg-muted/30 transition-colors">
+      Next
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 <script>
 (function() {
   var currentSort = null;
