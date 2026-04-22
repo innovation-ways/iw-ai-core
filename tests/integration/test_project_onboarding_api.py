@@ -30,6 +30,22 @@ def client(db_session: Any, tmp_path: Path) -> Generator[TestClient, None, None]
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db
 
+    # Redirect init_project's platform root to an isolated tmp dir so tests
+    # that POST /api/projects/create cannot corrupt the real projects.toml.
+    import orch.skills.init_project as init_mod
+
+    fake_platform_root = tmp_path / "platform"
+    (fake_platform_root / "templates").mkdir(parents=True)
+    (fake_platform_root / "skills").mkdir(parents=True)
+    (fake_platform_root / "projects.toml").write_text(
+        "# test isolated projects.toml\n", encoding="utf-8"
+    )
+    (fake_platform_root / "templates" / "default_workflow.md").write_text(
+        "# Workflow Definition\n", encoding="utf-8"
+    )
+    original_platform_root = init_mod._PLATFORM_ROOT
+    init_mod._PLATFORM_ROOT = fake_platform_root
+
     original_browse_root = None
     try:
         from dashboard.routers import projects as projects_module
@@ -48,6 +64,7 @@ def client(db_session: Any, tmp_path: Path) -> Generator[TestClient, None, None]
     except Exception as exc:
         logging.warning("Could not restore _browse_root: %s", exc)
 
+    init_mod._PLATFORM_ROOT = original_platform_root
     app.dependency_overrides.clear()
 
 

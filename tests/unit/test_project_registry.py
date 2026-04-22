@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from orch.daemon.project_registry import (
     ProjectRegistry,
     load_projects_toml,
+    try_load_projects_toml,
 )
 
 if TYPE_CHECKING:
@@ -376,3 +377,39 @@ def test_registry_unchanged_project(tmp_path: Path) -> None:
     _, changes = registry.reload()
 
     assert changes.get("proj") == "unchanged"
+
+
+def test_try_load_returns_none_on_parse_error(tmp_path: Path) -> None:
+    """try_load_projects_toml() returns None so callers can tell parse error from empty."""
+    toml_file = tmp_path / "projects.toml"
+    toml_file.write_text("[projects.dup]\nrepo_root='/tmp/a'\n[projects.dup]\nrepo_root='/tmp/b'\n")
+
+    assert try_load_projects_toml(toml_file) is None
+    # Back-compat: load_projects_toml still returns {} on parse error
+    assert load_projects_toml(toml_file) == {}
+
+
+def test_registry_reload_preserves_state_on_parse_error(tmp_path: Path) -> None:
+    """An unparseable projects.toml must not wipe the in-memory registry.
+
+    Regression for the bug where a duplicate [projects.X] table (e.g. leaked
+    by integration tests appending to the real projects.toml) silently
+    cleared every project, causing the daemon to stop advancing work items.
+    """
+    repo = make_project_dir(tmp_path, "proj")
+    toml_file = make_toml_file(tmp_path, {"proj": {"repo_root": str(repo)}})
+
+    registry = ProjectRegistry(path=toml_file)
+    registry.load()
+    assert "proj" in registry.projects
+
+    # Corrupt the file with a duplicate table (real-world tomllib failure)
+    toml_file.write_text(
+        f"[projects.proj]\nrepo_root = '{repo}'\n[projects.proj]\nrepo_root = '{repo}'\n"
+    )
+
+    new_projects, changes = registry.reload()
+
+    assert "proj" in new_projects, "registry must keep the last-known-good projects"
+    assert changes == {}, "no changes should be reported when parse fails"
+    assert "proj" in registry.projects
