@@ -2,6 +2,10 @@
 
 IW AI Core's orchestration engine: ORM models, CLI, daemon, archive, and skills sync.
 
+## Critical Rules
+
+- **NEVER** execute docker container/volume/network management commands from orch code or scripts. Any shared-DB container management goes through `./ai-core.sh` or the operator. See `docs/IW_AI_Core_Agent_Constraints.md`.
+
 ## Package Structure
 
 | Subpackage | Purpose |

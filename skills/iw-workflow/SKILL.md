@@ -9,6 +9,21 @@ allowed-tools: Bash
 
 This skill defines the rules for automated workflow execution in the IW AI Core development pipeline.
 
+## Global agent constraints
+
+All step agents MUST respect the rules in `docs/IW_AI_Core_Agent_Constraints.md`.
+The orchestrator MUST surface these rules when enumerating constraints for a
+step prompt if it is possible to do so programmatically. At minimum: the
+"⛔ Docker is off-limits" rule applies to every agent without exception.
+
+Summary of the Docker rule (full text in the policy doc):
+- No docker kill / stop / rm / restart
+- No docker compose up / down / restart (and the docker-compose v1 variants)
+- No docker volume rm / prune
+- No docker system / container / image prune
+- Exceptions: testcontainers (pytest fixtures), read-only introspection
+  (docker ps / inspect / logs), invoking ./ai-core.sh or make targets.
+
 ## Platform Architecture
 
 Work items flow through these phases:

@@ -30,6 +30,7 @@ Single **daemon** polls PostgreSQL (port 5433) every 60s, picks approved batches
 - **CRITICAL**: `DaemonEvent.metadata` is named `event_metadata` in Python — SQLAlchemy reserves `metadata`
 - **NEVER** use `agent-browser` for browser automation — use `playwright-cli` exclusively
 - **NEVER** run `npx playwright install` or modify `.playwright/cli.config.json`
+- **NEVER** run `docker kill`, `docker stop`, `docker rm`, `docker restart`, `docker compose up|down|restart`, `docker-compose up|down|restart`, `docker volume rm|prune`, or `docker system|container|image prune` — these can clobber shared infrastructure (see 2026-04-22 incident). Full policy: `docs/IW_AI_Core_Agent_Constraints.md`. Exceptions: read-only `docker ps|inspect|logs`, testcontainers via pytest, and `./ai-core.sh` / `make` targets.
 
 ## Configuration
 
