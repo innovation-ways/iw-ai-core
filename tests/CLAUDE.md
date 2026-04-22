@@ -9,6 +9,7 @@ pytest-based tests with strict DB isolation rules.
 | `conftest.py` | Root fixtures: `pg_engine`, `db_session`, `test_project` |
 | `unit/` | Fast, no I/O — config, state machine, logic, CLI parsing |
 | `integration/` | Real PostgreSQL via testcontainers — models, DB behavior, CLI e2e |
+| `dashboard/` | FastAPI TestClient tests — chat a11y/security/templates, code layout/SSE wiring, project onboarding |
 | `fixtures/` | Shared test data helpers |
 
 ## Testing Rules (NON-NEGOTIABLE)

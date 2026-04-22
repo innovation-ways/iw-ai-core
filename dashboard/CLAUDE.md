@@ -14,51 +14,84 @@ FastAPI + Jinja2 templates + htmx (AJAX) + Tailwind CDN. **No build step** — T
 
 | Path | Purpose |
 |------|---------|
-| `app.py` | FastAPI app factory, router registration, lifespan |
+| `app.py` | FastAPI factory, router registration, lifespan (marks orphaned test runs + verifies DB identity) |
 | `dependencies.py` | `get_db()` dependency — yields DB session per request |
 | `routers/` | Route handlers (thin — validation + delegation only) |
-| `templates/` | Jinja2 templates (base, pages, components, fragments) |
+| `templates/pages/` | Full-page templates (extend `base.html`) |
+| `templates/components/` | Reusable Jinja2 macros/includes |
+| `templates/fragments/` | htmx partial responses (NOT wrapped in `base.html`) |
 | `static/` | Static assets |
 | `utils/` | Shared dashboard helpers |
 
-## Routers
+## Routers (by concern)
 
+**Core navigation & project selection**
 | Module | Handles |
 |--------|---------|
-| `project_dashboard.py` | Per-project dashboard home |
-| `project_pages.py` | Work item detail, history pages |
-| `items.py` | Work item CRUD + status |
-| `batches.py` | Batch management |
-| `running.py` | Currently running items view |
-| `actions.py` | htmx action endpoints (approve, pause, retry) |
-| `search.py` | Full-text search |
-| `sse.py` | Server-Sent Events for real-time updates |
-| `system.py` | Health check, daemon status |
-| `projects.py` | Project list/register |
+| `projects.py` | Project list, project creation modal, nav fragment |
+| `project_dashboard.py` | Per-project home (`/project/{id}/`) |
+| `project_pages.py` | Per-project queue and history pages |
+| `running.py` | System-wide "currently running items" view |
+| `system.py` | `/system/status`, `/system/config`, `/system/all-active` |
+| `healthz.py` | `/healthz/identity` — DB instance identity probe (CR-00014), unauthenticated |
 
-## Templates
+**Work items, batches, actions**
+| Module | Handles |
+|--------|---------|
+| `items.py` | Item detail tabs: overview, design-doc, reports, artifacts, logs, fix cycles, execution report, evidences |
+| `batches.py` | Batch list, batch detail, batch diagram (PNG/.drawio) |
+| `actions.py` | htmx endpoints: approve / unapprove / cancel / pause / resume / restart / restart-merge / full-restart item; batch approve/pause/resume/cancel/archive; create batch from selection |
+| `search.py` | Project-scoped FTS search |
+| `sse.py` | `GET /api/stream/events` — server-sent events for live updates |
 
-```
-templates/
-├── base.html            # Layout skeleton, htmx/Tailwind CDN includes
-├── pages/               # Full-page templates (extend base.html)
-├── components/          # Reusable Jinja2 macros/includes
-└── fragments/           # htmx partial responses (no full page reload)
-```
+**Code view** (backed by `orch/rag/`)
+| Module | Handles |
+|--------|---------|
+| `code_ui.py` | `/project/{id}/code` page, index status, architecture map, index/reindex/regen-map/delete-index actions, SSE for index progress |
+| `code.py` | `/api/projects/{id}/code/modules`, `.../modules/{slug}`, `.../modules/{slug}/generate`, `.../symbol` (F-00046/F-00048) |
+| `code_qa.py` | `POST /api/projects/{id}/code/qa` and `.../qa-with-image` — SSE streaming RAG answers with citations |
 
-**htmx pattern**: actions POST to `/actions/*` endpoints that return HTML fragments. The fragment replaces a `hx-target` element in the DOM — no JSON, no JS.
+**Docs view** (backed by `orch/doc_service.py`, `orch/doc_sections.py`, `orch/doc_diff.py`)
+| Module | Handles |
+|--------|---------|
+| `docs.py` | `/project/{id}/docs` catalog, doc detail, HTML/PDF views and exports, versions, diff (full + per-section + AI summary), stale detection, link validation, lint warnings, IDE tab, type/instance/section editorial guides, DocGenerationJob lifecycle (start/stream/status/panel/cancel) |
+| `docs_global.py` | `/docs` (cross-project) + `/api/docs/search` |
 
-**SSE pattern**: `routers/sse.py` streams `text/event-stream` responses. Frontend listens with `<div hx-ext="sse" sse-connect="/sse/...">`.
+**Research view**
+| Module | Handles |
+|--------|---------|
+| `research.py` | `/project/{id}/research` list and detail, HTML-view, search (filters doc_type=research) |
+
+**Frontend-triggered runs**
+| Module | Handles |
+|--------|---------|
+| `tests.py` | `/project/{id}/tests` — launch per category, live log, results (Allure reports), kill run |
+| `quality.py` | `/project/{id}/quality` — static analysis / quality gates (same shape as tests, `run_type='quality'`), supports launch-fix mode |
+
+**Operations**
+| Module | Handles |
+|--------|---------|
+| `jobs_ui.py` | `/project/{id}/jobs` — unified job table (code index, doc gen, batches, research) via `orch/jobs/aggregator.py` |
+| `worktrees.py` | `/system/worktrees` — git status of all active agent worktrees, commit/prune actions, nav badge |
+| `daemon_control.py` | `/system/daemon/{panel,start,stop,restart}` — daemon lifecycle from UI |
+| `_run_helpers.py` | Shared helpers for tests/quality routers |
 
 ## Health endpoints
 
-`dashboard/routers/healthz.py` exposes lightweight JSON probes that bypass any auth middleware.
+`healthz.py` exposes lightweight JSON probes that bypass any auth middleware.
 
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /healthz/identity` | DB instance-identity check (CR-00014). Returns `{expected, actual, mode, match}`. `200` on match/bootstrap; `503` on mismatch/missing. Intentionally unauthenticated so external probes can reach it. |
 
-- Routes are thin — business logic belongs in `orch/` layer, not routers
-- Templates in `fragments/` must NOT extend `base.html` (they are partial responses)
-- Tailwind classes applied via CDN — no purge, no build; avoid dynamic class construction
+Plus `GET /health` registered directly on the app in `app.py:142` — used by browser_verification steps and simple monitoring.
+
+## Patterns
+
+- **Routers are thin** — business logic belongs in the `orch/` layer, not in routers
+- **htmx POSTs** to `/actions/*` (work-item-scoped) or `/api/...` (resource-scoped) return HTML fragments that replace a `hx-target` element — no JSON, no JS
+- **Fragment templates** under `templates/fragments/` MUST NOT extend `base.html`
+- **SSE**: `routers/sse.py` and `routers/code_qa.py` stream `text/event-stream`. Frontend listens with `<div hx-ext="sse" sse-connect="/sse/...">` or a plain `EventSource` for token streams
+- Tailwind classes applied via CDN — no purge, no build; avoid dynamic class construction that breaks tree-shaking elsewhere
 - `dependencies.py:get_db()` uses `SessionLocal` from `orch.db.session` — same sync ORM as daemon
+- On app startup (`app.py:_lifespan`): `mark_orphaned_runs()` flips running TestRuns left behind by a crash to status=error, then `verify_instance_identity()` refuses to boot on a DB-identity mismatch
