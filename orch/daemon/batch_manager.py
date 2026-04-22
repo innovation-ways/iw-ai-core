@@ -398,6 +398,7 @@ class BatchManager:
         # browser_verification pre-hook: bring up the test environment
         # ------------------------------------------------------------------
         agent_env: dict[str, str] | None = None
+        bv_env: dict[str, str] | None = None
         if browser_env.is_browser_verification_step(step.step_type):
             bv_env = browser_env.allocate_browser_env(
                 self.project_config,
@@ -501,7 +502,11 @@ class BatchManager:
 
         import os  # noqa: PLC0415
 
-        proc_env = {**os.environ, **(agent_env or {})}
+        agent_env = {**os.environ, "IW_CORE_AGENT_CONTEXT": "true"}
+        if bv_env is not None:
+            agent_env = {**agent_env, **bv_env}
+
+        proc_env = agent_env
 
         with log_file.open("w") as log_fh:
             proc = subprocess.Popen(  # noqa: S602

@@ -102,10 +102,20 @@ _BATCH_ITEM_STATUS: dict[BatchItemStatus, frozenset[BatchItemStatus]] = {
         {BatchItemStatus.completed, BatchItemStatus.failed, BatchItemStatus.stalled}
     ),
     BatchItemStatus.completed: frozenset({BatchItemStatus.merged}),
+    BatchItemStatus.merging: frozenset(
+        {
+            BatchItemStatus.merged,
+            BatchItemStatus.failed,
+            BatchItemStatus.migration_invalid,
+            BatchItemStatus.migration_rolled_back,
+        }
+    ),
     BatchItemStatus.failed: frozenset({BatchItemStatus.pending}),
     BatchItemStatus.stalled: frozenset({BatchItemStatus.pending}),
     BatchItemStatus.merged: frozenset(),
     BatchItemStatus.skipped: frozenset(),
+    BatchItemStatus.migration_invalid: frozenset(),
+    BatchItemStatus.migration_rolled_back: frozenset(),
 }
 
 

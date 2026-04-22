@@ -380,7 +380,13 @@ class TestMergeQueueIntegration:
         with (
             patch("orch.daemon.merge_queue.subprocess.run", side_effect=fake_commit_script),
             patch("orch.daemon.merge_queue._cleanup_worktree"),
+            patch("orch.daemon.merge_queue.run_pre_merge_dry_run") as mock_dry,
+            patch("orch.daemon.merge_queue.run_post_merge_apply") as mock_apply,
         ):
+            mock_dry.return_value = MagicMock(
+                success=True, message="ok", final_batch_state="proceed_to_merge"
+            )
+            mock_apply.return_value = MagicMock(success=True, message="ok")
             manager.process_merge_queue()
 
         db_session.refresh(older_item)

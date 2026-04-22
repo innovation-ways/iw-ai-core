@@ -36,6 +36,40 @@ blocker. Do not work around this rule.
 
 Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
+## ⛔ Migrations: agents generate, daemon applies
+
+You MUST NOT run the following alembic commands against the live
+orchestration DB (port 5433) from an agent context:
+
+```
+alembic upgrade head
+alembic upgrade <revision>
+alembic downgrade <anything>
+alembic stamp <anything>
+```
+
+Your job in a Database step is to WRITE the migration FILE. The daemon
+will apply it as part of the merge pipeline (pre-merge dry-run against
+a testcontainer, post-merge apply to live DB). If the migration is
+broken, the daemon will refuse to merge the batch.
+
+Allowed for agents:
+  - alembic revision --autogenerate -m "..."   (writes a file only)
+  - alembic history / current / show           (read-only)
+  - Running migrations inside testcontainer fixtures
+    (tests/conftest.py does this — agents don't call it directly)
+
+Allowed for OPERATORS only (not agents):
+  - uv run iw migrations list-pending          (read-only, safe for anyone)
+  - uv run iw migrations dry-run               (testcontainer, safe)
+  - uv run iw migrations apply --i-am-operator (refuses if IW_CORE_AGENT_CONTEXT=true)
+  - Direct invocation via ./ai-core.sh or make db-migrate (operator entry points)
+
+If your task seems to require applying a migration to the live DB,
+STOP and raise a blocker. Do not work around this rule.
+
+Full policy: docs/IW_AI_Core_Agent_Constraints.md
+
 ## Description
 
 {What this feature does and why it's needed. 2-3 sentences.}

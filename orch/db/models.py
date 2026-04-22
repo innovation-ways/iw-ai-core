@@ -141,6 +141,8 @@ class BatchItemStatus(enum.Enum):
     failed = "failed"
     stalled = "stalled"
     skipped = "skipped"
+    migration_invalid = "migration_invalid"
+    migration_rolled_back = "migration_rolled_back"
 
 
 class TestRunStatus(enum.Enum):
@@ -853,6 +855,50 @@ class DaemonEvent(Base):
                 "Append-only. Powers notifications and analytics."
             )
         },
+    )
+
+
+class PendingMigrationLog(Base):
+    """CR-00017 audit log for daemon-driven migration phases. Append-only."""
+
+    __tablename__ = "pending_migration_log"
+    __table_args__ = (
+        CheckConstraint(
+            "direction IN ('upgrade', 'downgrade')",
+            name="ck_pending_migration_log_direction",
+        ),
+        CheckConstraint(
+            "phase IN ('dry_run', 'apply', 'rollback')",
+            name="ck_pending_migration_log_phase",
+        ),
+        Index(
+            "ix_pending_migration_log_batch",
+            "batch_id",
+            text("started_at DESC"),
+        ),
+        Index(
+            "ix_pending_migration_log_revision",
+            "revision",
+            "phase",
+        ),
+        {"comment": "CR-00017 audit log for daemon-driven migration phases"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    revision: Mapped[str] = mapped_column(Text, nullable=False)
+    direction: Mapped[str] = mapped_column(Text, nullable=False)
+    phase: Mapped[str] = mapped_column(Text, nullable=False)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    success: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    stdout_tail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stderr_tail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
     )
 
 
