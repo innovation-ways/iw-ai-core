@@ -1,0 +1,86 @@
+{
+  "id": "CR-00015",
+  "type": "ChangeRequest",
+  "title": "Remove docker-compose db service foot-gun (split into bootstrap.yml)",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Rename docker-compose.yml -> docker-compose.bootstrap.yml; add top-level `name: iw-ai-core`; stub or delete default compose file; update ai-core.sh cmd_db start/stop/logs to use -f flag; update Makefile db-up target.",
+      "prompt": "prompts/CR-00015_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review: S01 (correct -f usage, env-var pass-through preserved, ai-core.sh guard intact, no hardcoded paths/creds, no regression in cmd_db stop/logs paths).",
+      "prompt": "prompts/CR-00015_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "template-impl",
+      "description": "Write docs/IW_AI_Core_DB_Setup.md as the single source of truth for DB setup (production raw docker + bootstrap compose paths). Update top-level README.md, top-level CLAUDE.md, docs/README.md, docs/IW_AI_Core_Tech_Stack.md, docs/implementation/01_foundation/02_config_and_db.md to explain WHY the split exists (2026-04-22 incident) and point to the new doc. Grep for stray `docker compose up.*db` references anywhere and fix.",
+      "prompt": "prompts/CR-00015_S03_Template_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review: S03 (every affected doc updated, WHY paragraph present, pointer to new doc, no stale references, new doc has both production and bootstrap paths clearly labeled).",
+      "prompt": "prompts/CR-00015_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Shell-level smoke tests: docker compose config from root has no db service; docker compose -f docker-compose.bootstrap.yml config has db; volume name stable across cwd (name: iw-ai-core); ai-core.sh db start no-ops when DB already up.",
+      "prompt": "prompts/CR-00015_S05_Tests_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Code review: S05 (tests exercise the actual foot-gun scenario, tests fail against pre-change code, no hardcoded host paths, portable across dev machines).",
+      "prompt": "prompts/CR-00015_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-layer review: no stray docker compose up -d db references anywhere in repo; ai-core.sh wiring correct; CR-00014 identity check still green; docs all agree; incident rationale explained in every dev-facing doc.",
+      "prompt": "prompts/CR-00015_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "uv run mypy orch/ dashboard/",
+      "description": "QV: Typecheck"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    }
+  ]
+}

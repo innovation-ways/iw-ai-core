@@ -1,0 +1,98 @@
+{
+  "id": "CR-00014",
+  "type": "ChangeRequest",
+  "title": "Orchestration DB instance-identity fingerprint",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Database: create iw_core_instance table (id PK=1 CHECK, instance_id UUID, created_at), seed one row via gen_random_uuid(), add IwCoreInstance ORM model. Idempotent, reversible.",
+      "prompt": "prompts/CR-00014_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review: S01 (single-row invariant enforced at DB, idempotent seed, downgrade safe, ORM model matches convention, FTS triggers not broken).",
+      "prompt": "prompts/CR-00014_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Backend: orch/db/identity.py (verify_instance_identity, BootstrapNotice, InstanceMismatchError); wire into daemon startup health check in orch/daemon/main.py; add iw db-identity {show|check} CLI; extend ai-core.sh cmd_status to render PASS/FAIL line; add IW_CORE_EXPECTED_INSTANCE_ID to .env.example.",
+      "prompt": "prompts/CR-00014_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review: S03 (verify fail-fast in daemon, no partial-start path; CLI exit codes correct; ai-core.sh bash guards correct; env var parsed with trim/case-insensitive UUID; bootstrap mode is one-shot INFO not per-poll).",
+      "prompt": "prompts/CR-00014_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "api-impl",
+      "description": "API: add /healthz/identity endpoint to dashboard (200 match / 503 mismatch / 200 bootstrap); register a FastAPI lifespan/startup event that aborts app startup on mismatch; ensure endpoint bypasses auth.",
+      "prompt": "prompts/CR-00014_S05_API_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Code review: S05 (startup event raises, not swallows; endpoint response shape consistent; auth-bypass intentional and documented; no DB session leaks on hot path).",
+      "prompt": "prompts/CR-00014_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "tests-impl",
+      "description": "Tests: unit (identity module: match/mismatch/missing-row/bootstrap/env parsing); integration (testcontainer with different UUID → daemon startup refuses, dashboard /healthz/identity returns 503); migration downgrade-upgrade round trip.",
+      "prompt": "prompts/CR-00014_S07_Tests_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Code review: S07 (tests fail on pre-change code; testcontainer compliance per tests/CLAUDE.md; FTS triggers applied; no live-DB connections; fixture reuse; pytest markers correct).",
+      "prompt": "prompts/CR-00014_S08_CodeReview_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-layer review: daemon + dashboard + CLI + bash gates all agree on identity state; AC1–AC6 coverage; rollback plan sound; no regressions on adjacent daemon/dashboard paths; CLAUDE.md compliance.",
+      "prompt": "prompts/CR-00014_S09_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint (ruff + JS syntax)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format (ruff)"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "uv run mypy orch/ dashboard/",
+      "description": "QV: Typecheck (mypy)"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "id": "CR-00017",
+  "type": "ChangeRequest",
+  "title": "Daemon-only migration application (agents generate, daemon applies)",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Alembic migration + ORM model for pending_migration_log (append-only audit table for the 3-phase migration pipeline). Reversible.",
+      "prompt": "prompts/CR-00017_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01.",
+      "prompt": "prompts/CR-00017_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "orch/db/safe_migrate.py library: AgentContextForbidden guard, list_pending_revisions, dry_run (testcontainer), apply (live DB), rollback, multi-head detection, pending_migration_log writer.",
+      "prompt": "prompts/CR-00017_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03.",
+      "prompt": "prompts/CR-00017_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "backend-impl",
+      "description": "Daemon merge-queue integration: 3-phase pipeline (pre-merge dry-run, post-merge apply, on-fail rollback), MIGRATION_INVALID / MIGRATION_ROLLED_BACK batch states, merge_queue_frozen flag via daemon_events, IW_CORE_AGENT_CONTEXT=true in agent subprocess env.",
+      "prompt": "prompts/CR-00017_S05_Backend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05.",
+      "prompt": "prompts/CR-00017_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "backend-impl",
+      "description": "iw migrations {list-pending|dry-run|apply} and iw merge-queue {status|unfreeze} CLI. Operator-ack flag + IW_CORE_AGENT_CONTEXT refusal. Canonical exit codes.",
+      "prompt": "prompts/CR-00017_S07_Backend_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Review S07.",
+      "prompt": "prompts/CR-00017_S08_CodeReview_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "template-impl",
+      "description": "Rewrite Database-step prompt patterns (all 11 templates). Extend docs/IW_AI_Core_Agent_Constraints.md with R2 (Migrations). Update CLAUDE.md files, IW_AI_Core_Migration_Checklist.md, IW_AI_Core_Tech_Stack.md, docs/reference/03_merge_fix_automation.md. Grep stale agent-facing references.",
+      "prompt": "prompts/CR-00017_S09_Template_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "code-review-impl",
+      "description": "Review S09.",
+      "prompt": "prompts/CR-00017_S10_CodeReview_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "tests-impl",
+      "description": "Unit + integration tests. Extend CR-00016's coverage test for the new R2 marker. Integration tests for 3-phase pipeline, frozen queue, multi-head, agent-env guard.",
+      "prompt": "prompts/CR-00017_S11_Tests_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "code-review-impl",
+      "description": "Review S11.",
+      "prompt": "prompts/CR-00017_S12_CodeReview_prompt.md"
+    },
+    {
+      "step": "S13",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-layer review. AC1-AC10 coverage, rollback sanity, CR-00014/15/16 compatibility, no stale alembic-upgrade references in agent-facing content.",
+      "prompt": "prompts/CR-00017_S13_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format"
+    },
+    {
+      "step": "S16",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "uv run mypy orch/ dashboard/",
+      "description": "QV: Typecheck"
+    },
+    {
+      "step": "S17",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S18",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1200
+    }
+  ]
+}
