@@ -10,6 +10,7 @@ This folder contains all planning, architecture, and reference documents for the
 | [IW_AI_Core_Architecture.pdf](IW_AI_Core_Architecture.pdf) | Branded Innovation Ways PDF rendering of the architecture document. |
 | [IW_AI_Core_Requirements.md](IW_AI_Core_Requirements.md) | **Requirements.** Functional requirements by component, non-functional requirements, constraints, phasing, acceptance criteria. |
 | [IW_AI_Core_Tech_Stack.md](IW_AI_Core_Tech_Stack.md) | **Technology Stack.** Libraries, versions, licenses, testing strategy with full isolation, project structure, Makefile, configuration. |
+| [IW_AI_Core_DB_Setup.md](IW_AI_Core_DB_Setup.md) | **Database Setup.** Two setup paths (production raw-docker vs. dev bootstrap), the 2026-04-22 incident that shaped the split, quick-reference command table. |
 | [IW_AI_Core_Database_Schema.md](IW_AI_Core_Database_Schema.md) | **Database Schema.** Complete SQL DDL, state machines, event catalog, seed data. Basis for Alembic initial migration. |
 | [IW_AI_Core_CLI_Spec.md](IW_AI_Core_CLI_Spec.md) | **CLI Specification.** All `iw` commands, flags, output formats (human + JSON), exit codes, examples, caller matrix. |
 | [IW_AI_Core_Daemon_Design.md](IW_AI_Core_Daemon_Design.md) | **Daemon Design.** Main loop, batch processing, step monitoring, merge queue, crash recovery, graceful shutdown, action handlers. |

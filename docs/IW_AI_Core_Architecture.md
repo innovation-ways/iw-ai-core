@@ -1637,7 +1637,8 @@ iw-ai-core/
 |   +-- Issue_Design_Template.md
 |   +-- ...
 +-- projects.toml                 # Project registry
-+-- docker-compose.yml            # PostgreSQL (port 5433)
++-- docker-compose.yml            # INTENTIONALLY EMPTY — see docker-compose.bootstrap.yml
++-- docker-compose.bootstrap.yml  # Bootstrap DB (dev-only)
 +-- pyproject.toml
 +-- Makefile
 +-- CLAUDE.md
@@ -1645,22 +1646,19 @@ iw-ai-core/
 
 #### Step 2: Set Up PostgreSQL
 
-```yaml
-# docker-compose.yml
-services:
-  db:
-    image: postgres:15
-    ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_DB: iw_orch
-      POSTGRES_USER: iw_orch
-      POSTGRES_PASSWORD: iw_orch_dev
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-volumes:
-  pgdata:
-```
+See [docs/IW_AI_Core_DB_Setup.md](../IW_AI_Core_DB_Setup.md) for the two
+supported paths:
+
+- **Production**: raw `docker run` with a host bind mount at `/opt/postgres/data`
+- **Bootstrap (dev-only)**: `docker compose -f docker-compose.bootstrap.yml up -d db`
+
+For a new dev machine, the bootstrap path creates a named volume
+`iw-ai-core_pgdata`. The root `docker-compose.yml` is intentionally empty —
+running `docker compose up` from any directory is a no-op.
+
+> **Why this split exists**: On 2026-04-22, running `docker compose up` from
+> a git worktree created a per-worktree empty volume that clobbered the
+> production DB on port 5433 for ~80 minutes. The split prevents this.
 
 Run Alembic migrations to create all tables.
 

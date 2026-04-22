@@ -47,7 +47,23 @@ This document specifies the exact technologies, libraries, and tooling for IW AI
 
 **Port assignment**: All ports are configurable via `.env`. Default suggestion is 5433 for DB and 9900 for dashboard, but nothing is hardcoded.
 
-### 2.3. Dashboard
+### 2.3. Docker Compose — Bootstrap Only
+
+The default `docker-compose.yml` at the project root is intentionally empty.
+The `db` service lives in `docker-compose.bootstrap.yml` and requires an
+explicit `-f` flag. This split exists because the old default compose file
+caused a data-loss incident on 2026-04-22 — running `docker compose up` from
+a git worktree created a per-worktree empty volume that clobbered the
+production DB on port 5433 for ~80 minutes.
+
+**Production path**: raw `docker run` with host bind mount at `/opt/postgres/data`.
+See [`docs/IW_AI_Core_DB_Setup.md`](docs/IW_AI_Core_DB_Setup.md).
+
+**Dev bootstrap path**: `docker compose -f docker-compose.bootstrap.yml up -d db`
+using named volume `iw-ai-core_pgdata`. Clearly marked as dev-only —
+do not use for the long-lived orchestration DB.
+
+### 2.4. Dashboard
 
 | Item | Choice | Version | License |
 |------|--------|---------|---------|
@@ -548,10 +564,10 @@ check: quality test
 
 # --- Database ---
 db-up:
-	docker compose up -d db
+	docker compose -f docker-compose.bootstrap.yml up -d db
 
 db-down:
-	docker compose down
+	docker compose -f docker-compose.bootstrap.yml down
 
 db-migrate:
 	uv run alembic upgrade head
@@ -693,7 +709,12 @@ IW_CORE_LOG_LEVEL=INFO
 IW_CORE_LOG_FILE=./logs/daemon.log
 ```
 
-### 8.2. `docker-compose.yml` (reads from `.env`)
+### 8.2. `docker-compose.yml` (intentionally empty — historical)
+
+> **Note**: The default `docker-compose.yml` is intentionally empty. The `db`
+> service was moved to `docker-compose.bootstrap.yml` after the 2026-04-22
+> incident. The snippet below is historical — it no longer reflects the actual
+> file. See [docs/IW_AI_Core_DB_Setup.md](docs/IW_AI_Core_DB_Setup.md).
 
 ```yaml
 # docker-compose.yml
@@ -720,7 +741,9 @@ volumes:
   pgdata:
 ```
 
-**Note**: The `:-` syntax provides defaults if `.env` is missing, but the platform MUST always be started with a proper `.env` file. Defaults are a safety net, not the intended configuration method.
+For the current bootstrap compose file see
+`docker-compose.bootstrap.yml`. For DB setup paths see
+[docs/IW_AI_Core_DB_Setup.md](docs/IW_AI_Core_DB_Setup.md).
 
 ### 8.3. Application Configuration Loading
 
@@ -749,12 +772,15 @@ def get_db_url() -> str:
 
 ### 8.4. Test Isolation
 
-Tests do NOT use `docker-compose.yml` or `.env`. They use `testcontainers`, which starts an independent PostgreSQL container on a random Docker-assigned port:
+Tests do NOT use the compose files or `.env`. They use `testcontainers`,
+which starts an independent PostgreSQL container on a random Docker-assigned
+port:
 
 ```
-Platform DB:     docker-compose.yml → port from .env  → container "iw-ai-core-db"
-Test session A:  testcontainers     → random port      → container "testcontainers-postgres-xxxx"
-Test session B:  testcontainers     → random port      → container "testcontainers-postgres-yyyy"
+Platform DB (production):  docker run raw docker   → port 5433  → container "postgres"
+Platform DB (bootstrap):  docker-compose.bootstrap.yml → port 5433  → container "iw-ai-core-db"
+Test session A:           testcontainers           → random port → container "testcontainers-postgres-xxxx"
+Test session B:           testcontainers           → random port → container "testcontainers-postgres-yyyy"
 ```
 
 No shared ports. No shared containers. No shared data. Tests can run while the platform is serving live batches.
