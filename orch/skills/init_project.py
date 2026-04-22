@@ -3,12 +3,34 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+
+class ProjectsTomlError(RuntimeError):
+    """Raised when projects.toml cannot be parsed or is not safe to append to."""
+
+
+def _toml_already_has_project(projects_toml: Path, project_id: str) -> bool:
+    """Return True if ``[projects.<project_id>]`` is already declared.
+
+    Raises ProjectsTomlError if the file is unparseable — appending to a
+    corrupt projects.toml would compound the problem and silently break
+    the daemon's reload.
+    """
+    if not projects_toml.exists():
+        return False
+    try:
+        raw = tomllib.loads(projects_toml.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ProjectsTomlError(f"{projects_toml} is not valid TOML: {exc}") from exc
+    return project_id in raw.get("projects", {})
+
 
 # Root of the iw-ai-core platform repo (two levels up from orch/skills/)
 _PLATFORM_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -77,16 +99,22 @@ def init_project(
     # ------------------------------------------------------------------
     # 2. projects.toml entry
     # ------------------------------------------------------------------
+    # Idempotent on project_id: a second registration must not append a
+    # duplicate [projects.<id>] table — tomllib rejects duplicate tables,
+    # which would silently break the daemon's next reload.
     projects_toml = root / "projects.toml"
-    toml_entry = (
-        f"\n[projects.{project_id}]\n"
-        f'display_name = "{display_name}"\n'
-        f'repo_root = "{repo_path}"\n'
-        f"enabled = true\n"
-    )
-    with projects_toml.open("a", encoding="utf-8") as fh:
-        fh.write(toml_entry)
-    result.projects_toml_updated = True
+    if _toml_already_has_project(projects_toml, project_id):
+        result.projects_toml_updated = False
+    else:
+        toml_entry = (
+            f"\n[projects.{project_id}]\n"
+            f'display_name = "{display_name}"\n'
+            f'repo_root = "{repo_path}"\n'
+            f"enabled = true\n"
+        )
+        with projects_toml.open("a", encoding="utf-8") as fh:
+            fh.write(toml_entry)
+        result.projects_toml_updated = True
 
     # ------------------------------------------------------------------
     # 3. Database rows
