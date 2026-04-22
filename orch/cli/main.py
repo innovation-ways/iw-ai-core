@@ -16,6 +16,7 @@ from orch.cli.doc_commands import doc_job_done, doc_job_start, doc_update, docs_
 from orch.cli.id_commands import current_project, next_id
 from orch.cli.item_commands import approve, archive, item_report, item_status, register, unapprove
 from orch.cli.lock_commands import migration_lock
+from orch.cli.oss_commands import oss
 from orch.cli.project_commands import projects
 from orch.cli.search_commands import search
 from orch.cli.skills_commands import init_project_cmd, sync_agents_cmd, sync_skills_cmd
@@ -88,3 +89,4 @@ cli.add_command(doc_update)
 cli.add_command(doc_job_start, name="doc-job-start")
 cli.add_command(doc_job_done, name="doc-job-done")
 cli.add_command(docs_export, name="docs-export")
+cli.add_command(oss)
