@@ -162,6 +162,43 @@ ensure_log_dir() {
   mkdir -p "$(dirname "$DASHBOARD_LOG_FILE")"
 }
 
+# Returns the PID that currently holds the LISTEN socket for the given port,
+# or empty if nothing is listening. Uses ss, which only shows PIDs for
+# sockets the current user owns — good enough for our own processes.
+port_listener_pid() {
+  local port="$1"
+  ss -H -tlnp "sport = :$port" 2>/dev/null \
+    | grep -oE 'pid=[0-9]+' \
+    | head -1 \
+    | cut -d= -f2
+}
+
+# is_descendant <child_pid> <ancestor_pid>
+# True iff walking ppid chain from child reaches ancestor. Bounded to 10 hops.
+is_descendant() {
+  local child="$1" ancestor="$2" cur="$1"
+  [[ -z "$child" || -z "$ancestor" ]] && return 1
+  local hops=0
+  while [[ -n "$cur" && "$cur" != "1" && "$cur" != "0" && $hops -lt 10 ]]; do
+    [[ "$cur" == "$ancestor" ]] && return 0
+    cur=$(ps -o ppid= -p "$cur" 2>/dev/null | tr -d ' ')
+    hops=$((hops + 1))
+  done
+  return 1
+}
+
+# http_ok <url>  — 2xx/3xx within 3s counts as healthy.
+http_ok() {
+  local url="$1" code
+  code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "$url" 2>/dev/null) || return 1
+  [[ "$code" =~ ^[23] ]]
+}
+
+# ps_line <pid>  — one-line "pid user cmd" summary, quietly empty if pid gone.
+ps_line() {
+  ps -p "$1" -o pid,user,cmd --no-headers 2>/dev/null || true
+}
+
 # =============================================================================
 # DATABASE
 # =============================================================================
@@ -171,10 +208,19 @@ cmd_db() {
   shift || true
   case "$sub" in
     start)
+      # Guard: if DB is already reachable, do NOT call docker compose — that
+      # could swap in a fresh empty volume (the incident that bit us today).
+      if db_ready; then
+        print_ok "Database already accepting connections (${DB_HOST}:${DB_PORT}/${DB_NAME})"
+        return 0
+      fi
       print_info "Starting database container..."
-      docker compose up -d db
+      # Export a stable project name so the volume is always named
+      # iw-ai-core_pgdata regardless of the cwd the script is invoked from
+      # (prevents a git worktree from creating a new empty volume).
+      COMPOSE_PROJECT_NAME=iw-ai-core docker compose up -d db
       print_info "Waiting for PostgreSQL..."
-      wait_for_db 20
+      wait_for_db 20 || return 1
       print_ok "Database ready (${DB_HOST}:${DB_PORT}/${DB_NAME})"
       ;;
     stop)
@@ -239,6 +285,9 @@ cmd_daemon() {
       if pid_alive "$existing_pid"; then
         print_warn "Daemon already running (PID $existing_pid)"
         return 0
+      elif [[ -n "$existing_pid" ]]; then
+        # Stale PID file — remove it quietly before spawning
+        rm -f "$DAEMON_PID_FILE"
       fi
       ensure_log_dir
       print_info "Starting daemon..."
@@ -246,16 +295,32 @@ cmd_daemon() {
       # _startup() will see the uv-run wrapper PID as a live process and
       # raise DaemonAlreadyRunning.
       nohup uv run python -m orch.daemon >> "$DAEMON_LOG_FILE" 2>&1 &
-      sleep 2
-      local daemon_pid
-      daemon_pid=$(read_pid "$DAEMON_PID_FILE")
-      if [[ -n "$daemon_pid" ]] && pid_alive "$daemon_pid"; then
-        print_ok "Daemon started (PID $daemon_pid) — log: $DAEMON_LOG_FILE"
-      else
-        print_err "Daemon exited immediately — check $DAEMON_LOG_FILE"
+      local wrapper_pid=$!
+      # Poll up to 15s: wrapper still alive AND daemon has written a live PID
+      local i=0 daemon_pid=""
+      while [[ $i -lt 15 ]]; do
+        sleep 1
+        i=$((i + 1))
+        # If wrapper exited early, the daemon crashed at import/startup time
+        if ! pid_alive "$wrapper_pid"; then
+          print_err "Daemon process exited before writing PID file — check $DAEMON_LOG_FILE"
+          tail -10 "$DAEMON_LOG_FILE" 2>/dev/null | sed 's/^/      /'
+          rm -f "$DAEMON_PID_FILE"
+          return 1
+        fi
+        daemon_pid=$(read_pid "$DAEMON_PID_FILE")
+        if [[ -n "$daemon_pid" ]] && pid_alive "$daemon_pid"; then
+          break
+        fi
+        daemon_pid=""
+      done
+      if [[ -z "$daemon_pid" ]]; then
+        print_err "Daemon did not write a live PID file within 15s — check $DAEMON_LOG_FILE"
+        tail -10 "$DAEMON_LOG_FILE" 2>/dev/null | sed 's/^/      /'
         rm -f "$DAEMON_PID_FILE"
         return 1
       fi
+      print_ok "Daemon started (PID $daemon_pid) — log: $DAEMON_LOG_FILE"
       ;;
     stop)
       local pid
@@ -343,6 +408,18 @@ cmd_dashboard() {
       if pid_alive "$existing_pid"; then
         print_warn "Dashboard already running (PID $existing_pid)"
         return 0
+      elif [[ -n "$existing_pid" ]]; then
+        # Stale PID file — remove it quietly before spawning
+        rm -f "$DASHBOARD_PID_FILE"
+      fi
+      # Pre-check: refuse if a foreign process already holds the port
+      local foreign_pid
+      foreign_pid=$(port_listener_pid "$DASHBOARD_PORT")
+      if [[ -n "$foreign_pid" ]]; then
+        print_err "Port $DASHBOARD_PORT is already in use by a foreign process:"
+        print_err "  $(ps_line "$foreign_pid")"
+        print_err "Stop that process first, or choose a different DASHBOARD_PORT."
+        return 1
       fi
       ensure_log_dir
       print_info "Starting dashboard on port $DASHBOARD_PORT..."
@@ -351,16 +428,35 @@ cmd_dashboard() {
         --host 0.0.0.0 \
         --port "$DASHBOARD_PORT" \
         >> "$DASHBOARD_LOG_FILE" 2>&1 &
-      local pid=$!
-      echo "$pid" > "$DASHBOARD_PID_FILE"
+      local wrapper_pid=$!
+      echo "$wrapper_pid" > "$DASHBOARD_PID_FILE"
       print_info "Waiting for dashboard to accept connections..."
-      if wait_for_port "$DASHBOARD_PORT" "Dashboard" 15; then
-        print_ok "Dashboard running (PID $pid) — http://${DB_HOST}:${DASHBOARD_PORT}"
-      else
-        print_err "Dashboard failed to start — check $DASHBOARD_LOG_FILE"
+      # Poll up to 15s: wrapper alive AND port owned by our descendant AND HTTP OK
+      local i=0 ready=false listener_pid=""
+      while [[ $i -lt 15 ]]; do
+        sleep 1
+        i=$((i + 1))
+        if ! pid_alive "$wrapper_pid"; then
+          print_err "Dashboard process exited before binding port $DASHBOARD_PORT — check $DASHBOARD_LOG_FILE"
+          tail -10 "$DASHBOARD_LOG_FILE" 2>/dev/null | sed 's/^/      /'
+          rm -f "$DASHBOARD_PID_FILE"
+          return 1
+        fi
+        listener_pid=$(port_listener_pid "$DASHBOARD_PORT")
+        if [[ -n "$listener_pid" ]] \
+            && is_descendant "$listener_pid" "$wrapper_pid" \
+            && http_ok "http://127.0.0.1:${DASHBOARD_PORT}/"; then
+          ready=true
+          break
+        fi
+      done
+      if [[ "$ready" != true ]]; then
+        print_err "Dashboard did not become healthy within 15s — check $DASHBOARD_LOG_FILE"
+        tail -10 "$DASHBOARD_LOG_FILE" 2>/dev/null | sed 's/^/      /'
         rm -f "$DASHBOARD_PID_FILE"
         return 1
       fi
+      print_ok "Dashboard running (PID $wrapper_pid) — http://${DB_HOST}:${DASHBOARD_PORT}"
       ;;
     stop)
       local pid
@@ -432,12 +528,12 @@ cmd_dashboard() {
 
 cmd_start() {
   print_header "Starting IW AI Core"
-  cmd_db start
+  cmd_db start || return 1
   print_info "Running migrations..."
-  uv run alembic upgrade head
+  uv run alembic upgrade head || { print_err "Alembic migrations failed — aborting start"; return 1; }
   print_ok "Migrations up to date"
-  cmd_daemon start
-  cmd_dashboard start
+  cmd_daemon start || { print_err "Daemon failed to start — aborting"; return 1; }
+  cmd_dashboard start || return 1
   echo ""
   print_ok "All services started"
   print_dim "Dashboard → http://${DB_HOST}:${DASHBOARD_PORT}"
