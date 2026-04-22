@@ -12,6 +12,7 @@ from orch.cli.batch_commands import (
     batch_status,
 )
 from orch.cli.daemon_commands import daemon
+from orch.cli.db_commands import db_identity
 from orch.cli.doc_commands import doc_job_done, doc_job_start, doc_update, docs_export
 from orch.cli.id_commands import current_project, next_id
 from orch.cli.item_commands import approve, archive, item_report, item_status, register, unapprove
@@ -89,4 +90,5 @@ cli.add_command(doc_update)
 cli.add_command(doc_job_start, name="doc-job-start")
 cli.add_command(doc_job_done, name="doc-job-done")
 cli.add_command(docs_export, name="docs-export")
+cli.add_command(db_identity)
 cli.add_command(oss)

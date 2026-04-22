@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from orch.daemon.batch_manager import BatchManager
 from orch.daemon.doc_job_poller import DocJobPoller
 from orch.daemon.project_registry import ProjectConfig, ProjectRegistry, sync_project_to_db
+from orch.db.identity import verify_instance_identity
 from orch.db.models import DaemonEvent, StepRun, StepStatus, WorkflowStep
 
 if TYPE_CHECKING:
@@ -121,6 +122,7 @@ class Daemon:
         self._wake_event = threading.Event()
         self._poll_count = 0
         self._last_poll_at: datetime | None = None
+        self._identity_bootstrap_logged = False
 
         # Injected session factory (tests pass a mock; production uses DB URL)
         if session_factory is not None:
@@ -186,6 +188,22 @@ class Daemon:
         with self._session_factory() as db:
             db.execute(__import__("sqlalchemy").text("SELECT 1"))
         logger.info("Database connection verified")
+
+        # Verify DB instance identity
+        with self._session_factory() as db:
+            status = verify_instance_identity(db)
+        if status.mode == "match":
+            short = str(status.actual)[:8] if status.actual else "?"
+            logger.info("Database identity verified (%s)", short)
+        elif status.mode == "bootstrap":
+            if not self._identity_bootstrap_logged:
+                logger.info("DB identity bootstrap notice: %s", status.message)
+                self._identity_bootstrap_logged = True
+        elif status.mode in ("mismatch", "missing"):
+            logger.error("DB identity check failed:\n%s", status.message)
+            import sys
+
+            sys.exit(2)
 
         # Load projects and sync to DB
         self._load_projects()

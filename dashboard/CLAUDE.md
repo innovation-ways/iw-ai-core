@@ -50,7 +50,13 @@ templates/
 
 **SSE pattern**: `routers/sse.py` streams `text/event-stream` responses. Frontend listens with `<div hx-ext="sse" sse-connect="/sse/...">`.
 
-## Gotchas
+## Health endpoints
+
+`dashboard/routers/healthz.py` exposes lightweight JSON probes that bypass any auth middleware.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /healthz/identity` | DB instance-identity check (CR-00014). Returns `{expected, actual, mode, match}`. `200` on match/bootstrap; `503` on mismatch/missing. Intentionally unauthenticated so external probes can reach it. |
 
 - Routes are thin — business logic belongs in `orch/` layer, not routers
 - Templates in `fragments/` must NOT extend `base.html` (they are partial responses)
