@@ -8,6 +8,13 @@ Read these documents:
 - `IW_AI_Core_Database_Schema.md` — complete DDL, ENUMs, indexes, triggers, state machines
 - `IW_AI_Core_Tech_Stack.md` — section 8 (configuration), section 4.4 (database test fixtures)
 
+> **Note**: The default `docker-compose.yml` was split into a bootstrap file
+> after the 2026-04-22 incident. `make db-up` routes through the bootstrap file
+> (`docker-compose.bootstrap.yml`) which requires an explicit `-f` flag.
+> For the production orchestration DB, use the raw `docker run` path described
+> in `docs/IW_AI_Core_DB_Setup.md`. Never run `docker compose up` from a
+> worktree against the orchestration DB.
+
 ## Task
 
 ### 1. Configuration (`orch/config.py`)
@@ -76,8 +83,8 @@ Write tests FIRST (TDD):
 
 ## Acceptance Criteria
 
-- [ ] `make db-up && make db-migrate` creates all 10 tables, all ENUMs, all indexes, the FTS trigger
-- [ ] `make test-unit` passes (config tests)
+- [ ] `./ai-core.sh db start && ./ai-core.sh db migrate` creates all 10 tables, all ENUMs, all indexes, the FTS trigger (bootstrap path; for production use the raw `docker run` path in `docs/IW_AI_Core_DB_Setup.md`)
+- [ ] `./ai-core.sh db migrate` runs Alembic migrations successfully
 - [ ] `make test-integration` passes (model tests against testcontainer)
 - [ ] `make quality` passes (ruff + mypy clean)
 - [ ] Tests run while the live PostgreSQL container is running on its port — zero interference
