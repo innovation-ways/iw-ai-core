@@ -1,0 +1,80 @@
+{
+  "id": "I-00034",
+  "type": "Issue",
+  "title": "Item view step Duration is incorrect when a step goes through retries or fix cycles",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Backend: change dashboard/routers/items.py _get_steps + _get_metrics to compute step duration from MIN(started_at) across step_runs ∪ fix_cycles through MAX(completed_at), bulk-queried with GROUP BY step_id. Preserve in-progress live-tick and synthetic setup/merge rows unchanged.",
+      "prompt": "prompts/I-00034_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review: S01 (correctness of MIN/MAX aggregation across step_runs ∪ fix_cycles, no N+1, nullability, in-progress live-tick preserved, synthetic row handling untouched, no unintended changes to WorkflowStep.started_at semantics elsewhere)",
+      "prompt": "prompts/I-00034_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Tests: reproduction integration test (multi-run + fix-cycle timeline → semantic duration check against specific expected seconds) + regression tests for happy path (single run) + total_duration_secs + unit test for aggregation helper. Query-count assertion to prevent future N+1.",
+      "prompt": "prompts/I-00034_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review: S03 (tests FAIL on pre-fix code, semantic assertions with exact expected seconds not shape-only, testcontainer compliance, no live-DB, fixture reuse per tests/CLAUDE.md)",
+      "prompt": "prompts/I-00034_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-agent review: AC1–AC5 coverage, no regressions to synthetic setup/merge rows, in-progress behaviour preserved, CLAUDE.md compliance, no unintended changes outside dashboard/routers/items.py and tests",
+      "prompt": "prompts/I-00034_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint (ruff + JS syntax)"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format (ruff)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "uv run mypy orch/ dashboard/",
+      "description": "QV: Typecheck (mypy)"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — on the isolated E2E stack, verify that a synthetic item with multi-run step_runs + fix_cycles shows aggregated Duration + Total Time; verify happy-path item (no retries) is unchanged. Requires an e2e_fixtures seed file.",
+      "prompt": "prompts/I-00034_S11_BrowserVerification_prompt.md"
+    }
+  ]
+}
