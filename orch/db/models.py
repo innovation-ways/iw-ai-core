@@ -29,7 +29,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # ---------------------------------------------------------------------------
 # Declarative base
@@ -193,6 +193,52 @@ class JobStatus(enum.Enum):
 
 
 # ---------------------------------------------------------------------------
+# OSS Compliance Enums
+# ---------------------------------------------------------------------------
+
+
+class OssScanStatus(enum.Enum):
+    pending = "pending"
+    running = "running"
+    complete = "complete"
+    error = "error"
+
+
+class OssScanMode(enum.Enum):
+    scan = "scan"
+    make_oss = "make_oss"
+    publish = "publish"
+
+
+class OssPillColor(enum.Enum):
+    green = "green"
+    yellow = "yellow"
+    red = "red"
+    gray = "gray"
+
+
+class OssFindingSeverity(enum.Enum):
+    MUST = "MUST"
+    SHOULD = "SHOULD"
+    MAY = "MAY"
+    INFO = "INFO"
+
+
+class OssFindingStatus(enum.Enum):
+    pass_status = "pass"  # noqa: S105  (enum member value, not a password)
+    fail = "fail"
+    skip = "skip"
+    human_required = "human_required"
+
+
+class OssToolRunStatus(enum.Enum):
+    ok = "ok"
+    failed = "failed"
+    missing = "missing"
+    skipped = "skipped"
+
+
+# ---------------------------------------------------------------------------
 # Reusable column type shorthands
 # ---------------------------------------------------------------------------
 
@@ -215,6 +261,13 @@ _doc_tier_col = SAEnum(DocTier, name="doc_tier", create_type=False)
 _editorial_category_col = SAEnum(EditorialCategory, name="editorial_category", create_type=False)
 _doc_status_col = SAEnum(DocStatus, name="doc_status", create_type=False)
 _job_status_col = SAEnum(JobStatus, name="job_status", create_type=False)
+
+_oss_scan_status_col = SAEnum(OssScanStatus, name="ossscan_status", create_type=True)
+_oss_scan_mode_col = SAEnum(OssScanMode, name="ossscan_mode", create_type=True)
+_oss_pill_color_col = SAEnum(OssPillColor, name="osspill_color", create_type=True)
+_oss_finding_severity_col = SAEnum(OssFindingSeverity, name="ossfinding_severity", create_type=True)
+_oss_finding_status_col = SAEnum(OssFindingStatus, name="ossfinding_status", create_type=True)
+_oss_tool_run_status_col = SAEnum(OssToolRunStatus, name="osstoolrun_status", create_type=True)
 
 
 # ---------------------------------------------------------------------------
@@ -253,11 +306,21 @@ class Project(Base):
         server_default=text("true"),
         comment="Whether the daemon processes this project",
     )
+    oss_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+        comment="Whether OSS compliance scanning is enabled for this project",
+    )
     registered_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
         _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+
+    oss_scans: Mapped[list["OssScan"]] = relationship(
+        "OssScan", back_populates="project", cascade="all, delete-orphan"
     )
 
     __table_args__ = ({"comment": "Registry of software projects managed by IW AI Core"},)
@@ -1129,6 +1192,111 @@ class CodeIndexJob(Base):
         Index("idx_code_index_jobs_project_id", "project_id"),
         Index("idx_code_index_jobs_status", "status"),
         {"comment": "Tracks code indexing jobs for a project"},
+    )
+
+
+class OssScan(Base):
+    """OSS compliance scan runs."""
+
+    __tablename__ = "oss_scan"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    status: Mapped[OssScanStatus] = mapped_column(
+        _oss_scan_status_col, nullable=False, default=OssScanStatus.pending
+    )
+    mode: Mapped[OssScanMode] = mapped_column(
+        _oss_scan_mode_col, nullable=False, default=OssScanMode.scan
+    )
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    head_sha: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Git HEAD SHA at scan start"
+    )
+    pill_color: Mapped[OssPillColor | None] = mapped_column(_oss_pill_color_col, nullable=True)
+    summary_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True, comment="Counts-by-severity summary"
+    )
+    error_message: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Error message if status='error'"
+    )
+
+    project: Mapped["Project"] = relationship("Project", back_populates="oss_scans")
+    findings: Mapped[list["OssFinding"]] = relationship(
+        "OssFinding", back_populates="scan", cascade="all, delete-orphan"
+    )
+    tool_runs: Mapped[list["OssToolRun"]] = relationship(
+        "OssToolRun", back_populates="scan", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
+        Index("ix_oss_scan_project_started", "project_id", text("started_at DESC")),
+        {"comment": "OSS compliance scan runs"},
+    )
+
+
+class OssFinding(Base):
+    """Individual OSS compliance findings."""
+
+    __tablename__ = "oss_finding"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    scan_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    check_id: Mapped[str] = mapped_column(
+        Text, nullable=False, comment="Check identifier (e.g., OSS-LIC-01)"
+    )
+    severity: Mapped[OssFindingSeverity] = mapped_column(_oss_finding_severity_col, nullable=False)
+    status: Mapped[OssFindingStatus] = mapped_column(_oss_finding_status_col, nullable=False)
+    domain: Mapped[str] = mapped_column(Text, nullable=False, comment="license, secrets, etc.")
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    remediation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auto_fix_available: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    osps_control: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="OSPS control reference"
+    )
+    tool: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+    scan: Mapped["OssScan"] = relationship("OssScan", back_populates="findings")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["scan_id"], ["oss_scan.id"], ondelete="CASCADE"),
+        Index("ix_oss_finding_scan", "scan_id"),
+        Index("ix_oss_finding_scan_sev_stat", "scan_id", "severity", "status"),
+        {"comment": "Individual OSS compliance findings"},
+    )
+
+
+class OssToolRun(Base):
+    """Tier-1 tool execution records within an OSS scan."""
+
+    __tablename__ = "oss_tool_run"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    scan_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    tool: Mapped[str] = mapped_column(Text, nullable=False)
+    version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[OssToolRunStatus] = mapped_column(_oss_tool_run_status_col, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(_TIMESTAMPTZ, nullable=False)
+    runtime_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_summary: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="First 2KB of stdout/stderr"
+    )
+
+    scan: Mapped["OssScan"] = relationship("OssScan", back_populates="tool_runs")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["scan_id"], ["oss_scan.id"], ondelete="CASCADE"),
+        Index("ix_oss_tool_run_scan", "scan_id"),
+        {"comment": "Tier-1 tool execution records within an OSS scan"},
     )
 
 
