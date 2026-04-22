@@ -2,6 +2,10 @@
 
 Shell scripts that manage git worktrees and LLM agent execution. Called by the daemon.
 
+## Critical Rules
+
+- **NEVER** run `docker`, `docker compose`, or `docker-compose` from executor bash scripts. Executor scripts run as part of agent workflows and inherit the R1 rule from `docs/IW_AI_Core_Agent_Constraints.md`.
+
 ## Scripts
 
 | Script | Purpose |

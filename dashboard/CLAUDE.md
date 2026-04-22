@@ -2,6 +2,10 @@
 
 Real-time visibility and manual controls for the IW AI Core orchestration platform. Port 9900.
 
+## Critical Rules
+
+- **NEVER** invoke docker commands from dashboard code, fixtures, or dev scripts. See `docs/IW_AI_Core_Agent_Constraints.md`. Dashboard tests use TestClient — they never need to touch docker directly.
+
 ## Stack
 
 FastAPI + Jinja2 templates + htmx (AJAX) + Tailwind CDN. **No build step** — Tailwind loaded from CDN.

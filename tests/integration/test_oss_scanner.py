@@ -105,26 +105,24 @@ def pg_container() -> Generator[PostgresContainer, None, None]:
 def oss_engine(pg_container: PostgresContainer):
     from sqlalchemy import create_engine, text
 
-    url = pg_container.get_connection_url().replace(
-        "postgresql+psycopg2://", "postgresql+psycopg://"
-    )
-    engine = create_engine(url, pool_pre_ping=True)
-
     from orch.db.models import (
         FTS_FUNCTION_SQL,
         FTS_TRIGGER_SQL,
         PROJECT_DOCS_FTS_FUNCTION_SQL,
         PROJECT_DOCS_FTS_TRIGGER_SQL,
         Base,
+        OssFinding,
+        OssScan,
+        OssToolRun,
     )
 
+    url = pg_container.get_connection_url().replace(
+        "postgresql+psycopg2://", "postgresql+psycopg://"
+    )
+    engine = create_engine(url, pool_pre_ping=True)
+
     non_oss_metadata = Base.metadata
-    oss_tables = [
-        Base.metadata.tables["oss_scan"],
-        Base.metadata.tables["oss_finding"],
-        Base.metadata.tables["oss_tool_run"],
-    ]
-    for table in oss_tables:
+    for table in [OssScan.__table__, OssFinding.__table__, OssToolRun.__table__]:
         if table in non_oss_metadata.tables:
             non_oss_metadata.remove(table)
     non_oss_metadata.create_all(engine)
@@ -251,14 +249,19 @@ class TestOssScannerRunScan:
 
         import asyncio
 
-        scan = asyncio.get_event_loop().run_until_complete(
-            run_scan(
-                project,
-                "scan",
-                session_factory=session_factory,
-                skill_scan_path=skill_scan_path,
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            scan = loop.run_until_complete(
+                run_scan(
+                    project,
+                    "scan",
+                    session_factory=session_factory,
+                    skill_scan_path=skill_scan_path,
+                )
             )
-        )
+        finally:
+            loop.close()
 
         assert scan is not None
         assert scan.id is not None

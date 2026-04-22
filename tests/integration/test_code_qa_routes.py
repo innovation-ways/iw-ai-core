@@ -223,7 +223,9 @@ def test_qa_streams_error_event_on_ollama_down(
     project_index_path = tmp_path / "code-index" / test_project_with_index.id / "vectors"
     project_index_path.mkdir(parents=True)
 
-    async def mock_answer_stream_v2_error(**kwargs: object) -> AsyncGenerator[dict[str, object], None]:
+    async def mock_answer_stream_v2_error(
+        **kwargs: object,
+    ) -> AsyncGenerator[dict[str, object], None]:
         yield {"kind": "error", "message": "Local AI unavailable. Check that Ollama is running."}
 
     with patch("orch.rag.qa.QAEngine") as mock_qa_engine:

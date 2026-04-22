@@ -962,6 +962,9 @@ def _parse_and_store_fix_summary(cycle: Any) -> None:
         return
 
     summary = data.get("fix_summary")
+    if summary is None:
+        cycle.fix_summary = None
+        return
     if not isinstance(summary, str):
         return
     if not summary or not summary.strip():

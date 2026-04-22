@@ -104,26 +104,24 @@ def pg_container() -> Generator[PostgresContainer, None, None]:
 def oss_engine(pg_container: PostgresContainer):
     from sqlalchemy import create_engine, text
 
-    url = pg_container.get_connection_url().replace(
-        "postgresql+psycopg2://", "postgresql+psycopg://"
-    )
-    engine = create_engine(url, pool_pre_ping=True)
-
     from orch.db.models import (
         FTS_FUNCTION_SQL,
         FTS_TRIGGER_SQL,
         PROJECT_DOCS_FTS_FUNCTION_SQL,
         PROJECT_DOCS_FTS_TRIGGER_SQL,
         Base,
+        OssFinding,
+        OssScan,
+        OssToolRun,
     )
 
+    url = pg_container.get_connection_url().replace(
+        "postgresql+psycopg2://", "postgresql+psycopg://"
+    )
+    engine = create_engine(url, pool_pre_ping=True)
+
     non_oss_metadata = Base.metadata
-    oss_tables = [
-        Base.metadata.tables["oss_scan"],
-        Base.metadata.tables["oss_finding"],
-        Base.metadata.tables["oss_tool_run"],
-    ]
-    for table in oss_tables:
+    for table in [OssScan.__table__, OssFinding.__table__, OssToolRun.__table__]:
         if table in non_oss_metadata.tables:
             non_oss_metadata.remove(table)
     non_oss_metadata.create_all(engine)
