@@ -31,7 +31,9 @@ Joint review of API + Frontend because the HTML contract between them must match
 - `oss_status_frame.html` is included in the shared project header with the required context (pill_color, summary_text, stale, url, oss_enabled).
 
 ### 2. htmx / SSE integration
-- HTMX attributes on the Scan/Prepare/Publish buttons match the router endpoints.
+- HTMX attributes on the Scan/Prepare/Publish/Install buttons match the router endpoints (`/scan`, `/prepare`, `/publish`, `/install` respectively).
+- The Install-now button in `oss_install_modal.html` POSTs to `/install` (not to a placeholder or missing endpoint — AC2 traceability).
+- On SSE `complete` for an install job, the modal re-fetches `GET /tools` — verify the htmx trigger wiring.
 - SSE endpoint sets correct `Content-Type: text/event-stream`, `Cache-Control: no-cache`.
 - `hx-sse` on progress row subscribes to the right job stream URL.
 - Heartbeat messages don't break the swap logic.

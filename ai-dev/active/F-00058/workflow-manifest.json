@@ -7,7 +7,7 @@
     {
       "step": "S01",
       "agent": "database-impl",
-      "description": "Database: project_oss_job table + ORM model (async job tracking for scan/prepare/publish)",
+      "description": "Database: project_oss_job table + ORM model (async job tracking for scan/prepare/publish/install)",
       "prompt": "prompts/F-00058_S01_Database_prompt.md"
     },
     {
@@ -31,7 +31,7 @@
     {
       "step": "S05",
       "agent": "api-impl",
-      "description": "API: dashboard/routers/oss.py (page + 8 endpoints including SSE); register router in app.py",
+      "description": "API: dashboard/routers/oss.py (10 endpoints including /install and SSE); register router in app.py",
       "prompt": "prompts/F-00058_S05_API_prompt.md"
     },
     {

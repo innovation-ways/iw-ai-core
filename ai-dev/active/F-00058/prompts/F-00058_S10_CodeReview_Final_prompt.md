@@ -37,7 +37,7 @@ Global cross-layer review. Each layer was reviewed in isolation; your job is to 
 For each AC1–AC7, point to the test(s) that cover it:
 
 - AC1 (frame on every page): `test_oss_dashboard_templates_extras.py` frame-presence iteration.
-- AC2 (Install OSS flow): `test_oss_dashboard_boundary.py` disabled state + enable POST.
+- AC2 (Install OSS flow): `test_oss_dashboard_boundary.py` disabled state + `POST /install` (success + failure + 409) + `POST /enable`; template test asserts Install-now button is wired to `/install` and Enable-OSS is gated on tool availability.
 - AC3 (Scan + SSE): `test_oss_dashboard_sse.py` + `test_oss_dashboard_routes.py`.
 - AC4 (Prepare/Publish + CLI block): `test_oss_dashboard_templates.py` CLI block + boundary test on throwaway worktree.
 - AC5 (stale banner): `test_oss_dashboard_boundary.py::test_head_advanced`.

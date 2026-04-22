@@ -69,8 +69,8 @@ Every template must use the same htmx/CSS idioms as existing fragments — do no
 - Fetched from `GET /projects/{id}/oss/tools`.
 - Lists every Tier-1 tool with ✅ installed / ❌ missing.
 - For each missing tool, a copy-button for the install command.
-- "Install now" button POSTs to a new endpoint (we'll add in F-00058 or defer to a follow-up — coordinate with S05; if deferred, show the commands and let the user run manually).
-- "Enable OSS" button only enabled when all required tools present; POSTs to `/enable`.
+- "Install now" button (mandatory — required by AC2) POSTs to `POST /projects/{id}/oss/install`. The response is `{job_id, stream_url}`; the button then swaps itself with the scan-progress fragment (`oss_scan_progress.html` or an equivalent progress strip — reuse the same SSE-bound partial) scoped inside the modal, so installer stdout streams live. On `complete` with `exit_code=0`, the modal re-fetches `GET /tools` to refresh the tool list (use `hx-trigger="sse:complete"` + `hx-get="/projects/{id}/oss/tools"`), then enables the "Enable OSS" button. On `exit_code != 0`, show the last `stdout_tail` lines + a Retry button. If a 409 is returned (install already running), surface an inline "install already in progress" message with the live stream attached.
+- "Enable OSS" button is disabled whenever any required Tier-1 tool is ❌; only enabled when all required tools are present. POSTs to `/enable`.
 
 ### 5. Scan progress row
 
@@ -111,6 +111,8 @@ Jinja reproduction tests (per I-00033 pattern in `tests/integration/`):
   - Frame shows "Install OSS" when disabled, pill when enabled.
   - CLI block expands / collapses; emits correct command text.
   - Install modal lists tools in expected order.
+  - Install modal "Install now" button has `hx-post="/projects/{id}/oss/install"` and the post-complete refresh attributes target `GET /projects/{id}/oss/tools` — assert on the attribute strings (not shape).
+  - Install modal "Enable OSS" button is disabled when any Tier-1 tool is missing and enabled otherwise (cover both states).
   - Domain card folds + shows finding counts by severity.
 - Shape-only assertions forbidden — verify semantic content (icons, text labels, button states).
 

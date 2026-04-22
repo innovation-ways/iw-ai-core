@@ -35,6 +35,9 @@ One test per Boundary Behavior row:
 - scan errored → pill previous color, banner with stdout_tail, rescan button
 - HEAD advanced → stale banner, annotated pill
 - Tier-1 missing → install modal preselected, Scan disabled
+- install job in progress → 409 on second POST /install for the same project
+- install job non-zero exit → `status='error'`, `stdout_tail` populated; `GET /tools` re-fetch still shows the tool as missing; Retry button present
+- install job success → `status='complete'`, `exit_code=0`; `GET /tools` re-fetch shows all Tier-1 tools ✅; Enable-OSS button becomes enabled
 - concurrent scan → 409 + toast (client code) / 409 in API (server)
 - SSE disconnect → replay-on-reconnect sends tail events
 - prepare on dirty tree → throwaway worktree, user's tree untouched (spot check via fixture)
@@ -49,7 +52,7 @@ One test per Boundary Behavior row:
 ### 3. Invariant tests
 
 One test per invariant from the design doc:
-- Inv #1 (no working-tree mutation): prepare via dashboard → user's working tree hash unchanged
+- Inv #1 (no working-tree mutation): prepare via dashboard → user's working tree hash unchanged; also assert install jobs never create a worktree (`worktree_path` null for any `kind='install'` job)
 - Inv #2 (monotonic status): attempting to transition running→queued fails or is ignored
 - Inv #3 (orphan recovery): insert a `running` job older than startup → on service init, becomes `error`; matching `/tmp/oss-*` removed
 - Inv #4 (SSE idempotent replay): same as dashboard_sse test above
