@@ -529,6 +529,14 @@ cmd_dashboard() {
 cmd_start() {
   print_header "Starting IW AI Core"
   cmd_db start || return 1
+  # Fail-fast on identity mismatch before touching anything else
+  if ! uv run iw db-identity check >/dev/null 2>&1; then
+    local id_err
+    id_err=$(uv run iw db-identity check 2>&1)
+    print_err "DB identity mismatch — refusing to start."
+    echo "$id_err" | sed 's/^/  /' >&2
+    return 1
+  fi
   print_info "Running migrations..."
   uv run alembic upgrade head || { print_err "Alembic migrations failed — aborting start"; return 1; }
   print_ok "Migrations up to date"
@@ -564,6 +572,26 @@ cmd_status() {
     print_ok "PostgreSQL: accepting connections (${DB_HOST}:${DB_PORT}/${DB_NAME})"
   else
     print_err "PostgreSQL: not reachable"
+  fi
+
+  # DB identity check
+  local identity_output identity_exit
+  identity_output=$(uv run iw db-identity check 2>&1); identity_exit=$?
+  if [[ "$identity_exit" -eq 0 ]]; then
+    local short_uuid
+    short_uuid=$(echo "$identity_output" | grep -oE '[0-9a-f]{8}' | head -1 || echo "?")
+    if echo "$identity_output" | grep -q "BOOTSTRAP"; then
+      print_warn "DB identity: UNVERIFIED (bootstrap mode — add IW_CORE_EXPECTED_INSTANCE_ID to .env)"
+    else
+      print_ok "DB identity: PASS ($short_uuid)"
+    fi
+  elif [[ "$identity_exit" -eq 2 ]]; then
+    print_err "DB identity: FAIL (expected!=actual)"
+    echo "$identity_output" | sed 's/^/      /' >&2
+  elif [[ "$identity_exit" -eq 3 ]]; then
+    print_err "DB identity: row missing from iw_core_instance"
+  else
+    print_err "DB identity: could not connect"
   fi
 
   # Daemon

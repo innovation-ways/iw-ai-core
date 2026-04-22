@@ -83,9 +83,7 @@ class TestItemReportCli:
         with patch("orch.cli.item_commands.assemble_execution_report") as mock_assemble:
             mock_assemble.side_effect = ValueError(f"Work item {item_id} not found")
             result = runner.invoke(item_report, [item_id], obj=ctx_obj)
-            assert result.exit_code == 1, (
-                f"exception: {result.exception}, output: {result.output}"
-            )
+            assert result.exit_code == 1, f"exception: {result.exception}, output: {result.output}"
 
     def test_exit_code_2_on_path_resolution_failure(self) -> None:
         from orch.daemon.execution_report import ExecutionReportResolutionError
@@ -256,9 +254,7 @@ class TestItemReportCliNoDiskWrite:
             with patch("orch.cli.item_commands.render_execution_report_markdown") as mock_render:
                 mock_render.return_value = "Markdown output"
                 with patch("orch.cli.item_commands.write_execution_report") as mock_write:
-                    result = runner.invoke(
-                        item_report, [item_id, "--stdout"], obj=ctx_obj
-                    )
+                    result = runner.invoke(item_report, [item_id, "--stdout"], obj=ctx_obj)
                     mock_write.assert_not_called()
                     assert result.exit_code == 0, (
                         f"exception: {result.exception}, output: {result.output}"

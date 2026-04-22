@@ -9,6 +9,7 @@ requires annotations to be resolved at import time for mapper configuration.
 """
 
 import enum
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -16,19 +17,21 @@ from sqlalchemy import (
     ARRAY,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
+    SmallInteger,
     Text,
     UniqueConstraint,
     func,
     text,
 )
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # ---------------------------------------------------------------------------
@@ -783,6 +786,28 @@ class MigrationLock(Base):
     __table_args__ = (
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
         {"comment": "Exclusive lock per project for Alembic migration creation"},
+    )
+
+
+class IwCoreInstance(Base):
+    """Orchestration DB identity fingerprint — single-row table.
+
+    The CHECK constraint (id = 1) guarantees exactly one row can ever exist.
+    instance_id is a randomly-generated UUID assigned at first deployment;
+    every subsequent deployment seeds the same row via ON CONFLICT DO NOTHING.
+    See CR-00014.
+    """
+
+    __tablename__ = "iw_core_instance"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_iw_core_instance_single_row"),
+        {"comment": "Orchestration DB identity fingerprint — see CR-00014"},
+    )
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    instance_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 
