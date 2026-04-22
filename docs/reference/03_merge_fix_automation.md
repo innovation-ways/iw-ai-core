@@ -224,7 +224,11 @@ YOUR TASK:
 1. Update the `down_revision` in the newly added migration file(s) to point to the
    current head, creating a linear chain
 2. Run `alembic heads` to verify only 1 head remains
-3. Run `alembic upgrade head` to verify the migration applies cleanly
+Verification is now automatic: the daemon's merge pipeline dry-runs the
+migration against a testcontainer before merging. If dry-run fails, the
+batch is marked MIGRATION_INVALID and the fix-cycle is triggered.
+See docs/IW_AI_Core_Migration_Checklist.md and
+docs/IW_AI_Core_Agent_Constraints.md (R2).
 
 RULES:
 - Only modify the `down_revision` field in the new migration file(s)

@@ -229,9 +229,11 @@ class TestMergeItem:
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         long_output = "x" * 5000
 
-        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+        with (
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+            patch("orch.daemon.merge_queue._cleanup_worktree"),
+        ):
             mock_run.return_value = MagicMock(returncode=0, stdout=long_output, stderr="")
-            with patch("orch.daemon.merge_queue._cleanup_worktree"):
-                _merge_item(db, item, "test-proj", make_project_config())
+            _merge_item(db, item, "test-proj", make_project_config())
 
         assert len(item.merge_info["stdout"]) == 1000

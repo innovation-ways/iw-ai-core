@@ -1,0 +1,282 @@
+"""Migration pipeline — 3-phase orchestration for daemon-driven migration application.
+
+Phase 1 (dry_run):  Daemon spins a short-lived testcontainer Postgres, applies
+                    pending revisions, runs integration tests, then tears down.
+Phase 2 (apply):    After squash-merge, daemon applies migrations to live DB.
+Phase 3 (rollback): If Phase 2 fails, daemon attempts one alembic downgrade -1.
+
+Integration points:
+- merge_queue.py  — calls pipeline before/after squash-merge
+- safe_migrate.py — all DB-mutating alembic calls go through here
+- batch_manager.py — sets IW_CORE_AGENT_CONTEXT=true on agent subprocess env
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from typing import Any, Literal
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, sessionmaker
+
+from orch.config import get_db_url
+from orch.db.safe_migrate import apply as safe_apply
+from orch.db.safe_migrate import dry_run as safe_dry_run
+from orch.db.safe_migrate import rollback as safe_rollback
+
+logger = logging.getLogger(__name__)
+
+MIGRATIONS_SCRIPT_LOCATION = str(__file__.rsplit("/orch/daemon/", 1)[0] + "/orch/db/migrations")
+ALEMBIC_MIGRATIONS_DIR = MIGRATIONS_SCRIPT_LOCATION
+
+
+# ---------------------------------------------------------------------------
+# PipelineResult dataclass
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PipelineResult:
+    phase: Literal["dry_run", "apply", "rollback"]
+    success: bool
+    final_batch_state: str
+    frozen: bool
+    message: str
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — Pre-merge dry-run
+# ---------------------------------------------------------------------------
+
+
+def run_pre_merge_dry_run(batch_id: int) -> PipelineResult:
+    """Phase 1: Spin testcontainer, apply pending revisions, run integration tests.
+
+    On failure → batch marked MIGRATION_INVALID, no merge proceeds.
+    On success → batch marked 'proceed_to_merge'.
+    """
+    from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
+
+    logger.info("[pipeline] Phase 1 dry-run starting for batch %d", batch_id)
+
+    container: PostgresContainer | None = None
+    try:
+        container = PostgresContainer("postgres:15-alpine")
+        container.start()
+        tempdb_url = container.get_connection_url().replace(
+            "postgresql+psycopg2://", "postgresql+psycopg://"
+        )
+
+        result = safe_dry_run(tempdb_url, batch_id=batch_id)
+
+        if not result.success:
+            return PipelineResult(
+                phase="dry_run",
+                success=False,
+                final_batch_state="MIGRATION_INVALID",
+                frozen=False,
+                message=result.error_message or "Dry-run failed",
+            )
+
+        return PipelineResult(
+            phase="dry_run",
+            success=True,
+            final_batch_state="proceed_to_merge",
+            frozen=False,
+            message=f"Dry-run succeeded ({result.duration_ms}ms)",
+        )
+
+    except Exception as exc:
+        logger.exception("[pipeline] Phase 1 dry-run error for batch %d", batch_id)
+        return PipelineResult(
+            phase="dry_run",
+            success=False,
+            final_batch_state="MIGRATION_INVALID",
+            frozen=False,
+            message=f"Phase 1 error: {exc}",
+        )
+
+    finally:
+        if container is not None:
+            try:
+                container.stop()
+            except Exception:
+                logger.warning("[pipeline] Failed to stop testcontainer for batch %d", batch_id)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Post-merge apply
+# ---------------------------------------------------------------------------
+
+
+def run_post_merge_apply(batch_id: int) -> PipelineResult:
+    """Phase 2: Apply pending migrations to the live DB after squash-merge.
+
+    On failure → triggers Phase 3 rollback.
+    On success → no state change (item already merged).
+    """
+    live_url = get_db_url()
+    logger.info("[pipeline] Phase 2 apply starting for batch %d", batch_id)
+
+    try:
+        result = safe_apply(live_url, batch_id=batch_id)
+
+        if not result.success:
+            logger.warning(
+                "[pipeline] Phase 2 apply failed for batch %d — triggering rollback",
+                batch_id,
+            )
+            return PipelineResult(
+                phase="apply",
+                success=False,
+                final_batch_state="rollback_triggered",
+                frozen=False,
+                message=result.error_message or "Apply failed",
+            )
+
+        return PipelineResult(
+            phase="apply",
+            success=True,
+            final_batch_state="merged",
+            frozen=False,
+            message=f"Applied successfully ({result.duration_ms}ms)",
+        )
+
+    except Exception as exc:
+        logger.exception("[pipeline] Phase 2 apply error for batch %d", batch_id)
+        return PipelineResult(
+            phase="apply",
+            success=False,
+            final_batch_state="rollback_triggered",
+            frozen=False,
+            message=f"Phase 2 error: {exc}",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Rollback on apply failure
+# ---------------------------------------------------------------------------
+
+
+def run_rollback(batch_id: int) -> PipelineResult:
+    """Phase 3: Attempt alembic downgrade -1 on the live DB.
+
+    On success → batch marked MIGRATION_ROLLED_BACK.
+    On failure → merge_queue_frozen flag set, subsequent merges halted.
+    """
+    live_url = get_db_url()
+    logger.info("[pipeline] Phase 3 rollback starting for batch %d", batch_id)
+
+    try:
+        result = safe_rollback(live_url, steps=1, batch_id=batch_id)
+
+        if not result.success:
+            set_merge_queue_frozen(
+                active=True,
+                reason=f"Rollback failed for batch {batch_id}: {result.error_message}",
+                acknowledged_by=None,
+            )
+            return PipelineResult(
+                phase="rollback",
+                success=False,
+                final_batch_state="MIGRATION_ROLLED_BACK",
+                frozen=True,
+                message=result.error_message or "Rollback failed",
+            )
+
+        return PipelineResult(
+            phase="rollback",
+            success=True,
+            final_batch_state="MIGRATION_ROLLED_BACK",
+            frozen=False,
+            message=f"Rollback succeeded ({result.duration_ms}ms)",
+        )
+
+    except Exception as exc:
+        logger.exception("[pipeline] Phase 3 rollback error for batch %d", batch_id)
+        set_merge_queue_frozen(
+            active=True,
+            reason=f"Rollback error for batch {batch_id}: {exc}",
+            acknowledged_by=None,
+        )
+        return PipelineResult(
+            phase="rollback",
+            success=False,
+            final_batch_state="MIGRATION_ROLLED_BACK",
+            frozen=True,
+            message=f"Phase 3 error: {exc}",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Merge-queue frozen flag
+# ---------------------------------------------------------------------------
+
+
+def is_merge_queue_frozen() -> bool:
+    """Return True if the merge queue is currently frozen.
+
+    Reads the latest daemon_events row with event_type='merge_queue_frozen'
+    and returns its metadata.active field (defaults to False).
+    """
+    db_url = get_db_url()
+    engine = create_engine(db_url, pool_pre_ping=True)
+    session_factory = sessionmaker(bind=engine)
+    session: Session = session_factory()
+    try:
+        result = session.execute(
+            text(
+                "SELECT event_metadata FROM daemon_events "
+                "WHERE event_type = 'merge_queue_frozen' "
+                "ORDER BY created_at DESC LIMIT 1"
+            )
+        )
+        row = result.fetchone()
+        if row is None:
+            return False
+        metadata = row[0]
+        return bool(metadata.get("active", False)) if metadata else False
+    except Exception:
+        return False
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def set_merge_queue_frozen(
+    active: bool,
+    reason: str,
+    acknowledged_by: str | None = None,
+) -> None:
+    """Write a merge_queue_frozen daemon_events row.
+
+    Used by Phase 3 (on rollback fail) and by the `iw merge-queue unfreeze` CLI.
+    """
+    from orch.db.models import DaemonEvent
+
+    db_url = get_db_url()
+    engine = create_engine(db_url, pool_pre_ping=True)
+    session_factory = sessionmaker(bind=engine)
+    session: Session = session_factory()
+    try:
+        metadata: dict[str, Any] = {
+            "active": active,
+            "reason": reason,
+        }
+        if acknowledged_by is not None:
+            metadata["acknowledged_by"] = acknowledged_by
+
+        event = DaemonEvent(
+            project_id=None,
+            event_type="merge_queue_frozen",
+            entity_id=None,
+            entity_type=None,
+            message=reason,
+            event_metadata=metadata,
+        )
+        session.add(event)
+        session.commit()
+    finally:
+        session.close()
+        engine.dispose()
