@@ -6,6 +6,32 @@
 
 ---
 
+## ⛔ Docker is off-limits
+
+You MUST NOT execute ANY of the following commands or any command that
+changes Docker container/volume/network state:
+
+  docker kill | docker stop | docker rm | docker restart
+  docker compose up | docker compose down | docker compose restart
+  docker-compose up | docker-compose down | docker-compose restart
+  docker volume rm | docker volume prune
+  docker system prune | docker container prune | docker image prune
+
+The orchestration database, daemon, dashboard, and any long-lived
+infrastructure containers are outside your scope. Touching them can
+cause multi-hour outages and data loss (2026-04-22 incident).
+
+Allowed:
+  1. Testcontainers spun up by pytest fixtures (they self-destruct via Ryuk).
+  2. Read-only introspection: docker ps | inspect | logs.
+  3. Invocations through ./ai-core.sh or make targets.
+
+If your task seems to require a prohibited command, STOP and raise a
+blocker. Do not work around this rule. If a testcontainer appears
+stuck, rely on pytest teardown / Ryuk — never `docker kill` it.
+
+---
+
 ## Input Files
 
 - `ai-dev/active/F-00058/F-00058_Feature_Design.md` — Boundary Behavior + Invariants
