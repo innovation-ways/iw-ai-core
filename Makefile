@@ -60,11 +60,13 @@ allure-clean:
 check: quality test
 
 # --- Database ---
+COMPOSE_BOOTSTRAP := docker compose -f docker-compose.bootstrap.yml
+
 db-up:
-	docker compose up -d db
+	COMPOSE_PROJECT_NAME=iw-ai-core $(COMPOSE_BOOTSTRAP) up -d db
 
 db-down:
-	docker compose down
+	COMPOSE_PROJECT_NAME=iw-ai-core $(COMPOSE_BOOTSTRAP) down
 
 db-migrate:
 	uv run alembic upgrade head

@@ -30,7 +30,10 @@ Single **daemon** polls PostgreSQL (port 5433) every 60s, picks approved batches
 - **CRITICAL**: `DaemonEvent.metadata` is named `event_metadata` in Python — SQLAlchemy reserves `metadata`
 - **NEVER** use `agent-browser` for browser automation — use `playwright-cli` exclusively
 - **NEVER** run `npx playwright install` or modify `.playwright/cli.config.json`
-- **NEVER** run `docker kill`, `docker stop`, `docker rm`, `docker restart`, `docker compose up|down|restart`, `docker-compose up|down|restart`, `docker volume rm|prune`, or `docker system|container|image prune` — these can clobber shared infrastructure (see 2026-04-22 incident). Full policy: `docs/IW_AI_Core_Agent_Constraints.md`. Exceptions: read-only `docker ps|inspect|logs`, testcontainers via pytest, and `./ai-core.sh` / `make` targets.
+- **NEVER** run `docker compose up` (with or without `-d db`) against the
+  orchestration DB from any directory — the default compose file is empty
+  and the bootstrap file requires an explicit `-f` flag. Use `./ai-core.sh
+  db start` instead. See `docs/IW_AI_Core_DB_Setup.md`.
 
 ## Configuration
 
@@ -39,7 +42,18 @@ Key vars: `IW_CORE_DB_HOST`, `IW_CORE_DB_PORT` (5433), `IW_CORE_DB_NAME`, `IW_CO
 
 ## Live DB Setup
 
-Port 5433: pre-existing `postgres` Docker container (not docker-compose managed). If `make db-up` fails with "port already allocated", the DB is already running — skip to `make db-migrate`.
+**Port 5433** — pre-existing `postgres` Docker container (NOT docker-compose managed in production).
+
+The default `docker-compose.yml` at the project root is **intentionally empty**.
+The `db` service lives in `docker-compose.bootstrap.yml` and is invoked only
+with `-f docker-compose.bootstrap.yml up -d db` — never implicitly. This
+prevents `docker compose up` from a worktree creating a rogue empty volume
+that clobbers the production DB (the 2026-04-22 data-loss incident).
+
+See [`docs/IW_AI_Core_DB_Setup.md`](docs/IW_AI_Core_DB_Setup.md) for both setup paths.
+
+**Never run `docker compose up` or `docker compose up -d db` in any form
+against the orchestration DB.** Always go through `./ai-core.sh db start`.
 
 ## Common Commands
 
@@ -78,9 +92,11 @@ playwright-cli -s=<name> open <url>  # Named session (for auth persistence)
 | Document | What It Contains |
 |----------|-----------------|
 | `docs/IW_AI_Core_Database_Schema.md` | DDL, ENUMs, state machines, trigger code |
+| `docs/IW_AI_Core_DB_Setup.md` | DB setup (production vs. bootstrap) and 2026-04-22 incident |
 | `docs/IW_AI_Core_Tech_Stack.md` | Technology choices, test fixtures, Makefile |
 | `docs/IW_AI_Core_Architecture.md` | System layout, end-to-end flow |
 | `docs/IW_AI_Core_CLI_Spec.md` | Every `iw` command: inputs, outputs, DB ops |
 | `docs/IW_AI_Core_Daemon_Design.md` | Daemon loop, state transitions, monitoring |
+| `docs/IW_AI_Core_Agent_Constraints.md` | Docker/migration off-limits rules (R1, R2) |
 | `docs/IW_AI_Core_Dashboard_Design.md` | Dashboard pages, htmx patterns, SSE |
 | `docs/implementation/00_INDEX.md` | 16-step implementation plan |

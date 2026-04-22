@@ -208,24 +208,19 @@ cmd_db() {
   shift || true
   case "$sub" in
     start)
-      # Guard: if DB is already reachable, do NOT call docker compose — that
-      # could swap in a fresh empty volume (the incident that bit us today).
       if db_ready; then
         print_ok "Database already accepting connections (${DB_HOST}:${DB_PORT}/${DB_NAME})"
         return 0
       fi
       print_info "Starting database container..."
-      # Export a stable project name so the volume is always named
-      # iw-ai-core_pgdata regardless of the cwd the script is invoked from
-      # (prevents a git worktree from creating a new empty volume).
-      COMPOSE_PROJECT_NAME=iw-ai-core docker compose up -d db
+      COMPOSE_PROJECT_NAME=iw-ai-core docker compose -f docker-compose.bootstrap.yml up -d db
       print_info "Waiting for PostgreSQL..."
       wait_for_db 20 || return 1
       print_ok "Database ready (${DB_HOST}:${DB_PORT}/${DB_NAME})"
       ;;
     stop)
       print_info "Stopping database container..."
-      docker compose stop db
+      COMPOSE_PROJECT_NAME=iw-ai-core docker compose -f docker-compose.bootstrap.yml stop db
       print_ok "Database stopped"
       ;;
     restart)
@@ -259,7 +254,7 @@ cmd_db() {
       uv run alembic revision --autogenerate -m "$msg"
       ;;
     logs)
-      docker compose logs -f db
+      COMPOSE_PROJECT_NAME=iw-ai-core docker compose -f docker-compose.bootstrap.yml logs -f db
       ;;
     shell)
       print_info "Opening psql (${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME})..."
