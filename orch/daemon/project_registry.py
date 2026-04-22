@@ -124,13 +124,26 @@ def load_projects_toml(path: Path) -> dict[str, ProjectConfig]:
     """Parse projects.toml and return a {project_id: ProjectConfig} mapping.
 
     Projects with invalid config are skipped (logged as warnings).
-    Returns an empty dict if the file is empty or has no [projects] section.
+    Returns an empty dict if the file is empty, has no [projects] section,
+    or fails to parse. To distinguish parse failure from "file has no
+    projects", call :func:`try_load_projects_toml` instead.
+    """
+    result = try_load_projects_toml(path)
+    return {} if result is None else result
+
+
+def try_load_projects_toml(path: Path) -> dict[str, ProjectConfig] | None:
+    """Parse projects.toml, returning None on TOML syntax errors.
+
+    Distinguishes "file is valid but empty" (→ ``{}``) from "file is
+    unparseable" (→ ``None``). Used by :class:`ProjectRegistry` to avoid
+    wiping the in-memory registry when the file is temporarily corrupt.
     """
     try:
         raw = tomllib.loads(path.read_text())
     except tomllib.TOMLDecodeError as exc:
         logger.error("Failed to parse projects.toml at %s: %s", path, exc)
-        return {}
+        return None
 
     projects_section: dict[str, Any] = raw.get("projects", {})
     result: dict[str, ProjectConfig] = {}
@@ -232,15 +245,27 @@ class ProjectRegistry:
     def reload(self) -> tuple[dict[str, ProjectConfig], dict[str, str]]:
         """Re-read projects.toml and return the new projects plus a change summary.
 
+        If the file fails to parse (e.g. a SIGHUP fires mid-edit or a test
+        leaked duplicate ``[projects.x]`` tables), the in-memory registry is
+        preserved and an empty change set is returned — better to keep the
+        last-known-good state than to silently mark every project as removed.
+
         Returns:
             (new_projects, changes) where changes maps project_id → one of:
             "added", "removed", "disabled", "enabled", "unchanged".
         """
-        new_projects = load_projects_toml(self.path)
+        new_projects = try_load_projects_toml(self.path)
         try:
             self._mtime = self.path.stat().st_mtime
         except OSError:
             self._mtime = 0.0
+
+        if new_projects is None:
+            logger.warning(
+                "projects.toml is unparseable — preserving previous registry of %d project(s)",
+                len(self._projects),
+            )
+            return dict(self._projects), {}
 
         changes: dict[str, str] = {}
         old = self._projects

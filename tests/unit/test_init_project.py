@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from orch.skills.init_project import init_project
+from orch.skills.init_project import ProjectsTomlError, init_project
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -167,3 +167,55 @@ def test_result_db_rows_created(tmp_path: Path) -> None:
     assert any("projects" in row for row in result.db_rows_created)
     assert any("id_sequences" in row for row in result.db_rows_created)
     assert any("migration_locks" in row for row in result.db_rows_created)
+
+
+# ---------------------------------------------------------------------------
+# projects.toml idempotency — regression for the duplicate-table corruption
+# ---------------------------------------------------------------------------
+
+
+def test_projects_toml_append_is_idempotent(tmp_path: Path) -> None:
+    """Registering the same project twice must not duplicate the TOML table.
+
+    Duplicate [projects.x] tables make tomllib refuse to parse the file,
+    which silently clears the daemon's in-memory project registry and
+    halts all work items.
+    """
+    repo_path = tmp_path / "proj"
+    repo_path.mkdir()
+    platform_root = _make_platform_root(tmp_path)
+    session = _make_mock_session()
+
+    init_project("my-proj", repo_path, "My Project", session, platform_root=platform_root)
+    result2 = init_project("my-proj", repo_path, "My Project", session, platform_root=platform_root)
+
+    toml_content = (platform_root / "projects.toml").read_text()
+    assert toml_content.count("[projects.my-proj]") == 1
+    assert result2.projects_toml_updated is False
+
+    import tomllib
+
+    # Must still parse cleanly after the second init_project call
+    parsed = tomllib.loads(toml_content)
+    assert "my-proj" in parsed["projects"]
+
+
+def test_init_project_refuses_corrupt_projects_toml(tmp_path: Path) -> None:
+    """If projects.toml is already unparseable, init_project must fail loudly.
+
+    Appending to a broken file would compound the corruption and keep the
+    daemon stuck on its next reload.
+    """
+    import pytest
+
+    repo_path = tmp_path / "proj"
+    repo_path.mkdir()
+    platform_root = _make_platform_root(tmp_path)
+    # Corrupt the file with a duplicate table
+    (platform_root / "projects.toml").write_text(
+        "[projects.dup]\nrepo_root='/tmp/a'\n[projects.dup]\nrepo_root='/tmp/b'\n"
+    )
+    session = _make_mock_session()
+
+    with pytest.raises(ProjectsTomlError):
+        init_project("new-proj", repo_path, "New Proj", session, platform_root=platform_root)
