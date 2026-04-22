@@ -5,6 +5,35 @@
 
 ---
 
+## ⛔ Docker is off-limits
+
+You MUST NOT execute ANY of the following commands or any command that
+changes Docker container/volume/network state:
+
+  docker kill | docker stop | docker rm | docker restart
+  docker compose up | docker compose down | docker compose restart
+  docker-compose up | docker-compose down | docker-compose restart
+  docker volume rm | docker volume prune
+  docker system prune | docker container prune | docker image prune
+
+The orchestration database, daemon, dashboard, and any long-lived
+infrastructure containers are outside your scope. Touching them can
+cause multi-hour outages and data loss (see the 2026-04-22 incident in
+docs/IW_AI_Core_DB_Setup.md).
+
+Allowed exceptions:
+
+  1. Testcontainers spun up by pytest fixtures (they self-label and
+     self-destruct via Ryuk).
+  2. Read-only introspection: `docker ps`, `docker inspect`, `docker logs`.
+  3. Invoking `./ai-core.sh` or `make` targets — those know which
+     commands are safe.
+
+If your task seems to require a prohibited command, STOP and raise a
+blocker. Do not work around this rule.
+
+Full policy: docs/IW_AI_Core_Agent_Constraints.md
+
 ## Input Files
 
 - `ai-dev/work/{ID}/{ID}_{Type}_Design.md` -- Design document
