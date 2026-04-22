@@ -1,0 +1,104 @@
+{
+  "id": "CR-00013",
+  "type": "ChangeRequest",
+  "title": "Dashboard navigation performance — eliminate multi-second hangs between pages",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Backend: request-timing middleware + pool-status logging; explicit DB pool config with env vars; TTL cache for worktree-badge; TTL cache for _git_branch_and_stats and /worktrees page git calls; asyncio-aware sleep in daemon_control",
+      "prompt": "prompts/CR-00013_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review: S01 (middleware placement, pool kwargs, cache concurrency safety, no leaked DB sessions, asyncio correctness)",
+      "prompt": "prompts/CR-00013_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Backend: eliminate N+1s in _project_stats, _active_batches, _batch_item_rows, _get_steps, _query_failed_steps",
+      "prompt": "prompts/CR-00013_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review: S03 (bounded query counts, correct aggregation semantics, no behavior regression, query counts asserted in tests)",
+      "prompt": "prompts/CR-00013_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "frontend-impl",
+      "description": "Frontend: prebuilt Tailwind CSS with make target (relax base.html CDN JIT + update dashboard/CLAUDE.md); move Mermaid/hljs/DOMPurify/streaming-markdown into per-page {% block head %}; self-host Inter font",
+      "prompt": "prompts/CR-00013_S05_Frontend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Code review: S05 (no dynamic Tailwind class construction, prebuilt CSS coverage, page-by-page lazy-load correctness, no fonts.googleapis.com leaks, CLAUDE.md consistency)",
+      "prompt": "prompts/CR-00013_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "tests-impl",
+      "description": "Tests: pool config unit, TTL cache unit, timing middleware unit, N+1 regression (query-count assertions) for all 5 hotspots, badge endpoint integration (cache hit = zero subprocess), base.html render + prebuilt-CSS presence",
+      "prompt": "prompts/CR-00013_S07_Tests_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Code review: S07 (tests fail on pre-change code, testcontainer compliance, semantic assertions not shape-only, no live-DB connections, fixture reuse)",
+      "prompt": "prompts/CR-00013_S08_CodeReview_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-layer review: observability + pool + caching + N+1 + frontend integration; AC1–AC8 coverage; no regressions on adjacent routes; CLAUDE.md compliance",
+      "prompt": "prompts/CR-00013_S09_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint (ruff + JS syntax)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format (ruff)"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "uv run mypy orch/ dashboard/",
+      "description": "QV: Typecheck (mypy)"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S15",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — visual parity, sidebar badge still functional, Mermaid/hljs pages still render, no console errors, nav no longer hangs",
+      "prompt": "prompts/CR-00013_S15_BrowserVerification_prompt.md"
+    }
+  ]
+}
