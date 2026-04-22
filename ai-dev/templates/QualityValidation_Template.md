@@ -34,21 +34,39 @@ blocker. Do not work around this rule.
 
 Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
-## Input Files
+## ⛔ Migrations: agents generate, daemon applies
 
-- `ai-dev/work/{ID}/{ID}_{Type}_Design.md` -- Design document
-- Workflow manifest or project Makefile -- for gate commands
-- `CLAUDE.md` -- for project-specific test and quality commands
+You MUST NOT run the following alembic commands against the live
+orchestration DB (port 5433) from an agent context:
 
-## Output Files
+```
+alembic upgrade head
+alembic upgrade <revision>
+alembic downgrade <anything>
+alembic stamp <anything>
+```
 
-- `ai-dev/work/{ID}/reports/{ID}_S{NN}_QualityValidation_report.md` -- QV report
+Your job in a Database step is to WRITE the migration FILE. The daemon
+will apply it as part of the merge pipeline (pre-merge dry-run against
+a testcontainer, post-merge apply to live DB). If the migration is
+broken, the daemon will refuse to merge the batch.
 
-## Context
+Allowed for agents:
+  - alembic revision --autogenerate -m "..."   (writes a file only)
+  - alembic history / current / show           (read-only)
+  - Running migrations inside testcontainer fixtures
+    (tests/conftest.py does this — agents don't call it directly)
 
-You are running the **Quality Validation** gate for **{Work Item Title}**. This is a pass/fail checkpoint: every gate must pass before the work item can be merged.
+Allowed for OPERATORS only (not agents):
+  - uv run iw migrations list-pending          (read-only, safe for anyone)
+  - uv run iw migrations dry-run               (testcontainer, safe)
+  - uv run iw migrations apply --i-am-operator (refuses if IW_CORE_AGENT_CONTEXT=true)
+  - Direct invocation via ./ai-core.sh or make db-migrate (operator entry points)
 
-Read `CLAUDE.md` and the project Makefile to determine the exact commands for each gate.
+If your task seems to require applying a migration to the live DB,
+STOP and raise a blocker. Do not work around this rule.
+
+Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
 ## Quality Gates
 

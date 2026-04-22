@@ -39,6 +39,21 @@ This document specifies the exact technologies, libraries, and tooling for IW AI
 | Driver | psycopg (v3) | 3.1+ | LGPL-3.0 | — |
 | ORM | SQLAlchemy | 2.0+ (sync) | MIT | — |
 | Migrations | Alembic | 1.13+ | MIT | — |
+| Migration model | Agent writes file, daemon applies (R2 policy) | — | — |
+
+**Migration model** (R2): Agents generate migration files only. The daemon's
+merge pipeline applies them in three phases:
+
+```
+Phase 1 (pre-merge):   dry-run against fresh testcontainer
+                       → fail: MIGRATION_INVALID, fix-cycle triggered
+Phase 2 (post-merge):  apply to live DB (port 5433)
+                       → fail: auto-rollback attempted
+Phase 3 (rollback):    if Phase 2 rollback fails → merge queue frozen
+```
+
+Agents MUST NOT run `alembic upgrade head` against the live DB. See
+[`docs/IW_AI_Core_Agent_Constraints.md`](docs/IW_AI_Core_Agent_Constraints.md) (R2).
 | Env loading | python-dotenv | 1.0+ | BSD-3 | — |
 
 **Why sync SQLAlchemy**: The daemon is a single-threaded polling loop. Async adds complexity (event loop management, async session scoping) for zero benefit. The CLI is also synchronous — call, get result, exit.
