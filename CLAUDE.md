@@ -1,6 +1,6 @@
 # IW AI Core — CLAUDE.md
 
-AI orchestration platform managing AI-assisted development workflows across multiple projects.
+AI orchestration platform that drives AI-assisted development across multiple projects: schedules LLM agents in git worktrees, aggregates background jobs, and surfaces a web UI for code understanding, docs, research, tests, and batch control.
 
 ## Quick Navigation
 
@@ -11,14 +11,31 @@ AI orchestration platform managing AI-assisted development workflows across mult
 | Daemon logic | `orch/daemon/` · `docs/IW_AI_Core_Daemon_Design.md` |
 | Dashboard routes/templates | `dashboard/` · see `dashboard/CLAUDE.md` |
 | Executor bash scripts | `executor/` · see `executor/CLAUDE.md` |
+| Code Understanding (RAG) | `orch/rag/` · see `orch/rag/CLAUDE.md` |
+| Doc generation & versioning | `orch/doc_service.py` · `orch/doc_sections.py` · `orch/doc_diff.py` |
+| Test/Quality run engine | `orch/test_runner.py` · launched from `dashboard/routers/tests.py` & `quality.py` |
+| Unified jobs view | `orch/jobs/aggregator.py` · `dashboard/routers/jobs_ui.py` |
+| DB instance identity (CR-00014) | `orch/db/identity.py` · `dashboard/routers/healthz.py` |
 | Test patterns & rules | `tests/conftest.py` · see `tests/CLAUDE.md` |
-| Configuration | `orch/config.py` (reads `.env`) |
+| Configuration | `orch/config.py` (reads `.env`) · `projects.toml` |
 | Migrations | `orch/db/migrations/versions/` |
 | Skills master copies | `skills/` (synced to each project via `iw skills sync`) |
+| Editorial guidelines (doc system) | `doc-system/` (brand, catalog, editorial) |
 
 ## Architecture
 
-Single **daemon** polls PostgreSQL (port 5433) every 60s, picks approved batches across registered projects, creates git worktrees, launches LLM agents (opencode or claude-code), handles fix cycles, and squash-merges to main. **FastAPI dashboard** (port 9900) provides real-time visibility. **`iw` CLI** is the agent-to-DB bridge — agents call `iw step-done` to record results. All operational state lives in PostgreSQL — no files, no race conditions.
+A single **daemon** polls PostgreSQL (port 5433) every 60s, picks approved batches across registered projects, creates git worktrees, launches LLM agents (opencode or claude-code), runs fix cycles, and squash-merges to main. The daemon also polls `DocGenerationJob` (AI doc regen) and `CodeIndexJob` (LanceDB indexing).
+
+The **FastAPI dashboard** (port 9900) is the human interface. Per-project pages include:
+- **Queue / History / Batches** — design and run work items
+- **Code** — RAG-backed module browsing, symbol explainer, streaming Q&A with citations (`orch/rag/`)
+- **Docs** — project doc catalogue with versioning, HTML/PDF exports, stale detection, and diffs; a global `/docs` route spans all projects
+- **Research** — curated research documents (doc_type=research)
+- **Tests / Quality** — launch and monitor test suites and quality gates from the UI (`orch/test_runner.py`)
+- **Jobs** — unified table of background jobs (batches, code index, doc generation, research drafts)
+- **Worktrees** — git status of all active agent worktrees
+
+The **`iw` CLI** is the agent-to-DB bridge — agents call `iw step-done` to record results. All operational state lives in PostgreSQL — no files, no race conditions.
 
 ## Critical Rules
 
@@ -30,43 +47,39 @@ Single **daemon** polls PostgreSQL (port 5433) every 60s, picks approved batches
 - **CRITICAL**: `DaemonEvent.metadata` is named `event_metadata` in Python — SQLAlchemy reserves `metadata`
 - **NEVER** use `agent-browser` for browser automation — use `playwright-cli` exclusively
 - **NEVER** run `npx playwright install` or modify `.playwright/cli.config.json`
-- **NEVER** run `docker compose up` (with or without `-d db`) against the
-  orchestration DB from any directory — the default compose file is empty
-  and the bootstrap file requires an explicit `-f` flag. Use `./ai-core.sh
-  db start` instead. See `docs/IW_AI_Core_DB_Setup.md`.
+- **NEVER** run `docker compose up` (with or without `-d db`) against the orchestration DB from any directory — the default compose file is empty and the bootstrap file requires an explicit `-f` flag. Use `./ai-core.sh db start` instead. See `docs/IW_AI_Core_DB_Setup.md`.
 
 ## Configuration
 
-All config in `.env` (gitignored). **NEVER** hardcode ports, URLs, or credentials.  
-Key vars: `IW_CORE_DB_HOST`, `IW_CORE_DB_PORT` (5433), `IW_CORE_DB_NAME`, `IW_CORE_DB_USER`, `IW_CORE_DB_PASSWORD`, `IW_CORE_DASHBOARD_PORT` (9900), `IW_CORE_POLL_INTERVAL`, `IW_CORE_STALL_THRESHOLD`.
+All config in `.env` (gitignored). **NEVER** hardcode ports, URLs, or credentials.
+Key vars: `IW_CORE_DB_HOST`, `IW_CORE_DB_PORT` (5433), `IW_CORE_DB_NAME`, `IW_CORE_DB_USER`, `IW_CORE_DB_PASSWORD`, `IW_CORE_DASHBOARD_PORT` (9900), `IW_CORE_POLL_INTERVAL`, `IW_CORE_STALL_THRESHOLD`, `IW_CORE_EXPECTED_INSTANCE_ID` (DB identity pin — see `orch/db/identity.py`).
+
+Managed projects live in `projects.toml`; the daemon's `project_registry.py` syncs it to the DB on SIGHUP (`./ai-core.sh daemon reload`).
 
 ## Live DB Setup
 
 **Port 5433** — pre-existing `postgres` Docker container (NOT docker-compose managed in production).
 
-The default `docker-compose.yml` at the project root is **intentionally empty**.
-The `db` service lives in `docker-compose.bootstrap.yml` and is invoked only
-with `-f docker-compose.bootstrap.yml up -d db` — never implicitly. This
-prevents `docker compose up` from a worktree creating a rogue empty volume
-that clobbers the production DB (the 2026-04-22 data-loss incident).
+The default `docker-compose.yml` at the project root is **intentionally empty**. The `db` service lives in `docker-compose.bootstrap.yml` and is invoked only with `-f docker-compose.bootstrap.yml up -d db` — never implicitly. This prevents `docker compose up` from a worktree creating a rogue empty volume that clobbers the production DB (the 2026-04-22 data-loss incident).
 
 See [`docs/IW_AI_Core_DB_Setup.md`](docs/IW_AI_Core_DB_Setup.md) for both setup paths.
 
-**Never run `docker compose up` or `docker compose up -d db` in any form
-against the orchestration DB.** Always go through `./ai-core.sh db start`.
+**Never run `docker compose up` or `docker compose up -d db` in any form against the orchestration DB.** Always go through `./ai-core.sh db start`.
 
 ## Common Commands
 
 ```bash
+./ai-core.sh install                                # uv sync + db start + migrate
+./ai-core.sh start                                  # db → migrate → daemon → dashboard
+./ai-core.sh status                                 # full status summary (inc. DB identity)
 uv run iw --help                                    # CLI help
+uv run iw db-identity check                         # verify DB instance fingerprint
 make test-unit                                      # Fast tests (no containers)
 make test-integration                               # Tests with PostgreSQL testcontainer
 make lint                                           # ruff + node --check on dashboard/static/**/*.js
-make quality                                        # lint (ruff + JS syntax) + format-check + mypy
+make quality                                        # lint + format-check + mypy
 make check                                          # quality + all tests
 make db-migrate                                     # alembic upgrade head
-make daemon-start                                   # Start orchestration daemon
-make dashboard-start                                # Start web dashboard (port 9900)
 uv run alembic revision --autogenerate -m "MSG"     # Generate migration
 ```
 
@@ -74,7 +87,7 @@ uv run alembic revision --autogenerate -m "MSG"     # Generate migration
 
 Headless WSL/Linux — use `playwright-cli` exclusively. Binary: `~/.local/bin/playwright-cli`. Config: `.playwright/cli.config.json`.
 
-**ALWAYS** run `playwright-cli kill-all` before starting a new browser session.  
+**ALWAYS** run `playwright-cli kill-all` before starting a new browser session.
 **NEVER** call `chromium.launch()` directly, use `agent-browser`, or run install commands.
 
 ```bash
@@ -86,6 +99,20 @@ playwright-cli click <selector>      # Click an element
 playwright-cli fill <selector> <v>   # Fill a form field
 playwright-cli -s=<name> open <url>  # Named session (for auth persistence)
 ```
+
+## Top-Level Layout
+
+| Path | Purpose |
+|------|---------|
+| `orch/` | Python package: models, CLI, daemon, RAG, jobs, doc services |
+| `dashboard/` | FastAPI web UI (routers, Jinja2 templates, htmx fragments) |
+| `executor/` | Bash scripts invoked by the daemon (worktree setup/commit, step launch) |
+| `tests/` | pytest suite — `unit/`, `integration/`, `dashboard/` |
+| `skills/` | Master copies of agent skills, synced to managed projects |
+| `commands/` · `agents/` | Agent command specs (claude, opencode) |
+| `doc-system/` | Editorial config (brand, catalog, guidelines) used by doc-generator skills |
+| `templates/` · `ai-dev/templates/` | Workflow markdown + design doc templates |
+| `docs/` | Architecture, schema, CLI spec, daemon design, implementation plan |
 
 ## Docs Reference
 
@@ -99,4 +126,4 @@ playwright-cli -s=<name> open <url>  # Named session (for auth persistence)
 | `docs/IW_AI_Core_Daemon_Design.md` | Daemon loop, state transitions, monitoring |
 | `docs/IW_AI_Core_Agent_Constraints.md` | Docker/migration off-limits rules (R1, R2) |
 | `docs/IW_AI_Core_Dashboard_Design.md` | Dashboard pages, htmx patterns, SSE |
-| `docs/implementation/00_INDEX.md` | 16-step implementation plan |
+| `docs/implementation/00_INDEX.md` | Implementation plan index |

@@ -29,3 +29,4 @@ The daemon calls these scripts in sequence for each work item:
 - `step_executor.sh` writes the agent PID to a file the daemon monitors for heartbeat/stall detection
 - `worktree_commit.sh` performs a `--squash` merge — all work-item commits become a single merge commit on main
 - Worktrees live under `.worktrees/<item-id>/` in the project root (not in `iw-ai-core/`)
+- `browser_verification` steps do **not** use these scripts — their lifecycle (docker compose for the project-under-test, Playwright harness) lives in `orch/daemon/browser_env.py`, opted into per-project via `.iw-orch.json`
