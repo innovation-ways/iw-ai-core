@@ -263,6 +263,28 @@
 
     <!-- Page content area -->
     <main class="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+      {# OSS Status frame — renders above page content on every per-project
+         tab (code, tests, quality, docs, research, oss, queue, history,
+         batches, search, item-detail, batch-detail, job-detail, etc.).
+         Pages that already place the frame inline (project dashboard)
+         override this block with an empty string. #}
+      {% block oss_status_anchor %}
+        {% if current_project %}
+          <div id="oss-status-frame"
+               class="mb-4"
+               hx-get="/project/{{ current_project.id }}/oss/status"
+               hx-trigger="load"
+               hx-swap="innerHTML">
+            <div class="bg-card border border-border rounded-lg p-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+              <span>Loading OSS status…</span>
+            </div>
+          </div>
+        {% endif %}
+      {% endblock %}
       {% block breadcrumb %}{% endblock %}
       {% block content %}{% endblock %}
     </main>

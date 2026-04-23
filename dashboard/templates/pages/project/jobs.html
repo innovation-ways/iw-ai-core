@@ -33,6 +33,21 @@
 {% block title %}Jobs — {{ current_project.display_name if current_project else '' }}{% endblock %}
 
 {% block content %}
+<!-- OSS Status frame — htmx-loaded, shown on all project pages -->
+<div id="oss-status-frame"
+     class="mb-6"
+     hx-get="/project/{{ current_project.id }}/oss/status"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <div class="bg-card border border-border rounded-lg p-4 flex items-center gap-2 text-sm text-muted-foreground">
+    <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+    </svg>
+    <span>Loading OSS status…</span>
+  </div>
+</div>
+
 <div class="mb-6">
   <h1 class="text-2xl font-semibold text-foreground">Jobs</h1>
   <p class="text-muted-foreground text-sm mt-1">Background operations across this project</p>

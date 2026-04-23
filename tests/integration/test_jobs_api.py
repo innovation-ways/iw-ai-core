@@ -46,16 +46,21 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def client(db_session: Session) -> TestClient:
-    def override_get_db() -> Session:
-        return db_session
+def client(db_session: Session) -> Generator[TestClient, None, None]:
+    import os
 
-    app = create_app()
-    app.dependency_overrides[get_db] = override_get_db
+    original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
+        def override_get_db() -> Session:
+            return db_session
+
+        app = create_app()
+        app.dependency_overrides[get_db] = override_get_db
         with TestClient(app, raise_server_exceptions=True) as c:
             yield c
     finally:
+        if original is not None:
+            os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
         app.dependency_overrides.clear()
 
 

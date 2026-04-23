@@ -133,14 +133,18 @@ def oss_engine(pg_container: PostgresContainer):
     )
     engine = create_engine(url, pool_pre_ping=True)
 
-    for table in [
-        Base.metadata.tables["oss_scan"],
-        Base.metadata.tables["oss_finding"],
-        Base.metadata.tables["oss_tool_run"],
-    ]:
-        if table in Base.metadata.tables:
-            Base.metadata.remove(table)
-    Base.metadata.create_all(engine)
+    # Raw SQL below (ENGINE_SETUP_SQL) creates oss_scan/oss_finding/oss_tool_run
+    # with a custom schema. project_oss_job has an FK to oss_scan, so it must
+    # be created AFTER the raw SQL. Do NOT mutate Base.metadata — it's shared
+    # module-level state used by every other test fixture.
+    raw_sql_tables = {"oss_scan", "oss_finding", "oss_tool_run"}
+    deferred_tables = {"project_oss_job"}
+    pre_tables = [
+        t
+        for name, t in Base.metadata.tables.items()
+        if name not in raw_sql_tables and name not in deferred_tables
+    ]
+    Base.metadata.create_all(engine, tables=pre_tables)
 
     with engine.connect() as conn:
         conn.execute(text(FTS_FUNCTION_SQL))
@@ -150,6 +154,12 @@ def oss_engine(pg_container: PostgresContainer):
         conn.execute(text(MIGRATION_SQL))
         conn.execute(text(ENGINE_SETUP_SQL))
         conn.commit()
+
+    # Create project_oss_job now that oss_scan (its FK target) exists.
+    Base.metadata.create_all(
+        engine,
+        tables=[Base.metadata.tables[name] for name in deferred_tables],
+    )
 
     return engine
 

@@ -5,6 +5,7 @@ Shell scripts that manage git worktrees and LLM agent execution. Called by the d
 ## Critical Rules
 
 - **NEVER** run `docker`, `docker compose`, or `docker-compose` from executor bash scripts. Executor scripts run as part of agent workflows and inherit the R1 rule from `docs/IW_AI_Core_Agent_Constraints.md`.
+- **NEVER** invoke `alembic` from executor scripts. Migrations are daemon-driven — agents generate migration files, the daemon applies them. Executor scripts must not call `alembic upgrade` / `alembic downgrade` directly. See `docs/IW_AI_Core_Agent_Constraints.md`.
 
 ## Scripts
 

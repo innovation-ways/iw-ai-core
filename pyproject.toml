@@ -112,3 +112,4 @@ testpaths = ["tests"]
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
 ]
+env = ["IW_CORE_AGENT_CONTEXT="]

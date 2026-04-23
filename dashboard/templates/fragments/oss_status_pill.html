@@ -1,0 +1,26 @@
+{% if pill_color == 'green' %}
+  {% set color_class = 'bg-green-100 text-green-800' %}
+  {% set indicator = '🟢' %}
+{% elif pill_color == 'yellow' %}
+  {% set color_class = 'bg-yellow-100 text-yellow-800' %}
+  {% set indicator = '🟡' %}
+{% elif pill_color == 'red' %}
+  {% set color_class = 'bg-red-100 text-red-800' %}
+  {% set indicator = '🔴' %}
+{% else %}
+  {% set color_class = 'bg-muted text-muted-foreground' %}
+  {% set indicator = '⚫' %}
+{% endif %}
+
+<a href="{{ url }}"
+   class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium {{ color_class }}{% if stale %} opacity-75{% endif %}"
+   {% if stale %}title="⚠ stale: {{ stale_message }}"{% endif %}
+   aria-label="OSS status: {{ pill_color }}{% if stale %} (stale){% endif %}">
+  <span>{{ indicator }}</span>
+  {% if summary_text %}
+    <span>{{ summary_text }}</span>
+  {% endif %}
+  {% if stale %}
+    <span class="text-warning">⚠</span>
+  {% endif %}
+</a>

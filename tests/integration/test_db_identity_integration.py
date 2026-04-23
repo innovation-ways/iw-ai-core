@@ -270,7 +270,9 @@ class TestMigrationRoundtrip:
             assert row_before is not None
             uuid_before = row_before.instance_id
 
-        command.downgrade(cfg, "-1")
+        # Target the revision before iw_core_instance so the test is stable
+        # regardless of later migrations added on top.
+        command.downgrade(cfg, "824e6e6f34ee")
 
         with migrated_engine.connect() as conn:
             result = conn.execute(

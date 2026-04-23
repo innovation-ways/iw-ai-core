@@ -118,21 +118,29 @@ def oss_engine(pg_container: PostgresContainer) -> Engine:
 
     from orch.db.models import FTS_FUNCTION_SQL, FTS_TRIGGER_SQL, Base
 
-    oss_tables = [
-        Base.metadata.tables["oss_scan"],
-        Base.metadata.tables["oss_finding"],
-        Base.metadata.tables["oss_tool_run"],
+    # Raw SQL below (MIGRATION_SQL) creates oss_scan/oss_finding/oss_tool_run
+    # with a custom schema. project_oss_job has an FK to oss_scan, so it must
+    # be created AFTER the raw SQL. Do NOT mutate Base.metadata — shared state.
+    raw_sql_tables = {"oss_scan", "oss_finding", "oss_tool_run"}
+    deferred_tables = {"project_oss_job"}
+    pre_tables = [
+        t
+        for name, t in Base.metadata.tables.items()
+        if name not in raw_sql_tables and name not in deferred_tables
     ]
-    for table in oss_tables:
-        if table in Base.metadata.tables:
-            Base.metadata.remove(table)
-    Base.metadata.create_all(engine)
+    Base.metadata.create_all(engine, tables=pre_tables)
 
     with engine.connect() as conn:
         conn.execute(text(FTS_FUNCTION_SQL))
         conn.execute(text(FTS_TRIGGER_SQL))
         conn.execute(text(MIGRATION_SQL))
         conn.commit()
+
+    # Create project_oss_job now that oss_scan (its FK target) exists.
+    Base.metadata.create_all(
+        engine,
+        tables=[Base.metadata.tables[name] for name in deferred_tables],
+    )
 
     return engine
 

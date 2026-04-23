@@ -85,7 +85,9 @@ def test_downgrade_and_upgrade_round_trip(migrated_engine: Engine) -> None:
     alembic_cfg.set_main_option("script_location", "orch/db/migrations")
     alembic_cfg.set_main_option("sqlalchemy.url", migrated_engine.url.render_as_string())
 
-    command.downgrade(alembic_cfg, "-1")
+    # Target the specific revision before this migration so the test is stable
+    # regardless of later migrations added on top.
+    command.downgrade(alembic_cfg, "824e6e6f34ee")
 
     with migrated_engine.connect() as conn:
         result = conn.execute(text("SELECT 1 FROM pg_tables WHERE tablename = 'iw_core_instance'"))

@@ -127,10 +127,11 @@ ALTER TABLE oss_tool_run ADD CONSTRAINT fk_oss_tool_run_scan
 DOWNGRADE_SQL = """
 DO $$
 BEGIN
-    -- Drop tables first (CASCADE handles FK constraints automatically)
-    DROP TABLE IF EXISTS oss_tool_run;
-    DROP TABLE IF EXISTS oss_finding;
-    DROP TABLE IF EXISTS oss_scan;
+    -- Drop tables first (CASCADE handles FK constraints automatically).
+    -- project_oss_job.scan_id references oss_scan(id); CASCADE drops the FK.
+    DROP TABLE IF EXISTS oss_tool_run CASCADE;
+    DROP TABLE IF EXISTS oss_finding CASCADE;
+    DROP TABLE IF EXISTS oss_scan CASCADE;
 
     -- Drop indexes
     DROP INDEX IF EXISTS ix_oss_tool_run_scan;
@@ -180,12 +181,17 @@ def oss_engine(pg_container: PostgresContainer) -> Engine:
         conn.execute(text(DOWNGRADE_SQL))
         conn.commit()
 
-    # Create non-OSS tables via create_all, but exclude OSS models since they
-    # require custom PostgreSQL enums that create_all() can't handle
-    non_oss_metadata = Base.metadata
-    for table in [OssScan.__table__, OssFinding.__table__, OssToolRun.__table__]:
-        non_oss_metadata.remove(table)
-    non_oss_metadata.create_all(engine)
+    # Raw SQL below (MIGRATION_SQL) creates oss_scan/oss_finding/oss_tool_run
+    # with a custom schema. project_oss_job has an FK to oss_scan, so create it
+    # AFTER the raw SQL. Do NOT mutate Base.metadata — it's shared state.
+    raw_sql_tables = {"oss_scan", "oss_finding", "oss_tool_run"}
+    deferred_tables = {"project_oss_job"}
+    pre_tables = [
+        t
+        for name, t in Base.metadata.tables.items()
+        if name not in raw_sql_tables and name not in deferred_tables
+    ]
+    Base.metadata.create_all(engine, tables=pre_tables)
 
     with engine.connect() as conn:
         conn.execute(text(FTS_FUNCTION_SQL))
@@ -194,6 +200,11 @@ def oss_engine(pg_container: PostgresContainer) -> Engine:
         conn.execute(text(PROJECT_DOCS_FTS_TRIGGER_SQL))
         conn.execute(text(MIGRATION_SQL))
         conn.commit()
+
+    Base.metadata.create_all(
+        engine,
+        tables=[Base.metadata.tables[name] for name in deferred_tables],
+    )
 
     return engine
 

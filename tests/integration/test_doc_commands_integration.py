@@ -33,18 +33,23 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
-    """Create a test client for the dashboard app."""
+    import os
 
-    def override_get_db() -> Generator[Session, None, None]:
-        yield db_session
+    original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+    try:
+        def override_get_db() -> Generator[Session, None, None]:
+            yield db_session
 
-    app = create_app()
-    app.dependency_overrides[get_db] = override_get_db
+        app = create_app()
+        app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app, raise_server_exceptions=True) as c:
-        yield c
+        with TestClient(app, raise_server_exceptions=True) as c:
+            yield c
 
-    app.dependency_overrides.clear()
+        app.dependency_overrides.clear()
+    finally:
+        if original is not None:
+            os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
 
 def invoke(args: list[str], get_session: Any, project_id: str = "test-proj") -> Result:

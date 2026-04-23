@@ -110,9 +110,6 @@ def oss_engine(pg_container: PostgresContainer):
         PROJECT_DOCS_FTS_FUNCTION_SQL,
         PROJECT_DOCS_FTS_TRIGGER_SQL,
         Base,
-        OssFinding,
-        OssScan,
-        OssToolRun,
     )
 
     url = pg_container.get_connection_url().replace(
@@ -120,11 +117,17 @@ def oss_engine(pg_container: PostgresContainer):
     )
     engine = create_engine(url, pool_pre_ping=True)
 
-    non_oss_metadata = Base.metadata
-    for table in [OssScan.__table__, OssFinding.__table__, OssToolRun.__table__]:
-        if table in non_oss_metadata.tables:
-            non_oss_metadata.remove(table)
-    non_oss_metadata.create_all(engine)
+    # Raw SQL below (MIGRATION_SQL) creates oss_scan/oss_finding/oss_tool_run
+    # with a custom schema. project_oss_job has an FK to oss_scan, so create it
+    # AFTER the raw SQL. Do NOT mutate Base.metadata — shared state.
+    raw_sql_tables = {"oss_scan", "oss_finding", "oss_tool_run"}
+    deferred_tables = {"project_oss_job"}
+    pre_tables = [
+        t
+        for name, t in Base.metadata.tables.items()
+        if name not in raw_sql_tables and name not in deferred_tables
+    ]
+    Base.metadata.create_all(engine, tables=pre_tables)
 
     with engine.connect() as conn:
         conn.execute(text(FTS_FUNCTION_SQL))
@@ -133,6 +136,11 @@ def oss_engine(pg_container: PostgresContainer):
         conn.execute(text(PROJECT_DOCS_FTS_TRIGGER_SQL))
         conn.execute(text(MIGRATION_SQL))
         conn.commit()
+
+    Base.metadata.create_all(
+        engine,
+        tables=[Base.metadata.tables[name] for name in deferred_tables],
+    )
 
     return engine
 
