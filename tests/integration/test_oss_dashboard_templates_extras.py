@@ -412,7 +412,7 @@ class TestOssTabVisibilityInvariant:
 
 
 # ---------------------------------------------------------------------------
-# Invariant #7: OSS Status frame on every project page
+# Invariant #7: OSS Status frame appears on the project dashboard page only
 # ---------------------------------------------------------------------------
 
 
@@ -426,20 +426,19 @@ class TestOssStatusFramePresenceInvariant:
         assert resp.status_code == 200
         html = resp.text
         # OSS Status frame is included in the dashboard page
-        assert "OSS Status" in html or "oss-status-frame" in html or "oss/status" in html
+        assert "oss-status-frame" in html and "oss/status" in html
 
-    def test_oss_status_frame_in_tests_page(
+    def test_oss_status_frame_absent_in_tests_page(
         self,
         client: TestClient,
         proj_enabled: Project,
     ) -> None:
         resp = client.get(f"/project/{proj_enabled.id}/tests")
-        # 200 if page exists, 404 if route not registered
         if resp.status_code == 200:
             html = resp.text
-            assert "OSS Status" in html or "oss-status-frame" in html or "oss/status" in html
+            assert "oss-status-frame" not in html
 
-    def test_oss_status_frame_in_quality_page(
+    def test_oss_status_frame_absent_in_quality_page(
         self,
         client: TestClient,
         proj_enabled: Project,
@@ -447,18 +446,18 @@ class TestOssStatusFramePresenceInvariant:
         resp = client.get(f"/project/{proj_enabled.id}/quality")
         if resp.status_code == 200:
             html = resp.text
-            assert "OSS Status" in html or "oss-status-frame" in html or "oss/status" in html
+            assert "oss-status-frame" not in html
 
     def test_oss_status_frame_in_oss_page(
         self,
         client: TestClient,
         proj_enabled: Project,
     ) -> None:
-        # The oss page itself should have the status frame
+        # The oss status fragment endpoint itself still renders
         resp = client.get(f"/project/{proj_enabled.id}/oss/status")
         assert resp.status_code == 200
 
-    def test_oss_status_frame_in_batches_page(
+    def test_oss_status_frame_absent_in_batches_page(
         self,
         client: TestClient,
         proj_enabled: Project,
@@ -466,7 +465,7 @@ class TestOssStatusFramePresenceInvariant:
         resp = client.get(f"/project/{proj_enabled.id}/batches")
         if resp.status_code == 200:
             html = resp.text
-            assert "OSS Status" in html or "oss-status-frame" in html or "oss/status" in html
+            assert "oss-status-frame" not in html
 
     def test_oss_status_frame_is_htmx_loaded(
         self,
@@ -477,7 +476,7 @@ class TestOssStatusFramePresenceInvariant:
         assert resp.status_code == 200
         html = resp.text
         # The frame uses htmx to load content
-        assert "hx-get" in html or "hx-trigger" in html or "oss/status" in html
+        assert "hx-get" in html and "oss/status" in html
 
 
 # ---------------------------------------------------------------------------
