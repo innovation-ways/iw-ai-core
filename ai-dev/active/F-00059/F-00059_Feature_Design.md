@@ -62,7 +62,7 @@ Read the project's `CLAUDE.md`, `orch/CLAUDE.md`, `dashboard/CLAUDE.md`, and `te
 - **Modified tables**: `work_items` — three new nullable columns.
 - **Migration notes**: Single Alembic revision. `upgrade()` adds three columns, creates trigger function `work_items_functional_doc_search_update()`, creates trigger `work_items_functional_doc_search_trg` (BEFORE INSERT OR UPDATE OF `title`, `functional_doc_content`), creates GIN index `idx_work_items_functional_doc_search`. `downgrade()` drops index, trigger, function, then the three columns — verified reversible on a populated DB.
 
-The new trigger mirrors the existing `design_doc_search` trigger exactly: `to_tsvector('english', COALESCE(NEW.title, '') || ' ' || COALESCE(NEW.functional_doc_content, ''))`.
+The new trigger is functionally equivalent to the existing `design_doc_search` trigger but uses the `COALESCE` form (matching `PROJECT_DOCS_FTS_FUNCTION_SQL` style) for clarity: `to_tsvector('english', COALESCE(NEW.title, '') || ' ' || COALESCE(NEW.functional_doc_content, ''))`. The existing `FTS_FUNCTION_SQL` uses an `IF NEW.design_doc_content IS NOT NULL THEN ... ELSE ... END IF` shape; it is **not** modified (Invariant 7). The two forms produce identical TSVECTORs for all inputs.
 
 ### API Changes
 
@@ -125,14 +125,14 @@ Given   a clean project worktree and the /iw-new-feature skill invoked with a fe
 When    the skill finishes Step 6 (file creation) and reaches the "register in platform" step
 Then    both ai-dev/active/<ID>/<ID>_Feature_Design.md AND ai-dev/active/<ID>/<ID>_Functional.md exist
 And     the functional doc contains the fixed H2 sections (## Why, ## What Changed (for the User), ## How It Behaves; ## Out of Scope optional)
-And     the functional doc is under 500 words
+And     the functional doc is at most 500 words (≤500 passes, >500 is rejected by the review skill)
 And     the same behaviour holds for /iw-new-incident (producing <ID>_Functional.md) and /iw-new-cr
 ```
 
 ### AC2: Review skill blocks invalid functional docs
 
 ```
-Given   a design package where ai-dev/active/<ID>/<ID>_Functional.md is missing, OR is empty, OR exceeds 500 words, OR lacks one of the required H2 sections
+Given   a design package where ai-dev/active/<ID>/<ID>_Functional.md is missing, OR is empty, OR has more than 500 words (inclusive boundary: 500 passes, 501+ fails), OR lacks one of the required H2 sections
 When    /iw-review-design runs
 Then    the review reports a blocking error that names the specific failure (missing file, missing section, word count)
 And     the review does NOT approve the package
@@ -198,8 +198,8 @@ And     no stale database objects (orphan indexes, orphan trigger functions) rem
 
 ```
 Given   the master edits from S03 have landed in skills/ and ai-dev/templates/ in iw-ai-core
-When    an operator runs `iw skills sync` against each project in projects.toml (innoforge, cv)
-Then    the updated SKILL.md files and the new Functional_Design_Template.md appear in the target project's .claude/skills/ and ai-dev/templates/ respectively
+When    an operator runs `iw skills sync` against every project in projects.toml (innoforge, iw-ai-core, cv — iw-ai-core is itself a managed project and must be synced so its own .claude/skills/ reflects the new masters)
+Then    the updated SKILL.md files and the new Functional_Design_Template.md appear in each target project's .claude/skills/ and ai-dev/templates/ respectively
 And     subsequent /iw-new-feature runs in those projects produce <ID>_Functional.md
 ```
 
@@ -246,6 +246,7 @@ Every row becomes a mandatory test case.
 **Integration tests** (Postgres testcontainer):
 - FTS trigger: insert WorkItem with functional_doc_content → search vector contains expected lexemes; update content → search vector updates; update title only → search vector still updates.
 - GIN-index query returns the expected row for a term in the functional doc but not in the design doc (proves the two columns are independent).
+- **Migration round-trip** (enforces Invariant 5): run the F-00059 migration's `upgrade()` against a fresh testcontainer, populate a row, run `downgrade()`, and assert that the three columns, the trigger, the trigger function, and the GIN index are all gone; then run `upgrade()` again and assert it succeeds (no orphan objects block re-create). Persistent test: `test_functional_doc_migration_round_trip` in `tests/integration/test_work_items_functional_doc_fts.py`.
 - `iw register` path: file present → both columns populated; file absent → both NULL, no error; `--functional-doc` override path respected.
 - Dashboard route: content present → fragment contains rendered markdown; content NULL → empty-state fragment; unknown item → 404.
 
@@ -253,7 +254,7 @@ Every row becomes a mandatory test case.
 
 ## Notes
 
-- **Skills sync**: edits to `skills/iw-new-feature`, `iw-new-incident`, `iw-new-cr`, `iw-review-design` under this repo's `skills/` are only the master copy. An operator must run `iw skills sync` against each project in `projects.toml` (innoforge, cv) afterwards; this is documented in the S03 prompt and referenced in AC7. The orchestration pipeline does not auto-sync across repos.
+- **Skills sync**: edits to `skills/iw-new-feature`, `iw-new-incident`, `iw-new-cr`, `iw-review-design` under this repo's `skills/` are only the master copy. An operator must run `iw skills sync` against every project in `projects.toml` afterwards — that currently means **innoforge, iw-ai-core, and cv**. iw-ai-core is itself a managed project (per the self-deploy convention) so its own `.claude/skills/` needs the same sync; do not skip it. This is documented in the S03 prompt and referenced in AC7. The orchestration pipeline does not auto-sync across repos.
 - **Templates sync**: the new `Functional_Design_Template.md` lives in `ai-dev/templates/` (canonical) and is mirrored to `templates/design/` by the same sync flow. Projects pick it up when they next run `iw skills sync` / `iw init-project`.
 - **Forbidden-term regex** (implemented in S03 for the review skill, tested in S05):
   - File-extension regex: `\b[A-Za-z0-9_./-]+\.(py|md|js|ts|tsx|sql|html|json|toml|yaml|yml)\b`

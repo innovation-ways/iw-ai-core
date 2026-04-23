@@ -1,0 +1,98 @@
+{
+  "id": "F-00060",
+  "type": "Feature",
+  "title": "Hybrid Code Q&A retrieval — semantic + FTS + git-log",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Database: doc_index_jobs table (mirrors code_index_jobs with items_* counter rename) + ORM DocIndexJob + Alembic migration (up/down) + project/status indexes",
+      "prompt": "prompts/F-00060_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "backend-impl",
+      "description": "RAG indexing: orch/rag/doc_indexer.py (LanceDB docs_{project_id} + SentenceSplitter + Ollama + updated_at watermark), orch/rag/doc_job.py (DocIndexJobRunner + JOB_REGISTRY_DOC), jobs/aggregator.py extension with JobType.doc_indexing",
+      "prompt": "prompts/F-00060_S02_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "RAG retrieval: implement _retrieve_evidence_bundle (semantic+FTS+git-log), _fetch_full_work_items, rebalance _merge_and_rank_work_items to α=0.45 FTS / γ=0.35 semantic / β=0.20 git-log (sum=1.0), _build_workitem_system_prompt (top-3 full + 4-8 chunks + relevance filter), citation snippet prefers functional_doc_content[:300], wire citation_allowlist.filter_citations into SSE emission",
+      "prompt": "prompts/F-00060_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "pipeline-impl",
+      "description": "Daemon: orch/daemon/doc_index_poller.py (stall timeout 600s, MAX_CONCURRENT_JOBS_PER_PROJECT=1) + recover_orphaned_doc_index_jobs on boot + wire into daemon main loop",
+      "prompt": "prompts/F-00060_S04_Pipeline_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "api-impl",
+      "description": "API: POST /project/{project_id}/api/code/reindex-docs (200 on new enqueue, 409 on concurrent, 404 on unknown project); reuse existing code_job_status.html fragment for response",
+      "prompt": "prompts/F-00060_S05_API_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "frontend-impl",
+      "description": "Frontend: Re-index Docs dropdown entry in dashboard/templates/project_code.html (placed directly below Re-index changed files) + parameterise code_job_status.html for doc_indexing label",
+      "prompt": "prompts/F-00060_S06_Frontend_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "tests-impl",
+      "description": "Cross-layer tests: Boundary Behavior + Invariant coverage, cross-project isolation, code_only regression guard, relevance-filter regression eval (F-A/CR-B/CR-C button scenario)",
+      "prompt": "prompts/F-00060_S07_Tests_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-layer review: indexing/retrieval contract, DB symmetry vs code_index_jobs, prompt-budget discipline, daemon orphan recovery, AC1-AC6 coverage, no regressions to answer_stream (code-only)",
+      "prompt": "prompts/F-00060_S08_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint (ruff + JS syntax)"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format (ruff)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Typecheck (mypy)"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S14",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — Re-index Docs button enqueues and completes; workitem-aware question cites originating item and narrates functional-doc reasoning; relevance filter drops off-topic items; allowlist strips hallucinated IDs; code_only regression",
+      "prompt": "prompts/F-00060_S14_BrowserVerification_prompt.md"
+    }
+  ]
+}

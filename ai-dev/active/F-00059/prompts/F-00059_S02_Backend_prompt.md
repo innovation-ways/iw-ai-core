@@ -100,6 +100,13 @@ with SessionLocal() as session:
 - Update the script's module docstring exit-code table to include:
   `7  --load-db passed but file was produced yet DB update failed` (catch
   `SQLAlchemyError`, print the message, exit 7).
+- **`--force` + `--load-db` composition**: the two flags are orthogonal and may
+  be combined freely. `--force` governs only the filesystem step (existing
+  behaviour: overwrite the existing `<ID>_Functional.md` instead of exiting
+  with code 5). `--load-db` governs only the DB step and runs *after* the
+  file has been produced. When both are passed: overwrite the file, then
+  UPDATE the DB columns from the new file's content. The DB UPDATE must use
+  the fresh content, not whatever the file contained before the overwrite.
 
 ### 3. Do not regress the existing `register` or backfill behaviour
 
@@ -138,7 +145,7 @@ otherwise match whatever session access the existing code uses.
 
 1. `make test-unit` — pass (new backfill tests).
 2. `make test-integration` — pass (new register tests).
-3. `make lint` and `make type-check` — pass.
+3. `make lint` and `make typecheck` — pass.
 
 ## Subagent Result Contract
 

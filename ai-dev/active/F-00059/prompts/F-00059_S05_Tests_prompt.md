@@ -53,6 +53,12 @@ extend S01's test if needed:
 - GIN index is used for a `@@` query (check via `EXPLAIN` / `plan_hash`
   assertion that the index is hit; if the testcontainer is too small for the
   planner to prefer GIN, set `enable_seqscan = off` for the test and re-run).
+- Migration round-trip (Invariant 5) is covered by
+  `test_functional_doc_migration_round_trip` in
+  `tests/integration/test_work_items_functional_doc_fts.py` — S01 owns it.
+  If that test is missing or thin, extend it here so every one of the four
+  post-downgrade absence checks (columns, trigger, function, index) plus the
+  immediate re-upgrade runs.
 
 ### 2. `iw register` integration tests
 
@@ -145,7 +151,7 @@ design — report it as a blocker rather than patching the test to green.
 1. `make test-unit` — pass, zero failures.
 2. `make test-integration` — pass, zero failures.
 3. `make lint` — pass.
-4. `make type-check` — pass.
+4. `make typecheck` — pass.
 
 ## Subagent Result Contract
 

@@ -55,7 +55,7 @@ mirror used by other projects). Structure:
 Audience: humans (product owners, support, onboarding engineers).
 DO NOT include file paths, class names, SQL, code fences, or implementation
 steps. If you need to capture those, they belong in the technical design doc.
-Keep the total body under 500 words.
+Keep the total body at most 500 words (the review skill blocks >500).
 -->
 
 ## Why
@@ -119,7 +119,7 @@ must not approve):**
 - File body contains H2 `## Why`.
 - File body contains H2 `## What Changed (for the User)`.
 - File body contains H2 `## How It Behaves`.
-- Word count (prose, excluding the HTML comment and headings) is under 500.
+- Word count (prose, excluding the HTML comment and headings) is at most 500 (≤500 passes, >500 is a blocking error).
 
 **Content checks (WARNING — reported but non-blocking unless the reviewer
 explicitly dismisses):**
@@ -135,9 +135,11 @@ human reviewer understands when they can waive a warning.
 ### 4. Sync across projects
 
 Note in the report that after this step merges, an operator must run
-`iw skills sync` for every project in `projects.toml` (innoforge, cv) to
-propagate the new skill bodies and the new template to those repos. This is
-not automated by the pipeline — it's an operator step.
+`iw skills sync` for every project in `projects.toml` — that is
+**innoforge, iw-ai-core, and cv** — to propagate the new skill bodies and
+the new template to those repos. iw-ai-core is itself a managed project
+and its own `.claude/skills/` must be synced; do not skip it. This is not
+automated by the pipeline — it's an operator step.
 
 ## Project Conventions
 
