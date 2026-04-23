@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 
 from dashboard.dependencies import get_db
 from orch.db.models import (
@@ -85,6 +85,7 @@ def _get_project_or_404(project_id: str, db: Session) -> Project:
 
 
 def _active_batches(project_id: str, db: Session) -> list[BatchSummary]:
+    """Return active batches with total/done counts in a single query (C2 fix)."""
     active_statuses = [
         BatchStatus.executing,
         BatchStatus.approved,
@@ -98,27 +99,41 @@ def _active_batches(project_id: str, db: Session) -> list[BatchSummary]:
             .order_by(Batch.created_at.desc())
         ).all()
     )
+
+    if not batches:
+        return []
+
+    batch_ids = [b.id for b in batches]
+
+    # Single query: total + done counts grouped by batch_id
+    rows = db.execute(
+        select(
+            BatchItem.batch_id,
+            func.count(BatchItem.id).label("total"),
+            func.sum(
+                func.cast(
+                    func.cast(
+                        BatchItem.status.in_([BatchItemStatus.completed, BatchItemStatus.merged]),
+                        Integer,
+                    ),
+                    Integer,
+                )
+            ).label("done"),
+        )
+        .where(
+            BatchItem.project_id == project_id,
+            BatchItem.batch_id.in_(batch_ids),
+        )
+        .group_by(BatchItem.batch_id)
+    ).all()
+
+    counts: dict[str, tuple[int, int]] = {}
+    for row in rows:
+        counts[row.batch_id] = (row.total, int(row.done or 0))
+
     result = []
     for batch in batches:
-        total = (
-            db.scalar(
-                select(func.count()).where(
-                    BatchItem.project_id == project_id,
-                    BatchItem.batch_id == batch.id,
-                )
-            )
-            or 0
-        )
-        done = (
-            db.scalar(
-                select(func.count()).where(
-                    BatchItem.project_id == project_id,
-                    BatchItem.batch_id == batch.id,
-                    BatchItem.status.in_([BatchItemStatus.completed, BatchItemStatus.merged]),
-                )
-            )
-            or 0
-        )
+        total, done = counts.get(batch.id, (0, 0))
         pct = int((done / total * 100) if total > 0 else 0)
         result.append(
             BatchSummary(

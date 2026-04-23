@@ -37,6 +37,8 @@ from orch.db.models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
     from sqlalchemy.orm import Session
 
 

@@ -3,7 +3,10 @@
 {% block title %}Code — {{ current_project.display_name }}{% endblock %}
 
 {% block head %}
+{{ super() }}
 <link rel="stylesheet" href="/static/chat.css" />
+{% include "components/libs/mermaid.html" %}
+{% include "components/libs/dompurify.html" %}
 {% endblock %}
 
 {% block content %}

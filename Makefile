@@ -5,7 +5,7 @@
 .PHONY: install lint lint-js format typecheck quality \
         test-unit test-integration test check \
         db-up db-down db-migrate db-revision \
-        daemon-start daemon-stop dashboard-start
+        daemon-start daemon-stop dashboard-start css
 
 # --- Setup ---
 install:
@@ -55,6 +55,10 @@ allure-serve:
 
 allure-clean:
 	rm -rf allure-results allure-report
+
+# --- CSS (Tailwind build) ---
+css:
+	npx tailwindcss -c dashboard/tailwind.config.js -i dashboard/static/tailwind.src.css -o dashboard/static/styles.css --minify
 
 # --- All checks (run before commit) ---
 check: quality test

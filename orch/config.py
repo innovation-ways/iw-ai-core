@@ -21,7 +21,15 @@ load_dotenv(_ENV_FILE)
 
 # Re-export the canonical default so `orch.config.DEFAULT_INDEX_PATH` and
 # `orch.rag.config.DEFAULT_INDEX_PATH` refer to the same value.
-__all__ = ("CORE_ROOT", "DEFAULT_INDEX_PATH", "DaemonConfig", "get_db_url", "load_config")
+__all__ = (
+    "CORE_ROOT",
+    "DEFAULT_INDEX_PATH",
+    "DaemonConfig",
+    "get_db_url",
+    "get_db_pool_size",
+    "get_db_max_overflow",
+    "load_config",
+)
 
 
 def _require(name: str) -> str:
@@ -43,6 +51,16 @@ def get_db_url() -> str:
     user = _require("IW_CORE_DB_USER")
     password = _require("IW_CORE_DB_PASSWORD")
     return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{name}"
+
+
+def get_db_pool_size() -> int:
+    """Return the DB connection pool size from env, defaulting to 20."""
+    return int(os.environ.get("IW_CORE_DB_POOL_SIZE", "20"))
+
+
+def get_db_max_overflow() -> int:
+    """Return the DB connection max_overflow from env, defaulting to 20."""
+    return int(os.environ.get("IW_CORE_DB_MAX_OVERFLOW", "20"))
 
 
 @dataclass(frozen=True)
@@ -80,6 +98,10 @@ class DaemonConfig:
     # Project registry
     projects_toml: Path = field(default_factory=lambda: _ENV_FILE.parent / "projects.toml")
 
+    # Database pool
+    db_pool_size: int = 20
+    db_max_overflow: int = 20
+
 
 def load_config() -> DaemonConfig:
     """Load and validate the full platform configuration.
@@ -112,4 +134,6 @@ def load_config() -> DaemonConfig:
         projects_toml=Path(
             os.environ.get("IW_CORE_PROJECTS_TOML", str(_ENV_FILE.parent / "projects.toml"))
         ),
+        db_pool_size=int(os.environ.get("IW_CORE_DB_POOL_SIZE", "20")),
+        db_max_overflow=int(os.environ.get("IW_CORE_DB_MAX_OVERFLOW", "20")),
     )

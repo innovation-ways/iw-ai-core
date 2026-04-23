@@ -4,6 +4,11 @@
 
 {% block title %}{{ item.id }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
 
+{% block head %}
+{{ super() }}
+{% include "components/libs/mermaid.html" %}
+{% endblock %}
+
 {% block content %}
 <!-- Confirm dialog container (htmx swaps fragment here) -->
 <div id="confirm-dialog"></div>

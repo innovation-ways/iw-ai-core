@@ -590,7 +590,7 @@ def item_status(ctx: click.Context, item_id: str, json_output: bool) -> None:
     help="Archive directory override",
 )
 @click.pass_context
-def item_report(ctx: click.Context, item_id: str, stdout: bool, archive_dir: str | None) -> None:
+def item_report(ctx: click.Context, item_id: str, stdout: bool, archive_dir: str | None) -> None:  # noqa: ARG001
     """Generate and write the execution report for a work item."""
     from orch.daemon.execution_report import ExecutionReportResolutionError
 

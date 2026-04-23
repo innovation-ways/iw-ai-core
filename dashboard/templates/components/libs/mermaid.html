@@ -1,0 +1,28 @@
+<script src="/static/vendor/mermaid/mermaid.min.js"></script>
+<script>
+  if (typeof mermaid !== 'undefined') {
+    var isDark = document.documentElement.classList.contains('dark');
+    mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
+    window.iwRenderMermaid = async function(root) {
+      var scope = root || document;
+      var nodes = scope.querySelectorAll('.mermaid:not([data-processed])');
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        var src = node.textContent;
+        var id = 'iw-mermaid-' + Math.random().toString(36).slice(2);
+        try {
+          var result = await mermaid.render(id, src);
+          node.innerHTML = result.svg;
+          if (result.bindFunctions) { result.bindFunctions(node); }
+          node.setAttribute('data-processed', 'true');
+        } catch (e) {
+          node.setAttribute('data-processed', 'true');
+          node.innerHTML = '<pre style="color:var(--destructive);font-size:12px;white-space:pre-wrap">Mermaid error: ' +
+            (e && e.message ? e.message : String(e)).replace(/[<>&]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}) +
+            '</pre>';
+        }
+      }
+    };
+    document.addEventListener('DOMContentLoaded', function() { window.iwRenderMermaid(); });
+  }
+</script>

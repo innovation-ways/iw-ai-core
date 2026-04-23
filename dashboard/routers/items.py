@@ -357,6 +357,8 @@ def _read_report_file(report_file: str | None, repo_root: str | None) -> str | N
 def _get_steps(
     project_id: str, item_id: str, db: Session, project: Project | None = None
 ) -> list[StepDetail]:
+    from sqlalchemy import func
+
     bi = _get_batch_item(project_id, item_id, db)
     repo_root = project.repo_root if project else None
     workflow_steps = list(
@@ -369,12 +371,9 @@ def _get_steps(
             .order_by(WorkflowStep.step_number)
         ).all()
     )
-    # Bulk-query fix cycle counts per step db id
     step_db_ids = [s.id for s in workflow_steps]
     fix_cycle_counts: dict[int, int] = {}
     if step_db_ids:
-        from sqlalchemy import func
-
         rows = db.execute(
             select(FixCycle.step_id, func.count(FixCycle.id).label("cnt"))
             .where(FixCycle.step_id.in_(step_db_ids))
@@ -382,23 +381,52 @@ def _get_steps(
         ).all()
         fix_cycle_counts = {row.step_id: row.cnt for row in rows}
 
-    # Aggregate full spans from append-only tables (I-00034)
     step_spans = _aggregate_step_spans(db, step_db_ids)
+
+    last_run_map: dict[int, StepRun] = {}
+    run_count_map: dict[int, int] = {}
+    if step_db_ids:
+        last_run_sub = (
+            select(
+                StepRun.step_id,
+                StepRun.id.label("run_id"),
+                StepRun.error_message,
+                func.row_number()
+                .over(
+                    partition_by=StepRun.step_id,
+                    order_by=StepRun.run_number.desc(),
+                )
+                .label("rn"),
+                func.count(StepRun.id).over(partition_by=StepRun.step_id).label("rc"),
+            )
+            .where(StepRun.step_id.in_(step_db_ids))
+            .subquery()
+        )
+        bulk_rows = db.execute(
+            select(
+                last_run_sub.c.step_id,
+                last_run_sub.c.run_id,
+                last_run_sub.c.error_message,
+                last_run_sub.c.rc,
+            ).where(last_run_sub.c.rn == 1)
+        ).all()
+        for row in bulk_rows:
+            run = StepRun(
+                id=row.run_id,
+                step_id=row.step_id,
+                error_message=row.error_message,
+                run_number=0,
+                status=None,
+            )
+            last_run_map[row.step_id] = run
+            run_count_map[row.step_id] = row.rc
 
     result: list[StepDetail] = [_synthetic_setup_step(bi)]
     for step in workflow_steps:
-        # Get run count and last error from step_runs
-        runs = list(
-            db.scalars(
-                select(StepRun)
-                .where(StepRun.step_id == step.id)
-                .order_by(StepRun.run_number.desc())
-            ).all()
-        )
-        last_run = runs[0] if runs else None
+        last_run = last_run_map.get(step.id)
         error_msg = last_run.error_message if last_run else None
+        run_count = run_count_map.get(step.id, 0)
 
-        # I-00034: use aggregated span from step_runs ∪ fix_cycles, not step.started_at/completed_at
         earliest_started_at, latest_completed_at = step_spans.get(step.id, (None, None))
         if earliest_started_at is not None and latest_completed_at is not None:
             dur = (latest_completed_at - earliest_started_at).total_seconds()
@@ -417,7 +445,7 @@ def _get_steps(
                 started_at=earliest_started_at,
                 completed_at=latest_completed_at,
                 error_message=error_msg,
-                run_count=len(runs),
+                run_count=run_count,
                 step_label=step.step_label,
                 description=step.description,
                 report_content=report,

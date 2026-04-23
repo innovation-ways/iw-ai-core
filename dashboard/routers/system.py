@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 
 from dashboard.dependencies import get_db
+from dashboard.utils.ttl_cache import TTLCache
 from orch.cli.daemon_commands import get_pid_file_path, is_process_alive, read_pid
 from orch.db.models import (
     Batch,
@@ -138,8 +140,23 @@ def _daemon_status(db: Session) -> DaemonStatus:
     )
 
 
+_GIT_STATS_CACHE_TTL = float(os.environ.get("IW_CORE_GIT_STATS_CACHE_TTL", "15"))
+_git_stats_cache = TTLCache[tuple[str, int, int, str | None]](ttl=_GIT_STATS_CACHE_TTL)
+
+
 def _git_branch_and_stats(repo_root: str) -> tuple[str, int, int, str | None]:
     """Return (branch, unpushed, worktrees, error_or_None)."""
+    cached = _git_stats_cache.get(repo_root)
+    if cached is not None:
+        return cached
+
+    result = _git_branch_and_stats_impl(repo_root)
+    _git_stats_cache.set(repo_root, result)
+    return result
+
+
+def _git_branch_and_stats_impl(repo_root: str) -> tuple[str, int, int, str | None]:
+    """Uncached implementation of _git_branch_and_stats."""
     try:
         branch = subprocess.check_output(  # noqa: S603
             ["git", "-C", repo_root, "rev-parse", "--abbrev-ref", "HEAD"],  # noqa: S607
