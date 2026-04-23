@@ -524,6 +524,10 @@ class WorkflowStep(Base):
     started_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
 
+    baselines: Mapped[list["QvBaseline"]] = relationship(
+        "QvBaseline", back_populates="step", cascade="all, delete-orphan"
+    )
+
     __table_args__ = (
         ForeignKeyConstraint(
             ["project_id", "work_item_id"],
@@ -666,6 +670,60 @@ class FixCycle(Base):
         UniqueConstraint("step_id", "cycle_number"),
         Index("idx_fix_cycles_step", "step_id"),
         {"comment": "Fix cycle attempts triggered by code review or QV failures. Append-only."},
+    )
+
+
+class QvBaseline(Base):
+    """Per-(step, gate, base_sha) failure fingerprint baseline.
+
+    Stored at worktree-setup time so the daemon can subtract pre-existing
+    failures from the HEAD run before deciding pass/fail and before
+    composing the fix-cycle prompt. This prevents the 2026-04-22 scope
+    blowout where pre-existing lint/pytest failures drove fix cycles.
+    """
+
+    __tablename__ = "qv_baselines"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    step_id: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        comment="FK to workflow_steps.id",
+    )
+    gate_name: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Gate identifier matching WorkflowStep.gate (e.g. 'lint', 'unit-tests')",
+    )
+    base_sha: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Full git SHA the baseline was computed against (40-char)",
+    )
+    fingerprint: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{\"failures\": []}'"),
+        comment="Parser-produced canonical failure set",
+    )
+    computed_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    step: Mapped["WorkflowStep"] = relationship("WorkflowStep", back_populates="baselines")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["step_id"], ["workflow_steps.id"], ondelete="CASCADE"),
+        UniqueConstraint(
+            "step_id",
+            "gate_name",
+            "base_sha",
+            name="uq_qv_baselines_step_gate_sha",
+        ),
+        Index("idx_qv_baselines_step_id", "step_id"),
+        {"comment": "Baseline QV gate fingerprints to prevent fix-cycle scope expansion (F-00061)"},
     )
 
 

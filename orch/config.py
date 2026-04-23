@@ -102,6 +102,14 @@ class DaemonConfig:
     db_pool_size: int = 20
     db_max_overflow: int = 20
 
+    # Baseline QV gates (F-00061)
+    baseline_qv_enabled: bool = True
+
+
+def _parse_truthy(value: str) -> bool:
+    """Return True for truthy env-var values, False otherwise."""
+    return value.lower() in {"1", "true", "yes", "on"}
+
 
 def load_config() -> DaemonConfig:
     """Load and validate the full platform configuration.
@@ -136,4 +144,5 @@ def load_config() -> DaemonConfig:
         ),
         db_pool_size=int(os.environ.get("IW_CORE_DB_POOL_SIZE", "20")),
         db_max_overflow=int(os.environ.get("IW_CORE_DB_MAX_OVERFLOW", "20")),
+        baseline_qv_enabled=_parse_truthy(os.environ.get("IW_CORE_BASELINE_QV", "true")),
     )
