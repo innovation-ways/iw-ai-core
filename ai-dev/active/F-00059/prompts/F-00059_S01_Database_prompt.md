@@ -125,14 +125,21 @@ connect tests to the live DB.
    - Update only `title` → search vector re-generates.
    - `SELECT id FROM work_items WHERE functional_doc_search @@ to_tsquery('english', 'world')` returns the row.
    - The independence invariant: insert WorkItem with `design_doc_content="foo"` and no `functional_doc_content` → `design_doc_search` contains `foo`, `functional_doc_search` contains only title lexemes.
+   - **Migration round-trip (Invariant 5)**: in the same file add `test_functional_doc_migration_round_trip` that, against a fresh testcontainer, runs the F-00059 migration's `upgrade()`, inserts a row with `functional_doc_content`, then runs `downgrade()` and asserts:
+     - The three columns (`functional_doc_path`, `functional_doc_content`, `functional_doc_search`) no longer exist on `work_items` (query `information_schema.columns`).
+     - The trigger `work_items_functional_doc_search_trg` does not exist (query `pg_trigger`).
+     - The function `work_items_functional_doc_search_update()` does not exist (query `pg_proc`).
+     - The index `idx_work_items_functional_doc_search` does not exist (query `pg_indexes`).
+     - Running `upgrade()` again immediately afterwards succeeds (no leftover objects cause a conflict).
+     Use Alembic's `command.upgrade` / `command.downgrade` against the testcontainer DSN, NOT the live DB.
 2. **GREEN**: implement columns, constants, migration, conftest update.
-3. **REFACTOR**: verify downgrade + upgrade round-trip in a testcontainer.
+3. **REFACTOR**: the migration round-trip test above is the persistent evidence for Invariant 5.
 
 ## Test Verification (NON-NEGOTIABLE)
 
 1. `make test-integration` — pass (includes the new file).
 2. `make lint` — pass.
-3. `make type-check` — pass.
+3. `make typecheck` — pass.
 
 Do NOT report `tests_passed: true` unless all three commands exit 0.
 
