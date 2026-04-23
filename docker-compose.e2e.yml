@@ -51,6 +51,12 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:${E2E_FRONTEND_PORT}:9900"
+    volumes:
+      # Bind-mount the worktree's ai-dev/ on top of the image snapshot so
+      # e2e_fixtures/*.py written AFTER image build (e.g. by a qv-browser
+      # agent during S11) are visible to scripts/e2e_seed.py at entrypoint
+      # time. Read-only: the container only consumes fixtures, never writes.
+      - ./ai-dev:/app/ai-dev:ro
     environment:
       IW_CORE_DB_HOST: e2e-db
       IW_CORE_DB_PORT: "5432"
