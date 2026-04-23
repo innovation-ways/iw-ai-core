@@ -206,6 +206,12 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state l
   "title": "{One-line feature title}",
   "browser_verification": true,
   // set to false for backend-only features (no Frontend step)
+  "scope": {
+    "allowed_paths": [
+      "path/to/file_the_feature_touches.py",
+      "tests/integration/path/to/new_test_file.py"
+    ]
+  },
   "steps": [
     {
       "step": "S01",
@@ -216,6 +222,8 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state l
   ]
 }
 ```
+
+`scope.allowed_paths` declares every file the feature is permitted to touch, as globs. The executor's `worktree_commit.sh` Step 2.25 enforces this at merge time — any modified file outside the list (plus the implicit `ai-dev/active/{ID}/**` and `ai-dev/archive/{ID}/**`) blocks the merge. Derive the list from the Feature Design's **Files Changed** section. Patterns: exact path, `dir/**` for a whole subtree, `dir/*.py` for fnmatch. If a QV fix-cycle legitimately needs a new file, the operator amends this list and re-triggers the merge — silent scope expansion is no longer possible.
 
 QV gate steps (add after CodeReview_Final):
 ```json

@@ -324,6 +324,12 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions only — st
   "type": "Issue",
   "title": "{One-line summary of the bug}",
   "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "path/to/file_the_fix_modifies.py",
+      "tests/integration/path/to/new_test_file.py"
+    ]
+  },
   "steps": [
     {
       "step": "S01",
@@ -334,6 +340,14 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions only — st
   ]
 }
 ```
+
+`scope.allowed_paths` declares the exact set of files the fix is permitted to touch, as globs. The executor's `worktree_commit.sh` Step 2.25 enforces this at merge time — any modified file outside the list (plus the implicit `ai-dev/active/{ID}/**` and `ai-dev/archive/{ID}/**`) blocks the merge. Derive the list from the Incident Design's **Files Changed** section. Patterns:
+
+- `"path/to/file.py"` — exact match
+- `"dir/**"` — the directory and everything below it
+- `"dir/*.py"` — single-level wildcard (fnmatch)
+
+If a QV fix-cycle legitimately needs to touch a new file (e.g. the fix can't avoid it), the operator amends this list and re-triggers the merge — don't silently expand.
 
 Agent slug mapping:
 - Database → `database-impl`
