@@ -114,7 +114,9 @@ The file must export `def seed(db: Session) -> None` and will be auto-run by `sc
 4. ONE `FixCycle` row linked to that step: `cycle_number=1`, status `completed`, `started_at=2026-04-22 12:03:00Z`, `completed_at=2026-04-22 12:09:00Z`.
 5. A second `WorkItem` (ID `I-00034-HAPPY-DEMO`, type `incident`, status `completed`) with ONE `WorkflowStep` that ran exactly once: `step.started_at=T0`, `completed_at=T0+45s`, one matching `StepRun` only. No `FixCycle`. This is the happy-path control for V2.
 
-If `scripts/e2e_seed.py` doesn't auto-discover `ai-dev/active/*/e2e_fixtures/*.py`, inspect the seed script's behaviour and fall back to calling the fixture manually via a one-off `uv run python -c "..."` BEFORE the browser verifications — do NOT restart the stack.
+The fixture is made visible to the E2E dashboard container via the bind-mount declared in `docker-compose.e2e.yml` (`./ai-dev:/app/ai-dev:ro`), so a file you write into this worktree will be picked up by `scripts/e2e_seed.py` when the container (re-)starts — there is nothing you need to "fall back" to.
+
+**NEVER run the seed fixture from your host shell.** The host's `.env` points at the production orchestration DB on port 5433, NOT at the isolated E2E Postgres. A command like `uv run python -c "from orch.db.session import get_session; ..."` executed outside a container will poison the live DB and leave the E2E stack unchanged (see the 2026-04-22 I-00034 incident). If the fixture needs to be re-seeded against an already-running stack, use `docker compose -p "$COMPOSE_PROJECT_NAME" exec e2e-dashboard uv run python scripts/e2e_seed.py` — that runs inside the container where `IW_CORE_DB_HOST=e2e-db`. If the stack is wedged, `iw step-fail` with `ENV_DATA_MISSING:` so the orchestrator re-provisions.
 
 ## Verification Steps
 

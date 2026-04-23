@@ -254,6 +254,70 @@ class FixCycleDetail:
 
 
 # ---------------------------------------------------------------------------
+# Duration aggregation helpers
+# ---------------------------------------------------------------------------
+
+
+def _aggregate_step_spans(
+    db: Session, step_db_ids: list[int]
+) -> dict[int, tuple[datetime | None, datetime | None]]:
+    """Aggregate step spans from append-only step_runs and fix_cycles tables.
+
+    I-00034: WorkflowStep.started_at/completed_at reflect only the LAST iteration
+    (daemon resets them on retry/fix-cycle). Aggregate from append-only step_runs ∪ fix_cycles.
+    Returns dict mapping step_id -> (earliest_started, latest_completed).
+    Only steps with at least one completed row are included.
+    """
+    from sqlalchemy import func
+
+    spans: dict[int, tuple[datetime | None, datetime | None]] = {}
+
+    from sqlalchemy import case
+
+    run_rows = db.execute(
+        select(
+            StepRun.step_id,
+            func.min(StepRun.started_at).label("earliest"),
+            case(
+                (func.count(StepRun.completed_at) < func.count(StepRun.id), None),
+                else_=func.max(StepRun.completed_at),
+            ).label("latest"),
+        )
+        .where(StepRun.step_id.in_(step_db_ids))
+        .group_by(StepRun.step_id)
+    ).all()
+    for row in run_rows:
+        spans[row.step_id] = (row.earliest, row.latest)
+
+    cycle_rows = db.execute(
+        select(
+            FixCycle.step_id,
+            func.min(FixCycle.started_at).label("earliest"),
+            case(
+                (func.count(FixCycle.completed_at) < func.count(FixCycle.id), None),
+                else_=func.max(FixCycle.completed_at),
+            ).label("latest"),
+        )
+        .where(FixCycle.step_id.in_(step_db_ids))
+        .group_by(FixCycle.step_id)
+    ).all()
+    for row in cycle_rows:
+        existing = spans.get(row.step_id)
+        if existing is None:
+            spans[row.step_id] = (row.earliest, row.latest)
+        else:
+            earliest = min((existing[0], row.earliest), default=None)
+            latest = (
+                max((existing[1], row.latest), default=None)
+                if existing[1] is not None or row.latest is not None
+                else None
+            )
+            spans[row.step_id] = (earliest, latest)
+
+    return spans
+
+
+# ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
 
@@ -318,6 +382,9 @@ def _get_steps(
         ).all()
         fix_cycle_counts = {row.step_id: row.cnt for row in rows}
 
+    # Aggregate full spans from append-only tables (I-00034)
+    step_spans = _aggregate_step_spans(db, step_db_ids)
+
     result: list[StepDetail] = [_synthetic_setup_step(bi)]
     for step in workflow_steps:
         # Get run count and last error from step_runs
@@ -331,9 +398,12 @@ def _get_steps(
         last_run = runs[0] if runs else None
         error_msg = last_run.error_message if last_run else None
 
-        dur: float | None = None
-        if step.started_at and step.completed_at:
-            dur = (step.completed_at - step.started_at).total_seconds()
+        # I-00034: use aggregated span from step_runs ∪ fix_cycles, not step.started_at/completed_at
+        earliest_started_at, latest_completed_at = step_spans.get(step.id, (None, None))
+        if earliest_started_at is not None and latest_completed_at is not None:
+            dur = (latest_completed_at - earliest_started_at).total_seconds()
+        else:
+            dur = None
 
         report = step.report_content or _read_report_file(step.report_file, repo_root)
 
@@ -344,8 +414,8 @@ def _get_steps(
                 step_type=step.step_type.value,
                 status=step.status.value,
                 duration_secs=dur,
-                started_at=step.started_at,
-                completed_at=step.completed_at,
+                started_at=earliest_started_at,
+                completed_at=latest_completed_at,
                 error_message=error_msg,
                 run_count=len(runs),
                 step_label=step.step_label,
