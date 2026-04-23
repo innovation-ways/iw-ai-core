@@ -37,6 +37,36 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 
+OSS_ENUMS_SQL = """\
+DO $$
+BEGIN
+    DROP TYPE IF EXISTS ossscan_status CASCADE;
+    CREATE TYPE ossscan_status AS ENUM ('pending', 'running', 'complete', 'error');
+
+    DROP TYPE IF EXISTS ossscan_mode CASCADE;
+    CREATE TYPE ossscan_mode AS ENUM ('scan', 'make_oss', 'publish');
+
+    DROP TYPE IF EXISTS osspill_color CASCADE;
+    CREATE TYPE osspill_color AS ENUM ('green', 'yellow', 'red', 'gray');
+
+    DROP TYPE IF EXISTS ossfinding_severity CASCADE;
+    CREATE TYPE ossfinding_severity AS ENUM ('MUST', 'SHOULD', 'MAY', 'INFO');
+
+    DROP TYPE IF EXISTS ossfinding_status CASCADE;
+    CREATE TYPE ossfinding_status AS ENUM ('pass_status', 'fail', 'skip', 'human_required');
+
+    DROP TYPE IF EXISTS osstoolrun_status CASCADE;
+    CREATE TYPE osstoolrun_status AS ENUM ('ok', 'failed', 'missing', 'skipped');
+
+    DROP TYPE IF EXISTS project_oss_job_kind CASCADE;
+    CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'prepare', 'publish', 'install');
+
+    DROP TYPE IF EXISTS project_oss_job_status CASCADE;
+    CREATE TYPE project_oss_job_status AS ENUM ('queued', 'running', 'complete', 'error', 'cancelled');
+END$$;
+"""
+
+
 @pytest.fixture(scope="session")
 def pg_container() -> Generator[PostgresContainer, None, None]:
     """Start a PostgreSQL 15 container for the entire test session.
@@ -61,7 +91,16 @@ def db_engine(pg_container: PostgresContainer) -> Engine:
     )
     engine = create_engine(url, pool_pre_ping=True)
 
-    # Create all tables defined in the ORM models
+    # Pre-create OSS ENUM types. SQLAlchemy's create_all() would also create
+    # them (create_type=True on the ORM columns), but pre-creating with
+    # DROP TYPE IF EXISTS … CASCADE guarantees a clean slate and avoids
+    # collisions if a previous session left stale types behind.
+    with engine.connect() as conn:
+        conn.execute(text(OSS_ENUMS_SQL))
+        conn.commit()
+
+    # create_all() is idempotent for existing ENUM types (checkfirst=True by default),
+    # so the pre-created OSS enums above are reused rather than re-created.
     Base.metadata.create_all(engine)
 
     # Install the FTS trigger (DDL not captured by metadata.create_all)

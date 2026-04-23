@@ -1,0 +1,125 @@
+<div id="oss-scan-progress"
+     class="bg-card border border-border rounded-lg p-4 space-y-2"
+     hx-ext="sse"
+     sse-connect="{{ stream_url }}"
+     sse-swap="oss-stream">
+
+  <div class="flex items-center justify-between mb-2">
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+      </svg>
+      <span class="text-sm text-foreground font-medium">{{ job_kind|default('Scan') }} running…</span>
+    </div>
+  </div>
+
+  <div id="oss-stream-lines"
+       class="bg-muted rounded font-mono text-xs text-muted-foreground p-2 max-h-32 overflow-y-auto">
+    <p class="text-xs text-muted-foreground italic">Waiting for output…</p>
+  </div>
+</div>
+
+<script>
+  (function() {
+    var container = document.querySelector('#oss-scan-progress');
+    if (!container) return;
+
+    var lines = container.querySelector('#oss-stream-lines');
+
+    function handleOssStream(e) {
+      var raw = e.detail || {};
+      var dataStr = raw.data || raw.message || '';
+      var eventType = raw.event || '';
+
+      // For EventSource, event.data is in dataStr; for htmx SSE, raw.data
+      var parts = dataStr.split(',');
+      var exitCode = parseInt(parts[0] || '-1', 10);
+
+      if (eventType === 'progress' || (eventType === '' && !isNaN(exitCode) && dataStr.trim())) {
+        // It's a line of output
+        if (lines.querySelector('.italic')) lines.innerHTML = '';
+        var p = document.createElement('p');
+        p.className = 'text-foreground';
+        p.textContent = dataStr.trim();
+        lines.appendChild(p);
+        lines.scrollTop = lines.scrollHeight;
+      } else if (eventType === 'complete' || (eventType === '' && exitCode >= 0 && parts.length >= 1)) {
+        // Complete event: format is "exit_code,scan_id,pill_color"
+        if (exitCode === 0) {
+          var p = document.createElement('p');
+          p.className = 'text-success font-medium';
+          p.textContent = '✓ Complete';
+          lines.appendChild(p);
+          lines.scrollTop = lines.scrollHeight;
+          setTimeout(function() {
+            htmx.ajax('GET', window.location.pathname, {target: '#oss-content', swap: 'innerHTML'});
+          }, 1000);
+        } else {
+          var p = document.createElement('p');
+          p.className = 'text-destructive font-medium';
+          p.textContent = '✗ Failed (exit ' + exitCode + ')';
+          lines.appendChild(p);
+          lines.scrollTop = lines.scrollHeight;
+          if (parts.length > 3) {
+            var tail = parts.slice(3).join(',');
+            var tp = document.createElement('p');
+            tp.className = 'text-destructive text-xs mt-1 font-mono';
+            tp.textContent = tail;
+            lines.appendChild(tp);
+          }
+        }
+      } else if (eventType === 'error') {
+        var p = document.createElement('p');
+        p.className = 'text-destructive';
+        p.textContent = 'Error: ' + (dataStr || 'unknown');
+        lines.appendChild(p);
+        lines.scrollTop = lines.scrollHeight;
+      }
+    }
+
+    // For htmx SSE extension
+    container.addEventListener('sse-message', handleOssStream);
+
+    // Also handle via custom event from SSE
+    container.addEventListener('oss-stream', function(e) {
+      var raw = e.detail || {};
+      var dataStr = raw.data || '';
+      var eventType = raw.event || '';
+
+      if (eventType === 'progress' || (eventType === '' && dataStr.trim() && !dataStr.includes(','))) {
+        if (lines.querySelector('.italic')) lines.innerHTML = '';
+        var p = document.createElement('p');
+        p.className = 'text-foreground';
+        p.textContent = dataStr.trim();
+        lines.appendChild(p);
+        lines.scrollTop = lines.scrollHeight;
+      } else if (eventType === 'complete') {
+        var parts = dataStr.split(',');
+        var exitCode = parseInt(parts[0] || '0', 10);
+        if (exitCode === 0) {
+          var p = document.createElement('p');
+          p.className = 'text-success font-medium';
+          p.textContent = '✓ Complete';
+          lines.appendChild(p);
+          lines.scrollTop = lines.scrollHeight;
+          setTimeout(function() {
+            htmx.ajax('GET', window.location.pathname, {target: '#oss-content', swap: 'innerHTML'});
+          }, 1000);
+        } else {
+          var p = document.createElement('p');
+          p.className = 'text-destructive font-medium';
+          p.textContent = '✗ Failed (exit ' + exitCode + ')';
+          lines.appendChild(p);
+          lines.scrollTop = lines.scrollHeight;
+        }
+      } else if (eventType === 'error') {
+        var p = document.createElement('p');
+        p.className = 'text-destructive';
+        p.textContent = 'Error: ' + dataStr;
+        lines.appendChild(p);
+        lines.scrollTop = lines.scrollHeight;
+      }
+    });
+  })();
+</script>

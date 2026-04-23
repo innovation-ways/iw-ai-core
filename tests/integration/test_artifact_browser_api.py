@@ -30,18 +30,23 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def client(db_session: Generator) -> Generator[TestClient, None, None]:
-    """FastAPI TestClient with get_db overridden to use the test transaction."""
+    import os
 
-    def override_get_db() -> Generator:
-        yield db_session
+    original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+    try:
+        def override_get_db() -> Generator:
+            yield db_session
 
-    app = create_app()
-    app.dependency_overrides[get_db] = override_get_db
+        app = create_app()
+        app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app, raise_server_exceptions=True) as c:
-        yield c
+        with TestClient(app, raise_server_exceptions=True) as c:
+            yield c
 
-    app.dependency_overrides.clear()
+        app.dependency_overrides.clear()
+    finally:
+        if original is not None:
+            os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
 
 def make_project_and_item(

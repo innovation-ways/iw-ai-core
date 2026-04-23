@@ -245,7 +245,9 @@ def test_downgrade_drops_table(migrated_engine: Engine) -> None:
     alembic_cfg.set_main_option("script_location", "orch/db/migrations")
     alembic_cfg.set_main_option("sqlalchemy.url", migrated_engine.url.render_as_string())
 
-    command.downgrade(alembic_cfg, "-1")
+    # Downgrade specifically to the revision before this migration so the
+    # test continues to work after later migrations are added on top.
+    command.downgrade(alembic_cfg, "2bd86f8c105c")
 
     with migrated_engine.connect() as conn:
         result = conn.execute(

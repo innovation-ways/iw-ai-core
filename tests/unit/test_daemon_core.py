@@ -92,11 +92,22 @@ def test_is_pid_alive_returns_false_for_none() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _bootstrap_status() -> Any:
+    """Return a mock IdentityStatus in bootstrap mode (no env var set)."""
+    mock_status = MagicMock()
+    mock_status.mode = "bootstrap"
+    mock_status.expected = None
+    mock_status.actual = None
+    mock_status.message = "bootstrap notice"
+    return mock_status
+
+
 def test_startup_writes_pid_file(tmp_path: Path) -> None:
     """_startup() writes the current process PID to the PID file."""
     daemon = make_daemon(tmp_path)
 
     with (
+        patch("orch.daemon.main.verify_instance_identity", return_value=_bootstrap_status()),
         patch.object(daemon, "_startup_health_check"),
         patch.object(daemon, "_load_projects"),
     ):
@@ -115,6 +126,7 @@ def test_startup_removes_stale_pid_file_and_continues(tmp_path: Path) -> None:
 
     with (
         patch("orch.daemon.main._is_pid_alive", side_effect=lambda pid: pid == os.getpid()),
+        patch("orch.daemon.main.verify_instance_identity", return_value=_bootstrap_status()),
         patch.object(daemon, "_startup_health_check"),
         patch.object(daemon, "_load_projects"),
     ):
@@ -132,6 +144,7 @@ def test_startup_raises_if_daemon_already_running(tmp_path: Path) -> None:
 
     with (
         patch("orch.daemon.main._is_pid_alive", return_value=True),
+        patch("orch.daemon.main.verify_instance_identity", return_value=_bootstrap_status()),
         pytest.raises(DaemonAlreadyRunning, match="already running"),
     ):
         daemon._startup()
@@ -142,6 +155,7 @@ def test_startup_proceeds_when_no_pid_file(tmp_path: Path) -> None:
     daemon = make_daemon(tmp_path)
 
     with (
+        patch("orch.daemon.main.verify_instance_identity", return_value=_bootstrap_status()),
         patch.object(daemon, "_startup_health_check"),
         patch.object(daemon, "_load_projects"),
     ):

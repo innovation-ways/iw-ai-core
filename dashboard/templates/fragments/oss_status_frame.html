@@ -1,0 +1,115 @@
+{# OSS Status frame — shown under Git Status on every project page #}
+{# Context: current_project, oss_enabled, scan_summary, running_job #}
+
+<div class="oss-status-frame">
+  <div class="bg-card border border-border rounded-lg p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">OSS Status</h3>
+      {% if oss_enabled and scan_summary %}
+        <a href="/project/{{ current_project.id }}/oss/status"
+           hx-get="/project/{{ current_project.id }}/oss/status"
+           hx-swap="innerHTML"
+           hx-target="closest .oss-status-frame"
+           class="text-xs text-primary hover:underline"
+           title="Refresh">↻</a>
+      {% endif %}
+    </div>
+
+    {% if not oss_enabled %}
+      {# Disabled state: show Install OSS CTA #}
+      <div class="space-y-2">
+        <p class="text-xs text-muted-foreground mb-3">
+          Open source compliance scanning is disabled.
+        </p>
+        <button hx-get="/project/{{ current_project.id }}/oss/tools"
+                hx-target="#modal-root"
+                hx-swap="innerHTML"
+                class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+          Install OSS
+        </button>
+      </div>
+    {% elif running_job and running_job.status.value in ('queued', 'running') %}
+      {# Running scan/install job #}
+      <div class="flex items-center gap-2 text-sm">
+        <svg class="w-4 h-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <span class="text-foreground">
+          {{ running_job.kind.value|capitalize }} {{ running_job.status.value }}…
+        </span>
+      </div>
+    {% elif oss_enabled and scan_summary %}
+      {# Enabled + scanned: show pill + summary #}
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            {% if scan_summary.pill_color %}
+              {% if scan_summary.pill_color == 'green' %}
+                {% set color_class = 'bg-green-100 text-green-800' %}
+                {% set indicator = '🟢' %}
+              {% elif scan_summary.pill_color == 'yellow' %}
+                {% set color_class = 'bg-yellow-100 text-yellow-800' %}
+                {% set indicator = '🟡' %}
+              {% elif scan_summary.pill_color == 'red' %}
+                {% set color_class = 'bg-red-100 text-red-800' %}
+                {% set indicator = '🔴' %}
+              {% else %}
+                {% set color_class = 'bg-muted text-muted-foreground' %}
+                {% set indicator = '⚫' %}
+              {% endif %}
+              <a href="/project/{{ current_project.id }}/oss"
+                 class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium {{ color_class }}{% if scan_summary.is_stale %} opacity-75{% endif %}"
+                 {% if scan_summary.is_stale %}title="⚠ stale: {{ scan_summary.stale_message }}"{% endif %}
+                 aria-label="OSS status: {{ scan_summary.pill_color }}{% if scan_summary.is_stale %} (stale){% endif %}">
+                <span>{{ indicator }}</span>
+                {% if scan_summary.summary %}
+                  <span>{{ scan_summary.summary }}</span>
+                {% endif %}
+                {% if scan_summary.is_stale %}
+                  <span class="text-warning">⚠</span>
+                {% endif %}
+              </a>
+            {% else %}
+              <a href="/project/{{ current_project.id }}/oss"
+                 class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                <span>⚫</span>
+                <span>not yet scanned</span>
+              </a>
+            {% endif %}
+          </div>
+          <button hx-post="/project/{{ current_project.id }}/oss/scan"
+                  hx-swap="none"
+                  hx-on::after-request="if(event.detail.successful)window.location.reload()"
+                  class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90 transition-opacity">
+            Rescan
+          </button>
+        </div>
+
+        {# Stale banner #}
+        {% if scan_summary.is_stale %}
+          <div class="flex items-center gap-2 text-xs text-warning bg-warning/10 border border-warning/30 rounded px-2 py-1.5">
+            <span>⚠</span>
+            <span>{{ scan_summary.stale_message }}</span>
+          </div>
+        {% endif %}
+      </div>
+    {% else %}
+      {# Enabled but not yet scanned #}
+      <div class="space-y-2">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+            <span>⚫</span>
+            <span>not yet scanned</span>
+          </span>
+        </div>
+        <button hx-post="/project/{{ current_project.id }}/oss/scan"
+                hx-swap="none"
+                hx-on::after-request="if(event.detail.successful)window.location.reload()"
+                class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+          Scan now
+        </button>
+      </div>
+    {% endif %}
+  </div>
+</div>

@@ -26,6 +26,7 @@ from dashboard.routers import (
     healthz,
     items,
     jobs_ui,
+    oss,
     project_dashboard,
     project_pages,
     projects,
@@ -156,6 +157,7 @@ def create_app() -> FastAPI:
     app.include_router(items.router)
     app.include_router(tests.router)
     app.include_router(quality.router)
+    app.include_router(oss.router)
     app.include_router(project_pages.router)
     app.include_router(jobs_ui.router)
     app.include_router(search.router)
