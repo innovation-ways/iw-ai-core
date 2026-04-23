@@ -23,8 +23,9 @@ from orch.db.models import OssScan, Project, ProjectOssJob, ProjectOssJobKind, P
 from orch.oss.tool_probe import probe_tier1
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable
     from asyncio import StreamReader
+    from collections.abc import AsyncGenerator, Callable
+
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -612,12 +613,13 @@ def latest_scan(session: Session, project_id: str) -> OssScan | None:
 def scan_summary(session: Session, project_id: str) -> dict[str, Any]:
     """Return the AC1 contract shape for the latest scan, or a 'not yet scanned' dict.
 
-    Shape: {scan_id, pill_color, summary, is_stale, stale_message, ...}
+    Shape: {scan_id, status, pill_color, summary, is_stale, stale_message, ...}
     """
     scan = latest_scan(session, project_id)
     if scan is None:
         return {
             "scan_id": None,
+            "status": None,
             "pill_color": None,
             "summary": None,
             "is_stale": False,
@@ -627,6 +629,7 @@ def scan_summary(session: Session, project_id: str) -> dict[str, Any]:
     freshness = compute_freshness(project_id, session)
     return {
         "scan_id": scan.id,
+        "status": scan.status.value if scan.status else None,
         "pill_color": scan.pill_color.value if scan.pill_color else None,
         "summary": scan.summary_json,
         "is_stale": not freshness["is_fresh"],
