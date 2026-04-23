@@ -178,27 +178,52 @@ def oss_sse_session_factory(oss_sse_engine):
 
 
 @pytest.fixture
-def oss_sse_session(oss_sse_engine, oss_sse_session_factory) -> Generator[Session, None, None]:
+def oss_sse_connection(oss_sse_engine):
+    """Per-test connection with an outer transaction rolled back on teardown."""
     connection = oss_sse_engine.connect()
     transaction = connection.begin()
-    session = oss_sse_session_factory(bind=connection)
-    yield session
-    session.close()
+    yield connection
     transaction.rollback()
     connection.close()
 
 
 @pytest.fixture
+def oss_sse_session(oss_sse_connection) -> Generator[Session, None, None]:
+    # join_transaction_mode='create_savepoint' makes session.commit() a SAVEPOINT
+    # commit, so data is visible to other sessions bound to the same connection
+    # (i.e. the SSE stream's factory sessions) while the outer transaction still
+    # rolls back at teardown.
+    from sqlalchemy.orm import Session as SASession
+
+    session = SASession(
+        bind=oss_sse_connection,
+        autocommit=False,
+        autoflush=False,
+        join_transaction_mode="create_savepoint",
+    )
+    yield session
+    session.close()
+
+
+@pytest.fixture
 def client(
     oss_sse_session: Session,
-    oss_sse_engine,
+    oss_sse_connection,
 ) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
         yield oss_sse_session
 
-    # The SSE stream opens its own sessions via app.state.oss_session_factory;
-    # bind to the testcontainer engine so the stream sees rows we created here.
-    stream_factory = sessionmaker(bind=oss_sse_engine, autocommit=False, autoflush=False)
+    # Stream factory yields sessions bound to the SAME connection as the test's
+    # session so each stream tick sees the test's committed savepoint data.
+    from sqlalchemy.orm import Session as SASession
+
+    def stream_factory() -> Session:
+        return SASession(
+            bind=oss_sse_connection,
+            autocommit=False,
+            autoflush=False,
+            join_transaction_mode="create_savepoint",
+        )
 
     import os
 
@@ -288,10 +313,15 @@ class TestSseEmitsStatusProgressCompleteInOrder:
         proj_enabled: Project,
         oss_sse_session: Session,
     ) -> None:
+        # Emitting progress events for an existing stdout_tail is first-iteration
+        # behavior in job_event_stream — it happens regardless of status. Use a
+        # terminal status so the stream actually finishes within the test and we
+        # don't need streaming-with-break plumbing.
         job = ProjectOssJob(
             project_id=proj_enabled.id,
             kind=ProjectOssJobKind.scan,
-            status=ProjectOssJobStatus.running,
+            status=ProjectOssJobStatus.complete,
+            exit_code=0,
             stdout_tail="line1\nline2\nline3\n",
         )
         oss_sse_session.add(job)
@@ -300,12 +330,12 @@ class TestSseEmitsStatusProgressCompleteInOrder:
         resp = client.get(
             f"/project/{proj_enabled.id}/oss/stream/{job.id}",
             headers={"Accept": "text/event-stream"},
-            timeout=5,
         )
         assert resp.status_code == 200
-        content = b"".join(resp.iter_bytes()).decode("utf-8", errors="replace")
+        content = resp.content.decode("utf-8", errors="replace")
 
-        assert "event: progress" in content or "event: status" in content
+        assert "event: progress" in content
+        assert "line1" in content and "line2" in content and "line3" in content
 
 
 class TestSseReconnectReplaysTail:
@@ -315,37 +345,33 @@ class TestSseReconnectReplaysTail:
         proj_enabled: Project,
         oss_sse_session: Session,
     ) -> None:
+        # First-iteration replay is status-independent. Use terminal status so
+        # the stream finishes cleanly each time and we can exercise the reconnect
+        # path synchronously. Intent: every fresh connection re-emits the
+        # current stdout_tail as progress events.
         job = ProjectOssJob(
             project_id=proj_enabled.id,
             kind=ProjectOssJobKind.scan,
-            status=ProjectOssJobStatus.running,
+            status=ProjectOssJobStatus.complete,
+            exit_code=0,
             stdout_tail="tail_line1\ntail_line2\n",
         )
         oss_sse_session.add(job)
         oss_sse_session.commit()
 
+        url = f"/project/{proj_enabled.id}/oss/stream/{job.id}"
         # First connection
-        resp1 = client.get(
-            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
-            headers={"Accept": "text/event-stream"},
-            timeout=5,
-        )
+        resp1 = client.get(url, headers={"Accept": "text/event-stream"})
         assert resp1.status_code == 200
-        content1 = b"".join(resp1.iter_bytes()).decode("utf-8", errors="replace")
+        content1 = resp1.content.decode("utf-8", errors="replace")
 
-        # Second connection (reconnect)
-        resp2 = client.get(
-            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
-            headers={"Accept": "text/event-stream"},
-            timeout=5,
-        )
+        # Second connection (reconnect) — tail is re-emitted from scratch
+        resp2 = client.get(url, headers={"Accept": "text/event-stream"})
         assert resp2.status_code == 200
-        content2 = b"".join(resp2.iter_bytes()).decode("utf-8", errors="replace")
+        content2 = resp2.content.decode("utf-8", errors="replace")
 
-        # Reconnect stream replays tail as progress events
-        assert "tail_line1" in content2 or "event: progress" in content2
-        # Same for first connection
-        assert "tail_line1" in content1 or "event: progress" in content1
+        assert "tail_line1" in content1 and "event: progress" in content1
+        assert "tail_line1" in content2 and "event: progress" in content2
 
     def test_reconnect_replays_before_live_stream(
         self,
@@ -353,11 +379,16 @@ class TestSseReconnectReplaysTail:
         proj_enabled: Project,
         oss_sse_session: Session,
     ) -> None:
-        """Invariant #4: SSE stream idempotent — reconnect replays tail then joins live."""
+        """Invariant #4: SSE stream idempotent — reconnect replays tail.
+
+        First-iteration replay is status-independent, so terminal status keeps
+        the test synchronous while still exercising the replay code path.
+        """
         job = ProjectOssJob(
             project_id=proj_enabled.id,
             kind=ProjectOssJobKind.scan,
-            status=ProjectOssJobStatus.running,
+            status=ProjectOssJobStatus.complete,
+            exit_code=0,
             stdout_tail="replay_line_a\nreplay_line_b\n",
         )
         oss_sse_session.add(job)
@@ -366,10 +397,9 @@ class TestSseReconnectReplaysTail:
         resp = client.get(
             f"/project/{proj_enabled.id}/oss/stream/{job.id}",
             headers={"Accept": "text/event-stream"},
-            timeout=5,
         )
         assert resp.status_code == 200
-        content = b"".join(resp.iter_bytes()).decode("utf-8", errors="replace")
+        content = resp.content.decode("utf-8", errors="replace")
 
         # The stream must start with replayed tail events before any live-only content
         lines = content.split("\n")
@@ -383,7 +413,10 @@ class TestSseHeartbeatEvery20s:
         self,
         proj_enabled: Project,
         oss_sse_session: Session,
+        oss_sse_connection,
     ) -> None:
+        from sqlalchemy.orm import Session as SASession
+
         from dashboard.services.oss_service import job_event_stream
 
         job = ProjectOssJob(
@@ -394,26 +427,36 @@ class TestSseHeartbeatEvery20s:
         oss_sse_session.add(job)
         oss_sse_session.commit()
 
+        # Factory must yield a NEW session each call: job_event_stream closes
+        # the session after each poll. Bind to the test's connection with
+        # savepoint mode so rows committed by the test are visible.
         def factory():
-            return oss_sse_session
+            return SASession(
+                bind=oss_sse_connection,
+                autocommit=False,
+                autoflush=False,
+                join_transaction_mode="create_savepoint",
+            )
 
         events = []
         heartbeat_seen = False
 
         async def collect():
             nonlocal heartbeat_seen
-            async for msg in job_event_stream(factory, job.id, heartbeat_interval=1.0):
+            async for msg in job_event_stream(factory, job.id, heartbeat_interval=0.1):
                 events.append(msg)
                 if "heartbeat" in msg or ": heartbeat" in msg:
                     heartbeat_seen = True
-                if len(events) >= 15:
+                # Exit as soon as we've observed at least one heartbeat
+                # alongside the status event (running jobs never terminate).
+                if heartbeat_seen and len(events) >= 3:
                     break
 
-        await asyncio.wait_for(collect(), timeout=10)
+        await asyncio.wait_for(collect(), timeout=5)
 
-        # With 1s heartbeat interval, we should see multiple heartbeats
-        # The job is still running so we get status + heartbeat events
+        # A running job emits: status(running) + heartbeat(s) forever.
         assert len(events) > 0
+        assert heartbeat_seen, f"Expected heartbeat in events: {events[:10]}"
 
     @pytest.mark.asyncio
     async def test_heartbeat_comment_format(

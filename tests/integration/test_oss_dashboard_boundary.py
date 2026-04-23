@@ -178,29 +178,50 @@ def oss_boundary_session_factory(oss_boundary_engine):
 
 
 @pytest.fixture
-def oss_boundary_session(
-    oss_boundary_engine, oss_boundary_session_factory
-) -> Generator[Session, None, None]:
+def oss_boundary_connection(oss_boundary_engine):
+    """Per-test connection with an outer transaction rolled back on teardown."""
     connection = oss_boundary_engine.connect()
     transaction = connection.begin()
-    session = oss_boundary_session_factory(bind=connection)
-    yield session
-    session.close()
+    yield connection
     transaction.rollback()
     connection.close()
 
 
 @pytest.fixture
+def oss_boundary_session(oss_boundary_connection) -> Generator[Session, None, None]:
+    # SAVEPOINT mode so session.commit() is visible to other sessions on the
+    # same connection (e.g. the SSE stream's factory sessions).
+    from sqlalchemy.orm import Session as SASession
+
+    session = SASession(
+        bind=oss_boundary_connection,
+        autocommit=False,
+        autoflush=False,
+        join_transaction_mode="create_savepoint",
+    )
+    yield session
+    session.close()
+
+
+@pytest.fixture
 def client(
     oss_boundary_session: Session,
-    oss_boundary_engine,
+    oss_boundary_connection,
 ) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
         yield oss_boundary_session
 
-    # SSE stream uses app.state.oss_session_factory — bind to the testcontainer
-    # engine so streamed queries see rows we created here.
-    stream_factory = sessionmaker(bind=oss_boundary_engine, autocommit=False, autoflush=False)
+    # Stream factory sessions share the connection with the test's session so
+    # savepoint-committed writes are visible to the SSE stream.
+    from sqlalchemy.orm import Session as SASession
+
+    def stream_factory() -> Session:
+        return SASession(
+            bind=oss_boundary_connection,
+            autocommit=False,
+            autoflush=False,
+            join_transaction_mode="create_savepoint",
+        )
 
     # Unset the env var BEFORE importing app so identity check passes
     import os
@@ -622,36 +643,33 @@ class TestSseDisconnectBoundary:
         proj_enabled: Project,
         oss_boundary_session: Session,
     ) -> None:
+        # First-iteration replay is status-independent. Using terminal status
+        # keeps the test synchronous while still exercising the invariant
+        # (every fresh connection re-emits current stdout_tail as progress).
         job = ProjectOssJob(
             project_id=proj_enabled.id,
             kind=ProjectOssJobKind.scan,
-            status=ProjectOssJobStatus.running,
+            status=ProjectOssJobStatus.complete,
+            exit_code=0,
             stdout_tail="line1\nline2\nline3\n",
         )
         oss_boundary_session.add(job)
         oss_boundary_session.commit()
 
+        url = f"/project/{proj_enabled.id}/oss/stream/{job.id}"
         # First connection — get tail events
-        resp1 = client.get(
-            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
-            headers={"Accept": "text/event-stream"},
-            timeout=5,
-        )
+        resp1 = client.get(url, headers={"Accept": "text/event-stream"})
         assert resp1.status_code == 200
-        content1 = b"".join(resp1.iter_bytes()).decode("utf-8", errors="replace")
+        content1 = resp1.content.decode("utf-8", errors="replace")
 
-        # Reconnect — should replay tail before new events
-        resp2 = client.get(
-            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
-            headers={"Accept": "text/event-stream"},
-            timeout=5,
-        )
+        # Reconnect — should re-emit the tail from scratch
+        resp2 = client.get(url, headers={"Accept": "text/event-stream"})
         assert resp2.status_code == 200
-        content2 = b"".join(resp2.iter_bytes()).decode("utf-8", errors="replace")
+        content2 = resp2.content.decode("utf-8", errors="replace")
 
-        # Both should contain the tail lines as progress events
-        assert "line1" in content1 or "progress" in content1
-        assert "line1" in content2 or "progress" in content2
+        # Both must contain the tail lines as progress events
+        assert "line1" in content1 and "event: progress" in content1
+        assert "line1" in content2 and "event: progress" in content2
 
 
 # ---------------------------------------------------------------------------
