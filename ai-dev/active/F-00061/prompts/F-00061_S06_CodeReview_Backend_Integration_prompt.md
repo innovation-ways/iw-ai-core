@@ -40,8 +40,9 @@ S05 is the most integration-sensitive step in this feature — it touches the da
 
 1. **Hook placement in `batch_manager.py`**: `_compute_qv_baselines` is called AFTER `_setup_worktree()` returns successfully and BEFORE `_launch_next_step()` (around lines 316–318 per the reconnaissance). Not before setup (worktree doesn't exist), not after first step (races against the gate's own run).
 2. **Kill switch short-circuits BOTH paths**:
-   - `_compute_qv_baselines` returns at the top if `config.baseline_qv_enabled is False`
-   - The subtraction path in `_get_qv_findings` falls through to legacy behaviour if the flag is False
+   - `_compute_qv_baselines` returns at the top if `self.config.baseline_qv_enabled is False`
+   - The subtraction path in `_get_qv_findings` falls through to legacy behaviour if `config.baseline_qv_enabled is False`
+   - Confirm the signature of `_get_review_findings` and `_get_qv_findings` was extended to accept `config: DaemonConfig` (both are module-level functions, NOT methods — they have no `self`). The call at `fix_cycle.py:245` passes `config` from `start_fix_cycle`'s scope. Anyone reading `os.environ.get("IW_CORE_BASELINE_QV")` inline instead of using the threaded config is a CRITICAL fail (it bypasses `DaemonConfig` and breaks `monkeypatch.setenv` testability).
 3. **Subtraction replaces, not augments, the legacy finding path**: trace `_get_qv_findings` line by line. When the delta is empty, the method returns an empty findings structure — it does NOT return the full current-run findings alongside an unused delta. When the delta is non-empty, the "Errors to Fix" content comes from the delta, NOT the raw current-run output.
 4. **Rebase invalidation works end-to-end (AC4)**: when the DB has a row with `base_sha != current_base_sha`, S05's code (a) deletes the stale row, (b) recomputes against `current_base_sha`, (c) persists a fresh row, (d) uses the fresh fingerprint for subtraction in the same call. No TOCTOU window that would let a stale row resurface.
 5. **Legacy items fall through gracefully (AC6)**: zero baseline rows → legacy behaviour → no exception. Confirm by reading the query path and checking there's no implicit assumption that a row must exist.

@@ -179,8 +179,9 @@ Production files this feature creates or modifies:
 | `orch/config.py` | modify | `IW_CORE_BASELINE_QV` + `DaemonConfig.baseline_qv_enabled` |
 | `tests/unit/orch/daemon/test_qv_baseline.py` | create | Parser + algebra unit tests |
 | `tests/integration/daemon/test_baseline_qv_pipeline.py` | create | End-to-end pipeline tests |
-| `tests/unit/executor/__init__.py` | create | Package marker |
 | `tests/unit/executor/test_scope_gate.py` | create | Bundled P1 scope gate tests (AC7) |
+
+Note: the test directories above are created implicitly when the test files are written. No `__init__.py` package markers are added — pytest's rootdir-based discovery handles nested namespace-style directories fine, matching the pattern in existing nested test dirs like `tests/integration/api/`.
 
 Reports are created during execution in `ai-dev/active/F-00061/reports/`.
 
@@ -274,7 +275,7 @@ Every row below becomes a mandatory test case in S07.
 
 | Scenario | Input/State | Expected Behavior |
 |----------|-------------|-------------------|
-| Baseline gate times out at setup | Gate's command exceeds timeout budget | Setup fails with a clear error; no partial `qv_baselines` row is persisted; item moves to `failed` status for operator review |
+| Baseline gate times out or crashes at setup | Gate's command exceeds timeout budget or raises | Per-gate fail-soft: WARNING log (`[F-00061]` prefix, gate name, exception summary), no partial `qv_baselines` row is persisted, setup continues with the remaining gates. The affected gate falls through to legacy behaviour later (AC6 path — missing row = no subtraction) until a subsequent run recomputes its baseline. |
 | Baseline gate passes on base | All gate failures set is empty on base | `fingerprint={"failures": []}` row is still persisted (sentinel); subtraction treats missing row differently from empty row |
 | Parser encounters unexpected output | Gate emits output the parser can't classify | Parser logs a warning and returns the raw output as a single opaque "unparseable" failure entry; subtraction treats unparseable entries as never-matching (so they always surface as new) |
 | Same failure on different line number | Base has `E501 dashboard/app.py:100`, HEAD has `E501 dashboard/app.py:200` | Fingerprint normalizes on `(file, rule)` — both entries collide, subtraction treats as pre-existing (excluded) |
@@ -339,6 +340,8 @@ Every row below becomes a mandatory test case in S07.
 ## Notes
 
 - **Fingerprint schema** — each parser produces a sorted list of canonical identifiers: ruff → `[{"file": ..., "rule": ...}, ...]`; pytest → `[{"nodeid": ...}, ...]`; mypy → `[{"file": ..., "code": ...}, ...]`. Line numbers and error messages are deliberately excluded from the identifier so code drift between base and HEAD doesn't spuriously "invalidate" the match. Normalization rationale is documented per the Boundary Behavior table.
+
+- **Format gate is intentionally excluded from `GATE_PARSERS`** — `ruff format --check` emits `Would reformat: <file>` lines whose shape is incompatible with `parse_ruff` (which targets `ruff check` output: `<file>:<line>:<col>: <rule> <msg>`). Piping format output through `parse_ruff` would route every finding to `unparseable`, which always surfaces in the delta, breaking AC1 for S11. Treating "format" as an unknown gate means S05's subtraction path falls through to legacy behaviour for S11 — acceptable because `ruff format --check` is all-or-nothing against a fully-formatted codebase, so pre-existing format drift is typically zero and the scope-expansion risk F-00061 addresses doesn't materialise for this gate. A future CR could add a dedicated `parse_ruff_format` parser if that calculus changes.
 
 - **Rebase invalidation is lazy**, not eager. The daemon does not watch for base-SHA changes; the next gate execution observes the mismatch and recomputes. This avoids a second orchestration path and keeps rebase/merge flows simple. Cost: one extra gate run whenever a rebase happens right before a gate, which is rare in practice.
 

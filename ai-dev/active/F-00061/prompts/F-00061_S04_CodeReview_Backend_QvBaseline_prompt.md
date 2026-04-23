@@ -54,7 +54,7 @@ S03 implemented the pure core: parsers, fingerprints, subtraction, JSON round-tr
 
 ### HIGH — should pass
 
-9. **`GATE_PARSERS` dict covers every gate name the workflow-manifest.json templates emit** (lint, format, typecheck, unit-tests, integration-tests, frontend-tests). Any gate not in the dict will fall back to legacy behavior in S05 — OK but worth noting.
+9. **`GATE_PARSERS` dict covers the gate names that can benefit from subtraction** (lint, typecheck, unit-tests, integration-tests, frontend-tests). **`"format"` MUST BE ABSENT** — `ruff format --check` emits "Would reformat: <file>" which has no rule codes and would route through `parse_ruff` as 100% unparseable, spuriously surfacing every format finding (breaks AC1 for S11). Confirm the comment block in the module explains the omission. Unknown gate → legacy fallthrough in S05, which is correct.
 10. **Type hints on every public function**; mypy `--strict` on this module would pass (spot-check with `uv run mypy --strict orch/daemon/qv_baseline.py` — if not strict-clean, it's HIGH not CRITICAL).
 11. **Dataclasses are `frozen=True`** (immutability → can be used as dict/set keys; matches Invariant 6's determinism posture).
 

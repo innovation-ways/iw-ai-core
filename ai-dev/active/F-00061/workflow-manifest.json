@@ -11,11 +11,8 @@
       "orch/daemon/batch_manager.py",
       "orch/daemon/fix_cycle.py",
       "orch/config.py",
-      "tests/unit/orch/daemon/__init__.py",
       "tests/unit/orch/daemon/test_qv_baseline.py",
-      "tests/integration/daemon/__init__.py",
       "tests/integration/daemon/test_baseline_qv_pipeline.py",
-      "tests/unit/executor/__init__.py",
       "tests/unit/executor/test_scope_gate.py"
     ]
   },

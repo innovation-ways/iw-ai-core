@@ -67,16 +67,35 @@ Rebase invalidation (AC4) is NOT done here — this is the initial compute. Inva
 
 ### 2. Subtraction integration in `fix_cycle.py:_get_qv_findings`
 
-Current signature ends with `findings` being handed to `_build_qv_fix_prompt_content`. Modify the method so:
+**Signature-threading note — READ FIRST.** `_get_qv_findings` at `orch/daemon/fix_cycle.py:559` and its sole caller `_get_review_findings` at line 472 are **module-level free functions**, NOT methods — there is no `self.config`. The caller chain is:
+
+```
+start_fix_cycle(..., config: DaemonConfig, ...)   # fix_cycle.py:229
+    └── _get_review_findings(db, step, worktree_path)   # line 245 — config IS in scope here
+         └── _get_qv_findings(db, step, worktree_path)   # line 476
+```
+
+You MUST extend BOTH signatures to accept `config: DaemonConfig` and thread it from line 245. Update:
+
+- `_get_review_findings(db, step, worktree_path)` → `_get_review_findings(db, step, worktree_path, config)`
+- `_get_qv_findings(db, step, worktree_path)` → `_get_qv_findings(db, step, worktree_path, config)`
+- The call at line 245: pass `config` (already in `start_fix_cycle`'s parameter list)
+- The internal call at line 476: pass `config` through
+
+Do NOT read `os.environ.get("IW_CORE_BASELINE_QV")` inline in these functions — that bypasses `DaemonConfig` and breaks testability (tests use `monkeypatch.setenv` before `load_config`).
+
+---
+
+With `config` now available, modify `_get_qv_findings` so:
 
 1. Before composing the findings string at line ~584, determine if this is a qv-gate step with a recognised `gate` and a non-None `command`. If not, leave legacy behaviour untouched.
-2. If `self.config.baseline_qv_enabled is False`, leave legacy behaviour untouched.
+2. If `config.baseline_qv_enabled is False`, leave legacy behaviour untouched.
 3. Resolve the worktree's current base SHA the same way as step 1. Call it `current_base_sha`.
 4. Query `QvBaseline` for `(step_id=step.id, gate_name=step.gate)`:
    - Zero rows → no baseline → legacy behaviour (AC6).
    - One row with `base_sha != current_base_sha` → **rebase invalidation (AC4)**: delete the stale row, recompute fresh via the same logic as `_compute_qv_baselines` for this one gate, persist, then proceed with the freshly computed fingerprint as `baseline`.
    - One row with `base_sha == current_base_sha` → use it directly as `baseline`.
-5. Parse the current gate's output with `GATE_PARSERS[step.gate]` → `current_fp`.
+5. Parse the current gate's output with `GATE_PARSERS.get(step.gate)` → `current_fp`. If the gate is not in `GATE_PARSERS` (e.g. `format`), fall through to legacy behaviour — do not attempt subtraction.
 6. `delta = subtract(current_fp, baseline)`.
 7. If `delta.failures == () and delta.unparseable == ()`: the gate is effectively a pass — emit an INFO log (`"[F-00061] Suppressed N pre-existing failures for %s/%s"`) and return an empty findings structure so the fix-cycle trigger upstream sees no new errors. (The actual gate pass/fail decision already happened in the qv-gate executor; S05 does not modify that. We only change what's FED to the fix-cycle.)
 8. Otherwise compose findings from `delta` (formatted the same way `_build_qv_fix_prompt_content` currently consumes them — you may need a tiny adapter if the legacy path passed raw output; preserve the "Error Output" prose block but replace the content with the delta-formatted text).
