@@ -67,12 +67,17 @@ def parse_mypy(raw_output: str) -> Fingerprint: ...
 
 GATE_PARSERS: Mapping[str, Callable[[str], Fingerprint]] = {
     "lint": parse_ruff,
-    "format": parse_ruff,        # ruff format --check emits the same style
     "typecheck": parse_mypy,
     "unit-tests": parse_pytest,
     "integration-tests": parse_pytest,
     "frontend-tests": parse_pytest,  # best-effort; if pytest-incompatible, returns Fingerprint(unparseable=(raw,))
 }
+# NOTE: "format" (ruff format --check) is intentionally absent. Its output shape
+# ("Would reformat: <file>") differs completely from `ruff check` and would route
+# every finding into `unparseable`, which always surfaces — breaking AC1 for S11.
+# Unknown gates fall through to legacy behaviour in S05's subtraction path, which
+# is the correct semantics: the format gate is all-or-nothing against a fully-
+# formatted codebase, so pre-existing format drift is typically zero anyway.
 
 def fingerprint_to_jsonable(fp: Fingerprint) -> dict: ...
 def fingerprint_from_jsonable(data: dict) -> Fingerprint: ...
@@ -85,7 +90,7 @@ def subtract(current: Fingerprint, baseline: Fingerprint) -> Fingerprint:
 
 ### 2. Parser implementation details
 
-- **`parse_ruff`**: Accept BOTH Ruff's JSON output and its default text output (newer versions always emit JSON when `--output-format json` is passed, but the same function must be robust to the text output S06 integration hasn't switched yet). Key for each violation: `"<relative_file>::<rule_code>"` (no line number — see Boundary Behavior row 4).
+- **`parse_ruff`**: Handles `ruff check` output ONLY (NOT `ruff format --check`, which has a different shape and is deliberately excluded from `GATE_PARSERS`). Accept BOTH Ruff's JSON output (`--output-format json`) and its default text output. Key for each violation: `"<relative_file>::<rule_code>"` (no line number — see Boundary Behavior row 4).
 - **`parse_pytest`**: Extract each `FAILED tests/path/test_mod.py::TestClass::test_name - ...` line's nodeid. Key: the nodeid itself. Ignore the trailing error message (Boundary Behavior row 5). If pytest output contains only a summary line and no explicit `FAILED ...` lines (e.g. xdist worker crash), treat the whole section as unparseable.
 - **`parse_mypy`**: Lines of the form `path/file.py:42: error: Message [error-code]`. Key: `"<file>::<error_code>"` (NOT including line number or message — so drift in code doesn't spuriously invalidate).
 - **Determinism** (Invariant 6): The output `Fingerprint.failures` tuple MUST be sorted by `(kind, key)`. Two calls on the same input produce byte-identical `fingerprint_to_jsonable(...)` dicts.

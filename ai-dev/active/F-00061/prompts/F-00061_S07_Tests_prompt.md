@@ -30,19 +30,39 @@
 
 ## Output Files
 
-- New: `tests/unit/orch/daemon/__init__.py` (if missing) — package marker
 - New: `tests/unit/orch/daemon/test_qv_baseline.py` — parsers + algebra unit tests (AC1/AC2 correctness anchor, Boundary Behavior rows 3–5, Invariants 3, 4, 6)
-- New: `tests/integration/daemon/__init__.py` (if missing) — package marker
 - New: `tests/integration/daemon/test_baseline_qv_pipeline.py` — AC1–AC6 integration coverage
-- New: `tests/unit/executor/__init__.py` — package marker (directory does NOT exist yet per reconnaissance)
 - New: `tests/unit/executor/test_scope_gate.py` — bundled P1 coverage (AC7)
 - `ai-dev/active/F-00061/reports/F-00061_S07_Tests_report.md` — step report
+
+**Do NOT create `__init__.py` package markers in `tests/unit/orch/daemon/`, `tests/integration/daemon/`, or `tests/unit/executor/`.** Pytest's rootdir-based collection (`testpaths = ["tests"]` in `pyproject.toml`) discovers nested test modules without them — the existing pattern in `tests/integration/api/` and `tests/integration/dashboard/` is the precedent. Adding `__init__.py` would violate `scope.allowed_paths` and get rejected by the P1 scope gate at merge.
 
 ## Context
 
 You are the test-coverage owner for F-00061. Your suite is the GREEN check on every AC. Mandatory TDD loop: for each AC, write the test first (RED on pre-S03/S05 code), then confirm it's GREEN on current code. If any test passes on the base branch too, the test isn't actually exercising the feature — rewrite it.
 
 You ALSO own the bundled unit tests for the P1 helper at `executor/scope_gate.py` — those close AC7.
+
+## Semantic Correctness (I003 lesson — MANDATORY)
+
+I003's tests checked API response SHAPE (key exists, is a list, is non-empty) and passed. But the bug was NOT fixed. Your tests must verify SPECIFIC VALUES and BOUNDED COUNTS, not presence-only:
+
+- BAD: `assert len(subtract(H, B).failures) > 0` (truthy — passes even if subtraction is a no-op)
+- GOOD: `assert [f.key for f in subtract(H, B).failures] == ["tests/unit/bar.py::test_new_regression"]` (exact match on expected delta)
+
+- BAD: `assert baseline_row is not None` (passes on an empty baseline — misses the fingerprint mismatch bug)
+- GOOD: `assert baseline_row.fingerprint == {"failures": [{"kind": "test", "key": "tests/unit/foo.py::test_flaky"}], "unparseable": []}` (byte-precise payload)
+
+- BAD: `assert "test_flaky" not in findings` (passes on empty findings)
+- GOOD: `assert "test_flaky" not in findings and "test_new_regression" in findings` (both poles)
+
+- BAD: `assert query_count > 0` (any non-zero — misses N+1 regressions)
+- GOOD: `assert query_count <= K_GATES + 2` for the specific `K_GATES` in the fixture (tight bound against N² drift)
+
+- BAD: `assert db.query(QvBaseline).count() > 0` (AC3 passes on 1 row when 3 gates were configured)
+- GOOD: `assert db.query(QvBaseline).count() == 3` AND enumerate the expected `(gate_name, base_sha)` triples
+
+Apply this posture to EVERY assertion. If a test would pass on `pass`-only production code, tighten it.
 
 ## Requirements
 
@@ -77,6 +97,14 @@ One test class per parser:
 
 - `TestFingerprintRoundTrip`:
   - `test_to_jsonable_from_jsonable_is_identity` — for several hand-crafted Fingerprints with mixed kinds and unparseable entries
+
+- `TestGateParsers`:
+  - `test_lint_maps_to_parse_ruff` — `GATE_PARSERS["lint"] is parse_ruff`
+  - `test_typecheck_maps_to_parse_mypy`
+  - `test_unit_tests_maps_to_parse_pytest`
+  - `test_integration_tests_maps_to_parse_pytest`
+  - `test_frontend_tests_maps_to_parse_pytest`
+  - `test_format_is_absent` — `"format" not in GATE_PARSERS` (defends against a future edit re-introducing the `ruff format --check` mapping that would break AC1 for S11)
 
 Use `pytest.mark.parametrize` for the multi-case tests. Fixtures for sample gate outputs live in a module-level string literal or under `tests/unit/orch/daemon/fixtures/` — your choice, but keep them inline if short.
 
@@ -164,11 +192,8 @@ Before reporting complete:
   "work_item": "F-00061",
   "completion_status": "complete|partial|blocked",
   "files_changed": [
-    "tests/unit/orch/daemon/__init__.py",
     "tests/unit/orch/daemon/test_qv_baseline.py",
-    "tests/integration/daemon/__init__.py",
     "tests/integration/daemon/test_baseline_qv_pipeline.py",
-    "tests/unit/executor/__init__.py",
     "tests/unit/executor/test_scope_gate.py"
   ],
   "tests_passed": true,
