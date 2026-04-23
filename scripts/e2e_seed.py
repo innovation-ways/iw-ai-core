@@ -371,7 +371,41 @@ def _seed_per_item_fixtures(db: Session) -> int:
     return len(fixtures)
 
 
+_E2E_SEED_GUARDRAIL_EXIT_CODE = 2
+
+
+def _check_production_guardrail() -> None:
+    """Fail-fast guardrail: refuse to run against a pinned production DB without IW_E2E_SEED=1.
+
+    If IW_CORE_EXPECTED_INSTANCE_ID is set (indicating a production-like target)
+    and IW_E2E_SEED is NOT set, exit immediately with code 2 before opening any
+    session. This prevents accidental corruption of production data when the
+    script is run from a host whose .env points at the live orchestration DB.
+
+    Bootstrap mode (IW_CORE_EXPECTED_INSTANCE_ID unset) is always allowed —
+    a fresh install has no instance ID and cannot be misidentified as prod.
+    """
+    from orch.db.identity import get_expected_instance_id
+
+    expected_id = get_expected_instance_id()
+    if expected_id is None:
+        return
+    if os.environ.get("IW_E2E_SEED", "").strip():
+        return
+    sys.stderr.write(
+        "e2e_seed: ERROR: IW_CORE_EXPECTED_INSTANCE_ID is set but IW_E2E_SEED is not.\n"
+        "  This script targets the E2E database only. Running it against the\n"
+        "  production orchestration DB (port 5433) would corrupt production data.\n"
+        "  To run against the E2E stack, set IW_E2E_SEED=1 in the environment.\n"
+        "  To run on a fresh bootstrap (no production DB configured), unset\n"
+        "  IW_CORE_EXPECTED_INSTANCE_ID and re-run.\n"
+    )
+    sys.stderr.flush()
+    sys.exit(_E2E_SEED_GUARDRAIL_EXIT_CODE)
+
+
 def seed() -> None:
+    _check_production_guardrail()
     with get_session() as db:
         _seed_project(db)
         db.flush()

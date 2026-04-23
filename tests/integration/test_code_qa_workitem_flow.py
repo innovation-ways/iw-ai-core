@@ -67,6 +67,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
+
         def override_get_db() -> Generator[Session, None, None]:
             yield db_session
 
