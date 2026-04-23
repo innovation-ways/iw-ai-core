@@ -14,6 +14,7 @@ Shell scripts that manage git worktrees and LLM agent execution. Called by the d
 | `step_executor.sh` | Launches an LLM agent (opencode or claude-code) inside the worktree |
 | `step_executor_lib.sh` | Shared shell functions sourced by `step_executor.sh` |
 | `worktree_commit.sh` | Squash-merges completed worktree back to main and removes the worktree |
+| `scope_gate.py` | Stdin-driven scope enforcer invoked by `worktree_commit.sh` Step 2.25 — blocks merges that touch files outside the manifest's `scope.allowed_paths` |
 
 ## Usage Pattern
 
@@ -28,5 +29,6 @@ The daemon calls these scripts in sequence for each work item:
 - Scripts read `IW_CORE_*` env vars from the daemon's environment — do **NOT** hardcode paths
 - `step_executor.sh` writes the agent PID to a file the daemon monitors for heartbeat/stall detection
 - `worktree_commit.sh` performs a `--squash` merge — all work-item commits become a single merge commit on main
+- `worktree_commit.sh` Step 2.25 runs the scope gate: if the item's `workflow-manifest.json` declares `scope.allowed_paths`, any modified file outside that allow-list (plus the implicit `ai-dev/active/<ID>/**` and `ai-dev/archive/<ID>/**`) blocks the merge. Legacy items without `scope` pass through — the gate is additive. Introduced after the 2026-04-22 I-00034 retrospective: QV fix-cycles had silently expanded scope by "fixing" pre-existing failures in unrelated files.
 - Worktrees live under `.worktrees/<item-id>/` in the project root (not in `iw-ai-core/`)
 - `browser_verification` steps do **not** use these scripts — their lifecycle (docker compose for the project-under-test, Playwright harness) lives in `orch/daemon/browser_env.py`, opted into per-project via `.iw-orch.json`

@@ -98,9 +98,30 @@ The Quality Validation for **{Work Item Title}** failed one or more gates. You m
 
 {Repeat for all failing gates.}
 
+## Scope Classification (REQUIRED — do this FIRST)
+
+**BEFORE touching a single line**, classify every reported error.
+
+1. Open `ai-dev/active/{ID}/workflow-manifest.json` and read `scope.allowed_paths`. Treat `ai-dev/active/{ID}/**` and `ai-dev/archive/{ID}/**` as implicitly allowed. Together these are the **in-scope set**.
+2. For each failing test, lint error, or type error, identify the file it points to. If the failure is on a file NOT in the in-scope set, it is **PRE_EXISTING** — the file was already broken on the branch's base commit and is not yours to fix.
+3. Choose your action:
+   - **Every** reported error is PRE_EXISTING → STOP. Do not modify anything. Call:
+     ```bash
+     uv run iw step-fail "$IW_ITEM_ID" --step "$IW_STEP_ID" \
+       --reason "PRE_EXISTING: {gate}: {one-line summary of failures + files}" \
+       --report ai-dev/active/{ID}/reports/{ID}_S{NN}_QualityValidation_FIX_report.md
+     ```
+     A human operator will triage — you are done.
+   - Some IN_SCOPE, some PRE_EXISTING → fix only the IN_SCOPE ones. Leave PRE_EXISTING errors in place; the gate will still fail, and that is the correct outcome. The operator files a separate incident.
+   - Every error is IN_SCOPE → proceed to the constraints below.
+
+**Why this matters**: the executor's `worktree_commit.sh` runs a mechanical scope gate at merge time that rejects any branch whose modified files fall outside `scope.allowed_paths`. Drive-by "fixes" in unrelated files will be caught there — at best wasting a fix cycle, at worst blocking the whole batch merge. Don't do it.
+
+The 2026-04-22 I-00034 retrospective is the precedent: S06 and S10 fix-cycles expanded scope by 30 files while "fixing" lint/test failures that were all pre-existing. The gate now blocks that class of merge; this classification step is what keeps the gate from firing.
+
 ## Constraints
 
-1. **Only fix the failing gates.** Do not refactor unrelated code, add features, or reorganize files.
+1. **Only fix the failing gates, and only within scope.** Do not refactor unrelated code, do not touch files outside `scope.allowed_paths`, do not add features, do not reorganize files.
 2. **Preserve existing behavior.** Fixes must not break functionality that was working before.
 3. **Follow project conventions.** Read `CLAUDE.md` for project-specific patterns. Match existing code style.
 4. **Re-run ALL gates after fixes, not just the failing ones.** A fix for one gate must not break another.
