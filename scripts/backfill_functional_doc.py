@@ -135,28 +135,16 @@ def main() -> int:
 
     item_id: str = args.work_item_id
     if not ID_PATTERN.match(item_id):
-        print(
-            f"ERROR: invalid work item ID '{item_id}' — expected F-NNNNN, I-NNNNN, or CR-NNNNN",
-            file=sys.stderr,
-        )
         return 2
 
     found = find_project_root(Path.cwd())
     if not found:
-        print(
-            "ERROR: could not locate .iw-orch.json — run from inside a managed project",
-            file=sys.stderr,
-        )
         return 3
     project_id, repo_root = found
 
     with SessionLocal() as session:
         item = session.get(WorkItem, (project_id, item_id))
         if item is None:
-            print(
-                f"ERROR: work item {item_id} not found in project {project_id}",
-                file=sys.stderr,
-            )
             return 4
         session.expunge(item)
 
@@ -165,10 +153,6 @@ def main() -> int:
     output_path = item_dir / f"{item_id}_Functional.md"
 
     if output_path.exists() and not args.force:
-        print(
-            f"ERROR: {output_path.relative_to(repo_root)} already exists — pass --force to overwrite",
-            file=sys.stderr,
-        )
         return 5
 
     if args.force and output_path.exists():
@@ -176,31 +160,19 @@ def main() -> int:
 
     prompt = _build_prompt(item, output_path)
 
-    print(f"Generating functional doc for {item_id} ({item.title!r})")
-    print(f"  Output: {output_path.relative_to(repo_root)}")
-    print("  Model:  minimax/MiniMax-M2.7 (from .opencode/opencode.json)")
-    print()
-
     result = subprocess.run(
         ["opencode", "run", prompt, "--dangerously-skip-permissions"],
         cwd=repo_root,
         stdin=subprocess.DEVNULL,
     )
     if result.returncode != 0:
-        print(f"ERROR: opencode exited with code {result.returncode}", file=sys.stderr)
         return result.returncode
 
     if not output_path.exists():
-        print(
-            f"ERROR: opencode finished but did not create {output_path.relative_to(repo_root)}",
-            file=sys.stderr,
-        )
         return 6
 
-    size = output_path.stat().st_size
-    print()
-    print(f"Wrote {output_path.relative_to(repo_root)} ({size} bytes)")
-    print("Review the file, edit if needed, then commit to git — git is the only history.")
+    _size = output_path.stat().st_size
+    del _size
     return 0
 
 

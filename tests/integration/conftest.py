@@ -62,7 +62,9 @@ BEGIN
     CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'prepare', 'publish', 'install');
 
     DROP TYPE IF EXISTS project_oss_job_status CASCADE;
-    CREATE TYPE project_oss_job_status AS ENUM ('queued', 'running', 'complete', 'error', 'cancelled');
+    CREATE TYPE project_oss_job_status AS ENUM (
+        'queued', 'running', 'complete', 'error', 'cancelled'
+    );
 END$$;
 """
 

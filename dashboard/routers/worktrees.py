@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -13,11 +14,13 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
+from dashboard.utils.ttl_cache import TTLCache
 from orch.db.models import (
     BatchItem,
     BatchItemStatus,
     Project,
 )
+from orch.db.session import SessionLocal
 
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates
@@ -31,10 +34,51 @@ _ACTIVE_STATUSES = {
     BatchItemStatus.merging,
 }
 
+_BADGE_CACHE_TTL = float(os.environ.get("IW_CORE_BADGE_CACHE_TTL", "30"))
+_badge_cache = TTLCache[tuple[int, float]](ttl=_BADGE_CACHE_TTL)
+
+
+def _compute_dirty_count() -> tuple[int, float]:
+    """Compute dirty worktree count by enumerating all project roots and active batch items.
+
+    Opens its own DB session so the cache fill is independent of the request-scoped session.
+    Returns (dirty_count, timestamp).
+    """
+    session = SessionLocal()
+    try:
+        dirty = 0
+        projects = session.execute(select(Project).where(Project.enabled.is_(True))).scalars().all()
+        for project in projects:
+            label, _, _ = _git_status(project.repo_root)
+            if label == "dirty":
+                dirty += 1
+
+        for bi in (
+            session.execute(select(BatchItem).where(BatchItem.status.in_(list(_ACTIVE_STATUSES))))
+            .scalars()
+            .all()
+        ):
+            wt = bi.worktree_info or {}
+            path = wt.get("path")
+            if path:
+                label, _, _ = _git_status(path)
+                if label == "dirty":
+                    dirty += 1
+
+        return dirty, datetime.now(UTC).timestamp()
+    finally:
+        session.close()
+
 
 # ---------------------------------------------------------------------------
 # Git helpers (run at request time — acceptable latency for a health page)
 # ---------------------------------------------------------------------------
+
+
+_WORKTREE_CACHE_TTL = float(os.environ.get("IW_CORE_GIT_STATS_CACHE_TTL", "15"))
+_git_status_cache = TTLCache[tuple[str, int, int]](ttl=_WORKTREE_CACHE_TTL)
+_commits_ahead_cache = TTLCache[int](ttl=_WORKTREE_CACHE_TTL)
+_current_branch_cache = TTLCache[str](ttl=_WORKTREE_CACHE_TTL)
 
 
 def _git_status(path: str) -> tuple[str, int, int]:
@@ -42,6 +86,16 @@ def _git_status(path: str) -> tuple[str, int, int]:
 
     Labels: clean | dirty | untracked | no_path | error | timeout
     """
+    cached = _git_status_cache.get(path)
+    if cached is not None:
+        return cached
+    result = _git_status_impl(path)
+    _git_status_cache.set(path, result)
+    return result
+
+
+def _git_status_impl(path: str) -> tuple[str, int, int]:
+    """Uncached git status implementation."""
     try:
         r = subprocess.run(  # noqa: S603
             ["git", "-C", path, "status", "--porcelain"],  # noqa: S607
@@ -68,6 +122,16 @@ def _git_status(path: str) -> tuple[str, int, int]:
 
 def _commits_ahead(path: str) -> int:
     """Return commits HEAD is ahead of main. -1 on error."""
+    cached = _commits_ahead_cache.get(path)
+    if cached is not None:
+        return cached
+    result = _commits_ahead_impl(path)
+    _commits_ahead_cache.set(path, result)
+    return result
+
+
+def _commits_ahead_impl(path: str) -> int:
+    """Uncached implementation."""
     with contextlib.suppress(Exception):
         r = subprocess.run(  # noqa: S603
             ["git", "-C", path, "rev-list", "main..HEAD", "--count"],  # noqa: S607
@@ -82,6 +146,16 @@ def _commits_ahead(path: str) -> int:
 
 def _current_branch(path: str) -> str:
     """Return the checked-out branch name for *path*. Returns '—' on error."""
+    cached = _current_branch_cache.get(path)
+    if cached is not None:
+        return cached
+    result = _current_branch_impl(path)
+    _current_branch_cache.set(path, result)
+    return result
+
+
+def _current_branch_impl(path: str) -> str:
+    """Uncached implementation."""
     with contextlib.suppress(Exception):
         r = subprocess.run(  # noqa: S603
             ["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],  # noqa: S607
@@ -333,32 +407,21 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
 
 
 @router.get("/nav/worktree-badge", response_class=HTMLResponse)
-def nav_worktree_badge(request: Request, db: Session = Depends(get_db)) -> Any:
+def nav_worktree_badge(request: Request, _db: Session = Depends(get_db)) -> Any:
     """Sidebar badge — red dot when any worktree is dirty.
 
-    Lightweight: only runs git status on project roots + active worktrees.
-    No orphan scan, no commits-ahead.
+    Served from an in-memory TTL cache (30 s default). On cache miss the
+    compute fn runs and stores the result; subsequent calls within TTL are
+    constant-time (zero subprocess, zero DB queries).
     """
     templates: Jinja2Templates = request.app.state.templates
-    dirty = 0
 
-    projects = db.execute(select(Project).where(Project.enabled.is_(True))).scalars().all()
-    for project in projects:
-        label, _, _ = _git_status(project.repo_root)
-        if label == "dirty":
-            dirty += 1
-
-    for bi in (
-        db.execute(select(BatchItem).where(BatchItem.status.in_(list(_ACTIVE_STATUSES))))
-        .scalars()
-        .all()
-    ):
-        wt = bi.worktree_info or {}
-        path = wt.get("path")
-        if path:
-            label, _, _ = _git_status(path)
-            if label == "dirty":
-                dirty += 1
+    cached = _badge_cache.get("")
+    if cached is not None:
+        dirty, _ = cached
+    else:
+        dirty, _ = _compute_dirty_count()
+        _badge_cache.set("", (dirty, datetime.now(UTC).timestamp()))
 
     return templates.TemplateResponse(
         request, "fragments/worktree_nav_badge.html", {"dirty": dirty}

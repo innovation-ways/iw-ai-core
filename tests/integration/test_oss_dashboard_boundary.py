@@ -668,8 +668,10 @@ class TestSseDisconnectBoundary:
         content2 = resp2.content.decode("utf-8", errors="replace")
 
         # Both must contain the tail lines as progress events
-        assert "line1" in content1 and "event: progress" in content1
-        assert "line1" in content2 and "event: progress" in content2
+        assert "line1" in content1
+        assert "event: progress" in content1
+        assert "line1" in content2
+        assert "event: progress" in content2
 
 
 # ---------------------------------------------------------------------------

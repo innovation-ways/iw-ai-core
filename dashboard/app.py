@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -39,8 +40,9 @@ from dashboard.routers import (
     tests,
     worktrees,
 )
+from dashboard.utils.timing import TimingMiddleware
 from orch.db.identity import verify_instance_identity
-from orch.db.session import SessionLocal
+from orch.db.session import SessionLocal, engine
 from orch.test_runner import mark_orphaned_runs
 
 _HERE = Path(__file__).resolve().parent
@@ -88,6 +90,13 @@ def create_app() -> FastAPI:
 
     # Mount static files
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+    # Register timing middleware
+    app.add_middleware(
+        TimingMiddleware,
+        engine=engine,
+        slow_request_ms=int(os.environ.get("IW_CORE_SLOW_REQUEST_MS", "500")),
+    )
 
     # Configure Jinja2 templates and store on app state so routers can access it
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))

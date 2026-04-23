@@ -126,15 +126,36 @@ def _query_failed_steps(db: Session, project_id: str | None = None) -> list[Fail
     if project_id is not None:
         stmt = stmt.where(WorkflowStep.project_id == project_id)
 
-    rows = []
-    for step, item, project in db.execute(stmt).all():
-        # Get error from the most recent run
-        last_run = db.scalar(
-            select(StepRun)
-            .where(StepRun.step_id == step.id)
-            .order_by(StepRun.run_number.desc())
-            .limit(1)
+    step_rows = db.execute(stmt).all()
+    if not step_rows:
+        return []
+
+    failed_step_ids = [step.id for step, _, _ in step_rows]
+
+    last_run_map: dict[int, StepRun] = {}
+    if failed_step_ids:
+        from sqlalchemy import func
+
+        last_run_sub = (
+            select(
+                StepRun.step_id,
+                StepRun,
+                func.row_number()
+                .over(partition_by=StepRun.step_id, order_by=StepRun.run_number.desc())
+                .label("rn"),
+            )
+            .where(StepRun.step_id.in_(failed_step_ids))
+            .subquery()
         )
+        bulk_runs = db.execute(
+            select(last_run_sub.c.step_id, last_run_sub.c.StepRun).where(last_run_sub.c.rn == 1)
+        ).all()
+        for row in bulk_runs:
+            last_run_map[row.step_id] = row.StepRun
+
+    rows = []
+    for step, item, project in step_rows:
+        last_run = last_run_map.get(step.id)
         rows.append(
             FailedRow(
                 project_id=project.id,

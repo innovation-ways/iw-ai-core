@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import signal
 import subprocess
 import sys
-import time
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -52,7 +52,7 @@ def daemon_panel(request: Request, db: Session = Depends(get_db)) -> Any:
 
 
 @router.post("/start", response_class=HTMLResponse)
-def daemon_start(request: Request, db: Session = Depends(get_db)) -> Any:
+async def daemon_start(request: Request, db: Session = Depends(get_db)) -> Any:
     """Start the daemon if it is not already running."""
     from orch.cli.daemon_commands import (  # noqa: PLC0415
         get_pid_file_path,
@@ -63,22 +63,24 @@ def daemon_start(request: Request, db: Session = Depends(get_db)) -> Any:
     pid_file = get_pid_file_path()
     pid = read_pid(pid_file)
     if pid is not None and is_process_alive(pid):
-        # Already running — just refresh the panel
         return _render_panel(request, db)
 
-    subprocess.Popen(  # noqa: S603
-        [sys.executable, "-m", "orch.daemon"],
-        start_new_session=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(
+        None,
+        lambda: subprocess.Popen(  # noqa: S603
+            [sys.executable, "-m", "orch.daemon"],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ),
     )
-    # Brief pause so the daemon has time to write its PID file
-    time.sleep(1.5)
+    await asyncio.sleep(1.5)
     return _render_panel(request, db)
 
 
 @router.post("/stop", response_class=HTMLResponse)
-def daemon_stop(request: Request, db: Session = Depends(get_db)) -> Any:
+async def daemon_stop(request: Request, db: Session = Depends(get_db)) -> Any:
     """Send SIGTERM to the running daemon and wait up to _STOP_WAIT_SECS."""
     from orch.cli.daemon_commands import (  # noqa: PLC0415
         get_pid_file_path,
@@ -93,8 +95,10 @@ def daemon_stop(request: Request, db: Session = Depends(get_db)) -> Any:
 
     os.kill(pid, signal.SIGTERM)
     for _ in range(_STOP_WAIT_SECS):
-        time.sleep(1)
-        if not is_process_alive(pid):
+        await asyncio.sleep(1)
+        loop = asyncio.get_running_loop()
+        alive = await loop.run_in_executor(None, lambda: is_process_alive(pid))
+        if not alive:
             pid_file.unlink(missing_ok=True)
             break
 
@@ -102,7 +106,7 @@ def daemon_stop(request: Request, db: Session = Depends(get_db)) -> Any:
 
 
 @router.post("/restart", response_class=HTMLResponse)
-def daemon_restart(request: Request, db: Session = Depends(get_db)) -> Any:
+async def daemon_restart(request: Request, db: Session = Depends(get_db)) -> Any:
     """Stop the running daemon then start a fresh one."""
     from orch.cli.daemon_commands import (  # noqa: PLC0415
         get_pid_file_path,
@@ -113,21 +117,25 @@ def daemon_restart(request: Request, db: Session = Depends(get_db)) -> Any:
     pid_file = get_pid_file_path()
     pid = read_pid(pid_file)
 
-    # Stop if running
     if pid is not None and is_process_alive(pid):
         os.kill(pid, signal.SIGTERM)
         for _ in range(_STOP_WAIT_SECS):
-            time.sleep(1)
-            if not is_process_alive(pid):
+            await asyncio.sleep(1)
+            loop = asyncio.get_running_loop()
+            alive = await loop.run_in_executor(None, lambda: is_process_alive(pid))
+            if not alive:
                 pid_file.unlink(missing_ok=True)
                 break
 
-    # Start fresh
-    subprocess.Popen(  # noqa: S603
-        [sys.executable, "-m", "orch.daemon"],
-        start_new_session=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(
+        None,
+        lambda: subprocess.Popen(  # noqa: S603
+            [sys.executable, "-m", "orch.daemon"],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ),
     )
-    time.sleep(1.5)
+    await asyncio.sleep(1.5)
     return _render_panel(request, db)

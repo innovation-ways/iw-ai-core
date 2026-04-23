@@ -112,7 +112,9 @@ def _format_duration(secs: float | None) -> str:
 
 
 def _batch_item_rows(project_id: str, batch_id: str, db: Session) -> list[BatchItemRow]:
-    """Load all BatchItems for a batch, enriched with work item + step data."""
+    """Load all BatchItems for a batch, enriched with work item + step data (C3 fix)."""
+    from sqlalchemy import tuple_ as tuple_fn
+
     batch_items = list(
         db.scalars(
             select(BatchItem)
@@ -124,28 +126,38 @@ def _batch_item_rows(project_id: str, batch_id: str, db: Session) -> list[BatchI
         ).all()
     )
 
+    if not batch_items:
+        return []
+
+    work_item_keys = [(project_id, bi.work_item_id) for bi in batch_items]
+    work_items = db.scalars(
+        select(WorkItem).where(tuple_fn(WorkItem.project_id, WorkItem.id).in_(work_item_keys))
+    ).all()
+    work_item_map: dict[tuple[str, str], WorkItem] = {
+        (wi.project_id, wi.id): wi for wi in work_items
+    }
+
+    steps = db.scalars(
+        select(WorkflowStep)
+        .where(
+            WorkflowStep.project_id == project_id,
+            WorkflowStep.work_item_id.in_([bi.work_item_id for bi in batch_items]),
+        )
+        .order_by(WorkflowStep.work_item_id, WorkflowStep.step_number)
+    ).all()
+
+    steps_map: dict[str, list[WorkflowStep]] = {}
+    for s in steps:
+        steps_map.setdefault(s.work_item_id, []).append(s)
+
     rows = []
     for bi in batch_items:
-        item = db.scalar(
-            select(WorkItem).where(
-                WorkItem.project_id == project_id,
-                WorkItem.id == bi.work_item_id,
-            )
-        )
-        title = item.title if item else bi.work_item_id
+        wi = work_item_map.get((project_id, bi.work_item_id))
+        title = wi.title if wi else bi.work_item_id
 
-        steps = list(
-            db.scalars(
-                select(WorkflowStep)
-                .where(
-                    WorkflowStep.project_id == project_id,
-                    WorkflowStep.work_item_id == bi.work_item_id,
-                )
-                .order_by(WorkflowStep.step_number)
-            ).all()
-        )
+        item_steps = steps_map.get(bi.work_item_id, [])
         step_nodes = []
-        for s in steps:
+        for s in item_steps:
             dur = _format_duration(
                 (s.completed_at - s.started_at).total_seconds()
                 if s.started_at and s.completed_at
@@ -160,7 +172,6 @@ def _batch_item_rows(project_id: str, batch_id: str, db: Session) -> list[BatchI
                 )
             )
 
-        # Duration: sum of all completed steps
         dur_total: float | None = None
         if bi.started_at and bi.merged_at:
             dur_total = (bi.merged_at - bi.started_at).total_seconds()
