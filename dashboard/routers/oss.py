@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from dashboard.routers._run_helpers import get_project_or_404
+from dashboard.utils.oss_copy import DOMAIN_CONTEXT, SEVERITY_IMPACT, STATUS_COPY
 from orch.db.models import ProjectOssJob, ProjectOssJobKind, ProjectOssJobStatus
 from orch.oss.config_writer import write_project_config
 
@@ -80,32 +81,71 @@ def oss_page(
     )
 
     from dashboard.services.oss_service import latest_scan, scan_summary
+    from orch.db.models import OssScan, OssScanStatus
 
     latest = latest_scan(db, project_id)
     summary = scan_summary(db, project_id)
 
+    # Findings view uses the most recent *complete* scan so an errored or
+    # running scan does not clobber the last good results. The pill above
+    # still reflects the true latest scan status from scan_summary.
+    findings_source = latest
+    if latest is None or (latest.status and latest.status != OssScanStatus.complete):
+        findings_source = db.scalars(
+            select(OssScan)
+            .where(OssScan.project_id == project_id, OssScan.status == OssScanStatus.complete)
+            .order_by(OssScan.started_at.desc())
+            .limit(1)
+        ).first()
+
     findings_by_domain: dict[str, dict[str, Any]] = {}
-    if latest:
+    totals = {
+        "total": 0,
+        "pass": 0,
+        "fail": 0,
+        "must_fail": 0,
+        "should_fail": 0,
+        "info_fail": 0,
+        "skipped": 0,
+    }
+    if findings_source:
         from collections import defaultdict
 
         by_domain: dict[str, list[Any]] = defaultdict(list)
-        for f in latest.findings:
+        for f in findings_source.findings:
             by_domain[f.domain].append(f)
         for domain, findings in by_domain.items():
-            must = sum(1 for f in findings if f.severity.value == "MUST")
-            should = sum(1 for f in findings if f.severity.value == "SHOULD")
-            info = sum(1 for f in findings if f.severity.value == "INFO")
-            pass_status = sum(1 for f in findings if f.status.value == "pass")
+            must_fail = sum(
+                1 for f in findings if f.severity.value == "MUST" and f.status.value == "fail"
+            )
+            should_fail = sum(
+                1 for f in findings if f.severity.value == "SHOULD" and f.status.value == "fail"
+            )
+            info_fail = sum(
+                1 for f in findings if f.severity.value == "INFO" and f.status.value == "fail"
+            )
+            pass_count = sum(1 for f in findings if f.status.value == "pass")
+            fail_count = sum(1 for f in findings if f.status.value == "fail")
+            skipped_count = sum(1 for f in findings if f.status.value in ("skip", "human_required"))
             findings_by_domain[domain] = {
                 "findings": findings,
                 "counts": {
-                    "must": must,
-                    "should": should,
-                    "info": info,
-                    "pass_status": pass_status,
+                    "must": must_fail,
+                    "should": should_fail,
+                    "info": info_fail,
+                    "pass_status": pass_count,
+                    "fail": fail_count,
+                    "skipped": skipped_count,
                     "total": len(findings),
                 },
             }
+            totals["total"] += len(findings)
+            totals["pass"] += pass_count
+            totals["fail"] += fail_count
+            totals["must_fail"] += must_fail
+            totals["should_fail"] += should_fail
+            totals["info_fail"] += info_fail
+            totals["skipped"] += skipped_count
 
     return templates.TemplateResponse(
         request,
@@ -116,6 +156,10 @@ def oss_page(
             "oss_enabled": project.oss_enabled,
             "scan_summary": summary,
             "findings_by_domain": findings_by_domain,
+            "totals": totals,
+            "domain_context": DOMAIN_CONTEXT,
+            "severity_impact": SEVERITY_IMPACT,
+            "status_copy": STATUS_COPY,
         },
     )
 
