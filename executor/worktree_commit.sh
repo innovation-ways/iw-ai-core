@@ -94,6 +94,59 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Step 2.25: Scope gate — refuse to merge files outside the declared scope
+# ---------------------------------------------------------------------------
+# The workflow-manifest.json declares scope.allowed_paths (list of globs). This
+# gate diffs the branch against its merge-base with main and blocks the merge
+# if any modified file falls outside the allow-list. Runs entirely on the
+# branch — main is never touched.
+#
+# Why: the 2026-04-22 I-00034 retrospective found QV gate fix-cycles (S06, S10)
+# silently expanded scope by "fixing" pre-existing lint/test failures in files
+# the work item had no business touching. The Final Review (S05) ran BEFORE
+# those fix-cycles, so it didn't catch the drift. This gate is the mechanical
+# fail-safe that runs after all agent work is complete.
+#
+# Legacy items (manifest without scope.allowed_paths) pass through unchecked —
+# scope_gate.py treats an empty list as "gate disabled".
+
+MANIFEST_FILE="$WORKTREE_DIR/ai-dev/active/$ITEM_ID/workflow-manifest.json"
+if [[ ! -f "$MANIFEST_FILE" ]]; then
+    MANIFEST_FILE="$WORKTREE_DIR/ai-dev/archive/$ITEM_ID/workflow-manifest.json"
+fi
+
+if [[ -f "$MANIFEST_FILE" ]]; then
+    # Resolve executor dir (same directory as this script) for the helper.
+    EXECUTOR_DIR="$(cd "$(dirname "$0")" && pwd)"
+    MERGE_BASE=$(git merge-base HEAD main)
+    set +e
+    VIOLATIONS=$(
+        git diff "$MERGE_BASE"..HEAD --name-only 2>/dev/null \
+            | python3 "$EXECUTOR_DIR/scope_gate.py" "$MANIFEST_FILE" "$ITEM_ID" 2>/dev/null
+    )
+    SCOPE_RC=$?
+    set -e
+    if [[ $SCOPE_RC -eq 2 ]]; then
+        echo "[worktree_commit] ERROR: Scope gate — could not evaluate manifest at $MANIFEST_FILE" >&2
+        exit 1
+    fi
+    if [[ -n "$VIOLATIONS" ]]; then
+        echo "[worktree_commit] ERROR: Scope gate — files modified outside declared scope:" >&2
+        while IFS= read -r bad; do
+            [[ -z "$bad" ]] || echo "[worktree_commit]   - $bad" >&2
+        done <<<"$VIOLATIONS"
+        echo "[worktree_commit]        Either revert these changes on the branch or, if legitimate," >&2
+        echo "[worktree_commit]        add them to scope.allowed_paths in" >&2
+        echo "[worktree_commit]        $MANIFEST_FILE" >&2
+        echo "[worktree_commit]        and re-trigger the merge. Main has not been touched." >&2
+        exit 1
+    fi
+    echo "[worktree_commit] OK: Scope gate passed" >&2
+else
+    echo "[worktree_commit] INFO: No workflow-manifest.json for $ITEM_ID — scope gate skipped" >&2
+fi
+
+# ---------------------------------------------------------------------------
 # Step 2.5: Rebase branch onto the latest main
 # ---------------------------------------------------------------------------
 # This runs ENTIRELY in the branch's worktree and never touches main. If any
