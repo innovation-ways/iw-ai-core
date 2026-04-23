@@ -68,56 +68,76 @@ _ACTIVE_BATCH_STATUSES = (
 )
 
 
+def _all_project_stats(db: Session, project_ids: list[str]) -> dict[str, ProjectStats]:
+    """Return per-project stats in a single aggregation query (C1 fix)."""
+    if not project_ids:
+        return {}
+
+    active_counts: dict[str, int] = {}
+    running_counts: dict[str, int] = {}
+    queued_counts: dict[str, int] = {}
+    total_counts: dict[str, int] = {}
+
+    # Query 1: active batch count per project
+    rows = db.execute(
+        select(Batch.project_id, func.count(Batch.id).label("cnt"))
+        .where(
+            Batch.project_id.in_(project_ids),
+            Batch.status.in_(_ACTIVE_BATCH_STATUSES),
+        )
+        .group_by(Batch.project_id)
+    ).all()
+    for row in rows:
+        active_counts[row.project_id] = row.cnt
+
+    # Query 2: running step count per project
+    rows = db.execute(
+        select(WorkflowStep.project_id, func.count(WorkflowStep.id).label("cnt"))
+        .where(
+            WorkflowStep.project_id.in_(project_ids),
+            WorkflowStep.status == StepStatus.in_progress,
+        )
+        .group_by(WorkflowStep.project_id)
+    ).all()
+    for row in rows:
+        running_counts[row.project_id] = row.cnt
+
+    # Query 3: queued items per project
+    rows = db.execute(
+        select(WorkItem.project_id, func.count(WorkItem.id).label("cnt"))
+        .where(
+            WorkItem.project_id.in_(project_ids),
+            WorkItem.status == WorkItemStatus.approved,
+        )
+        .group_by(WorkItem.project_id)
+    ).all()
+    for row in rows:
+        queued_counts[row.project_id] = row.cnt
+
+    # Query 4: total items per project
+    rows = db.execute(
+        select(WorkItem.project_id, func.count(WorkItem.id).label("cnt"))
+        .where(WorkItem.project_id.in_(project_ids))
+        .group_by(WorkItem.project_id)
+    ).all()
+    for row in rows:
+        total_counts[row.project_id] = row.cnt
+
+    return {
+        pid: ProjectStats(
+            active_batches=active_counts.get(pid, 0),
+            running_steps=running_counts.get(pid, 0),
+            queued_items=queued_counts.get(pid, 0),
+            total_items=total_counts.get(pid, 0),
+        )
+        for pid in project_ids
+    }
+
+
 def _project_stats(db: Session, project_id: str) -> ProjectStats:
-    active_batches = (
-        db.scalar(
-            select(func.count(Batch.id)).where(
-                Batch.project_id == project_id,
-                Batch.status.in_(_ACTIVE_BATCH_STATUSES),
-            )
-        )
-        or 0
-    )
-
-    running_steps = (
-        db.scalar(
-            select(func.count(WorkflowStep.id)).where(
-                WorkflowStep.project_id == project_id,
-                WorkflowStep.status == StepStatus.in_progress,
-            )
-        )
-        or 0
-    )
-
-    queued_items = (
-        db.scalar(
-            select(func.count())
-            .select_from(WorkItem)
-            .where(
-                WorkItem.project_id == project_id,
-                WorkItem.status == WorkItemStatus.approved,
-            )
-        )
-        or 0
-    )
-
-    total_items = (
-        db.scalar(
-            select(func.count())
-            .select_from(WorkItem)
-            .where(
-                WorkItem.project_id == project_id,
-            )
-        )
-        or 0
-    )
-
-    return ProjectStats(
-        active_batches=active_batches,
-        running_steps=running_steps,
-        queued_items=queued_items,
-        total_items=total_items,
-    )
+    """Single-project stats (kept for backward compatibility)."""
+    stats = _all_project_stats(db, [project_id])
+    return stats.get(project_id, ProjectStats(0, 0, 0, 0))
 
 
 @router.get("/api/nav-projects", response_class=HTMLResponse)
@@ -350,12 +370,15 @@ def project_selector(request: Request, db: Session = Depends(get_db)) -> Any:
     """Root page — show all registered projects with stats."""
     projects_db = db.scalars(select(Project).order_by(Project.display_name)).all()
 
+    project_ids = [p.id for p in projects_db]
+    all_stats = _all_project_stats(db, project_ids)
+
     projects = [
         ProjectWithStats(
             id=p.id,
             display_name=p.display_name,
             enabled=p.enabled,
-            stats=_project_stats(db, p.id),
+            stats=all_stats.get(p.id, ProjectStats(0, 0, 0, 0)),
         )
         for p in projects_db
     ]

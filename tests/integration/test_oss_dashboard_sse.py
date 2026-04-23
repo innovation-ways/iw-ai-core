@@ -335,7 +335,9 @@ class TestSseEmitsStatusProgressCompleteInOrder:
         content = resp.content.decode("utf-8", errors="replace")
 
         assert "event: progress" in content
-        assert "line1" in content and "line2" in content and "line3" in content
+        assert "line1" in content
+        assert "line2" in content
+        assert "line3" in content
 
 
 class TestSseReconnectReplaysTail:
@@ -370,8 +372,10 @@ class TestSseReconnectReplaysTail:
         assert resp2.status_code == 200
         content2 = resp2.content.decode("utf-8", errors="replace")
 
-        assert "tail_line1" in content1 and "event: progress" in content1
-        assert "tail_line1" in content2 and "event: progress" in content2
+        assert "tail_line1" in content1
+        assert "event: progress" in content1
+        assert "tail_line1" in content2
+        assert "event: progress" in content2
 
     def test_reconnect_replays_before_live_stream(
         self,

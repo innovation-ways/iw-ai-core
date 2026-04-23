@@ -1,0 +1,12 @@
+<script src="/static/vendor/highlight.js/core.js"></script>
+<script>
+  window.addEventListener('DOMContentLoaded', function() {
+    var langs = ['python','javascript','typescript','bash','rust','go','json','markdown','sql','css','xml'];
+    langs.forEach(function(lang) {
+      var s = document.createElement('script');
+      s.src = '/static/vendor/highlight.js/' + lang + '.js';
+      s.onload = function() { try { hljs.registerLanguage(lang, window['hljs' + lang.charAt(0).toUpperCase() + lang.slice(1)] || hljs.listLanguages().indexOf(lang) >= 0 && hljs.highlight; } catch(e){} };
+      document.head.appendChild(s);
+    });
+  });
+</script>

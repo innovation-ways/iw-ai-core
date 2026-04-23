@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from orch.config import get_db_url
+from orch.config import get_db_max_overflow, get_db_pool_size, get_db_url
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -31,7 +31,14 @@ if TYPE_CHECKING:
 # the testcontainer URL.
 # ---------------------------------------------------------------------------
 
-engine = create_engine(get_db_url(), pool_pre_ping=True)
+engine = create_engine(
+    get_db_url(),
+    pool_pre_ping=True,
+    pool_size=get_db_pool_size(),
+    max_overflow=get_db_max_overflow(),
+    pool_recycle=1800,
+    pool_timeout=10,
+)
 
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 

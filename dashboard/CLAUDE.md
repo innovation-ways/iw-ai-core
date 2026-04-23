@@ -9,7 +9,17 @@ Real-time visibility and manual controls for the IW AI Core orchestration platfo
 
 ## Stack
 
-FastAPI + Jinja2 templates + htmx (AJAX) + Tailwind CDN. **No build step** — Tailwind loaded from CDN.
+FastAPI + Jinja2 templates + htmx (AJAX) + Tailwind CSS (prebuilt).
+
+## Build step
+
+Dashboard CSS is prebuilt via Tailwind CLI:
+
+```bash
+make css
+```
+
+This regenerates `dashboard/static/styles.css` from `dashboard/templates/**/*.html` and `dashboard/static/**/*.js`. Run it after editing templates that add new Tailwind classes. The generated file is committed to the repo — fresh clones run without needing `make css`.
 
 ## Structure
 
@@ -93,6 +103,6 @@ Plus `GET /health` registered directly on the app in `app.py:142` — used by br
 - **htmx POSTs** to `/actions/*` (work-item-scoped) or `/api/...` (resource-scoped) return HTML fragments that replace a `hx-target` element — no JSON, no JS
 - **Fragment templates** under `templates/fragments/` MUST NOT extend `base.html`
 - **SSE**: `routers/sse.py` and `routers/code_qa.py` stream `text/event-stream`. Frontend listens with `<div hx-ext="sse" sse-connect="/sse/...">` or a plain `EventSource` for token streams
-- Tailwind classes applied via CDN — no purge, no build; avoid dynamic class construction that breaks tree-shaking elsewhere
+- Tailwind CSS is prebuilt via `make css` — avoid dynamic class construction that breaks JIT purging
 - `dependencies.py:get_db()` uses `SessionLocal` from `orch.db.session` — same sync ORM as daemon
 - On app startup (`app.py:_lifespan`): `mark_orphaned_runs()` flips running TestRuns left behind by a crash to status=error, then `verify_instance_identity()` refuses to boot on a DB-identity mismatch
