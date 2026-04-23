@@ -23,16 +23,52 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 
+# Override conftest's `db_session` for this file so SSE tests get a session
+# that shares its connection with stream-factory sessions via SAVEPOINTs.
+# That way `db_session.commit()` is visible to the stream's fresh sessions,
+# and the whole outer transaction still rolls back at teardown.
 @pytest.fixture
-def client(db_session: Session, db_engine) -> Generator[TestClient, None, None]:
+def oss_routes_connection(db_engine):
+    connection = db_engine.connect()
+    transaction = connection.begin()
+    yield connection
+    transaction.rollback()
+    connection.close()
+
+
+@pytest.fixture
+def db_session(oss_routes_connection) -> Generator[Session, None, None]:
+    from sqlalchemy.orm import Session as SASession
+
+    session = SASession(
+        bind=oss_routes_connection,
+        autocommit=False,
+        autoflush=False,
+        join_transaction_mode="create_savepoint",
+    )
+    yield session
+    session.close()
+
+
+@pytest.fixture
+def client(
+    db_session: Session,
+    oss_routes_connection,
+) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
         yield db_session
 
-    # SSE stream uses a separate session factory via app.state — bind to the
-    # testcontainer engine so the streamed queries see the rows we create here.
-    from sqlalchemy.orm import sessionmaker
+    # Stream factory sessions share the test's connection so they see savepoint-
+    # committed rows written by the test's session.
+    from sqlalchemy.orm import Session as SASession
 
-    stream_factory = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+    def stream_factory() -> Session:
+        return SASession(
+            bind=oss_routes_connection,
+            autocommit=False,
+            autoflush=False,
+            join_transaction_mode="create_savepoint",
+        )
 
     import os
 
@@ -324,10 +360,14 @@ class TestOssStream:
         project_with_oss_disabled: Project,
         db_session: Session,
     ) -> None:
+        # Media-type check only — use a terminal-status job so the stream
+        # finishes on its own. Whether status is running or complete, the
+        # Content-Type header is set by StreamingResponse in the same way.
         job = ProjectOssJob(
             project_id=project_with_oss_disabled.id,
             kind=ProjectOssJobKind.scan,
-            status=ProjectOssJobStatus.running,
+            status=ProjectOssJobStatus.complete,
+            exit_code=0,
         )
         db_session.add(job)
         db_session.flush()
@@ -337,7 +377,7 @@ class TestOssStream:
             headers={"Accept": "text/event-stream"},
         )
         assert resp.status_code == 200
-        assert resp.media_type == "text/event-stream"
+        assert resp.headers["content-type"].startswith("text/event-stream")
 
     def test_stream_404_for_job_wrong_project(
         self,
