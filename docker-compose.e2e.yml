@@ -74,6 +74,7 @@ services:
       IW_CORE_LOG_FILE: "/tmp/iw-core-e2e.log"
       IW_CORE_INDEX_PATH: "/tmp/iw-core-e2e-index"
       IW_E2E_OLLAMA_URL: "http://e2e-ollama:11434"
+      IW_E2E_SEED: "1"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9900/health', timeout=2).read()\""]
       interval: 3s

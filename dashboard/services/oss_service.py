@@ -136,14 +136,27 @@ async def _run_scan(
                 "exit_code": exit_code,
                 "stdout_tail": tail,
                 "completed_at": _utcnow(),
-                **({"scan_id": latest.id} if (latest := (
-                    sess.query(OssScan)
-                    .filter(OssScan.project_id == project.id)
-                    .order_by(OssScan.started_at.desc())
-                    .first()
-                )) is not None else {}),
-                "status": ProjectOssJobStatus.complete if exit_code == 0 else ProjectOssJobStatus.error,
-                **({"error_message": f"Subprocess exited with code {exit_code}"} if exit_code not in (0, 2) else {}),
+                **(
+                    {"scan_id": latest.id}
+                    if (
+                        latest := (
+                            sess.query(OssScan)
+                            .filter(OssScan.project_id == project.id)
+                            .order_by(OssScan.started_at.desc())
+                            .first()
+                        )
+                    )
+                    is not None
+                    else {}
+                ),
+                "status": ProjectOssJobStatus.complete
+                if exit_code == 0
+                else ProjectOssJobStatus.error,
+                **(
+                    {"error_message": f"Subprocess exited with code {exit_code}"}
+                    if exit_code not in (0, 2)
+                    else {}
+                ),
             },
             synchronize_session=False,
         )
@@ -175,9 +188,15 @@ async def _run_install(
             {
                 "exit_code": exit_code,
                 "stdout_tail": tail,
-                "status": ProjectOssJobStatus.complete if exit_code == 0 else ProjectOssJobStatus.error,
+                "status": ProjectOssJobStatus.complete
+                if exit_code == 0
+                else ProjectOssJobStatus.error,
                 "completed_at": _utcnow(),
-                **({"error_message": f"Install exited with code {exit_code}"} if exit_code != 0 else {}),
+                **(
+                    {"error_message": f"Install exited with code {exit_code}"}
+                    if exit_code != 0
+                    else {}
+                ),
             },
             synchronize_session=False,
         )
@@ -242,9 +261,15 @@ async def _run_worktree(
             {
                 "exit_code": exit_code,
                 "stdout_tail": tail,
-                "status": ProjectOssJobStatus.complete if exit_code == 0 else ProjectOssJobStatus.error,
+                "status": ProjectOssJobStatus.complete
+                if exit_code == 0
+                else ProjectOssJobStatus.error,
                 "completed_at": _utcnow(),
-                **({"error_message": f"{action} exited with code {exit_code}"} if exit_code != 0 else {}),
+                **(
+                    {"error_message": f"{action} exited with code {exit_code}"}
+                    if exit_code != 0
+                    else {}
+                ),
             },
             synchronize_session=False,
         )

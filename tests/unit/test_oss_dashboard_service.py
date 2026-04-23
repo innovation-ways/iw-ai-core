@@ -29,6 +29,7 @@ class TestSseMessageFormatter:
 
         async def run_with_timeout():
             import asyncio
+
             try:
                 await asyncio.wait_for(collect(), timeout=timeout_sec)
             except asyncio.TimeoutError:
@@ -84,9 +85,7 @@ class TestFreshnessHelper:
         mock_project.repo_root = "/tmp/test-repo"
 
         mock_session.query.return_value.filter.return_value.first.return_value = mock_project
-        mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
-            None
-        )
+        mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
 
         with patch("dashboard.services.oss_service._git_head", return_value="abc123"):
             result = compute_freshness("test-proj", mock_session)
@@ -107,9 +106,7 @@ class TestFreshnessHelper:
         mock_scan.head_sha = "abc123"
 
         mock_session.query.return_value.filter.return_value.first.return_value = mock_project
-        mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
-            mock_scan
-        )
+        mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_scan
 
         with patch("dashboard.services.oss_service._git_head", return_value="def456"):
             result = compute_freshness("test-proj", mock_session)
@@ -130,9 +127,7 @@ class TestFreshnessHelper:
         mock_scan.head_sha = "abc123"
 
         mock_session.query.return_value.filter.return_value.first.return_value = mock_project
-        mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
-            mock_scan
-        )
+        mock_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_scan
 
         with patch("dashboard.services.oss_service._git_head", return_value="abc123"):
             result = compute_freshness("test-proj", mock_session)
