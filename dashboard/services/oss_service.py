@@ -8,6 +8,7 @@ helpers for Tier-1 probe + freshness computation.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -375,10 +376,8 @@ async def cancel_job(session: Session, job_id: int) -> None:
                 try:
                     os.kill(pid, signal.SIGTERM)
                     await asyncio.sleep(2)
-                    try:
+                    with contextlib.suppress(ProcessLookupError):
                         os.kill(pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
                 except ProcessLookupError:
                     pass
                 pid_file.unlink(missing_ok=True)

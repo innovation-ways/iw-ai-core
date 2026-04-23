@@ -71,8 +71,8 @@ def main(argv: list[str]) -> int:
         if not any(_matches(path, pat) for pat in patterns):
             violations.append(path)
 
-    for _v in violations:
-        pass
+    for v in violations:
+        print(v)
     return 1 if violations else 0
 
 

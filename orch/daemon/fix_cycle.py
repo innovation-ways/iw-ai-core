@@ -24,6 +24,7 @@ from orch.db.models import (
     FixCycle,
     FixStatus,
     FixTrigger,
+    QvBaseline,
     RunStatus,
     StepRun,
     StepStatus,
@@ -32,10 +33,13 @@ from orch.db.models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from sqlalchemy.orm import Session
 
     from orch.config import DaemonConfig
     from orch.daemon.project_registry import ProjectConfig
+    from orch.daemon.qv_baseline import Fingerprint
 
 logger = logging.getLogger(__name__)
 
@@ -242,7 +246,7 @@ def attempt_fix_cycle(
     cycle_number = existing_count + 1
 
     # Get the review findings from the latest failed StepRun
-    findings = _get_review_findings(db, step, worktree_path)
+    findings = _get_review_findings(db, step, worktree_path, config)
 
     # Generate fix prompt
     prompt_path = _generate_fix_prompt(
@@ -469,11 +473,13 @@ def _fail_fix_cycle(
 # ---------------------------------------------------------------------------
 
 
-def _get_review_findings(db: Session, step: WorkflowStep, worktree_path: str) -> str:
+def _get_review_findings(
+    db: Session, step: WorkflowStep, worktree_path: str, config: DaemonConfig
+) -> str:
     """Extract findings from the report file, StepRun error_message, or log content."""
     # For QV steps, prefer the step_run error and log content (command output)
     if step.step_type == StepType.quality_validation:
-        return _get_qv_findings(db, step, worktree_path)
+        return _get_qv_findings(db, step, worktree_path, config)
 
     # Browser verification reports have structured V1..V(n) tables + a root cause
     # section with file:line refs; the fix agent needs all of it, not just the
@@ -556,8 +562,185 @@ def _truncate(content: str, limit: int) -> str:
     return content[:limit] + "\n\n...(report truncated for prompt length)..."
 
 
-def _get_qv_findings(db: Session, step: WorkflowStep, worktree_path: str) -> str:  # noqa: ARG001
-    """Extract quality validation findings from step_run error/log content."""
+def _get_qv_findings(
+    db: Session, step: WorkflowStep, worktree_path: str, config: DaemonConfig
+) -> str:
+    """Extract quality validation findings, applying baseline subtraction when enabled."""
+    if not config.baseline_qv_enabled:
+        return _qv_findings_legacy(db, step, worktree_path)
+
+    gate_name, command = _get_gate_name_and_command(step, worktree_path)
+    if not gate_name or not command:
+        return _qv_findings_legacy(db, step, worktree_path)
+
+    from orch.daemon.qv_baseline import (  # noqa: PLC0415
+        GATE_PARSERS,
+        fingerprint_from_jsonable,
+        fingerprint_to_jsonable,
+        subtract,
+    )
+
+    parser = GATE_PARSERS.get(gate_name)
+    if parser is None:
+        return _qv_findings_legacy(db, step, worktree_path)
+
+    current_base_sha = _resolve_worktree_base_sha(worktree_path)
+    if not current_base_sha:
+        return _qv_findings_legacy(db, step, worktree_path)
+
+    baseline_row = db.execute(
+        select(QvBaseline).where(
+            QvBaseline.step_id == step.id,
+            QvBaseline.gate_name == gate_name,
+        )
+    ).scalar_one_or_none()
+
+    if baseline_row is None:
+        return _qv_findings_legacy(db, step, worktree_path)
+
+    baseline_fp = fingerprint_from_jsonable(baseline_row.fingerprint)
+
+    if baseline_row.base_sha != current_base_sha:
+        logger.info(
+            "[F-00061] Rebase invalidation for %s/%s: stored SHA %s != current %s",
+            step.work_item_id,
+            step.step_id,
+            baseline_row.base_sha,
+            current_base_sha,
+        )
+        db.delete(baseline_row)
+        db.flush()
+        new_fp = _recompute_baseline_for_gate(step, worktree_path, gate_name, command, parser)
+        if new_fp is None:
+            return _qv_findings_legacy(db, step, worktree_path)
+        baseline_fp = new_fp
+        now = datetime.now(UTC)
+        baseline_row = QvBaseline(
+            step_id=step.id,
+            gate_name=gate_name,
+            base_sha=current_base_sha,
+            fingerprint=fingerprint_to_jsonable(baseline_fp),
+            computed_at=now,
+        )
+        db.add(baseline_row)
+        db.commit()
+
+    latest_run = db.execute(
+        select(StepRun)
+        .where(
+            StepRun.step_id == step.id,
+            StepRun.status.in_([RunStatus.failed, RunStatus.timeout]),
+        )
+        .order_by(StepRun.run_number.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    if not latest_run:
+        return _qv_findings_legacy(db, step, worktree_path)
+
+    current_output = ""
+    if latest_run.log_content:
+        current_output = latest_run.log_content
+    elif latest_run.log_file:
+        log_path = Path(latest_run.log_file)
+        if log_path.exists():
+            current_output = log_path.read_text()
+
+    if not current_output:
+        if latest_run.error_message:
+            return f"**Error**: {latest_run.error_message}"
+        return _qv_findings_legacy(db, step, worktree_path)
+
+    current_fp = parser(current_output)
+    delta = subtract(current_fp, baseline_fp)
+
+    if not delta.failures and not delta.unparseable:
+        logger.info(
+            "[F-00061] Suppressed %d pre-existing failures for %s/%s",
+            len(baseline_fp.failures),
+            step.work_item_id,
+            step.step_id,
+        )
+        return ""
+
+    return _format_qv_findings_from_delta(delta, latest_run)
+
+
+def _get_gate_name_and_command(
+    step: WorkflowStep, worktree_path: str
+) -> tuple[str | None, str | None]:
+    """Read gate_name and command from the workflow manifest for a QV step."""
+    import json
+
+    manifest_path = (
+        Path(worktree_path) / "ai-dev" / "active" / step.work_item_id / "workflow-manifest.json"
+    )
+    if not manifest_path.exists():
+        return None, None
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        for s in manifest.get("steps", []):
+            if s.get("step") == step.step_id:
+                gate = s.get("gate", step.step_id)
+                command = s.get("command")
+                return gate, command
+    except Exception:  # noqa: S110
+        pass
+    return None, None
+
+
+def _resolve_worktree_base_sha(worktree_path: str) -> str | None:
+    """Resolve the worktree's base SHA via git merge-base HEAD main."""
+    try:
+        result = subprocess.run(
+            ["git", "merge-base", "HEAD", "main"],  # noqa: S607
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:  # noqa: S110
+        pass
+    return None
+
+
+def _recompute_baseline_for_gate(
+    step: WorkflowStep,
+    worktree_path: str,
+    gate_name: str,
+    command: str,
+    parser: Callable[[str], Fingerprint],
+) -> Fingerprint | None:
+    """Recompute baseline fingerprint for a single gate after rebase detection."""
+    import os
+
+    try:
+        result = subprocess.run(  # noqa: S602
+            command,
+            shell=True,
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "IW_CORE_AGENT_CONTEXT": "true"},
+        )
+        output = result.stdout + result.stderr
+        return parser(output)
+    except Exception as e:
+        logger.warning(
+            "[F-00061] Baseline recompute failed for %s/%s (gate=%s): %s",
+            step.work_item_id,
+            step.step_id,
+            gate_name,
+            e,
+        )
+        return None
+
+
+def _qv_findings_legacy(db: Session, step: WorkflowStep, _worktree_path: str) -> str:
+    """Legacy QV findings extraction without baseline subtraction."""
     latest_run = db.execute(
         select(StepRun)
         .where(
@@ -573,19 +756,47 @@ def _get_qv_findings(db: Session, step: WorkflowStep, worktree_path: str) -> str
     if latest_run and latest_run.error_message:
         parts.append(f"**Error**: {latest_run.error_message}")
 
-    # Try to read the log file for full command output
     if latest_run and latest_run.log_file:
         log_path = Path(latest_run.log_file)
         if log_path.exists():
             log_content = log_path.read_text()
-            # Truncate to last 3000 chars to keep prompt manageable
             if len(log_content) > 3000:
                 log_content = "...(truncated)...\n" + log_content[-3000:]
             parts.append(f"**Command output**:\n```\n{log_content}\n```")
 
-    # Try log_content stored in DB
     if latest_run and latest_run.log_content and not parts:
         parts.append(f"**Log content**:\n```\n{latest_run.log_content[-3000:]}\n```")
+
+    if parts:
+        return "\n\n".join(parts)
+
+    return "Quality validation failed — check the command output for errors."
+
+
+def _format_qv_findings_from_delta(delta: Fingerprint, latest_run: StepRun | None) -> str:
+    """Format the delta (subtraction result) as findings string."""
+    parts: list[str] = []
+
+    if latest_run and latest_run.error_message:
+        parts.append(f"**Error**: {latest_run.error_message}")
+
+    failure_lines = []
+    for f in delta.failures:
+        failure_lines.append(f"  [{f.kind}] {f.key}")
+
+    unparseable_lines = []
+    for u in delta.unparseable:
+        unparseable_lines.append(f"  {u}")
+
+    if failure_lines or unparseable_lines:
+        blocks = []
+        if failure_lines:
+            blocks.append("**New Failures**:\n" + "\n".join(failure_lines))
+        if unparseable_lines:
+            blocks.append(
+                "**Unparseable output** (always surfaces):\n" + "\n".join(unparseable_lines)
+            )
+        parts.append("\n".join(blocks))
 
     if parts:
         return "\n\n".join(parts)
