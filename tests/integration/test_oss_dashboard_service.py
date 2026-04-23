@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -433,9 +432,15 @@ class TestRunJob:
 
 
 class TestCancelJob:
-    def test_cancel_running_job(
+    @pytest.mark.asyncio
+    async def test_cancel_running_job(
         self, oss_svc_session: Session, oss_svc_test_project: Project
     ) -> None:
+        # `cancel_job` is async. Use @pytest.mark.asyncio + await rather than
+        # asyncio.get_event_loop().run_until_complete(...): the deprecated
+        # global-loop call yields the session-shared loop once pytest-asyncio
+        # has registered its own, producing order-dependent failures when prior
+        # tests have run their own loops.
         from dashboard.services.oss_service import cancel_job, enqueue_job
 
         job = enqueue_job(oss_svc_session, oss_svc_test_project.id, "scan")
@@ -446,13 +451,14 @@ class TestCancelJob:
         )
         oss_svc_session.commit()
 
-        asyncio.get_event_loop().run_until_complete(cancel_job(oss_svc_session, job.id))
+        await cancel_job(oss_svc_session, job.id)
 
         updated = oss_svc_session.query(ProjectOssJob).filter(ProjectOssJob.id == job.id).first()
         assert updated is not None
         assert updated.status == ProjectOssJobStatus.cancelled
 
-    def test_cancel_queued_job(
+    @pytest.mark.asyncio
+    async def test_cancel_queued_job(
         self, oss_svc_session: Session, oss_svc_test_project: Project
     ) -> None:
         from dashboard.services.oss_service import cancel_job, enqueue_job
@@ -460,7 +466,7 @@ class TestCancelJob:
         job = enqueue_job(oss_svc_session, oss_svc_test_project.id, "scan")
         oss_svc_session.commit()
 
-        asyncio.get_event_loop().run_until_complete(cancel_job(oss_svc_session, job.id))
+        await cancel_job(oss_svc_session, job.id)
 
         updated = oss_svc_session.query(ProjectOssJob).filter(ProjectOssJob.id == job.id).first()
         assert updated is not None

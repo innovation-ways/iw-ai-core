@@ -51,7 +51,11 @@ async def _stream_job_events(request: Request, job_id: int) -> AsyncGenerator[st
 
         factory = SessionLocal
 
-    async for line in job_event_stream(factory, job_id):
+    # Tests may shrink the heartbeat interval so the stream responds quickly
+    # and terminates promptly instead of blocking up to 20s per iteration.
+    heartbeat_interval = getattr(request.app.state, "oss_stream_heartbeat_interval", 20.0)
+
+    async for line in job_event_stream(factory, job_id, heartbeat_interval=heartbeat_interval):
         if await request.is_disconnected():
             break
         yield line
