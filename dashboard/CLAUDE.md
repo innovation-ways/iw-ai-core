@@ -5,6 +5,7 @@ Real-time visibility and manual controls for the IW AI Core orchestration platfo
 ## Critical Rules
 
 - **NEVER** invoke docker commands from dashboard code, fixtures, or dev scripts. See `docs/IW_AI_Core_Agent_Constraints.md`. Dashboard tests use TestClient — they never need to touch docker directly.
+- **NEVER** run alembic migrations from dashboard routes, services, or tests. Migrations are the daemon's responsibility — agents generate, daemon applies. See `docs/IW_AI_Core_Agent_Constraints.md`.
 
 ## Stack
 

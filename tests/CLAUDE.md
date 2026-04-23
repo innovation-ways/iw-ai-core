@@ -18,6 +18,7 @@ pytest-based tests with strict DB isolation rules.
 2. **NEVER** call `importlib.reload(orch.config)` — it re-runs `load_dotenv()` restoring deleted env vars from `.env`; use `monkeypatch.delenv()` only
 3. **NEVER** mock the database in integration tests — `SELECT FOR UPDATE` locking can't be tested with mocks
 4. **NEVER** run raw `docker` / `docker compose` / `docker-compose` from test code. The ONLY allowed docker usage in tests is via `testcontainers` fixtures (which self-label under Ryuk and self-destruct). Never stop/remove containers from test teardown — let the fixture lifecycle handle it. Full policy: `docs/IW_AI_Core_Agent_Constraints.md`.
+4a. **NEVER** invoke `alembic` directly from test code outside of dedicated migration-round-trip tests. In those tests, downgrade to a *specific revision ID*, never `-1`, so the test stays stable as new migrations land on top. Migrations are daemon-driven in production — agents generate, daemon applies. See `docs/IW_AI_Core_Agent_Constraints.md`.
 5. **MUST** replace psycopg2 URL from testcontainers before use:
    ```python
    url = container.get_connection_url().replace("postgresql+psycopg2://", "postgresql+psycopg://")

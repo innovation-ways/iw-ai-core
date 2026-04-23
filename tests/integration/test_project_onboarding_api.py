@@ -24,48 +24,53 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def client(db_session: Any, tmp_path: Path) -> Generator[TestClient, None, None]:
-    def override_get_db() -> Generator[Any, None, None]:
-        yield db_session
+    import os
 
-    app = create_app()
-    app.dependency_overrides[get_db] = override_get_db
-
-    # Redirect init_project's platform root to an isolated tmp dir so tests
-    # that POST /api/projects/create cannot corrupt the real projects.toml.
-    import orch.skills.init_project as init_mod
-
-    fake_platform_root = tmp_path / "platform"
-    (fake_platform_root / "templates").mkdir(parents=True)
-    (fake_platform_root / "skills").mkdir(parents=True)
-    (fake_platform_root / "projects.toml").write_text(
-        "# test isolated projects.toml\n", encoding="utf-8"
-    )
-    (fake_platform_root / "templates" / "default_workflow.md").write_text(
-        "# Workflow Definition\n", encoding="utf-8"
-    )
-    original_platform_root = init_mod._PLATFORM_ROOT
-    init_mod._PLATFORM_ROOT = fake_platform_root
-
-    original_browse_root = None
+    original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
-        from dashboard.routers import projects as projects_module
+        def override_get_db() -> Generator[Any, None, None]:
+            yield db_session
 
-        original_browse_root = projects_module._browse_root
-        projects_module._browse_root = lambda: tmp_path
-    except Exception as exc:
-        logging.warning("Could not override _browse_root: %s", exc)
+        app = create_app()
+        app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app, raise_server_exceptions=True) as c:
-        yield c
+        import orch.skills.init_project as init_mod
 
-    try:
-        if original_browse_root is not None:
-            projects_module._browse_root = original_browse_root
-    except Exception as exc:
-        logging.warning("Could not restore _browse_root: %s", exc)
+        fake_platform_root = tmp_path / "platform"
+        (fake_platform_root / "templates").mkdir(parents=True)
+        (fake_platform_root / "skills").mkdir(parents=True)
+        (fake_platform_root / "projects.toml").write_text(
+            "# test isolated projects.toml\n", encoding="utf-8"
+        )
+        (fake_platform_root / "templates" / "default_workflow.md").write_text(
+            "# Workflow Definition\n", encoding="utf-8"
+        )
+        original_platform_root = init_mod._PLATFORM_ROOT
+        init_mod._PLATFORM_ROOT = fake_platform_root
 
-    init_mod._PLATFORM_ROOT = original_platform_root
-    app.dependency_overrides.clear()
+        original_browse_root = None
+        try:
+            from dashboard.routers import projects as projects_module
+
+            original_browse_root = projects_module._browse_root
+            projects_module._browse_root = lambda: tmp_path
+        except Exception as exc:
+            logging.warning("Could not override _browse_root: %s", exc)
+
+        with TestClient(app, raise_server_exceptions=True) as c:
+            yield c
+
+        try:
+            if original_browse_root is not None:
+                projects_module._browse_root = original_browse_root
+        except Exception as exc:
+            logging.warning("Could not restore _browse_root: %s", exc)
+
+        init_mod._PLATFORM_ROOT = original_platform_root
+        app.dependency_overrides.clear()
+    finally:
+        if original is not None:
+            os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
 
 def make_git_repo(tmp_path: Path, name: str = "my-repo") -> Path:

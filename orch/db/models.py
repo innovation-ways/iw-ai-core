@@ -243,6 +243,21 @@ class OssToolRunStatus(enum.Enum):
     skipped = "skipped"
 
 
+class ProjectOssJobKind(enum.Enum):
+    scan = "scan"
+    prepare = "prepare"
+    publish = "publish"
+    install = "install"
+
+
+class ProjectOssJobStatus(enum.Enum):
+    queued = "queued"
+    running = "running"
+    complete = "complete"
+    error = "error"
+    cancelled = "cancelled"
+
+
 # ---------------------------------------------------------------------------
 # Reusable column type shorthands
 # ---------------------------------------------------------------------------
@@ -273,6 +288,10 @@ _oss_pill_color_col = SAEnum(OssPillColor, name="osspill_color", create_type=Tru
 _oss_finding_severity_col = SAEnum(OssFindingSeverity, name="ossfinding_severity", create_type=True)
 _oss_finding_status_col = SAEnum(OssFindingStatus, name="ossfinding_status", create_type=True)
 _oss_tool_run_status_col = SAEnum(OssToolRunStatus, name="osstoolrun_status", create_type=True)
+_project_oss_job_kind_col = SAEnum(ProjectOssJobKind, name="project_oss_job_kind", create_type=True)
+_project_oss_job_status_col = SAEnum(
+    ProjectOssJobStatus, name="project_oss_job_status", create_type=True
+)
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +345,9 @@ class Project(Base):
 
     oss_scans: Mapped[list["OssScan"]] = relationship(
         "OssScan", back_populates="project", cascade="all, delete-orphan"
+    )
+    oss_jobs: Mapped[list["ProjectOssJob"]] = relationship(
+        "ProjectOssJob", back_populates="project", cascade="all, delete-orphan"
     )
 
     __table_args__ = ({"comment": "Registry of software projects managed by IW AI Core"},)
@@ -1368,6 +1390,52 @@ class OssToolRun(Base):
         ForeignKeyConstraint(["scan_id"], ["oss_scan.id"], ondelete="CASCADE"),
         Index("ix_oss_tool_run_scan", "scan_id"),
         {"comment": "Tier-1 tool execution records within an OSS scan"},
+    )
+
+
+class ProjectOssJob(Base):
+    """Async OSS scan/prepare/publish/install job tracking."""
+
+    __tablename__ = "project_oss_job"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[ProjectOssJobKind] = mapped_column(_project_oss_job_kind_col, nullable=False)
+    status: Mapped[ProjectOssJobStatus] = mapped_column(
+        _project_oss_job_status_col, nullable=False, server_default=text("'queued'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    worktree_path: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Temp path for prepare/publish; NULL for scan/install",
+    )
+    scan_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        comment="FK to oss_scan.id when kind=scan; NULL otherwise",
+    )
+    stdout_tail: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Last 16KB of combined stdout/stderr"
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    project: Mapped["Project"] = relationship("Project", back_populates="oss_jobs")
+    scan: Mapped["OssScan | None"] = relationship(
+        "OssScan", foreign_keys=[scan_id], back_populates=None
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["scan_id"], ["oss_scan.id"], ondelete="SET NULL"),
+        Index("ix_project_oss_job_project_created", "project_id", text("created_at DESC")),
+        Index("ix_project_oss_job_status", "status"),
+        {"comment": "Async OSS scan/prepare/publish/install job tracking"},
     )
 
 
