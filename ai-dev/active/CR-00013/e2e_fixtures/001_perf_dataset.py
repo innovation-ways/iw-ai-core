@@ -53,7 +53,7 @@ PERF_BATCH_PROJECT = "perf-innoforge"
 AGENT_LABEL = "opencode"
 
 
-def _seed_projects(db: Session, now: datetime) -> None:
+def _seed_projects(db: Session, _now: datetime) -> None:
     for project_id, display_name in PROJECTS:
         if db.get(Project, project_id) is not None:
             continue

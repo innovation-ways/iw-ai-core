@@ -18,9 +18,11 @@ from orch.db.models import (
     BatchItemStatus,
     BatchStatus,
     DaemonEvent,
+    QvBaseline,
     RunStatus,
     StepRun,
     StepStatus,
+    StepType,
     WorkflowStep,
     WorkItem,
     WorkItemStatus,
@@ -314,6 +316,8 @@ class BatchManager:
             {"worktree_path": worktree_info.get("path")},
         )
 
+        self._compute_qv_baselines(db, batch_item, worktree_info)
+
         # Launch first pending step
         self._launch_next_step(db, item_id, worktree_info)
 
@@ -333,6 +337,182 @@ class BatchManager:
             "branch": f"agent/{item_id}",
             "created_at": datetime.now(UTC).isoformat(),
         }
+
+    def _compute_qv_baselines(
+        self, db: Session, batch_item: BatchItem, worktree_info: dict[str, Any]
+    ) -> None:
+        """Compute and persist QV baseline fingerprints at worktree setup time.
+
+        Runs each qv-gate's command at the base SHA and stores the resulting
+        failure fingerprint so subsequent runs can subtract pre-existing failures.
+        """
+        if not self.config.baseline_qv_enabled:
+            logger.debug("[F-00061] baseline_qv_enabled=False — skipping baseline compute")
+            return
+
+        item_id = batch_item.work_item_id
+        worktree_path = worktree_info.get("path", "")
+        if not worktree_path:
+            logger.warning("[F-00061] No worktree path for %s — skipping baseline compute", item_id)
+            return
+
+        base_sha = self._resolve_worktree_base_sha(worktree_path)
+        if not base_sha:
+            logger.warning(
+                "[F-00061] Could not resolve base SHA for %s — skipping baseline compute",
+                item_id,
+            )
+            return
+
+        manifest_steps = self._read_workflow_manifest(item_id, worktree_path)
+        if manifest_steps is None:
+            logger.warning(
+                "[F-00061] No workflow manifest for %s — skipping baseline compute",
+                item_id,
+            )
+            return
+
+        steps = (
+            db.query(WorkflowStep)
+            .filter(
+                WorkflowStep.project_id == self.project_id,
+                WorkflowStep.work_item_id == item_id,
+                WorkflowStep.step_type == StepType.quality_validation,
+            )
+            .all()
+        )
+        if not steps:
+            return
+
+        from orch.daemon.qv_baseline import (  # noqa: PLC0415
+            GATE_PARSERS,
+            fingerprint_to_jsonable,
+        )
+
+        for step in steps:
+            step_manifest = next((s for s in manifest_steps if s.get("step") == step.step_id), None)
+            if not step_manifest:
+                continue
+            gate = step_manifest.get("gate", step.step_id)
+            command = step_manifest.get("command")
+            if not command:
+                continue
+
+            parser = GATE_PARSERS.get(gate)
+            if parser is None:
+                logger.warning(
+                    "[F-00061] Unknown gate '%s' for step %s/%s — skipping baseline",
+                    gate,
+                    item_id,
+                    step.step_id,
+                )
+                continue
+
+            try:
+                output = self._run_gate_command(command, worktree_path, gate)
+                fp = parser(output)
+                payload = fingerprint_to_jsonable(fp)
+                self._upsert_qv_baseline(db, step.id, gate, base_sha, payload)
+            except Exception as e:
+                logger.warning(
+                    "[F-00061] Baseline compute failed for %s/%s (gate=%s): %s",
+                    item_id,
+                    step.step_id,
+                    gate,
+                    e,
+                )
+                continue
+
+        db.commit()
+
+    def _resolve_worktree_base_sha(self, worktree_path: str) -> str | None:
+        """Resolve the worktree's base SHA via git merge-base HEAD main."""
+        try:
+            result = subprocess.run(
+                ["git", "merge-base", "HEAD", "main"],  # noqa: S607
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:  # noqa: S110
+            pass
+        return None
+
+    def _read_workflow_manifest(
+        self, item_id: str, worktree_path: str
+    ) -> list[dict[str, Any]] | None:
+        """Read and parse the workflow-manifest.json for a work item."""
+        import json
+
+        manifest_path = (
+            Path(worktree_path) / "ai-dev" / "active" / item_id / "workflow-manifest.json"
+        )
+        if not manifest_path.exists():
+            return None
+        try:
+            data = json.loads(manifest_path.read_text())
+            steps = data.get("steps", [])
+            if isinstance(steps, list):
+                return [dict(s) for s in steps]
+            return None
+        except Exception:
+            return None
+
+    def _run_gate_command(self, command: str, worktree_path: str, gate: str) -> str:  # noqa: ARG002
+        """Run a gate command and return combined stdout+stderr."""
+        import os
+
+        result = subprocess.run(  # noqa: S602
+            command,
+            shell=True,
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "IW_CORE_AGENT_CONTEXT": "true"},
+        )
+        return result.stdout + result.stderr
+
+    def _upsert_qv_baseline(
+        self,
+        db: Session,
+        step_id: int,
+        gate_name: str,
+        base_sha: str,
+        fingerprint: dict[str, object],
+    ) -> None:
+        """Upsert a QvBaseline row (on conflict, update fingerprint + computed_at)."""
+        from sqlalchemy import text
+
+        existing = db.execute(
+            text(
+                "SELECT id FROM qv_baselines WHERE step_id = :step_id "
+                "AND gate_name = :gate_name AND base_sha = :base_sha"
+            ),
+            {"step_id": step_id, "gate_name": gate_name, "base_sha": base_sha},
+        ).scalar_one_or_none()
+
+        now = datetime.now(UTC)
+        if existing:
+            db.execute(
+                text(
+                    "UPDATE qv_baselines SET fingerprint = :fingerprint, "
+                    "computed_at = :computed_at WHERE id = :id"
+                ),
+                {"fingerprint": fingerprint, "computed_at": now, "id": existing},
+            )
+        else:
+            baseline = QvBaseline(
+                step_id=step_id,
+                gate_name=gate_name,
+                base_sha=base_sha,
+                fingerprint=fingerprint,
+                computed_at=now,
+            )
+            db.add(baseline)
 
     # ------------------------------------------------------------------
     # Step launch
