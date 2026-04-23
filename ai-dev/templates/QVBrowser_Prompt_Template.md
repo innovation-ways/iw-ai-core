@@ -143,6 +143,22 @@ The file must export `def seed(db: Session) -> None` and is auto-run by
 (check `db.get(...)` before insert) — `e2e_up.sh` may re-run on retry.
 Multiple files load in lexical order; use `001_`, `002_`, … prefixes.
 
+`docker-compose.e2e.yml` bind-mounts the worktree's `ai-dev/` directory
+read-only into the dashboard container, so fixtures written at any time
+(including by a qv-browser agent mid-step) are visible to the next
+invocation of `scripts/e2e_seed.py` without a rebuild.
+
+> ⚠️ **NEVER run the fixture seed from your host shell.** The host's
+> `.env` resolves to the production orchestration DB on port 5433; a
+> command like `uv run python -c "from orch.db.session import
+> get_session; ..."` run outside a container will write your test rows
+> into the real DB and the E2E dashboard will still 404 because it
+> reads from a different Postgres. If a fixture needs to be re-seeded
+> against a running E2E stack, exec INTO the container:
+> `docker compose -p "$COMPOSE_PROJECT_NAME" exec e2e-dashboard uv run
+> python scripts/e2e_seed.py`. If that is not possible, `iw step-fail`
+> with `ENV_DATA_MISSING:` so the daemon re-provisions the stack.
+
 If your verifications can't be satisfied with seed data alone (e.g. they
 require a live agent run), call `iw step-fail` with reason prefixed
 `ENV_DATA_MISSING:` (see Pass Criteria) — the daemon recognises this as
