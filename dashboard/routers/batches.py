@@ -210,9 +210,23 @@ def _all_batches(project_id: str, db: Session, status_filter: list[str]) -> list
                 )
             ).all()
         )
-        total = len(items)
-        done = sum(1 for it in items if it.status.value in ("completed", "merged"))
-        pct = int((done / total * 100) if total > 0 else 0)
+        total_items = len(items)
+        completed_items = sum(1 for it in items if it.status.value in ("completed", "merged"))
+
+        if items:
+            work_item_ids = [it.work_item_id for it in items]
+            steps = db.scalars(
+                select(WorkflowStep).where(
+                    WorkflowStep.project_id == project_id,
+                    WorkflowStep.work_item_id.in_(work_item_ids),
+                )
+            ).all()
+            total_steps = len(steps)
+            done_steps = sum(1 for s in steps if s.status.value in ("completed", "skipped"))
+            pct = int((done_steps / total_steps * 100) if total_steps > 0 else 0)
+        else:
+            pct = 0
+
         dur: float | None = None
         if batch.created_at and batch.completed_at:
             dur = (batch.completed_at - batch.created_at).total_seconds()
@@ -220,8 +234,8 @@ def _all_batches(project_id: str, db: Session, status_filter: list[str]) -> list
             BatchRow(
                 id=batch.id,
                 status=batch.status.value,
-                total_items=total,
-                completed_items=done,
+                total_items=total_items,
+                completed_items=completed_items,
                 progress_pct=pct,
                 created_at=batch.created_at,
                 duration_secs=dur,
