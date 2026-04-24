@@ -77,32 +77,27 @@
 
 {% block scripts %}
 <script>
-(function () {
-  var es = new EventSource('/api/stream/events');
+// Fragment URLs for each tab (avoids a full window.location.reload() which
+// tears down all browser connections and hits the 6-connection-per-origin
+// HTTP/1.1 limit, causing all other tabs/requests to hang).
+var _fragmentUrls = {
+  launch:  '/project/{{ current_project.id }}/tests/fragment/launch',
+  runs:    '/project/{{ current_project.id }}/tests/fragment/runs',
+  results: '/project/{{ current_project.id }}/tests/fragment/results',
+};
 
-  // Fragment URLs for each tab (avoids a full window.location.reload() which
-  // tears down all browser connections and hits the 6-connection-per-origin
-  // HTTP/1.1 limit, causing all other tabs/requests to hang).
-  var _fragmentUrls = {
-    launch:  '/project/{{ current_project.id }}/tests/fragment/launch',
-    runs:    '/project/{{ current_project.id }}/tests/fragment/runs',
-    results: '/project/{{ current_project.id }}/tests/fragment/results',
-  };
+function _reloadTabContent() {
+  var params = new URLSearchParams(window.location.search);
+  var tab = params.get('tab') || 'launch';
+  var url = _fragmentUrls[tab] || _fragmentUrls.launch;
+  htmx.ajax('GET', url, {target: '#tab-content', swap: 'innerHTML'});
+}
 
-  function _reloadTabContent() {
-    var params = new URLSearchParams(window.location.search);
-    var tab = params.get('tab') || 'launch';
-    var url = _fragmentUrls[tab] || _fragmentUrls.launch;
-    htmx.ajax('GET', url, {target: '#tab-content', swap: 'innerHTML'});
-  }
-
-  es.addEventListener('test-update', function () {
-    _reloadTabContent();
-  });
-  es.addEventListener('toast', function (e) {
-    try { showToast(JSON.parse(e.data)); } catch (_) {}
-  });
-  es.onerror = function () {};
-})();
+iwSSE.on('test-update', function () {
+  _reloadTabContent();
+});
+iwSSE.on('toast', function (e) {
+  try { showToast(JSON.parse(e.data)); } catch (_) {}
+});
 </script>
 {% endblock %}

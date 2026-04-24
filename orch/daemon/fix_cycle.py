@@ -82,7 +82,11 @@ _DEFAULT_FIX_CYCLE_MAX = 5
 _MAX_FIX_SUMMARY_LEN = 20000
 # Browser fix cycles rebuild the full E2E docker-compose stack on every
 # re-run, which is expensive; cap them separately from the generic limit.
-_DEFAULT_BROWSER_FIX_CYCLE_MAX = 2
+# Bumped to 3 from 2 after 4/6 recent browser_verification completions
+# (CR-00019, F-00058, F-00056, F-00055) used both cycles — two stuck items
+# (I-00038 S11, F-00060 S14) ran out on the first wrong-hypothesis step and
+# never recovered. Three cycles gives agents room for one bad guess.
+_DEFAULT_BROWSER_FIX_CYCLE_MAX = 3
 
 
 # ---------------------------------------------------------------------------
@@ -128,23 +132,20 @@ def should_attempt_fix(
     step: WorkflowStep,
     project_config: ProjectConfig,
 ) -> bool:
-    """Return True if this failed step is a review that can be auto-fixed."""
+    """Return True if this failed step is a review that can be auto-fixed.
+
+    Note: historically this function skipped the fix cycle entirely when a
+    browser_verification failure started with ``ENV_DATA_MISSING:``. That
+    guard was a footgun — every one of the real defects (wrong-DB insert,
+    stub shape drift, swallowed exceptions, Jobs-page 500) the qv-browser
+    agent mis-classified as "environmental" would have been fixable by a
+    subsequent fix cycle, but the skip prevented it. The fix cycle now
+    always runs within the max-cycles budget; the fix prompt tells the
+    agent how to judge whether an earlier ENV_DATA_MISSING claim is real
+    (write a fixture) or hiding a code defect (fix the defect).
+    """
     if step.step_type not in _FIXABLE_STEP_TYPES:
         return False
-
-    # Browser verification: ENV_DATA_MISSING failures cannot be fixed by editing
-    # code — the qv-browser agent flagged the issue as a missing E2E DB seed
-    # row. Skip the fix cycle so we don't burn retries on a no-op patch.
-    if step.step_type is StepType.browser_verification:
-        reason = _latest_failure_reason(db, step)
-        if reason and reason.lstrip().startswith(_ENV_DATA_MISSING_PREFIX):
-            logger.warning(
-                "Skipping fix cycle for %s/%s: ENV_DATA_MISSING (add an "
-                "ai-dev/active/<id>/e2e_fixtures/*.py file)",
-                step.work_item_id,
-                step.step_id,
-            )
-            return False
 
     max_cycles = _max_cycles_for(step.step_type, project_config)
     existing = db.query(FixCycle).filter(FixCycle.step_id == step.id).count()
@@ -248,6 +249,10 @@ def attempt_fix_cycle(
     # Get the review findings from the latest failed StepRun
     findings = _get_review_findings(db, step, worktree_path, config)
 
+    # Grab the latest StepRun's --reason so the fix prompt can call out
+    # mis-classified ENV_DATA_MISSING / ENVIRONMENT failures.
+    prior_reason = _latest_failure_reason(db, step)
+
     # Generate fix prompt
     prompt_path = _generate_fix_prompt(
         step,
@@ -255,6 +260,7 @@ def attempt_fix_cycle(
         cycle_number,
         findings,
         max_cycles,
+        prior_failure_reason=prior_reason,
     )
 
     # Transition step: failed → needs_fix
@@ -840,6 +846,7 @@ def _generate_fix_prompt(
     cycle_number: int,
     findings: str,
     max_cycles: int,
+    prior_failure_reason: str | None = None,
 ) -> Path | None:
     """Generate a fix prompt from the template or inline, write to worktree."""
     item_id = step.work_item_id
@@ -853,7 +860,12 @@ def _generate_fix_prompt(
         )
     elif step.step_type == StepType.browser_verification:
         prompt = _build_browser_fix_prompt_content(
-            item_id, step_id, cycle_number, findings, max_cycles
+            item_id,
+            step_id,
+            cycle_number,
+            findings,
+            max_cycles,
+            prior_failure_reason=prior_failure_reason,
         )
     else:
         prompt = _build_fix_prompt_content(
@@ -935,6 +947,7 @@ def _build_browser_fix_prompt_content(
     cycle_number: int,
     findings: str,
     max_cycles: int,
+    prior_failure_reason: str | None = None,
 ) -> str:
     """Build a fix prompt for a browser_verification failure.
 
@@ -942,6 +955,11 @@ def _build_browser_fix_prompt_content(
     real code defect (template/router/CLI). The fix agent applies the minimum
     patch; the daemon re-launches the browser step, which rebuilds the E2E
     stack with ``docker compose up --build`` and re-runs V1..V(n).
+
+    If ``prior_failure_reason`` starts with ``ENV_DATA_MISSING:`` or similar
+    "environmental" prefixes, the prompt adds a section that forces the
+    agent to distinguish real env gaps (write a fixture / fix the test
+    harness) from code defects hiding behind the label.
     """
     escalation = ""
     if cycle_number == max_cycles:
@@ -952,6 +970,41 @@ def _build_browser_fix_prompt_content(
             "can act on the evidence."
         )
 
+    env_suspicion_block = ""
+    if prior_failure_reason:
+        stripped = prior_failure_reason.lstrip().upper()
+        if stripped.startswith((_ENV_DATA_MISSING_PREFIX.upper(), "ENVIRONMENT:", "ENV:")):
+            env_suspicion_block = (
+                "\n## The previous agent claimed this was environmental\n\n"
+                "The previous run's `--reason` was:\n\n"
+                f"> {prior_failure_reason.strip()}\n\n"
+                "Six of the last six genuine blockers on browser_verification "
+                "steps were **code defects misdiagnosed as environmental** "
+                "(wrong-DB insert via `SessionLocal`, `/api/embed` shape drift, "
+                "`/api/show` missing, `_run_qa_in_thread` swallowing exceptions, "
+                "Jobs-page `None`-datetime sort, `sse-client.js` defer ordering). "
+                "Start by *assuming the previous classification is wrong*:\n\n"
+                "1. Re-read the verification log for HTTP 5xx, pydantic "
+                "   `ValidationError`, unhandled exceptions in stderr, or "
+                "   `event: done` with zero tokens — all are code defects.\n"
+                "2. Check that the agent used `$IW_BROWSER_E2E_DB_URL` (not "
+                "   `orch.db.session.SessionLocal`) for any E2E DB writes. "
+                "   If SessionLocal appears in the failure log, it wrote to "
+                "   the live orchestration DB and the dashboard under test "
+                "   never saw the row — fix the prompt / test methodology.\n"
+                "3. If the failure is genuinely environmental (missing seed "
+                "   rows, missing daemon-driven state transitions), write "
+                f"   `ai-dev/active/{item_id}/e2e_fixtures/NNN_<name>.py` "
+                "   exporting `def seed(db: Session) -> None`. The "
+                "   E2E stack loads these at bring-up. Do NOT add ad-hoc "
+                "   inserts from the agent subprocess.\n"
+                "4. If the test harness itself is wrong (e.g. a V step that "
+                "   can't be satisfied in playwright-cli's session model, a "
+                "   stub that doesn't speak the client's contract), fix the "
+                "   harness. Prompts under `ai-dev/active/{item_id}/prompts/` "
+                "   and fixtures under `scripts/` are in-scope.\n"
+            )
+
     return (
         f"# {item_id} {step_id} Browser Verification Fix Cycle "
         f"{cycle_number}/{max_cycles}\n\n"
@@ -961,8 +1014,9 @@ def _build_browser_fix_prompt_content(
         f"reported code defects. Apply the minimum patch to make every failing "
         f"V pass; the daemon will rebuild the E2E stack and re-run the browser "
         f"checks.\n\n"
-        f"## Browser Verification Report\n\n{findings}\n\n"
-        f"## Where to look\n\n"
+        f"## Browser Verification Report\n\n{findings}\n"
+        f"{env_suspicion_block}"
+        f"\n## Where to look\n\n"
         f"1. Read the **Issues Found** section above for a root-cause diagnosis "
         f"and `file:line` references. Trust it and start there.\n"
         f"2. Screenshots are under "
@@ -972,7 +1026,11 @@ def _build_browser_fix_prompt_content(
         f"   - `dashboard/templates/**` — if the UI rendered the wrong element\n"
         f"   - `dashboard/routers/**` — if an HTTP route returned the wrong status/fragment\n"
         f"   - `orch/cli/**` — if a CLI command emitted the wrong exit code or message\n"
-        f"   - `orch/daemon/**` or `orch/db/**` — if a state transition is wrong\n\n"
+        f"   - `orch/daemon/**` or `orch/db/**` — if a state transition is wrong\n"
+        f"   - `scripts/e2e_*` — if the E2E stub/entrypoint diverged from the "
+        f"code-under-test's contract\n"
+        f"   - `ai-dev/active/{item_id}/e2e_fixtures/` — if the E2E seed is "
+        f"missing rows the V step needs\n\n"
         f"## Constraints\n\n"
         f"1. **Only fix the reported V(n) failures.** Do not refactor unrelated code.\n"
         f"2. **Preserve existing behavior** for every V that already passed — "

@@ -215,25 +215,15 @@
 // =========================================================================
 // SSE: connect to event stream for live updates
 // =========================================================================
-(function () {
-  var es = new EventSource('/api/stream/events');
+iwSSE.on('running-update', function () {
+  htmx.trigger('#sse-trigger', 'running-refresh');
+});
 
-  // running-update → refresh the running table via htmx
-  es.addEventListener('running-update', function () {
-    htmx.trigger('#sse-trigger', 'running-refresh');
-  });
-
-  // toast → show notification
-  es.addEventListener('toast', function (e) {
-    try {
-      showToast(JSON.parse(e.data));
-    } catch (_) { /* ignore malformed */ }
-  });
-
-  es.onerror = function () {
-    // Reconnect automatically via browser's native SSE retry
-  };
-})();
+iwSSE.on('toast', function (e) {
+  try {
+    showToast(JSON.parse(e.data));
+  } catch (_) { /* ignore malformed */ }
+});
 
 // =========================================================================
 // HX-Trigger: handle showToast from action endpoints

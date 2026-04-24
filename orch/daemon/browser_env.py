@@ -207,6 +207,26 @@ def _build_env(
     if bv_cfg.get("e2e_password"):
         env["IW_BROWSER_E2E_PASSWORD"] = bv_cfg["e2e_password"]
 
+    # Direct DSN for the isolated E2E Postgres container, so browser-verification
+    # agents can INSERT rows that the dashboard under test will actually observe.
+    # The worktree's `.env` points IW_CORE_DB_* at the live orchestration DB;
+    # using orch.db.session.SessionLocal from an agent writes to the wrong DB
+    # and V4-style "inject a row and observe it in the UI" probes silently
+    # fail (the dashboard polls a different DB). Credentials match
+    # docker-compose.e2e.yml's e2e-db service (non-secret, fixed).
+    e2e_db_creds = bv_cfg.get("e2e_db", {})
+    e2e_db_user = e2e_db_creds.get("user", "iw_e2e")
+    e2e_db_password = e2e_db_creds.get("password", "iw_e2e_dev")
+    e2e_db_name = e2e_db_creds.get("name", "iw_e2e")
+    env["IW_BROWSER_E2E_DB_HOST"] = "127.0.0.1"
+    env["IW_BROWSER_E2E_DB_PORT"] = str(ports[2])
+    env["IW_BROWSER_E2E_DB_NAME"] = e2e_db_name
+    env["IW_BROWSER_E2E_DB_USER"] = e2e_db_user
+    env["IW_BROWSER_E2E_DB_PASSWORD"] = e2e_db_password
+    env["IW_BROWSER_E2E_DB_URL"] = (
+        f"postgresql://{e2e_db_user}:{e2e_db_password}@127.0.0.1:{ports[2]}/{e2e_db_name}"
+    )
+
     return env
 
 
@@ -292,6 +312,12 @@ _KNOWN_PLACEHOLDERS = frozenset(
         "IW_BROWSER_BASE_URL",
         "IW_BROWSER_E2E_USER",
         "IW_BROWSER_E2E_PASSWORD",
+        "IW_BROWSER_E2E_DB_URL",
+        "IW_BROWSER_E2E_DB_HOST",
+        "IW_BROWSER_E2E_DB_PORT",
+        "IW_BROWSER_E2E_DB_NAME",
+        "IW_BROWSER_E2E_DB_USER",
+        "IW_BROWSER_E2E_DB_PASSWORD",
         "IW_ITEM_ID",
         "IW_STEP_ID",
     }

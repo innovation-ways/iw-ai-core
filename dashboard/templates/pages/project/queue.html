@@ -195,18 +195,12 @@ function toggleSelectAll(master) {
 document.getElementById('queue-form')?.addEventListener('change', updateBatchBtn);
 
 // SSE: reload page when item statuses change (preserving checkbox state isn't worth the complexity)
-(function () {
-  var es = new EventSource('/api/stream/events');
+iwSSE.on('status-update', function () {
+  window.location.reload();
+});
 
-  es.addEventListener('status-update', function () {
-    window.location.reload();
-  });
-
-  es.addEventListener('toast', function (e) {
-    try { showToast(JSON.parse(e.data)); } catch (_) {}
-  });
-
-  es.onerror = function () {};
-})();
+iwSSE.on('toast', function (e) {
+  try { showToast(JSON.parse(e.data)); } catch (_) {}
+});
 </script>
 {% endblock %}

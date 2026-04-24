@@ -8,12 +8,12 @@ Create Date: 2026-04-24 06:09:56.207345
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
+from alembic import op
 from sqlalchemy import text
+from sqlalchemy.dialects import postgresql
 
 from orch.db.models import (
     FUNCTIONAL_DOC_FTS_FUNCTION_SQL,
@@ -21,9 +21,9 @@ from orch.db.models import (
 )
 
 revision: str = "1fb2eb17b580"
-down_revision: Union[str, Sequence[str], None] = "3035dfc20db5"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "3035dfc20db5"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

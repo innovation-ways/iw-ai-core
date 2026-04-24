@@ -62,7 +62,7 @@ BEGIN
 
     DROP TYPE IF EXISTS project_oss_job_status;
     CREATE TYPE project_oss_job_status AS ENUM (
-        'queued', 'running', 'complete', 'error', 'cancelled'
+        'queued', 'running', 'complete', 'error', 'cancelled', 'awaiting_review', 'discarded'
     );
 END$$;
 
@@ -96,7 +96,8 @@ CREATE TABLE IF NOT EXISTS oss_finding (
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
-    evidence_json JSONB
+    evidence_json JSONB,
+    rationale TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_oss_finding_scan ON oss_finding (scan_id);
 CREATE INDEX IF NOT EXISTS ix_oss_finding_scan_sev_stat ON oss_finding (scan_id, severity, status);
@@ -134,6 +135,10 @@ CREATE TABLE IF NOT EXISTS project_oss_job (
     scan_id BIGINT,
     stdout_tail TEXT,
     error_message TEXT,
+    base_sha TEXT,
+    branch_name TEXT,
+    commit_sha TEXT,
+    files_changed_summary TEXT,
     CONSTRAINT fk_project_oss_job_project FOREIGN KEY (project_id)
         REFERENCES projects(id) ON DELETE CASCADE,
     CONSTRAINT fk_project_oss_job_scan FOREIGN KEY (scan_id)
@@ -288,7 +293,15 @@ class TestProjectOssJobMigrationApply:
                 )
             )
         labels = {row[0] for row in result}
-        assert labels == {"queued", "running", "complete", "error", "cancelled"}
+        assert labels == {
+            "queued",
+            "running",
+            "complete",
+            "error",
+            "cancelled",
+            "awaiting_review",
+            "discarded",
+        }
 
 
 class TestProjectOssJobORMModel:
