@@ -65,7 +65,7 @@ BEGIN
 
     DROP TYPE IF EXISTS project_oss_job_status CASCADE;
     CREATE TYPE project_oss_job_status AS ENUM (
-        'queued', 'running', 'complete', 'error', 'cancelled'
+        'queued', 'running', 'complete', 'error', 'cancelled', 'awaiting_review', 'discarded'
     );
 END$$;
 """

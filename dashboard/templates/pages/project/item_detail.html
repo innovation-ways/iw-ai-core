@@ -125,37 +125,31 @@ function activateFixCyclesTab() {
 }
 
 // SSE for live step status updates
-(function () {
-  var es = new EventSource('/api/stream/events');
+iwSSE.on('running-update', function (e) {
+  // Refresh header (metrics update on step progress)
+  if (document.getElementById('item-header-sse-trigger')) {
+    htmx.trigger('#item-header-sse-trigger', 'item-header-refresh');
+  }
+  // Refresh overview tab if active
+  if (_activeTabUrl && _activeTabUrl.indexOf('/tab/overview') !== -1) {
+    htmx.ajax('GET', _activeTabUrl, {target: '#tab-content', swap: 'innerHTML'});
+  }
+});
 
-  es.addEventListener('running-update', function (e) {
-    // Refresh header (metrics update on step progress)
-    if (document.getElementById('item-header-sse-trigger')) {
-      htmx.trigger('#item-header-sse-trigger', 'item-header-refresh');
-    }
-    // Refresh overview tab if active
-    if (_activeTabUrl && _activeTabUrl.indexOf('/tab/overview') !== -1) {
-      htmx.ajax('GET', _activeTabUrl, {target: '#tab-content', swap: 'innerHTML'});
-    }
-  });
+iwSSE.on('status-update', function (e) {
+  // Refresh header (status badge, buttons, metrics)
+  if (document.getElementById('item-header-sse-trigger')) {
+    htmx.trigger('#item-header-sse-trigger', 'item-header-refresh');
+  }
+  // Also refresh overview tab if active
+  if (_activeTabUrl && _activeTabUrl.indexOf('/tab/overview') !== -1) {
+    htmx.ajax('GET', _activeTabUrl, {target: '#tab-content', swap: 'innerHTML'});
+  }
+});
 
-  es.addEventListener('status-update', function (e) {
-    // Refresh header (status badge, buttons, metrics)
-    if (document.getElementById('item-header-sse-trigger')) {
-      htmx.trigger('#item-header-sse-trigger', 'item-header-refresh');
-    }
-    // Also refresh overview tab if active
-    if (_activeTabUrl && _activeTabUrl.indexOf('/tab/overview') !== -1) {
-      htmx.ajax('GET', _activeTabUrl, {target: '#tab-content', swap: 'innerHTML'});
-    }
-  });
-
-  es.addEventListener('toast', function (e) {
-    try { showToast(JSON.parse(e.data)); } catch (_) {}
-  });
-
-  es.onerror = function () {};
-})();
+iwSSE.on('toast', function (e) {
+  try { showToast(JSON.parse(e.data)); } catch (_) {}
+});
 
 // Handle HX-Trigger showToast from action buttons
 document.body.addEventListener('htmx:afterRequest', function(e) {

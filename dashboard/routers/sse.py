@@ -159,76 +159,113 @@ def _fetch_new_events(last_id: int) -> list[DaemonEvent]:
 
 
 async def _event_generator(request: Request) -> AsyncGenerator[str, None]:
-    """Async generator that polls DB every 5 seconds and yields SSE lines."""
-    last_id = _get_latest_event_id()
+    """Async generator that polls DB every 5 seconds and yields SSE lines.
+
+    Any unhandled exception inside the poll loop (DB connection drop,
+    schema mismatch, logic bug) is surfaced to the client as an
+    ``event: error`` frame with a compact summary, and the traceback is
+    logged server-side. Without this, an exception would bubble out of
+    the generator and Starlette would close the stream silently — the
+    browser would see ``readyState=2`` with no explanation, which is the
+    same class of failure as the code_qa.py exception-swallowing bug that
+    hid itself for four fix cycles on F-00060/S14.
+    """
+    import logging
+    import traceback
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        last_id = _get_latest_event_id()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("sse: failed to fetch initial last_id")
+        payload = json.dumps({"stage": "init", "type": type(exc).__name__, "message": str(exc)})
+        yield f"event: error\ndata: {payload}\n\n"
+        return
+
     ping_tick = 0
 
     while not await request.is_disconnected():
-        events: list[DaemonEvent] = await asyncio.to_thread(_fetch_new_events, last_id)
+        try:
+            events: list[DaemonEvent] = await asyncio.to_thread(_fetch_new_events, last_id)
 
-        for event in events:
-            last_id = max(last_id, event.id)
+            for event in events:
+                last_id = max(last_id, event.id)
 
-            if event.event_type in _RUNNING_UPDATE_EVENTS:
-                data = json.dumps(
-                    {
-                        "event_type": event.event_type,
-                        "entity_id": event.entity_id,
-                        "project_id": event.project_id,
-                    }
-                )
-                yield f"event: running-update\ndata: {data}\nid: {event.id}\n\n"
+                if event.event_type in _RUNNING_UPDATE_EVENTS:
+                    data = json.dumps(
+                        {
+                            "event_type": event.event_type,
+                            "entity_id": event.entity_id,
+                            "project_id": event.project_id,
+                        }
+                    )
+                    yield f"event: running-update\ndata: {data}\nid: {event.id}\n\n"
 
-            if event.event_type in _TEST_UPDATE_EVENTS:
-                data = json.dumps(
-                    {
-                        "event_type": event.event_type,
-                        "entity_id": event.entity_id,
-                        "project_id": event.project_id,
-                    }
-                )
-                yield f"event: test-update\ndata: {data}\nid: {event.id}\n\n"
+                if event.event_type in _TEST_UPDATE_EVENTS:
+                    data = json.dumps(
+                        {
+                            "event_type": event.event_type,
+                            "entity_id": event.entity_id,
+                            "project_id": event.project_id,
+                        }
+                    )
+                    yield f"event: test-update\ndata: {data}\nid: {event.id}\n\n"
 
-            if event.event_type in _QUALITY_UPDATE_EVENTS:
-                data = json.dumps(
-                    {
-                        "event_type": event.event_type,
-                        "entity_id": event.entity_id,
-                        "project_id": event.project_id,
-                    }
-                )
-                yield f"event: quality-update\ndata: {data}\nid: {event.id}\n\n"
+                if event.event_type in _QUALITY_UPDATE_EVENTS:
+                    data = json.dumps(
+                        {
+                            "event_type": event.event_type,
+                            "entity_id": event.entity_id,
+                            "project_id": event.project_id,
+                        }
+                    )
+                    yield f"event: quality-update\ndata: {data}\nid: {event.id}\n\n"
 
-            if event.event_type in _STATUS_UPDATE_EVENTS:
-                data = json.dumps(
-                    {
-                        "event_type": event.event_type,
-                        "entity_id": event.entity_id,
-                        "project_id": event.project_id,
-                    }
-                )
-                yield f"event: status-update\ndata: {data}\nid: {event.id}\n\n"
+                if event.event_type in _STATUS_UPDATE_EVENTS:
+                    data = json.dumps(
+                        {
+                            "event_type": event.event_type,
+                            "entity_id": event.entity_id,
+                            "project_id": event.project_id,
+                        }
+                    )
+                    yield f"event: status-update\ndata: {data}\nid: {event.id}\n\n"
 
-            if event.event_type in _TOAST_EVENTS:
-                severity = _TOAST_SEVERITY.get(event.event_type, "info")
-                data = json.dumps(
-                    {
-                        "message": event.message or event.event_type,
-                        "type": severity,
-                        "event_type": event.event_type,
-                        "entity_id": event.entity_id,
-                        "project_id": event.project_id,
-                    }
-                )
-                yield f"event: toast\ndata: {data}\nid: {event.id}\n\n"
+                if event.event_type in _TOAST_EVENTS:
+                    severity = _TOAST_SEVERITY.get(event.event_type, "info")
+                    data = json.dumps(
+                        {
+                            "message": event.message or event.event_type,
+                            "type": severity,
+                            "event_type": event.event_type,
+                            "entity_id": event.entity_id,
+                            "project_id": event.project_id,
+                        }
+                    )
+                    yield f"event: toast\ndata: {data}\nid: {event.id}\n\n"
 
-        # Send keep-alive comment every ~30 seconds (6 × 5s)
-        ping_tick += 1
-        if ping_tick >= 6:
-            yield f": ping {datetime.now(UTC).isoformat()}\n\n"
-            ping_tick = 0
+            # Send keep-alive comment every ~30 seconds (6 × 5s)
+            ping_tick += 1
+            if ping_tick >= 6:
+                yield f": ping {datetime.now(UTC).isoformat()}\n\n"
+                ping_tick = 0
 
-        await asyncio.sleep(5)
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            # Client disconnected mid-iteration — let Starlette unwind.
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "sse: exception in event generator: %s\n%s",
+                exc,
+                traceback.format_exc(),
+            )
+            payload = json.dumps(
+                {"stage": "loop", "type": type(exc).__name__, "message": str(exc)[:500]}
+            )
+            yield f"event: error\ndata: {payload}\n\n"
+            return
 
 
 def _get_latest_event_id() -> int:
