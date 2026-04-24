@@ -74,6 +74,9 @@ self.addEventListener('connect', function(e) {
   var port = e.ports[0];
   var subscriptions = new Set();
 
+  ports.set(port, subscriptions);
+  ensureUpstream();
+
   port.onmessage = function(msg) {
     var data = msg.data;
     if (!data || typeof data !== 'object') return;
@@ -113,7 +116,5 @@ self.addEventListener('connect', function(e) {
     }
   };
 
-  ports.set(port, subscriptions);
   port.start();
-  ensureUpstream();
 });
