@@ -1,0 +1,104 @@
+{
+  "id": "CR-00020",
+  "type": "ChangeRequest",
+  "title": "Store work item evidences as BLOBs in the database",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Database: EvidencePhase enum + WorkItemEvidence ORM model + Alembic migration (up/down) + FK without cascade + unique key (project,item,phase,filename) + list index (project,item,phase) + docs/IW_AI_Core_Database_Schema.md update",
+      "prompt": "prompts/CR-00020_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: enum naming, UUID server_default, FK has NO cascade, unique constraint column order matches upsert expectations, migration round-trip verified, schema doc updated, table count 19→20",
+      "prompt": "prompts/CR-00020_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Backend: orch/evidences.py pure ingest helper with two-pass oversize check + ON CONFLICT upsert, orch/config.py IW_CORE_EVIDENCE_MAX_BYTES (default 5MB), hook ingest into orch/cli/item_commands.py approve (phase=pre) and orch/cli/step_commands.py step_done (phase=post, gated on browser_verification, after validate_browser_evidence_present)",
+      "prompt": "prompts/CR-00020_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: transaction scope wraps status flip + ingest (rollback on oversize), two-pass stat-then-insert ordering, ON CONFLICT DO UPDATE preserves UUID, step_done gated on browser_verification, cwd vs repo_root correctness, symlink/non-regular filtering",
+      "prompt": "prompts/CR-00020_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "api-impl",
+      "description": "API: rewrite dashboard/routers/items.py _list_evidences (DB query + narrow FS fallback: post-only, active-worktree-only, no DB rows) and item_evidence_file (DB lookup → Response(content, media_type=content_type); FS fallback identical scope with existing path-traversal guard preserved)",
+      "prompt": "prompts/CR-00020_S05_API_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05: DB-first correctness, FS fallback strictly scoped (no pre-phase fallback, no fallback for merged items), path-traversal guard preserved, content-type taken from DB row (not re-guessed), template contract honored",
+      "prompt": "prompts/CR-00020_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "tests-impl",
+      "description": "Tests: tests/unit/test_evidences_ingest.py (helper unit tests — missing dir, empty dir, subdirs, non-regular, two-pass oversize, idempotent upsert, MIME fallback), tests/integration/test_evidences_cli.py (AC1-AC4, AC6, AC8 against testcontainer), tests/dashboard/test_evidences_db_source.py (AC5, AC7, pre-no-fallback, path traversal, content-type fidelity)",
+      "prompt": "prompts/CR-00020_S07_Tests_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Review S07: explicit AC1-AC8 coverage map, byte-identical content assertions (not shape-only), no DB mocking, no live-DB connection, AC6 uses raw DELETE (not ORM cascade), AC7 wires worktree_info correctly, deterministic content",
+      "prompt": "prompts/CR-00020_S08_CodeReview_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-layer review: traces AC1-AC8 through the full stack (schema→ingest→CLI→dashboard→test), rollback semantics, template compatibility, docs updates (CLAUDE.md navigation + schema doc), no scope creep beyond File Manifest, no regressions to agents/skills/browser_verification pipeline",
+      "prompt": "prompts/CR-00020_S09_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint (ruff + JS syntax)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format (ruff)"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Typecheck (mypy)"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S15",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — fixture seeds DB-only work item with pre+post evidence rows; Evidences tab renders both phases without any on-disk directory; image URL serves bytes with DB-stored Content-Type; archived item (no DB rows, no FS) still renders empty cleanly",
+      "prompt": "prompts/CR-00020_S15_BrowserVerification_prompt.md"
+    }
+  ]
+}

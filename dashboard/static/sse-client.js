@@ -79,22 +79,16 @@
     }
 
     _worker = sw;
-    _worker.port.addEventListener('message', _handleWorkerMessage);
+    _worker.port.onmessage = _handleWorkerMessage;
     _worker.port.start();
     _connected = true;
     _setTransport('shared-worker');
-
-    _worker.port.onmessage = function(msg) {
-      _handleWorkerMessage(msg);
-    };
 
     _worker.onerror = function() {
       _initFallback();
     };
 
-    setTimeout(function() {
-      _sendToWorker({ type: 'ping' });
-    }, 100);
+    _sendToWorker({ type: 'ping' });
   }
 
   function _initFallback() {
