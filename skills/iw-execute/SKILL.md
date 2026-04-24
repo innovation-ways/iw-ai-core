@@ -1,6 +1,6 @@
 ---
 name: iw-execute
-version: "2.1.0"
+version: "2.2.0"
 description: >
   Execute the AI development workflow for a work item via the IW AI Core platform.
   Checks item status, starts steps via iw CLI, delegates to specialist subagents.
@@ -106,12 +106,28 @@ For direct execution in the current working directory, proceed with the steps ab
 
 ## QV Gate Steps
 
-For `qv-gate` steps, run the gate command directly:
+For `qv-gate` steps, delegate to the `qv-gate` subagent. The agent runs **exactly one** command — the `{step.command}` from the manifest — and reports pass/fail based on the exit code. It does NOT run "all gates", does NOT try to fix failures, does NOT substitute a different gate, and does NOT invent "pre-existing failure" exceptions.
+
+If you are executing the step yourself (no subagent), run the gate command directly:
 ```bash
 {step.command}
 ```
+Report pass/fail based on the exit code. Write a **single-gate** report — do NOT list other gates.
 
-Report pass/fail based on the exit code.
+## QV Browser Steps (`qv-browser`)
+
+For `qv-browser` steps, delegate to the `qv-browser` subagent. The subagent follows the step's browser-verification prompt literally, drives the browser via `playwright-cli`, and captures post-fix screenshots.
+
+Mandatory invariants for these steps:
+
+1. **Use `playwright-cli` exclusively.** Never `chromium.launch()`, never `agent-browser`, never `npx playwright install`.
+2. **Read the base URL from the environment.** `$IW_BROWSER_BASE_URL`, `$IW_BROWSER_E2E_USER`, `$IW_BROWSER_E2E_PASSWORD` are set by the orchestrator. Never hardcode ports (e.g. `localhost:9900`).
+3. **Do not start or stop the E2E stack.** The orchestrator has already brought it up. Do not run `make e2e-up`, `docker compose`, or project up/down scripts.
+4. **Capture at least one screenshot per verification** into `ai-dev/active/<ITEM_ID>/evidences/post/`. An empty `evidences/post/` folder is a failure — `iw step-done` enforces this for `browser_verification` steps.
+5. **If the step requires an E2E fixture** (e.g. `ai-dev/active/<ITEM>/e2e_fixtures/001_*.py`), add it BEFORE running verifications. If the stack was already provisioned before the fixture was added, call `iw step-fail` with a reason prefixed `ENV_DATA_MISSING:` so the daemon re-provisions.
+6. **Never substitute a different check** (e.g. `make format`) when browser verification cannot run. Call `iw step-fail` with a specific reason instead.
+
+Report path convention: `ai-dev/active/<ITEM>/reports/<ITEM>_S{NN}_BrowserVerification_Report.md`. The report must include a V-table (`V1..V(n)` with pass/fail/n/a and screenshot paths) and a "Root cause" paragraph on failure.
 
 ## MANDATORY: Output Requirements
 

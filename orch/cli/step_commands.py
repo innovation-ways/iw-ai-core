@@ -50,6 +50,41 @@ def validate_step_done_transition(current_status: StepStatus) -> str | None:
     return None
 
 
+def validate_browser_evidence_present(
+    step_type: Any,
+    item_id: str,
+    cwd: Path | None = None,
+) -> str | None:
+    """For browser_verification steps, require at least one file in evidences/post/.
+
+    Called on `iw step-done` to prevent agents from marking browser-verification
+    steps complete without capturing post-fix screenshots. Non-browser step types
+    short-circuit to None (no check).
+
+    Returns None if OK, or an error string to surface via `output_error`.
+    """
+    from orch.db.models import StepType  # noqa: PLC0415
+
+    if step_type != StepType.browser_verification:
+        return None
+    base = (cwd or Path.cwd()) / "ai-dev" / "active" / item_id / "evidences" / "post"
+    if not base.is_dir():
+        return (
+            f"Browser verification cannot be marked done: no evidences/post/ at {base}. "
+            "Capture at least one screenshot there, or call `iw step-fail`."
+        )
+    try:
+        has_file = any(p.is_file() for p in base.iterdir())
+    except OSError as exc:
+        return f"Cannot read {base}: {exc}"
+    if not has_file:
+        return (
+            f"Browser verification cannot be marked done: {base} is empty. "
+            "Capture at least one screenshot there, or call `iw step-fail`."
+        )
+    return None
+
+
 def validate_step_fail_transition(current_status: StepStatus) -> str | None:
     """Return an error message if step-fail is invalid, or None if OK."""
     if current_status != StepStatus.in_progress:
@@ -261,6 +296,13 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
             error = validate_step_done_transition(step.status)
             if error:
                 output_error(ctx, error, 1)
+
+            # Browser verification steps MUST produce at least one post-evidence
+            # screenshot before being marked done. Prevents agents from silently
+            # skipping browser work and substituting a different gate (see I-00036).
+            evidence_error = validate_browser_evidence_present(step.step_type, item_id)
+            if evidence_error:
+                output_error(ctx, evidence_error, 1)
 
             step.status = StepStatus.completed
             step.completed_at = datetime.now(UTC)

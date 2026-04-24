@@ -1,0 +1,80 @@
+{
+  "id": "I-00038",
+  "type": "Issue",
+  "title": "Dashboard hangs when multiple tabs are open (SSE connection exhaustion)",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "frontend-impl",
+      "description": "Frontend: add dashboard/static/sse-shared-worker.js (SharedWorker multiplexing a single EventSource('/api/stream/events') to all connected ports) and dashboard/static/sse-client.js (window.iwSSE API with SharedWorker-first, EventSource fallback). Include sse-client.js globally in dashboard/templates/base.html. Migrate queue.html, batches.html, batch_detail.html, item_detail.html, tests.html, quality.html, and system/running.html from per-page `new EventSource('/api/stream/events')` to iwSSE.on(...).",
+      "prompt": "prompts/I-00038_S01_Frontend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review: S01 (single upstream connection; port lifecycle; event-type parity with sse.py _WATCHED_EVENTS; handler signature compatible with existing page code; fallback triggers on missing SharedWorker; all 7 pages migrated; job-specific EventSource usages untouched).",
+      "prompt": "prompts/I-00038_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Tests: reproduction test tests/dashboard/browser/test_sse_shared_worker.py asserting server-side connection count ≤ 2 when 6 Playwright contexts are open; template wiring test tests/dashboard/test_sse_client_wiring.py asserting base.html includes sse-client.js and every migrated page contains zero `new EventSource('/api/stream/events')`. Both tests must fail against pre-fix code and pass against fixed code.",
+      "prompt": "prompts/I-00038_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review: S03 (assertion bound is specific numeric ≤ 2 not shape; tests would FAIL against pre-fix code; every AC is mapped to a test; no live DB in tests; tests clean up playwright sessions; fanout of all 5 event types is exercised).",
+      "prompt": "prompts/I-00038_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-layer review: AC1-AC7 complete; grep dashboard/templates/ shows zero `new EventSource('/api/stream/events')`; event-type names in sse-shared-worker.js match _WATCHED_EVENTS in sse.py; sse-client.js loaded before any {% block scripts %}; server-side sse.py unchanged; out-of-scope job-specific EventSource usages (oss/docs/code) preserved.",
+      "prompt": "prompts/I-00038_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint (ruff + node --check on dashboard/static/**/*.js)"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Format (ruff)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Typecheck (mypy)"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — open 6 tabs in distinct Playwright contexts; assert server-side /api/stream/events connection count stays ≤ 3 (instead of 6+); assert navigation under multi-tab load is responsive; assert a DaemonEvent fans out to all tabs via the shared worker; verify out-of-scope job-stream pages still work; assert connection count drops when tabs close.",
+      "prompt": "prompts/I-00038_S11_BrowserVerification_prompt.md"
+    }
+  ]
+}

@@ -132,14 +132,14 @@ def _query_failed_steps(db: Session, project_id: str | None = None) -> list[Fail
 
     failed_step_ids = [step.id for step, _, _ in step_rows]
 
-    last_run_map: dict[int, StepRun] = {}
+    last_error_map: dict[int, str | None] = {}
     if failed_step_ids:
         from sqlalchemy import func
 
         last_run_sub = (
             select(
-                StepRun.step_id,
-                StepRun,
+                StepRun.step_id.label("step_id"),
+                StepRun.error_message.label("error_message"),
                 func.row_number()
                 .over(partition_by=StepRun.step_id, order_by=StepRun.run_number.desc())
                 .label("rn"),
@@ -148,14 +148,15 @@ def _query_failed_steps(db: Session, project_id: str | None = None) -> list[Fail
             .subquery()
         )
         bulk_runs = db.execute(
-            select(last_run_sub.c.step_id, last_run_sub.c.StepRun).where(last_run_sub.c.rn == 1)
+            select(last_run_sub.c.step_id, last_run_sub.c.error_message).where(
+                last_run_sub.c.rn == 1
+            )
         ).all()
         for row in bulk_runs:
-            last_run_map[row.step_id] = row.StepRun
+            last_error_map[row.step_id] = row.error_message
 
     rows = []
     for step, item, project in step_rows:
-        last_run = last_run_map.get(step.id)
         rows.append(
             FailedRow(
                 project_id=project.id,
@@ -164,7 +165,7 @@ def _query_failed_steps(db: Session, project_id: str | None = None) -> list[Fail
                 step_id=step.step_id,
                 agent_label=step.agent_label,
                 status=step.status.value,
-                error_message=last_run.error_message if last_run else None,
+                error_message=last_error_map.get(step.id),
             )
         )
     return rows
