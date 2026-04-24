@@ -320,6 +320,65 @@ class TestI00034StepDurationAggregation:
             f"got {real_step.duration_secs} — SQL MAX() ignores NULLs, S01 bug"
         )
 
+    def test_I00034_mixed_tables_incomplete_fix_cycle_yields_none_latest(  # noqa: N802
+        self,
+        db_session: Session,
+        test_project: Project,
+    ) -> None:
+        """Regression: step with completed run + in-progress fix_cycle must not raise.
+
+        Reproduces the TypeError in _aggregate_step_spans that 500'd
+        /project/{id}/item/{item_id} when existing[1] was a datetime (from
+        step_runs aggregate) and row.latest was None (fix_cycles CASE returned
+        NULL because at least one cycle was still running). The previous guard
+        only nulled the merged latest when BOTH sides were None, so max() was
+        called with (datetime, None) and blew up.
+        """
+        project = test_project
+        item_id = "I-00034"
+        _make_work_item(db_session, project.id, item_id)
+
+        step = WorkflowStep(
+            project_id=project.id,
+            work_item_id=item_id,
+            step_number=1,
+            step_id="S01",
+            agent_label="Backend",
+            step_type=StepType.implementation,
+            status=StepStatus.in_progress,
+            started_at=None,
+            completed_at=None,
+        )
+        db_session.add(step)
+        db_session.flush()
+
+        t0 = datetime(2026, 4, 22, 14, 0, 0, tzinfo=UTC)
+        t1 = datetime(2026, 4, 22, 14, 1, 0, tzinfo=UTC)
+        t2 = datetime(2026, 4, 22, 14, 2, 0, tzinfo=UTC)
+        make_step_run(
+            db_session,
+            step_id=step.id,
+            run_number=1,
+            status=RunStatus.completed,
+            started_at=t0,
+            completed_at=t1,
+        )
+        make_fix_cycle(
+            db_session,
+            step_id=step.id,
+            cycle_number=1,
+            status=FixStatus.in_progress,
+            started_at=t2,
+            completed_at=None,
+        )
+
+        steps = _get_steps(project.id, item_id, db_session)
+        real_step = next(s for s in steps if s.step_id == "S01")
+
+        assert real_step.started_at == t0
+        assert real_step.completed_at is None
+        assert real_step.duration_secs is None
+
     def test_I00034_never_launched_step_duration_is_none(  # noqa: N802
         self,
         db_session: Session,

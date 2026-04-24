@@ -306,12 +306,14 @@ def _aggregate_step_spans(
         if existing is None:
             spans[row.step_id] = (row.earliest, row.latest)
         else:
-            earliest = min((existing[0], row.earliest), default=None)
-            latest = (
-                max((existing[1], row.latest), default=None)
-                if existing[1] is not None or row.latest is not None
-                else None
-            )
+            earliest_candidates = [v for v in (existing[0], row.earliest) if v is not None]
+            earliest = min(earliest_candidates) if earliest_candidates else None
+            # If either side still has an incomplete aggregate (None from the CASE
+            # above), the step is not fully finished — the combined latest is None.
+            if existing[1] is None or row.latest is None:
+                latest = None
+            else:
+                latest = max(existing[1], row.latest)
             spans[row.step_id] = (earliest, latest)
 
     return spans
