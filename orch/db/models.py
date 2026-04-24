@@ -72,6 +72,11 @@ class WorkItemPhase(enum.Enum):
     done = "done"
 
 
+class EvidencePhase(enum.Enum):
+    pre = "pre"
+    post = "post"
+
+
 class StepType(enum.Enum):
     implementation = "implementation"
     code_review = "code_review"
@@ -773,6 +778,59 @@ class QvBaseline(Base):
         Index("idx_qv_baselines_step_id", "step_id"),
         {"comment": "Baseline QV gate fingerprints to prevent fix-cycle scope expansion (F-00061)"},
     )
+
+
+class WorkItemEvidence(Base):
+    """Work item evidence screenshots and snapshots as durable BLOBs.
+
+    Ingested at two lifecycle points:
+    - phase='pre': captured when a work item is approved (iw approve)
+    - phase='post': captured when a browser_verification step completes (iw step-done)
+
+    The FK to work_items has NO cascade — evidences survive work_item deletion
+    so that archived items still display their evidences in the dashboard.
+    """
+
+    __tablename__ = "work_item_evidences"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "work_item_id",
+            "phase",
+            "filename",
+            name="uq_evidence_per_file",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "work_item_id"],
+            ["work_items.project_id", "work_items.id"],
+            name="fk_evidence_work_item",
+        ),
+        Index("ix_evidence_project_item_phase", "project_id", "work_item_id", "phase"),
+        {"comment": "Work item evidence screenshots and snapshots as durable BLOBs (CR-00020)"},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    project_id: Mapped[str] = mapped_column(Text, nullable=False)
+    work_item_id: Mapped[str] = mapped_column(Text, nullable=False)
+    phase: Mapped[EvidencePhase] = mapped_column(
+        SAEnum(EvidencePhase, name="evidence_phase", create_type=False),
+        nullable=False,
+    )
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    step_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Batch(Base):

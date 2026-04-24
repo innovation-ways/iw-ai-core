@@ -713,3 +713,62 @@ Downgrade: PostgreSQL does not support removing enum values. The downgrade migra
 | Column | Type | Nullable | Comment |
 |--------|------|----------|---------|
 | `rationale` | TEXT | YES | Per-check rationale paragraph explaining why this check matters for OSS compliance |
+
+---
+
+## 8. CR-00020: Store work item evidences as BLOBs in the database
+
+**Revision**: d6b67d4ecb9f (applied 2026-04-24)
+
+### 8.1 evidence_phase enum
+
+PostgreSQL ENUM with two values:
+
+```sql
+CREATE TYPE evidence_phase AS ENUM ('pre', 'post');
+```
+
+| Value | When ingested |
+|-------|--------------|
+| `pre` | `iw approve` — when a work item transitions draft → approved |
+| `post` | `iw step-done` — when a `browser_verification` step completes |
+
+### 8.2 work_item_evidences table
+
+Stores evidence screenshots and snapshots as durable BYTEA BLOBs, ensuring they survive work item archival/deletion.
+
+```sql
+CREATE TABLE work_item_evidences (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id      TEXT NOT NULL,
+    work_item_id    TEXT NOT NULL,
+    phase           evidence_phase NOT NULL,
+    filename        TEXT NOT NULL,
+    content_type    TEXT NOT NULL,
+    content         BYTEA NOT NULL,
+    size_bytes      INTEGER NOT NULL,
+    captured_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    step_id         TEXT,  -- NULL for pre, populated for post
+
+    -- FK WITHOUT cascade — evidences survive work_item deletion
+    FOREIGN KEY (project_id, work_item_id)
+        REFERENCES work_items(project_id, id)
+        -- NO ON DELETE CASCADE
+
+    -- Unique: one row per (project, item, phase, filename)
+    -- Enables idempotent upsert via ON CONFLICT DO UPDATE
+    UNIQUE (project_id, work_item_id, phase, filename)
+);
+```
+
+**Indexes:**
+- `ix_evidence_project_item_phase (project_id, work_item_id, phase)` — dashboard list query
+
+**FK without cascade rationale:**
+When an item is archived and its `ai-dev/active/<id>/` directory is deleted, the `work_items` row remains (for audit/history). The `work_item_evidences` rows must also remain so the dashboard Evidences tab continues to show all captured images. If the FK had `ON DELETE CASCADE`, deleting the work_item would wipe all evidences permanently.
+
+**Downgrade:**
+```sql
+DROP TABLE work_item_evidences;
+DROP TYPE evidence_phase;
+```
