@@ -62,7 +62,7 @@ grep -rn "new EventSource(" dashboard/templates/
 
 ### 3. Cross-agent consistency
 
-- The event-type names hardcoded in `sse-shared-worker.js` match `_WATCHED_EVENTS` in `dashboard/routers/sse.py` exactly: `running-update`, `status-update`, `test-update`, `quality-update`, `toast`. A mismatch causes silent drops.
+- The event-type names hardcoded in `sse-shared-worker.js` match the client-facing SSE event names emitted by `_event_generator` in `dashboard/routers/sse.py` — specifically the `yield f"event: ..."` lines (currently `sse.py:180,190,200,210,223`): `running-update`, `status-update`, `test-update`, `quality-update`, `toast`. A mismatch causes silent drops. Do NOT look at `_WATCHED_EVENTS` — that constant is a set of `DaemonEvent.event_type` values (`step_started`, `batch_completed`, etc.) used to filter the DB query, not the SSE names forwarded to the browser.
 - The handler signature `iwSSE.on(type, fn)` contract is the same in the client, in every migrated page, and in the test assertions.
 - `sse-client.js` is loaded in `base.html` BEFORE any `{% block scripts %}` content that calls `iwSSE.on(...)` — verify script order.
 

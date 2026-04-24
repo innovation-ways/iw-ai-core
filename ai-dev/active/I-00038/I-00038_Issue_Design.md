@@ -207,8 +207,9 @@ And all other tabs continue to receive SSE events
 
 ```
 Given the browser supports SharedWorker
-When N tabs are open on the dashboard
-Then the server-side count of established /api/stream/events connections from that browser is 1
+When N tabs are open on the dashboard (any N ≥ 1)
+Then the number of /api/stream/events connections from that browser is exactly 1
+And the regression test asserts server-side total ≤ 2 (one SharedWorker upstream + probe margin) regardless of N
 ```
 
 ### AC3: Fallback preserves behavior in unsupported environments

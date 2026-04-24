@@ -13,7 +13,7 @@
     {
       "step": "S02",
       "agent": "code-review-impl",
-      "description": "Code review: S01 (single upstream connection; port lifecycle; event-type parity with sse.py _WATCHED_EVENTS; handler signature compatible with existing page code; fallback triggers on missing SharedWorker; all 7 pages migrated; job-specific EventSource usages untouched).",
+      "description": "Code review: S01 (single upstream connection; port lifecycle; event-type parity with the client-facing SSE names emitted by _event_generator in sse.py — running-update/status-update/test-update/quality-update/toast — NOT _WATCHED_EVENTS; handler signature compatible with existing page code; fallback triggers on missing SharedWorker; all 7 pages migrated; job-specific EventSource usages untouched).",
       "prompt": "prompts/I-00038_S02_CodeReview_prompt.md"
     },
     {
@@ -31,7 +31,7 @@
     {
       "step": "S05",
       "agent": "code-review-final-impl",
-      "description": "Final cross-layer review: AC1-AC7 complete; grep dashboard/templates/ shows zero `new EventSource('/api/stream/events')`; event-type names in sse-shared-worker.js match _WATCHED_EVENTS in sse.py; sse-client.js loaded before any {% block scripts %}; server-side sse.py unchanged; out-of-scope job-specific EventSource usages (oss/docs/code) preserved.",
+      "description": "Final cross-layer review: AC1-AC7 complete; grep dashboard/templates/ shows zero `new EventSource('/api/stream/events')`; event-type names in sse-shared-worker.js match the client-facing SSE names emitted by _event_generator in sse.py (running-update/status-update/test-update/quality-update/toast — NOT _WATCHED_EVENTS, which is a server-side DaemonEvent.event_type filter); sse-client.js loaded before any {% block scripts %}; server-side sse.py unchanged; out-of-scope job-specific EventSource usages (oss/docs/code) preserved.",
       "prompt": "prompts/I-00038_S05_CodeReview_Final_prompt.md"
     },
     {

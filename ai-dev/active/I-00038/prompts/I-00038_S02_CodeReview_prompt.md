@@ -32,7 +32,7 @@ Per-agent review of S01. Verify the SharedWorker-based SSE client meets the desi
 - **Port lifecycle**: ports are added on `connect`, removed on close; when the last port disconnects, the upstream is closed (otherwise a stale connection lingers forever on the server).
 - **Event fanout**: every subscribed port receives every matching event; the payload shape matches what the current page handlers expect (`e.data` is the raw JSON string, same as `EventSource` native).
 - **Subscription dedup**: sending `subscribe` twice for the same event type does not cause duplicated delivery.
-- **Event types covered**: the worker listens for every type in `_WATCHED_EVENTS` from `dashboard/routers/sse.py`: `running-update`, `status-update`, `test-update`, `quality-update`, `toast`.
+- **Event types covered**: the worker listens for every client-facing SSE event name emitted by `_event_generator` in `dashboard/routers/sse.py` (the `yield f"event: ..."` lines, currently at `sse.py:180,190,200,210,223`): `running-update`, `status-update`, `test-update`, `quality-update`, `toast`. (Do NOT confuse with `_WATCHED_EVENTS` — that is the set of `DaemonEvent.event_type` values filtered by the DB query, not the SSE names sent to the browser.)
 
 ### 2. Client fallback correctness
 
