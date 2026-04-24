@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import Integer, func, select
 
 from dashboard.dependencies import get_db
+from dashboard.utils.batch_progress import compute_batch_step_progress
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -131,10 +132,12 @@ def _active_batches(project_id: str, db: Session) -> list[BatchSummary]:
     for row in rows:
         counts[row.batch_id] = (row.total, int(row.done or 0))
 
+    step_progress = compute_batch_step_progress(project_id, batch_ids, db)
+
     result = []
     for batch in batches:
         total, done = counts.get(batch.id, (0, 0))
-        pct = int((done / total * 100) if total > 0 else 0)
+        pct = step_progress.get(batch.id, 0)
         result.append(
             BatchSummary(
                 id=batch.id,

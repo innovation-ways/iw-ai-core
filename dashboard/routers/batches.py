@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
+from dashboard.utils.batch_progress import compute_batch_step_progress
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -200,6 +201,9 @@ def _all_batches(project_id: str, db: Session, status_filter: list[str]) -> list
             stmt = stmt.where(Batch.status.in_([BatchStatus(s) for s in valid]))
 
     batches = list(db.scalars(stmt).all())
+    batch_ids = [b.id for b in batches]
+    step_progress = compute_batch_step_progress(project_id, batch_ids, db)
+
     rows = []
     for batch in batches:
         items = list(
@@ -213,19 +217,7 @@ def _all_batches(project_id: str, db: Session, status_filter: list[str]) -> list
         total_items = len(items)
         completed_items = sum(1 for it in items if it.status.value in ("completed", "merged"))
 
-        if items:
-            work_item_ids = [it.work_item_id for it in items]
-            steps = db.scalars(
-                select(WorkflowStep).where(
-                    WorkflowStep.project_id == project_id,
-                    WorkflowStep.work_item_id.in_(work_item_ids),
-                )
-            ).all()
-            total_steps = len(steps)
-            done_steps = sum(1 for s in steps if s.status.value in ("completed", "skipped"))
-            pct = int((done_steps / total_steps * 100) if total_steps > 0 else 0)
-        else:
-            pct = 0
+        pct = step_progress.get(batch.id, 0)
 
         dur: float | None = None
         if batch.created_at and batch.completed_at:
