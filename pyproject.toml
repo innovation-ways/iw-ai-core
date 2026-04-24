@@ -19,7 +19,7 @@ dependencies = [
     # Archive
     "zstandard>=0.23",
     # Diagrams
-    "Pillow>=10.0",
+    "Pillow>=12.2.0",
     # Config
     "python-dotenv>=1.0",
     # tomllib is stdlib in 3.12+
