@@ -64,3 +64,14 @@ execution_brief.json
 .claude/scheduled_tasks.lock
 
 .iw/
+
+# iw-oss-publish: secret hygiene
+*.pem
+*.key
+*.pfx
+*.p12
+
+# iw-oss-publish: node ignores
+node_modules/
+npm-debug.log*
+.pnpm-store/
