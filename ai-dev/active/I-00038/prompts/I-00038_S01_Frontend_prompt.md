@@ -13,7 +13,7 @@ Same guards. No docker or alembic mutation commands. Full policy: `docs/IW_AI_Co
 ## Input Files
 
 - `ai-dev/active/I-00038/I-00038_Issue_Design.md` — read **Description**, **Root Cause Analysis**, **Affected Components**, and **Acceptance Criteria**.
-- `dashboard/routers/sse.py` — server-side stream (read only; do NOT modify). Note the event types emitted: `running-update`, `status-update`, `test-update`, `quality-update`, `toast`.
+- `dashboard/routers/sse.py` — server-side stream (read only; do NOT modify). The client-facing SSE event names are hardcoded in the `_event_generator` yield statements (currently `sse.py:180,190,200,210,223`): `running-update`, `test-update`, `quality-update`, `status-update`, `toast`. NOTE: the module also defines `_WATCHED_EVENTS`, but that is a set of server-side `DaemonEvent.event_type` values (e.g. `step_started`, `batch_completed`) used to filter the DB query — it is NOT the list of client-facing SSE event names. Do not conflate them.
 - `dashboard/templates/base.html` — base layout where the shared client must be loaded.
 - `dashboard/templates/components/toast.html` — the toast helper `showToast()` is defined here and is loaded globally.
 - The 7 page templates to migrate:
@@ -88,7 +88,7 @@ self.addEventListener('connect', (e) => {
 });
 ```
 
-**Constants**: hardcode the set of event types the server emits (see `_WATCHED_EVENTS` in `dashboard/routers/sse.py`): `running-update`, `status-update`, `test-update`, `quality-update`, `toast`.
+**Constants**: hardcode the set of client-facing SSE event names the server emits (see the `_event_generator` yield statements in `dashboard/routers/sse.py:~180-223`): `running-update`, `status-update`, `test-update`, `quality-update`, `toast`. These are NOT the same as `_WATCHED_EVENTS` in that file — that constant is a set of `DaemonEvent.event_type` values used by the DB query, not the SSE event names forwarded to the browser.
 
 ### 2. `dashboard/static/sse-client.js`
 
