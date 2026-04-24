@@ -977,6 +977,38 @@ def item_tab_design_doc(
     )
 
 
+@router.get("/item/{item_id}/tab/functional-doc", response_class=HTMLResponse)
+def item_tab_functional_doc(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    project = _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+
+    content: str | None = item.functional_doc_content
+    if content is None and item.functional_doc_path and project.repo_root:
+        disk_path = Path(project.repo_root) / item.functional_doc_path
+        try:
+            content = disk_path.read_text(encoding="utf-8")
+        except OSError:
+            content = None
+
+    functional_doc_html = render_markdown(content)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/item_functional_doc.html",
+        {
+            "item": item,
+            "functional_doc_html": functional_doc_html,
+            "has_content": bool(content),
+        },
+    )
+
+
 @router.get("/item/{item_id}/tab/reports", response_class=HTMLResponse)
 def item_tab_reports(
     project_id: str,

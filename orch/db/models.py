@@ -429,6 +429,24 @@ class WorkItem(Base):
         nullable=True,
         comment="PostgreSQL tsvector for full-text search across design docs",
     )
+    functional_doc_path: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Relative path to functional design doc in project repo (active items)",
+    )
+    functional_doc_content: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "Full markdown of functional design doc "
+            "(Tier 1 — stored on archive for instant dashboard rendering)"
+        ),
+    )
+    functional_doc_search: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        nullable=True,
+        comment="PostgreSQL tsvector for full-text search across functional design docs",
+    )
     summary: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
@@ -463,6 +481,11 @@ class WorkItem(Base):
         Index("idx_work_items_phase", "project_id", "phase"),
         Index("idx_work_items_type", "project_id", "type"),
         Index("idx_work_items_fts", "design_doc_search", postgresql_using="gin"),
+        Index(
+            "idx_work_items_functional_doc_search",
+            "functional_doc_search",
+            postgresql_using="gin",
+        ),
         Index("idx_work_items_created", "project_id", "created_at"),
         {"comment": "Features, Incidents, and Change Requests across all projects"},
     )
@@ -1547,3 +1570,30 @@ CREATE TRIGGER trg_project_docs_fts
 
 DROP_PROJECT_DOCS_FTS_TRIGGER_SQL = "DROP TRIGGER IF EXISTS trg_project_docs_fts ON project_docs;"
 DROP_PROJECT_DOCS_FTS_FUNCTION_SQL = "DROP FUNCTION IF EXISTS update_project_docs_fts();"
+
+FUNCTIONAL_DOC_FTS_FUNCTION_SQL = """\
+CREATE OR REPLACE FUNCTION work_items_functional_doc_search_update() RETURNS trigger AS $$
+BEGIN
+    NEW.functional_doc_search := to_tsvector(
+        'english',
+        COALESCE(NEW.title, '') || ' ' || COALESCE(NEW.functional_doc_content, '')
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+"""
+
+FUNCTIONAL_DOC_FTS_TRIGGER_SQL = """\
+CREATE TRIGGER work_items_functional_doc_search_trg
+    BEFORE INSERT OR UPDATE OF title, functional_doc_content
+    ON work_items
+    FOR EACH ROW
+    EXECUTE FUNCTION work_items_functional_doc_search_update();
+"""
+
+DROP_FUNCTIONAL_DOC_FTS_TRIGGER_SQL = (
+    "DROP TRIGGER IF EXISTS work_items_functional_doc_search_trg ON work_items;"
+)
+DROP_FUNCTIONAL_DOC_FTS_FUNCTION_SQL = (
+    "DROP FUNCTION IF EXISTS work_items_functional_doc_search_update();"
+)

@@ -154,6 +154,11 @@ _ACTIVE_BATCH_STATUSES: list[BatchStatus] = [
 )
 @click.option("--design-doc", default=None, help="Relative path to design document")
 @click.option("--steps-from", default=None, help="Path to workflow-manifest.json")
+@click.option(
+    "--functional-doc",
+    default=None,
+    help="Relative path to functional design document (auto-detected if not given)",
+)
 @click.pass_context
 def register(
     ctx: click.Context,
@@ -162,6 +167,7 @@ def register(
     item_type: str,
     design_doc: str | None,
     steps_from: str | None,
+    functional_doc: str | None,
 ) -> None:
     """Register a new work item in the database (idempotent)."""
     if not validate_id_prefix(item_id, item_type):
@@ -237,6 +243,60 @@ def register(
                         err=True,
                     )
 
+            # Load the functional doc content from disk, auto-detected next to the
+            # technical design doc (same directory, sibling file) or explicitly
+            # provided via --functional-doc.  The "explicit override with missing
+            # file" branch must fail with a non-zero exit; absent sibling is
+            # tolerated.
+            functional_doc_content: str | None = None
+            functional_doc_path: str | None = None
+
+            if functional_doc is not None:
+                # Explicit override — resolve relative to CWD like design_doc does
+                explicit_path = Path(functional_doc)
+                if not explicit_path.is_absolute():
+                    explicit_path = Path.cwd() / explicit_path
+                if not explicit_path.exists():
+                    output_error(
+                        ctx,
+                        f"Functional doc file not found: {explicit_path}",
+                        2,
+                    )
+                try:
+                    functional_doc_content = explicit_path.read_text(encoding="utf-8")
+                    functional_doc_path = functional_doc
+                except OSError as exc:
+                    output_error(
+                        ctx,
+                        f"Could not read functional doc {explicit_path}: {exc}",
+                        2,
+                    )
+            elif design_doc:
+                # Auto-detect sibling <ID>_Functional.md next to the technical doc
+                design_doc_base = Path(design_doc)
+                if not design_doc_base.is_absolute():
+                    design_doc_base = Path.cwd() / design_doc_base
+                candidate = design_doc_base.parent / f"{item_id}_Functional.md"
+                if candidate.exists():
+                    try:
+                        functional_doc_content = candidate.read_text(encoding="utf-8")
+                        # An empty file is treated as absent — both fields None,
+                        # consistent with how the design doc treats empty/missing.
+                        if not functional_doc_content:
+                            functional_doc_content = None
+                            functional_doc_path = None
+                        else:
+                            functional_doc_path = str(candidate.relative_to(Path.cwd()))
+                    except OSError as exc:
+                        click.echo(
+                            f"Warning: could not read functional doc {candidate}: {exc} "
+                            "— proceeding without it",
+                            err=True,
+                        )
+                        functional_doc_path = None
+                        functional_doc_content = None
+                # else: candidate absent — leave both fields None, proceed normally
+
             # Insert work item
             work_item = WorkItem(
                 project_id=project_id,
@@ -245,6 +305,8 @@ def register(
                 title=title,
                 design_doc_path=design_doc,
                 design_doc_content=design_doc_content,
+                functional_doc_path=functional_doc_path,
+                functional_doc_content=functional_doc_content,
                 status=WorkItemStatus.draft,
                 phase=WorkItemPhase.active,
                 config={},
