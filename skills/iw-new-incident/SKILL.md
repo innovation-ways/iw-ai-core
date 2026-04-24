@@ -194,6 +194,35 @@ Use the template from `ai-dev/templates/Issue_Design_Template.md`. Fill in ALL s
 - **TDD Approach** — reproducing test, unit tests, integration tests
 - **Notes** — additional context, risks, or decisions (use "None" if truly empty)
 
+Also create the **Functional Design Document** at the same time (substep within this step):
+
+```
+ai-dev/active/{ID}/{ID}_Functional.md
+```
+
+Copy `ai-dev/templates/Functional_Design_Template.md` and fill in the four sections using:
+- **Why** — drafted from the user's intake conversation and the technical design's Description / Bug Description.
+- **What Changed (for the User)** — drafted from the Steps to Reproduce and Acceptance Criteria sections.
+- **How It Behaves** — drafted from the fix's expected behaviour and edge cases.
+- **Out of Scope** — drafted from the Regression Prevention or any explicitly out-of-scope items (omit if obvious).
+
+**Rules for the functional doc**:
+- Keep the body at most 500 words (the review skill blocks >500 as a blocking error).
+- Use plain English — no file paths, class names, SQL, or code fences.
+- Focus on observable behaviour, not implementation mechanics.
+- Do NOT use fenced code blocks (```) — they trigger a review warning.
+- Do NOT mention specific paths like `orch/`, `dashboard/`, `scripts/` — they trigger a review warning.
+
+Add the functional doc to the **File Manifest** table (add a row after Issue_Design.md):
+
+| File | Type | Purpose |
+|------|------|---------|
+| `{ID}_Issue_Design.md` | Design | This document |
+| `{ID}_Functional.md` | Design | Human-facing summary (Why / What Changed / How It Behaves / Out of Scope) |
+| `workflow-manifest.json` | Manifest | Step definitions |
+| `prompts/{ID}_S01_{Agent}_prompt.md` | Prompt | S01 fix implementation |
+| ... | ... | ... (one per step) |
+
 ### Test Semantic Correctness Requirement (LESSON FROM I003)
 
 **CRITICAL**: Tests must verify **semantic correctness**, not just **response shape**.
@@ -389,6 +418,8 @@ iw register {ID} "{One-line summary of the bug}" \
 ```
 
 This records the item and all its workflow steps in the database. The item starts in `draft` status.
+
+**Note**: The `iw register` command auto-detects a sibling `<ID>_Functional.md` file next to the technical design doc and loads its content into the `functional_doc_content` column (S02's work). No extra `--functional-doc` flag is needed when the functional doc lives alongside the technical design doc.
 
 ## Step 7: Present Package for Review
 

@@ -6,11 +6,13 @@ document written for humans — product owners, support, and engineers onboardin
 to the codebase.
 
 Usage:
-    uv run python scripts/backfill_functional_doc.py <WORK_ITEM_ID> [--force]
+    uv run python scripts/backfill_functional_doc.py <WORK_ITEM_ID> [--force] [--load-db]
 
 Examples:
     uv run python scripts/backfill_functional_doc.py I-00099
     uv run python scripts/backfill_functional_doc.py F-00055 --force
+    uv run python scripts/backfill_functional_doc.py F-00055 --load-db
+    uv run python scripts/backfill_functional_doc.py F-00055 --force --load-db
 
 Exit codes:
     0  success
@@ -19,7 +21,8 @@ Exit codes:
     4  work item not found in DB
     5  output file already exists (pass --force to overwrite)
     6  opencode completed but did not produce the expected file
-    >0 opencode subprocess exit code
+    7  --load-db passed but DB UPDATE failed (SQLAlchemyError)
+    >0 opencode subprocess exit code (when opencode fails)
 """
 
 from __future__ import annotations
@@ -29,6 +32,8 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from orch.cli.utils import find_project_root
 from orch.db.models import WorkItem
@@ -131,6 +136,14 @@ def main() -> int:
         action="store_true",
         help="Overwrite the functional doc file if it already exists",
     )
+    parser.add_argument(
+        "--load-db",
+        action="store_true",
+        help=(
+            "After producing the file, also UPDATE the DB "
+            "functional_doc_path and functional_doc_content columns"
+        ),
+    )
     args = parser.parse_args()
 
     item_id: str = args.work_item_id
@@ -170,6 +183,19 @@ def main() -> int:
 
     if not output_path.exists():
         return 6
+
+    if args.load_db:
+        with SessionLocal() as session:
+            item = session.get(WorkItem, (project_id, item_id))
+            if item is None:
+                return 4
+            try:
+                item.functional_doc_path = str(output_path.relative_to(repo_root))
+                item.functional_doc_content = output_path.read_text(encoding="utf-8")
+                session.commit()
+            except SQLAlchemyError as exc:
+                print(f"DB UPDATE failed: {exc}", file=sys.stderr)  # noqa: T201
+                return 7
 
     _size = output_path.stat().st_size
     del _size
