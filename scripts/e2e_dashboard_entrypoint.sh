@@ -40,7 +40,7 @@ except Exception as e:
 done
 
 echo "[e2e] applying migrations..."
-uv run alembic upgrade head
+uv run alembic upgrade heads
 
 echo "[e2e] seeding project + architecture map..."
 uv run python scripts/e2e_seed.py

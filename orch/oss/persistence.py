@@ -59,6 +59,7 @@ def persist_findings(
             osps_control=f.get("osps_control"),
             tool=f.get("tool"),
             evidence_json=evidence_json,
+            rationale=f.get("rationale"),
         )
         session.add(finding)
 
