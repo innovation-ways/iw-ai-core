@@ -207,6 +207,74 @@ async def _run_install(
         sess.close()
 
 
+def _prep_branch_name(job_id: int) -> str:
+    """Return the standard prep branch name for a job."""
+    return f"iw-oss-publish/prep-{job_id}"
+
+
+def _git_head_sha(repo_root: str) -> str | None:
+    """Get the current HEAD SHA for a repo."""
+    try:
+        git_path_str = subprocess.run(
+            ["git", "which", "git"], capture_output=True, text=True
+        ).stdout.strip()
+        git_path = Path(git_path_str) if git_path_str else Path("git")
+        result = subprocess.run(
+            [str(git_path), "rev-parse", "HEAD"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        logger.exception("Failed to get git HEAD for %s", repo_root)
+    return None
+
+
+def _git_commit_info(
+    repo_root: str, branch_name: str, base_sha: str
+) -> tuple[str | None, str | None]:
+    """Get commit SHA and diff --stat for a branch relative to base_sha.
+
+    Returns (commit_sha, files_changed_summary).
+    """
+    try:
+        git_path_str = subprocess.run(
+            ["git", "which", "git"], capture_output=True, text=True
+        ).stdout.strip()
+        git_path = Path(git_path_str) if git_path_str else Path("git")
+
+        commit_result = subprocess.run(
+            [str(git_path), "rev-parse", branch_name],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if commit_result.returncode != 0:
+            return None, None
+        commit_sha = commit_result.stdout.strip()
+
+        if commit_sha == base_sha:
+            return commit_sha, None
+
+        diff_result = subprocess.run(
+            [str(git_path), "diff", "--stat", f"{base_sha}..{commit_sha}"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        files_changed_summary = diff_result.stdout.strip() if diff_result.returncode == 0 else None
+
+        return commit_sha, files_changed_summary
+    except (subprocess.SubprocessError, OSError):
+        logger.exception("Failed to get commit info for %s", branch_name)
+        return None, None
+
+
 async def _run_worktree(
     project: Project,
     job_id: int,
@@ -214,19 +282,25 @@ async def _run_worktree(
     session_factory: Callable[[], Session],
 ) -> None:
     worktree_path = Path(f"/tmp/oss-{uuid.uuid4()}")
-    sess = session_factory()
-    try:
-        sess.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).update(
-            {"worktree_path": str(worktree_path)}, synchronize_session=False
-        )
-        sess.commit()
-    finally:
-        sess.close()
-
     git_path = Path(
         subprocess.run(["git", "which", "git"], capture_output=True, text=True).stdout.strip()
         or "git"
     )
+
+    base_sha = _git_head_sha(project.repo_root)
+
+    sess = session_factory()
+    try:
+        sess.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).update(
+            {
+                "worktree_path": str(worktree_path),
+                "base_sha": base_sha,
+            },
+            synchronize_session=False,
+        )
+        sess.commit()
+    finally:
+        sess.close()
 
     try:
         add_proc = await asyncio.create_subprocess_exec(
@@ -257,42 +331,65 @@ async def _run_worktree(
     exit_code = await proc.wait()
     tail = _truncate_tail(full_output)
 
+    update_values = {
+        "exit_code": exit_code,
+        "stdout_tail": tail,
+        "completed_at": _utcnow(),
+    }
+
+    if exit_code != 0:
+        update_values["status"] = ProjectOssJobStatus.error
+        update_values["error_message"] = f"{action} exited with code {exit_code}"
+    else:
+        branch_name = _prep_branch_name(job_id)
+        commit_sha, files_changed_summary = _git_commit_info(
+            project.repo_root, branch_name, base_sha or ""
+        )
+
+        if kind == ProjectOssJobKind.prepare and commit_sha and commit_sha != base_sha:
+            update_values["status"] = ProjectOssJobStatus.awaiting_review
+            update_values["branch_name"] = branch_name
+            update_values["commit_sha"] = commit_sha
+            update_values["files_changed_summary"] = files_changed_summary
+        else:
+            update_values["status"] = ProjectOssJobStatus.complete
+
     sess = session_factory()
     try:
         sess.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).update(
-            {
-                "exit_code": exit_code,
-                "stdout_tail": tail,
-                "status": ProjectOssJobStatus.complete
-                if exit_code == 0
-                else ProjectOssJobStatus.error,
-                "completed_at": _utcnow(),
-                **(
-                    {"error_message": f"{action} exited with code {exit_code}"}
-                    if exit_code != 0
-                    else {}
-                ),
-            },
+            update_values,  # type: ignore[arg-type]
             synchronize_session=False,
         )
         sess.commit()
     finally:
         sess.close()
 
-    try:
-        rm_proc = await asyncio.create_subprocess_exec(
-            str(git_path),
-            "worktree",
-            "remove",
-            "--force",
-            str(worktree_path),
-            cwd=project.repo_root,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+    if update_values["status"] in (ProjectOssJobStatus.complete, ProjectOssJobStatus.error):
+        try:
+            rm_proc = await asyncio.create_subprocess_exec(
+                str(git_path),
+                "worktree",
+                "remove",
+                "--force",
+                str(worktree_path),
+                cwd=project.repo_root,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            await rm_proc.wait()
+        except Exception as exc:
+            logger.warning(
+                "Failed to remove worktree %s for job %s: %s",
+                worktree_path,
+                job_id,
+                exc,
+            )
+    else:
+        logger.info(
+            "Job %s is awaiting review at %s, worktree kept for review",
+            job_id,
+            worktree_path,
         )
-        await rm_proc.wait()
-    except Exception as exc:
-        logger.warning("Failed to remove worktree %s for job %s: %s", worktree_path, job_id, exc)
 
 
 async def run_job(session_factory: Callable[[], Session], job_id: int) -> None:
@@ -409,6 +506,70 @@ async def cancel_job(session: Session, job_id: int) -> None:
             )
 
 
+async def discard_job(session: Session, job_id: int) -> None:
+    """Discard a job in awaiting_review status: mark discarded and delete the prep branch."""
+    job = session.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).first()
+    if job is None:
+        return
+
+    if job.status != ProjectOssJobStatus.awaiting_review:
+        logger.warning(
+            "Cannot discard job %s: status is %s, expected awaiting_review",
+            job_id,
+            job.status,
+        )
+        return
+
+    worktree_path = job.worktree_path
+    branch_name = job.branch_name
+
+    session.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).update(
+        {"status": ProjectOssJobStatus.discarded}, synchronize_session=False
+    )
+    session.commit()
+
+    git_path = Path(
+        subprocess.run(["git", "which", "git"], capture_output=True, text=True).stdout.strip()
+        or "git"
+    )
+
+    if branch_name:
+        try:
+            delete_branch_proc = await asyncio.create_subprocess_exec(
+                str(git_path),
+                "branch",
+                "-D",
+                branch_name,
+                cwd=job.project.repo_root,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            await delete_branch_proc.wait()
+        except Exception as exc:
+            logger.warning("Failed to delete branch %s for job %s: %s", branch_name, job_id, exc)
+
+    if worktree_path:
+        try:
+            rm_proc = await asyncio.create_subprocess_exec(
+                str(git_path),
+                "worktree",
+                "remove",
+                "--force",
+                worktree_path,
+                cwd=job.project.repo_root,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            await rm_proc.wait()
+        except Exception as exc:
+            logger.warning(
+                "Failed to remove worktree %s during discard for job %s: %s",
+                worktree_path,
+                job_id,
+                exc,
+            )
+
+
 def enqueue_job(session: Session, project_id: str, kind: ProjectOssJobKind | str) -> ProjectOssJob:
     """Create a new ProjectOssJob row with status=queued."""
     if isinstance(kind, str):
@@ -471,6 +632,7 @@ async def job_event_stream(
             ProjectOssJobStatus.complete,
             ProjectOssJobStatus.error,
             ProjectOssJobStatus.cancelled,
+            ProjectOssJobStatus.discarded,
         ):
             scan_id = job.scan_id
             exit_code = job.exit_code
