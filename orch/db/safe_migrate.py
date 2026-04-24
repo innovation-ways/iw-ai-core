@@ -52,8 +52,15 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-MIGRATIONS_SCRIPT_LOCATION = str(Path(__file__).parent.parent.parent / "db" / "migrations")
+MIGRATIONS_SCRIPT_LOCATION = str(Path(__file__).parent / "migrations")
 MAX_TAIL_BYTES = 16 * 1024
+
+# The orch DB is a single shared store; migration_locks is a per-project mutex
+# with a FK to projects.id. We key the lock on the orch project's own row
+# ("iw-ai-core") because the orch DB migrations are global and there is only
+# one orchestrator. The previous hardcoded 'innoForge' value never existed in
+# the projects table, so lock acquisition always raised FK violations.
+_ORCH_MIGRATION_LOCK_PROJECT = "iw-ai-core"
 
 
 # ---------------------------------------------------------------------------
@@ -252,10 +259,8 @@ def _acquire_migration_lock(item: str = "daemon") -> None:
     session: Session = session_factory()
     try:
         result = session.execute(
-            text(
-                "SELECT current_holder FROM migration_locks "
-                "WHERE project_id = 'innoForge' FOR UPDATE"
-            )
+            text("SELECT current_holder FROM migration_locks WHERE project_id = :pid FOR UPDATE"),
+            {"pid": _ORCH_MIGRATION_LOCK_PROJECT},
         )
         row = result.fetchone()
         current_holder = row[0] if row else None
@@ -268,11 +273,11 @@ def _acquire_migration_lock(item: str = "daemon") -> None:
         session.execute(
             text(
                 "INSERT INTO migration_locks (project_id, current_holder, locked_at) "
-                "VALUES ('innoForge', :item, now()) "
+                "VALUES (:pid, :item, now()) "
                 "ON CONFLICT (project_id) DO UPDATE "
                 "SET current_holder = :item, locked_at = now()"
             ),
-            {"item": item},
+            {"pid": _ORCH_MIGRATION_LOCK_PROJECT, "item": item},
         )
         session.commit()
     finally:
@@ -290,9 +295,9 @@ def _release_migration_lock(item: str = "daemon") -> None:
         session.execute(
             text(
                 "UPDATE migration_locks SET current_holder = NULL "
-                "WHERE project_id = 'innoForge' AND current_holder = :item"
+                "WHERE project_id = :pid AND current_holder = :item"
             ),
-            {"item": item},
+            {"pid": _ORCH_MIGRATION_LOCK_PROJECT, "item": item},
         )
         session.commit()
     finally:
