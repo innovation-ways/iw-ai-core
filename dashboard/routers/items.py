@@ -18,11 +18,13 @@ from orch.daemon.execution_report import assemble_execution_report
 from orch.db.models import (
     BatchItem,
     BatchItemStatus,
+    EvidencePhase,
     FixCycle,
     Project,
     StepRun,
     WorkflowStep,
     WorkItem,
+    WorkItemEvidence,
 )
 
 if TYPE_CHECKING:
@@ -220,8 +222,10 @@ class EvidenceFile:
 
     filename: str
     phase: str  # "pre" or "post"
-    abs_path: str
+    abs_path: str  # populated from FS only when not in DB
     size_bytes: int
+    content: bytes | None = None  # populated from DB
+    content_type: str | None = None  # populated from DB
 
 
 @dataclass
@@ -694,39 +698,60 @@ class ArtifactFile:
 
 
 def _list_evidences(
-    item: WorkItem, project: Project, worktree_path: str | None = None
+    item: WorkItem, project: Project, db: Session, worktree_path: str | None = None
 ) -> list[EvidenceFile]:
-    """Scan ai-dev/active/{id}/evidences/{pre,post}/ for image/snapshot files.
+    """Fetch evidences for item from DB first, then fall back to filesystem.
 
-    Checks worktree_path first (for in-progress items), then falls back to repo_root.
+    DB is authoritative for completed/archived items; filesystem provides
+    in-progress post-evidence snapshots written by browser verification
+    agents that haven't flushed to the DB yet.
     """
-    rel_evidences = Path("ai-dev") / "active" / item.id / "evidences"
-
-    # Check worktree first, then repo_root
-    base_candidates = []
-    if worktree_path:
-        base_candidates.append(Path(worktree_path) / rel_evidences)
-    base_candidates.append(Path(project.repo_root) / rel_evidences)
-
+    # DB-first
+    rows = db.scalars(
+        select(WorkItemEvidence).where(
+            WorkItemEvidence.project_id == project.id,
+            WorkItemEvidence.work_item_id == item.id,
+        )
+    ).all()
+    seen: set[tuple[str, str]] = set()
     results: list[EvidenceFile] = []
-    seen: set[str] = set()
-    for base in base_candidates:
+    for row in rows:
+        key = (row.phase.value, row.filename)
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(
+            EvidenceFile(
+                filename=row.filename,
+                phase=row.phase.value,
+                abs_path="",  # not from FS
+                size_bytes=row.size_bytes,
+                content=row.content,
+                content_type=row.content_type,
+            )
+        )
+    # FS fallback for in-progress post-evidence (worktree only)
+    if worktree_path:
+        rel_evidences = Path("ai-dev") / "active" / item.id / "evidences"
+        base = Path(worktree_path) / rel_evidences
         for phase in ("pre", "post"):
             phase_dir = base / phase
             if not phase_dir.exists():
                 continue
             try:
                 for entry in sorted(phase_dir.iterdir()):
-                    if entry.is_file() and entry.name not in seen:
-                        seen.add(entry.name)
-                        results.append(
-                            EvidenceFile(
-                                filename=entry.name,
-                                phase=phase,
-                                abs_path=str(entry),
-                                size_bytes=entry.stat().st_size,
+                    if entry.is_file():
+                        key = (phase, entry.name)
+                        if key not in seen:
+                            seen.add(key)
+                            results.append(
+                                EvidenceFile(
+                                    filename=entry.name,
+                                    phase=phase,
+                                    abs_path=str(entry),
+                                    size_bytes=entry.stat().st_size,
+                                )
                             )
-                        )
             except OSError:
                 pass
     return results
@@ -1210,7 +1235,7 @@ def item_tab_evidences(
     item = _get_item_or_404(project_id, item_id, db)
     bi = _get_batch_item(project_id, item_id, db)
     worktree_path = (bi.worktree_info or {}).get("path") if bi else None
-    evidences = _list_evidences(item, project, worktree_path)
+    evidences = _list_evidences(item, project, db, worktree_path)
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -1234,15 +1259,31 @@ def item_evidence_file(
     filename: str,
     db: Session = Depends(get_db),
 ) -> Response:
-    """Serve a single evidence image file."""
+    """Serve a single evidence image file (DB-first, FS fallback for in-progress)."""
     if phase not in ("pre", "post"):
         raise HTTPException(status_code=404, detail="Invalid evidence phase")
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
+
+    # DB-first
+    row = db.scalars(
+        select(WorkItemEvidence).where(
+            WorkItemEvidence.project_id == project_id,
+            WorkItemEvidence.work_item_id == item_id,
+            WorkItemEvidence.phase == EvidencePhase(phase),
+            WorkItemEvidence.filename == filename,
+        )
+    ).first()
+    if row is not None:
+        return Response(
+            content=row.content,
+            media_type=row.content_type,
+        )
+
+    # FS fallback for in-progress post-evidence
     evidence_path = (
         Path(project.repo_root) / "ai-dev" / "active" / item.id / "evidences" / phase / filename
     )
-    # Prevent path traversal
     try:
         evidence_path.resolve().relative_to(
             (Path(project.repo_root) / "ai-dev" / "active" / item.id / "evidences").resolve()
