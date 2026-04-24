@@ -136,15 +136,38 @@ def _run_qa_in_thread(
             q.put(
                 {"kind": "error", "message": "Local AI unavailable. Check that Ollama is running."}
             )
+        except Exception as exc:
+            # Any other exception (pydantic ValidationError from an out-of-sync
+            # Ollama response shape, httpx.HTTPStatusError, AttributeError,
+            # etc.) MUST surface as an SSE error event. Without this catch-all
+            # the exception escapes into the ThreadPoolExecutor Future, which
+            # nobody awaits, and the stream silently ends at `event: done`
+            # with zero tokens — leaving the UI and qv-browser blind to the
+            # real failure.
+            import logging
+            import traceback
+
+            logging.error(
+                "code_qa streaming failed: %s: %s\n%s",
+                type(exc).__name__,
+                exc,
+                traceback.format_exc(),
+            )
+            q.put(
+                {
+                    "kind": "error",
+                    "message": f"Q&A pipeline error: {type(exc).__name__}: {exc}",
+                }
+            )
         finally:
             q.put(None)
-            loop.stop()
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.create_task(produce_tokens())
-    loop.run_forever()
-    loop.close()
+    try:
+        loop.run_until_complete(produce_tokens())
+    finally:
+        loop.close()
 
 
 async def _sse_generator(

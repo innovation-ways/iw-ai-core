@@ -8,7 +8,7 @@ from typing import Literal
 
 logger = logging.getLogger(__name__)
 
-WORK_ITEM_ID_PATTERN = re.compile(r"\b(F|CR|I)-\d{5}\b")
+WORK_ITEM_ID_PATTERN = re.compile(r"\b(F|CR|I)-\d{5}(?:-[A-Za-z0-9_-]+)?\b")
 
 
 def filter_citations(

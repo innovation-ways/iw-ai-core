@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -15,7 +16,7 @@ from sqlalchemy import select
 from dashboard.dependencies import get_db
 from dashboard.utils.markdown import render_markdown
 from orch.config import load_config
-from orch.db.models import CodeIndexJob, Project
+from orch.db.models import CodeIndexJob, DocIndexJob, Project
 from orch.doc_service import DocService
 from orch.rag.config import build_code_config_from_project
 from orch.rag.job import JOB_REGISTRY, JobAlreadyRunningError, start_index_job
@@ -414,6 +415,70 @@ def code_trigger_reindex(
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> Any:
     return _trigger_job(db, project_id, "incremental", background_tasks)
+
+
+@router.post("/api/code/reindex-docs", response_class=HTMLResponse)
+def reindex_docs(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+
+    stale_threshold = datetime.now(UTC) - timedelta(minutes=5)
+    running = db.scalar(
+        select(DocIndexJob)
+        .where(
+            DocIndexJob.project_id == project_id,
+            DocIndexJob.status.in_(("queued", "running")),
+            DocIndexJob.triggered_at >= stale_threshold,
+        )
+        .limit(1)
+    )
+    if running:
+        templates: Jinja2Templates = request.app.state.templates
+        fragment = templates.TemplateResponse(
+            request,
+            "fragments/doc_job_already_running.html",
+            {
+                "project_id": project_id,
+                "job_id": running.id,
+            },
+        )
+        fb = fragment.body
+        body_bytes = bytes(fb) if isinstance(fb, memoryview) else fb
+        return HTMLResponse(
+            content=body_bytes.decode("utf-8"),
+            status_code=409,
+            headers={"HX-Trigger": '{"docJobConflict": {}}'},
+        )
+
+    project = _get_project_or_404(project_id, db)
+    cfg = load_config()
+    code_cfg = build_code_config_from_project(project.config, cfg.index_path)
+
+    job = DocIndexJob(
+        id=str(uuid.uuid4()),
+        project_id=project_id,
+        status="queued",
+        provider="local",
+        llm_model=code_cfg.resolved_llm_model(),
+        embed_model=code_cfg.resolved_embed_model(),
+        index_tier=code_cfg.index_tier.value,
+    )
+    db.add(job)
+    db.commit()
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/code_job_status.html",
+        {
+            "running_job": job,
+            "project_id": project_id,
+            "job_type_label": "Doc indexing",
+        },
+    )
 
 
 @router.post("/api/code/regen-map", response_class=HTMLResponse)

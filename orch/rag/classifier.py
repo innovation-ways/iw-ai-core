@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Literal
 
@@ -56,7 +57,7 @@ Respond with ONLY the category name, nothing else.
 """
 
 
-def classify_query(
+async def classify_query(
     question: str,
     config: CodeUnderstandingConfig,
     context_chips: list[str] | None = None,
@@ -74,10 +75,10 @@ def classify_query(
             if chip.lower() in SLASH_OVERRIDE_CHIPS:
                 return "workitem_aware"
 
-    return _llm_classify(question, config)
+    return await _llm_classify(question, config)
 
 
-def _llm_classify(
+async def _llm_classify(
     question: str,
     config: CodeUnderstandingConfig,
 ) -> Literal["workitem_aware", "code_only"]:
@@ -87,12 +88,15 @@ def _llm_classify(
             model=config.resolved_llm_model(),
             base_url=config.ollama_url,
         )
-        response = llm.complete(
-            f"{CLASSIFIER_SYSTEM_PROMPT}\n\n Question: {question}\n Category:",
-            max_tokens=20,
-        )
-        result = response.text.strip().lower()
 
+        def _sync_complete() -> str:
+            response = llm.complete(
+                f"{CLASSIFIER_SYSTEM_PROMPT}\n\n Question: {question}\n Category:",
+                max_tokens=20,
+            )
+            return response.text.strip().lower()
+
+        result = await asyncio.to_thread(_sync_complete)
         if "workitem_aware" in result:
             return "workitem_aware"
         return "code_only"

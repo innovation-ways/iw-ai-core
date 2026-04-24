@@ -51,7 +51,7 @@ class TestPhaseEventSequence:
 
         events = []
 
-        def mock_classify(question, config, context_chips):
+        async def mock_classify(question, config, context_chips):
             return "code_only"
 
         with (
@@ -180,6 +180,7 @@ class TestPhaseEventSequence:
                 self.title = f"Test {wi_id}"
                 self.summary = "Test summary"
                 self.design_doc_content = "Test content"
+                self.functional_doc_content = "Test functional content"
                 self.created_at = created_at
 
         mock_wi = MockWorkItem("F-00001", datetime(2025, 1, 1, tzinfo=UTC))
@@ -188,7 +189,7 @@ class TestPhaseEventSequence:
         mock_bundle.question = "why does it work?"
         mock_bundle.code_chunks = []
         mock_bundle.doc_chunks = []
-        mock_bundle.fts_items = []
+        mock_bundle.fts_items = [mock_wi]
         mock_bundle.git_log_items = []
         mock_bundle.work_items = [mock_wi]
         mock_bundle.retrieval_cutoff = datetime.now(UTC)
@@ -202,7 +203,7 @@ class TestPhaseEventSequence:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
-            yield MockChunk("Answer")
+            yield MockChunk("Based on F-00001")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
             return mock_inner_generator()
