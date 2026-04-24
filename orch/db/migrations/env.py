@@ -26,8 +26,13 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override the sqlalchemy.url from alembic.ini with the value from .env
-config.set_main_option("sqlalchemy.url", get_db_url())
+# Resolve sqlalchemy.url from orch.config.get_db_url() only when a
+# programmatic caller (e.g. safe_migrate's dry-run path) has not already set
+# one on the Config. Unconditional override made dry-runs silently hit the
+# live DB — the testcontainer URL set by safe_migrate._build_alembic_config
+# was clobbered here before the upgrade ran.
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", get_db_url())
 
 # Metadata for autogenerate support
 target_metadata = Base.metadata
