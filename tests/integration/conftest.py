@@ -24,6 +24,8 @@ from testcontainers.postgres import PostgresContainer  # type: ignore[import-unt
 from orch.db.models import (
     FTS_FUNCTION_SQL,
     FTS_TRIGGER_SQL,
+    FUNCTIONAL_DOC_FTS_FUNCTION_SQL,
+    FUNCTIONAL_DOC_FTS_TRIGGER_SQL,
     PROJECT_DOCS_FTS_FUNCTION_SQL,
     PROJECT_DOCS_FTS_TRIGGER_SQL,
     Base,
@@ -111,6 +113,8 @@ def db_engine(pg_container: PostgresContainer) -> Engine:
         conn.execute(text(FTS_TRIGGER_SQL))
         conn.execute(text(PROJECT_DOCS_FTS_FUNCTION_SQL))
         conn.execute(text(PROJECT_DOCS_FTS_TRIGGER_SQL))
+        conn.execute(text(FUNCTIONAL_DOC_FTS_FUNCTION_SQL))
+        conn.execute(text(FUNCTIONAL_DOC_FTS_TRIGGER_SQL))
         conn.commit()
 
     return engine
