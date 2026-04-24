@@ -58,6 +58,12 @@ services:
       # time. Read-only: the container only consumes fixtures, never writes.
       - ./ai-dev:/app/ai-dev:ro
     environment:
+      # Unset IW_CORE_EXPECTED_INSTANCE_ID so the dashboard runs in bootstrap
+      # mode against the fresh e2e DB (which has no iw_core_instance row).
+      # The e2e_seed.py production guardrail already handles this case via
+      # IW_E2E_SEED=1, but we also unset it here so the app lifespan
+      # verify_instance_identity() call also runs in bootstrap mode.
+      IW_CORE_EXPECTED_INSTANCE_ID: ""
       IW_CORE_DB_HOST: e2e-db
       IW_CORE_DB_PORT: "5432"
       IW_CORE_DB_NAME: iw_e2e

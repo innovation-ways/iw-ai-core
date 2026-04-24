@@ -676,3 +676,40 @@ CREATE INDEX idx_step_runs_status ON step_runs(status)
 ```
 
 This is a partial index — it only indexes the rows the daemon actively queries (running and actionable steps). Completed, failed, and killed runs are not indexed, keeping the index small and fast even with thousands of historical runs.
+
+---
+
+## 7. CR-00019 Extensions: Selection-driven OSS Prepare with reviewable worktree lifecycle
+
+**Revision**: 9ef17911f546 (applied 2026-04-24)
+
+### 7.1 project_oss_job_status enum extension
+
+Adds two new states to support the reviewable worktree lifecycle:
+
+```sql
+ALTER TYPE project_oss_job_status ADD VALUE IF NOT EXISTS 'awaiting_review';
+ALTER TYPE project_oss_job_status ADD VALUE IF NOT EXISTS 'discarded';
+```
+
+| Value | When set |
+|-------|----------|
+| `awaiting_review` | Worker completes a Prepare run with staged changes; worktree is left intact for human review |
+| `discarded` | User clicks "Discard fix" from the OSS tab; prep branch and worktree are deleted |
+
+Downgrade: PostgreSQL does not support removing enum values. The downgrade migration is a no-op for the enum; columns are dropped normally.
+
+### 7.2 project_oss_job table extensions
+
+| Column | Type | Nullable | Comment |
+|--------|------|----------|---------|
+| `base_sha` | TEXT | YES | Git HEAD SHA when Prepare was fired — used to detect main advance |
+| `branch_name` | TEXT | YES | Prep branch name (e.g., `iw-oss-publish/prep-<job_id>`) |
+| `commit_sha` | TEXT | YES | Commit SHA on the prep branch |
+| `files_changed_summary` | TEXT | YES | `git diff --stat` output captured at commit time |
+
+### 7.3 oss_finding table extension
+
+| Column | Type | Nullable | Comment |
+|--------|------|----------|---------|
+| `rationale` | TEXT | YES | Per-check rationale paragraph explaining why this check matters for OSS compliance |

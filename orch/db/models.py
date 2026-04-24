@@ -256,6 +256,8 @@ class ProjectOssJobStatus(enum.Enum):
     complete = "complete"
     error = "error"
     cancelled = "cancelled"
+    awaiting_review = "awaiting_review"
+    discarded = "discarded"
 
 
 # ---------------------------------------------------------------------------
@@ -1437,6 +1439,11 @@ class OssFinding(Base):
     )
     tool: Mapped[str | None] = mapped_column(Text, nullable=True)
     evidence_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    rationale: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Per-check rationale paragraph",
+    )
 
     scan: Mapped["OssScan"] = relationship("OssScan", back_populates="findings")
 
@@ -1505,6 +1512,26 @@ class ProjectOssJob(Base):
         Text, nullable=True, comment="Last 16KB of combined stdout/stderr"
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    base_sha: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Git HEAD SHA when Prepare was fired",
+    )
+    branch_name: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Prep branch name (iw-oss-publish/prep-<job_id>)",
+    )
+    commit_sha: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Commit SHA on the prep branch",
+    )
+    files_changed_summary: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="git diff --stat at commit time",
+    )
 
     project: Mapped["Project"] = relationship("Project", back_populates="oss_jobs")
     scan: Mapped["OssScan | None"] = relationship(

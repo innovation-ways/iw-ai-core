@@ -40,8 +40,10 @@ def seeded_db(db_session: Session) -> Session:
     real_commit = db_session.commit
     db_session.commit = db_session.flush  # type: ignore[method-assign]
     try:
-        with patch.object(seed_module, "get_session", _fake_get_session), \
-             patch.object(seed_module, "_check_production_guardrail", lambda: None):
+        with (
+            patch.object(seed_module, "get_session", _fake_get_session),
+            patch.object(seed_module, "_check_production_guardrail", lambda: None),
+        ):
             seed_module.seed()
     finally:
         db_session.commit = real_commit  # type: ignore[method-assign]
@@ -125,8 +127,10 @@ def test_seed_is_idempotent(db_session: Session) -> None:
     real_commit = db_session.commit
     db_session.commit = db_session.flush  # type: ignore[method-assign]
     try:
-        with patch.object(seed_module, "get_session", _fake_get_session), \
-             patch.object(seed_module, "_check_production_guardrail", lambda: None):
+        with (
+            patch.object(seed_module, "get_session", _fake_get_session),
+            patch.object(seed_module, "_check_production_guardrail", lambda: None),
+        ):
             seed_module.seed()
             first_step_count = db_session.scalar(
                 select(WorkflowStep).where(
