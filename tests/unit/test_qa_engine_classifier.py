@@ -18,47 +18,52 @@ class TestClassifyQuery:
         config.ollama_url = "http://localhost:11434"
         return config
 
-    def test_slash_override_why_returns_workitem_aware(self, mock_config: MagicMock) -> None:
+    @pytest.mark.asyncio
+    async def test_slash_override_why_returns_workitem_aware(self, mock_config: MagicMock) -> None:
         """AC2: /why chip forces workitem_aware pipeline."""
         from orch.rag.classifier import classify_query
 
-        result = classify_query(
+        result = await classify_query(
             "why does the daemon work?",
             mock_config,
             context_chips=["why"],
         )
         assert result == "workitem_aware"
 
-    def test_slash_override_history_returns_workitem_aware(self, mock_config: MagicMock) -> None:
+    @pytest.mark.asyncio
+    async def test_slash_override_history_returns_workitem_aware(self, mock_config: MagicMock) -> None:
         """AC2: /history chip forces workitem_aware pipeline."""
         from orch.rag.classifier import classify_query
 
-        result = classify_query(
+        result = await classify_query(
             "what changed?",
             mock_config,
             context_chips=["history"],
         )
         assert result == "workitem_aware"
 
-    def test_slash_override_findusages_returns_workitem_aware(self, mock_config: MagicMock) -> None:
+    @pytest.mark.asyncio
+    async def test_slash_override_findusages_returns_workitem_aware(self, mock_config: MagicMock) -> None:
         """AC2: /findusages chip forces workitem_aware pipeline."""
         from orch.rag.classifier import classify_query
 
-        result = classify_query(
+        result = await classify_query(
             "where is this used?",
             mock_config,
             context_chips=["findusages"],
         )
         assert result == "workitem_aware"
 
-    def test_no_chips_no_context_defaults_to_code_only(self, mock_config: MagicMock) -> None:
+    @pytest.mark.asyncio
+    async def test_no_chips_no_context_defaults_to_code_only(self, mock_config: MagicMock) -> None:
         """Without chips, non-behavioral query defaults to code_only."""
         from orch.rag.classifier import classify_query
 
-        result = classify_query("show me the signature", mock_config, context_chips=None)
+        result = await classify_query("show me the signature", mock_config, context_chips=None)
         assert result == "code_only"
 
-    def test_llm_classify_behavioral_query(self, mock_config: MagicMock) -> None:
+    @pytest.mark.asyncio
+    async def test_llm_classify_behavioral_query(self, mock_config: MagicMock) -> None:
         """Behavior questions get classified as workitem_aware by LLM."""
         from orch.rag.classifier import classify_query
 
@@ -68,7 +73,7 @@ class TestClassifyQuery:
         mock_llm.complete = MagicMock(return_value=mock_response)
 
         with patch("orch.rag.classifier.Ollama", return_value=mock_llm):
-            result = classify_query(
+            result = await classify_query(
                 "why does the daemon retry 3 times?",
                 mock_config,
                 context_chips=None,
@@ -76,7 +81,8 @@ class TestClassifyQuery:
 
         assert result == "workitem_aware"
 
-    def test_llm_classify_code_query(self, mock_config: MagicMock) -> None:
+    @pytest.mark.asyncio
+    async def test_llm_classify_code_query(self, mock_config: MagicMock) -> None:
         """Technical queries get classified as code_only by LLM."""
         from orch.rag.classifier import classify_query
 
@@ -86,7 +92,7 @@ class TestClassifyQuery:
         mock_llm.complete = MagicMock(return_value=mock_response)
 
         with patch("orch.rag.classifier.Ollama", return_value=mock_llm):
-            result = classify_query(
+            result = await classify_query(
                 "show me the signature of parse_id",
                 mock_config,
                 context_chips=None,
@@ -94,7 +100,8 @@ class TestClassifyQuery:
 
         assert result == "code_only"
 
-    def test_llm_timeout_falls_back_to_code_only(self, mock_config: MagicMock) -> None:
+    @pytest.mark.asyncio
+    async def test_llm_timeout_falls_back_to_code_only(self, mock_config: MagicMock) -> None:
         """On LLM timeout, default to code_only (AC3 low-confidence behavior)."""
 
         from orch.rag.classifier import classify_query
@@ -103,7 +110,7 @@ class TestClassifyQuery:
         mock_llm.complete = MagicMock(side_effect=TimeoutError("LLM request timed out"))
 
         with patch("orch.rag.classifier.Ollama", return_value=mock_llm):
-            result = classify_query(
+            result = await classify_query(
                 "why does this work?",
                 mock_config,
                 context_chips=None,
@@ -111,7 +118,8 @@ class TestClassifyQuery:
 
         assert result == "code_only"
 
-    def test_llm_exception_falls_back_to_code_only(self, mock_config: MagicMock) -> None:
+    @pytest.mark.asyncio
+    async def test_llm_exception_falls_back_to_code_only(self, mock_config: MagicMock) -> None:
         """On LLM exception, default to code_only."""
         from orch.rag.classifier import classify_query
 
@@ -119,7 +127,7 @@ class TestClassifyQuery:
         mock_llm.complete = MagicMock(side_effect=Exception("LLM unavailable"))
 
         with patch("orch.rag.classifier.Ollama", return_value=mock_llm):
-            result = classify_query(
+            result = await classify_query(
                 "why does this work?",
                 mock_config,
                 context_chips=None,
@@ -142,7 +150,8 @@ class TestSlashOverrideChips:
         for chip in ["WHY", "History", "FINDUSAGES"]:
             assert chip.lower() in SLASH_OVERRIDE_CHIPS or chip.upper() in SLASH_OVERRIDE_CHIPS
 
-    def test_empty_chips_list(self) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_chips_list(self) -> None:
         """Empty chips list does not trigger override."""
         from orch.rag.classifier import classify_query
 
@@ -156,5 +165,5 @@ class TestSlashOverrideChips:
         mock_llm.complete = MagicMock(return_value=mock_response)
 
         with patch("orch.rag.classifier.Ollama", return_value=mock_llm):
-            result = classify_query("show me the signature", mock_config, context_chips=[])
+            result = await classify_query("show me the signature", mock_config, context_chips=[])
             assert result == "code_only"

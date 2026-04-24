@@ -155,6 +155,8 @@ def test_resolve_browser_env_exports_e2e_db_url() -> None:
     assert env["IW_BROWSER_E2E_DB_NAME"] == "iw_e2e"
     assert env["IW_BROWSER_E2E_DB_USER"] == "iw_e2e"
     assert env["IW_BROWSER_E2E_DB_PASSWORD"] == "iw_e2e_dev"  # noqa: S105
+    # Full DSN must be a parseable postgres URL pointing at the allocated
+    # host port — matches what docker-compose.e2e.yml exposes.
     expected = f"postgresql://iw_e2e:iw_e2e_dev@127.0.0.1:{env['E2E_DB_PORT']}/iw_e2e"
     assert env["IW_BROWSER_E2E_DB_URL"] == expected
 

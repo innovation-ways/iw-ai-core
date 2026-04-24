@@ -25,29 +25,25 @@ def _load_stub():
 
 
 def _system_prompt_with_three_candidates() -> str:
-    """Mirror the exact shape emitted by orch.rag.qa._build_workitem_system_prompt."""
+    """Mirror the exact shape emitted by orch.rag.qa._build_workitem_system_prompt.
+
+    IDs match the F-00060 e2e_fixture (bare 5-digit production shape) so
+    the stub's citation emission flows through citation_allowlist's
+    `\\b(F|CR|I)-\\d{5}\\b` extractor without being truncated.
+    """
     lines = [
         "## Work Item Context",
         "",
         "The following work items may be related to the user's question.",
         "",
-        (
-            "### Candidate 1: F-00060-ORIGINAL — "
-            "New project button — original implementation (feature)"
-        ),
+        ("### Candidate 1: F-99001 — New project button — original implementation (feature)"),
         "The New project button enables users to create a new project workspace",
         "from the dashboard home.",
         "",
-        (
-            "### Candidate 2: CR-00060-RECOLOR — "
-            "Recolor the New project button to blue (change_request)"
-        ),
+        ("### Candidate 2: CR-99001 — Recolor the New project button to blue (change_request)"),
         "Changed the button background colour from grey to blue for visual emphasis.",
         "",
-        (
-            "### Candidate 3: CR-00060-RESHAPE — "
-            "Reshape the button from circle to square (change_request)"
-        ),
+        ("### Candidate 3: CR-99002 — Reshape the button from circle to square (change_request)"),
         "Changed the button from a circle shape to a square shape.",
         "",
     ]
@@ -60,9 +56,9 @@ class TestCandidateExtraction:
         messages = [{"role": "system", "content": _system_prompt_with_three_candidates()}]
         cands = stub._extract_workitem_candidates(messages)
         assert [c["id"] for c in cands] == [
-            "F-00060-ORIGINAL",
-            "CR-00060-RECOLOR",
-            "CR-00060-RESHAPE",
+            "F-99001",
+            "CR-99001",
+            "CR-99002",
         ]
         assert cands[0]["type"] == "feature"
         assert cands[1]["type"] == "change_request"
@@ -81,22 +77,26 @@ class TestCandidateExtraction:
         ]
         assert stub._extract_workitem_candidates(messages) == []
 
-    def test_accepts_plain_five_digit_ids_too(self) -> None:
-        """Not every seeded item uses the -SUFFIX convention — plain IDs must also parse."""
+    def test_accepts_suffixed_ids_too(self) -> None:
+        """Parser's regex ``(F|CR|I)-\\d{5}(?:-[A-Z0-9_-]+)?`` must accept
+        both bare five-digit IDs (the canonical production form the
+        allowlist regex uses) and suffixed IDs (a defensive carry-over
+        in case some future fixture or prompt uses them)."""
         stub = _load_stub()
         messages = [
             {
                 "role": "system",
                 "content": (
                     "## Work Item Context\n\n"
-                    "### Candidate 1: CR-00011 — New project button feature (change_request)\n"
-                    "Adds a button on the dashboard home.\n"
+                    "### Candidate 1: CR-00011 — bare id (change_request)\n"
+                    "Adds a button on the dashboard home.\n\n"
+                    "### Candidate 2: F-00060-LEGACY — suffixed id (feature)\n"
+                    "Legacy shape accepted for backward compatibility.\n"
                 ),
             },
         ]
         cands = stub._extract_workitem_candidates(messages)
-        assert len(cands) == 1
-        assert cands[0]["id"] == "CR-00011"
+        assert [c["id"] for c in cands] == ["CR-00011", "F-00060-LEGACY"]
 
 
 class TestCandidateRanking:
@@ -107,7 +107,7 @@ class TestCandidateRanking:
         messages = [{"role": "system", "content": _system_prompt_with_three_candidates()}]
         cands = stub._extract_workitem_candidates(messages)
         ranked = stub._rank_candidates(cands, "Why is the New project button blue?")
-        assert ranked[0]["id"] == "CR-00060-RECOLOR"
+        assert ranked[0]["id"] == "CR-99001"
 
     def test_question_about_creation_ranks_original_first(self) -> None:
         """F-00060 V2: 'when was the button created?' must rank the original
@@ -119,7 +119,7 @@ class TestCandidateRanking:
             cands,
             "When was the New project button created? What does it do?",
         )
-        assert ranked[0]["id"] == "F-00060-ORIGINAL"
+        assert ranked[0]["id"] == "F-99001"
 
     def test_ranking_is_stable_on_ties(self) -> None:
         """When no keyword matches, the original parse order must be preserved
@@ -147,9 +147,9 @@ class TestReplyBuilder:
         assert reply.lstrip().startswith("[1]")
         # The cited ID must come from the candidates (allowlist guarantee).
         cited_ids = [c["id"] for c in cands if c["id"] in reply]
-        assert "CR-00060-RECOLOR" in cited_ids
+        assert "CR-99001" in cited_ids
         # And the reply must not invent an un-allowed ID that looks similar.
-        assert "CR-99999" not in reply
+        assert "CR-88888" not in reply
 
     def test_code_only_reply_does_not_include_citations(self) -> None:
         """F-00060 V5: code-only questions get the plain echo reply — no

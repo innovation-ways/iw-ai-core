@@ -221,7 +221,8 @@ class TestBoundaryGitLogNoMatch:
 class TestBoundaryLowConfidenceClassifier:
     """Boundary: Low-confidence classifier defaults to code-only."""
 
-    def test_llm_timeout_defaults_to_code_only(self) -> None:
+    @pytest.mark.asyncio
+    async def test_llm_timeout_defaults_to_code_only(self) -> None:
         """On LLM timeout, classifier defaults to code_only."""
         from orch.rag.classifier import classify_query
 
@@ -233,7 +234,7 @@ class TestBoundaryLowConfidenceClassifier:
         mock_llm.complete = MagicMock(side_effect=TimeoutError("LLM request timed out"))
 
         with patch("orch.rag.classifier.Ollama", return_value=mock_llm):
-            result = classify_query(
+            result = await classify_query(
                 "why does this ambiguous query behave?",
                 mock_config,
                 context_chips=None,

@@ -73,69 +73,161 @@ For F-00060, the verification requires:
 
 If the baseline seed does not cover this, add a fixture at
 `ai-dev/active/F-00060/e2e_fixtures/001_qa_seed.py` exporting
-`def seed(db: Session) -> None`, idempotent.
+`def seed(db: Session) -> None`, idempotent. The fixture runs **inside**
+`scripts/e2e_seed.py` at stack bring-up, so it writes to the isolated E2E
+DB — do NOT roll your own ad-hoc inserts from the agent subprocess.
+
+## Writing to the E2E DB from the agent
+
+If a specific V step needs to INSERT rows *after* the stack is up (e.g. to
+inject a `DaemonEvent` and observe it in the UI), do NOT use
+`orch.db.session.SessionLocal`. The worktree's `.env` pins `IW_CORE_DB_*` at
+the **live** orchestration DB (port 5433) and `SessionLocal()` will quietly
+write there — the dashboard under test will never see the row because it
+polls the isolated `e2e-db` container. Use the DSN the daemon exports:
+
+```bash
+uv run python -c "
+import os, psycopg
+with psycopg.connect(os.environ['IW_BROWSER_E2E_DB_URL']) as conn:
+    with conn.cursor() as cur:
+        cur.execute('INSERT INTO ... VALUES (...)')
+    conn.commit()
+"
+```
+
+The DSN is `postgresql://iw_e2e:iw_e2e_dev@127.0.0.1:${E2E_DB_PORT}/iw_e2e`
+(credentials from `docker-compose.e2e.yml`, non-secret).
 
 ## Verification Steps
 
-### V1: Re-index Docs button enqueues and completes (AC1)
+### V1a: "Re-index Docs" action exists in the Code-page dropdown (AC1 surface)
 
 1. Navigate to `$IW_BROWSER_BASE_URL/project/<seeded-project>/code`.
 2. Open the action dropdown.
 3. **Verify:** a "Re-index Docs" entry is present immediately below
    "Re-index changed files".
-4. Click "Re-index Docs".
-5. **Verify:** a job row appears with `status='queued'` transitioning to
-   `running` then `completed` within 120 s in the E2E environment.
-6. Navigate to the unified Jobs view.
-7. **Verify:** the job appears with `job_type='doc_indexing'` and the
-   expected project.
-8. **Screenshot:** `F-00060_v1_reindex_complete.png`.
+4. **Screenshot:** `F-00060_v1a_reindex_button.png`.
 
-### V2: Workitem-aware question cites and narrates (AC2)
+### V1b: Clicking "Re-index Docs" creates a `doc_index_jobs` row
 
-1. Navigate to `/project/<seeded-project>/code/qa` (or whatever the Q&A
-   entry point is).
-2. Ask: "When was the New project button created? What does it do?"
-3. **Verify:** the streamed answer cites the originating work item (e.g.
-   CR-00011) and the narrative paraphrases its functional-doc reasoning
-   (colour, purpose, where it appears).
-4. **Verify:** no unrelated work-item IDs appear in the citation list.
-5. **Verify:** the citation snippet for the cited item is drawn from its
-   functional doc, not its summary (compare first 100 chars against the
-   DB value).
-6. **Screenshot:** `F-00060_v2_originating_item_citation.png`.
+1. From V1a, click "Re-index Docs".
+2. **Verify via the E2E DB** (using `$IW_BROWSER_E2E_DB_URL`) that a
+   `doc_index_jobs` row now exists for this project with
+   `status IN ('queued', 'running', 'completed')`:
 
-### V3: Relevance filter drops off-topic items (AC3)
+   ```bash
+   uv run python -c "
+   import os, psycopg
+   with psycopg.connect(os.environ['IW_BROWSER_E2E_DB_URL']) as conn:
+       with conn.cursor() as cur:
+           cur.execute(
+               \"SELECT id, status, triggered_at FROM doc_index_jobs \"
+               \"WHERE project_id = 'iw-ai-core' ORDER BY triggered_at DESC LIMIT 1\"
+           )
+           print(cur.fetchone())
+   "
+   ```
 
-1. Ask: "Why is button X blue?" (X being the button whose history includes
-   an add + recolor + reshape).
-2. **Verify:** the streamed answer cites only the recolor item (CR-B) in
-   the citation list.
-3. **Verify:** the answer does NOT mention the reshape item (CR-C) by ID
-   or reasoning.
-4. **Verify:** the answer does NOT cite the original feature (F-A) even
-   though git-log would include it.
-5. **Screenshot:** `F-00060_v3_relevance_filter.png`.
+3. **Screenshot:** `F-00060_v1b_job_row_created.png`.
+
+### V1c: Job row transitions to `completed` via the E2E daemon stub
+
+The E2E stack now runs `scripts/e2e_daemon_stub.py` (see
+`docker-compose.e2e.yml:e2e-daemon-stub`) which advances queued doc-index
+jobs through `running → completed` on a ~5 s cycle. The real RAG
+pipeline is not exercised in E2E — the stub just flips the state columns
+so downstream V steps that read the Jobs view can observe the lifecycle.
+
+1. Wait up to 20 s for the row created in V1b to reach `status='completed'`:
+
+   ```bash
+   for _ in $(seq 1 20); do
+     STATUS=$(uv run python -c "
+   import os, psycopg
+   with psycopg.connect(os.environ['IW_BROWSER_E2E_DB_URL']) as conn:
+       with conn.cursor() as cur:
+           cur.execute(\"SELECT status FROM doc_index_jobs WHERE project_id = 'iw-ai-core' ORDER BY triggered_at DESC LIMIT 1\")
+           print(cur.fetchone()[0])
+   ")
+     echo "status: $STATUS"
+     [ "$STATUS" = "completed" ] && break
+     sleep 1
+   done
+   [ "$STATUS" = "completed" ] || { echo "job did not complete within 20s"; exit 1; }
+   ```
+
+2. Navigate to the unified Jobs view in the browser.
+3. **Verify:** the job appears with `job_type='doc_indexing'` and
+   `status='completed'`.
+4. **Screenshot:** `F-00060_v1c_jobs_view_completed.png`.
+
+### V2a: Workitem-aware pipeline emits phase events in order (AC2 infrastructure)
+
+The E2E Ollama stub at `scripts/e2e_ollama_stub.py` is intentionally
+**not** a real LLM — it parses the `## Work Item Context` block in the
+system prompt and emits a deterministic reply that opens with a
+`[1] <ID> — <title>` citation for the candidate that best matches the
+question's keywords. That is enough to exercise the whole pipeline
+(classifier → retrieval → allowlist → citation emission) without a real
+model.
+
+1. From the Code page, ask: "When was the New project button created?
+   What does it do?" via `POST /api/projects/iw-ai-core/code/qa` with
+   `context_chips=["why"]` so the classifier picks the workitem-aware
+   branch unconditionally.
+2. **Verify the stream emits these phase events in order:**
+   `retrieving` → `finding_items` → `reading_docs` → `composing`,
+   followed by `token` events, followed by at least one `citation`
+   event, followed by `done`.
+3. If ANY phase event is missing, V2a fails — phases are emitted by
+   `orch/rag/qa.py:answer_stream_v2` so a missing one means the
+   workitem_aware branch was not taken (likely a classifier bug or a
+   swallowed exception in the pipeline).
+4. **Screenshot:** `F-00060_v2a_phase_events.png`.
+
+### V2b: Citation event names a work item seeded for this project
+
+1. From V2a, inspect the `citation` events in the stream.
+2. **Verify:** at least one citation's `work_item_id` field matches one
+   of the seeded items (`F-99001`, `CR-99001`, `CR-99002`, `F-99002` —
+   production-shape 5-digit IDs chosen to match
+   `orch/rag/citation_allowlist.py:WORK_ITEM_ID_PATTERN`).
+3. **Verify:** for the question "When was the New project button
+   created?", the top-ranked citation is `F-99001` — the stub's keyword
+   ranker prefers candidates whose title/content contains "new",
+   "project", "button", "created".
+4. **Screenshot:** `F-00060_v2b_citation_originating_item.png`.
+
+### V3: Relevance filter picks the recolor item for a colour question (AC3)
+
+With the citation-aware stub, V3 is a deterministic property check: the
+stub's ranker is a simple keyword scorer and MUST pick the recolor
+candidate when the question is about colour.
+
+1. Ask: "Why is the New project button blue?" via the Q&A endpoint with
+   `context_chips=["why"]`.
+2. **Verify:** the first `citation` event's `work_item_id` is `CR-99001`.
+   The keyword "blue" appears in that candidate's functional-doc content
+   and nowhere else, so the ranker must place it first.
+3. **Verify:** `CR-99002` does not appear in any citation event for this
+   question (its content is about shape/rounded-rect, not blue).
+4. **Screenshot:** `F-00060_v3_relevance_filter.png`.
 
 ### V4: Allowlist gates emission (AC5)
 
-Note: hallucination is inherently non-deterministic, so the strict
-"hallucinated IDs are dropped" invariant is covered by the deterministic
-unit test `tests/unit/test_qa_v2_allowlist_wiring.py`. This browser check
-verifies the weaker, observable property that un-allowed IDs never reach
-the UI — it passes whether or not the LLM actually hallucinates.
+This browser check verifies the observable property that un-allowed IDs
+never reach the UI. The deterministic invariant (hallucinated IDs are
+stripped) is covered by `tests/unit/test_qa_v2_allowlist_wiring.py`.
 
-1. Ask a question crafted to invite free association (e.g. "why did you
-   change X" phrasing over a surface with known history).
-2. Inspect the phase events in the streaming response to capture the
-   retrieval bundle's `allowed_ids`.
-3. **Verify:** every work-item ID that appears in the citation panel is
-   a member of `allowed_ids`. If the LLM happened not to reference any
-   out-of-bundle ID on this run, V4 still passes — note the observation
-   in the report.
-4. **Verify:** no un-allowed ID appears in the citation panel under any
-   circumstance.
-5. **Screenshot:** `F-00060_v4_allowlist_stripping.png`.
+1. From V2 or V3, collect all `work_item_id` values from every `citation`
+   event in the stream.
+2. **Verify:** every collected ID matches one of the candidates the
+   stream also listed in its `phase: finding_items` detail (the set
+   of allowed IDs).
+3. **Verify:** no citation event carries an ID that wasn't in the
+   candidate set.
+4. **Screenshot:** `F-00060_v4_allowlist_stripping.png`.
 
 ### V5: Code-only path regression (no regressions)
 
@@ -154,14 +246,45 @@ the UI — it passes whether or not the LLM actually hallucinates.
 
 ## Pass Criteria
 
-All V1..V6 must pass. Any failure requires `iw step-fail` with a reason.
+Every V (V1a, V1b, V1c, V2a, V2b, V3, V4, V5, V6) must pass. Any failure
+requires `iw step-fail` with a reason. The V-splits mean a flake in one
+sub-step no longer pollutes its siblings — report each independently.
 
 ### Distinguishing code defects from environment gaps
 
-- **CODE DEFECT** — page errored, wrong element, console exception. Normal
-  `--reason`.
-- **ENV_DATA_MISSING** — HTTP 200 but seed lacks expected data. Prefix
-  `--reason` with `ENV_DATA_MISSING:`.
+The daemon **no longer terminates the fix cycle on an ``ENV_DATA_MISSING:``
+prefix** (see `orch/daemon/fix_cycle.py:should_attempt_fix`). A subsequent
+fix cycle will always run within the cycle budget, and its prompt includes
+a warning section pointing out that six recent "environmental" diagnoses on
+browser_verification steps were all real code defects in disguise.
+
+That relaxation does not make misclassification free. A fix cycle spent
+on the wrong hypothesis still burns budget. Use the classification below.
+
+- **CODE DEFECT** (normal `--reason`, no prefix):
+  - Any HTTP 4xx/5xx on a page the verification visits (including 500 on
+    `/project/{id}/jobs`, 404 on a route the test asserts exists).
+  - Any uncaught server exception in the logs.
+  - Any JS console error or `ReferenceError`.
+  - A page renders but the asserted element is absent or wrong.
+  - The streaming endpoint returns 200 but emits zero tokens where the stub
+    provider at `scripts/e2e_ollama_stub.py` would have emitted them — that's
+    a bug in the server-side pipeline, not the env.
+  - An INSERT to ``$IW_BROWSER_E2E_DB_URL`` is not reflected in the
+    dashboard under test — that's a routing bug (often: the agent used
+    `SessionLocal` by accident and wrote to the live DB).
+- **ENV_DATA_MISSING** (`--reason "ENV_DATA_MISSING: ..."`) — reserve for:
+  - The `$IW_BROWSER_E2E_DB_URL` DSN points at a DB that won't accept
+    connections AND the compose stack is not recoverable by editing
+    ``docker-compose.e2e.yml`` or ``scripts/e2e_dashboard_entrypoint.sh``.
+  - A missing seed row where no fixture file at
+    ``ai-dev/active/F-00060/e2e_fixtures/*.py`` could produce it (e.g.
+    because the data must come from a git-log scan of a repo the stack
+    cannot access).
+
+  Missing `functional_doc_content`, missing button-history items, or
+  missing `Merge F-...:` lines are NOT ENV_DATA_MISSING — they are a
+  missing fixture you are explicitly authorized to write.
 
 ## Report
 
@@ -195,10 +318,13 @@ uv run iw step-fail "$IW_ITEM_ID" --step "$IW_STEP_ID" \
   "overall_status": "pass|fail",
   "base_url_used": "",
   "verifications": [
-    {"id": "V1", "name": "reindex button + jobs view", "status": "pass|fail", "screenshot": "", "notes": ""},
-    {"id": "V2", "name": "originating-item citation + functional snippet", "status": "pass|fail", "screenshot": "", "notes": ""},
-    {"id": "V3", "name": "relevance filter drops off-topic items", "status": "pass|fail", "screenshot": "", "notes": ""},
-    {"id": "V4", "name": "allowlist stripping", "status": "pass|fail", "screenshot": "", "notes": ""},
+    {"id": "V1a", "name": "re-index docs action in dropdown", "status": "pass|fail", "screenshot": "", "notes": ""},
+    {"id": "V1b", "name": "click creates doc_index_jobs row", "status": "pass|fail", "screenshot": "", "notes": ""},
+    {"id": "V1c", "name": "daemon stub transitions row to completed", "status": "pass|fail", "screenshot": "", "notes": ""},
+    {"id": "V2a", "name": "workitem_aware phase events fire in order", "status": "pass|fail", "screenshot": "", "notes": ""},
+    {"id": "V2b", "name": "citation event names seeded originating item", "status": "pass|fail", "screenshot": "", "notes": ""},
+    {"id": "V3", "name": "colour question picks recolor item", "status": "pass|fail", "screenshot": "", "notes": ""},
+    {"id": "V4", "name": "allowlist gates emission", "status": "pass|fail", "screenshot": "", "notes": ""},
     {"id": "V5", "name": "code-only regression", "status": "pass|fail", "screenshot": "", "notes": ""},
     {"id": "V6", "name": "no regressions on sibling views", "status": "pass|fail", "screenshot": "", "notes": ""}
   ],
