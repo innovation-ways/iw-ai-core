@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from orch.cli.step_commands import (
+    validate_browser_evidence_present,
     validate_step_kill_transition,
     validate_step_restart_transition,
     validate_step_skip_transition,
 )
-from orch.db.models import StepStatus
+from orch.db.models import StepStatus, StepType
 
 # ---------------------------------------------------------------------------
 # validate_step_restart_transition
@@ -90,3 +93,65 @@ class TestValidateStepKillTransition:
         result = validate_step_kill_transition(status)
         assert result is not None
         assert "Cannot kill step" in result
+
+
+# ---------------------------------------------------------------------------
+# validate_browser_evidence_present
+# ---------------------------------------------------------------------------
+
+
+class TestValidateBrowserEvidencePresent:
+    """browser_verification step-done requires >= 1 file in evidences/post/."""
+
+    @pytest.mark.parametrize(
+        "step_type",
+        [
+            StepType.implementation,
+            StepType.code_review,
+            StepType.code_review_final,
+            StepType.quality_validation,
+            StepType.qv_fix,
+        ],
+    )
+    def test_non_browser_step_types_short_circuit_to_none(
+        self,
+        step_type: StepType,
+        tmp_path: Path,
+    ) -> None:
+        assert validate_browser_evidence_present(step_type, "I-00036", cwd=tmp_path) is None
+
+    def test_browser_step_with_screenshot_passes(self, tmp_path: Path) -> None:
+        post_dir = tmp_path / "ai-dev" / "active" / "I-00036" / "evidences" / "post"
+        post_dir.mkdir(parents=True)
+        (post_dir / "V1_shot.png").write_bytes(b"fake-png")
+        assert (
+            validate_browser_evidence_present(
+                StepType.browser_verification, "I-00036", cwd=tmp_path
+            )
+            is None
+        )
+
+    def test_browser_step_with_missing_dir_fails(self, tmp_path: Path) -> None:
+        result = validate_browser_evidence_present(
+            StepType.browser_verification, "I-00036", cwd=tmp_path
+        )
+        assert result is not None
+        assert "no evidences/post/" in result
+
+    def test_browser_step_with_empty_dir_fails(self, tmp_path: Path) -> None:
+        post_dir = tmp_path / "ai-dev" / "active" / "I-00036" / "evidences" / "post"
+        post_dir.mkdir(parents=True)
+        result = validate_browser_evidence_present(
+            StepType.browser_verification, "I-00036", cwd=tmp_path
+        )
+        assert result is not None
+        assert "is empty" in result
+
+    def test_browser_step_with_only_subdirs_fails(self, tmp_path: Path) -> None:
+        post_dir = tmp_path / "ai-dev" / "active" / "I-00036" / "evidences" / "post"
+        (post_dir / "nested").mkdir(parents=True)
+        result = validate_browser_evidence_present(
+            StepType.browser_verification, "I-00036", cwd=tmp_path
+        )
+        assert result is not None
+        assert "is empty" in result
