@@ -191,15 +191,20 @@ def test_should_attempt_fix_under_max(
     assert should_attempt_fix(db_session, step, _project_config(fix_cycle_max=5)) is True
 
 
-def test_should_skip_fix_for_browser_env_data_missing(
+def test_should_attempt_fix_for_browser_env_data_missing(
     db_session: Any,
     test_project: Project,
 ) -> None:
-    """Browser failures prefixed ENV_DATA_MISSING: are seed gaps, not code defects.
+    """An ENV_DATA_MISSING: prefix no longer skips the fix cycle.
 
-    Looping a fix agent on these wastes cycles — the daemon should refuse the
-    fix cycle so the human reviewer sees the failure and adds an e2e_fixtures
-    file.
+    The prior skip-guard was a footgun — every real browser_verification
+    defect we debugged this quarter (wrong-DB insert via SessionLocal,
+    /api/embed shape drift, /api/show missing, _run_qa_in_thread swallowing
+    exceptions, Jobs-page 500, sse-client defer ordering) was misdiagnosed
+    by the qv-browser agent as "environmental." The fix cycle now runs
+    regardless; its prompt calls out the mis-classification risk so the
+    fix agent judges for itself whether to write a fixture or hunt the
+    code defect.
     """
     _make_item(db_session)
     step = _make_step(
@@ -213,14 +218,14 @@ def test_should_skip_fix_for_browser_env_data_missing(
         status=RunStatus.failed,
         error_message="ENV_DATA_MISSING: V1 expects F-00055 step_runs",
     )
-    assert should_attempt_fix(db_session, step, _project_config()) is False
+    assert should_attempt_fix(db_session, step, _project_config()) is True
 
 
 def test_should_attempt_fix_for_browser_normal_failure(
     db_session: Any,
     test_project: Project,
 ) -> None:
-    """Plain browser failures (without ENV_DATA_MISSING:) still get a fix cycle."""
+    """Plain browser failures still get a fix cycle."""
     _make_item(db_session)
     step = _make_step(
         db_session,
@@ -236,11 +241,11 @@ def test_should_attempt_fix_for_browser_normal_failure(
     assert should_attempt_fix(db_session, step, _project_config()) is True
 
 
-def test_should_skip_fix_for_browser_env_data_missing_with_leading_whitespace(
+def test_should_attempt_fix_for_browser_env_data_missing_with_leading_whitespace(
     db_session: Any,
     test_project: Project,
 ) -> None:
-    """The ENV_DATA_MISSING prefix is recognised even with leading whitespace."""
+    """Leading whitespace on an ENV_DATA_MISSING prefix does not matter either."""
     _make_item(db_session)
     step = _make_step(
         db_session,
@@ -253,7 +258,44 @@ def test_should_skip_fix_for_browser_env_data_missing_with_leading_whitespace(
         status=RunStatus.failed,
         error_message="  ENV_DATA_MISSING: trimmed prefix should still match",
     )
-    assert should_attempt_fix(db_session, step, _project_config()) is False
+    assert should_attempt_fix(db_session, step, _project_config()) is True
+
+
+def test_browser_fix_prompt_warns_about_env_misclassification() -> None:
+    """When the prior failure was tagged ENV_DATA_MISSING/ENVIRONMENT the fix
+    prompt must surface the footgun history so the fix agent doesn't burn a
+    cycle on the same misdiagnosis."""
+    from orch.daemon.fix_cycle import _build_browser_fix_prompt_content
+
+    prompt = _build_browser_fix_prompt_content(
+        item_id="I-00099",
+        step_id="S11",
+        cycle_number=1,
+        findings="V4 did not receive a toast event.",
+        max_cycles=3,
+        prior_failure_reason="ENV_DATA_MISSING: V4 cannot verify fan-out",
+    )
+    assert "previous agent claimed this was environmental" in prompt
+    assert "IW_BROWSER_E2E_DB_URL" in prompt
+    assert "SessionLocal" in prompt
+    # With no prior reason, the suspicion block stays off.
+    plain = _build_browser_fix_prompt_content(
+        item_id="I-00099",
+        step_id="S11",
+        cycle_number=1,
+        findings="V1 failed.",
+        max_cycles=3,
+    )
+    assert "previous agent claimed this was environmental" not in plain
+
+
+def test_default_browser_fix_cycle_max_is_three() -> None:
+    """Browser fix-cycle budget is 3 (bumped from 2 after observing that
+    4/6 recent successful browser_verification steps used both cycles and
+    two items ran out on the first wrong hypothesis)."""
+    from orch.daemon.fix_cycle import _DEFAULT_BROWSER_FIX_CYCLE_MAX
+
+    assert _DEFAULT_BROWSER_FIX_CYCLE_MAX == 3
 
 
 # ---------------------------------------------------------------------------

@@ -86,7 +86,8 @@ CREATE TABLE IF NOT EXISTS oss_finding (
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
-    evidence_json JSONB
+    evidence_json JSONB,
+    rationale TEXT
 );
 CREATE INDEX ix_oss_finding_scan ON oss_finding (scan_id);
 
@@ -111,7 +112,9 @@ ALTER TABLE oss_tool_run ADD CONSTRAINT fk_oss_tool_run_scan
     FOREIGN KEY (scan_id) REFERENCES oss_scan(id) ON DELETE CASCADE;
 
 CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'prepare', 'publish', 'install');
-CREATE TYPE project_oss_job_status AS ENUM ('queued', 'running', 'complete', 'error', 'cancelled');
+CREATE TYPE project_oss_job_status AS ENUM (
+    'queued', 'running', 'complete', 'error', 'cancelled', 'awaiting_review', 'discarded'
+);
 
 CREATE TABLE IF NOT EXISTS project_oss_job (
     id BIGSERIAL PRIMARY KEY,
@@ -125,7 +128,11 @@ CREATE TABLE IF NOT EXISTS project_oss_job (
     worktree_path TEXT,
     scan_id BIGINT,
     stdout_tail TEXT,
-    error_message TEXT
+    error_message TEXT,
+    base_sha TEXT,
+    branch_name TEXT,
+    commit_sha TEXT,
+    files_changed_summary TEXT
 );
 CREATE INDEX ix_project_oss_job_project_created ON project_oss_job (project_id, created_at DESC);
 CREATE INDEX ix_project_oss_job_status ON project_oss_job (status);

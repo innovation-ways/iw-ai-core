@@ -614,7 +614,7 @@ def test_item_detail_has_sse_script(client: TestClient, db_session: Any) -> None
 
     resp = client.get(f"/project/test-proj/item/{item.id}")
     assert resp.status_code == 200
-    assert "EventSource" in resp.text
+    assert "iwSSE.on(" in resp.text
     assert "running-update" in resp.text
     assert "/tab/overview" in resp.text
 

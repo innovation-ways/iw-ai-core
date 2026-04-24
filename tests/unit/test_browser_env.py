@@ -136,6 +136,29 @@ def test_resolve_browser_env_returns_expected_keys() -> None:
     assert "IW_ITEM_ID" in env
 
 
+def test_resolve_browser_env_exports_e2e_db_url() -> None:
+    """Regression guard: agents must be able to INSERT into the isolated E2E
+    DB without falling back to orch.db.session.SessionLocal (which the
+    worktree's .env pins at the *live* orchestration DB).
+
+    The I-00038 S11 V4 step failed four times in a row because the
+    `DaemonEvent` inserted "from the worktree root" landed in the live DB
+    while the dashboard under test polled the container DB. The daemon must
+    expose the E2E Postgres DSN so the prompt can document the exact
+    pattern agents should use.
+    """
+    pc = make_project_config(bv_cfg=_FULL_BV_CFG)
+    env = resolve_browser_env(pc, "innoforge", "F-00001")
+    assert env is not None
+    assert env["IW_BROWSER_E2E_DB_HOST"] == "127.0.0.1"
+    assert env["IW_BROWSER_E2E_DB_PORT"] == env["E2E_DB_PORT"]
+    assert env["IW_BROWSER_E2E_DB_NAME"] == "iw_e2e"
+    assert env["IW_BROWSER_E2E_DB_USER"] == "iw_e2e"
+    assert env["IW_BROWSER_E2E_DB_PASSWORD"] == "iw_e2e_dev"  # noqa: S105
+    expected = f"postgresql://iw_e2e:iw_e2e_dev@127.0.0.1:{env['E2E_DB_PORT']}/iw_e2e"
+    assert env["IW_BROWSER_E2E_DB_URL"] == expected
+
+
 def test_resolve_browser_env_deterministic() -> None:
     """Same (project_id, item_id) always yields the same ports."""
     pc = make_project_config(bv_cfg=_FULL_BV_CFG)

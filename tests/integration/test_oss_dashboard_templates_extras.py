@@ -433,7 +433,8 @@ class TestOssStatusFramePresenceInvariant:
         assert resp.status_code == 200
         html = resp.text
         # OSS Status frame is included in the dashboard page
-        assert "oss-status-frame" in html and "oss/status" in html
+        assert "oss-status-frame" in html
+        assert "oss/status" in html
 
     def test_oss_status_frame_absent_in_tests_page(
         self,
@@ -483,7 +484,8 @@ class TestOssStatusFramePresenceInvariant:
         assert resp.status_code == 200
         html = resp.text
         # The frame uses htmx to load content
-        assert "hx-get" in html and "oss/status" in html
+        assert "hx-get" in html
+        assert "oss/status" in html
 
 
 # ---------------------------------------------------------------------------

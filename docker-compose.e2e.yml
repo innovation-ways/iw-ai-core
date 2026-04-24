@@ -39,6 +39,34 @@ services:
       timeout: 3s
       retries: 20
 
+  # Minimal daemon stub — advances queued doc_index_jobs / code_index_jobs
+  # through running → completed so browser_verification V steps whose
+  # assertions depend on daemon-driven lifecycle transitions (e.g.
+  # F-00060 V1 "Re-index Docs job transitions to completed") can actually
+  # observe the transition. The real orch.daemon.main is intentionally
+  # NOT included here — it's too heavy (worktrees, LLM agents, merge
+  # queue). See scripts/e2e_daemon_stub.py for the narrow scope.
+  e2e-daemon-stub:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    restart: "no"
+    depends_on:
+      e2e-db:
+        condition: service_healthy
+      e2e-dashboard:
+        # Start after the dashboard so migrations/seed have already run —
+        # otherwise the stub would poll a DB with no tables.
+        condition: service_healthy
+    command: ["uv", "run", "python", "scripts/e2e_daemon_stub.py"]
+    environment:
+      IW_CORE_DB_HOST: e2e-db
+      IW_CORE_DB_PORT: "5432"
+      IW_CORE_DB_NAME: iw_e2e
+      IW_CORE_DB_USER: iw_e2e
+      IW_CORE_DB_PASSWORD: iw_e2e_dev
+      E2E_DAEMON_STUB_LOG_LEVEL: INFO
+
   e2e-dashboard:
     build:
       context: .

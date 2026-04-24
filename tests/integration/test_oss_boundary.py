@@ -91,7 +91,8 @@ CREATE TABLE oss_finding (
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
-    evidence_json JSONB
+    evidence_json JSONB,
+    rationale TEXT
 );
 CREATE INDEX ix_oss_finding_scan ON oss_finding (scan_id);
 CREATE INDEX ix_oss_finding_scan_sev_stat ON oss_finding (scan_id, severity, status);

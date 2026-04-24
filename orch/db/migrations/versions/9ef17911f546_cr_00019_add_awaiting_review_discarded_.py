@@ -29,20 +29,23 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "ALTER TYPE project_oss_job_status ADD VALUE IF NOT EXISTS 'awaiting_review'"
-    )
-    op.execute(
-        "ALTER TYPE project_oss_job_status ADD VALUE IF NOT EXISTS 'discarded'"
-    )
+    op.execute("ALTER TYPE project_oss_job_status ADD VALUE IF NOT EXISTS 'awaiting_review'")
+    op.execute("ALTER TYPE project_oss_job_status ADD VALUE IF NOT EXISTS 'discarded'")
 
     op.add_column(
         "project_oss_job",
-        sa.Column("base_sha", sa.Text(), nullable=True, comment="Git HEAD SHA when Prepare was fired"),
+        sa.Column(
+            "base_sha", sa.Text(), nullable=True, comment="Git HEAD SHA when Prepare was fired"
+        ),
     )
     op.add_column(
         "project_oss_job",
-        sa.Column("branch_name", sa.Text(), nullable=True, comment="Prep branch name (iw-oss-publish/prep-<job_id>)"),
+        sa.Column(
+            "branch_name",
+            sa.Text(),
+            nullable=True,
+            comment="Prep branch name (iw-oss-publish/prep-<job_id>)",
+        ),
     )
     op.add_column(
         "project_oss_job",
@@ -50,7 +53,12 @@ def upgrade() -> None:
     )
     op.add_column(
         "project_oss_job",
-        sa.Column("files_changed_summary", sa.Text(), nullable=True, comment="git diff --stat at commit time"),
+        sa.Column(
+            "files_changed_summary",
+            sa.Text(),
+            nullable=True,
+            comment="git diff --stat at commit time",
+        ),
     )
 
     op.add_column(
