@@ -35,14 +35,16 @@ EMBED_DIM = 768
 MODULE_BACKTICK_RE = re.compile(r"`([A-Za-z_][\w./-]+)`\s+module")
 # Matches the candidate blocks emitted by
 # orch.rag.qa.QAEngine._build_workitem_system_prompt:
-#     ### Candidate 1: F-00060-ORIGINAL — New project button ... (feature)
+#     ### Candidate 1: F-99001 — New project button (feature)
 #     <functional doc content, possibly multiple paragraphs>
 #
-#     ### Candidate 2: CR-00060-RECOLOR — Recolor button blue (change_request)
+#     ### Candidate 2: CR-99001 — Recolor button blue (change_request)
 #     ...
-# The ID may be any F-/CR-/I- prefix with the five-digit sequence optionally
-# followed by -<SUFFIX> (the e2e fixture uses ORIGINAL / RECOLOR / RESHAPE
-# suffixes on the same five-digit root).
+# The ID is the production shape ``(F|CR|I)-\d{5}`` — F-00060's e2e
+# fixture uses bare five-digit IDs (F-99001..) so citation_allowlist's
+# own ``\b(F|CR|I)-\d{5}\b`` extractor matches them verbatim. A legacy
+# optional ``-SUFFIX`` capture stays for backward compatibility with any
+# older fixture that might carry-over.
 WORKITEM_CANDIDATE_RE = re.compile(
     r"###\s+Candidate\s+(\d+):\s+((?:F|CR|I)-\d{5}(?:-[A-Z0-9_-]+)?)"
     r"\s+—\s+(.+?)\s+\((\w+)\)\s*\n(.*?)(?=\n###\s+Candidate|\Z)",
@@ -164,7 +166,7 @@ def _score_candidate(candidate: dict[str, str], question: str) -> int:
     """Count keyword overlap between the question and a candidate's title+content.
 
     Not a real semantic match — good enough for the deterministic stub to
-    prefer ``CR-00060-RECOLOR`` over ``CR-00060-RESHAPE`` when the user
+    prefer ``CR-99001`` over ``CR-99002`` when the user
     asks about colour, which is what F-00060 V3 asserts.
     """
     q_words = {

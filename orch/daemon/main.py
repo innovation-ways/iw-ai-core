@@ -28,6 +28,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from orch.daemon.batch_manager import BatchManager
+from orch.daemon.doc_index_poller import DocIndexPoller, recover_orphaned_doc_index_jobs
 from orch.daemon.doc_job_poller import DocJobPoller
 from orch.daemon.project_registry import ProjectConfig, ProjectRegistry, sync_project_to_db
 from orch.db.identity import verify_instance_identity
@@ -135,6 +136,7 @@ class Daemon:
         self.projects: dict[str, ProjectConfig] = {}
         self.managers: dict[str, BatchManager] = {}
         self.doc_job_poller: DocJobPoller | None = None
+        self.doc_index_poller: DocIndexPoller | None = None
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -208,6 +210,9 @@ class Daemon:
         # Load projects and sync to DB
         self._load_projects()
 
+        # Recover orphaned doc index jobs from any previous daemon crash
+        recover_orphaned_doc_index_jobs(self._session_factory)
+
         # Detect orphans from previous crashes
         self._startup_health_check()
 
@@ -244,6 +249,7 @@ class Daemon:
         logger.info("Loaded %d project(s) from %s", len(self.projects), self.config.projects_toml)
 
         self.doc_job_poller = DocJobPoller(self._session_factory, self.config)
+        self.doc_index_poller = DocIndexPoller(self._session_factory, self.config)
 
         with self._session_factory() as db:
             for project_id, cfg in self.projects.items():
@@ -399,7 +405,14 @@ class Daemon:
             except Exception:
                 logger.exception("Error in doc job poller — continuing")
 
-        # Phase 4: Emit poll heartbeat so daemon status can report activity
+        # Phase 4: Doc index job polling (serialised per project, MAX_CONCURRENT=1)
+        if self.doc_index_poller is not None:
+            try:
+                self.doc_index_poller.poll()
+            except Exception:
+                logger.exception("Error in doc index poller — continuing")
+
+        # Phase 5: Emit poll heartbeat so daemon status can report activity
         try:
             with self._session_factory() as db:
                 emit_event(

@@ -72,7 +72,7 @@ def main(argv: list[str]) -> int:
             violations.append(path)
 
     for v in violations:
-        print(v)
+        sys.stdout.write(f"{v}\n")
     return 1 if violations else 0
 
 

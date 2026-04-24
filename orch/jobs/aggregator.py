@@ -62,6 +62,7 @@ from orch.db.models import (
     BatchStatus,
     CodeIndexJob,
     DocGenerationJob,
+    DocIndexJob,
     DocStatus,
     JobStatus,
     ProjectDoc,
@@ -77,6 +78,7 @@ from orch.db.models import DocType
 
 class JobType(StrEnum):
     code_mapping = "code_mapping"
+    doc_indexing = "doc_indexing"
     doc_generation = "doc_generation"
     batch_execution = "batch_execution"
     research = "research"
@@ -158,6 +160,9 @@ class JobsAggregator:
         if types is None or JobType.code_mapping in types:
             raw_rows.extend(self._fetch_code_mapping(project_id, date_from, date_to))
 
+        if types is None or JobType.doc_indexing in types:
+            raw_rows.extend(self._fetch_doc_indexing(project_id, date_from, date_to))
+
         if types is None or JobType.doc_generation in types:
             raw_rows.extend(self._fetch_doc_generation(project_id, date_from, date_to))
 
@@ -172,14 +177,16 @@ class JobsAggregator:
                 continue
             rows.append(row)
 
-        rows.sort(
-            key=lambda r: (
-                getattr(r, sort_by)
-                if sort_by in ("started_at", "finished_at")
-                else getattr(r, sort_by),
-            ),
-            reverse=(sort_dir == "desc"),
-        )
+        # Sort with a None-safe key: queued jobs have started_at/finished_at=None
+        # and Python cannot compare None to datetime. Rows with a missing
+        # timestamp always land at the end regardless of direction — they
+        # represent jobs that haven't started/finished yet, which is what a
+        # user looking at a "most recent" or "oldest first" list expects.
+        reverse = sort_dir == "desc"
+        with_value = [r for r in rows if getattr(r, sort_by) is not None]
+        without_value = [r for r in rows if getattr(r, sort_by) is None]
+        with_value.sort(key=lambda r: getattr(r, sort_by), reverse=reverse)
+        rows = with_value + without_value
 
         total = len(rows)
         start = (page - 1) * page_size
@@ -197,6 +204,8 @@ class JobsAggregator:
     ) -> JobRow | None:
         if job_type == JobType.code_mapping:
             return self._get_code_mapping(project_id, job_id)
+        if job_type == JobType.doc_indexing:
+            return self._get_doc_indexing(project_id, job_id)
         if job_type == JobType.doc_generation:
             return self._get_doc_generation(project_id, job_id)
         if job_type == JobType.batch_execution:
@@ -248,6 +257,57 @@ class JobsAggregator:
                         title=title,
                         status=job.status,
                         started_at=job.triggered_at,
+                        finished_at=job.completed_at,
+                        triggered_by=None,
+                        raw=raw,
+                    ),
+                    raw,
+                )
+            )
+        return results
+
+    def _fetch_doc_indexing(
+        self,
+        project_id: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> list[tuple[JobRow, dict[str, object]]]:
+        stmt = select(DocIndexJob).where(DocIndexJob.project_id == project_id)
+        if date_from:
+            stmt = stmt.where(DocIndexJob.triggered_at >= date_from)
+        if date_to:
+            stmt = stmt.where(DocIndexJob.triggered_at <= date_to)
+        jobs = self._session.scalars(stmt).all()
+        results = []
+        for job in jobs:
+            embed_label = job.embed_model or job.index_tier or "default"
+            title = f"Doc index — {embed_label}"
+            raw: dict[str, object] = {
+                "id": job.id,
+                "project_id": job.project_id,
+                "status": job.status,
+                "provider": job.provider,
+                "llm_model": job.llm_model,
+                "embed_model": job.embed_model,
+                "index_tier": job.index_tier,
+                "items_discovered": job.items_discovered,
+                "items_indexed": job.items_indexed,
+                "chunks_created": job.chunks_created,
+                "errors": job.errors,
+                "error_message": job.error_message,
+                "triggered_at": job.triggered_at,
+                "started_at": job.started_at,
+                "completed_at": job.completed_at,
+            }
+            results.append(
+                (
+                    JobRow(
+                        job_type=JobType.doc_indexing,
+                        job_id=job.id,
+                        project_id=job.project_id,
+                        title=title,
+                        status=job.status,
+                        started_at=job.started_at,
                         finished_at=job.completed_at,
                         triggered_by=None,
                         raw=raw,
@@ -468,6 +528,40 @@ class JobsAggregator:
             title=f"Code map — {job.index_tier or 'default'}",
             status=job.status,
             started_at=job.triggered_at,
+            finished_at=job.completed_at,
+            triggered_by=None,
+            raw=raw,
+        )
+
+    def _get_doc_indexing(self, project_id: str, job_id: str) -> JobRow | None:
+        job = self._session.get(DocIndexJob, job_id)
+        if job is None or job.project_id != project_id:
+            return None
+        embed_label = job.embed_model or job.index_tier or "default"
+        raw: dict[str, object] = {
+            "id": job.id,
+            "project_id": job.project_id,
+            "status": job.status,
+            "provider": job.provider,
+            "llm_model": job.llm_model,
+            "embed_model": job.embed_model,
+            "index_tier": job.index_tier,
+            "items_discovered": job.items_discovered,
+            "items_indexed": job.items_indexed,
+            "chunks_created": job.chunks_created,
+            "errors": job.errors,
+            "error_message": job.error_message,
+            "triggered_at": job.triggered_at,
+            "started_at": job.started_at,
+            "completed_at": job.completed_at,
+        }
+        return JobRow(
+            job_type=JobType.doc_indexing,
+            job_id=job.id,
+            project_id=job.project_id,
+            title=f"Doc index — {embed_label}",
+            status=job.status,
+            started_at=job.started_at,
             finished_at=job.completed_at,
             triggered_by=None,
             raw=raw,
