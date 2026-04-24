@@ -1,0 +1,70 @@
+# Security Policy
+
+## Supported Versions
+
+<!-- TODO: Update as versions are released. -->
+
+| Version | Supported |
+| ------- | --------- |
+| latest (`main`) | ✅ |
+| < latest | ❌ |
+
+## Reporting a Vulnerability
+
+**Please do not report security issues through public GitHub issues, discussions, or pull requests.**
+
+### Preferred: GitHub Private Vulnerability Reporting
+
+Use GitHub's Private Vulnerability Reporting to send an encrypted report directly to maintainers:
+
+https://github.com/innovation-ways/IW AI Core Platform/security/advisories/new
+
+### Alternative: Email
+
+If you cannot use PVR, email **info@innovation-ways.com** with:
+
+- A description of the issue and potential impact
+- Steps to reproduce (proof-of-concept code if available)
+- Affected version(s)
+- Your name and affiliation (if you'd like credit)
+
+## Response Timeline
+
+We commit to the following SLAs for security reports:
+
+| Stage | Target |
+| ----- | ------ |
+| Acknowledgement of report | 3 business days |
+| Initial triage and severity assessment | 7 business days |
+| Fix available (for confirmed issues) | 30 days (adjusted by severity) |
+| Public disclosure | Coordinated with reporter |
+
+## Disclosure Policy
+
+We practice coordinated disclosure:
+
+1. Report received and acknowledged
+2. Issue investigated and fix developed privately
+3. Fix released to supported versions
+4. Public advisory published
+5. Reporter credited (with permission) in the advisory
+
+Reporters acting in good faith will not be pursued under the Computer Fraud and Abuse Act or similar laws.
+
+## Out of Scope
+
+The following are not typically considered security issues:
+
+- Denial of service via resource exhaustion in development tools
+- Vulnerabilities in test fixtures or example code
+- Issues requiring physical access to a developer's machine
+- Social engineering of maintainers
+
+For borderline cases, report anyway — we'd rather receive a report that turns out to be out of scope than miss a real issue.
+
+## Security Best Practices for Users
+
+- Keep dependencies up to date (enable Dependabot alerts for your fork)
+- Use pinned versions of this package in production
+- Verify release signatures (if published with `cosign` attestations)
+- Subscribe to the project's [Security Advisories](https://github.com/innovation-ways/IW AI Core Platform/security/advisories) for announcements

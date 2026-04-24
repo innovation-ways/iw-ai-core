@@ -1,0 +1,60 @@
+# Dependabot configuration
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+
+updates:
+  # GitHub Actions — always enabled
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "github-actions"]
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+# Python (pip / uv)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "python"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      python-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+# Node / npm
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "javascript"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      npm-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+
+
+
+
+# Dockerfile base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "chore"
