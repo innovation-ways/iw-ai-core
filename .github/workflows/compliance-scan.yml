@@ -1,0 +1,78 @@
+# IW OSS compliance scan — runs iw-oss-publish in scan mode on every PR and push.
+# Exits non-zero on any MUST-level finding, gating merges.
+
+name: IW OSS Compliance Scan
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 5 * * 1"  # weekly, Monday 05:00 UTC — catches drift
+
+permissions:
+  contents: read
+  security-events: write  # upload SARIF findings
+
+jobs:
+  compliance:
+    name: Pre-publish compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for secret scanning)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install compliance tools
+        run: |
+          bash .claude/skills/iw-oss-publish/scripts/install_tools.sh
+
+      - name: Run iw-oss-publish scan
+        run: |
+          # TODO: replace with the wrapper invocation once Phase 1 lands.
+          # For now, invoke the underlying tools directly to get gating
+          # coverage for secrets and action pinning.
+          set -euo pipefail
+          mkdir -p .iw
+
+          # Secrets in working tree
+          gitleaks detect \
+            --no-git \
+            --source . \
+            --report-format sarif \
+            --report-path .iw/gitleaks-tree.sarif \
+            --exit-code 1 || echo "SECRETS_FOUND_TREE=1" >> "$GITHUB_ENV"
+
+          # Secrets across history
+          gitleaks detect \
+            --source . \
+            --log-opts="--all" \
+            --report-format sarif \
+            --report-path .iw/gitleaks-history.sarif \
+            --exit-code 1 || echo "SECRETS_FOUND_HISTORY=1" >> "$GITHUB_ENV"
+
+          # SHA-pinned actions
+          pinact run --check
+
+      - name: Upload gitleaks SARIF (tree)
+        if: always() && hashFiles('.iw/gitleaks-tree.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: .iw/gitleaks-tree.sarif
+          category: gitleaks-tree
+
+      - name: Upload gitleaks SARIF (history)
+        if: always() && hashFiles('.iw/gitleaks-history.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: .iw/gitleaks-history.sarif
+          category: gitleaks-history
+
+      - name: Fail if secrets detected
+        if: env.SECRETS_FOUND_TREE == '1' || env.SECRETS_FOUND_HISTORY == '1'
+        run: |
+          echo "::error::gitleaks found secrets. See SARIF upload in Code Scanning." >&2
+          exit 1

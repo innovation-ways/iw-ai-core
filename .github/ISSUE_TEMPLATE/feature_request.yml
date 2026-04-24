@@ -1,0 +1,59 @@
+name: Feature request
+description: Suggest a new feature or improvement
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature. Please describe the problem you're solving, not just the solution.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user-facing problem does this feature solve? What are you trying to do that is awkward today?
+      placeholder: When I try to X, I have to Y manually because ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe what you'd like to happen. Include API / CLI / UI sketches if helpful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why you ruled them out.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — related projects, references, screenshots, or examples.
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Does this require breaking changes?
+      options:
+        - "No"
+        - "Maybe"
+        - "Yes"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have searched existing issues and discussions to avoid duplicates
+          required: true
+        - label: I have read the [Contributing guide](../CONTRIBUTING.md)
+          required: true
