@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
@@ -203,28 +204,62 @@ def _write_migration_log(
         engine.dispose()
 
 
+_ALEMBIC_UPGRADE_LINE = re.compile(r"Running upgrade\s+\S+\s+->\s+([A-Za-z0-9_]+)")
+
+
+class _AlembicRevisionCapture(logging.Handler):
+    """Parses alembic's 'Running upgrade X -> Y' log records into a revision list.
+
+    `command.upgrade` emits one such record per revision it applies via the
+    `alembic.runtime.migration` logger. Capturing them here is the only
+    in-process way to know which revisions actually ran without re-querying
+    the DB and reconstructing the graph (which is fragile across merge
+    revisions).
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.revisions: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        match = _ALEMBIC_UPGRADE_LINE.search(record.getMessage())
+        if match is not None:
+            self.revisions.append(match.group(1))
+
+
 def _run_alembic_upgrade(
     cfg: AlembicConfig,
 ) -> tuple[list[str], str, str, str | None]:
-    """Run alembic upgrade head, capturing stdout/stderr.
+    """Run alembic upgrade head, capturing stdout/stderr and applied revisions.
 
     Returns (revisions_applied, stdout_tail, stderr_tail, error_message).
+    `revisions_applied` is chronological (first → last applied).
     """
-    revisions_applied: list[str] = []
     stdout_buf = StringIO()
     stderr_buf = StringIO()
     error_message: str | None = None
+
+    capture = _AlembicRevisionCapture()
+    capture.setLevel(logging.INFO)
+    alembic_logger = logging.getLogger("alembic.runtime.migration")
+    previous_level = alembic_logger.level
+    alembic_logger.addHandler(capture)
+    if previous_level == logging.NOTSET or previous_level > logging.INFO:
+        alembic_logger.setLevel(logging.INFO)
 
     try:
         with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
             command.upgrade(cfg, "head")
     except Exception as exc:
         error_message = str(exc)
+    finally:
+        alembic_logger.removeHandler(capture)
+        alembic_logger.setLevel(previous_level)
 
     stdout_tail = _truncate_tail(stdout_buf.getvalue())
     stderr_tail = _truncate_tail(stderr_buf.getvalue())
 
-    return revisions_applied, stdout_tail, stderr_tail, error_message
+    return capture.revisions, stdout_tail, stderr_tail, error_message
 
 
 def _run_alembic_downgrade(cfg: AlembicConfig, steps: int) -> tuple[str, str, str | None]:
