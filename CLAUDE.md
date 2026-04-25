@@ -19,6 +19,7 @@ AI orchestration platform that drives AI-assisted development across multiple pr
 | Test patterns & rules | `tests/conftest.py` · see `tests/CLAUDE.md` |
 | Configuration | `orch/config.py` (reads `.env`) · `projects.toml` |
 | Migrations | `orch/db/migrations/versions/` |
+| Pre-merge migration rebase (CR-00021) | `orch/daemon/migration_rebase.py` · `docs/IW_AI_Core_Daemon_Design.md` |
 | Skills master copies | `skills/` (synced to each project via `iw skills sync`) |
 | Editorial guidelines (doc system) | `doc-system/` (brand, catalog, editorial) |
 

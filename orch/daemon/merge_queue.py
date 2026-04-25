@@ -23,6 +23,7 @@ from orch.daemon.migration_pipeline import (
     run_pre_merge_dry_run,
     run_rollback,
 )
+from orch.daemon.migration_rebase import run_pre_merge_rebase
 from orch.db.models import BatchItem, BatchItemStatus, DaemonEvent
 
 if TYPE_CHECKING:
@@ -134,9 +135,41 @@ def _merge_item(
     )
     logger.info("[%s] Merging %s (worktree: %s)", project_id, item_id, worktree_path)
 
+    if batch_item.batch_id is not None and isinstance(batch_item.batch_id, int):
+        rebase_result = run_pre_merge_rebase(
+            batch_item.batch_id, worktree_path, project_config.working_dir
+        )
+        if not rebase_result.success:
+            batch_item.status = BatchItemStatus.migration_rebase_failed
+            batch_item.notes = f"Pre-merge rebase failed: {rebase_result.error_message}"
+            db.commit()
+            _emit_event(
+                db,
+                project_id,
+                "migration_pipeline",
+                item_id,
+                "work_item",
+                f"Pre-merge rebase failed: {rebase_result.error_message}",
+                {
+                    "phase": "rebase",
+                    "success": False,
+                    "batch_id": batch_item.batch_id,
+                    "worktree_base_sha": rebase_result.worktree_base_sha,
+                    "current_main_sha": rebase_result.current_main_sha,
+                },
+            )
+            logger.warning(
+                "[%s] Pre-merge rebase failed for %s (batch %d): %s",
+                project_id,
+                item_id,
+                batch_item.batch_id,
+                rebase_result.error_message,
+            )
+            return
+
     # Phase 1: dry-run migration against testcontainer (only for numeric batch IDs)
     if batch_item.batch_id is not None and isinstance(batch_item.batch_id, int):
-        dry_result = run_pre_merge_dry_run(batch_item.batch_id)
+        dry_result = run_pre_merge_dry_run(batch_item.batch_id, worktree_path=worktree_path)
         if not dry_result.success:
             batch_item.status = BatchItemStatus.migration_invalid
             batch_item.notes = f"Phase 1 dry-run failed: {dry_result.message}"

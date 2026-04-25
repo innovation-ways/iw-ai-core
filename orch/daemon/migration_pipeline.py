@@ -50,11 +50,17 @@ class PipelineResult:
 # ---------------------------------------------------------------------------
 
 
-def run_pre_merge_dry_run(batch_id: int) -> PipelineResult:
+def run_pre_merge_dry_run(
+    batch_id: int,
+    worktree_path: str | None = None,
+) -> PipelineResult:
     """Phase 1: Spin testcontainer, apply pending revisions, run integration tests.
 
-    On failure → batch marked MIGRATION_INVALID, no merge proceeds.
-    On success → batch marked 'proceed_to_merge'.
+    When worktree_path is provided, alembic uses that worktree's migrations
+    directory — so the batch's new migrations are actually exercised.
+    When not provided, falls back to the daemon's main-repo migrations location
+    (backward-compat for operator entry points; do NOT use this path in the
+    merge queue — merge_queue.py always passes worktree_path).
     """
     from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
@@ -68,7 +74,8 @@ def run_pre_merge_dry_run(batch_id: int) -> PipelineResult:
             "postgresql+psycopg2://", "postgresql+psycopg://"
         )
 
-        result = safe_dry_run(tempdb_url, batch_id=batch_id)
+        script_location = f"{worktree_path}/orch/db/migrations" if worktree_path else None
+        result = safe_dry_run(tempdb_url, batch_id=batch_id, script_location=script_location)
 
         if not result.success:
             return PipelineResult(

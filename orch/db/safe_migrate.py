@@ -139,11 +139,14 @@ def _is_live_db_url(url: str) -> bool:
         return False
 
 
-def _build_alembic_config(db_url: str) -> AlembicConfig:
+def _build_alembic_config(
+    db_url: str,
+    script_location: str | None = None,
+) -> AlembicConfig:
     """Build an alembic Config configured to point at db_url with our migrations."""
     cfg = AlembicConfig()
     cfg.set_main_option("sqlalchemy.url", db_url)
-    cfg.set_main_option("script_location", MIGRATIONS_SCRIPT_LOCATION)
+    cfg.set_main_option("script_location", script_location or MIGRATIONS_SCRIPT_LOCATION)
     return cfg
 
 
@@ -169,12 +172,13 @@ def _truncate_tail(s: str) -> str:
 def _write_migration_log(
     revision: str,
     direction: Literal["upgrade", "downgrade"],
-    phase: Literal["dry_run", "apply", "rollback"],
+    phase: Literal["dry_run", "apply", "rollback", "rebase"],
     batch_id: int | None,
     success: bool,
     stdout_tail: str,
     stderr_tail: str,
     error_message: str | None,
+    old_revision: str | None = None,
 ) -> None:
     """Write an entry to pending_migration_log via a fresh short-lived session."""
     log_db_url = get_db_url()
@@ -193,6 +197,7 @@ def _write_migration_log(
             stdout_tail=stdout_tail,
             stderr_tail=stderr_tail,
             error_message=error_message,
+            old_revision=old_revision,
         )
         session.add(entry)
         session.commit()
@@ -386,17 +391,24 @@ def list_pending_revisions(db_url: str | None = None) -> list[Revision]:
     return list(reversed(pending))
 
 
-def dry_run(tempdb_url: str, batch_id: int | None = None) -> DryRunResult:
+def dry_run(
+    tempdb_url: str,
+    batch_id: int | None = None,
+    script_location: str | None = None,
+) -> DryRunResult:
     """Spin up alembic context against tempdb_url, upgrade to head, record log entry.
 
     tempdb_url is expected to be a testcontainer URL (caller provides).
     Refuses if tempdb_url matches the live DB URL.
+
+    When script_location is provided it overrides the default migrations directory
+    (used by the merge queue to exercise the batch's worktree migrations).
     """
     if _is_live_db_url(tempdb_url):
         raise ValueError("dry_run called on live DB — refusing")
 
     started_at = time.perf_counter()
-    cfg = _build_alembic_config(tempdb_url)
+    cfg = _build_alembic_config(tempdb_url, script_location=script_location)
 
     revisions_applied, stdout_tail, stderr_tail, error_message = _run_alembic_upgrade(cfg)
     duration_ms = int((time.perf_counter() - started_at) * 1000)

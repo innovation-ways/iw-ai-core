@@ -59,7 +59,7 @@ Review S05's wiring: the new rebase phase threaded into `_merge_item`, `worktree
 ### 4. DaemonEvent emission on rebase failure
 
 - `event_type="migration_pipeline"` (reused from existing failure events) not a new type — matches design?
-- `event_metadata` includes `phase="rebase"`, `success=False`, `batch_id`, `worktree_base_sha`, `current_main_sha`?
+- `event_metadata` includes `phase="rebase"`, `success=False`, `batch_id`, `worktree_base_sha`, `current_main_sha`, `effective_ref`, `fetch_succeeded`?
 - `message` is human-readable (starts with "Phase" or similar)?
 - Uses `event_metadata=` kwarg (SQLAlchemy reserves `metadata` — CLAUDE.md gotcha)?
 

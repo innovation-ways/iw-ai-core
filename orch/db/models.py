@@ -18,6 +18,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Connection,
     DateTime,
     Float,
     ForeignKeyConstraint,
@@ -33,7 +34,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column, relationship
 
 # ---------------------------------------------------------------------------
 # Declarative base
@@ -149,6 +150,7 @@ class BatchItemStatus(enum.Enum):
     skipped = "skipped"
     migration_invalid = "migration_invalid"
     migration_rolled_back = "migration_rolled_back"
+    migration_rebase_failed = "migration_rebase_failed"
 
 
 class TestRunStatus(enum.Enum):
@@ -506,19 +508,19 @@ def _sanitize_text_with_nul(text: str | None) -> str | None:
 
 
 @event.listens_for(WorkItem, "before_insert")
-def _work_item_sanitize_functional_doc_content(mapper, connection, target):
+def _work_item_sanitize_functional_doc_content(
+    _mapper: Mapper[Any], _connection: Connection, target: WorkItem
+) -> None:
     if hasattr(target, "functional_doc_content") and target.functional_doc_content:
-        target.functional_doc_content = _sanitize_text_with_nul(
-            target.functional_doc_content
-        )
+        target.functional_doc_content = _sanitize_text_with_nul(target.functional_doc_content)
 
 
 @event.listens_for(WorkItem, "before_update")
-def _work_item_sanitize_functional_doc_content_on_update(mapper, connection, target):
+def _work_item_sanitize_functional_doc_content_on_update(
+    _mapper: Mapper[Any], _connection: Connection, target: WorkItem
+) -> None:
     if hasattr(target, "functional_doc_content") and target.functional_doc_content:
-        target.functional_doc_content = _sanitize_text_with_nul(
-            target.functional_doc_content
-        )
+        target.functional_doc_content = _sanitize_text_with_nul(target.functional_doc_content)
 
 
 class WorkflowStep(Base):
@@ -1054,7 +1056,7 @@ class PendingMigrationLog(Base):
             name="ck_pending_migration_log_direction",
         ),
         CheckConstraint(
-            "phase IN ('dry_run', 'apply', 'rollback')",
+            "phase IN ('dry_run', 'apply', 'rollback', 'rebase')",
             name="ck_pending_migration_log_phase",
         ),
         Index(
@@ -1072,6 +1074,12 @@ class PendingMigrationLog(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     revision: Mapped[str] = mapped_column(Text, nullable=False)
+    old_revision: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Previous down_revision string before the rebase phase rewrote it "
+        "(phase='rebase' only)",
+    )
     direction: Mapped[str] = mapped_column(Text, nullable=False)
     phase: Mapped[str] = mapped_column(Text, nullable=False)
     batch_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

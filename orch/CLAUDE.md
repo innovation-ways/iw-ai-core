@@ -80,6 +80,7 @@ Shared helpers: `orch/cli/utils.py` (session access, output formatting).
 | `batch_manager.py` | Per-project batch orchestration (approved → executing → merge queue) |
 | `batch_merge_hooks.py` | Post-merge hooks (e.g., doc regeneration triggers) |
 | `merge_queue.py` | Serialised squash-merge queue |
+| `migration_rebase.py` | Pre-merge rebase phase (CR-00021): fetch main, rebase branch, rewrite batch's stale migration down_revisions, commit the edit |
 | `fix_cycle.py` | Fix-cycle lifecycle (up to 5 retries per step) |
 | `step_monitor.py` | PID + heartbeat + stall detection |
 | `doc_job_poller.py` | Polls `doc_generation_jobs`, launches AI agents (iw-doc-generator / iw-doc-system skills) |
