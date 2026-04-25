@@ -87,6 +87,8 @@ Shared helpers: `orch/cli/utils.py` (session access, output formatting).
 | `execution_report.py` | Assembles execution reports from step logs (ANSI parsing, pass/fail classification) |
 | `project_registry.py` | Loads `projects.toml` + per-project `.iw-orch.json`, syncs to DB on SIGHUP |
 | `browser_env.py` | `browser_verification` step lifecycle (project-opted-in via `.iw-orch.json`) |
+| `worktree_compose.py` | Per-worktree docker-compose stack lifecycle (project-opted-in via `ai-dev/iw-config/`). Renders Jinja2 template, discovers ports, runs seed script. |
+| `worktree_reaper.py` | Label-based orphan/stale container reaper; runs on daemon startup and periodic schedule. |
 
 ## Technology Stack
 

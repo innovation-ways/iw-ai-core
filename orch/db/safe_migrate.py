@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 from alembic import command
 from alembic.config import Config as AlembicConfig
@@ -122,13 +123,27 @@ class RollbackResult:
 # ---------------------------------------------------------------------------
 
 
-def _assert_not_agent_context() -> None:
-    """Raise AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true'."""
-    if os.environ.get("IW_CORE_AGENT_CONTEXT") == "true":
-        raise AgentContextForbiddenError(
-            "Migration operation refused: IW_CORE_AGENT_CONTEXT='true'. "
-            "Only the daemon may apply/rollback migrations against the live DB."
-        )
+def _assert_not_agent_context(db_url: str | None = None) -> None:
+    """Raise AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true'.
+
+    When IW_CORE_PER_WORKTREE_DB='true' AND db_url points at the per-worktree
+    DB (host=localhost, port != 5433), the guard is relaxed — agents are
+    permitted to run alembic upgrade head against the per-worktree DB.
+    The live orch DB on port 5433 is NEVER protected by this relax.
+    """
+    if os.environ.get("IW_CORE_AGENT_CONTEXT") != "true":
+        return
+
+    if os.getenv("IW_CORE_PER_WORKTREE_DB") == "true" and db_url is not None:
+        parsed = urlparse(db_url)
+        port = parsed.port or 5432
+        if port != 5433:
+            return
+
+    raise AgentContextForbiddenError(
+        "Migration operation refused: IW_CORE_AGENT_CONTEXT='true'. "
+        "Only the daemon may apply/rollback migrations against the live DB."
+    )
 
 
 def _is_live_db_url(url: str) -> bool:
@@ -440,10 +455,12 @@ def dry_run(
 def apply(live_db_url: str, batch_id: int | None = None) -> ApplyResult:
     """Acquire migration lock, upgrade to head against live DB, release lock.
 
-    RAISES AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true'.
+    RAISES AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true' unless
+    IW_CORE_PER_WORKTREE_DB='true' AND live_db_url points at the per-worktree
+    DB (port != 5433). The live orch DB on port 5433 is always protected.
     Records log entry with phase='apply'.
     """
-    _assert_not_agent_context()
+    _assert_not_agent_context(live_db_url)
 
     _acquire_migration_lock(item="daemon")
     try:
@@ -500,10 +517,12 @@ def apply(live_db_url: str, batch_id: int | None = None) -> ApplyResult:
 def rollback(live_db_url: str, steps: int = 1, batch_id: int | None = None) -> RollbackResult:
     """Alembic downgrade -N against live DB.
 
-    RAISES AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true'.
+    RAISES AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true' unless
+    IW_CORE_PER_WORKTREE_DB='true' AND live_db_url points at the per-worktree
+    DB (port != 5433). The live orch DB on port 5433 is always protected.
     Records log entry with phase='rollback'.
     """
-    _assert_not_agent_context()
+    _assert_not_agent_context(live_db_url)
 
     _acquire_migration_lock(item="daemon")
     try:

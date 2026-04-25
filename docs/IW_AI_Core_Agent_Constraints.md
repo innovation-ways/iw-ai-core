@@ -85,6 +85,21 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
 ---
 
+## Per-worktree DB Exception (F-00062)
+
+When the daemon launches an agent into a worktree with an active per-worktree
+compose stack, it sets `IW_CORE_PER_WORKTREE_DB=true` in the agent's env. In
+that mode only, `alembic upgrade head` is allowed against the per-worktree DB
+(detected by `IW_CORE_DB_*` env vars pointing at the per-worktree host/port).
+The live orch DB on port 5433 remains protected regardless.
+
+This exception is implemented in `safe_migrate.py` (`AgentContextForbiddenError`
+relaxation when `IW_CORE_PER_WORKTREE_DB=true`).
+
+See [`docs/IW_AI_Core_Worktree_Isolation.md`](docs/IW_AI_Core_Worktree_Isolation.md).
+
+---
+
 ## Adding rules
 
 New rules must:

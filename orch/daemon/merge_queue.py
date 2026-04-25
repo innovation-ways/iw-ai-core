@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from orch.daemon import worktree_compose
 from orch.daemon.migration_pipeline import (
     is_merge_queue_frozen,
     run_post_merge_apply,
@@ -143,6 +144,10 @@ def _merge_item(
             batch_item.status = BatchItemStatus.migration_rebase_failed
             batch_item.notes = f"Pre-merge rebase failed: {rebase_result.error_message}"
             db.commit()
+            compose_path = (
+                Path(batch_item.worktree_compose_path) if batch_item.worktree_compose_path else None
+            )
+            worktree_compose.down(str(batch_item.id), compose_path)
             _emit_event(
                 db,
                 project_id,
@@ -174,6 +179,10 @@ def _merge_item(
             batch_item.status = BatchItemStatus.migration_invalid
             batch_item.notes = f"Phase 1 dry-run failed: {dry_result.message}"
             db.commit()
+            compose_path = (
+                Path(batch_item.worktree_compose_path) if batch_item.worktree_compose_path else None
+            )
+            worktree_compose.down(str(batch_item.id), compose_path)
             _emit_event(
                 db,
                 project_id,
@@ -211,6 +220,10 @@ def _merge_item(
         )
         logger.info("[%s] Merged %s", project_id, item_id)
 
+        worktree_compose.down(
+            str(batch_item.id),
+            Path(batch_item.worktree_compose_path) if batch_item.worktree_compose_path else None,
+        )
         _cleanup_worktree(item_id, worktree_path, project_config.working_dir)
 
         project = db.get(Project, project_id)
@@ -253,6 +266,10 @@ def _merge_item(
         batch_item.status = BatchItemStatus.failed
         batch_item.notes = f"Merge failed: {e}"
         db.commit()
+        worktree_compose.down(
+            str(batch_item.id),
+            Path(batch_item.worktree_compose_path) if batch_item.worktree_compose_path else None,
+        )
         _emit_event(db, project_id, "merge_conflict", item_id, "work_item", str(e))
         logger.error("[%s] Merge failed for %s: %s", project_id, item_id, e)
 

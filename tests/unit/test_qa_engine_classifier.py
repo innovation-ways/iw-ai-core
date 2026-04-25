@@ -31,7 +31,10 @@ class TestClassifyQuery:
         assert result == "workitem_aware"
 
     @pytest.mark.asyncio
-    async def test_slash_override_history_returns_workitem_aware(self, mock_config: MagicMock) -> None:
+    async def test_slash_override_history_returns_workitem_aware(
+        self,
+        mock_config: MagicMock,
+    ) -> None:
         """AC2: /history chip forces workitem_aware pipeline."""
         from orch.rag.classifier import classify_query
 
@@ -43,7 +46,10 @@ class TestClassifyQuery:
         assert result == "workitem_aware"
 
     @pytest.mark.asyncio
-    async def test_slash_override_findusages_returns_workitem_aware(self, mock_config: MagicMock) -> None:
+    async def test_slash_override_findusages_returns_workitem_aware(
+        self,
+        mock_config: MagicMock,
+    ) -> None:
         """AC2: /findusages chip forces workitem_aware pipeline."""
         from orch.rag.classifier import classify_query
 

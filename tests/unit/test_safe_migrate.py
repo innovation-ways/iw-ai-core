@@ -160,3 +160,63 @@ class TestWriteMigrationLog:
                 assert entry.old_revision is None
                 assert entry.phase == "dry_run"
                 mock_session.commit.assert_called_once()
+
+
+class TestAssertNotAgentContextRelax:
+    def test_blocks_against_orch_db_when_agent_context(self) -> None:
+        from orch.db.safe_migrate import _assert_not_agent_context
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"IW_CORE_AGENT_CONTEXT": "true", "IW_CORE_PER_WORKTREE_DB": "false"},
+                clear=False,
+            ),
+            pytest.raises(AgentContextForbiddenError),
+        ):
+            _assert_not_agent_context("postgresql+psycopg://localhost:5433/iw_core")
+
+    def test_allows_against_per_worktree_db_when_per_worktree_flag_set(self) -> None:
+        from orch.db.safe_migrate import _assert_not_agent_context
+
+        with patch.dict(
+            "os.environ",
+            {"IW_CORE_AGENT_CONTEXT": "true", "IW_CORE_PER_WORKTREE_DB": "true"},
+            clear=False,
+        ):
+            _assert_not_agent_context("postgresql+psycopg://localhost:34567/iw_worktree")
+
+    def test_blocks_against_orch_db_even_with_per_worktree_flag(self) -> None:
+        from orch.db.safe_migrate import _assert_not_agent_context
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"IW_CORE_AGENT_CONTEXT": "true", "IW_CORE_PER_WORKTREE_DB": "true"},
+                clear=False,
+            ),
+            pytest.raises(AgentContextForbiddenError),
+        ):
+            _assert_not_agent_context("postgresql+psycopg://localhost:5433/iw_core")
+
+    def test_blocks_when_only_per_worktree_flag_without_agent_context_is_irrelevant(
+        self,
+    ) -> None:
+        from orch.db.safe_migrate import _assert_not_agent_context
+
+        with patch.dict(
+            "os.environ",
+            {"IW_CORE_AGENT_CONTEXT": "false", "IW_CORE_PER_WORKTREE_DB": "true"},
+            clear=False,
+        ):
+            _assert_not_agent_context("postgresql+psycopg://localhost:34567/iw_worktree")
+
+    def test_allows_outside_agent_context_without_flag(self) -> None:
+        from orch.db.safe_migrate import _assert_not_agent_context
+
+        with patch.dict(
+            "os.environ",
+            {"IW_CORE_AGENT_CONTEXT": "false"},
+            clear=False,
+        ):
+            _assert_not_agent_context("postgresql+psycopg://localhost:5433/iw_core")
