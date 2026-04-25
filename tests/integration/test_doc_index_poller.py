@@ -372,8 +372,12 @@ class TestDocIndexPollerLaunch:
             # the next cycle. The launched job has progressed past "queued".
             launched = [j for j in [r1, r2] if j.status != "queued"]
             still_queued = [j for j in [r1, r2] if j.status == "queued"]
-            assert len(launched) == 1 and len(still_queued) == 1, (
-                f"Expected 1 launched + 1 queued, got "
+            assert len(launched) == 1, (
+                f"Expected 1 launched job, got {len(launched)}: "
+                f"[(r1.status={r1.status}), (r2.status={r2.status})]"
+            )
+            assert len(still_queued) == 1, (
+                f"Expected 1 still-queued job, got {len(still_queued)}: "
                 f"[(r1.status={r1.status}), (r2.status={r2.status})]"
             )
         finally:

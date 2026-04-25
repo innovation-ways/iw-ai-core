@@ -31,8 +31,17 @@ from orch.daemon.batch_manager import BatchManager
 from orch.daemon.doc_index_poller import DocIndexPoller, recover_orphaned_doc_index_jobs
 from orch.daemon.doc_job_poller import DocJobPoller
 from orch.daemon.project_registry import ProjectConfig, ProjectRegistry, sync_project_to_db
+from orch.daemon.worktree_compose import is_alive as compose_is_alive
+from orch.daemon.worktree_reaper import reap as reap_orphan_containers
 from orch.db.identity import verify_instance_identity
-from orch.db.models import DaemonEvent, StepRun, StepStatus, WorkflowStep
+from orch.db.models import (
+    TERMINAL_BATCH_ITEM_STATUSES,
+    BatchItem,
+    DaemonEvent,
+    StepRun,
+    StepStatus,
+    WorkflowStep,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -123,6 +132,7 @@ class Daemon:
         self._wake_event = threading.Event()
         self._poll_count = 0
         self._last_poll_at: datetime | None = None
+        self._last_reap_poll_count = 0
         self._identity_bootstrap_logged = False
 
         # Injected session factory (tests pass a mock; production uses DB URL)
@@ -215,6 +225,12 @@ class Daemon:
 
         # Detect orphans from previous crashes
         self._startup_health_check()
+
+        # Reap stale/orphan containers from previous runs
+        self._reap_orphan_containers()
+
+        # Re-attach to live compose stacks for non-terminal items
+        self._reattach_worktrees()
 
         # Emit daemon_started event
         with self._session_factory() as db:
@@ -358,6 +374,69 @@ class Daemon:
                             },
                         )
 
+    def _reap_orphan_containers(self) -> None:
+        """Reap stale, orphan, and malformed worktree compose containers.
+
+        Called at daemon startup and periodically during the poll loop.
+        """
+        logger.info("Running container reaper")
+        try:
+            with self._session_factory() as db:
+                reaped = reap_orphan_containers(db)
+            if reaped:
+                by_class: dict[str, int] = {}
+                for f in reaped:
+                    by_class[f.classification] = by_class.get(f.classification, 0) + 1
+                logger.info(
+                    "Container reaper complete: %d reaped (%s)",
+                    len(reaped),
+                    ", ".join(f"{k}={v}" for k, v in by_class.items()),
+                )
+            else:
+                logger.info("Container reaper complete: no stale/orphan containers found")
+        except Exception:
+            logger.exception("Container reaper failed — continuing")
+
+    def _reattach_worktrees(self) -> None:
+        """Re-attach to live compose stacks on daemon restart.
+
+        Queries non-terminal BatchItems with worktree_compose_path set and
+        checks if the compose stack is still alive. If alive, logs re-attach
+        without calling up() (AC5: no duplicate phase='up' event for re-attached).
+        If not alive, logs that the stack is missing and the next poll cycle's
+        normal lifecycle path will handle re-creation.
+        """
+        try:
+            with self._session_factory() as db:
+                non_terminal = (
+                    db.query(BatchItem)
+                    .filter(
+                        BatchItem.status.notin_(list(TERMINAL_BATCH_ITEM_STATUSES)),
+                        BatchItem.worktree_compose_path.isnot(None),
+                    )
+                    .all()
+                )
+            if not non_terminal:
+                return
+
+            for item in non_terminal:
+                alive = compose_is_alive(str(item.id))
+                if alive:
+                    logger.info(
+                        "Re-attached to existing compose stack for batch_item id=%d (worktree: %s)",
+                        item.id,
+                        item.worktree_info.get("path") if item.worktree_info else "unknown",
+                    )
+                else:
+                    logger.info(
+                        "Compose stack missing for non-terminal batch_item id=%d "
+                        "(worktree: %s); will re-setup on next poll",
+                        item.id,
+                        item.worktree_info.get("path") if item.worktree_info else "unknown",
+                    )
+        except Exception:
+            logger.exception("Worktree re-attach failed — continuing")
+
     # ------------------------------------------------------------------
     # Main poll cycle
     # ------------------------------------------------------------------
@@ -423,6 +502,11 @@ class Daemon:
                 )
         except Exception:
             logger.exception("Failed to emit daemon_poll event")
+
+        # Phase 6: Periodic container reaper (every 5 poll cycles)
+        if self._poll_count - self._last_reap_poll_count >= 5:
+            self._last_reap_poll_count = self._poll_count
+            self._reap_orphan_containers()
 
     # ------------------------------------------------------------------
     # Project reload

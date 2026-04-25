@@ -466,7 +466,7 @@ class TestWorktreeSetup:
         with patch.object(manager, "_setup_worktree", side_effect=WorktreeSetupError("disk full")):
             manager._launch_item(db, batch_item)
 
-        assert batch_item.status == BatchItemStatus.failed
+        assert batch_item.status == BatchItemStatus.setup_failed
         assert "disk full" in batch_item.notes
         # Work item must also be marked failed so the UI shows a Restart button
         assert mock_work_item.status == WorkItemStatus.failed

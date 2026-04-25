@@ -336,14 +336,27 @@ CREATE TYPE batch_item_status AS ENUM (
     'pending', 'setting_up', 'executing',
     'completed', 'merged', 'failed', 'stalled',
     'skipped', 'migration_invalid', 'migration_rolled_back',
-    'migration_rebase_failed'
+    'migration_rebase_failed', 'setup_failed'
 );
 ```
 
-**Migration-related states** (see CR-00021 Phase 0–3 pipeline):
+**batch_items table** — see Alembic migration `550aecbbd42b_f_00062_add_worktree_compose_stack_`
+for the full DDL. Three nullable columns were added for per-worktree container isolation:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `worktree_db_port` | `INTEGER NULL` | Discovered host port for the per-worktree Postgres container; NULL when the project runs in legacy mode (no `ai-dev/iw-config/`) |
+| `worktree_app_port` | `INTEGER NULL` | Discovered host port for the per-worktree app server container; NULL when no app service is declared or in legacy mode |
+| `worktree_compose_path` | `TEXT NULL` | Absolute filesystem path to the rendered `docker-compose-<id>.yml`; NULL in legacy mode. Used by the reaper and daemon-restart re-attach logic. |
+
+**Invariant #6**: `worktree_db_port`, `worktree_app_port`, and `worktree_compose_path` are
+all NULL or all non-NULL. Partial state is invalid.
+
+**Status meanings**:
 
 | State | Meaning |
 |-------|---------|
+| `setup_failed` | Per-worktree compose stack setup failed (seed script error, gitignore violation, or docker failure); see F-00062 AC6/AC8 |
 | `migration_invalid` | Phase 1 dry-run failed — post-rebase chain has a real conflict; main untouched |
 | `migration_rolled_back` | Phase 2 apply failed and Phase 3 rollback succeeded; main untouched |
 | `migration_rebase_failed` | Phase 0 rebase failed (git conflict or parse error); queue NOT frozen |

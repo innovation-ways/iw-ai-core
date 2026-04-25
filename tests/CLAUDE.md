@@ -68,3 +68,15 @@ uv run pytest -k "test_next_id" -v         # Match by test name
 - Unit tests must not import `orch.config` at module level if env vars are being patched — import inside the test function or use `importlib` carefully
 - Integration test fixtures are `scope="session"` for the container, `scope="function"` for DB transactions (rollback after each test)
 - `test_project` fixture creates a `Project` row; tests that create work items must use this project's `id`
+
+## Per-worktree DB vs testcontainers (F-00062)
+
+Feature F-00062 introduces a per-worktree Postgres container for app runtime
+(started by the daemon when the project ships `ai-dev/iw-config/`).
+This is separate from `make test-integration`'s testcontainers.
+
+- `make test-integration` **MUST** continue to use testcontainers (existing rule).
+- The per-worktree DB is for the agent's app runtime (e.g., dashboard exercising
+  Backend step changes), NOT for tests.
+- Tests must NEVER assume the per-worktree DB exists — they spin up their own
+  testcontainer.

@@ -7,11 +7,13 @@ Handles the full lifecycle of batch execution:
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from orch.daemon import worktree_compose
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -272,7 +274,7 @@ class BatchManager:
     # ------------------------------------------------------------------
 
     def _launch_item(self, db: Session, batch_item: BatchItem) -> None:
-        """Two-phase launch: worktree setup, then first step."""
+        """Two-phase launch: worktree setup + compose up, then first step."""
         item_id = batch_item.work_item_id
 
         # Phase 1: Worktree setup
@@ -290,16 +292,90 @@ class BatchManager:
         try:
             worktree_info = self._setup_worktree(item_id)
         except WorktreeSetupError as e:
-            batch_item.status = BatchItemStatus.failed
+            batch_item.status = BatchItemStatus.setup_failed
             batch_item.notes = f"Worktree setup failed: {e}"
-            # Also mark the work item as failed so the UI shows a Restart button
             work_item = db.query(WorkItem).filter_by(project_id=self.project_id, id=item_id).one()
             work_item.status = WorkItemStatus.failed
             db.commit()
             _emit_event(
-                db, self.project_id, "item_failed", item_id, "work_item", str(e), {"phase": "setup"}
+                db,
+                self.project_id,
+                "item_failed",
+                item_id,
+                "work_item",
+                str(e),
+                {"phase": "setup", "reason": "setup_failed"},
             )
             return
+
+        worktree_path = Path(worktree_info["path"])
+
+        # Phase 1b: Compose lifecycle (opt-in per worktree)
+        if not worktree_compose.has_iw_config(worktree_path):
+            batch_item.worktree_db_port = None
+            batch_item.worktree_app_port = None
+            batch_item.worktree_compose_path = None
+        else:
+            try:
+                cfg = worktree_compose.load_config(
+                    str(batch_item.id),
+                    self.project_id,
+                    worktree_path,
+                )
+                up_result = worktree_compose.up(cfg)
+                if up_result.success:
+                    batch_item.worktree_compose_path = str(cfg.rendered_compose_path)
+                    up_db_port = up_result.discovered_ports.get("IW_CORE_DB_PORT")
+                    up_app_port = up_result.discovered_ports.get("IW_CORE_DASHBOARD_PORT")
+                    batch_item.worktree_db_port = int(up_db_port) if up_db_port is not None else None
+                    batch_item.worktree_app_port = int(up_app_port) if up_app_port is not None else None
+                else:
+                    batch_item.status = BatchItemStatus.setup_failed
+                    batch_item.notes = f"Compose up failed: {up_result.error_message}"
+                    batch_item.worktree_db_port = None
+                    batch_item.worktree_app_port = None
+                    batch_item.worktree_compose_path = None
+                    work_item = (
+                        db.query(WorkItem).filter_by(project_id=self.project_id, id=item_id).one()
+                    )
+                    work_item.status = WorkItemStatus.failed
+                    db.commit()
+                    _emit_event(
+                        db,
+                        self.project_id,
+                        "item_failed",
+                        item_id,
+                        "work_item",
+                        f"Compose up failed: {up_result.error_message}",
+                        {
+                            "phase": "compose_up",
+                            "reason": "setup_failed",
+                            "seed_stderr_tail": up_result.seed_stderr_tail,
+                        },
+                    )
+                    worktree_compose.down(str(batch_item.id), cfg.rendered_compose_path)
+                    return
+            except Exception as exc:
+                batch_item.status = BatchItemStatus.setup_failed
+                batch_item.notes = f"Compose up error: {exc}"
+                batch_item.worktree_db_port = None
+                batch_item.worktree_app_port = None
+                batch_item.worktree_compose_path = None
+                work_item = (
+                    db.query(WorkItem).filter_by(project_id=self.project_id, id=item_id).one()
+                )
+                work_item.status = WorkItemStatus.failed
+                db.commit()
+                _emit_event(
+                    db,
+                    self.project_id,
+                    "item_failed",
+                    item_id,
+                    "work_item",
+                    f"Compose up error: {exc}",
+                    {"phase": "compose_up", "reason": "setup_failed"},
+                )
+                return
 
         # Phase 2: Transition to executing
         batch_item.status = BatchItemStatus.executing
@@ -315,6 +391,16 @@ class BatchManager:
             f"Worktree ready for {item_id}",
             {"worktree_path": worktree_info.get("path")},
         )
+
+        # Embed per-worktree stack info into worktree_info so _launch_step
+        # can substitute placeholders and set IW_CORE_PER_WORKTREE_DB without
+        # needing an extra DB lookup.
+        if batch_item.worktree_compose_path is not None:
+            worktree_info["worktree_compose_path"] = batch_item.worktree_compose_path
+            worktree_info["worktree_db_port"] = str(batch_item.worktree_db_port)
+            worktree_info["worktree_app_port"] = str(batch_item.worktree_app_port)
+            worktree_info["batch_item_id"] = str(batch_item.id)
+            worktree_info["project_name"] = batch_item.project_id
 
         self._compute_qv_baselines(db, batch_item, worktree_info)
 
@@ -647,6 +733,7 @@ class BatchManager:
         prompt = self._build_claude_prompt(step, worktree_path)
         if agent_env is not None:
             prompt = browser_env.render_prompt_substitutions(prompt, agent_env)
+        prompt = substitute_worktree_placeholders(prompt, worktree_info)
         prompt_file = Path(worktree_path) / ".tmp" / f"{step.work_item_id}_{step.step_id}.prompt"
         prompt_file.parent.mkdir(parents=True, exist_ok=True)
         prompt_file.write_text(prompt)
@@ -685,6 +772,8 @@ class BatchManager:
         agent_env = {**os.environ, "IW_CORE_AGENT_CONTEXT": "true"}
         if bv_env is not None:
             agent_env = {**agent_env, **bv_env}
+        if worktree_info.get("worktree_compose_path") is not None:
+            agent_env["IW_CORE_PER_WORKTREE_DB"] = "true"
 
         proc_env = agent_env
 
@@ -899,6 +988,63 @@ class BatchManager:
 # ---------------------------------------------------------------------------
 # Module-level helpers (pure / easily testable)
 # ---------------------------------------------------------------------------
+
+_WORKTREE_PLACEHOLDER_RE = re.compile(r"\$\{((?:WORKTREE_|BATCH_|PROJECT_)[A-Z_]+)\}")
+
+
+class UnresolvedWorktreePlaceholderError(ValueError):
+    """Raised when a ${WORKTREE_*} placeholder cannot be resolved for a legacy item."""
+
+
+def substitute_worktree_placeholders(
+    prompt: str,
+    worktree_info: dict[str, Any],
+) -> str:
+    """Replace ${WORKTREE_*} placeholders in prompt with values from worktree_info.
+
+    Substitutes the following placeholders when the corresponding value is set:
+        ${WORKTREE_APP_PORT}   → str(worktree_info["worktree_app_port"])
+        ${WORKTREE_DB_PORT}    → str(worktree_info["worktree_db_port"])
+        ${WORKTREE_PATH}       → str(worktree_info["worktree_path"])
+        ${BATCH_ITEM_ID}       → str(worktree_info["batch_item_id"])
+        ${PROJECT_NAME}        → str(worktree_info["project_name"])
+
+    For legacy-mode items (worktree_compose_path is None), placeholders are left
+    untouched so prompts can use safe defaults. However, if a prompt contains a
+    ${WORKTREE_*} placeholder for a legacy item, a clear error is raised to
+    prompt the operator to add iw-config or fix the prompt.
+
+    Unknown placeholders (not in the known set above) are preserved verbatim.
+    """
+
+    def _replace(m: re.Match[str]) -> str:
+        key = m.group(1)
+        known_keys = (
+            "WORKTREE_APP_PORT",
+            "WORKTREE_DB_PORT",
+            "WORKTREE_PATH",
+            "BATCH_ITEM_ID",
+            "PROJECT_NAME",
+        )
+        if key not in known_keys:
+            return m.group(0)
+
+        is_worktree_placeholder = key.startswith("WORKTREE_")
+        is_legacy = worktree_info.get("worktree_compose_path") is None
+
+        if is_legacy and is_worktree_placeholder:
+            raise UnresolvedWorktreePlaceholderError(
+                f"Prompt contains ${{{key}}} but item is running in legacy mode "
+                f"(no per-worktree compose stack). Add ai-dev/iw-config/ to the "
+                f"project or remove this placeholder from the prompt."
+            )
+
+        value = worktree_info.get(key.lower())
+        if value is None:
+            return m.group(0)
+        return str(value)
+
+    return _WORKTREE_PLACEHOLDER_RE.sub(_replace, prompt)
 
 
 def _build_agent_env(cli_tool: str, item_id: str, worktree_path: str) -> dict[str, str]:  # noqa: ARG001
