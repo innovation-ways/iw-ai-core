@@ -1,0 +1,495 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - link "IW AI Core IW AI Core" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - img "IW AI Core" [ref=e5]
+      - generic [ref=e6]: IW AI Core
+    - navigation [ref=e7]:
+      - paragraph [ref=e9]: Projects
+      - generic [ref=e10]:
+        - group [ref=e11]:
+          - generic "Curriculum Vitae" [ref=e12] [cursor=pointer]:
+            - generic [ref=e13]: Curriculum Vitae
+            - img [ref=e14]
+        - group [ref=e16]:
+          - generic "IW AI Core Platform" [ref=e17] [cursor=pointer]:
+            - generic [ref=e18]: IW AI Core Platform
+            - img [ref=e19]
+          - generic [ref=e21]:
+            - link "Dashboard" [ref=e22] [cursor=pointer]:
+              - /url: /project/iw-ai-core/
+            - link "Batches" [ref=e23] [cursor=pointer]:
+              - /url: /project/iw-ai-core/batches
+            - link "Queue" [ref=e24] [cursor=pointer]:
+              - /url: /project/iw-ai-core/queue
+            - link "Jobs" [ref=e25] [cursor=pointer]:
+              - /url: /project/iw-ai-core/jobs
+            - link "History" [ref=e26] [cursor=pointer]:
+              - /url: /project/iw-ai-core/history
+            - link "Tests" [ref=e27] [cursor=pointer]:
+              - /url: /project/iw-ai-core/tests
+            - link "Quality" [ref=e28] [cursor=pointer]:
+              - /url: /project/iw-ai-core/quality
+            - link "Docs" [ref=e29] [cursor=pointer]:
+              - /url: /project/iw-ai-core/docs
+            - link "Research" [ref=e30] [cursor=pointer]:
+              - /url: /project/iw-ai-core/research
+            - link "Code" [ref=e31] [cursor=pointer]:
+              - /url: /project/iw-ai-core/code
+            - link "OSS" [ref=e32] [cursor=pointer]:
+              - /url: /project/iw-ai-core/oss
+        - group [ref=e33]:
+          - generic "InnoForge Document Platform" [ref=e34] [cursor=pointer]:
+            - generic [ref=e35]: InnoForge Document Platform
+            - img [ref=e36]
+      - paragraph [ref=e39]: System
+      - link "Running Tasks" [ref=e40] [cursor=pointer]:
+        - /url: /system/running
+        - generic [ref=e41]: Running Tasks
+      - link "Worktree Health 2 dirty worktrees" [ref=e42] [cursor=pointer]:
+        - /url: /system/worktrees
+        - generic [ref=e43]: Worktree Health
+        - generic "2 dirty worktrees" [ref=e44]
+      - link "System Status" [ref=e45] [cursor=pointer]:
+        - /url: /system/status
+        - generic [ref=e46]: System Status
+      - link "All Active Work" [ref=e47] [cursor=pointer]:
+        - /url: /system/all-active
+        - generic [ref=e48]: All Active Work
+      - link "Configuration" [ref=e49] [cursor=pointer]:
+        - /url: /system/config
+        - generic [ref=e50]: Configuration
+    - button "☾ Toggle theme" [ref=e52] [cursor=pointer]:
+      - generic [ref=e53]: ☾
+      - generic [ref=e54]: Toggle theme
+  - generic [ref=e55]:
+    - searchbox "Search work items… (Ctrl+K)" [ref=e57]
+    - main [ref=e58]:
+      - generic [ref=e59]:
+        - heading "Jobs" [level=1] [ref=e60]
+        - paragraph [ref=e61]: Background operations across this project
+      - generic [ref=e62]:
+        - generic [ref=e63]:
+          - generic [ref=e64]: Type
+          - generic [ref=e65]:
+            - generic [ref=e66] [cursor=pointer]:
+              - checkbox "code_mapping" [ref=e67]
+              - text: code_mapping
+            - generic [ref=e68] [cursor=pointer]:
+              - checkbox "doc_indexing" [ref=e69]
+              - text: doc_indexing
+            - generic [ref=e70] [cursor=pointer]:
+              - checkbox "doc_generation" [ref=e71]
+              - text: doc_generation
+            - generic [ref=e72] [cursor=pointer]:
+              - checkbox "batch_execution" [ref=e73]
+              - text: batch_execution
+            - generic [ref=e74] [cursor=pointer]:
+              - checkbox "research" [ref=e75]
+              - text: research
+            - generic [ref=e76] [cursor=pointer]:
+              - checkbox "oss_scan" [ref=e77]
+              - text: oss_scan
+        - generic [ref=e78]:
+          - generic [ref=e79]: Status
+          - generic [ref=e80]:
+            - generic [ref=e81] [cursor=pointer]:
+              - checkbox "queued" [ref=e82]
+              - text: queued
+            - generic [ref=e83] [cursor=pointer]:
+              - checkbox "running" [ref=e84]
+              - text: running
+            - generic [ref=e85] [cursor=pointer]:
+              - checkbox "completed" [ref=e86]
+              - text: completed
+            - generic [ref=e87] [cursor=pointer]:
+              - checkbox "failed" [ref=e88]
+              - text: failed
+            - generic [ref=e89] [cursor=pointer]:
+              - checkbox "paused" [ref=e90]
+              - text: paused
+            - generic [ref=e91] [cursor=pointer]:
+              - checkbox "cancelled" [ref=e92]
+              - text: cancelled
+        - generic [ref=e93]:
+          - generic [ref=e94]: From
+          - textbox [ref=e95]
+        - generic [ref=e96]:
+          - generic [ref=e97]: To
+          - textbox [ref=e98]
+        - button "Filter" [ref=e99] [cursor=pointer]
+      - paragraph [ref=e100]: 66 items
+      - table [ref=e102]:
+        - rowgroup [ref=e103]:
+          - row "ID Type Title Status Started Finished Duration Triggered by" [ref=e104]:
+            - columnheader "ID" [ref=e105] [cursor=pointer]:
+              - generic [ref=e106]:
+                - text: ID
+                - img [ref=e107]
+            - columnheader "Type" [ref=e109] [cursor=pointer]:
+              - generic [ref=e110]:
+                - text: Type
+                - img [ref=e111]
+            - columnheader "Title" [ref=e113] [cursor=pointer]:
+              - generic [ref=e114]:
+                - text: Title
+                - img [ref=e115]
+            - columnheader "Status" [ref=e117] [cursor=pointer]:
+              - generic [ref=e118]:
+                - text: Status
+                - img [ref=e119]
+            - columnheader "Started" [ref=e121] [cursor=pointer]:
+              - generic [ref=e122]:
+                - text: Started
+                - img [ref=e123]
+            - columnheader "Finished" [ref=e125] [cursor=pointer]:
+              - generic [ref=e126]:
+                - text: Finished
+                - img [ref=e127]
+            - columnheader "Duration" [ref=e129] [cursor=pointer]:
+              - generic [ref=e130]:
+                - text: Duration
+                - img [ref=e131]
+            - columnheader "Triggered by" [ref=e133] [cursor=pointer]:
+              - generic [ref=e134]:
+                - text: Triggered by
+                - img [ref=e135]
+        - rowgroup [ref=e137]:
+          - row "1 oss_scan OSS scan completed 33m ago Apr 25 22:45 0m16s —" [ref=e138]:
+            - cell "1" [ref=e139]:
+              - link "1" [ref=e140] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/oss_scan/1
+            - cell "oss_scan" [ref=e141]:
+              - generic [ref=e142]: oss_scan
+            - cell "OSS scan" [ref=e143]
+            - cell "completed" [ref=e144]:
+              - generic [ref=e145]: completed
+            - cell "33m ago" [ref=e146]
+            - cell "Apr 25 22:45" [ref=e147]
+            - cell "0m16s" [ref=e148]
+            - cell "—" [ref=e149]
+          - row "4 oss_scan OSS scan completed 34m ago Apr 25 22:45 0m17s —" [ref=e150]:
+            - cell "4" [ref=e151]:
+              - link "4" [ref=e152] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/oss_scan/4
+            - cell "oss_scan" [ref=e153]:
+              - generic [ref=e154]: oss_scan
+            - cell "OSS scan" [ref=e155]
+            - cell "completed" [ref=e156]:
+              - generic [ref=e157]: completed
+            - cell "34m ago" [ref=e158]
+            - cell "Apr 25 22:45" [ref=e159]
+            - cell "0m17s" [ref=e160]
+            - cell "—" [ref=e161]
+          - row "BATCH-00049 batch_execution Batch BATCH-00049 running 3h ago — — —" [ref=e162]:
+            - cell "BATCH-00049" [ref=e163]:
+              - link "BATCH-00049" [ref=e164] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00049
+            - cell "batch_execution" [ref=e165]:
+              - generic [ref=e166]: batch_execution
+            - cell "Batch BATCH-00049" [ref=e167]
+            - cell "running" [ref=e168]:
+              - generic [ref=e169]: running
+            - cell "3h ago" [ref=e170]
+            - cell "—" [ref=e171]
+            - cell "—" [ref=e172]
+            - cell "—" [ref=e173]
+          - row "iw-ai-core:R-00064 research Per-Worktree Database Isolation for Parallel AI-Agent Development running 12h ago — — —" [ref=e174]:
+            - cell "iw-ai-core:R-00064" [ref=e175]:
+              - link "iw-ai-core:R-00064" [ref=e176] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/research/iw-ai-core:R-00064
+            - cell "research" [ref=e177]:
+              - generic [ref=e178]: research
+            - cell "Per-Worktree Database Isolation for Parallel AI-Agent Development" [ref=e179]
+            - cell "running" [ref=e180]:
+              - generic [ref=e181]: running
+            - cell "12h ago" [ref=e182]
+            - cell "—" [ref=e183]
+            - cell "—" [ref=e184]
+            - cell "—" [ref=e185]
+          - row "BATCH-00048 batch_execution Batch BATCH-00048 completed 1d ago Apr 25 18:11 19h12m —" [ref=e186]:
+            - cell "BATCH-00048" [ref=e187]:
+              - link "BATCH-00048" [ref=e188] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00048
+            - cell "batch_execution" [ref=e189]:
+              - generic [ref=e190]: batch_execution
+            - cell "Batch BATCH-00048" [ref=e191]
+            - cell "completed" [ref=e192]:
+              - generic [ref=e193]: completed
+            - cell "1d ago" [ref=e194]
+            - cell "Apr 25 18:11" [ref=e195]
+            - cell "19h12m" [ref=e196]
+            - cell "—" [ref=e197]
+          - row "BATCH-00047 batch_execution Batch BATCH-00047 completed 1d ago Apr 24 21:37 5h11m —" [ref=e198]:
+            - cell "BATCH-00047" [ref=e199]:
+              - link "BATCH-00047" [ref=e200] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00047
+            - cell "batch_execution" [ref=e201]:
+              - generic [ref=e202]: batch_execution
+            - cell "Batch BATCH-00047" [ref=e203]
+            - cell "completed" [ref=e204]:
+              - generic [ref=e205]: completed
+            - cell "1d ago" [ref=e206]
+            - cell "Apr 24 21:37" [ref=e207]
+            - cell "5h11m" [ref=e208]
+            - cell "—" [ref=e209]
+          - row "BATCH-00046 batch_execution Batch BATCH-00046 completed 1d ago Apr 24 22:45 10h09m —" [ref=e210]:
+            - cell "BATCH-00046" [ref=e211]:
+              - link "BATCH-00046" [ref=e212] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00046
+            - cell "batch_execution" [ref=e213]:
+              - generic [ref=e214]: batch_execution
+            - cell "Batch BATCH-00046" [ref=e215]
+            - cell "completed" [ref=e216]:
+              - generic [ref=e217]: completed
+            - cell "1d ago" [ref=e218]
+            - cell "Apr 24 22:45" [ref=e219]
+            - cell "10h09m" [ref=e220]
+            - cell "—" [ref=e221]
+          - row "BATCH-00045 batch_execution Batch BATCH-00045 completed 1d ago Apr 24 10:43 34m29s —" [ref=e222]:
+            - cell "BATCH-00045" [ref=e223]:
+              - link "BATCH-00045" [ref=e224] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00045
+            - cell "batch_execution" [ref=e225]:
+              - generic [ref=e226]: batch_execution
+            - cell "Batch BATCH-00045" [ref=e227]
+            - cell "completed" [ref=e228]:
+              - generic [ref=e229]: completed
+            - cell "1d ago" [ref=e230]
+            - cell "Apr 24 10:43" [ref=e231]
+            - cell "34m29s" [ref=e232]
+            - cell "—" [ref=e233]
+          - row "BATCH-00044 batch_execution Batch BATCH-00044 completed 1d ago Apr 24 12:32 3h02m —" [ref=e234]:
+            - cell "BATCH-00044" [ref=e235]:
+              - link "BATCH-00044" [ref=e236] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00044
+            - cell "batch_execution" [ref=e237]:
+              - generic [ref=e238]: batch_execution
+            - cell "Batch BATCH-00044" [ref=e239]
+            - cell "completed" [ref=e240]:
+              - generic [ref=e241]: completed
+            - cell "1d ago" [ref=e242]
+            - cell "Apr 24 12:32" [ref=e243]
+            - cell "3h02m" [ref=e244]
+            - cell "—" [ref=e245]
+          - row "BATCH-00043 batch_execution Batch BATCH-00043 completed 1d ago Apr 24 19:35 10h57m —" [ref=e246]:
+            - cell "BATCH-00043" [ref=e247]:
+              - link "BATCH-00043" [ref=e248] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00043
+            - cell "batch_execution" [ref=e249]:
+              - generic [ref=e250]: batch_execution
+            - cell "Batch BATCH-00043" [ref=e251]
+            - cell "completed" [ref=e252]:
+              - generic [ref=e253]: completed
+            - cell "1d ago" [ref=e254]
+            - cell "Apr 24 19:35" [ref=e255]
+            - cell "10h57m" [ref=e256]
+            - cell "—" [ref=e257]
+          - row "BATCH-00042 batch_execution Batch BATCH-00042 completed 2d ago Apr 24 08:20 9h41m —" [ref=e258]:
+            - cell "BATCH-00042" [ref=e259]:
+              - link "BATCH-00042" [ref=e260] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00042
+            - cell "batch_execution" [ref=e261]:
+              - generic [ref=e262]: batch_execution
+            - cell "Batch BATCH-00042" [ref=e263]
+            - cell "completed" [ref=e264]:
+              - generic [ref=e265]: completed
+            - cell "2d ago" [ref=e266]
+            - cell "Apr 24 08:20" [ref=e267]
+            - cell "9h41m" [ref=e268]
+            - cell "—" [ref=e269]
+          - row "3 oss_scan OSS scan completed 2d ago Apr 23 21:59 0m12s —" [ref=e270]:
+            - cell "3" [ref=e271]:
+              - link "3" [ref=e272] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/oss_scan/3
+            - cell "oss_scan" [ref=e273]:
+              - generic [ref=e274]: oss_scan
+            - cell "OSS scan" [ref=e275]
+            - cell "completed" [ref=e276]:
+              - generic [ref=e277]: completed
+            - cell "2d ago" [ref=e278]
+            - cell "Apr 23 21:59" [ref=e279]
+            - cell "0m12s" [ref=e280]
+            - cell "—" [ref=e281]
+          - row "BATCH-00041 batch_execution Batch BATCH-00041 completed 2d ago Apr 23 16:52 34m16s —" [ref=e282]:
+            - cell "BATCH-00041" [ref=e283]:
+              - link "BATCH-00041" [ref=e284] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00041
+            - cell "batch_execution" [ref=e285]:
+              - generic [ref=e286]: batch_execution
+            - cell "Batch BATCH-00041" [ref=e287]
+            - cell "completed" [ref=e288]:
+              - generic [ref=e289]: completed
+            - cell "2d ago" [ref=e290]
+            - cell "Apr 23 16:52" [ref=e291]
+            - cell "34m16s" [ref=e292]
+            - cell "—" [ref=e293]
+          - row "BATCH-00040 batch_execution Batch BATCH-00040 completed 2d ago Apr 23 23:07 6h54m —" [ref=e294]:
+            - cell "BATCH-00040" [ref=e295]:
+              - link "BATCH-00040" [ref=e296] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00040
+            - cell "batch_execution" [ref=e297]:
+              - generic [ref=e298]: batch_execution
+            - cell "Batch BATCH-00040" [ref=e299]
+            - cell "completed" [ref=e300]:
+              - generic [ref=e301]: completed
+            - cell "2d ago" [ref=e302]
+            - cell "Apr 23 23:07" [ref=e303]
+            - cell "6h54m" [ref=e304]
+            - cell "—" [ref=e305]
+          - row "BATCH-00039 batch_execution Batch BATCH-00039 completed 3d ago Apr 23 08:22 9h45m —" [ref=e306]:
+            - cell "BATCH-00039" [ref=e307]:
+              - link "BATCH-00039" [ref=e308] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00039
+            - cell "batch_execution" [ref=e309]:
+              - generic [ref=e310]: batch_execution
+            - cell "Batch BATCH-00039" [ref=e311]
+            - cell "completed" [ref=e312]:
+              - generic [ref=e313]: completed
+            - cell "3d ago" [ref=e314]
+            - cell "Apr 23 08:22" [ref=e315]
+            - cell "9h45m" [ref=e316]
+            - cell "—" [ref=e317]
+          - row "BATCH-00038 batch_execution Batch BATCH-00038 completed 3d ago Apr 23 15:06 17h39m —" [ref=e318]:
+            - cell "BATCH-00038" [ref=e319]:
+              - link "BATCH-00038" [ref=e320] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00038
+            - cell "batch_execution" [ref=e321]:
+              - generic [ref=e322]: batch_execution
+            - cell "Batch BATCH-00038" [ref=e323]
+            - cell "completed" [ref=e324]:
+              - generic [ref=e325]: completed
+            - cell "3d ago" [ref=e326]
+            - cell "Apr 23 15:06" [ref=e327]
+            - cell "17h39m" [ref=e328]
+            - cell "—" [ref=e329]
+          - row "iw-ai-core:R-00063 research Browser Demo Video Auto-Generation (Local, OSS, WSL) running 3d ago — — skill:iw-research" [ref=e330]:
+            - cell "iw-ai-core:R-00063" [ref=e331]:
+              - link "iw-ai-core:R-00063" [ref=e332] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/research/iw-ai-core:R-00063
+            - cell "research" [ref=e333]:
+              - generic [ref=e334]: research
+            - cell "Browser Demo Video Auto-Generation (Local, OSS, WSL)" [ref=e335]
+            - cell "running" [ref=e336]:
+              - generic [ref=e337]: running
+            - cell "3d ago" [ref=e338]
+            - cell "—" [ref=e339]
+            - cell "—" [ref=e340]
+            - cell "skill:iw-research" [ref=e341]
+          - row "BATCH-00037 batch_execution Batch BATCH-00037 completed 3d ago Apr 22 21:03 3h09m —" [ref=e342]:
+            - cell "BATCH-00037" [ref=e343]:
+              - link "BATCH-00037" [ref=e344] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00037
+            - cell "batch_execution" [ref=e345]:
+              - generic [ref=e346]: batch_execution
+            - cell "Batch BATCH-00037" [ref=e347]
+            - cell "completed" [ref=e348]:
+              - generic [ref=e349]: completed
+            - cell "3d ago" [ref=e350]
+            - cell "Apr 22 21:03" [ref=e351]
+            - cell "3h09m" [ref=e352]
+            - cell "—" [ref=e353]
+          - row "BATCH-00036 batch_execution Batch BATCH-00036 completed 3d ago Apr 22 16:33 58m40s —" [ref=e354]:
+            - cell "BATCH-00036" [ref=e355]:
+              - link "BATCH-00036" [ref=e356] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00036
+            - cell "batch_execution" [ref=e357]:
+              - generic [ref=e358]: batch_execution
+            - cell "Batch BATCH-00036" [ref=e359]
+            - cell "completed" [ref=e360]:
+              - generic [ref=e361]: completed
+            - cell "3d ago" [ref=e362]
+            - cell "Apr 22 16:33" [ref=e363]
+            - cell "58m40s" [ref=e364]
+            - cell "—" [ref=e365]
+          - row "BATCH-00035 batch_execution Batch BATCH-00035 completed 3d ago Apr 22 15:31 2h09m —" [ref=e366]:
+            - cell "BATCH-00035" [ref=e367]:
+              - link "BATCH-00035" [ref=e368] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00035
+            - cell "batch_execution" [ref=e369]:
+              - generic [ref=e370]: batch_execution
+            - cell "Batch BATCH-00035" [ref=e371]
+            - cell "completed" [ref=e372]:
+              - generic [ref=e373]: completed
+            - cell "3d ago" [ref=e374]
+            - cell "Apr 22 15:31" [ref=e375]
+            - cell "2h09m" [ref=e376]
+            - cell "—" [ref=e377]
+          - row "BATCH-00034 batch_execution Batch BATCH-00034 completed 3d ago Apr 22 13:18 1h18m —" [ref=e378]:
+            - cell "BATCH-00034" [ref=e379]:
+              - link "BATCH-00034" [ref=e380] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00034
+            - cell "batch_execution" [ref=e381]:
+              - generic [ref=e382]: batch_execution
+            - cell "Batch BATCH-00034" [ref=e383]
+            - cell "completed" [ref=e384]:
+              - generic [ref=e385]: completed
+            - cell "3d ago" [ref=e386]
+            - cell "Apr 22 13:18" [ref=e387]
+            - cell "1h18m" [ref=e388]
+            - cell "—" [ref=e389]
+          - row "BATCH-00033 batch_execution Batch BATCH-00033 cancelled 3d ago — — —" [ref=e390]:
+            - cell "BATCH-00033" [ref=e391]:
+              - link "BATCH-00033" [ref=e392] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00033
+            - cell "batch_execution" [ref=e393]:
+              - generic [ref=e394]: batch_execution
+            - cell "Batch BATCH-00033" [ref=e395]
+            - cell "cancelled" [ref=e396]:
+              - generic [ref=e397]: cancelled
+            - cell "3d ago" [ref=e398]
+            - cell "—" [ref=e399]
+            - cell "—" [ref=e400]
+            - cell "—" [ref=e401]
+          - row "BATCH-00032 batch_execution Batch BATCH-00032 completed 4d ago Apr 22 08:46 10h24m —" [ref=e402]:
+            - cell "BATCH-00032" [ref=e403]:
+              - link "BATCH-00032" [ref=e404] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/batch_execution/BATCH-00032
+            - cell "batch_execution" [ref=e405]:
+              - generic [ref=e406]: batch_execution
+            - cell "Batch BATCH-00032" [ref=e407]
+            - cell "completed" [ref=e408]:
+              - generic [ref=e409]: completed
+            - cell "4d ago" [ref=e410]
+            - cell "Apr 22 08:46" [ref=e411]
+            - cell "10h24m" [ref=e412]
+            - cell "—" [ref=e413]
+          - row "iw-ai-core:R-00062 research Private-to-Public Repository Legal, Licensing, and Community Compliance for Permissive OSS Release running 4d ago — — skill:iw-research" [ref=e414]:
+            - cell "iw-ai-core:R-00062" [ref=e415]:
+              - link "iw-ai-core:R-00062" [ref=e416] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/research/iw-ai-core:R-00062
+            - cell "research" [ref=e417]:
+              - generic [ref=e418]: research
+            - cell "Private-to-Public Repository Legal, Licensing, and Community Compliance for Permissive OSS Release" [ref=e419]
+            - cell "running" [ref=e420]:
+              - generic [ref=e421]: running
+            - cell "4d ago" [ref=e422]
+            - cell "—" [ref=e423]
+            - cell "—" [ref=e424]
+            - cell "skill:iw-research" [ref=e425]
+          - row "iw-ai-core:R-00061 research Private-to-Public Repository Technical Compliance for Permissive OSS Release running 4d ago — — skill:iw-research" [ref=e426]:
+            - cell "iw-ai-core:R-00061" [ref=e427]:
+              - link "iw-ai-core:R-00061" [ref=e428] [cursor=pointer]:
+                - /url: /project/iw-ai-core/jobs/research/iw-ai-core:R-00061
+            - cell "research" [ref=e429]:
+              - generic [ref=e430]: research
+            - cell "Private-to-Public Repository Technical Compliance for Permissive OSS Release" [ref=e431]
+            - cell "running" [ref=e432]:
+              - generic [ref=e433]: running
+            - cell "4d ago" [ref=e434]
+            - cell "—" [ref=e435]
+            - cell "—" [ref=e436]
+            - cell "skill:iw-research" [ref=e437]
+      - generic [ref=e438]:
+        - generic [ref=e439]: 1–25 of 66
+        - link "Next →" [ref=e441] [cursor=pointer]:
+          - /url: "?page=2"
+    - contentinfo [ref=e442]:
+      - generic [ref=e443]: "Claude:"
+      - generic [ref=e444]:
+        - generic [ref=e445]: 5h
+        - generic [ref=e447]: —
+      - generic [ref=e448]:
+        - generic [ref=e449]: 7d
+        - generic [ref=e451]: —
+      - generic [ref=e452]: IW AI Core v0.1

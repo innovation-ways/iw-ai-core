@@ -155,6 +155,20 @@ function applyStatusFilter() {
   var qs = checked.map(function(s) { return 'status=' + encodeURIComponent(s); }).join('&');
   history.replaceState(null, '', qs ? '?' + qs : location.pathname);
 
+  // Keep the SSE-refresh URL in sync so live updates respect the current filter
+  // (otherwise the trigger keeps the hx-get baked in at server render time and
+  // SSE refreshes return all batches regardless of the active filter).
+  // htmx caches the parsed URL when it processes the element, so we must call
+  // htmx.process() after changing the attribute for the new URL to take effect.
+  var trigger = document.getElementById('batches-sse-trigger');
+  if (trigger) {
+    var basePath = (trigger.getAttribute('hx-get') || '').split('?')[0];
+    trigger.setAttribute('hx-get', qs ? basePath + '?' + qs : basePath);
+    if (window.htmx && typeof window.htmx.process === 'function') {
+      window.htmx.process(trigger);
+    }
+  }
+
   // Highlight matching preset button if any
   var allVisible = Array.from(document.querySelectorAll('.status-cb')).map(function(cb) { return cb.value; });
   var isAll = checked.length === 0 || allVisible.every(function(s) { return checked.indexOf(s) !== -1; });
