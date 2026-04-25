@@ -65,7 +65,11 @@ from orch.db.models import (
     DocIndexJob,
     DocStatus,
     JobStatus,
+    OssScan,
     ProjectDoc,
+    ProjectOssJob,
+    ProjectOssJobKind,
+    ProjectOssJobStatus,
 )
 
 if TYPE_CHECKING:
@@ -82,6 +86,7 @@ class JobType(StrEnum):
     doc_generation = "doc_generation"
     batch_execution = "batch_execution"
     research = "research"
+    oss_scan = "oss_scan"
 
 
 @dataclass(frozen=True)
@@ -137,6 +142,19 @@ def _normalise_batch_status(status: BatchStatus) -> str:
     return mapping.get(status, status.value)
 
 
+def _normalise_oss_job_status(status: ProjectOssJobStatus) -> str:
+    mapping = {
+        ProjectOssJobStatus.queued: "queued",
+        ProjectOssJobStatus.running: "running",
+        ProjectOssJobStatus.complete: "completed",
+        ProjectOssJobStatus.error: "failed",
+        ProjectOssJobStatus.cancelled: "cancelled",
+        ProjectOssJobStatus.awaiting_review: "running",
+        ProjectOssJobStatus.discarded: "cancelled",
+    }
+    return mapping.get(status, status.value)
+
+
 class JobsAggregator:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -171,6 +189,9 @@ class JobsAggregator:
 
         if types is None or JobType.research in types:
             raw_rows.extend(self._fetch_research(project_id, date_from, date_to))
+
+        if types is None or JobType.oss_scan in types:
+            raw_rows.extend(self._fetch_oss_scan(project_id, date_from, date_to))
 
         for row, _ in raw_rows:
             if statuses and row.status not in statuses:
@@ -212,6 +233,8 @@ class JobsAggregator:
             return self._get_batch_execution(project_id, job_id)
         if job_type == JobType.research:
             return self._get_research(project_id, job_id)
+        if job_type == JobType.oss_scan:
+            return self._get_oss_scan(project_id, job_id)
         return None
 
     def _fetch_code_mapping(
@@ -621,3 +644,78 @@ class JobsAggregator:
             triggered_by=doc.generated_by,
             raw={"id": doc.id, "project_id": doc.project_id, "status": doc.status.value},
         )
+
+    def _build_oss_job_row(self, job: ProjectOssJob) -> tuple[JobRow, dict[str, object]]:
+        scan: OssScan | None = (
+            self._session.get(OssScan, job.scan_id) if job.scan_id is not None else None
+        )
+        title = f"OSS {job.kind.value}"
+        raw: dict[str, object] = {
+            "id": job.id,
+            "project_id": job.project_id,
+            "kind": job.kind.value,
+            "status": job.status.value,
+            "exit_code": job.exit_code,
+            "created_at": job.created_at,
+            "started_at": job.started_at,
+            "completed_at": job.completed_at,
+            "scan_id": job.scan_id,
+            "stdout_tail": job.stdout_tail,
+            "error_message": job.error_message,
+            "worktree_path": job.worktree_path,
+            "branch_name": job.branch_name,
+            "base_sha": job.base_sha,
+            "commit_sha": job.commit_sha,
+            "files_changed_summary": job.files_changed_summary,
+        }
+        if scan is not None:
+            raw["scan_status"] = scan.status.value
+            raw["scan_exit_code"] = scan.exit_code
+            raw["scan_pill_color"] = scan.pill_color.value if scan.pill_color else None
+            raw["scan_summary_json"] = scan.summary_json
+            raw["scan_error_message"] = scan.error_message
+            raw["scan_head_sha"] = scan.head_sha
+        return (
+            JobRow(
+                job_type=JobType.oss_scan,
+                job_id=str(job.id),
+                project_id=job.project_id,
+                title=title,
+                status=_normalise_oss_job_status(job.status),
+                started_at=job.started_at or job.created_at,
+                finished_at=job.completed_at,
+                triggered_by=None,
+                raw=raw,
+            ),
+            raw,
+        )
+
+    def _fetch_oss_scan(
+        self,
+        project_id: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> list[tuple[JobRow, dict[str, object]]]:
+        stmt = select(ProjectOssJob).where(
+            ProjectOssJob.project_id == project_id,
+            ProjectOssJob.kind == ProjectOssJobKind.scan,
+        )
+        if date_from:
+            stmt = stmt.where(ProjectOssJob.created_at >= date_from)
+        if date_to:
+            stmt = stmt.where(ProjectOssJob.created_at <= date_to)
+        jobs = self._session.scalars(stmt).all()
+        return [self._build_oss_job_row(job) for job in jobs]
+
+    def _get_oss_scan(self, project_id: str, job_id: str) -> JobRow | None:
+        try:
+            pk = int(job_id)
+        except (TypeError, ValueError):
+            return None
+        job = self._session.get(ProjectOssJob, pk)
+        if job is None or job.project_id != project_id:
+            return None
+        if job.kind != ProjectOssJobKind.scan:
+            return None
+        row, _ = self._build_oss_job_row(job)
+        return row

@@ -20,7 +20,14 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from orch.db.models import OssScan, Project, ProjectOssJob, ProjectOssJobKind, ProjectOssJobStatus
+from orch.db.models import (
+    OssScan,
+    OssScanStatus,
+    Project,
+    ProjectOssJob,
+    ProjectOssJobKind,
+    ProjectOssJobStatus,
+)
 from orch.oss.tool_probe import probe_tier1
 
 if TYPE_CHECKING:
@@ -119,6 +126,7 @@ async def _run_scan(
     job_id: int,
     session_factory: Callable[[], Session],
 ) -> None:
+    run_started_at = _utcnow()
     cmd = ["uv", "run", "iw", "oss", "scan", "--project", project.id]
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -133,32 +141,46 @@ async def _run_scan(
     tail = _truncate_tail(full_output)
     sess = session_factory()
     try:
+        # The outer `iw oss scan` CLI can exit 0 even when the inner scanner
+        # subprocess errors (the scanner records the failure on the OssScan
+        # row but the CLI itself still completes cleanly). Look up the OssScan
+        # row this run produced and let it dictate the job's final status.
+        latest = (
+            sess.query(OssScan)
+            .filter(
+                OssScan.project_id == project.id,
+                OssScan.started_at >= run_started_at,
+            )
+            .order_by(OssScan.started_at.desc())
+            .first()
+        )
+
+        if latest is not None and latest.status == OssScanStatus.error:
+            job_status = ProjectOssJobStatus.error
+            error_message: str | None = latest.error_message or (
+                f"Scan exited with code {latest.exit_code}"
+                if latest.exit_code is not None
+                else "Scan errored"
+            )
+        elif latest is not None and latest.status == OssScanStatus.complete:
+            job_status = ProjectOssJobStatus.complete
+            error_message = None
+        else:
+            job_status = (
+                ProjectOssJobStatus.complete if exit_code == 0 else ProjectOssJobStatus.error
+            )
+            error_message = (
+                f"Subprocess exited with code {exit_code}" if exit_code not in (0, 2) else None
+            )
+
         sess.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).update(
             {
                 "exit_code": exit_code,
                 "stdout_tail": tail,
                 "completed_at": _utcnow(),
-                **(
-                    {"scan_id": latest.id}
-                    if (
-                        latest := (
-                            sess.query(OssScan)
-                            .filter(OssScan.project_id == project.id)
-                            .order_by(OssScan.started_at.desc())
-                            .first()
-                        )
-                    )
-                    is not None
-                    else {}
-                ),
-                "status": ProjectOssJobStatus.complete
-                if exit_code == 0
-                else ProjectOssJobStatus.error,
-                **(
-                    {"error_message": f"Subprocess exited with code {exit_code}"}
-                    if exit_code not in (0, 2)
-                    else {}
-                ),
+                "status": job_status,
+                **({"scan_id": latest.id} if latest is not None else {}),
+                **({"error_message": error_message} if error_message is not None else {}),
             },
             synchronize_session=False,
         )
