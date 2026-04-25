@@ -237,3 +237,72 @@ class TestMergeItem:
             _merge_item(db, item, "test-proj", make_project_config())
 
         assert len(item.merge_info["stdout"]) == 1000
+
+    def test_rebase_failure_sets_migration_rebase_failed_and_returns(self):
+        db = MagicMock()
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        item.batch_id = 42
+
+        from orch.daemon.migration_rebase import RebaseResult
+
+        mock_rebase_result = RebaseResult(
+            success=False,
+            rebased=False,
+            rewrites=[],
+            worktree_base_sha="abc123",
+            current_main_sha="def456",
+            message="Rebase failed",
+            error_message="boom",
+        )
+
+        with (
+            patch("orch.daemon.merge_queue.run_pre_merge_rebase", return_value=mock_rebase_result),
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+        ):
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        assert item.status == BatchItemStatus.migration_rebase_failed
+        assert "boom" in item.notes
+        mock_run.assert_not_called()
+
+    def test_rebase_success_continues_to_dry_run_with_worktree_path(self):
+        db = MagicMock()
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        item.batch_id = 42
+
+        from orch.daemon.migration_rebase import RebaseResult
+        from orch.db.safe_migrate import DryRunResult
+
+        mock_rebase_result = RebaseResult(
+            success=True,
+            rebased=True,
+            rewrites=[],
+            worktree_base_sha="abc123",
+            current_main_sha="def456",
+            message="Rebase ok",
+            error_message=None,
+        )
+
+        mock_dry_result = DryRunResult(
+            revisions_applied=["abc123"],
+            success=True,
+            duration_ms=500,
+            stdout_tail="",
+            stderr_tail="",
+            error_message=None,
+        )
+
+        with (
+            patch("orch.daemon.merge_queue.run_pre_merge_rebase", return_value=mock_rebase_result),
+            patch(
+                "orch.daemon.merge_queue.run_pre_merge_dry_run", return_value=mock_dry_result
+            ) as mock_dry,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+            patch("orch.daemon.merge_queue._cleanup_worktree"),
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        mock_dry.assert_called_once()
+        call_kwargs = mock_dry.call_args[1]
+        assert call_kwargs["worktree_path"] == "/wt/F-00001"

@@ -582,7 +582,76 @@ def _merge_item(self, batch_item: BatchItem):
         batch_item.notes = f"Merge failed: {e}"
         self.db.commit()
         self._emit('merge_conflict', item_id, message=str(e))
+
+### 4.6.1. Migration Pipeline (CR-00021)
+
+The merge queue runs a 4-step migration pipeline for each completed batch item, from newest to oldest: **Phase 0 (rebase)** → **Phase 1 (dry-run)** → **squash-merge** → **Phase 2 (apply)**. Phase 3 (rollback) fires only on Phase 2 failure. The pipeline is serialised per project — only one batch item is in the pipeline at a time.
+
+#### Phase 0: Pre-merge rebase (CR-00021)
+
+**Problem**: Parallel batches generate migrations off the same `down_revision`. When Batch A merges first and main advances, Batch B's migration points to a stale base. Git rebase alone does not rewrite string content inside migration files, so Batch B arrives at the merge queue with a stale `down_revision`, creating a second Alembic head. `MultipleHeadsError` fires at Phase 1 (or Phase 2), requiring manual `alembic merge`.
+
+**Solution** (`orch/daemon/migration_rebase.py`): Before Phase 1, fetch main, rebase the batch's branch, identify the batch's own migration files via `git diff merge-base..HEAD`, rewrite any stale `down_revision` strings to point at main's current head, and commit the edit.
+
+**Order of operations**:
+- `git fetch origin main` — update origin/main ref
+- `git rebase main` in the worktree — abort on conflict, return `migration_rebase_failed`
+- `git diff $(git merge-base HEAD main)..HEAD --name-only --diff-filter=A -- orch/db/migrations/versions/` — identify batch's own files
+- Parse each file's `revision` and `down_revision`; determine chain root via tempfile tempdir trick
+- Rewrite stale `down_revision` (regex replace, preserve whitespace); commit if changes were made
+- Write `PendingMigrationLog(phase='rebase', old_revision=...)` for each rewrite
+- Return `RebaseResult(success, rebased, rewrites, ...)`
+
+**Failure semantics**:
+- Rebase conflict → `batch_item.status = migration_rebase_failed`, queue NOT frozen
+- Rebased dry-run fails → `batch_item.status = migration_invalid` (Phase 1 failure), queue NOT frozen
+- Phase 2 apply fails → rollback fires; only Phase 3 rollback failure freezes the queue (unchanged)
+
+**Reference**: `RebaseResult` dataclass at `orch/daemon/migration_rebase.py:74`.
+
 ```
+┌──────────────────────────────────────────────────────────────┐
+│                   Migration Pipeline Flow                     │
+│                                                               │
+│  ┌─────────┐    ┌────────────┐    ┌────────────┐    ┌─────┐ │
+│  │ Phase 0 │───▶│  Phase 1   │───▶│  Squash    │───▶│Phase│ │
+│  │ Rebase  │    │  Dry-run   │    │  Merge     │    │  2  │ │
+│  │(CR-00021)   │(worktree)  │    │            │    │Apply│ │
+│  └─────────┘    └────────────┘    └────────────┘    └─────┘ │
+│      │                │                               │     │
+│      ▼                ▼                               ▼     │
+│  on conflict:     on failure:                     on fail:  │
+│  migration_       migration_                      rollback  │
+│  rebase_failed    invalid                          (Phase3)│
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+#### Phase 1: Pre-merge dry-run
+
+Phase 1 runs **after Phase 0** and uses the **worktree's migrations directory** (not the daemon's main-repo migrations directory). This exercises the full post-squash-merge chain — including the batch's own migration files with their rewritten `down_revision` — before any content touches main.
+
+The dry-run spins a short-lived PostgreSQL testcontainer, applies all pending revisions via `alembic upgrade head`, runs integration checks, then tears down. On failure the batch item is marked `migration_invalid` and main is untouched.
+
+See `orch/daemon/migration_pipeline.py` (Phase 1 entry: `run_pre_merge_dry_run`).
+
+#### Phase 2: Post-merge apply
+
+After squash-merge, Phase 2 applies migrations to the live DB. If the chain now has multiple heads (should not happen after Phase 0 + Phase 1), `MultipleHeadsError` fires and Phase 3 rollback is triggered. See `orch/daemon/migration_pipeline.py` (`run_post_merge_apply`).
+
+#### Phase 3: Rollback
+
+If Phase 2 fails, Phase 3 attempts one `alembic downgrade -1`. If rollback itself fails, the queue is frozen and an operator alert is emitted. See `orch/daemon/migration_pipeline.py` (`run_rollback`).
+
+#### Migration Pipeline Failure Matrix
+
+| Failure point | `batch_item.status` | Queue frozen? | Recovery |
+|---|---|---|---|
+| Phase 0 rebase conflict | `migration_rebase_failed` | **No** | Next poll cycle picks up next batch |
+| Phase 0 rewrite failure | `migration_rebase_failed` | **No** | Next poll cycle picks up next batch |
+| Phase 1 dry-run failure | `migration_invalid` | **No** | User can re-trigger after fixing |
+| Phase 2 apply failure | `migration_rolled_back` | **No** | Rollback fires; user can investigate |
+| Phase 3 rollback failure | `failed` | **Yes** | Operator intervention required |
 
 ### 4.7. Batch Completion
 

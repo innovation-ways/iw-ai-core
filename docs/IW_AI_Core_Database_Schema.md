@@ -335,38 +335,18 @@ Mapping of work items to batches with execution tracking.
 CREATE TYPE batch_item_status AS ENUM (
     'pending', 'setting_up', 'executing',
     'completed', 'merged', 'failed', 'stalled',
-    'skipped'
+    'skipped', 'migration_invalid', 'migration_rolled_back',
+    'migration_rebase_failed'
 );
-
-CREATE TABLE batch_items (
-    id              SERIAL PRIMARY KEY,
-    project_id      TEXT NOT NULL,
-    batch_id        TEXT NOT NULL,
-    work_item_id    TEXT NOT NULL,
-    execution_group INTEGER NOT NULL DEFAULT 0,
-    status          batch_item_status NOT NULL DEFAULT 'pending',
-    pid             INTEGER,
-    started_at      TIMESTAMPTZ,
-    merged_at       TIMESTAMPTZ,
-    notes           TEXT,
-    stall_count     INTEGER DEFAULT 0,
-    last_progress   TEXT,
-    worktree_info   JSONB DEFAULT '{}',
-    merge_info      JSONB DEFAULT '{}',
-
-    FOREIGN KEY (project_id, batch_id) REFERENCES batches(project_id, id) ON DELETE CASCADE,
-    FOREIGN KEY (project_id, work_item_id) REFERENCES work_items(project_id, id) ON DELETE CASCADE,
-    UNIQUE (project_id, batch_id, work_item_id)
-);
-
-COMMENT ON TABLE batch_items IS 'Work items assigned to a batch with execution group and status tracking';
-COMMENT ON COLUMN batch_items.execution_group IS 'Parallel execution group (0-based). Items in the same group run concurrently.';
-COMMENT ON COLUMN batch_items.worktree_info IS 'Worktree metadata: path, branch, created_at';
-COMMENT ON COLUMN batch_items.merge_info IS 'Merge metadata: commit_hash, conflict_files, merged_by';
-
-CREATE INDEX idx_batch_items_status ON batch_items(project_id, batch_id, status);
-CREATE INDEX idx_batch_items_work_item ON batch_items(project_id, work_item_id);
 ```
+
+**Migration-related states** (see CR-00021 Phase 0–3 pipeline):
+
+| State | Meaning |
+|-------|---------|
+| `migration_invalid` | Phase 1 dry-run failed — post-rebase chain has a real conflict; main untouched |
+| `migration_rolled_back` | Phase 2 apply failed and Phase 3 rollback succeeded; main untouched |
+| `migration_rebase_failed` | Phase 0 rebase failed (git conflict or parse error); queue NOT frozen |
 
 ### 2.9. Migration Locks
 
@@ -771,4 +751,47 @@ When an item is archived and its `ai-dev/active/<id>/` directory is deleted, the
 ```sql
 DROP TABLE work_item_evidences;
 DROP TYPE evidence_phase;
+```
+
+---
+
+## 9. CR-00021: Pre-merge rebase pipeline phase
+
+**Revision**: 40af3b76e1d5 (applied 2026-04-24)
+
+### 9.1 batch_item_status enum extension
+
+Adds `migration_rebase_failed` to support the new pre-merge rebase phase:
+
+| Value | When set |
+|-------|----------|
+| `migration_rebase_failed` | Pre-merge rebase phase failed (e.g., git conflict) — batch is rejected without touching main. Queue is not frozen. |
+
+Downgrade: PostgreSQL does not support removing enum labels. The `migration_rebase_failed` label remains as a dormant orphan after downgrade (same trade-off as CR-00019).
+
+### 9.2 pending_migration_log column extension
+
+`old_revision` is populated by the Phase 0 rebase (CR-00021) when it rewrites a migration's `down_revision`; NULL for all other phases.
+
+| Column | Type | Nullable | Comment |
+|--------|------|----------|---------|
+| `old_revision` | TEXT | YES | Previous `down_revision` string before the rebase phase rewrote it (phase='rebase' only). NULL for all other phases. |
+
+### 9.3 ck_pending_migration_log_phase CHECK relaxation
+
+| Constraint | Old allow-list | New allow-list |
+|------------|----------------|----------------|
+| `ck_pending_migration_log_phase` | `'dry_run', 'apply', 'rollback'` | `'dry_run', 'apply', 'rollback', 'rebase'` |
+
+Downgrade restores the 3-value allow-list. The `'rebase'` enum label is not removed (PostgreSQL limitation).
+
+**Downgrade:**
+```sql
+-- Column dropped
+ALTER TABLE pending_migration_log DROP COLUMN old_revision;
+
+-- CHECK restored to 3 values
+ALTER TABLE pending_migration_log DROP CONSTRAINT ck_pending_migration_log_phase;
+ALTER TABLE pending_migration_log ADD CONSTRAINT ck_pending_migration_log_phase
+    CHECK (phase IN ('dry_run', 'apply', 'rollback'));
 ```
