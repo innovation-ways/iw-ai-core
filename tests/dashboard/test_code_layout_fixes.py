@@ -31,6 +31,11 @@ def jinja_env() -> Environment:
     env.filters["timeago"] = lambda _dt: ""
     env.filters["fmt_ts_time"] = lambda _ts: ""
     env.filters["localdt"] = lambda _dt, _fmt="%b %d %H:%M": ""
+    # base.html (extended by every page template) calls `url_for(...)` for
+    # static asset URLs. FastAPI normally injects this via the request, but
+    # we render with a raw Jinja environment — provide a stub so templates
+    # that pull in base.html don't blow up at render time.
+    env.globals["url_for"] = lambda name, **kwargs: kwargs.get("path", f"/{name}")
     return env
 
 

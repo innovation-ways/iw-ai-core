@@ -58,6 +58,12 @@ class MockOllamaEmbedding:
     async def aget_text_embedding(self, text: str) -> list[float]:
         return mock_embed(text)
 
+    def get_query_embedding(self, text: str) -> list[float]:
+        return mock_embed(text)
+
+    async def aget_query_embedding(self, text: str) -> list[float]:
+        return mock_embed(text)
+
 
 class MockOllamaLLM:
     model_name = "test-model"
@@ -109,10 +115,7 @@ class TestBoundaryZeroWorkItems:
         engine = _make_engine(project.id)
 
         with (
-            patch(
-                "llama_index.embeddings.ollama.OllamaEmbedding",
-                MockOllamaEmbedding,
-            ),
+            patch("orch.rag.qa.OllamaEmbedding", MockOllamaEmbedding),
             patch("orch.rag.qa.Ollama", MockOllamaLLM),
         ):
             bundle = await engine._retrieve_evidence_bundle(project.id, "test question", db_session)
@@ -137,10 +140,7 @@ class TestBoundarySemanticIndexMissing:
         """docs_{project_id} table absent → semantic contribution empty, no exception."""
         engine = _make_engine(test_project.id)
 
-        with patch(
-            "llama_index.embeddings.ollama.OllamaEmbedding",
-            MockOllamaEmbedding,
-        ):
+        with patch("orch.rag.qa.OllamaEmbedding", MockOllamaEmbedding):
             bundle = await engine._retrieve_evidence_bundle(
                 test_project.id, "test question", db_session
             )
@@ -169,16 +169,22 @@ class TestBoundaryLanceDBIOError:
         class RaisingEmbedding:
             model_name = MOCK_EMBED_MODEL
 
+            def __init__(self, **kwargs: object) -> None:
+                pass
+
             def get_text_embedding(self, text: str) -> list[float]:
                 raise RuntimeError("LanceDB I/O error")
 
             async def aget_text_embedding(self, text: str) -> list[float]:
                 raise RuntimeError("LanceDB I/O error")
 
-        with patch(
-            "llama_index.embeddings.ollama.OllamaEmbedding",
-            RaisingEmbedding,
-        ):
+            def get_query_embedding(self, text: str) -> list[float]:
+                raise RuntimeError("LanceDB I/O error")
+
+            async def aget_query_embedding(self, text: str) -> list[float]:
+                raise RuntimeError("LanceDB I/O error")
+
+        with patch("orch.rag.qa.OllamaEmbedding", RaisingEmbedding):
             bundle = await engine._retrieve_evidence_bundle(
                 test_project.id, "test question", db_session
             )
