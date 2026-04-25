@@ -111,6 +111,7 @@ plugins = ["sqlalchemy.ext.mypy.plugin"]
 # --- pytest ---
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--import-mode=importlib"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
 ]
