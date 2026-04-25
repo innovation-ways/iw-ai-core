@@ -16,6 +16,7 @@ AI orchestration platform that drives AI-assisted development across multiple pr
 | Test/Quality run engine | `orch/test_runner.py` · launched from `dashboard/routers/tests.py` & `quality.py` |
 | Unified jobs view | `orch/jobs/aggregator.py` · `dashboard/routers/jobs_ui.py` |
 | DB instance identity (CR-00014) | `orch/db/identity.py` · `dashboard/routers/healthz.py` |
+| Worktree container isolation | `orch/daemon/worktree_compose.py` · `orch/daemon/worktree_reaper.py` · `docs/IW_AI_Core_Worktree_Isolation.md` |
 | Test patterns & rules | `tests/conftest.py` · see `tests/CLAUDE.md` |
 | Configuration | `orch/config.py` (reads `.env`) · `projects.toml` |
 | Migrations | `orch/db/migrations/versions/` |
@@ -46,6 +47,8 @@ The **`iw` CLI** is the agent-to-DB bridge — agents call `iw step-done` to rec
 - **MUST** replace psycopg2 URLs in testcontainers: `url.replace("postgresql+psycopg2://", "postgresql+psycopg://")`
 - **MUST** run `FTS_FUNCTION_SQL` + `FTS_TRIGGER_SQL` after `Base.metadata.create_all()` in tests
 - **CRITICAL**: `DaemonEvent.metadata` is named `event_metadata` in Python — SQLAlchemy reserves `metadata`
+- **MUST** ensure `.env` and `.iw/` are listed in every managed project's `.gitignore` — daemon refuses to launch worktrees otherwise.
+- **NEW**: per-worktree DB exists for app runtime when project has `ai-dev/iw-config/`. The agent's `IW_CORE_DB_*` env vars point at the per-worktree DB; `IW_CORE_ORCH_DB_*` always points at the global orch DB on 5433.
 - **NEVER** use `agent-browser` for browser automation — use `playwright-cli` exclusively
 - **NEVER** run `npx playwright install` or modify `.playwright/cli.config.json`
 - **NEVER** run `docker compose up` (with or without `-d db`) against the orchestration DB from any directory — the default compose file is empty and the bootstrap file requires an explicit `-f` flag. Use `./ai-core.sh db start` instead. See `docs/IW_AI_Core_DB_Setup.md`.

@@ -1,0 +1,52 @@
+name: iwcore-{{ batch_item_id }}
+
+services:
+  db:
+    image: postgres:16-alpine
+    tmpfs:
+      - /var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: iw_orch
+      POSTGRES_PASSWORD: iw_orch
+      POSTGRES_DB: iw_orch
+    ports:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iw_orch"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    labels:
+      iwcore.role: worktree-db
+      iwcore.batch_item: "{{ batch_item_id }}"
+      iwcore.project: "{{ project_name }}"
+
+  app:
+    image: python:3.12-slim
+    working_dir: /workspace
+    volumes:
+      - "{{ worktree_path }}:/workspace"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - bash
+      - -lc
+      - |
+        pip install -q uv
+        uv sync --frozen
+        uv run uvicorn dashboard.app:create_app --factory --host 0.0.0.0 --port 9900 --reload
+    environment:
+      IW_CORE_DB_HOST: db
+      IW_CORE_DB_PORT: 5432
+      IW_CORE_DB_NAME: iw_orch
+      IW_CORE_DB_USER: iw_orch
+      IW_CORE_DB_PASSWORD: iw_orch
+    ports:
+      - "9900"
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      iwcore.role: worktree-app
+      iwcore.batch_item: "{{ batch_item_id }}"
+      iwcore.project: "{{ project_name }}"

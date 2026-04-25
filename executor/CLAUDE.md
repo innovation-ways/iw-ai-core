@@ -33,3 +33,10 @@ The daemon calls these scripts in sequence for each work item:
 - `worktree_commit.sh` Step 2.25 runs the scope gate: if the item's `workflow-manifest.json` declares `scope.allowed_paths`, any modified file outside that allow-list (plus the implicit `ai-dev/active/<ID>/**` and `ai-dev/archive/<ID>/**`) blocks the merge. Legacy items without `scope` pass through — the gate is additive. Introduced after the 2026-04-22 I-00034 retrospective: QV fix-cycles had silently expanded scope by "fixing" pre-existing failures in unrelated files.
 - Worktrees live under `.worktrees/<item-id>/` in the project root (not in `iw-ai-core/`)
 - `browser_verification` steps do **not** use these scripts — their lifecycle (docker compose for the project-under-test, Playwright harness) lives in `orch/daemon/browser_env.py`, opted into per-project via `.iw-orch.json`
+
+## Compose Lifecycle Ownership
+
+Executor scripts MUST NOT call docker. The per-worktree compose stack
+introduced in F-00062 is owned by `orch/daemon/worktree_compose.py` —
+the daemon invokes `up()` after `worktree_setup.sh` returns and `down()`
+on terminal-status transitions. See [`docs/IW_AI_Core_Worktree_Isolation.md`](docs/IW_AI_Core_Worktree_Isolation.md).

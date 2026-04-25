@@ -257,13 +257,13 @@ class TestMergeItem:
 
         with (
             patch("orch.daemon.merge_queue.run_pre_merge_rebase", return_value=mock_rebase_result),
-            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+            patch("orch.daemon.merge_queue.worktree_compose.down") as mock_down,
         ):
             _merge_item(db, item, "test-proj", make_project_config())
 
         assert item.status == BatchItemStatus.migration_rebase_failed
         assert "boom" in item.notes
-        mock_run.assert_not_called()
+        mock_down.assert_called_once()
 
     def test_rebase_success_continues_to_dry_run_with_worktree_path(self):
         db = MagicMock()

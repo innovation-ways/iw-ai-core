@@ -408,7 +408,81 @@ def _setup_worktree(self, item_id: str) -> dict:
     }
 ```
 
-### 4.4. Step Launch
+### 4.4. Worktree Container Lifecycle (F-00062)
+
+After `worktree_setup.sh` succeeds, the daemon checks whether the project has an `ai-dev/iw-config/` directory. If so, it brings up a per-worktree Docker Compose stack (`orch/daemon/worktree_compose.py`):
+
+```python
+def _launch_item(self, batch: Batch, batch_item: BatchItem):
+    batch_item.status = 'setting_up'
+    self.db.commit()
+
+    try:
+        worktree_info = self._setup_worktree(item_id)
+    except WorktreeSetupError as e:
+        batch_item.status = 'failed'
+        batch_item.notes = f"Worktree setup failed: {e}"
+        self.db.commit()
+        return
+
+    batch_item.status = 'executing'
+    batch_item.started_at = datetime.utcnow()
+    self.db.commit()
+
+    # Per-worktree compose stack (project-opted-in via ai-dev/iw-config/)
+    if self.project_config.has_iw_config:
+        up_result = self.worktree_compose.up(batch_item, worktree_info)
+        if not up_result.success:
+            batch_item.status = 'setup_failed'
+            batch_item.notes = f"Compose setup failed: {up_result.error}"
+            self.worktree_compose.down(batch_item.id)
+            self.db.commit()
+            return
+
+    # Launch first pending step
+    self._launch_next_step(item_id, worktree_info)
+```
+
+**`worktree_compose.up()`** renders the Jinja2 template from `ai-dev/iw-config/worktree-compose.template.yml`, discovers published ports (`worktree_db_port`, `worktree_app_port`), saves `worktree_compose_path`, and runs the optional `worktree-seed.sh`.
+
+**Phase failure** → `setup_failed` status; `worktree_compose.down()` fires immediately; no step launch.
+
+**Teardown** (`worktree_compose.down()`) fires on terminal status transitions (`merged`, `failed`, `skipped`, `killed`, `setup_failed`) via `_complete_item()` and `_on_step_failed()`.
+
+Container naming: `iwcore-<batch_item_id>`. Persisted: `BatchItem.worktree_db_port`, `worktree_app_port`, `worktree_compose_path`.
+
+#### Container Reaper
+
+`orch/daemon/worktree_reaper.py` runs on daemon startup and every poll cycle:
+
+- **Active**: container has matching non-terminal `BatchItem`
+- **Stale**: container has matching terminal `BatchItem` (cleanable)
+- **Orphan**: no matching `BatchItem` at all (leaked)
+
+Operator force-teardown: dashboard Worktrees page → trash icon.
+
+#### Daemon-Restart Re-attach
+
+On restart (`orch/daemon/main.py:_reattach_worktrees()`), the daemon queries non-terminal `BatchItem` rows with `worktree_compose_path` set:
+
+```python
+for batch_item in non_terminal_items:
+    if compose_is_running(worktree_compose_path):
+        log("Re-attached to running stack for %s", batch_item.id)
+    elif compose_file_exists(worktree_compose_path):
+        # Host restarted; stack vanished — re-run up()
+        up_result = worktree_compose.up(batch_item, worktree_info)
+    else:
+        # Both gone — operator must investigate
+```
+
+No double `up()` for already-running stacks.
+
+#### Full contract
+
+See [`docs/IW_AI_Core_Worktree_Isolation.md`](docs/IW_AI_Core_Worktree_Isolation.md) for the complete reference.
+
+### 4.5. Step Launch
 
 ```python
 def _launch_next_step(self, item_id: str, worktree_info: dict):
@@ -480,7 +554,7 @@ def _launch_step(self, step: WorkflowStep, worktree_info: dict):
 
 **`start_new_session=True`**: This is critical. It detaches the agent process from the daemon's process group. If the daemon is killed with SIGTERM, the signal is NOT propagated to agent processes. They continue running independently.
 
-### 4.5. Step Completion Handling
+### 4.6. Step Completion Handling
 
 When the daemon detects a step has completed (via `iw step-done` updating the DB), it needs to decide what happens next:
 
@@ -515,7 +589,7 @@ def _complete_item(self, item_id: str):
     # Merge queue will pick it up on the next cycle
 ```
 
-### 4.6. Merge Queue
+### 4.7. Merge Queue
 
 Merges completed items to main, one at a time per project.
 
@@ -583,7 +657,7 @@ def _merge_item(self, batch_item: BatchItem):
         self.db.commit()
         self._emit('merge_conflict', item_id, message=str(e))
 
-### 4.6.1. Migration Pipeline (CR-00021)
+### 4.7.1. Migration Pipeline (CR-00021)
 
 The merge queue runs a 4-step migration pipeline for each completed batch item, from newest to oldest: **Phase 0 (rebase)** → **Phase 1 (dry-run)** → **squash-merge** → **Phase 2 (apply)**. Phase 3 (rollback) fires only on Phase 2 failure. The pipeline is serialised per project — only one batch item is in the pipeline at a time.
 
@@ -647,13 +721,14 @@ If Phase 2 fails, Phase 3 attempts one `alembic downgrade -1`. If rollback itsel
 
 | Failure point | `batch_item.status` | Queue frozen? | Recovery |
 |---|---|---|---|
+| Compose stack `up()` failure | `setup_failed` | **No** | User can re-trigger; compose `down()` called |
 | Phase 0 rebase conflict | `migration_rebase_failed` | **No** | Next poll cycle picks up next batch |
 | Phase 0 rewrite failure | `migration_rebase_failed` | **No** | Next poll cycle picks up next batch |
 | Phase 1 dry-run failure | `migration_invalid` | **No** | User can re-trigger after fixing |
 | Phase 2 apply failure | `migration_rolled_back` | **No** | Rollback fires; user can investigate |
 | Phase 3 rollback failure | `failed` | **Yes** | Operator intervention required |
 
-### 4.7. Batch Completion
+### 4.8. Batch Completion
 
 ```python
 def _check_batch_completion(self, batch: Batch, items: list[BatchItem]):

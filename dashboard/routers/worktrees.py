@@ -2,27 +2,34 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import json
 import os
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from dashboard.utils.ttl_cache import TTLCache
+from orch.daemon import worktree_compose, worktree_reaper
 from orch.db.models import (
     BatchItem,
     BatchItemStatus,
+    DaemonEvent,
     Project,
 )
 from orch.db.session import SessionLocal
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from fastapi.templating import Jinja2Templates
     from sqlalchemy.orm import Session
 
@@ -298,11 +305,37 @@ class WorktreeRow:
     ahead: int
     is_orphan: bool
     checked_at: datetime
+    container_status: Literal["running", "stopped", "missing", "n/a"] = "n/a"
+    db_port: int | None = None
+    app_port: int | None = None
+    classification: Literal["active", "stale", "orphan", "malformed"] = "malformed"
+    batch_item_pk: int | None = None  # DB PK for teardown
 
 
 # ---------------------------------------------------------------------------
 # Data collection
 # ---------------------------------------------------------------------------
+
+
+def _container_status_for_batch_item(
+    batch_item_pk: int,
+    findings: dict[int, worktree_reaper.ReaperFinding],
+    db: Session,
+) -> tuple[Literal["running", "stopped", "missing"], Literal["active", "stale", "orphan", "malformed"]]:
+    """Determine container status and classification for a batch item from scan findings.
+
+    Returns (container_status, classification).
+    """
+    finding = findings.get(batch_item_pk)
+    if finding is None:
+        return "missing", "malformed"
+
+    classification = worktree_reaper.classify(finding, db)
+    if finding.container_id:
+        if worktree_compose.is_alive(str(batch_item_pk)):
+            return "running", classification
+        return "stopped", classification
+    return "missing", classification
 
 
 def _collect_worktrees(db: Session) -> list[WorktreeRow]:
@@ -315,8 +348,15 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
     rows: list[WorktreeRow] = []
     known_paths: set[str] = set()
 
-    # ---- Project main checkouts (always shown — catches developer dirty state) ----
+    findings = worktree_reaper.scan()
+    findings_by_bi: dict[int, worktree_reaper.ReaperFinding] = {}
+    for f in findings:
+        if f.batch_item_id is not None:
+            with contextlib.suppress(ValueError, TypeError):
+                findings_by_bi[int(f.batch_item_id)] = f
+
     projects = db.execute(select(Project).where(Project.enabled.is_(True))).scalars().all()
+
     for project in projects:
         project_path = project.repo_root
         known_paths.add(project_path)
@@ -338,7 +378,6 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
             )
         )
 
-    # Active batch items with worktree_info
     stmt = select(BatchItem).where(BatchItem.status.in_(list(_ACTIVE_STATUSES)))
     for bi in db.execute(stmt).scalars().all():
         wt = bi.worktree_info or {}
@@ -354,6 +393,19 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
         else:
             label, mod, untr, ahead = "no_path", 0, 0, -1
 
+        container_status: Literal["running", "stopped", "missing", "n/a"] = "n/a"
+        classification: Literal["active", "stale", "orphan", "malformed"] = "malformed"
+        db_port: int | None = None
+        app_port: int | None = None
+
+        finding = findings_by_bi.get(bi.id)
+        if finding is not None:
+            classification = worktree_reaper.classify(finding, db)
+            if worktree_compose.is_alive(str(bi.id)):
+                container_status = "running"
+            else:
+                container_status = "stopped" if finding.container_id else "missing"
+
         rows.append(
             WorktreeRow(
                 project_id=bi.project_id,
@@ -368,16 +420,18 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
                 ahead=ahead,
                 is_orphan=False,
                 checked_at=now,
+                container_status=container_status,
+                db_port=db_port,
+                app_port=app_port,
+                classification=classification,
+                batch_item_pk=bi.id,
             )
         )
 
-    # Orphan detection: walk git worktrees per enabled project (projects already loaded above)
     for project in projects:
         for wt in _git_worktrees(project.repo_root):
             if wt["path"] in known_paths:
                 continue
-            # Only flag daemon-managed branches (agent/*) as orphaned.
-            # Human worktrees (e.g. manual-dev) are intentional — skip them.
             if not wt["branch"].startswith("agent/"):
                 continue
             label, mod, untr = _git_status(wt["path"])
@@ -397,6 +451,28 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
                     checked_at=now,
                 )
             )
+
+    orphan_findings = [f for f in findings if f.classification == "orphan"]
+    for f in orphan_findings:
+        rows.append(
+            WorktreeRow(
+                project_id=f.project_id or "—",
+                item_id="—",
+                batch_id="—",
+                branch="—",
+                batch_status="container-orphan",
+                path="—",
+                git_label="n/a",
+                modified=0,
+                untracked=0,
+                ahead=-1,
+                is_orphan=True,
+                checked_at=now,
+                container_status="stopped",
+                classification="orphan",
+                batch_item_pk=int(f.batch_item_id) if f.batch_item_id else None,
+            )
+        )
 
     return rows
 
@@ -608,4 +684,179 @@ def worktrees_prune(request: Request, db: Session = Depends(get_db)) -> Any:
         request,
         "fragments/worktree_table.html",
         {"worktrees": worktrees, "prune_errors": errors},
+    )
+
+
+@router.get("/worktrees/{batch_item_id}/logs/stream")
+async def worktree_logs_stream(
+    batch_item_id: str,
+    request: Request,
+) -> StreamingResponse:
+    """Stream docker logs for the compose stack of a batch item via SSE."""
+
+    async def _log_generator() -> AsyncGenerator[str, None]:
+        try:
+            compose_project_name = f"iwcore-{batch_item_id.lower().replace('_', '-')}"
+            proc = await asyncio.create_subprocess_exec(
+                "docker",
+                "logs",
+                "-f",
+                "--tail",
+                "100",
+                "--details",
+                "-t",
+                "--filter",
+                f"label=com.docker.compose.project={compose_project_name}",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+
+            stdout = proc.stdout
+            if stdout is None:
+                return
+            while True:
+                if request.is_disconnected():
+                    return
+                try:
+                    line = await asyncio.wait_for(
+                        stdout.readline(),
+                        timeout=1.0,
+                    )
+                except TimeoutError:
+                    yield ": ping\n\n"
+                else:
+                    if not line:
+                        break
+
+                    data = line.decode("utf-8", errors="replace")
+                    yield f"data: {json.dumps({'line': data})}\n\n"
+
+        except Exception as exc:
+            yield f"event: error\ndata: {json.dumps({'message': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        _log_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.post("/worktrees/{batch_item_id}/teardown", response_class=HTMLResponse)
+def worktree_teardown(
+    batch_item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Force teardown of a worktree's compose stack and return refreshed table."""
+    bi = db.get(BatchItem, int(batch_item_id))
+    if bi is None:
+        raise HTTPException(status_code=404, detail="Batch item not found")
+
+    compose_path: Path | None = None
+    wt_info = bi.worktree_info or {}
+    wt_path = wt_info.get("path")
+    if wt_path:
+        iw_dir = Path(wt_path) / ".iw"
+        rendered_compose = iw_dir / f"docker-compose-{batch_item_id}.yml"
+        if rendered_compose.is_file():
+            compose_path = rendered_compose
+
+    worktree_compose.down(batch_item_id, compose_path)
+
+    event = DaemonEvent(
+        project_id=bi.project_id,
+        event_type="worktree_compose",
+        entity_id=batch_item_id,
+        entity_type="batch_item",
+        message="Force teardown triggered by operator",
+        event_metadata={
+            "phase": "down",
+            "trigger": "operator_force",
+            "batch_item_id": batch_item_id,
+        },
+    )
+    db.add(event)
+    db.commit()
+
+    templates: Jinja2Templates = request.app.state.templates
+    worktrees = _collect_worktrees(db)
+    return templates.TemplateResponse(
+        request,
+        "fragments/worktree_table.html",
+        {"worktrees": worktrees, "prune_errors": []},
+    )
+
+
+@router.post("/worktrees/orphan/{container_id}/teardown", response_class=HTMLResponse)
+def worktree_orphan_teardown(
+    container_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Tear down an orphan container (no matching BatchItem) by container_id."""
+    import json as json_mod
+
+    try:
+        result = subprocess.run(  # noqa: S603
+            [  # noqa: S607
+                "docker",
+                "inspect",
+                container_id,
+                "--format",
+                "{{json .Config.Labels}}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+        labels_raw = result.stdout.strip()
+        if not labels_raw:
+            raise HTTPException(status_code=404, detail="Container has no labels")
+        labels = json_mod.loads(labels_raw)
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=404, detail="Container not found") from exc
+    except json_mod.JSONDecodeError as exc:
+        raise HTTPException(status_code=404, detail="Could not parse container labels") from exc
+
+    batch_item_label = labels.get("iwcore.batch_item")
+    if not batch_item_label:
+        raise HTTPException(status_code=404, detail="Container has no iwcore.batch_item label")
+
+    try:
+        batch_item_pk = int(batch_item_label)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Invalid batch_item label: {batch_item_label}",
+        ) from exc
+
+    worktree_compose.down(str(batch_item_pk), None)
+
+    event = DaemonEvent(
+        project_id=labels.get("iwcore.project"),
+        event_type="worktree_compose",
+        entity_id=str(batch_item_pk),
+        entity_type="batch_item",
+        message="Orphan container teardown triggered by operator",
+        event_metadata={
+            "phase": "down",
+            "trigger": "operator_force_orphan",
+            "container_id": container_id,
+            "batch_item_id": batch_item_label,
+        },
+    )
+    db.add(event)
+    db.commit()
+
+    templates: Jinja2Templates = request.app.state.templates
+    worktrees = _collect_worktrees(db)
+    return templates.TemplateResponse(
+        request,
+        "fragments/worktree_table.html",
+        {"worktrees": worktrees, "prune_errors": []},
     )

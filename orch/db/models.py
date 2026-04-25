@@ -151,6 +151,25 @@ class BatchItemStatus(enum.Enum):
     migration_invalid = "migration_invalid"
     migration_rolled_back = "migration_rolled_back"
     migration_rebase_failed = "migration_rebase_failed"
+    setup_failed = "setup_failed"
+
+
+TERMINAL_BATCH_ITEM_STATUSES: frozenset[BatchItemStatus] = frozenset(
+    {
+        BatchItemStatus.merged,
+        BatchItemStatus.failed,
+        BatchItemStatus.stalled,
+        BatchItemStatus.skipped,
+        BatchItemStatus.migration_invalid,
+        BatchItemStatus.migration_rolled_back,
+        BatchItemStatus.migration_rebase_failed,
+        BatchItemStatus.setup_failed,
+    }
+)
+
+
+def is_terminal_batch_item_status(status: BatchItemStatus) -> bool:
+    return status in TERMINAL_BATCH_ITEM_STATUSES
 
 
 class TestRunStatus(enum.Enum):
@@ -934,6 +953,24 @@ class BatchItem(Base):
         nullable=True,
         server_default=text("'{}'"),
         comment="Merge metadata: commit_hash, conflict_files, merged_by",
+    )
+    worktree_db_port: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Discovered host port for the per-worktree Postgres container; "
+        "NULL when the project runs in legacy mode (no iw-config/)",
+    )
+    worktree_app_port: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="Discovered host port for the per-worktree app server container; "
+        "NULL when no app service is declared or in legacy mode",
+    )
+    worktree_compose_path: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Absolute filesystem path to the rendered docker-compose-<id>.yml; "
+        "NULL in legacy mode. Used by the reaper and daemon-restart re-attach logic.",
     )
 
     __table_args__ = (

@@ -1,0 +1,21 @@
+[port_to_env]
+"db:5432" = "IW_CORE_DB_PORT"
+"app:9900" = "IW_CORE_DASHBOARD_PORT"
+
+[env_overrides]
+IW_CORE_DB_HOST = "localhost"
+IW_CORE_DB_NAME = "iw_orch"
+IW_CORE_DB_USER = "iw_orch"
+IW_CORE_DB_PASSWORD = "iw_orch"
+
+[env_passthrough]
+keep = [
+  "IW_CORE_ORCH_DB_*",
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "GITHUB_TOKEN",
+  "IW_CORE_DASHBOARD_HOST",
+  "IW_CORE_POLL_INTERVAL",
+  "IW_CORE_STALL_THRESHOLD",
+  "IW_CORE_EXPECTED_INSTANCE_ID",
+]

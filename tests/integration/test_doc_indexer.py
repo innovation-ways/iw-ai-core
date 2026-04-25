@@ -11,14 +11,13 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
-from sqlalchemy import Engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import Engine  # noqa: TC002
+from sqlalchemy.orm import sessionmaker
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from sqlalchemy import Engine
-    from sqlalchemy.orm import Session, sessionmaker
+    from sqlalchemy.orm import Session
 
 from orch.db.models import Project, WorkItem, WorkItemType
 from orch.rag.config import CodeUnderstandingConfig
@@ -115,7 +114,7 @@ class TestDocIndexerBasic:
                     id="WI-003",
                     title="Third item",
                     type=WorkItemType.Issue,
-                    functional_doc_content="This is the content for the third item about doohickeys.",
+                    functional_doc_content="Content for third item about doohickeys.",
                     updated_at=now,
                 ),
             ]
