@@ -46,6 +46,12 @@ class TestTokenEventShape:
                 for t in tokens:
                     yield t
 
+            async def answer_stream_v2(
+                self, **kwargs: object
+            ) -> AsyncGenerator[dict[str, object], None]:
+                for t in tokens:
+                    yield {"kind": "token", "text": t}
+
         with patch("orch.rag.qa.QAEngine", FakeEngine):
             frames: list[str] = []
             async for frame in _sse_generator(
@@ -85,6 +91,12 @@ class TestTokenEventShape:
                 yield "## Summary"
                 yield "The answer is 42."
 
+            async def answer_stream_v2(
+                self, **kwargs: object
+            ) -> AsyncGenerator[dict[str, object], None]:
+                for t in ("done", "## Summary", "The answer is 42."):
+                    yield {"kind": "token", "text": t}
+
         with patch("orch.rag.qa.QAEngine", FakeEngine):
             frames: list[str] = []
             async for frame in _sse_generator(
@@ -117,6 +129,12 @@ class TestTokenEventShape:
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
                 raise ConnectionRefusedError("no ollama")
                 yield  # unreachable but makes this an async generator
+
+            async def answer_stream_v2(
+                self, **kwargs: object
+            ) -> AsyncGenerator[dict[str, object], None]:
+                raise ConnectionRefusedError("no ollama")
+                yield  # unreachable
 
         with patch("orch.rag.qa.QAEngine", FailingEngine):
             frames: list[str] = []
@@ -153,6 +171,12 @@ class TestTokenEventShape:
                 yield "first"
                 yield "second"
                 yield "third"
+
+            async def answer_stream_v2(
+                self, **kwargs: object
+            ) -> AsyncGenerator[dict[str, object], None]:
+                for t in ("first", "second", "third"):
+                    yield {"kind": "token", "text": t}
 
         with patch("orch.rag.qa.QAEngine", FakeEngine):
             frames: list[str] = []
@@ -202,6 +226,12 @@ class TestTokenEventNewlineAndEncoding:
                 for t in tokens:
                     yield t
 
+            async def answer_stream_v2(
+                self, **kwargs: object
+            ) -> AsyncGenerator[dict[str, object], None]:
+                for t in tokens:
+                    yield {"kind": "token", "text": t}
+
         with patch("orch.rag.qa.QAEngine", FakeEngine):
             frames: list[str] = []
             async for frame in _sse_generator(
@@ -238,6 +268,12 @@ class TestTokenEventNewlineAndEncoding:
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
                 for t in tokens:
                     yield t
+
+            async def answer_stream_v2(
+                self, **kwargs: object
+            ) -> AsyncGenerator[dict[str, object], None]:
+                for t in tokens:
+                    yield {"kind": "token", "text": t}
 
         with patch("orch.rag.qa.QAEngine", FakeEngine):
             frames: list[str] = []
@@ -278,6 +314,11 @@ class TestDoneAndErrorEvents:
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
                 yield "final token"
 
+            async def answer_stream_v2(
+                self, **kwargs: object
+            ) -> AsyncGenerator[dict[str, object], None]:
+                yield {"kind": "token", "text": "final token"}
+
         with patch("orch.rag.qa.QAEngine", FakeEngine):
             frames: list[str] = []
             async for frame in _sse_generator(
@@ -311,6 +352,12 @@ class TestDoneAndErrorEvents:
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
                 raise ConnectionRefusedError("no ollama")
                 yield  # unreachable but makes this an async generator
+
+            async def answer_stream_v2(
+                self, **kwargs: object
+            ) -> AsyncGenerator[dict[str, object], None]:
+                raise ConnectionRefusedError("no ollama")
+                yield  # unreachable
 
         with patch("orch.rag.qa.QAEngine", FailingEngine):
             frames: list[str] = []
@@ -429,6 +476,11 @@ class TestStreamingResponseHeaders:
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
                 yield "hello"
+
+            async def answer_stream_v2(
+                self, **kwargs: object
+            ) -> AsyncGenerator[dict[str, object], None]:
+                yield {"kind": "token", "text": "hello"}
 
         from fastapi.testclient import TestClient
 

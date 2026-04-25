@@ -88,20 +88,18 @@ class TestInv2NoCodeIndexJobsWrites:
         tmp_path: Path,
     ) -> None:
         """Inserting a DocIndexJob must not trigger any code_index_jobs writes."""
-        from orch.db.models import DocIndexJob
+        from orch.db.models import CodeIndexJob, DocIndexJob
 
-        code_index_tables_found: list[str] = []
+        code_index_writes: list[str] = []
 
-        def on_insert(mapper: object, connection: object, target: object) -> None:
-            try:
-                insp = inspect(connection)
-                for t in insp.get_table_names():
-                    if "code_index" in t.lower():
-                        code_index_tables_found.append(t)
-            except Exception:
-                pass
+        def on_code_index_insert(mapper: object, connection: object, target: object) -> None:
+            code_index_writes.append("INSERT")
 
-        event.listen(DocIndexJob, "after_insert", on_insert)
+        def on_code_index_update(mapper: object, connection: object, target: object) -> None:
+            code_index_writes.append("UPDATE")
+
+        event.listen(CodeIndexJob, "after_insert", on_code_index_insert)
+        event.listen(CodeIndexJob, "after_update", on_code_index_update)
 
         try:
             with db_session_factory() as session:
@@ -113,10 +111,11 @@ class TestInv2NoCodeIndexJobsWrites:
                 session.add(doc_job)
                 session.flush()
         finally:
-            event.remove(DocIndexJob, "after_insert", on_insert)
+            event.remove(CodeIndexJob, "after_insert", on_code_index_insert)
+            event.remove(CodeIndexJob, "after_update", on_code_index_update)
 
-        assert len(code_index_tables_found) == 0, (
-            f"code_index_jobs must not be written during doc_index_ops: {code_index_tables_found}"
+        assert len(code_index_writes) == 0, (
+            f"code_index_jobs must not be written during doc_index_ops: {code_index_writes}"
         )
 
 

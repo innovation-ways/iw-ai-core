@@ -120,34 +120,47 @@ def db_engine(pg_container: PostgresContainer) -> Engine:
     return engine
 
 
-@pytest.fixture(scope="session")
-def db_session_factory(db_engine: Engine):
-    """Return a sessionmaker bound to the test engine.
+@pytest.fixture
+def _db_test_connection(db_engine: Engine):
+    """Open a connection on db_engine and start an outer transaction.
 
-    This can be used to patch SessionLocal for tests that need the background
-    thread to use the testcontainer.
+    This connection is shared between db_session and db_session_factory so that
+    rows flushed by the test fixture are visible to background services that
+    look up sessions through the factory, and the whole transaction is rolled
+    back on teardown so each test starts from a clean slate.
     """
-    return sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+    connection = db_engine.connect()
+    transaction = connection.begin()
+    yield connection
+    transaction.rollback()
+    connection.close()
 
 
 @pytest.fixture
-def db_session(db_engine: Engine) -> Generator[Session, None, None]:
+def db_session(_db_test_connection) -> Generator[Session, None, None]:
     """Provide a transactional DB session that rolls back after each test.
 
     Each test gets a clean database state without needing to truncate tables.
     The transaction wraps the entire test body and is rolled back on teardown.
     """
-    connection = db_engine.connect()
-    transaction = connection.begin()
-    # Bind the session to this connection so all operations share the transaction
-    session_factory = sessionmaker(bind=connection, autocommit=False, autoflush=False)
+    session_factory = sessionmaker(bind=_db_test_connection, autocommit=False, autoflush=False)
     session: Session = session_factory()
 
     yield session
 
     session.close()
-    transaction.rollback()
-    connection.close()
+
+
+@pytest.fixture
+def db_session_factory(_db_test_connection):
+    """Return a sessionmaker that produces sessions sharing the test transaction.
+
+    Sessions handed out by this factory bind to the same connection as
+    db_session, so writes done in the test are visible to code that opens its
+    own session via the factory (e.g. background poller threads). The outer
+    transaction is rolled back at teardown via _db_test_connection.
+    """
+    return sessionmaker(bind=_db_test_connection, autocommit=False, autoflush=False)
 
 
 @pytest.fixture

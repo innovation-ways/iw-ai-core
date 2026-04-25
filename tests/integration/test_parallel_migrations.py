@@ -42,10 +42,23 @@ def _git(cwd: str, args: list[str]) -> str:
     return result.stdout.strip()
 
 
+def _project_root() -> Path:
+    """Walk up from this test file to find the project root.
+
+    The project root is the first ancestor that contains orch/db/migrations/env.py.
+    This is robust to different execution contexts (main repo vs. agent worktree).
+    """
+    here = Path(__file__).resolve()
+    for ancestor in here.parents:
+        if (ancestor / "orch" / "db" / "migrations" / "env.py").is_file():
+            return ancestor
+    raise RuntimeError(f"Could not locate project root from {here}")
+
+
 def _copy_alembic_skeleton(migrations_dir: Path) -> None:
     import shutil
 
-    src_migrations = Path(__file__).resolve().parents[4] / "orch" / "db" / "migrations"
+    src_migrations = _project_root() / "orch" / "db" / "migrations"
     for name in ("env.py", "script.py.mako"):
         src = src_migrations / name
         if src.exists():

@@ -10,7 +10,6 @@ Tests:
 
 from __future__ import annotations
 
-import os
 import uuid
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -38,20 +37,25 @@ def db_engine(pg_container: PostgresContainer) -> Engine:
         "postgresql+psycopg2://", "postgresql+psycopg://"
     )
     parsed = urlparse(url.replace("postgresql+psycopg://", "postgresql://"))
-    os.environ["IW_CORE_DB_HOST"] = str(parsed.hostname)
-    os.environ["IW_CORE_DB_PORT"] = str(parsed.port)
-    os.environ["IW_CORE_DB_NAME"] = parsed.path.lstrip("/")
-    os.environ["IW_CORE_DB_USER"] = str(parsed.username)
-    os.environ["IW_CORE_DB_PASSWORD"] = str(parsed.password)
-
-    return create_engine(url, pool_pre_ping=True)
+    # MonkeyPatch.context() restores the original env on teardown so the
+    # testcontainer connection details don't leak to subsequent tests
+    # (which would otherwise try to connect to the now-stopped container).
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("IW_CORE_DB_HOST", str(parsed.hostname))
+        mp.setenv("IW_CORE_DB_PORT", str(parsed.port))
+        mp.setenv("IW_CORE_DB_NAME", parsed.path.lstrip("/"))
+        mp.setenv("IW_CORE_DB_USER", str(parsed.username))
+        mp.setenv("IW_CORE_DB_PASSWORD", str(parsed.password))
+        yield create_engine(url, pool_pre_ping=True)
 
 
 @pytest.fixture(scope="module")
 def migrated_engine(db_engine: Engine) -> Engine:
     alembic_cfg = Config()
     alembic_cfg.set_main_option("script_location", "orch/db/migrations")
-    alembic_cfg.set_main_option("sqlalchemy.url", db_engine.url.render_as_string())
+    alembic_cfg.set_main_option(
+        "sqlalchemy.url", db_engine.url.render_as_string(hide_password=False)
+    )
 
     command.upgrade(alembic_cfg, "head")
     return db_engine
@@ -83,7 +87,9 @@ def test_check_constraint_prevents_second_row(migrated_engine: Engine) -> None:
 def test_downgrade_and_upgrade_round_trip(migrated_engine: Engine) -> None:
     alembic_cfg = Config()
     alembic_cfg.set_main_option("script_location", "orch/db/migrations")
-    alembic_cfg.set_main_option("sqlalchemy.url", migrated_engine.url.render_as_string())
+    alembic_cfg.set_main_option(
+        "sqlalchemy.url", migrated_engine.url.render_as_string(hide_password=False)
+    )
 
     # Target the specific revision before this migration so the test is stable
     # regardless of later migrations added on top.

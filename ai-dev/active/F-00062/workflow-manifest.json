@@ -1,0 +1,170 @@
+{
+  "id": "F-00062",
+  "type": "Feature",
+  "title": "Per-worktree container isolation for parallel AI-agent development",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/models.py",
+      "orch/db/migrations/versions/*.py",
+      "orch/db/safe_migrate.py",
+      "orch/daemon/worktree_compose.py",
+      "orch/daemon/worktree_reaper.py",
+      "orch/daemon/batch_manager.py",
+      "orch/daemon/main.py",
+      "orch/daemon/state_machine.py",
+      "orch/daemon/step_monitor.py",
+      "orch/daemon/merge_queue.py",
+      "orch/daemon/migration_rebase.py",
+      "orch/daemon/fix_cycle.py",
+      "orch/cli/step_commands.py",
+      "executor/step_executor.sh",
+      "executor/step_executor_lib.sh",
+      "ai-dev/iw-config/worktree-compose.template.yml",
+      "ai-dev/iw-config/worktree-env.toml",
+      "ai-dev/iw-config/worktree-seed.sh",
+      "ai-dev/templates/*.md",
+      "skills/**/*.md",
+      "dashboard/routers/worktrees.py",
+      "dashboard/templates/pages/system/worktrees.html",
+      "dashboard/templates/fragments/worktree_table.html",
+      "dashboard/templates/fragments/worktree_files.html",
+      "dashboard/templates/fragments/worktree_nav_badge.html",
+      "dashboard/static/**",
+      "tests/unit/**",
+      "tests/integration/**",
+      "tests/dashboard/**",
+      "docs/IW_AI_Core_Worktree_Isolation.md",
+      "docs/IW_AI_Core_Daemon_Design.md",
+      "docs/IW_AI_Core_Database_Schema.md",
+      "docs/IW_AI_Core_Agent_Constraints.md",
+      "CLAUDE.md",
+      "orch/CLAUDE.md",
+      "tests/CLAUDE.md",
+      "executor/CLAUDE.md",
+      ".gitignore"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Add worktree_db_port, worktree_app_port, worktree_compose_path nullable columns to batch_items + Alembic migration + schema docs",
+      "prompt": "prompts/F-00062_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 — schema additions, migration shape, ORM consistency, docs",
+      "prompt": "prompts/F-00062_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Create orch/daemon/worktree_compose.py module (compose render + port discovery + env rewrite + seed runner) + relax safe_migrate.AgentContextForbiddenError for per-worktree DB",
+      "prompt": "prompts/F-00062_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 — subprocess safety, idempotency, failure paths, no secrets in logs, safe_migrate relax scope",
+      "prompt": "prompts/F-00062_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "backend-impl",
+      "description": "Container reaper + daemon-restart re-attach + lifecycle hooks in batch_manager (up after worktree_setup, down on terminal transitions)",
+      "prompt": "prompts/F-00062_S05_Backend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05 — lifecycle hook completeness, reaper classification correctness, idempotency, daemon-restart re-attach",
+      "prompt": "prompts/F-00062_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "backend-impl",
+      "description": "iw-ai-core reference iw-config (compose template, env.toml, seed.sh) + step prompt placeholder substitution + audit existing prompts + IW_CORE_PER_WORKTREE_DB env flag at agent launch",
+      "prompt": "prompts/F-00062_S07_Backend_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Review S07 — compose template renders, env.toml schema, seed.sh safety, placeholder substitution, prompt audit completeness, IW_CORE_PER_WORKTREE_DB flag set correctly",
+      "prompt": "prompts/F-00062_S08_CodeReview_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "frontend-impl",
+      "description": "Extend Worktree Health view (system/worktrees.html) with container columns, orphan flag, per-row Open/Logs/Force-teardown actions",
+      "prompt": "prompts/F-00062_S09_Frontend_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "code-review-impl",
+      "description": "Review S09 — performance (no N+1 docker calls), CSRF, htmx fragments, JS lint, accessibility",
+      "prompt": "prompts/F-00062_S10_CodeReview_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "tests-impl",
+      "description": "Comprehensive test suite — unit (worktree_compose, reaper, safe_migrate, prompt substitution) + integration (parallel isolation AC2, daemon-restart re-attach AC5, real-container reaper AC4, legacy fallback AC7, executor docker-free Invariant #1)",
+      "prompt": "prompts/F-00062_S11_Tests_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "code-review-impl",
+      "description": "Review S11 — AC coverage map (10 ACs), Invariant coverage map (10 invariants), test isolation, no live-DB pollution",
+      "prompt": "prompts/F-00062_S12_CodeReview_prompt.md"
+    },
+    {
+      "step": "S13",
+      "agent": "backend-impl",
+      "description": "Docs — NEW docs/IW_AI_Core_Worktree_Isolation.md + UPDATE Daemon_Design + Agent_Constraints + CLAUDE.md (+orch +tests +executor) Quick Navigation/Critical Rules",
+      "prompt": "prompts/F-00062_S13_Backend_prompt.md"
+    },
+    {
+      "step": "S14",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-layer review — completeness vs design, cross-agent consistency, CR-00021 unaffected, browser_env unaffected, executor docker-free, no secrets in logs, all ACs and Invariants enforced",
+      "prompt": "prompts/F-00062_S14_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting (ruff + node --check on dashboard JS)"
+    },
+    {
+      "step": "S16",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "uv run ruff format --check .",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S17",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking (mypy)"
+    },
+    {
+      "step": "S18",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S19",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests (real docker — testcontainers)",
+      "timeout": 900
+    }
+  ]
+}

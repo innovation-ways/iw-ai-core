@@ -6,7 +6,6 @@ with real PostgreSQL testcontainers.
 
 from __future__ import annotations
 
-import os
 import uuid
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -41,7 +40,9 @@ def migrated_engine(pg_container):
     """SQLAlchemy engine connected to the testcontainer DB, with alembic migrations run.
 
     Sets IW_CORE_DB_* env vars so that alembic (via env.py) connects to the
-    testcontainer rather than the real platform DB.
+    testcontainer rather than the real platform DB. The env vars are restored
+    on fixture teardown so they don't leak to subsequent tests (which would
+    then try to connect to the now-stopped testcontainer port).
     Alembic runs all migrations (creating all tables and FTS triggers)
     and seeds the iw_core_instance row.
     """
@@ -49,20 +50,21 @@ def migrated_engine(pg_container):
         "postgresql+psycopg2://", "postgresql+psycopg://"
     )
     parsed = urlparse(url.replace("postgresql+psycopg://", "postgresql://"))
-    os.environ["IW_CORE_DB_HOST"] = str(parsed.hostname)
-    os.environ["IW_CORE_DB_PORT"] = str(parsed.port)
-    os.environ["IW_CORE_DB_NAME"] = parsed.path.lstrip("/")
-    os.environ["IW_CORE_DB_USER"] = str(parsed.username)
-    os.environ["IW_CORE_DB_PASSWORD"] = str(parsed.password)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("IW_CORE_DB_HOST", str(parsed.hostname))
+        mp.setenv("IW_CORE_DB_PORT", str(parsed.port))
+        mp.setenv("IW_CORE_DB_NAME", parsed.path.lstrip("/"))
+        mp.setenv("IW_CORE_DB_USER", str(parsed.username))
+        mp.setenv("IW_CORE_DB_PASSWORD", str(parsed.password))
 
-    engine = create_engine(url, pool_pre_ping=True)
+        engine = create_engine(url, pool_pre_ping=True)
 
-    cfg = Config()
-    cfg.set_main_option("script_location", "orch/db/migrations")
-    cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string())
-    command.upgrade(cfg, "head")
+        cfg = Config()
+        cfg.set_main_option("script_location", "orch/db/migrations")
+        cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))
+        command.upgrade(cfg, "head")
 
-    return engine
+        yield engine
 
 
 def _seed_project(engine: Engine) -> None:
@@ -261,7 +263,9 @@ class TestMigrationRoundtrip:
         """alembic downgrade -1 drops iw_core_instance; upgrade head re-creates with new UUID."""
         cfg = Config()
         cfg.set_main_option("script_location", "orch/db/migrations")
-        cfg.set_main_option("sqlalchemy.url", migrated_engine.url.render_as_string())
+        cfg.set_main_option(
+            "sqlalchemy.url", migrated_engine.url.render_as_string(hide_password=False)
+        )
 
         with migrated_engine.connect() as conn:
             row_before = conn.execute(

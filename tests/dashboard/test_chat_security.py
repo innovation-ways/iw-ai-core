@@ -51,15 +51,25 @@ class TestChatTemplatesNoMarkedReferences:
         assert "cdn.jsdelivr.net/npm/marked" not in html
         assert "marked.min.js" not in html
 
-    def test_base_html_has_vendor_dompurify(self):
-        base_path = Path(__file__).parent.parent.parent / "dashboard" / "templates" / "base.html"
-        html = base_path.read_text()
-        assert "/static/vendor/dompurify/purify.min.js" in html
+    def test_vendor_dompurify_referenced_in_libs_partial(self):
+        # base.html no longer loads DOMPurify directly — it's pulled in lazily
+        # per-page via the templates/components/libs/dompurify.html include
+        # (see the comment in base.html). Verify the vendor file is referenced
+        # somewhere under the libs partial set.
+        libs_dir = (
+            Path(__file__).parent.parent.parent / "dashboard" / "templates" / "components" / "libs"
+        )
+        joined = "\n".join(p.read_text() for p in libs_dir.glob("*.html"))
+        assert "/static/vendor/dompurify/purify.min.js" in joined
 
-    def test_base_html_has_vendor_highlightjs(self):
-        base_path = Path(__file__).parent.parent.parent / "dashboard" / "templates" / "base.html"
-        html = base_path.read_text()
-        assert "/static/vendor/highlight.js/core.js" in html
+    def test_vendor_highlightjs_referenced_in_libs_partial(self):
+        # Same rationale as the DOMPurify test — highlight.js is loaded via a
+        # per-page include rather than being hard-coded in base.html.
+        libs_dir = (
+            Path(__file__).parent.parent.parent / "dashboard" / "templates" / "components" / "libs"
+        )
+        joined = "\n".join(p.read_text() for p in libs_dir.glob("*.html"))
+        assert "/static/vendor/highlight.js/core.js" in joined
 
 
 class TestItemArtifactsRenderStatic:

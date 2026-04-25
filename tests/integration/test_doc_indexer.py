@@ -206,11 +206,12 @@ class TestDocIndexerBasic:
         new_timestamp = datetime.now(UTC).replace(tzinfo=None)
 
         with test_session_factory() as update_session:
-            item = update_session.get(WorkItem, (item_id, project_id))
-            if item is not None:
-                item.functional_doc_content = "Updated content for the reindex test with more text."
-                item.updated_at = new_timestamp
-                update_session.commit()
+            # WorkItem PK order is (project_id, id)
+            item = update_session.get(WorkItem, (project_id, item_id))
+            assert item is not None, f"Could not load WorkItem ({project_id}, {item_id})"
+            item.functional_doc_content = "Updated content for the reindex test with more text."
+            item.updated_at = new_timestamp
+            update_session.commit()
 
         with patch("llama_index.embeddings.ollama.OllamaEmbedding", MockOllamaEmbedding):
             result2 = indexer.reindex_changed(watermark=now)
