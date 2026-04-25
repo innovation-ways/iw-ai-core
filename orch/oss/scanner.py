@@ -24,6 +24,26 @@ from orch.db.models import OssScan, OssScanMode, OssScanStatus
 
 logger = logging.getLogger(__name__)
 
+_ERROR_TAIL_BYTES = 4 * 1024
+
+
+def _build_error_message(exit_code: int, stdout_lines: list[str]) -> str:
+    """Compose an error message that includes the tail of subprocess output.
+
+    Without this, every failure reads as "Subprocess exited with code N" with no
+    way to know which tool actually failed; the inner subprocess output is only
+    logged at DEBUG and never persisted.
+    """
+    header = f"Subprocess exited with code {exit_code}"
+    if not stdout_lines:
+        return header
+    joined = "".join(stdout_lines)
+    encoded = joined.encode("utf-8", errors="replace")
+    if len(encoded) > _ERROR_TAIL_BYTES:
+        joined = encoded[-_ERROR_TAIL_BYTES:].decode("utf-8", errors="replace")
+    tail = joined.rstrip()
+    return f"{header}\n\n{tail}" if tail else header
+
 
 async def run_scan(
     project: Project,
@@ -111,7 +131,7 @@ async def run_scan(
 
         scan.status = OssScanStatus.error
         scan.exit_code = exit_code
-        scan.error_message = f"Subprocess exited with code {exit_code}"
+        scan.error_message = _build_error_message(exit_code, stdout_lines)
         scan.completed_at = datetime.now(UTC)
         session.commit()
         return scan
