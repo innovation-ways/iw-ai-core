@@ -106,9 +106,9 @@ Precedent CRs for comparable daemon-phase / migration-pipeline work:
 
 1. **Worktree creation and agent-side database step are unchanged.** Agents still run `alembic revision --autogenerate` inside their worktree; they produce a migration with whatever `down_revision` their worktree sees. They do not need any new coordination logic.
 2. **New phase `run_pre_merge_rebase(batch_id, worktree_path, repo_root)`** runs inside `merge_queue._merge_item`, after `batch_item.status = merging` and before `run_pre_merge_dry_run`. It:
-   a. Resolves `worktree_base_sha = git merge-base HEAD main` inside the worktree and `current_main_sha = git rev-parse origin/main` (after `git fetch origin main`). Emits a `DaemonEvent(event_type="migration_rebase", metadata={worktree_base_sha, current_main_sha, rebase_needed})` — this is the preflight signal.
-   b. Runs `git rebase main` inside the worktree. On conflict, `git rebase --abort`, return `RebaseResult(success=False, error_message=...)`.
-   c. After rebase, lists the batch's own migration files as `git diff $(git merge-base HEAD main)..HEAD --name-only --diff-filter=A -- orch/db/migrations/versions/`. Parses each file to extract `revision = "..."` and `down_revision = "..."`.
+   a. Resolves an **effective main ref** by attempting `git fetch origin main` first. If the fetch succeeds, the effective ref is `origin/main` (authoritative, includes any external pushes). If the fetch fails (no `origin` remote configured, network unreachable, etc.), fall back to the local `main` ref — safe because this daemon is the sole mutator of `main` in the current architecture. Record which ref was used in the preflight DaemonEvent metadata as `effective_ref` so operators can tell the two paths apart. Then: `worktree_base_sha = git merge-base HEAD <effective_ref>`, `current_main_sha = git rev-parse <effective_ref>`. Emits a `DaemonEvent(event_type="migration_rebase", metadata={worktree_base_sha, current_main_sha, effective_ref, fetch_succeeded, rebase_needed})` — this is the preflight signal.
+   b. Runs `git rebase <effective_ref>` inside the worktree (i.e., `git rebase origin/main` on the happy path, `git rebase main` on the fetch-fallback path). On conflict, `git rebase --abort`, return `RebaseResult(success=False, error_message=...)`.
+   c. After rebase, lists the batch's own migration files as `git diff $(git merge-base HEAD <effective_ref>)..HEAD --name-only --diff-filter=A -- orch/db/migrations/versions/`. Parses each file to extract `revision = "..."` and `down_revision = "..."`.
    d. The batch's rebased chain is ordered by dependency: the file whose `down_revision` is NOT another file written by this batch is the **chain root**; any other files' `down_revision` references stay as internal chain links. For each of the batch's migration files in dependency order, determine the expected `down_revision`:
       - Chain root → `current_main_head`. To compute main's head reliably without hitting `MultipleHeadsError` (post-rebase the worktree's `versions/` contains both main's migrations and the batch's, so the chain has either multiple heads OR a single head that IS the batch's own file — neither helpful), copy every `.py` under `{worktree_path}/orch/db/migrations/versions/` EXCEPT the batch's own files (from the `--diff-filter=A` list in step c) into a `tempfile.TemporaryDirectory`, mirror `env.py` + `script.py.mako` alongside, run `ScriptDirectory.from_config(...).get_current_head()` there, clean up. If the tmp chain has > 1 head → `RebaseResult(success=False)` (pre-existing multi-head on main, operator intervention required). If empty → root's expected `down_revision` is `None`.
       - Non-root files → the previous file in the batch's own chain (unchanged).
@@ -117,10 +117,11 @@ Precedent CRs for comparable daemon-phase / migration-pipeline work:
    g. Return `RebaseResult(success=True, rebased=bool, rewrites=[...])`. If no stale `down_revision` was found, `rewrites=[]` and no commit is made (idempotent no-op).
 3. **Phase 1 dry-run** becomes worktree-aware: `run_pre_merge_dry_run(batch_id, worktree_path)` passes `script_location = f"{worktree_path}/orch/db/migrations"` into `safe_migrate.dry_run(tempdb_url, batch_id, script_location=...)`. `safe_migrate._build_alembic_config(db_url, script_location=None)` uses the override when provided, else falls back to the main-repo `MIGRATIONS_SCRIPT_LOCATION` (backward-compat for operator CLI uses). The dry-run now walks the **full post-squash chain**: rev1 → rev2a (from main, picked up by rebase) → rev2b (this batch, with rewritten `down_revision`). Real conflicts (dropped column already dropped, column already added, etc.) surface here.
 4. **Failure semantics**:
-   - Rebase fails (conflict during `git rebase`, parse error on a migration file, batch migration references a `down_revision` that isn't reachable after rebase, or `origin/main` fetch fails) → `batch_item.status = migration_rebase_failed`, `notes = <reason>`, emit `DaemonEvent(event_type="migration_pipeline", metadata={"phase": "rebase", "success": False, ...})`, return. **Queue is NOT frozen** — the problem is isolated to this branch; subsequent batches can still merge.
+   - Rebase fails (conflict during `git rebase`, parse error on a migration file, or the batch's own migration chain is malformed) → `batch_item.status = migration_rebase_failed`, `notes = <reason>`, emit `DaemonEvent(event_type="migration_pipeline", metadata={"phase": "rebase", "success": False, ...})`, return. **Queue is NOT frozen** — the problem is isolated to this branch; subsequent batches can still merge.
+   - `git fetch origin main` failing is NOT a rebase failure — it triggers the local-`main` fallback described in 2a. Operators can still detect this from the preflight DaemonEvent (`fetch_succeeded=false`, `effective_ref="main"`).
    - Rebased dry-run fails → `batch_item.status = migration_invalid` (existing behaviour, unchanged), queue NOT frozen.
    - Phase 2 apply fails → existing rollback path (unchanged), queue frozen only on rollback failure.
-5. **`executor/worktree_commit.sh` is unchanged**. Its Step 2.5 rebase becomes a no-op because the worktree branch has already been rebased by `run_pre_merge_rebase` (merge-base will equal the main SHA, hitting the "no rebase needed" branch at line ~162). No bash edits are required.
+5. **`executor/worktree_commit.sh` is unchanged**. Its Step 2.5 rebases onto local `main` (line ~173: `git rebase main`). After `run_pre_merge_rebase` has already rebased the branch onto the effective ref (usually `origin/main`, equal to or ahead of local `main`), local `main` is by definition an ancestor of HEAD, so the bash's `merge-base HEAD main == MAIN_SHA` check at line ~168 succeeds and the rebase is skipped. This holds for both the happy path (rebased onto `origin/main`) and the fallback path (rebased onto local `main`, which obviously makes local `main` the merge-base). No bash edits are required.
 6. **Audit trail**: every rewrite appears as a `pending_migration_log` row with `phase='rebase'` + populated `old_revision`. The original `DaemonEvent(event_type="migration_rebase")` gives a concise operator signal visible in the dashboard's daemon-events feed.
 7. **Restart clean-up**: unchanged by design. When a work item is restarted, the previous worktree is discarded; its migration file was never on main, so nothing to clean up either in git or in the DB. `pending_migration_log` rows from the aborted run stay as historical log entries (the CR does not add any ledger to orphan).
 
@@ -250,9 +251,11 @@ Expected production-code files to be created/modified by implementation steps:
 ```
 Given a worktree branched off main at rev1, with the batch's own migration file
       versions/rev2b_add_col_b.py containing down_revision = "rev1",
-  and main has since advanced to rev2a (another batch merged rev2a → applied)
+  and main has since advanced to rev2a (another batch merged rev2a → applied),
+  and `git fetch origin main` succeeds (origin is reachable)
 When run_pre_merge_rebase(batch_id, worktree_path, repo_root) runs
-Then the worktree's branch is rebased onto main's current tip (rev2a now reachable), AND
+Then the effective ref resolves to 'origin/main' (fetch_succeeded=true), AND
+     the worktree's branch is rebased onto origin/main's current tip (rev2a now reachable), AND
      versions/rev2b_add_col_b.py now has down_revision = "rev2a" (exact string replacement), AND
      a single git commit is added to the branch with message starting
        "chore(migration-rebase): rewrite down_revision for rev2b", AND
@@ -260,7 +263,8 @@ Then the worktree's branch is rebased onto main's current tip (rev2a now reachab
        phase='rebase', direction='upgrade', revision='rev2b',
        old_revision='rev1', success=true, AND
      a DaemonEvent with event_type='migration_rebase' is written with
-       event_metadata.worktree_base_sha, .current_main_sha, .rebase_needed=true, AND
+       event_metadata.worktree_base_sha, .current_main_sha, .effective_ref='origin/main',
+       .fetch_succeeded=true, .rebase_needed=true, AND
      RebaseResult(success=true, rebased=true,
        rewrites=[('rev2b','rev1','rev2a')]) is returned.
 ```
@@ -395,7 +399,7 @@ Then run_pre_merge_rebase succeeds (rebase + rewrite revB.down_revision='revA'),
 - `test_multiple_migrations_preserve_internal_chain` — batch added `revB1(down='rev1')` + `revB2(down='revB1')`; main at `rev2a`; assert only `revB1` rewritten (to `down='rev2a'`), `revB2` untouched.
 - `test_rebase_conflict_returns_migration_rebase_failed` — conflicting edit on both branches; `git rebase main` fails; assert `result.success=False`, `result.error_message` populated, `git rebase --abort` ran (verify by checking worktree is back on the pre-rebase SHA).
 - `test_parse_migration_failure` — malformed migration file (missing `down_revision` assignment); assert `result.success=False` with a clear parse-error message.
-- `test_fetch_failure` — stub `git fetch origin main` to fail; assert `result.success=False`.
+- `test_fetch_failure_falls_back_to_local_main` — stub `git fetch origin main` to fail (e.g., remove the remote or misconfigure it); assert `result.success=True` (the phase continues), `result.rebased` reflects the rebase against local `main`, the preflight DaemonEvent has `event_metadata.fetch_succeeded=false` and `.effective_ref="main"`, and any stale `down_revision` is still rewritten (because local `main` IS authoritative in the current architecture).
 - `test_pending_migration_log_has_old_revision` — after a successful rewrite, assert exactly one `PendingMigrationLog` row with `phase='rebase'`, `revision='revB'`, `old_revision='rev1'`, `success=True`.
 
 `tests/unit/daemon/test_migration_pipeline.py` (extend):
@@ -429,6 +433,7 @@ Then run_pre_merge_rebase succeeds (rebase + rewrite revB.down_revision='revA'),
 
 - **Why no schema lock?** A schema lock would serialise every batch touching any migration, even disjoint ones. The merge queue already serialises merging; the only missing piece is the `down_revision` rewrite at merge time — which runs in the merge-queue critical section and is cheap. Parallelism during implementation stays intact.
 - **Why rebase the branch at the phase level instead of relying on `worktree_commit.sh`?** The bash script already rebases, but it runs AFTER `run_pre_merge_dry_run`. Moving the rebase earlier is what lets Phase 1 see the real post-squash chain. The script's own rebase becomes a no-op (branch's merge-base already equals main's SHA) without any bash edits — lower blast radius than modifying the deterministic bash.
+- **Why `origin/main` with a local-`main` fallback rather than just local `main`?** At time of writing, the daemon is the sole mutator of `main` (`check_auto_publish` is a stub and no `git fetch/pull/push` exists in `orch/` or `executor/`), so local `main` == authoritative `main` in practice. Using `origin/main` as the primary target is forward-compatible: the day someone wires up daemon push/pull or a coworker pushes to the same repo, the rebase phase stays correct without a code change. The fetch-failure fallback to local `main` ensures the phase still works in projects without an `origin` remote configured (self-hosted scratch repos, tests).
 - **Why `git rebase` instead of `git merge --no-ff`?** Rebase keeps the branch linear (one batch = one squash commit = one main commit). Merge commits would complicate the squash-merge downstream. Rebase failure semantics are well-understood and matches the existing worktree_commit.sh behavior.
 - **Parsing migration files**: the parser only needs to read `revision = "..."` and `down_revision = "..." | None` near the top of the file (before the `def upgrade()` block). Use a simple regex — don't `ast.parse` or `importlib` the file (module import would re-execute arbitrary code and produce noisy side effects on test runs).
 - **Observability follow-up**: a future CR could add a dashboard filter on `event_type='migration_rebase'` to surface rebase activity. Not in scope here — the existing daemon-events feed already renders the events.

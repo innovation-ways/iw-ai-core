@@ -86,9 +86,14 @@ Build on whatever local tests S03 added. Target coverage (AC1-AC4 from the desig
    - Worktree migration file with no `down_revision` line at all.
    - Assert: `result.success=False`, error message mentions parse / down_revision.
 
-6. `test_fetch_failure`:
-   - Remove the remote origin before calling; `git fetch origin main` fails.
-   - Assert: `result.success=False`, error message mentions fetch.
+6. `test_fetch_failure_falls_back_to_local_main`:
+   - Scratch repo at rev1 with the batch's worktree off rev1; advance LOCAL `main` to rev2a (simulating a prior batch's squash-merge onto local main); remove the `origin` remote (or point it at a bogus URL) so `git fetch origin main` fails.
+   - Call `run_pre_merge_rebase`.
+   - Assert: `result.success=True` (fetch failure is NOT a rebase failure — it's a first-class fallback path per design "Failure semantics" § 4).
+   - Assert: preflight DaemonEvent has `event_metadata.fetch_succeeded=False` and `effective_ref="main"`.
+   - Assert: `result.effective_ref == "main"`, `result.fetch_succeeded is False`.
+   - Assert: the batch's stale `down_revision="rev1"` was rewritten to `"rev2a"` (local main IS authoritative here — the rewrite still happens against it).
+   - Assert: a logger WARNING line was emitted about the fetch falling back (use `caplog`).
 
 6a. `test_latest_main_revision_excludes_batch_files`:
    - Scratch repo at rev1. Advance main to rev2a. Worktree off rev1 with `revB(down="rev1")`.

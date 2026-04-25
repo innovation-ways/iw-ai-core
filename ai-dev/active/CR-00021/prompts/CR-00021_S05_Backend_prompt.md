@@ -148,7 +148,7 @@ In `_merge_item`, the current order is:
    - `batch_item.status = BatchItemStatus.migration_rebase_failed`
    - `batch_item.notes = f"Pre-merge rebase failed: {rebase_result.error_message}"`
    - `db.commit()`
-   - Emit `DaemonEvent(event_type="migration_pipeline", entity_type="work_item", entity_id=item_id, message=..., event_metadata={"phase": "rebase", "success": False, "batch_id": ..., "worktree_base_sha": rebase_result.worktree_base_sha, "current_main_sha": rebase_result.current_main_sha})`
+   - Emit `DaemonEvent(event_type="migration_pipeline", entity_type="work_item", entity_id=item_id, message=..., event_metadata={"phase": "rebase", "success": False, "batch_id": ..., "worktree_base_sha": rebase_result.worktree_base_sha, "current_main_sha": rebase_result.current_main_sha, "effective_ref": rebase_result.effective_ref, "fetch_succeeded": rebase_result.fetch_succeeded})`
    - `logger.warning(...)` with item + batch + error
    - `return` (do NOT freeze the queue)
 4. (if batch_id is int) `run_pre_merge_dry_run(batch_item.batch_id, worktree_path=worktree_path)` — **pass worktree_path**. Existing failure path (`status=migration_invalid`) unchanged.

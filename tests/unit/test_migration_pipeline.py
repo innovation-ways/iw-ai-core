@@ -167,6 +167,74 @@ class TestRunPreMergeDryRun:
             assert result.success is False
             assert result.final_batch_state == "MIGRATION_INVALID"
 
+    def test_run_pre_merge_dry_run_threads_worktree_path(self) -> None:
+        from orch.daemon.migration_pipeline import run_pre_merge_dry_run
+        from orch.db.safe_migrate import DryRunResult
+
+        mock_result = DryRunResult(
+            revisions_applied=["abc123"],
+            success=True,
+            duration_ms=500,
+            stdout_tail="",
+            stderr_tail="",
+            error_message=None,
+        )
+
+        with (
+            patch(
+                "orch.daemon.migration_pipeline.safe_dry_run", return_value=mock_result
+            ) as mock_dry,
+            patch("testcontainers.postgres.PostgresContainer") as mock_pg_class,
+        ):
+            mock_container = MagicMock()
+            mock_container.get_connection_url.return_value = (
+                "postgresql+psycopg://user:pass@host:5432/db"
+            )
+            mock_container.start = MagicMock()
+            mock_container.stop = MagicMock()
+            mock_pg_class.return_value = mock_container
+
+            result = run_pre_merge_dry_run(batch_id=42, worktree_path="/wt")
+
+            assert result.success is True
+            mock_dry.assert_called_once()
+            call_kwargs = mock_dry.call_args[1]
+            assert call_kwargs["script_location"] == "/wt/orch/db/migrations"
+
+    def test_run_pre_merge_dry_run_backward_compat(self) -> None:
+        from orch.daemon.migration_pipeline import run_pre_merge_dry_run
+        from orch.db.safe_migrate import DryRunResult
+
+        mock_result = DryRunResult(
+            revisions_applied=["abc123"],
+            success=True,
+            duration_ms=500,
+            stdout_tail="",
+            stderr_tail="",
+            error_message=None,
+        )
+
+        with (
+            patch(
+                "orch.daemon.migration_pipeline.safe_dry_run", return_value=mock_result
+            ) as mock_dry,
+            patch("testcontainers.postgres.PostgresContainer") as mock_pg_class,
+        ):
+            mock_container = MagicMock()
+            mock_container.get_connection_url.return_value = (
+                "postgresql+psycopg://user:pass@host:5432/db"
+            )
+            mock_container.start = MagicMock()
+            mock_container.stop = MagicMock()
+            mock_pg_class.return_value = mock_container
+
+            result = run_pre_merge_dry_run(batch_id=42)
+
+            assert result.success is True
+            mock_dry.assert_called_once()
+            call_kwargs = mock_dry.call_args[1]
+            assert call_kwargs["script_location"] is None
+
 
 class TestRunRollback:
     """Tests for run_rollback()."""

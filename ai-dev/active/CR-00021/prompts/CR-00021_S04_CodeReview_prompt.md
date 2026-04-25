@@ -41,9 +41,15 @@ Review S03's new `orch/daemon/migration_rebase.py`. The module must behave as th
 
 ### 2. `run_pre_merge_rebase` order of operations
 
-- Preflight SHAs read BEFORE `git fetch`?
-- `git fetch origin main` happens BEFORE reading `rev-parse origin/main`?
-- DaemonEvent emitted **always** (including when rebase isn't needed — AC2 depends on this)?
+- `git fetch origin main` attempted FIRST, wrapped in try/except — fetch failure does NOT raise to the caller?
+- Fetch failure sets `fetch_succeeded=False` and the `effective_ref` falls back to local `"main"` (not `"origin/main"`)?
+- Fetch success yields `effective_ref="origin/main"`?
+- `worktree_base_sha` computed as `git merge-base HEAD <effective_ref>` — using the SAME ref chosen above (CRITICAL: mixing `main` and `origin/main` here is the exact design bug this CR was reviewed for)?
+- `current_main_sha` computed as `git rev-parse <effective_ref>` — SAME ref?
+- `git rebase <effective_ref>` — SAME ref (i.e., `origin/main` on happy path, `main` on fallback)?
+- `git diff <current_main_sha>..HEAD` uses the SHA resolved from the same ref — implicitly consistent?
+- DaemonEvent emitted **always** after the effective-ref is resolved (including when rebase isn't needed — AC2 depends on this; including when fetch failed — fallback path still emits with `fetch_succeeded=false`)?
+- DaemonEvent `event_metadata` includes all five keys: `worktree_base_sha`, `current_main_sha`, `effective_ref`, `fetch_succeeded`, `rebase_needed`?
 - Rebase is a no-op when `worktree_base_sha == current_main_sha`?
 - On rebase conflict: `git rebase --abort` runs even if abort itself fails?
 - Non-added files (modified migrations) correctly ignored — `--diff-filter=A` used, not `--diff-filter=AM`?

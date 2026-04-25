@@ -78,10 +78,12 @@ class Rewrite:
 @dataclass(frozen=True)
 class RebaseResult:
     success: bool
-    rebased: bool                  # True iff `git rebase main` actually replayed commits
+    rebased: bool                  # True iff `git rebase <effective_ref>` actually replayed commits
     rewrites: list[Rewrite]        # may be empty even when success=True (idempotent no-op)
     worktree_base_sha: str | None  # merge-base at entry (for the preflight event)
-    current_main_sha: str | None   # main's tip after fetch
+    current_main_sha: str | None   # effective ref's tip (origin/main on happy path, local main on fallback)
+    effective_ref: str | None      # "origin/main" or "main" — which ref the rebase targeted
+    fetch_succeeded: bool          # True iff `git fetch origin main` exited 0
     message: str
     error_message: str | None
 ```
@@ -98,12 +100,16 @@ def run_pre_merge_rebase(
 
 Behaviour (implement in this exact order):
 
-1. **Preflight SHAs**:
-   - `worktree_base_sha = _git(worktree_path, ["merge-base", "HEAD", "main"])`
-   - `_git(worktree_path, ["fetch", "origin", "main"])`
-   - `current_main_sha = _git(worktree_path, ["rev-parse", "origin/main"])`
+1. **Resolve the effective main ref** (fetch first, decide target, THEN read SHAs — refs must be internally consistent):
+   - `fetch_succeeded = True` by default.
+   - Try `_git(worktree_path, ["fetch", "origin", "main"])` inside a try/except on `GitCommandError`. On failure: `fetch_succeeded = False`, log a WARNING (`logger.warning("git fetch origin main failed, falling back to local main: %s", stderr)`), and DO NOT raise — the fallback path is a first-class valid path.
+   - Choose `effective_ref = "origin/main" if fetch_succeeded else "main"`.
+   - `worktree_base_sha = _git(worktree_path, ["merge-base", "HEAD", effective_ref])`
+   - `current_main_sha = _git(worktree_path, ["rev-parse", effective_ref])`
 
-2. **Emit the preflight DaemonEvent** (always, regardless of whether rebase is needed):
+   WHY: using the same ref for merge-base, rev-parse, and the rebase target below keeps the three values internally consistent. Mixing `main` (local) and `origin/main` (remote) would silently produce wrong `down_revision` rewrites whenever the two refs diverge.
+
+2. **Emit the preflight DaemonEvent** (always, regardless of whether rebase is needed or which ref was chosen):
    ```python
    _emit_daemon_event(
        event_type="migration_rebase",
@@ -111,6 +117,8 @@ Behaviour (implement in this exact order):
            "batch_id": batch_id,
            "worktree_base_sha": worktree_base_sha,
            "current_main_sha": current_main_sha,
+           "effective_ref": effective_ref,          # "origin/main" or "main"
+           "fetch_succeeded": fetch_succeeded,
            "rebase_needed": worktree_base_sha != current_main_sha,
        },
        message="Pre-merge rebase starting",
@@ -118,14 +126,14 @@ Behaviour (implement in this exact order):
    ```
 
 3. **Run the rebase** (no-op if `worktree_base_sha == current_main_sha`):
-   - Try `_git(worktree_path, ["rebase", "main"])`.
-   - On failure → `_git(worktree_path, ["rebase", "--abort"])` (best-effort; ignore abort failure), return `RebaseResult(success=False, rebased=False, rewrites=[], ..., error_message="git rebase main failed: <stderr>")`.
-   - On success → `rebased = True` iff the merge-base moved.
+   - Try `_git(worktree_path, ["rebase", effective_ref])` — `git rebase origin/main` on the happy path, `git rebase main` on the fallback path.
+   - On failure → `_git(worktree_path, ["rebase", "--abort"])` (best-effort; ignore abort failure), return `RebaseResult(success=False, rebased=False, rewrites=[], worktree_base_sha, current_main_sha, effective_ref, fetch_succeeded, message="...", error_message=f"git rebase {effective_ref} failed: <stderr>")`.
+   - On success → `rebased = True` iff the merge-base moved (i.e., `worktree_base_sha != current_main_sha`).
 
 4. **Identify the batch's own migration files**:
    - `added = _git(worktree_path, ["diff", f"{current_main_sha}..HEAD", "--name-only", "--diff-filter=A", "--", "orch/db/migrations/versions/"])`
    - Split on newlines, filter empty, these are the paths added by the batch.
-   - If none → return `RebaseResult(success=True, rebased=<bool>, rewrites=[], ...)` immediately. Idempotent happy path.
+   - If none → return `RebaseResult(success=True, rebased=<bool>, rewrites=[], ...)` immediately (populate all the effective-ref fields). Idempotent happy path.
 
 5. **Parse each added file** using `_parse_migration(path)` — returns `(revision, down_revision)`:
    - Regex: `^revision\s*=\s*["']([^"']+)["']` and `^down_revision\s*=\s*([^\s#]+)` (handle `None`, `"..."`, `'...'`).
@@ -208,6 +216,7 @@ Follow Red-Green-Refactor. Write unit tests alongside implementation to validate
 3. Rewrite happens for a single stale migration + commit is created.
 4. Multi-file chain preserves internal links.
 5. `git rebase` conflict → `--abort` + `success=False`.
+6. **Fetch-failure fallback**: when `git fetch origin main` fails (remove the remote in the scratch repo), the phase continues using local `main`; preflight DaemonEvent has `fetch_succeeded=false` and `effective_ref="main"`; rewrites still happen correctly against local `main`'s head.
 
 Full AC coverage is S07's job, but S03 must have enough local tests to trust the implementation before handoff.
 

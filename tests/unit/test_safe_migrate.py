@@ -78,3 +78,85 @@ class TestIsLiveDbUrl:
         with patch("orch.db.safe_migrate.get_db_url", return_value=db_url):
             assert is_live_db_url(db_url) is True
             assert is_live_db_url("postgresql+psycopg://user:pass@other:5433/iw_core") is False
+
+
+class TestBuildAlembicConfig:
+    def test_build_alembic_config_override_respected(self) -> None:
+        from orch.db.safe_migrate import _build_alembic_config
+
+        cfg = _build_alembic_config(
+            "postgresql+psycopg://u:p@host:5432/db", script_location="/wt/orch/db/migrations"
+        )
+        assert cfg.get_main_option("script_location") == "/wt/orch/db/migrations"
+        assert cfg.get_main_option("sqlalchemy.url") == "postgresql+psycopg://u:p@host:5432/db"
+
+    def test_build_alembic_config_falls_back_to_default(self) -> None:
+        from orch.db.safe_migrate import MIGRATIONS_SCRIPT_LOCATION, _build_alembic_config
+
+        cfg = _build_alembic_config("postgresql+psycopg://u:p@host:5432/db")
+        assert cfg.get_main_option("script_location") == MIGRATIONS_SCRIPT_LOCATION
+
+
+class TestWriteMigrationLog:
+    def test_write_migration_log_old_revision_persisted(self) -> None:
+        from orch.db.safe_migrate import _write_migration_log
+
+        with (
+            patch(
+                "orch.db.safe_migrate.get_db_url",
+                return_value="postgresql+psycopg://u:p@host:5432/db",
+            ),
+            patch("orch.db.safe_migrate.create_engine") as mock_engine,
+        ):
+            mock_session = MagicMock()
+            mock_sm = MagicMock()
+            mock_sm.return_value = mock_session
+            mock_engine.return_value.pool_pre_ping = True
+            with patch("orch.db.safe_migrate.sessionmaker", return_value=mock_sm):
+                _write_migration_log(
+                    revision="rev1",
+                    direction="upgrade",
+                    phase="rebase",
+                    batch_id=42,
+                    success=True,
+                    stdout_tail="",
+                    stderr_tail="",
+                    error_message=None,
+                    old_revision="old_rev1",
+                )
+                mock_session.add.assert_called_once()
+                entry = mock_session.add.call_args[0][0]
+                assert entry.old_revision == "old_rev1"
+                assert entry.phase == "rebase"
+                mock_session.commit.assert_called_once()
+
+    def test_write_migration_log_backward_compat_no_old_revision(self) -> None:
+        from orch.db.safe_migrate import _write_migration_log
+
+        with (
+            patch(
+                "orch.db.safe_migrate.get_db_url",
+                return_value="postgresql+psycopg://u:p@host:5432/db",
+            ),
+            patch("orch.db.safe_migrate.create_engine") as mock_engine,
+        ):
+            mock_session = MagicMock()
+            mock_sm = MagicMock()
+            mock_sm.return_value = mock_session
+            mock_engine.return_value.pool_pre_ping = True
+            with patch("orch.db.safe_migrate.sessionmaker", return_value=mock_sm):
+                _write_migration_log(
+                    revision="rev1",
+                    direction="upgrade",
+                    phase="dry_run",
+                    batch_id=42,
+                    success=True,
+                    stdout_tail="",
+                    stderr_tail="",
+                    error_message=None,
+                )
+                mock_session.add.assert_called_once()
+                entry = mock_session.add.call_args[0][0]
+                assert entry.old_revision is None
+                assert entry.phase == "dry_run"
+                mock_session.commit.assert_called_once()
