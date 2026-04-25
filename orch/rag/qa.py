@@ -342,13 +342,16 @@ cover the module directly, say so explicitly in your answer.
 
         embed_model = self.config.resolved_embed_model()
         ollama_url = self.config.ollama_url
-        embedding_instance = OllamaEmbedding(model_name=embed_model, base_url=ollama_url)
-        embedding_vector = await asyncio.to_thread(embedding_instance.get_query_embedding, question)
 
         db_path = f"{self.config.index_path}/{project_id}/vectors/"
         table_name = f"docs_{project_id.replace('-', '_')}"
 
         try:
+            embedding_instance = OllamaEmbedding(model_name=embed_model, base_url=ollama_url)
+            embedding_vector = await asyncio.to_thread(
+                embedding_instance.get_query_embedding, question
+            )
+
             import lancedb
 
             ldb = lancedb.connect(db_path)

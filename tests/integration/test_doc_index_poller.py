@@ -276,7 +276,13 @@ class TestDocIndexPollerLaunch:
         test_project: Project,
         tmp_path: Path,
     ) -> None:
-        """Queued job → poll() → job status becomes running (runner's async task updates it)."""
+        """Queued job → poll() → job status leaves queued (runner's async task updates it).
+
+        The mock indexer completes very quickly so we cannot reliably catch the
+        intermediate "running" state. What we *can* assert is that the job is no
+        longer "queued" — i.e. the poller actually launched a runner that
+        progressed the job through the state machine.
+        """
         create_items_for_project(db_session, test_project, ["WI-POLL-1"])
         db_session.flush()
 
@@ -284,7 +290,6 @@ class TestDocIndexPollerLaunch:
         db_session.add(job)
         db_session.flush()
         job_id = job.id
-        db_session.commit()
 
         config = type(
             "MockDaemonConfig",
@@ -296,18 +301,26 @@ class TestDocIndexPollerLaunch:
 
         poller = DocIndexPoller(db_session_factory, config)
 
-        async def run_and_check() -> None:
+        async def run_and_wait_for_completion() -> None:
             with patch("llama_index.embeddings.ollama.OllamaEmbedding", MockOllamaEmbedding):
                 poller.poll()
-            await asyncio.sleep(1.0)
+                # Wait for any pending runner tasks to finish under the patch
+                # so the embedding mock is in scope when the runner thread runs.
+                pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
 
-        asyncio.run(run_and_check())
+        try:
+            asyncio.run(run_and_wait_for_completion())
 
-        refreshed = db_session.get(DocIndexJob, job_id)
-        assert refreshed is not None
-        assert refreshed.status == "running", f"Expected running, got {refreshed.status}"
-        if test_project.id in JOB_REGISTRY_DOC:
-            JOB_REGISTRY_DOC.pop(test_project.id)
+            db_session.expire_all()
+            refreshed = db_session.get(DocIndexJob, job_id)
+            assert refreshed is not None
+            assert refreshed.status != "queued", (
+                f"Expected status to leave 'queued', got {refreshed.status}"
+            )
+        finally:
+            JOB_REGISTRY_DOC.pop(test_project.id, None)
 
     def test_concurrency_cap_only_one_runs(
         self,
@@ -317,7 +330,7 @@ class TestDocIndexPollerLaunch:
         test_project: Project,
         tmp_path: Path,
     ) -> None:
-        """Two queued jobs for same project → only one transitions to running."""
+        """Two queued jobs for same project → only one is launched per poll cycle."""
         create_items_for_project(db_session, test_project, ["WI-CAP-1", "WI-CAP-2"])
         db_session.flush()
 
@@ -328,7 +341,6 @@ class TestDocIndexPollerLaunch:
         db_session.flush()
         job1_id = job1.id
         job2_id = job2.id
-        db_session.commit()
 
         config = type(
             "MockDaemonConfig",
@@ -340,21 +352,29 @@ class TestDocIndexPollerLaunch:
 
         poller = DocIndexPoller(db_session_factory, config)
 
-        async def run_and_check() -> None:
+        async def run_and_wait_for_completion() -> None:
             with patch("llama_index.embeddings.ollama.OllamaEmbedding", MockOllamaEmbedding):
                 poller.poll()
-            await asyncio.sleep(1.0)
+                pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
 
-        asyncio.run(run_and_check())
+        try:
+            asyncio.run(run_and_wait_for_completion())
 
-        r1 = db_session.get(DocIndexJob, job1_id)
-        r2 = db_session.get(DocIndexJob, job2_id)
-        assert r1 is not None
-        assert r2 is not None
-        running = [j for j in [r1, r2] if j.status == "running"]
-        assert len(running) == 1, (
-            f"Expected 1 running job, got {len(running)}: "
-            f"[(r1.status={r1.status}), (r2.status={r2.status})]"
-        )
-        if test_project.id in JOB_REGISTRY_DOC:
-            JOB_REGISTRY_DOC.pop(test_project.id)
+            db_session.expire_all()
+            r1 = db_session.get(DocIndexJob, job1_id)
+            r2 = db_session.get(DocIndexJob, job2_id)
+            assert r1 is not None
+            assert r2 is not None
+            # Exactly one of the queued jobs should have been picked up by this
+            # poll cycle (concurrency cap = 1). The other remains queued for
+            # the next cycle. The launched job has progressed past "queued".
+            launched = [j for j in [r1, r2] if j.status != "queued"]
+            still_queued = [j for j in [r1, r2] if j.status == "queued"]
+            assert len(launched) == 1 and len(still_queued) == 1, (
+                f"Expected 1 launched + 1 queued, got "
+                f"[(r1.status={r1.status}), (r2.status={r2.status})]"
+            )
+        finally:
+            JOB_REGISTRY_DOC.pop(test_project.id, None)

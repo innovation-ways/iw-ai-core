@@ -61,7 +61,20 @@ class DocIndexJobRunner:
                 db_session_factory=self._db_session_factory,
             )
 
-            result = await asyncio.to_thread(indexer.index_all, self.progress_queue)
+            # If a previous completed job exists for this project, do an
+            # incremental re-index that uses its completed_at as the watermark
+            # to skip work items unchanged since then. Otherwise the project
+            # has never been indexed (or the previous run failed), so index
+            # everything from scratch.
+            previous_watermark = await asyncio.to_thread(indexer._get_previous_job_watermark)
+            if previous_watermark is not None:
+                result = await asyncio.to_thread(
+                    indexer.reindex_changed,
+                    None,
+                    self.progress_queue,
+                )
+            else:
+                result = await asyncio.to_thread(indexer.index_all, self.progress_queue)
 
             if self._cancel_requested:
                 await self._handle_cancel()
@@ -78,8 +91,12 @@ class DocIndexJobRunner:
 
             if result.errors:
                 error_msg = result.errors[0]["error"]
-                await self._db_set_status_async(self.job_id, "failed", error=error_msg, completed=True)
-                self._queue.put_nowait({"event": "progress", "phase": "error", "message": error_msg})
+                await self._db_set_status_async(
+                    self.job_id, "failed", error=error_msg, completed=True
+                )
+                self._queue.put_nowait(
+                    {"event": "progress", "phase": "error", "message": error_msg}
+                )
                 return
 
             await self._db_set_status_async(self.job_id, "completed", completed=True)
