@@ -27,7 +27,7 @@ jobs:
     steps:
       - name: Run Release Please
         id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
         with:
           release-type: python
           # Optional: specify a manifest config file for monorepos:
@@ -45,7 +45,7 @@ jobs:
       attestations: write
     steps:
       - name: Checkout at released tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
 
@@ -68,7 +68,7 @@ jobs:
 
       - name: Generate build provenance attestation
         if: hashFiles('dist/**') != ''
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: "dist/**"
 
