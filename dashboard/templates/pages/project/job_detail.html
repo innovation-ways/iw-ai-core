@@ -158,6 +158,51 @@
   {% endif %}
 </div>
 
+{% elif job.job_type.value == 'oss_scan' %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <h2 class="text-sm font-medium text-foreground mb-3">Parameters</h2>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    {% for k, v in [
+      ('kind', raw.get('kind')),
+      ('exit_code', raw.get('exit_code')),
+      ('scan_id', raw.get('scan_id')),
+      ('scan_status', raw.get('scan_status')),
+      ('scan_exit_code', raw.get('scan_exit_code')),
+      ('scan_pill_color', raw.get('scan_pill_color')),
+      ('scan_head_sha', raw.get('scan_head_sha')),
+    ] %}
+      {% if v is not none and v != '' %}
+        <div>
+          <dt class="text-xs text-muted-foreground">{{ k }}</dt>
+          <dd class="font-medium">{{ v }}</dd>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </dl>
+  {% if raw.get('scan_error_message') %}
+    <div class="mt-4 pt-4 border-t border-border">
+      <dt class="text-xs text-muted-foreground mb-1">scan_error_message</dt>
+      <dd>
+        <pre class="text-xs whitespace-pre-wrap text-destructive">{{ raw.get('scan_error_message') }}</pre>
+      </dd>
+    </div>
+  {% endif %}
+  {% if raw.get('stdout_tail') %}
+    <div class="mt-4 pt-4 border-t border-border">
+      <dt class="text-xs text-muted-foreground mb-1">stdout_tail</dt>
+      <dd>
+        <pre class="text-xs whitespace-pre-wrap font-mono">{{ raw.get('stdout_tail') }}</pre>
+      </dd>
+    </div>
+  {% endif %}
+  <div class="mt-4 pt-4 border-t border-border">
+    <a href="/project/{{ current_project.id }}/oss"
+       class="text-sm text-primary hover:underline">
+      → View OSS Compliance
+    </a>
+  </div>
+</div>
+
 {% elif job.job_type.value == 'research' %}
 <div class="bg-card border border-border rounded-lg p-4 mb-6">
   <h2 class="text-sm font-medium text-foreground mb-3">Parameters</h2>
@@ -195,11 +240,12 @@
 </div>
 {% endif %}
 
-{# Error block #}
-{% if job.status == 'failed' and raw.get('error') %}
+{# Error block — different sources expose the message under different keys #}
+{% set error_text = raw.get('error') or raw.get('error_message') %}
+{% if job.status == 'failed' and error_text %}
 <div class="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
   <h2 class="text-sm font-medium text-destructive mb-2">Error</h2>
-  <pre class="text-xs text-destructive whitespace-pre-wrap">{{ raw.get('error') }}</pre>
+  <pre class="text-xs text-destructive whitespace-pre-wrap">{{ error_text }}</pre>
 </div>
 {% endif %}
 
