@@ -270,6 +270,7 @@ class TestMergeItem:
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         item.batch_id = 42
 
+        from orch.daemon.migration_pipeline import PipelineResult
         from orch.daemon.migration_rebase import RebaseResult
         from orch.db.safe_migrate import DryRunResult
 
@@ -292,11 +293,20 @@ class TestMergeItem:
             error_message=None,
         )
 
+        mock_apply_result = PipelineResult(
+            phase="apply",
+            success=True,
+            final_batch_state="merged",
+            frozen=False,
+            message="Applied successfully (0ms)",
+        )
+
         with (
             patch("orch.daemon.merge_queue.run_pre_merge_rebase", return_value=mock_rebase_result),
             patch(
                 "orch.daemon.merge_queue.run_pre_merge_dry_run", return_value=mock_dry_result
             ) as mock_dry,
+            patch("orch.daemon.merge_queue.run_post_merge_apply", return_value=mock_apply_result),
             patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
         ):

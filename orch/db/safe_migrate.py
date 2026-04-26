@@ -55,6 +55,29 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 MIGRATIONS_SCRIPT_LOCATION = str(Path(__file__).parent / "migrations")
+
+
+def _is_test_context_active() -> bool:
+    """Return True if pytest is running and no operator/daemon opt-in is set.
+
+    When True, helpers in this module that would write to the live orch DB
+    (`_write_migration_log`, `_acquire_migration_lock`, `_release_migration_lock`)
+    short-circuit instead of executing. Prevents tests from corrupting
+    `alembic_version` / `pending_migration_log` / `migration_locks` via the
+    mock-bypass that flows through `get_db_url()`.
+
+    See CR-00022 S17 R0 (and incident I-00041) for context.
+    """
+    if os.environ.get("IW_CORE_OPERATOR_APPLY") == "true":
+        return False
+    if os.environ.get("IW_CORE_DAEMON_CONTEXT") == "true":
+        return False
+    return (
+        os.environ.get("IW_CORE_TEST_CONTEXT") == "true"
+        or os.environ.get("IW_CORE_AGENT_CONTEXT") == "true"
+    )
+
+
 MAX_TAIL_BYTES = 16 * 1024
 
 # The orch DB is a single shared store; migration_locks is a per-project mutex
@@ -196,6 +219,8 @@ def _write_migration_log(
     old_revision: str | None = None,
 ) -> None:
     """Write an entry to pending_migration_log via a fresh short-lived session."""
+    if _is_test_context_active():
+        return
     log_db_url = get_db_url()
     engine = create_engine(log_db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)
@@ -308,6 +333,8 @@ def _acquire_migration_lock(item: str = "daemon") -> None:
 
     Raises MigrationLockHeldError if the lock is held by another item.
     """
+    if _is_test_context_active():
+        return
     lock_db_url = get_db_url()
     engine = create_engine(lock_db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)
@@ -342,6 +369,8 @@ def _acquire_migration_lock(item: str = "daemon") -> None:
 
 def _release_migration_lock(item: str = "daemon") -> None:
     """Release the iw migration-lock for the daemon."""
+    if _is_test_context_active():
+        return
     lock_db_url = get_db_url()
     engine = create_engine(lock_db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)

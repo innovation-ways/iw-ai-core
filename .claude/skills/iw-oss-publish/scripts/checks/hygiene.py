@@ -79,6 +79,7 @@ def hygiene(ctx: Context) -> list[Finding]:
             detail="Missing patterns: " + ", ".join(missing) if missing else "",
             remediation="`make_oss` will append the missing patterns." if missing else None,
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -110,6 +111,7 @@ def hygiene(ctx: Context) -> list[Finding]:
             if violations
             else None,
             evidence={"violations": violations[:50]},
+            auto_apply_safe=False,
         )
     )
 
@@ -130,6 +132,7 @@ def hygiene(ctx: Context) -> list[Finding]:
             else f".gitignore missing language entries ({len(lang_missing)})",
             detail="Missing: " + ", ".join(lang_missing) if lang_missing else "",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -154,6 +157,7 @@ def hygiene(ctx: Context) -> list[Finding]:
             evidence={
                 "large_objects": [{"size_bytes": s, "path": p} for s, p in large_objects[:20]]
             },
+            auto_apply_safe=False,
         )
     )
 
@@ -169,6 +173,7 @@ def hygiene(ctx: Context) -> list[Finding]:
             if not large_wt
             else f"{len(large_wt)} large file(s) in working tree (>10MB)",
             evidence={"paths": large_wt[:20]},
+            auto_apply_safe=False,
         )
     )
 
@@ -185,6 +190,7 @@ def hygiene(ctx: Context) -> list[Finding]:
             remediation="Rename to 'main' before public release (GitHub convention)."
             if not default_main
             else None,
+            auto_apply_safe=False,
         )
     )
 

@@ -102,6 +102,11 @@ class TestWriteMigrationLog:
         from orch.db.safe_migrate import _write_migration_log
 
         with (
+            patch.dict(
+                "os.environ",
+                {"IW_CORE_OPERATOR_APPLY": "true"},
+                clear=False,
+            ),
             patch(
                 "orch.db.safe_migrate.get_db_url",
                 return_value="postgresql+psycopg://u:p@host:5432/db",
@@ -134,6 +139,11 @@ class TestWriteMigrationLog:
         from orch.db.safe_migrate import _write_migration_log
 
         with (
+            patch.dict(
+                "os.environ",
+                {"IW_CORE_OPERATOR_APPLY": "true"},
+                clear=False,
+            ),
             patch(
                 "orch.db.safe_migrate.get_db_url",
                 return_value="postgresql+psycopg://u:p@host:5432/db",

@@ -30,6 +30,7 @@ def trademark(ctx: Context) -> list[Finding]:
             domain=DOMAIN,
             summary=f"TRADEMARK at {tm}" if tm else "TRADEMARK.md missing",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -52,10 +53,11 @@ def trademark(ctx: Context) -> list[Finding]:
             else "USPTO Trademark Search not yet recorded",
             remediation=(
                 "Manual search: https://tmsearch.uspto.gov/ — record outcome in "
-                '`.iw/oss-publish.toml` under [trademark] uspto_searched = "YYYY-MM-DD"'
+                '`.iw/oss-publish.toml` under [trademark] uspta_searched = "YYYY-MM-DD"'
             )
             if not uspto
             else None,
+            auto_apply_safe=False,
         )
     )
 
@@ -76,6 +78,7 @@ def trademark(ctx: Context) -> list[Finding]:
             )
             if not wipo
             else None,
+            auto_apply_safe=False,
         )
     )
 
@@ -99,6 +102,7 @@ def trademark(ctx: Context) -> list[Finding]:
                 if not has_notice
                 else None,
                 auto_fix_available=True,
+                auto_apply_safe=True,
             )
         )
 
@@ -119,6 +123,7 @@ def _probe(check_id: str, registry: str, url: str, name: str) -> Finding:
             status=Status.SKIP,
             domain=DOMAIN,
             summary=f"{registry} name-collision probe failed (offline?)",
+            auto_apply_safe=False,
         )
 
     if code == 404:
@@ -128,6 +133,7 @@ def _probe(check_id: str, registry: str, url: str, name: str) -> Finding:
             status=Status.PASS,
             domain=DOMAIN,
             summary=f"Name `{name}` available on {registry}",
+            auto_apply_safe=False,
         )
     if 200 <= code < 300:
         return Finding(
@@ -137,6 +143,7 @@ def _probe(check_id: str, registry: str, url: str, name: str) -> Finding:
             domain=DOMAIN,
             summary=f"Name `{name}` already taken on {registry}",
             remediation=f"Consider a scoped name (e.g., @innovation-ways/{name}) or rename.",
+            auto_apply_safe=False,
         )
     return Finding(
         id=check_id,
@@ -144,6 +151,7 @@ def _probe(check_id: str, registry: str, url: str, name: str) -> Finding:
         status=Status.SKIP,
         domain=DOMAIN,
         summary=f"{registry} probe returned HTTP {code}",
+        auto_apply_safe=False,
     )
 
 
@@ -157,6 +165,7 @@ def _probe_github(check_id: str, ctx: Context, name: str) -> Finding:
             status=Status.SKIP,
             domain=DOMAIN,
             summary="gh CLI unavailable — GitHub name probe skipped",
+            auto_apply_safe=False,
         )
     import subprocess
 
@@ -175,6 +184,7 @@ def _probe_github(check_id: str, ctx: Context, name: str) -> Finding:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="gh search failed (not authenticated?)",
+                auto_apply_safe=False,
             )
         data = json.loads(r.stdout or "[]")
     except (subprocess.SubprocessError, FileNotFoundError, json.JSONDecodeError):
@@ -184,6 +194,7 @@ def _probe_github(check_id: str, ctx: Context, name: str) -> Finding:
             status=Status.SKIP,
             domain=DOMAIN,
             summary="gh search errored",
+            auto_apply_safe=False,
         )
 
     # Filter out our own org
@@ -195,6 +206,7 @@ def _probe_github(check_id: str, ctx: Context, name: str) -> Finding:
             status=Status.PASS,
             domain=DOMAIN,
             summary=f"No GitHub name collisions outside {own_org}",
+            auto_apply_safe=False,
         )
     top = others[0]
     return Finding(
@@ -205,4 +217,5 @@ def _probe_github(check_id: str, ctx: Context, name: str) -> Finding:
         summary=f"Existing GitHub repo: {top.get('fullName')} ({top.get('stargazerCount', 0)}★)",
         detail="Other matches: " + ", ".join(r.get("fullName", "?") for r in others[:5]),
         remediation="Review — the existing repo may or may not be a problem depending on stars/activity.",
+        auto_apply_safe=False,
     )

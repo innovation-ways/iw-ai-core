@@ -1,0 +1,197 @@
+<div id="oss-apply-all-overlay" class="oss-modal-backdrop" aria-hidden="true"></div>
+<div id="oss-apply-all-modal"
+     class="oss-modal"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="oss-apply-all-title"
+     aria-hidden="true"
+     tabindex="-1">
+  <div class="oss-modal-inner">
+    <header class="oss-modal-header">
+      <h3 id="oss-apply-all-title">Apply all safe fixes — preview</h3>
+      <button type="button" class="modal-close" aria-label="Close modal">×</button>
+    </header>
+
+    <p class="text-xs text-muted-foreground px-1 mb-3">
+      Writes to your working tree only. No branch is created. No commit is made.<br>
+      A recipe is applied only if its top-level checkbox is selected; per-file checkboxes are informational.
+    </p>
+
+    <div class="oss-apply-list max-h-80 overflow-y-auto border border-border rounded bg-muted/20 p-3 space-y-2" id="oss-apply-items">
+      {# Items injected by JS after preview fetch #}
+    </div>
+
+    <footer class="oss-modal-footer mt-4">
+      <button type="button" class="oss-apply-cancel modal-close px-4 py-2 border border-border rounded text-sm hover:bg-muted transition-colors">Cancel</button>
+      <button type="button" class="oss-apply-confirm px-4 py-2 bg-primary text-primary-foreground rounded text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60" disabled>Apply selected</button>
+    </footer>
+  </div>
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('oss-apply-all-overlay');
+  var modal = document.getElementById('oss-apply-all-modal');
+  if (!overlay || !modal) return;
+
+  var itemsContainer = document.getElementById('oss-apply-items');
+  var confirmBtn = modal.querySelector('.oss-apply-confirm');
+  var lastFocusedApplyAll = null;
+
+  function openApplyAllModal(items) {
+    lastFocusedApplyAll = document.activeElement;
+    itemsContainer.innerHTML = '';
+
+    if (!items || items.length === 0) {
+      itemsContainer.innerHTML = '<p class="text-sm text-muted-foreground">No auto-apply-safe fixes available.</p>';
+      confirmBtn.disabled = true;
+    } else {
+      items.forEach(function (item) {
+        var li = document.createElement('li');
+        var details = document.createElement('details');
+        details.className = 'oss-recipe-item';
+
+        var summary = document.createElement('summary');
+        summary.className = 'flex items-center gap-2 cursor-pointer text-sm';
+
+        var topCheckbox = document.createElement('input');
+        topCheckbox.type = 'checkbox';
+        topCheckbox.name = 'check_id';
+        topCheckbox.value = item.check_id;
+        topCheckbox.className = 'oss-recipe-check';
+        topCheckbox.checked = true;
+
+        var checkIdSpan = document.createElement('span');
+        checkIdSpan.className = 'font-medium text-foreground';
+        checkIdSpan.textContent = item.check_id;
+
+        var fileCountSpan = document.createElement('span');
+        fileCountSpan.className = 'text-xs text-muted-foreground';
+        fileCountSpan.textContent = '— ' + item.target_files.length + ' file(s)';
+
+        summary.appendChild(topCheckbox);
+        summary.appendChild(checkIdSpan);
+        summary.appendChild(fileCountSpan);
+
+        var fileUl = document.createElement('ul');
+        fileUl.className = 'ml-6 mt-1 space-y-0.5';
+
+        item.target_files.forEach(function (path) {
+          var fileLi = document.createElement('li');
+          fileLi.className = 'text-xs flex items-center gap-1.5';
+
+          var fileLabel = document.createElement('label');
+          fileLabel.className = 'flex items-center gap-1 cursor-pointer';
+
+          var fileCb = document.createElement('input');
+          fileCb.type = 'checkbox';
+          fileCb.name = 'file';
+          fileCb.value = path;
+          fileCb.className = 'oss-file-check';
+          fileCb.checked = true;
+          fileCb.dataset.checkId = item.check_id;
+
+          fileLabel.appendChild(fileCb);
+          fileLabel.appendChild(document.createTextNode(path));
+          fileLi.appendChild(fileLabel);
+          fileUl.appendChild(fileLi);
+        });
+
+        if (item.notes) {
+          var notesP = document.createElement('p');
+          notesP.className = 'ml-6 text-xs text-muted-foreground mt-0.5';
+          notesP.textContent = item.notes;
+          details.appendChild(summary);
+          details.appendChild(fileUl);
+          details.appendChild(notesP);
+        } else {
+          details.appendChild(summary);
+          details.appendChild(fileUl);
+        }
+
+        li.appendChild(details);
+        itemsContainer.appendChild(li);
+      });
+      confirmBtn.disabled = false;
+    }
+
+    modal.removeAttribute('aria-hidden');
+    overlay.removeAttribute('aria-hidden');
+    document.body.style.overflow = 'hidden';
+    confirmBtn.focus();
+  }
+
+  function closeApplyAllModal() {
+    modal.setAttribute('aria-hidden', 'true');
+    overlay.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    if (lastFocusedApplyAll) lastFocusedApplyAll.focus();
+  }
+
+  modal.querySelector('.modal-close') && modal.querySelector('.modal-close').addEventListener('click', function () {
+    closeApplyAllModal();
+  });
+  overlay.addEventListener('click', function () { closeApplyAllModal(); });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && modal.getAttribute('aria-hidden') !== 'true') {
+      closeApplyAllModal();
+    }
+  });
+
+  itemsContainer.addEventListener('change', function (ev) {
+    var target = ev.target;
+    if (target.classList.contains('oss-file-check')) {
+      var checkId = target.dataset.checkId;
+      var recipeItem = target.closest('.oss-recipe-item');
+      if (recipeItem) {
+        var topCb = recipeItem.querySelector('.oss-recipe-check');
+        var allFiles = recipeItem.querySelectorAll('.oss-file-check');
+        var anyChecked = Array.prototype.slice.call(allFiles).some(function (f) { return f.checked; });
+        if (topCb) topCb.checked = anyChecked;
+      }
+    }
+    if (target.classList.contains('oss-recipe-check')) {
+      var recipeItem = target.closest('.oss-recipe-item');
+      if (recipeItem) {
+        var fileCbs = recipeItem.querySelectorAll('.oss-file-check');
+        fileCbs.forEach(function (fc) { fc.checked = target.checked; });
+      }
+    }
+  });
+
+  confirmBtn && confirmBtn.addEventListener('click', function () {
+    var selected = [];
+    var topCheckboxes = itemsContainer.querySelectorAll('.oss-recipe-check:checked');
+    topCheckboxes.forEach(function (cb) {
+      selected.push(cb.value);
+    });
+    if (selected.length === 0) return;
+
+    var projectIdEl = document.querySelector('[data-project-id]');
+    var projectId = projectIdEl ? projectIdEl.dataset.projectId : null;
+    if (!projectId) return;
+
+    closeApplyAllModal();
+    fetch('/project/' + encodeURIComponent(projectId) + '/oss/apply-all-safe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ check_ids: selected }),
+    }).then(function (r) {
+      if (typeof window.ossShowToastFromHeaders === 'function') {
+        window.ossShowToastFromHeaders(r.headers);
+      } else if (typeof window.showToast === 'function') {
+        window.showToast({ type: 'info', message: 'Applying ' + selected.length + ' fix(es): ' + selected.join(', ') });
+      }
+      return r.json();
+    }).then(function (data) {
+      if (data && data.stream_url && typeof window.ossStartProgressStream === 'function') {
+        window.ossStartProgressStream(data.stream_url, 'Apply');
+      }
+    }).catch(function () {});
+  });
+
+  window.openOssApplyAllModal = openApplyAllModal;
+  window.closeOssApplyAllModal = closeApplyAllModal;
+})();
+</script>

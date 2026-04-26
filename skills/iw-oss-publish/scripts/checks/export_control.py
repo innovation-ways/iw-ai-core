@@ -43,6 +43,7 @@ def export_control(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="ripgrep unavailable — crypto import scan skipped",
+                auto_apply_safe=False,
             )
         )
         return out
@@ -59,6 +60,7 @@ def export_control(ctx: Context) -> list[Finding]:
                 status=Status.PASS,
                 domain=DOMAIN,
                 summary="No ecosystems with crypto patterns detected",
+                auto_apply_safe=False,
             )
         )
         return out
@@ -97,6 +99,7 @@ def export_control(ctx: Context) -> list[Finding]:
                 domain=DOMAIN,
                 summary="No crypto library imports detected",
                 source_research=["R-00062 #10"],
+                auto_apply_safe=False,
             )
         )
     elif already_attested:
@@ -109,6 +112,7 @@ def export_control(ctx: Context) -> list[Finding]:
                 summary=f"{len(hits)} crypto import(s); attested as standard-only",
                 detail="`.iw/oss-publish.toml` export_control.standard_crypto_only = true",
                 source_research=["R-00062 #10"],
+                auto_apply_safe=False,
             )
         )
     else:
@@ -129,6 +133,7 @@ def export_control(ctx: Context) -> list[Finding]:
                 ),
                 evidence={"sample_hits": hits[:20]},
                 source_research=["R-00062 #10"],
+                auto_apply_safe=False,
             )
         )
 
@@ -142,6 +147,7 @@ def export_control(ctx: Context) -> list[Finding]:
                 domain=DOMAIN,
                 summary="Non-standard crypto present; BIS/NSA notification flag set to false",
                 remediation="Complete notification or change classification before publish.",
+                auto_apply_safe=False,
             )
         )
 

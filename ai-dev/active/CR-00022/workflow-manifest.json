@@ -55,7 +55,16 @@
       "CLAUDE.md",
       "dashboard/CLAUDE.md",
       "orch/CLAUDE.md",
-      "tests/CLAUDE.md"
+      "tests/CLAUDE.md",
+      "Dockerfile.e2e",
+      "orch/daemon/migration_rebase.py",
+      "orch/db/safe_migrate.py",
+      "orch/jobs/aggregator.py",
+      "package.json",
+      "package-lock.json",
+      "pyproject.toml",
+      "tests/conftest.py",
+      ".claude/skills/iw-oss-publish/**"
     ]
   },
   "steps": [

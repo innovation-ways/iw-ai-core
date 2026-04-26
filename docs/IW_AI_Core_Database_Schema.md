@@ -808,3 +808,76 @@ ALTER TABLE pending_migration_log DROP CONSTRAINT ck_pending_migration_log_phase
 ALTER TABLE pending_migration_log ADD CONSTRAINT ck_pending_migration_log_phase
     CHECK (phase IN ('dry_run', 'apply', 'rollback'));
 ```
+
+---
+
+## 10. CR-00022: OSS redesign — prune enums, drop worktree columns, add auto_apply_safe
+
+**Revision**: c062b6bf5eb3 (applied 2026-04-26)
+
+### 10.1 project_oss_job_kind enum redesign
+
+Drops `prepare` and `publish`; adds `fix`. Uses recreate-cast-drop pattern.
+
+```sql
+-- Pre-migration delete
+DELETE FROM project_oss_job WHERE kind IN ('prepare','publish');
+
+-- Recreate
+CREATE TYPE project_oss_job_kind_new AS ENUM ('scan','install','fix');
+ALTER TABLE project_oss_job ALTER COLUMN kind TYPE project_oss_job_kind_new
+    USING kind::text::project_oss_job_kind_new;
+DROP TYPE project_oss_job_kind;
+ALTER TYPE project_oss_job_kind_new RENAME TO project_oss_job_kind;
+```
+
+### 10.2 ossscan_mode enum redesign
+
+Drops `make_oss` and `publish`; only `scan` remains. Uses recreate-cast-drop pattern.
+
+```sql
+-- Pre-migration delete
+DELETE FROM oss_scan WHERE mode IN ('make_oss','publish');
+
+-- Recreate
+CREATE TYPE ossscan_mode_new AS ENUM ('scan');
+ALTER TABLE oss_scan ALTER COLUMN mode TYPE ossscan_mode_new
+    USING mode::text::ossscan_mode_new;
+DROP TYPE ossscan_mode;
+ALTER TYPE ossscan_mode_new RENAME TO ossscan_mode;
+```
+
+### 10.3 project_oss_job_status enum redesign
+
+Drops `awaiting_review` and `discarded`. Uses recreate-cast-drop pattern.
+
+```sql
+-- Pre-migration delete (defensive)
+DELETE FROM project_oss_job WHERE status IN ('awaiting_review','discarded');
+
+-- Recreate
+CREATE TYPE project_oss_job_status_new AS ENUM ('queued','running','complete','error','cancelled');
+ALTER TABLE project_oss_job ALTER COLUMN status TYPE project_oss_job_status_new
+    USING status::text::project_oss_job_status_new;
+DROP TYPE project_oss_job_status;
+ALTER TYPE project_oss_job_status_new RENAME TO project_oss_job_status;
+```
+
+### 10.4 project_oss_job column drops
+
+Drops four columns no longer needed after removing prepare/publish workflows:
+
+| Column | Type | Reason |
+|--------|------|--------|
+| `worktree_path` | TEXT | Prepare/publish provisioned temp worktrees |
+| `branch_name` | TEXT | Prep branch names (`iw-oss-publish/prep-<job_id>`) |
+| `commit_sha` | TEXT | Commit SHA on the prep branch |
+| `files_changed_summary` | TEXT | `git diff --stat` at commit time |
+
+### 10.5 oss_finding.auto_apply_safe column
+
+New boolean column indicating a finding can be auto-applied to the working tree without risk:
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `auto_apply_safe` | BOOLEAN | NOT NULL | false |

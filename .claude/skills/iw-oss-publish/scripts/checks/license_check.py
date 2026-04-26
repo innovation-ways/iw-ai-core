@@ -51,6 +51,7 @@ def license_checks(ctx: Context) -> list[Finding]:
             summary=f"LICENSE present at {found}" if found else "LICENSE file missing",
             osps_control="OSPS-LE-03.01",
             auto_fix_available=True,
+            auto_apply_safe=True,
             source_research=["R-00062 #7", "R-00062 #17"],
         )
     )
@@ -70,6 +71,7 @@ def license_checks(ctx: Context) -> list[Finding]:
             if osi_ok
             else f"Declared license '{declared}' is not on OSI-approved list",
             osps_control="OSPS-LE-02.01",
+            auto_apply_safe=False,
         )
     )
 
@@ -85,6 +87,7 @@ def license_checks(ctx: Context) -> list[Finding]:
                     domain=DOMAIN,
                     summary="Could not auto-detect SPDX ID from LICENSE text",
                     remediation="Verify LICENSE is a verbatim copy of the declared license.",
+                    auto_apply_safe=False,
                 )
             )
         elif match == declared:
@@ -95,6 +98,7 @@ def license_checks(ctx: Context) -> list[Finding]:
                     status=Status.PASS,
                     domain=DOMAIN,
                     summary=f"LICENSE matches declared SPDX '{declared}'",
+                    auto_apply_safe=False,
                 )
             )
         else:
@@ -106,6 +110,7 @@ def license_checks(ctx: Context) -> list[Finding]:
                     domain=DOMAIN,
                     summary=f"LICENSE text matches '{match}' but config declares '{declared}'",
                     remediation="Reconcile: either change config.license or replace LICENSE text.",
+                    auto_apply_safe=False,
                 )
             )
 
@@ -125,6 +130,7 @@ def license_checks(ctx: Context) -> list[Finding]:
                 remediation="Review LICENSE — edit in place is not auto-applied."
                 if not has_legal
                 else None,
+                auto_apply_safe=False,
             )
         )
 
@@ -144,6 +150,7 @@ def license_checks(ctx: Context) -> list[Finding]:
                 else "Copyright year is stale or missing",
                 remediation="`make_oss` will rewrite to include current year." if not ok else None,
                 auto_fix_available=True,
+                auto_apply_safe=True,
             )
         )
 
@@ -161,6 +168,7 @@ def license_checks(ctx: Context) -> list[Finding]:
                 else "NOTICE file missing (Apache-2.0 projects should have one)",
                 remediation="`make_oss` renders NOTICE from template." if not notice else None,
                 auto_fix_available=True,
+                auto_apply_safe=True,
             )
         )
 

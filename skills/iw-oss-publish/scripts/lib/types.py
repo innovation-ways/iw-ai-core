@@ -33,6 +33,7 @@ class Finding:
     detail: str = ""
     remediation: str | None = None
     auto_fix_available: bool = False
+    auto_apply_safe: bool = False
     osps_control: str | None = None
     evidence: dict[str, Any] = field(default_factory=dict)
     tool: str | None = None
@@ -48,6 +49,7 @@ class Finding:
             "detail": self.detail,
             "remediation": self.remediation,
             "auto_fix_available": self.auto_fix_available,
+            "auto_apply_safe": self.auto_apply_safe,
             "osps_control": self.osps_control,
             "evidence": self.evidence,
             "tool": self.tool,

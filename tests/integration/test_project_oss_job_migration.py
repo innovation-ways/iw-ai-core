@@ -43,7 +43,7 @@ BEGIN
     CREATE TYPE ossscan_status AS ENUM ('pending', 'running', 'complete', 'error');
 
     DROP TYPE IF EXISTS ossscan_mode;
-    CREATE TYPE ossscan_mode AS ENUM ('scan', 'make_oss', 'publish');
+    CREATE TYPE ossscan_mode AS ENUM ('scan');
 
     DROP TYPE IF EXISTS osspill_color;
     CREATE TYPE osspill_color AS ENUM ('green', 'yellow', 'red', 'gray');
@@ -58,11 +58,11 @@ BEGIN
     CREATE TYPE osstoolrun_status AS ENUM ('ok', 'failed', 'missing', 'skipped');
 
     DROP TYPE IF EXISTS project_oss_job_kind;
-    CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'prepare', 'publish', 'install');
+    CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'install', 'fix');
 
     DROP TYPE IF EXISTS project_oss_job_status;
     CREATE TYPE project_oss_job_status AS ENUM (
-        'queued', 'running', 'complete', 'error', 'cancelled', 'awaiting_review', 'discarded'
+        'queued', 'running', 'complete', 'error', 'cancelled'
     );
 END$$;
 
@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS oss_finding (
     detail TEXT,
     remediation TEXT,
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
+    auto_apply_safe BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
     evidence_json JSONB,
@@ -131,14 +132,10 @@ CREATE TABLE IF NOT EXISTS project_oss_job (
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     exit_code INTEGER,
-    worktree_path TEXT,
     scan_id BIGINT,
     stdout_tail TEXT,
     error_message TEXT,
     base_sha TEXT,
-    branch_name TEXT,
-    commit_sha TEXT,
-    files_changed_summary TEXT,
     CONSTRAINT fk_project_oss_job_project FOREIGN KEY (project_id)
         REFERENCES projects(id) ON DELETE CASCADE,
     CONSTRAINT fk_project_oss_job_scan FOREIGN KEY (scan_id)
@@ -260,20 +257,19 @@ class TestProjectOssJobMigrationApply:
             "started_at",
             "completed_at",
             "exit_code",
-            "worktree_path",
             "scan_id",
             "stdout_tail",
             "error_message",
         }
         assert expected.issubset(columns), f"Missing: {expected - columns}"
-
-    def test_indexes(self, oss_job_engine: Engine) -> None:
-        inspector = inspect(oss_job_engine)
-        indexes = {idx["name"] for idx in inspector.get_indexes("project_oss_job")}
-        assert "ix_project_oss_job_project_created" in indexes
-        assert "ix_project_oss_job_status" in indexes
+        # CR-00022: old columns removed
+        assert "worktree_path" not in columns
+        assert "branch_name" not in columns
+        assert "commit_sha" not in columns
+        assert "files_changed_summary" not in columns
 
     def test_kind_enum(self, oss_job_engine: Engine) -> None:
+        """project_oss_job_kind enum has exactly {scan, install, fix}."""
         with oss_job_engine.connect() as conn:
             result = conn.execute(
                 text(
@@ -282,9 +278,10 @@ class TestProjectOssJobMigrationApply:
                 )
             )
         labels = {row[0] for row in result}
-        assert labels == {"scan", "prepare", "publish", "install"}
+        assert labels == {"scan", "install", "fix"}
 
     def test_status_enum(self, oss_job_engine: Engine) -> None:
+        """project_oss_job_status enum has exactly {queued, running, complete, error, cancelled}."""
         with oss_job_engine.connect() as conn:
             result = conn.execute(
                 text(
@@ -293,18 +290,8 @@ class TestProjectOssJobMigrationApply:
                 )
             )
         labels = {row[0] for row in result}
-        assert labels == {
-            "queued",
-            "running",
-            "complete",
-            "error",
-            "cancelled",
-            "awaiting_review",
-            "discarded",
-        }
+        assert labels == {"queued", "running", "complete", "error", "cancelled"}
 
-
-class TestProjectOssJobORMModel:
     def test_insert_scan_job(self, oss_job_session: Session, oss_job_test_project: Project) -> None:
         job = ProjectOssJob(
             project_id=oss_job_test_project.id,
@@ -320,7 +307,6 @@ class TestProjectOssJobORMModel:
         assert job.started_at is None
         assert job.completed_at is None
         assert job.exit_code is None
-        assert job.worktree_path is None
         assert job.scan_id is None
         assert job.stdout_tail is None
         assert job.error_message is None
@@ -353,19 +339,34 @@ class TestProjectOssJobORMModel:
         assert job.scan_id == scan.id
         assert job.stdout_tail is not None
 
-    def test_insert_prepare_job_with_worktree(
+    def test_insert_scan_job_all_fields(
         self, oss_job_session: Session, oss_job_test_project: Project
     ) -> None:
+        """Insert scan job with all available fields (no worktree_path)."""
+        from datetime import UTC, datetime
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+
+        scan = OssScan(project_id=oss_job_test_project.id)
+        oss_job_session.add(scan)
+        oss_job_session.flush()
+
         job = ProjectOssJob(
             project_id=oss_job_test_project.id,
-            kind=ProjectOssJobKind.prepare,
+            kind=ProjectOssJobKind.scan,
             status=ProjectOssJobStatus.running,
-            worktree_path="/tmp/oss-worktree-abc123",
+            started_at=now,
+            exit_code=0,
+            scan_id=scan.id,
+            stdout_tail="gitleaks v1.2.3\n...",
         )
         oss_job_session.add(job)
         oss_job_session.flush()
-        assert job.kind == ProjectOssJobKind.prepare
-        assert job.worktree_path == "/tmp/oss-worktree-abc123"
+
+        assert job.status == ProjectOssJobStatus.running
+        assert job.started_at is not None
+        assert job.scan_id == scan.id
+        assert job.stdout_tail is not None
 
     def test_insert_install_job(
         self, oss_job_session: Session, oss_job_test_project: Project
@@ -377,7 +378,6 @@ class TestProjectOssJobORMModel:
         oss_job_session.add(job)
         oss_job_session.flush()
         assert job.kind == ProjectOssJobKind.install
-        assert job.worktree_path is None
 
     def test_complete_job(self, oss_job_session: Session, oss_job_test_project: Project) -> None:
         from datetime import UTC, datetime
@@ -403,11 +403,11 @@ class TestProjectOssJobORMModel:
     def test_error_job(self, oss_job_session: Session, oss_job_test_project: Project) -> None:
         job = ProjectOssJob(
             project_id=oss_job_test_project.id,
-            kind=ProjectOssJobKind.publish,
+            kind=ProjectOssJobKind.scan,
             status=ProjectOssJobStatus.error,
             exit_code=1,
-            error_message="publish failed: no LICENSE file found",
-            stdout_tail="ERROR: no LICENSE file found",
+            error_message="scan failed",
+            stdout_tail="ERROR: scan failed",
         )
         oss_job_session.add(job)
         oss_job_session.flush()
@@ -502,7 +502,7 @@ class TestProjectOssJobRelationships:
         self, oss_job_session: Session, oss_job_test_project: Project
     ) -> None:
         job1 = ProjectOssJob(project_id=oss_job_test_project.id, kind=ProjectOssJobKind.scan)
-        job2 = ProjectOssJob(project_id=oss_job_test_project.id, kind=ProjectOssJobKind.prepare)
+        job2 = ProjectOssJob(project_id=oss_job_test_project.id, kind=ProjectOssJobKind.install)
         oss_job_session.add_all([job1, job2])
         oss_job_session.flush()
 

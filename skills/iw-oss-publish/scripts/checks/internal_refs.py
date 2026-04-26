@@ -49,6 +49,7 @@ def internal_refs(ctx: Context) -> list[Finding]:
                 domain=DOMAIN,
                 summary="ripgrep unavailable — internal-ref checks skipped",
                 remediation="Install ripgrep: bash .claude/skills/iw-oss-publish/scripts/install_tools.sh",
+                auto_apply_safe=False,
             )
         )
         return out
@@ -179,6 +180,7 @@ def _result_to_finding(
             domain=DOMAIN,
             summary=f"{label}: scan error",
             detail=result["error"],
+            auto_apply_safe=False,
         )
     if result["count"] == 0:
         return Finding(
@@ -187,6 +189,7 @@ def _result_to_finding(
             status=Status.PASS,
             domain=DOMAIN,
             summary=f"No {label.lower()} detected",
+            auto_apply_safe=False,
         )
     detail_body = "First matches:\n" + "\n".join(result["samples"])
     if len(detail_body) > MAX_DETAIL_CHARS:
@@ -201,4 +204,5 @@ def _result_to_finding(
         remediation=remediation_hit
         + " Review and decide per hit; excluded paths: `docs/`, `tests/`, `examples/`.",
         evidence={"hit_count": result["count"], "samples": result["samples"]},
+        auto_apply_safe=False,
     )

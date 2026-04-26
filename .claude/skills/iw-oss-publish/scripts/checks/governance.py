@@ -39,6 +39,7 @@ def governance(ctx: Context) -> list[Finding]:
                 status=Status.PASS,
                 domain=DOMAIN,
                 summary=f"GOVERNANCE.md at {gov}",
+                auto_apply_safe=False,
             )
         )
     elif escalate:
@@ -51,6 +52,7 @@ def governance(ctx: Context) -> list[Finding]:
                 summary=f"GOVERNANCE.md missing ({'foundation track' if foundation else f'{len(maintainer_refs)} maintainer refs'})",
                 remediation="Add GOVERNANCE.md documenting decision-making, merge authority, CoC chain.",
                 auto_fix_available=False,
+                auto_apply_safe=False,
             )
         )
     else:
@@ -61,6 +63,7 @@ def governance(ctx: Context) -> list[Finding]:
                 status=Status.FAIL,
                 domain=DOMAIN,
                 summary="GOVERNANCE.md not present (not required at this maintainer count)",
+                auto_apply_safe=False,
             )
         )
 
@@ -75,6 +78,7 @@ def governance(ctx: Context) -> list[Finding]:
             summary=f"MAINTAINERS at {maint}"
             if maint
             else "No MAINTAINERS file (optional; CODEOWNERS can suffice)",
+            auto_apply_safe=False,
         )
     )
 

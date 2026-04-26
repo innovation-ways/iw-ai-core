@@ -48,7 +48,7 @@ BEGIN
     CREATE TYPE ossscan_status AS ENUM ('pending', 'running', 'complete', 'error');
 
     DROP TYPE IF EXISTS ossscan_mode;
-    CREATE TYPE ossscan_mode AS ENUM ('scan', 'make_oss', 'publish');
+    CREATE TYPE ossscan_mode AS ENUM ('scan');
 
     DROP TYPE IF EXISTS osspill_color;
     CREATE TYPE osspill_color AS ENUM ('green', 'yellow', 'red', 'gray');
@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS oss_finding (
     detail TEXT,
     remediation TEXT,
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
+    auto_apply_safe BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
     evidence_json JSONB,
@@ -357,14 +358,58 @@ class TestOssEnumValues:
         labels = {row[0] for row in result}
         assert labels == {"pending", "running", "complete", "error"}
 
+    def test_project_oss_job_kind_enum(self, oss_engine: Engine) -> None:
+        """project_oss_job_kind enum has exactly {scan, install, fix}."""
+        with oss_engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT enumlabel FROM pg_enum "
+                    "WHERE enumtypid = 'project_oss_job_kind'::regtype"
+                )
+            )
+        labels = {row[0] for row in result}
+        assert labels == {"scan", "install", "fix"}
+
     def test_oss_scan_mode_enum(self, oss_engine: Engine) -> None:
-        """ossscan_mode enum has correct values."""
+        """ossscan_mode enum has exactly {scan}."""
         with oss_engine.connect() as conn:
             result = conn.execute(
                 text("SELECT enumlabel FROM pg_enum WHERE enumtypid = 'ossscan_mode'::regtype")
             )
         labels = {row[0] for row in result}
-        assert labels == {"scan", "make_oss", "publish"}
+        assert labels == {"scan"}
+
+    def test_project_oss_job_status_enum(self, oss_engine: Engine) -> None:
+        """project_oss_job_status enum has exactly {queued, running, complete, error, cancelled}."""
+        with oss_engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT enumlabel FROM pg_enum "
+                    "WHERE enumtypid = 'project_oss_job_status'::regtype"
+                )
+            )
+        labels = {row[0] for row in result}
+        assert labels == {"queued", "running", "complete", "error", "cancelled"}
+
+    def test_oss_finding_auto_apply_safe_column(self, oss_engine: Engine) -> None:
+        """oss_finding.auto_apply_safe exists as BOOLEAN NOT NULL DEFAULT false."""
+        inspector = inspect(oss_engine)
+        columns = {c["name"] for c in inspector.get_columns("oss_finding")}
+        assert "auto_apply_safe" in columns
+        col = next(
+            c for c in inspector.get_columns("oss_finding") if c["name"] == "auto_apply_safe"
+        )
+        assert col["nullable"] is False
+        assert col["default"] == "false"
+
+    def test_project_oss_job_no_worktree_path_column(self, oss_engine: Engine) -> None:
+        """project_oss_job has no worktree_path/branch_name/commit_sha/files_changed_summary."""
+        inspector = inspect(oss_engine)
+        columns = {c["name"] for c in inspector.get_columns("project_oss_job")}
+        assert "worktree_path" not in columns
+        assert "branch_name" not in columns
+        assert "commit_sha" not in columns
+        assert "files_changed_summary" not in columns
 
     def test_oss_pill_color_enum(self, oss_engine: Engine) -> None:
         """osspill_color enum has correct values."""
@@ -433,7 +478,7 @@ class TestOssORMModels:
         scan = OssScan(
             project_id=oss_test_project.id,
             status="running",
-            mode="make_oss",
+            mode="scan",
             exit_code=0,
             head_sha="abc123",
             pill_color="green",
@@ -445,7 +490,7 @@ class TestOssORMModels:
 
         assert scan.id is not None
         assert str(scan.status) == "running"
-        assert str(scan.mode) == "make_oss"
+        assert str(scan.mode) == "scan"
         assert scan.exit_code == 0
         assert scan.head_sha == "abc123"
         assert str(scan.pill_color) == "green"

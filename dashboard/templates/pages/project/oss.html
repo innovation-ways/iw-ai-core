@@ -20,7 +20,7 @@
     </div>
   {% endif %}
 
-  {# Action row: Scan / Prepare / Publish #}
+  {# Action row: Scan / Apply all safe #}
   <div class="flex flex-wrap gap-3 mb-3" id="oss-actions">
     <button type="button"
             data-oss-action="scan"
@@ -32,24 +32,12 @@
     </button>
 
     <button type="button"
-            data-oss-action="prepare"
+            data-oss-action="apply-all-safe"
             data-project-id="{{ current_project.id }}"
-            data-label-idle="Prepare"
-            data-label-running="Preparing…"
-            title="Generate all required OSS artifacts in a throwaway worktree — your working tree is untouched."
+            data-label-idle="Apply all safe"
+            data-label-running="Applying…"
             class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed">
-      Prepare
-    </button>
-
-    <button type="button"
-            data-oss-action="publish"
-            data-project-id="{{ current_project.id }}"
-            data-label-idle="Publish"
-            data-label-running="Publishing…"
-            data-confirm="Publishing marks this project as publicly listed and generates all OSS artifacts. Continue?"
-            title="Publish the project — marks it publicly listed and generates all OSS artifacts."
-            class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed">
-      Publish
+      Apply all safe
     </button>
   </div>
 
@@ -60,22 +48,27 @@
       CLI equivalents
     </summary>
     <div class="mt-2 space-y-1.5">
-      {% for cmd in ['scan', 'prepare', 'publish'] %}
-        <div class="flex items-center gap-2">
-          <code class="bg-muted rounded px-2 py-0.5 text-xs font-mono text-foreground">uv run iw oss {{ cmd }} --project {{ current_project.id }}</code>
-          <button type="button"
-                  data-oss-copy="uv run iw oss {{ cmd }} --project {{ current_project.id }}"
-                  class="text-muted-foreground hover:text-foreground"
-                  aria-label="Copy command">📋</button>
-        </div>
-      {% endfor %}
+      <div class="flex items-center gap-2">
+        <code class="bg-muted rounded px-2 py-0.5 text-xs font-mono text-foreground">uv run iw oss scan --project {{ current_project.id }}</code>
+        <button type="button"
+                data-oss-copy="uv run iw oss scan --project {{ current_project.id }}"
+                class="text-muted-foreground hover:text-foreground"
+                aria-label="Copy command">📋</button>
+      </div>
+      <div class="flex items-center gap-2">
+        <code class="bg-muted rounded px-2 py-0.5 text-xs font-mono text-foreground">uv run iw oss fix &lt;CHECK_ID&gt; --project {{ current_project.id }}</code>
+        <button type="button"
+                data-oss-copy="uv run iw oss fix --project {{ current_project.id }}"
+                class="text-muted-foreground hover:text-foreground"
+                aria-label="Copy command">📋</button>
+      </div>
     </div>
   </details>
 
-  {# Scan progress row (dynamically inserted by the action buttons) #}
+  {# Scan progress row #}
   <div id="oss-progress-row" class="mb-4"></div>
 
-  {# Scan summary pill — renders whenever we have a scan, even one without a pill color #}
+  {# Scan summary pill #}
   {% if scan_summary and scan_summary.scan_id %}
     {% set status = scan_summary.status %}
     {% if scan_summary.pill_color == 'green' %}
@@ -123,14 +116,14 @@
     </div>
   {% endif %}
 
-  {# Summary stats — only rendered when a scan exists with findings #}
+  {# Summary stats #}
   {% if findings_by_domain and totals and totals.total > 0 %}
-    {% set publish_blocked = totals.must_fail > 0 %}
+    {% set has_must_failures = totals.must_fail > 0 %}
     <div class="mb-6 rounded-xl border border-border bg-card">
       {# Verdict banner #}
       <div class="px-5 py-4 border-b border-border flex items-center justify-between gap-4">
         <div class="flex items-center gap-3 min-w-0">
-          {% if publish_blocked %}
+          {% if has_must_failures %}
             <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 text-lg shrink-0">●</span>
           {% elif totals.should_fail > 0 %}
             <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-lg shrink-0">●</span>
@@ -139,12 +132,12 @@
           {% endif %}
           <div class="min-w-0">
             <div class="text-sm font-semibold text-foreground">
-              {% if publish_blocked %}Publish blocked
-              {% elif totals.should_fail > 0 %}Publish allowed — with warnings
-              {% else %}Ready to publish{% endif %}
+              {% if has_must_failures %}MUST failures present
+              {% elif totals.should_fail > 0 %}Compliance gate clear — with warnings
+              {% else %}Compliance gate clear{% endif %}
             </div>
             <div class="text-xs text-muted-foreground mt-0.5">
-              {% if publish_blocked %}
+              {% if has_must_failures %}
                 {{ totals.must_fail }} critical MUST failure{{ 's' if totals.must_fail != 1 else '' }} must be fixed before going public.
               {% elif totals.should_fail > 0 %}
                 {{ totals.should_fail }} SHOULD improvement{{ 's' if totals.should_fail != 1 else '' }} recommended but not blocking.
@@ -159,7 +152,7 @@
           <div class="text-sm font-semibold text-foreground tabular-nums">{{ totals.total }}</div>
         </div>
       </div>
-      {# Stat tiles — no row washes, colored numbers + small status dot #}
+      {# Stat tiles #}
       <div class="grid grid-cols-2 sm:grid-cols-5 divide-x divide-y sm:divide-y-0 divide-border">
         <div class="px-5 py-4 flex items-start gap-3">
           <span class="w-1.5 h-10 rounded-full bg-emerald-500/70 shrink-0"></span>
@@ -200,197 +193,52 @@
     </div>
   {% endif %}
 
-  {# Results tree #}
-  {% if findings_by_domain %}
-    <div class="space-y-2.5" id="oss-results-tree">
-      {% for domain, domain_data in findings_by_domain.items() %}
-        {% set counts = domain_data.counts %}
-        {% set domain_findings = domain_data.findings %}
-        {% set dcopy = domain_context.get(domain) %}
-        <div class="oss-domain-card bg-card border border-border rounded-xl">
-          <button type="button"
-                  class="w-full flex items-center justify-between gap-3 px-5 py-3.5 text-left hover:bg-muted/40 transition-colors rounded-xl"
-                  aria-expanded="false"
-                  onclick="const b=this.nextElementSibling;const e=this.getAttribute('aria-expanded')==='true';this.setAttribute('aria-expanded',!e);b.hidden=e;this.querySelector('svg').classList.toggle('rotate-90',!e);this.classList.toggle('rounded-b-none',!e);">
-            <div class="flex items-center gap-2.5 min-w-0">
-              <svg class="w-3.5 h-3.5 text-muted-foreground transition-transform shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
-              </svg>
-              <span class="text-sm font-semibold text-foreground">{{ dcopy.name if dcopy else domain }}</span>
-              {% if dcopy %}
-                <span class="text-xs text-muted-foreground truncate hidden md:inline">· {{ dcopy.what }}</span>
-              {% endif %}
-            </div>
-            <div class="flex items-center gap-1.5 shrink-0">
-              {% if counts.pass_status > 0 %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 tabular-nums">{{ counts.pass_status }} pass</span>
-              {% endif %}
-              {% if counts.must > 0 %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400 tabular-nums">{{ counts.must }} MUST</span>
-              {% endif %}
-              {% if counts.should > 0 %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 tabular-nums">{{ counts.should }} SHOULD</span>
-              {% endif %}
-              {% if counts.info > 0 %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400 tabular-nums">{{ counts.info }} info</span>
-              {% endif %}
-              {% if counts.skipped > 0 %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border border-border bg-muted/50 text-muted-foreground tabular-nums">{{ counts.skipped }} skip</span>
-              {% endif %}
-              {% if counts.fail == 0 and counts.skipped == 0 and counts.total > 0 %}
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">✓ all pass</span>
-              {% endif %}
-            </div>
-          </button>
-          <div class="domain-body border-t border-border" hidden>
-            <div class="divide-y divide-border">
-              {% for finding in domain_findings %}
-                {% set status_val = finding.status.value %}
-                {% set sev_val = finding.severity.value %}
-                {% set scopy = severity_impact.get(sev_val) %}
-                {% set stcopy = status_copy.get(status_val) %}
-                {% set accent = 'transparent' %}
-                {% if status_val == 'fail' and sev_val == 'MUST' %}{% set accent = 'red' %}
-                {% elif status_val == 'fail' and sev_val == 'SHOULD' %}{% set accent = 'amber' %}
-                {% elif status_val == 'fail' and sev_val == 'INFO' %}{% set accent = 'sky' %}
-                {% elif status_val == 'human_required' %}{% set accent = 'amber' %}
-                {% endif %}
-                <div class="oss-finding group relative flex items-stretch hover:bg-muted/30 transition-colors">
-                  {# Left accent rail — only tinted when this finding is failing #}
-                  <span class="w-[3px] shrink-0
-                    {% if accent == 'red' %}bg-red-500{% elif accent == 'amber' %}bg-amber-500{% elif accent == 'sky' %}bg-sky-500{% else %}bg-transparent{% endif %}"></span>
-                  <div class="flex-1 min-w-0 px-5 py-3.5">
-                    <div class="flex items-start gap-3">
-                      {# Status icon — soft tinted circle, dark-mode aware #}
-                      {% if status_val == 'pass' %}
-                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-sm font-bold shrink-0" aria-label="Pass">✓</span>
-                      {% elif status_val == 'fail' %}
-                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-500/15 text-red-600 dark:text-red-400 text-sm font-bold shrink-0" aria-label="Fail">✗</span>
-                      {% elif status_val == 'human_required' %}
-                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 text-sm font-bold shrink-0" aria-label="Human required">!</span>
-                      {% else %}
-                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-muted text-muted-foreground text-sm font-bold shrink-0" aria-label="Skipped">⊘</span>
-                      {% endif %}
-                      <div class="flex-1 min-w-0">
-                        <div class="flex items-center flex-wrap gap-2 mb-1">
-                          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide border
-                            {% if sev_val == 'MUST' %}border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400
-                            {% elif sev_val == 'SHOULD' %}border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400
-                            {% elif sev_val == 'INFO' %}border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400
-                            {% else %}border-border bg-muted text-muted-foreground{% endif %}">
-                            {{ sev_val }}
-                          </span>
-                          <span class="text-[11px] text-muted-foreground font-mono">{{ finding.check_id }}</span>
-                          {% if finding.osps_control %}
-                            <span class="text-[10px] text-muted-foreground font-mono">· {{ finding.osps_control }}</span>
-                          {% endif %}
-                          <span class="ml-auto text-[11px] font-semibold uppercase tracking-wider
-                            {% if status_val == 'pass' %}text-emerald-600 dark:text-emerald-400
-                            {% elif status_val == 'fail' %}text-red-600 dark:text-red-400
-                            {% elif status_val == 'human_required' %}text-amber-600 dark:text-amber-400
-                            {% else %}text-muted-foreground{% endif %}">
-                            {{ stcopy.label if stcopy else status_val|upper }}
-                          </span>
-                        </div>
-                        <p class="text-sm text-foreground font-medium mb-0.5">{{ finding.summary }}</p>
-                        {% if finding.detail %}
-                          <p class="text-xs text-muted-foreground leading-relaxed">{{ finding.detail }}</p>
-                        {% endif %}
-                        {% if finding.remediation %}
-                          <p class="text-xs text-muted-foreground leading-relaxed mt-1">
-                            <span class="font-medium text-foreground/80">Remediation —</span> {{ finding.remediation }}
-                          </p>
-                        {% endif %}
-                        {% if finding.auto_fix_available %}
-                          <a href="#" class="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-1">→ Fix via Prepare</a>
-                        {% endif %}
-                      </div>
-                    </div>
-                  </div>
+  {# Filter chips #}
+  {% if findings_by_domain and totals and totals.total > 0 %}
+    <div class="flex flex-wrap gap-2 mb-4" id="oss-filter-chips" role="group" aria-label="Filter findings">
+      <button type="button"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border transition-colors aria-pressed:opacity-100 opacity-70 border-primary bg-primary text-primary-foreground"
+              data-filter="failing"
+              aria-pressed="true">
+        Failing/human-required only
+      </button>
+      <button type="button"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
+              data-filter="all"
+              aria-pressed="false">
+        All
+      </button>
+      <button type="button"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
+              data-filter="MUST"
+              aria-pressed="false">
+        MUST
+      </button>
+      <button type="button"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
+              data-filter="SHOULD"
+              aria-pressed="false">
+        SHOULD
+      </button>
+      <button type="button"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
+              data-filter="INFO"
+              aria-pressed="false">
+        INFO
+      </button>
+      <button type="button"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
+              data-filter="Accepted"
+              aria-pressed="false">
+        Accepted
+      </button>
+    </div>
+  {% endif %}
 
-                  {# Rich hover panel — elegant floating tooltip, dark-mode aware #}
-                  <div class="oss-tooltip pointer-events-none opacity-0 translate-y-0.5 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-150
-                              absolute left-4 right-4 top-full mt-1.5 z-30
-                              bg-card text-foreground border border-border rounded-lg shadow-2xl
-                              ring-1 ring-black/5 dark:ring-white/5
-                              p-4 text-xs leading-relaxed space-y-3">
-                    <div class="flex items-center gap-2 pb-2 border-b border-border">
-                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide border
-                        {% if sev_val == 'MUST' %}border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400
-                        {% elif sev_val == 'SHOULD' %}border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400
-                        {% elif sev_val == 'INFO' %}border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-400
-                        {% else %}border-border bg-muted text-muted-foreground{% endif %}">
-                        {{ sev_val }}
-                      </span>
-                      <span class="font-mono text-muted-foreground text-[11px]">{{ finding.check_id }}</span>
-                      {% if finding.osps_control %}
-                        <span class="text-[10px] text-muted-foreground font-mono">· {{ finding.osps_control }}</span>
-                      {% endif %}
-                      <span class="ml-auto font-semibold uppercase tracking-wider text-[10px]
-                        {% if status_val == 'pass' %}text-emerald-600 dark:text-emerald-400
-                        {% elif status_val == 'fail' %}text-red-600 dark:text-red-400
-                        {% elif status_val == 'human_required' %}text-amber-600 dark:text-amber-400
-                        {% else %}text-muted-foreground{% endif %}">
-                        {{ stcopy.label if stcopy else status_val|upper }}
-                      </span>
-                    </div>
-
-                    <p class="text-sm font-semibold text-foreground">{{ finding.summary }}</p>
-
-                    {% if finding.detail %}
-                      <div>
-                        <div class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Details</div>
-                        <p class="text-foreground whitespace-pre-wrap">{{ finding.detail }}</p>
-                      </div>
-                    {% endif %}
-
-                    {% if dcopy %}
-                      <div>
-                        <div class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Why this check exists</div>
-                        <p class="text-foreground">{{ dcopy.what }}</p>
-                      </div>
-                      <div>
-                        <div class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Risk if failing</div>
-                        <p class="text-foreground">{{ dcopy.risk }}</p>
-                      </div>
-                    {% endif %}
-
-                    {% if scopy and status_val in ('fail', 'human_required') %}
-                      <div class="rounded-md px-3 py-2 border
-                        {% if sev_val == 'MUST' %}border-red-500/30 bg-red-500/10
-                        {% elif sev_val == 'SHOULD' %}border-amber-500/30 bg-amber-500/10
-                        {% else %}border-border bg-muted/40{% endif %}">
-                        <div class="text-[10px] uppercase tracking-wider font-semibold mb-1
-                          {% if sev_val == 'MUST' %}text-red-700 dark:text-red-400
-                          {% elif sev_val == 'SHOULD' %}text-amber-700 dark:text-amber-400
-                          {% else %}text-muted-foreground{% endif %}">
-                          If you publish anyway · {{ scopy.label }}
-                        </div>
-                        <p class="text-foreground">{{ scopy.impact }}</p>
-                      </div>
-                    {% endif %}
-
-                    {% if finding.remediation %}
-                      <div>
-                        <div class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Remediation</div>
-                        <p class="text-foreground">{{ finding.remediation }}</p>
-                      </div>
-                    {% endif %}
-
-                    {% if finding.tool %}
-                      <div class="text-[11px] text-muted-foreground pt-2 border-t border-border">
-                        Detected by <span class="font-mono text-foreground/80">{{ finding.tool }}</span>
-                      </div>
-                    {% endif %}
-                  </div>
-                </div>
-              {% else %}
-                <div class="px-4 py-3 text-sm text-muted-foreground">No findings in this domain.</div>
-              {% endfor %}
-            </div>
-          </div>
-        </div>
-      {% endfor %}
+  {# Findings table #}
+  {% if findings_by_domain and totals and totals.total > 0 %}
+    <div class="mb-6">
+      {% include "fragments/oss_table.html" %}
     </div>
   {% elif recent_jobs %}
     <div class="space-y-2">
@@ -421,171 +269,373 @@
     </div>
   {% endif %}
 </div>
+
+{# Finding modal #}
+{% include "fragments/oss_finding_modal.html" %}
+{# Apply-all-safe preview modal #}
+{% include "fragments/oss_apply_all_safe_modal.html" %}
+{# Toast helper (defines window.showToast) #}
+{% include "components/toast.html" %}
 {% endblock %}
 
 {% block scripts %}
 <script>
-  (function () {
-    function renderProgress(container, jobKind) {
-      container.innerHTML = '';
-      var wrap = document.createElement('div');
-      wrap.className = 'bg-card border border-border rounded-lg p-4 space-y-2';
+window.OSS_CATALOG = {{ catalog | tojson }};
+(function () {
+  function renderProgress(container, jobKind) {
+    container.innerHTML = '';
+    var wrap = document.createElement('div');
+    wrap.className = 'bg-card border border-border rounded-lg p-4 space-y-2';
 
-      var header = document.createElement('div');
-      header.className = 'flex items-center gap-2';
-      header.innerHTML =
-        '<svg class="w-4 h-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24">' +
-          '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
-          '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>' +
-        '</svg>' +
-        '<span class="text-sm text-foreground font-medium"></span>';
-      header.querySelector('span').textContent = (jobKind || 'Scan') + ' running…';
-      wrap.appendChild(header);
+    var header = document.createElement('div');
+    header.className = 'flex items-center gap-2';
+    header.innerHTML =
+      '<svg class="w-4 h-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24">' +
+        '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+        '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>' +
+      '</svg>' +
+      '<span class="text-sm text-foreground font-medium"></span>';
+    header.querySelector('span').textContent = (jobKind || 'Scan') + ' running…';
+    wrap.appendChild(header);
 
-      var lines = document.createElement('div');
-      lines.className = 'bg-muted rounded font-mono text-xs text-muted-foreground p-2 max-h-40 overflow-y-auto';
-      var waiting = document.createElement('p');
-      waiting.className = 'italic';
-      waiting.textContent = 'Waiting for output…';
-      lines.appendChild(waiting);
-      wrap.appendChild(lines);
+    var lines = document.createElement('div');
+    lines.className = 'bg-muted rounded font-mono text-xs text-muted-foreground p-2 max-h-40 overflow-y-auto';
+    var waiting = document.createElement('p');
+    waiting.className = 'italic';
+    waiting.textContent = 'Waiting for output…';
+    lines.appendChild(waiting);
+    wrap.appendChild(lines);
 
-      container.appendChild(wrap);
-      return lines;
+    container.appendChild(wrap);
+    return lines;
+  }
+
+  function appendLine(linesEl, text, cssClass) {
+    var italic = linesEl.querySelector('p.italic');
+    if (italic) italic.remove();
+    var p = document.createElement('p');
+    if (cssClass) p.className = cssClass;
+    p.textContent = text;
+    linesEl.appendChild(p);
+    linesEl.scrollTop = linesEl.scrollHeight;
+  }
+
+  function patchRowInPlace(row, data) {
+    if (!row) return;
+    var statusEl = row.querySelector('.status-pill');
+    if (statusEl && data.status) {
+      statusEl.textContent = data.status.toUpperCase();
+      statusEl.className = 'status-pill status-' + data.status;
     }
-
-    function appendLine(linesEl, text, cssClass) {
-      var italic = linesEl.querySelector('p.italic');
-      if (italic) italic.remove();
-      var p = document.createElement('p');
-      if (cssClass) p.className = cssClass;
-      p.textContent = text;
-      linesEl.appendChild(p);
-      linesEl.scrollTop = linesEl.scrollHeight;
+    var sevEl = row.querySelector('.severity-pill');
+    if (sevEl && data.severity) {
+      sevEl.textContent = data.severity;
+      sevEl.className = 'severity-pill severity-' + data.severity.toLowerCase();
     }
-
-    function startStream(streamUrl, linesEl, onComplete) {
-      var es = new EventSource(streamUrl);
-      es.addEventListener('progress', function (ev) {
-        if (ev.data) appendLine(linesEl, ev.data, 'text-foreground');
-      });
-      es.addEventListener('status', function (ev) {
-        if (ev.data) appendLine(linesEl, ev.data, 'text-muted-foreground');
-      });
-      es.addEventListener('complete', function (ev) {
-        var parts = (ev.data || '').split(',');
-        var exitCode = parseInt(parts[0] || '0', 10);
-        if (exitCode === 0) {
-          appendLine(linesEl, '✓ Complete', 'text-success font-medium');
-          setTimeout(function () {
-            window.location.reload();
-          }, 800);
-        } else {
-          appendLine(linesEl, '✗ Failed (exit ' + exitCode + ')', 'text-destructive font-medium');
-        }
-        es.close();
-        if (onComplete) onComplete(exitCode);
-      });
-      es.addEventListener('error', function () {
-        appendLine(linesEl, 'Stream error — the job may still be running.', 'text-destructive');
-        es.close();
-        if (onComplete) onComplete(-1);
-      });
-      return es;
+    if (data.summary) {
+      var summaryEl = row.querySelector('.font-medium');
+      if (summaryEl) summaryEl.textContent = data.summary;
     }
+    if (data.status) row.dataset.status = data.status;
+    if (data.severity) row.dataset.severity = data.severity;
+    if (data.auto_apply_safe !== undefined) row.dataset.autoApplySafe = data.auto_apply_safe ? 'true' : 'false';
+  }
 
-    function kindLabel(action) {
-      return action.charAt(0).toUpperCase() + action.slice(1);
+  function insertRow(data) {
+    var tbody = document.querySelector('.oss-domain-group[data-domain="' + data.domain + '"]');
+    if (!tbody) return;
+    var template = tbody.querySelector('.oss-finding-row');
+    if (!template) return;
+    var newRow = template.cloneNode(true);
+    newRow.id = 'row-' + data.check_id;
+    newRow.dataset.status = data.status || '';
+    newRow.dataset.severity = data.severity || '';
+    newRow.dataset.checkId = data.check_id || '';
+    var sevEl = newRow.querySelector('.severity-pill');
+    if (sevEl && data.severity) {
+      sevEl.textContent = data.severity;
+      sevEl.className = 'severity-pill severity-' + data.severity.toLowerCase();
     }
-
-    async function startOssAction(btn) {
-      var action = btn.dataset.ossAction;
-      var projectId = btn.dataset.projectId;
-      var progressRow = document.getElementById('oss-progress-row');
-      if (!action || !projectId || !progressRow) return;
-
-      if (btn.dataset.confirm && !window.confirm(btn.dataset.confirm)) return;
-
-      // Disable all action buttons while one is running so we don't stack jobs.
-      var allBtns = document.querySelectorAll('[data-oss-action]');
-      allBtns.forEach(function (b) { b.disabled = true; });
-      var idle = btn.dataset.labelIdle || btn.textContent.trim();
-      btn.textContent = btn.dataset.labelRunning || idle + '…';
-
-      var linesEl = renderProgress(progressRow, kindLabel(action));
-
-      function restore() {
-        allBtns.forEach(function (b) {
-          b.disabled = false;
-          b.textContent = b.dataset.labelIdle || b.textContent;
-        });
-      }
-
-      try {
-        var resp = await fetch(
-          '/project/' + encodeURIComponent(projectId) + '/oss/' + action,
-          { method: 'POST', headers: { 'Accept': 'application/json' } }
-        );
-        if (!resp.ok) {
-          var msg = kindLabel(action) + ' could not start (HTTP ' + resp.status + ')';
-          try {
-            var body = await resp.json();
-            if (body && body.detail) msg = body.detail;
-          } catch (_) { /* ignore */ }
-          appendLine(linesEl, msg, 'text-destructive');
-          restore();
-          return;
-        }
-        var data = await resp.json();
-        if (!data.stream_url) {
-          appendLine(linesEl, 'No stream URL in response.', 'text-destructive');
-          restore();
-          return;
-        }
-        startStream(data.stream_url, linesEl, function () {
-          restore();
-        });
-      } catch (err) {
-        appendLine(linesEl, 'Network error: ' + (err && err.message ? err.message : err), 'text-destructive');
-        restore();
-      }
+    var statusEl = newRow.querySelector('.status-pill');
+    if (statusEl && data.status) {
+      statusEl.textContent = data.status.toUpperCase();
+      statusEl.className = 'status-pill status-' + data.status;
     }
-
-    async function copyToClipboard(text) {
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(text);
-        } else {
-          var ta = document.createElement('textarea');
-          ta.value = text;
-          ta.setAttribute('readonly', '');
-          ta.style.position = 'fixed';
-          ta.style.left = '-9999px';
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-        }
-      } catch (_) { /* best-effort */ }
+    var summaryEl = newRow.querySelector('.font-medium');
+    if (summaryEl && data.summary) summaryEl.textContent = data.summary;
+    var btn = newRow.querySelector('.oss-details-btn');
+    if (btn) {
+      btn.dataset.checkId = data.check_id || '';
+      btn.dataset.findingHash = data.finding_hash || '';
     }
+    tbody.appendChild(newRow);
+  }
 
-    document.addEventListener('click', function (ev) {
-      var actionBtn = ev.target.closest('[data-oss-action]');
-      if (actionBtn) {
-        ev.preventDefault();
-        startOssAction(actionBtn);
-        return;
-      }
-      var copyBtn = ev.target.closest('[data-oss-copy]');
-      if (copyBtn) {
-        ev.preventDefault();
-        var original = copyBtn.textContent;
-        copyToClipboard(copyBtn.dataset.ossCopy).then(function () {
-          copyBtn.textContent = '✓';
-          setTimeout(function () { copyBtn.textContent = original; }, 1200);
-        });
+  function refreshSummaryPill() {
+    var summaryPill = document.querySelector('.oss-summary-pill');
+    if (summaryPill) {
+      var indicators = { pass: '🟢', fail: '🔴', skipped: '⚫', human_required: '🟡' };
+      var status = summaryPill.dataset.status || '';
+      summaryPill.textContent = 'Last scan: ' + (indicators[status] || '⚫') + ' ' + status;
+    }
+  }
+
+  function closeProgressRow() {
+    var progressRow = document.getElementById('oss-progress-row');
+    if (progressRow) progressRow.innerHTML = '';
+  }
+
+  function startStream(streamUrl, linesEl, onComplete) {
+    var es = new EventSource(streamUrl);
+    es.addEventListener('progress', function (ev) {
+      if (ev.data) appendLine(linesEl, ev.data, 'text-foreground');
+    });
+    es.addEventListener('status', function (ev) {
+      if (ev.data) appendLine(linesEl, ev.data, 'text-muted-foreground');
+    });
+    es.addEventListener('row-update', function (ev) {
+      if (ev.data) {
+        try {
+          var data = JSON.parse(ev.data);
+          var row = document.getElementById('row-' + data.check_id);
+          if (row) {
+            patchRowInPlace(row, data);
+          } else {
+            insertRow(data);
+          }
+        } catch (_) { /* ignore parse errors */ }
       }
     });
-  })();
+    es.addEventListener('complete', function (ev) {
+      var parts = (ev.data || '').split(',');
+      var exitCode = parseInt(parts[0] || '0', 10);
+      if (exitCode === 0) {
+        appendLine(linesEl, '✓ Complete', 'text-success font-medium');
+      } else {
+        appendLine(linesEl, '✗ Failed (exit ' + exitCode + ')', 'text-destructive font-medium');
+      }
+      refreshSummaryPill();
+      closeProgressRow();
+      es.close();
+      if (onComplete) onComplete(exitCode);
+    });
+    es.addEventListener('error', function () {
+      appendLine(linesEl, 'Stream error — the job may still be running.', 'text-destructive');
+      es.close();
+      if (onComplete) onComplete(-1);
+    });
+    return es;
+  }
+
+  function kindLabel(action) {
+    return action.charAt(0).toUpperCase() + action.slice(1);
+  }
+
+  async function startOssAction(btn) {
+    var action = btn.dataset.ossAction;
+    var projectId = btn.dataset.projectId;
+    var progressRow = document.getElementById('oss-progress-row');
+    if (!action || !projectId || !progressRow) return;
+
+    if (btn.dataset.confirm && !window.confirm(btn.dataset.confirm)) return;
+
+    if (action === 'apply-all-safe') {
+      fetch('/project/' + encodeURIComponent(projectId) + '/oss/apply-all-safe/preview', {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' },
+      }).then(function (r) { return r.json(); }).then(function (items) {
+        if (window.openOssApplyAllModal) window.openOssApplyAllModal(items);
+      }).catch(function () {});
+      return;
+    }
+
+    var allBtns = document.querySelectorAll('[data-oss-action]');
+    allBtns.forEach(function (b) { b.disabled = true; });
+    var idle = btn.dataset.labelIdle || btn.textContent.trim();
+    btn.textContent = btn.dataset.labelRunning || idle + '…';
+
+    var linesEl = renderProgress(progressRow, kindLabel(action));
+
+    function restore() {
+      allBtns.forEach(function (b) {
+        b.disabled = false;
+        b.textContent = b.dataset.labelIdle || b.textContent;
+      });
+    }
+
+    try {
+      var resp = await fetch(
+        '/project/' + encodeURIComponent(projectId) + '/oss/' + action,
+        { method: 'POST', headers: { 'Accept': 'application/json' } }
+      );
+      if (!resp.ok) {
+        var msg = kindLabel(action) + ' could not start (HTTP ' + resp.status + ')';
+        try {
+          var body = await resp.json();
+          if (body && body.detail) msg = body.detail;
+        } catch (_) { /* ignore */ }
+        appendLine(linesEl, msg, 'text-destructive');
+        restore();
+        return;
+      }
+      var data = await resp.json();
+      if (!data.stream_url) {
+        appendLine(linesEl, 'No stream URL in response.', 'text-destructive');
+        restore();
+        return;
+      }
+      startStream(data.stream_url, linesEl, function () {
+        restore();
+      });
+    } catch (err) {
+      appendLine(linesEl, 'Network error: ' + (err && err.message ? err.message : err), 'text-destructive');
+      restore();
+    }
+  }
+
+  async function copyToClipboard(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+    } catch (_) { /* best-effort */ }
+  }
+
+  document.addEventListener('click', function (ev) {
+    var actionBtn = ev.target.closest('[data-oss-action]');
+    if (actionBtn) {
+      ev.preventDefault();
+      startOssAction(actionBtn);
+      return;
+    }
+    var copyBtn = ev.target.closest('[data-oss-copy]');
+    if (copyBtn) {
+      ev.preventDefault();
+      var original = copyBtn.textContent;
+      copyToClipboard(copyBtn.dataset.ossCopy).then(function () {
+        copyBtn.textContent = '✓';
+        setTimeout(function () { copyBtn.textContent = original; }, 1200);
+      });
+    }
+  });
+
+  var chips = document.querySelectorAll('.filter-chip');
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var filter = chip.dataset.filter;
+      chips.forEach(function (c) {
+        c.classList.remove('border-primary', 'bg-primary', 'text-primary-foreground', 'opacity-100');
+        c.classList.add('border-border', 'text-muted-foreground', 'opacity-70');
+        c.setAttribute('aria-pressed', 'false');
+      });
+      chip.classList.add('border-primary', 'bg-primary', 'text-primary-foreground', 'opacity-100');
+      chip.classList.remove('border-border', 'text-muted-foreground', 'opacity-70');
+      chip.setAttribute('aria-pressed', 'true');
+
+      var table = document.querySelector('.oss-findings');
+      if (!table) return;
+      table.classList.remove('filter-all', 'filter-MUST', 'filter-SHOULD', 'filter-INFO', 'filter-Accepted', 'filter-failing');
+      table.classList.add('filter-' + filter);
+    });
+  });
+
+  document.addEventListener('click', function (ev) {
+    var rerunBtn = ev.target.closest('.oss-rerun-btn');
+    if (rerunBtn) {
+      ev.preventDefault();
+      var btn = rerunBtn;
+      var checkId = btn.dataset.checkId;
+      var originalHtml = btn.innerHTML;
+      btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
+      btn.disabled = true;
+      var projectIdEl = document.querySelector('[data-project-id]');
+      var projectId = projectIdEl ? projectIdEl.dataset.projectId : null;
+      if (!projectId) return;
+      fetch('/project/' + encodeURIComponent(projectId) + '/oss/recheck/' + encodeURIComponent(checkId), {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' },
+      }).then(function (r) { return r.json(); }).then(function (data) {
+        if (data.stream_url) {
+          var progressRow = document.getElementById('oss-progress-row');
+          var linesEl = progressRow ? renderProgress(progressRow, 'Re-check') : null;
+          startStream(data.stream_url, linesEl, function () {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+          });
+        } else {
+          btn.innerHTML = originalHtml;
+          btn.disabled = false;
+        }
+      }).catch(function () {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+      });
+    }
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      var header = ev.target.closest('.oss-domain-header');
+      if (header) {
+        ev.preventDefault();
+        header.click();
+      }
+    }
+  });
+
+  window.ossStartProgressStream = function (streamUrl, kindName) {
+    var progressRow = document.getElementById('oss-progress-row');
+    if (!progressRow) return null;
+    var linesEl = renderProgress(progressRow, kindName || 'OSS');
+    return startStream(streamUrl, linesEl, function () {});
+  };
+
+  window.ossShowToastFromHeaders = function (headers) {
+    if (!headers || typeof window.showToast !== 'function') return;
+    var raw = headers.get && headers.get('HX-Trigger');
+    if (!raw) return;
+    try {
+      var parsed = JSON.parse(raw);
+      if (parsed && parsed.showToast) {
+        window.showToast(parsed.showToast);
+      }
+    } catch (_) { /* ignore non-JSON HX-Trigger payloads */ }
+  };
+
+  window.ossMoveRowToAccepted = function (checkId, reason) {
+    var row = document.getElementById('row-' + checkId);
+    if (!row) return;
+    var statusEl = row.querySelector('.status-pill');
+    if (statusEl) {
+      statusEl.textContent = 'Accepted';
+      statusEl.className = 'status-pill status-accepted';
+    }
+    row.dataset.status = 'accepted';
+    var acceptedTbody = document.querySelector('.oss-accepted-group');
+    if (acceptedTbody) {
+      acceptedTbody.appendChild(row);
+    }
+  };
+
+  var domainHeaders = document.querySelectorAll('.oss-domain-header');
+  domainHeaders.forEach(function (header) {
+    header.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        this.click();
+      }
+    });
+  });
+})();
 </script>
 {% endblock %}

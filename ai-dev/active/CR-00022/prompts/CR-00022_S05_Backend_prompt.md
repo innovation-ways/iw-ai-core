@@ -1,239 +1,133 @@
-# CR-00022_S05_Backend_prompt
+# CR-00022_S05_Backend_prompt (SLIMMED — recovery from prior failed run)
 
 **Work Item**: CR-00022
 **Step**: S05
-**Agent**: backend-impl (Phase B — per-check catalog)
+**Agent**: backend-impl (Phase B — per-check catalog wiring)
 
 ---
 
 ## ⛔ Docker / Migrations off-limits
 
-Same rules. No live alembic apply, no docker compose, read-only docker introspection only.
+No live alembic apply, no docker compose, read-only docker introspection only.
 
-## Input Files
+## Why this prompt is slimmed
 
-- `ai-dev/active/CR-00022/CR-00022_CR_Design.md`
-- `ai-dev/active/CR-00022/reports/CR-00022_S03_Backend_report.md`
-- `skills/iw-oss-publish/scripts/checks/*.py` — all check modules
-- `dashboard/utils/oss_copy.py` — current domain/severity copy (will continue to exist as a fallback)
-- `doc-system/` — Innovation Ways editorial guidelines for brand voice
+The previous S05 run died after authoring only the loader stub. The two largest pieces of work — the 71-entry YAML catalog and the loader Python — have already been completed out-of-band:
 
-## Output Files
+- ✅ **`dashboard/services/oss_check_catalog.yaml`** — 71 entries, ~1359 lines, schema-validated. **DO NOT REWRITE.**
+- ✅ **`dashboard/services/oss_check_catalog.py`** — loader with Pydantic v2 + cache + debug hot-reload. **DO NOT REWRITE.**
 
-- New: `dashboard/services/oss_check_catalog.py` (Pydantic loader, in-process cache, debug hot-reload)
-- New: `dashboard/services/oss_check_catalog.yaml` (per-check copy, complete for every check ID)
-- Modified: `skills/iw-oss-publish/scripts/checks/*.py` — every `Finding(id="…")` constructor receives `auto_apply_safe=<bool>`
-- Modified: `skills/iw-oss-publish/scripts/lib/types.py` — add `auto_apply_safe: bool = False` to `Finding` dataclass
-- `ai-dev/active/CR-00022/reports/CR-00022_S05_Backend_report.md`
+Your job is the **remaining** code-wiring work. It is mechanical, contained, and small. Do not regenerate or rewrite the two files above; just verify they load.
 
-## Context
+## Required Edits (do exactly these — nothing else)
 
-This step authors the **per-check catalog** that powers the new dashboard modal. The catalog is static — populated once now via online research, loaded at runtime, never fetched live. A CI completeness test (S17) enforces every check has an entry.
+### 1. `skills/iw-oss-publish/scripts/lib/types.py` — `Finding` dataclass
 
-You also tag every check with `auto_apply_safe: bool` distinguishing checks where the dashboard can safely write the fix automatically (e.g., generate LICENSE) from checks that need manual remediation (e.g., remove secret from git history).
+Add `auto_apply_safe: bool = False` to the `Finding` dataclass directly **after** the existing `auto_fix_available: bool = False` line. Then add `"auto_apply_safe": self.auto_apply_safe,` to the `to_dict()` return value, in the same relative position (right after the existing `auto_fix_available` entry).
 
-## Requirements
+### 2. `skills/iw-oss-publish/scripts/checks/*.py` — annotate every `Finding(...)` constructor
 
-### 1. Enumerate every check ID — two sources, union
+There are **110** `Finding(...)` constructor calls across 16 check modules. Every single one needs an `auto_apply_safe=True` or `auto_apply_safe=False` keyword argument, placed adjacent to the existing `auto_fix_available=` argument (or, if absent, alongside the other constructor kwargs).
 
-Source 1 — runtime scan:
+Decision rules (default to **False** when in doubt — `False` is conservative):
+
+- `True` — the dashboard can safely render the fix without human judgement:
+  - Template renders for missing files (README, SECURITY, CODE_OF_CONDUCT, CONTRIBUTING, GOVERNANCE, LICENSE, NOTICE, CHANGELOG, etc.)
+  - Idempotent additive `.gitignore` patches (adding new patterns to an existing/new `.gitignore`)
+  - New CI workflow file additions (creating `.github/workflows/ci.yml` from a template) — but **not** edits to existing workflows
+  - Adding "Signed-off-by" instructions to CONTRIBUTING.md (DCO instruction insertion)
+  - Adding standard `osps_control` markers / labels to repo metadata files
+- `False` — requires human judgement, removes tracked files, rotates secrets, edits existing config:
+  - Any `OSS-SEC-*` / secrets-in-history / PII findings (no safe auto-rotation)
+  - Hygiene findings that would require **deleting** tracked files (e.g. removing checked-in build artefacts)
+  - Modifying existing GitHub workflows
+  - Trademark / export-control / governance findings that need legal/maintainer judgement
+  - Any release/history check that would rewrite git history
+  - Any internal-references / `OSS-REF-*` findings (require manual edits to specific code)
+  - All `*-ALL` aggregate markers (`OSS-GH-ALL`, `OSS-REF-ALL`) — these are meta, not directly fixable
+
+Audit module-by-module. Read each `Finding(...)` constructor in context, decide the flag, and add the kwarg. **Do not** add comments unless the choice is genuinely surprising.
+
+Modules to cover (counts of `Finding(...)` calls per module — verify your edits cover all of them):
+
+```
+skills/iw-oss-publish/scripts/checks/ci_cd.py          (9)
+skills/iw-oss-publish/scripts/checks/governance.py     (4)
+skills/iw-oss-publish/scripts/checks/license_check.py  (8)
+skills/iw-oss-publish/scripts/checks/contributor.py    (6)
+skills/iw-oss-publish/scripts/checks/community.py      (15)
+skills/iw-oss-publish/scripts/checks/environment.py    (5)
+skills/iw-oss-publish/scripts/checks/privacy.py        (6)
+skills/iw-oss-publish/scripts/checks/trademark.py      (4)
+skills/iw-oss-publish/scripts/checks/history.py        (6)
+skills/iw-oss-publish/scripts/checks/release.py        (9)
+skills/iw-oss-publish/scripts/checks/internal_refs.py  (1)
+skills/iw-oss-publish/scripts/checks/github.py         (14)
+skills/iw-oss-publish/scripts/checks/dependencies.py   (9)
+skills/iw-oss-publish/scripts/checks/export_control.py (6)
+skills/iw-oss-publish/scripts/checks/hygiene.py        (6)
+skills/iw-oss-publish/scripts/checks/secrets.py        (2)
+                                              total = 110
+```
+
+After your edits, verify the count is preserved:
 ```bash
-cd $(pwd)
-uv run iw oss scan --project iw-ai-core || true
-jq -r '.findings[].check_id' .iw/oss-publish-findings.json | sort -u > /tmp/scan_ids.txt
+grep -cE "auto_apply_safe=" skills/iw-oss-publish/scripts/checks/*.py | awk -F: '{s+=$2} END {print s}'
+# Expect: 110
 ```
 
-Source 2 — AST walk:
-```python
-import ast, pathlib
-ids = set()
-for path in pathlib.Path("skills/iw-oss-publish/scripts/checks").glob("*.py"):
-    tree = ast.parse(path.read_text())
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "Finding":
-            for kw in node.keywords:
-                if kw.arg == "id" and isinstance(kw.value, ast.Constant):
-                    ids.add(kw.value.value)
-print("\n".join(sorted(ids)))
-```
+### 3. `orch/oss/persistence.py` — write `auto_apply_safe` to the DB
 
-Take the union. Document the count in the report.
-
-### 2. YAML catalog format
-
-`dashboard/services/oss_check_catalog.yaml`:
-
-```yaml
-# Per-check authored copy for the OSS Compliance dashboard modal.
-# Every check_id produced by skills/iw-oss-publish/scripts/checks/*.py MUST have an entry.
-# CI test tests/unit/test_oss_catalog_completeness.py enforces this.
-
-OSS-CH-01:
-  what_it_checks: |
-    Whether the repository has a README at its root. README.md, README.rst,
-    README.txt, and README (no extension) are all accepted.
-  how_it_tests: |
-    Looks in the repo root for files matching README, README.md, README.rst,
-    or README.txt (case-sensitive on case-sensitive filesystems).
-  risk_if_failing: |
-    First-time visitors see a bare file tree with no idea what the project
-    does, how to install it, or who it's for. Drives away contributors and
-    delays adoption.
-  how_to_fix: |
-    Add a README.md at the repo root with: project tagline, install steps,
-    quick-start example, and link to docs. The Apply action renders one
-    from the iw-oss-publish template.
-  references:
-    - https://opensource.guide/starting-a-project/#a-readme
-    - https://opensource.guide/starting-a-project/
-
-OSS-CH-02:
-  what_it_checks: |
-    ...
-```
-
-Required fields: `what_it_checks`, `how_it_tests`, `risk_if_failing`, `how_to_fix`. Optional: `references` (list of URLs).
-
-### 3. Author copy via online research — per check
-
-For each check ID:
-1. Open the check module (`secrets.py`, `community.py`, `license_check.py`, etc.) and read what the check actually does.
-2. Web-search the check's domain (e.g., "github SECURITY.md best practices", "OpenSSF Scorecard branch protection", "gitleaks detection patterns") to ground the copy.
-3. Author concise prose following Innovation Ways editorial voice (see `doc-system/` for the style guide):
-   - Plain English, no jargon-without-explanation.
-   - 2-4 sentences per field.
-   - "Risk" framed in concrete consequences, not abstract policy violations.
-   - "How to fix" gives the *action*, not a lecture.
-   - No emoji.
-
-Cross-check OSPS Baseline references where the check carries an `osps_control` value — link to the relevant OSPS page in `references[]`.
-
-### 4. Loader: `dashboard/services/oss_check_catalog.py`
+In the `OssFinding(...)` constructor (currently around line 49–63), add a single line right after `auto_fix_available=f.get("auto_fix_available", False),`:
 
 ```python
-from __future__ import annotations
-import os
-from functools import cache
-from pathlib import Path
-from typing import Annotated
-from pydantic import BaseModel, Field, field_validator
-import yaml
-
-CATALOG_PATH = Path(__file__).parent / "oss_check_catalog.yaml"
-
-
-class CheckCopy(BaseModel):
-    what_it_checks: Annotated[str, Field(min_length=1)]
-    how_it_tests: Annotated[str, Field(min_length=1)]
-    risk_if_failing: Annotated[str, Field(min_length=1)]
-    how_to_fix: Annotated[str, Field(min_length=1)]
-    references: list[str] = []
-
-
-def _load_catalog_uncached() -> dict[str, CheckCopy]:
-    raw = yaml.safe_load(CATALOG_PATH.read_text())
-    if not isinstance(raw, dict):
-        raise ValueError(f"Catalog YAML must be a mapping, got {type(raw).__name__}")
-    return {check_id: CheckCopy.model_validate(entry) for check_id, entry in raw.items()}
-
-
-@cache
-def _load_catalog_cached() -> dict[str, CheckCopy]:
-    return _load_catalog_uncached()
-
-
-def load_catalog() -> dict[str, CheckCopy]:
-    """Load the per-check copy catalog.
-
-    In production (DEBUG=False), loads once and caches.
-    In debug mode (DEBUG=True), re-reads on every call so authors can
-    iterate on copy without restarting the dashboard.
-    """
-    if os.getenv("IW_CORE_DEBUG", "false").lower() == "true":
-        return _load_catalog_uncached()
-    return _load_catalog_cached()
-
-
-def get_copy(check_id: str) -> CheckCopy | None:
-    """Return per-check copy or None if not in catalog (test enforces never None in prod)."""
-    return load_catalog().get(check_id)
+auto_apply_safe=f.get("auto_apply_safe", False),
 ```
 
-Conventions: imports at module top, Pydantic v2 syntax, type-hint everywhere. No silent fallbacks — `get_copy` returns `None` and callers decide what to render.
+The DB column already exists (added by S01 migration `c062b6bf5eb3`); the ORM field already exists (`orch/db/models.py:1627`). You are wiring the dict → ORM mapping only.
 
-### 5. `auto_apply_safe` flag on every Finding constructor
+## Verification (run these — paste results in the report)
 
-Update `skills/iw-oss-publish/scripts/lib/types.py`:
-
-```python
-@dataclass
-class Finding:
-    id: str
-    severity: Severity
-    status: Status
-    domain: str
-    summary: str
-    detail: str | None = None
-    remediation: str | None = None
-    auto_fix_available: bool = False
-    auto_apply_safe: bool = False        # NEW
-    osps_control: str | None = None
-    tool: str | None = None
-    evidence: dict | None = None
-    rationale: str | None = None
-```
-
-Then in every check module under `skills/iw-oss-publish/scripts/checks/`, audit each `Finding(...)` constructor and set `auto_apply_safe=True` for checks where the dashboard can safely render the fix without human judgement (template renders, idempotent file writes), and `auto_apply_safe=False` otherwise. Default is `False` so missing assignments are conservative.
-
-Examples:
-- `OSS-CH-01` (README missing) → `auto_apply_safe=True` (template render)
-- `OSS-CH-02` (SECURITY.md missing) → `auto_apply_safe=True`
-- `OSS-CH-03` (CODE_OF_CONDUCT missing) → `auto_apply_safe=True`
-- `OSS-LIC-01` (LICENSE missing) → `auto_apply_safe=True`
-- `OSS-SEC-*` (secret detected in tree/history) → `auto_apply_safe=False` (no safe auto-apply for secret rotation)
-- `OSS-HY-*` (.gitignore patterns) → `auto_apply_safe=True` for additive patches; `False` if requires removing tracked files
-- `OSS-CI-*` (missing GitHub workflow) → `auto_apply_safe=True` for new workflow files; `False` if requires modifying existing workflows
-
-When in doubt, default to `False`. Document the rationale in a comment next to the `Finding(...)` call only when non-obvious.
-
-### 6. Persistence: store `auto_apply_safe` on `OssFinding`
-
-Update `orch/oss/persistence.py` (or wherever findings are persisted) to write the `auto_apply_safe` value from the scanned Finding into the new DB column added by S01. The dashboard reads it from the DB row.
-
-### 7. Verification
-
-After authoring:
 ```bash
+# 1. Catalog loads to 71 entries
 uv run python -c "from dashboard.services.oss_check_catalog import load_catalog; print(len(load_catalog()))"
-# Expect: count matches the union of scan IDs and AST IDs from step 1
+# Expected: 71
+
+# 2. Constructor coverage = 110
+grep -cE "auto_apply_safe=" skills/iw-oss-publish/scripts/checks/*.py | awk -F: '{s+=$2} END {print s}'
+# Expected: 110
+
+# 3. Scan emits the new field
+uv run iw oss scan --project iw-ai-core || true
+jq '.findings[0] | {id: .id, auto_fix_available, auto_apply_safe}' .iw/oss-publish-findings.json
+# Expected: object containing auto_apply_safe: true|false (boolean, not null)
+
+# 4. Distribution sanity check
+jq '[.findings[].auto_apply_safe] | group_by(.) | map({val: .[0], count: length})' .iw/oss-publish-findings.json
+# Expected: roughly half true / half false
 ```
 
-Run the scan against this repo and verify findings carry `auto_apply_safe`:
-```bash
-uv run iw oss scan --project iw-ai-core
-jq '.findings[] | {id: .check_id, safe: .auto_apply_safe}' .iw/oss-publish-findings.json | head
-```
+## Out of Scope (DO NOT do these)
+
+- Do **not** rewrite `dashboard/services/oss_check_catalog.yaml` — it is authored.
+- Do **not** rewrite `dashboard/services/oss_check_catalog.py` — it is authored.
+- Do **not** add a CI completeness test — that is S17's job.
+- Do **not** modify any persistence read path or dashboard router — separate steps.
+- Do **not** restructure existing checks beyond adding the one kwarg.
 
 ## Project Conventions
 
-- Pydantic v2 syntax (`field_validator`, `model_validate`).
-- YAML uses block scalars (`|`) for multi-line strings.
-- Brand voice: read `doc-system/editorial.md` (or equivalent) for tone.
-- No comments in catalog YAML beyond the file header — the YAML structure is its own documentation.
+- Pydantic v2 syntax. Type hints everywhere. `from __future__ import annotations` already in place.
 - No `print()` debug statements.
-
-## TDD Requirement
-
-Loader unit test (`tests/unit/test_oss_check_catalog_loader.py`) is S17's job. For S05, write a quick smoke check in the report showing `load_catalog()` returns a non-empty dict and every entry validates.
+- No comments alongside `auto_apply_safe=` unless the choice is genuinely non-obvious.
 
 ## Output / Report
 
-Report contains:
-- Total check IDs enumerated (count + first/last IDs)
-- Catalog file size (bytes / lines)
-- For each check, a one-line confirmation of `auto_apply_safe` value with rationale
-- Sample of three catalog entries copy-pasted so reviewer can spot brand-voice issues quickly
-- Manual verification output (load + scan + jq sample)
-- Any check IDs that were ambiguous on `auto_apply_safe` and need reviewer judgment
+Write `ai-dev/active/CR-00022/reports/CR-00022_S05_Backend_report.md` containing:
 
-End with `iw step-done` or `iw step-fail`.
+- One-line confirmation of each of the three edits (`types.py` field + `to_dict`, 110 `auto_apply_safe=` annotations, `persistence.py` mapping)
+- A per-module breakdown of how many `True` vs `False` you assigned (table or list)
+- Output from each of the four verification commands above
+- Any check IDs where the `auto_apply_safe` choice felt ambiguous and merits reviewer judgement
+
+End with `iw step-done` (or `iw step-fail` with reason on failure).

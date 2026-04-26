@@ -26,6 +26,7 @@ def history(ctx: Context) -> list[Finding]:
                 status=Status.PASS,
                 domain=DOMAIN,
                 summary=f"History strategy recorded: {strategy}",
+                auto_apply_safe=False,
             )
         )
     else:
@@ -39,6 +40,7 @@ def history(ctx: Context) -> list[Finding]:
                 remediation="`publish` mode will ask and record this decision."
                 if ctx.mode == "publish"
                 else "Will be asked during `publish`.",
+                auto_apply_safe=False,
             )
         )
 
@@ -53,6 +55,7 @@ def history(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="Unable to enumerate author emails (empty history?)",
+                auto_apply_safe=False,
             )
         )
     elif not non_noreply:
@@ -63,6 +66,7 @@ def history(ctx: Context) -> list[Finding]:
                 status=Status.PASS,
                 domain=DOMAIN,
                 summary=f"All {len(emails)} contributor email(s) use GitHub noreply",
+                auto_apply_safe=False,
             )
         )
     else:
@@ -80,6 +84,7 @@ def history(ctx: Context) -> list[Finding]:
                     "`git config user.email ID+username@users.noreply.github.com`."
                 ),
                 evidence={"non_noreply_emails": non_noreply},
+                auto_apply_safe=False,
             )
         )
 
@@ -107,6 +112,7 @@ def history(ctx: Context) -> list[Finding]:
             remediation="Remove internal submodules or redirect to public mirrors before publish."
             if flagged
             else None,
+            auto_apply_safe=False,
         )
     )
 
