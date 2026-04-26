@@ -398,8 +398,8 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
 
         container_status: Literal["running", "stopped", "missing", "n/a"] = "n/a"
         classification: Literal["active", "stale", "orphan", "malformed"] = "malformed"
-        db_port: int | None = None
-        app_port: int | None = None
+        db_port: int | None = bi.worktree_db_port
+        app_port: int | None = bi.worktree_app_port
 
         finding = findings_by_bi.get(bi.id)
         if finding is not None:
