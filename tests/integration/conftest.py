@@ -46,7 +46,7 @@ BEGIN
     CREATE TYPE ossscan_status AS ENUM ('pending', 'running', 'complete', 'error');
 
     DROP TYPE IF EXISTS ossscan_mode CASCADE;
-    CREATE TYPE ossscan_mode AS ENUM ('scan', 'make_oss', 'publish');
+    CREATE TYPE ossscan_mode AS ENUM ('scan');
 
     DROP TYPE IF EXISTS osspill_color CASCADE;
     CREATE TYPE osspill_color AS ENUM ('green', 'yellow', 'red', 'gray');
@@ -61,11 +61,11 @@ BEGIN
     CREATE TYPE osstoolrun_status AS ENUM ('ok', 'failed', 'missing', 'skipped');
 
     DROP TYPE IF EXISTS project_oss_job_kind CASCADE;
-    CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'prepare', 'publish', 'install');
+    CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'install', 'fix');
 
     DROP TYPE IF EXISTS project_oss_job_status CASCADE;
     CREATE TYPE project_oss_job_status AS ENUM (
-        'queued', 'running', 'complete', 'error', 'cancelled', 'awaiting_review', 'discarded'
+        'queued', 'running', 'complete', 'error', 'cancelled'
     );
 END$$;
 """

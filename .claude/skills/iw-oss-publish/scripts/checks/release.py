@@ -30,6 +30,7 @@ def release(ctx: Context) -> list[Finding]:
             domain=DOMAIN,
             summary=f"CHANGELOG at {chlog}" if chlog else "CHANGELOG missing",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -43,6 +44,7 @@ def release(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="No recent commits to analyze",
+                auto_apply_safe=False,
             )
         )
     else:
@@ -59,6 +61,7 @@ def release(ctx: Context) -> list[Finding]:
                 remediation=f"Aim for ≥{int(threshold * 100)}% conventional commits for release automation."
                 if ratio < threshold
                 else None,
+                auto_apply_safe=False,
             )
         )
 
@@ -74,6 +77,7 @@ def release(ctx: Context) -> list[Finding]:
                 status=Status.PASS,
                 domain=DOMAIN,
                 summary="release-please v4 workflow present",
+                auto_apply_safe=False,
             )
         )
     elif rp.exists():
@@ -86,6 +90,7 @@ def release(ctx: Context) -> list[Finding]:
                 summary="release-please.yml present but not referencing googleapis/release-please-action@v4",
                 remediation="Update to `googleapis/release-please-action@v4` (archived google-github-actions fork must not be used).",
                 auto_fix_available=True,
+                auto_apply_safe=False,
             )
         )
     else:
@@ -98,6 +103,7 @@ def release(ctx: Context) -> list[Finding]:
                 summary="release-please.yml missing",
                 remediation="`make_oss` renders release-please.yml from template.",
                 auto_fix_available=True,
+                auto_apply_safe=True,
             )
         )
 
@@ -120,6 +126,7 @@ def release(ctx: Context) -> list[Finding]:
             if has_attest
             else "No workflow references actions/attest-build-provenance",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -134,6 +141,7 @@ def release(ctx: Context) -> list[Finding]:
                 status=Status.PASS,
                 domain=DOMAIN,
                 summary=f"{len(semver)} semver tag(s) present (latest: {semver[-1]})",
+                auto_apply_safe=False,
             )
         )
     else:
@@ -145,6 +153,7 @@ def release(ctx: Context) -> list[Finding]:
                 domain=DOMAIN,
                 summary="No semver tags in the repository",
                 remediation="Tag a release: `git tag -s v0.1.0 -m 'Initial release'`",
+                auto_apply_safe=False,
             )
         )
 

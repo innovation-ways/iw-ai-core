@@ -46,19 +46,20 @@ def ci_checks(ctx: Context) -> list[Finding]:
                 leak_count = len(findings_data) if isinstance(findings_data, list) else 0
             except (OSError, json.JSONDecodeError):
                 leak_count = 0
-            out.append(
-                Finding(
-                    id="OSS-CI-01",
-                    severity=Severity.MUST,
-                    status=Status.PASS if leak_count == 0 else Status.FAIL,
-                    domain=DOMAIN,
-                    summary="No secrets detected in workflow files"
-                    if leak_count == 0
-                    else f"{leak_count} potential secret(s) in workflows",
-                    tool="gitleaks",
-                    evidence={"count": leak_count},
+                out.append(
+                    Finding(
+                        id="OSS-CI-01",
+                        severity=Severity.MUST,
+                        status=Status.PASS if leak_count == 0 else Status.FAIL,
+                        domain=DOMAIN,
+                        summary="No secrets detected in workflow files"
+                        if leak_count == 0
+                        else f"{leak_count} potential secret(s) in workflows",
+                        tool="gitleaks",
+                        evidence={"count": leak_count},
+                        auto_apply_safe=False,
+                    )
                 )
-            )
         except (subprocess.SubprocessError, FileNotFoundError):
             out.append(
                 Finding(
@@ -67,6 +68,7 @@ def ci_checks(ctx: Context) -> list[Finding]:
                     status=Status.SKIP,
                     domain=DOMAIN,
                     summary="gitleaks invocation on workflows failed",
+                    auto_apply_safe=False,
                 )
             )
     elif not workflows_dir.exists():
@@ -77,6 +79,7 @@ def ci_checks(ctx: Context) -> list[Finding]:
                 status=Status.PASS,
                 domain=DOMAIN,
                 summary="No .github/workflows directory — nothing to scan",
+                auto_apply_safe=False,
             )
         )
     else:
@@ -87,6 +90,7 @@ def ci_checks(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="gitleaks unavailable — workflow secret scan skipped",
+                auto_apply_safe=False,
             )
         )
 
@@ -115,6 +119,7 @@ def ci_checks(ctx: Context) -> list[Finding]:
                 if not passed
                 else None,
                 auto_fix_available=True,
+                auto_apply_safe=True,
                 tool="pinact",
             )
         )
@@ -126,6 +131,7 @@ def ci_checks(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="No workflows — action pinning not applicable",
+                auto_apply_safe=False,
             )
         )
     else:
@@ -136,6 +142,7 @@ def ci_checks(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="pinact unavailable — action pinning check skipped",
+                auto_apply_safe=False,
             )
         )
 
@@ -156,6 +163,7 @@ def ci_checks(ctx: Context) -> list[Finding]:
             if not tf_violations
             else f"{len(tf_violations)} Terraform state/vars file(s) tracked",
             detail=", ".join(tf_violations) if tf_violations else "",
+            auto_apply_safe=False,
         )
     )
 
@@ -179,6 +187,7 @@ def ci_checks(ctx: Context) -> list[Finding]:
                 domain=DOMAIN,
                 summary=f"{label} present" if exists else f"{label} missing at {path}",
                 auto_fix_available=True,
+                auto_apply_safe=True,
             )
         )
 

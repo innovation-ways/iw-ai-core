@@ -7,9 +7,9 @@ The complete set of compliance checks the `iw-oss-publish` skill enforces.
   - `SHOULD` → warning (exit 0 with warning line)
   - `MAY` → info (exit 0)
 - **Auto-fix** column:
-  - `yes` — `make_oss` mode applies automatically (see `fix_recipes.md`)
-  - `partial` — `make_oss` generates a stub or starting point; user must fill in content or confirm
-  - `no` — human judgment required; appears on `compliance-punchlist.md`
+  - `yes` — `uv run iw oss fix <CHECK_ID> --apply` applies automatically
+  - `partial` — fix generates a stub or starting point; user must fill in content or confirm
+  - `no` — human judgment required
 - **OSPS** column maps to [OpenSSF OSPS Baseline v2025-02-25](https://baseline.openssf.org/versions/2025-02-25) where applicable.
 - **Source** column cites `[R-00061 #N]` or `[R-00062 #N]` for the research finding that drove the check.
 

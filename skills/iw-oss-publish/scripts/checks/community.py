@@ -23,6 +23,7 @@ def community(ctx: Context) -> list[Finding]:
             domain=DOMAIN,
             summary=f"README present at {readme}" if readme else "README missing",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -45,6 +46,7 @@ def community(ctx: Context) -> list[Finding]:
                 else None,
                 osps_control="OSPS-VM-02.01",
                 auto_fix_available=True,
+                auto_apply_safe=False,
             )
         )
     else:
@@ -58,6 +60,7 @@ def community(ctx: Context) -> list[Finding]:
                 remediation="`make_oss` renders from template.",
                 osps_control="OSPS-VM-02.01",
                 auto_fix_available=True,
+                auto_apply_safe=True,
             )
         )
 
@@ -71,6 +74,7 @@ def community(ctx: Context) -> list[Finding]:
             domain=DOMAIN,
             summary=f"CODE_OF_CONDUCT at {coc}" if coc else "CODE_OF_CONDUCT missing",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -96,6 +100,7 @@ def community(ctx: Context) -> list[Finding]:
                     status=Status.PASS,
                     domain=DOMAIN,
                     summary="Contributor Covenant v3 in use",
+                    auto_apply_safe=False,
                 )
             )
         elif has_v21_or_newer:
@@ -106,6 +111,7 @@ def community(ctx: Context) -> list[Finding]:
                     status=Status.PASS,
                     domain=DOMAIN,
                     summary="Contributor Covenant v2.1 (acceptable — v3 recommended)",
+                    auto_apply_safe=False,
                 )
             )
         else:
@@ -117,6 +123,7 @@ def community(ctx: Context) -> list[Finding]:
                     domain=DOMAIN,
                     summary="CoC present but Contributor Covenant version undetected",
                     remediation="Verify CoC references v2.1 or v3 explicitly.",
+                    auto_apply_safe=False,
                 )
             )
 
@@ -137,6 +144,7 @@ def community(ctx: Context) -> list[Finding]:
                 remediation="Use a group/alias email instead of a personal address."
                 if not has_group_email
                 else None,
+                auto_apply_safe=False,
             )
         )
 
@@ -151,6 +159,7 @@ def community(ctx: Context) -> list[Finding]:
             summary=f"CONTRIBUTING at {contributing}" if contributing else "CONTRIBUTING missing",
             osps_control="OSPS-GV-03.01",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -172,6 +181,7 @@ def community(ctx: Context) -> list[Finding]:
                 if has_dco
                 else "CONTRIBUTING does not mention DCO sign-off",
                 auto_fix_available=True,
+                auto_apply_safe=True,
             )
         )
 
@@ -185,6 +195,7 @@ def community(ctx: Context) -> list[Finding]:
             domain=DOMAIN,
             summary=f"CODEOWNERS at {codeowners}" if codeowners else "CODEOWNERS missing",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -202,6 +213,7 @@ def community(ctx: Context) -> list[Finding]:
             domain=DOMAIN,
             summary=f"PR template at {pr_tpl}" if pr_tpl else "PR template missing",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -218,6 +230,7 @@ def community(ctx: Context) -> list[Finding]:
             if has_issue_tpl
             else "No issue templates at .github/ISSUE_TEMPLATE/",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -231,6 +244,7 @@ def community(ctx: Context) -> list[Finding]:
             domain=DOMAIN,
             summary=f"SUPPORT at {support}" if support else "SUPPORT.md not present (optional)",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -243,6 +257,7 @@ def community(ctx: Context) -> list[Finding]:
             status=Status.PASS if funding else Status.FAIL,
             domain=DOMAIN,
             summary=f"FUNDING at {funding}" if funding else "FUNDING.yml not present (optional)",
+            auto_apply_safe=False,
         )
     )
 

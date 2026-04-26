@@ -279,6 +279,10 @@ STATUS_COPY: dict[str, dict[str, str]] = {
             "attestation to be recorded in the skill config."
         ),
     },
+    "accepted": {
+        "label": "ACCEPTED",
+        "line": "This finding has been accepted as a deliberate risk.",
+    },
 }
 
 

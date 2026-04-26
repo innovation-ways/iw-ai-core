@@ -1,4 +1,4 @@
-"""Dashboard OSS compliance tab — scan, prepare, publish, and install jobs."""
+"""Dashboard OSS compliance tab — scan, install, and status jobs."""
 
 from __future__ import annotations
 
@@ -6,14 +6,25 @@ import asyncio
 import json
 import logging
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from dashboard.routers._run_helpers import get_project_or_404
+from dashboard.routers.oss_models import AcceptRequestBody, ApplyAllSafeBody, FixRequestBody
+from dashboard.services.oss_accepted import (
+    accepted_by,
+    append_accepted,
+    compute_finding_hash,
+    is_accepted,
+    load_accepted,
+    now_iso,
+)
+from dashboard.services.oss_check_catalog import load_catalog
 from dashboard.utils.oss_copy import DOMAIN_CONTEXT, SEVERITY_IMPACT, STATUS_COPY
 from orch.db.models import ProjectOssJob, ProjectOssJobKind, ProjectOssJobStatus
 from orch.oss.config_writer import write_project_config
@@ -44,16 +55,12 @@ def _running_job_of_kind(
 async def _stream_job_events(request: Request, job_id: int) -> AsyncGenerator[str, None]:
     from dashboard.services.oss_service import job_event_stream
 
-    # Tests may set `app.state.oss_session_factory` to bind to a testcontainer
-    # engine; in production we fall back to the live SessionLocal.
     factory = getattr(request.app.state, "oss_session_factory", None)
     if factory is None:
         from orch.db.session import SessionLocal
 
         factory = SessionLocal
 
-    # Tests may shrink the heartbeat interval so the stream responds quickly
-    # and terminates promptly instead of blocking up to 20s per iteration.
     heartbeat_interval = getattr(request.app.state, "oss_stream_heartbeat_interval", 20.0)
 
     async for line in job_event_stream(factory, job_id, heartbeat_interval=heartbeat_interval):
@@ -86,9 +93,6 @@ def oss_page(
     latest = latest_scan(db, project_id)
     summary = scan_summary(db, project_id)
 
-    # Findings view uses the most recent *complete* scan so an errored or
-    # running scan does not clobber the last good results. The pill above
-    # still reflects the true latest scan status from scan_summary.
     findings_source = latest
     if latest is None or (latest.status and latest.status != OssScanStatus.complete):
         findings_source = db.scalars(
@@ -108,12 +112,20 @@ def oss_page(
         "info_fail": 0,
         "skipped": 0,
     }
+    catalog = {k: v.model_dump() for k, v in load_catalog().items()}
+    accepted_file = load_accepted(Path(project.repo_root))
+    accepted_findings: list[Any] = []
     if findings_source:
         from collections import defaultdict
 
         by_domain: dict[str, list[Any]] = defaultdict(list)
         for f in findings_source.findings:
-            by_domain[f.domain].append(f)
+            h = compute_finding_hash(f.check_id, f.summary, f.evidence_json)
+            object.__setattr__(f, "finding_hash", h)
+            if is_accepted(accepted_file, f.check_id, h):
+                accepted_findings.append(f)
+            else:
+                by_domain[f.domain].append(f)
         for domain, findings in by_domain.items():
             must_fail = sum(
                 1 for f in findings if f.severity.value == "MUST" and f.status.value == "fail"
@@ -147,6 +159,10 @@ def oss_page(
             totals["info_fail"] += info_fail
             totals["skipped"] += skipped_count
 
+    for f in accepted_findings:
+        h = compute_finding_hash(f.check_id, f.summary, f.evidence_json)
+        object.__setattr__(f, "finding_hash", h)
+
     return templates.TemplateResponse(
         request,
         "pages/project/oss.html",
@@ -160,6 +176,8 @@ def oss_page(
             "domain_context": DOMAIN_CONTEXT,
             "severity_impact": SEVERITY_IMPACT,
             "status_copy": STATUS_COPY,
+            "catalog": catalog,
+            "accepted_findings": accepted_findings,
         },
     )
 
@@ -342,76 +360,6 @@ def oss_scan(
     )
 
 
-@router.post("/oss/prepare", response_class=Response)
-def oss_prepare(
-    project_id: str,
-    db: Session = Depends(get_db),
-) -> Any:
-    get_project_or_404(project_id, db)
-
-    existing = _running_job_of_kind(db, project_id, ProjectOssJobKind.prepare)
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Prepare job #{existing.id} is already running",
-        )
-
-    from dashboard.services.oss_service import enqueue_job
-
-    job = enqueue_job(db, project_id, ProjectOssJobKind.prepare)
-    db.commit()
-    db.refresh(job)
-
-    thread = threading.Thread(
-        target=lambda: asyncio.run(_run_oss_job(job.id)),
-        daemon=True,
-        name=f"oss-prepare-{job.id}",
-    )
-    thread.start()
-
-    stream_url = f"/project/{project_id}/oss/stream/{job.id}"
-    return Response(
-        status_code=200,
-        content=json.dumps({"job_id": job.id, "stream_url": stream_url}),
-        media_type="application/json",
-    )
-
-
-@router.post("/oss/publish", response_class=Response)
-def oss_publish(
-    project_id: str,
-    db: Session = Depends(get_db),
-) -> Any:
-    get_project_or_404(project_id, db)
-
-    existing = _running_job_of_kind(db, project_id, ProjectOssJobKind.publish)
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Publish job #{existing.id} is already running",
-        )
-
-    from dashboard.services.oss_service import enqueue_job
-
-    job = enqueue_job(db, project_id, ProjectOssJobKind.publish)
-    db.commit()
-    db.refresh(job)
-
-    thread = threading.Thread(
-        target=lambda: asyncio.run(_run_oss_job(job.id)),
-        daemon=True,
-        name=f"oss-publish-{job.id}",
-    )
-    thread.start()
-
-    stream_url = f"/project/{project_id}/oss/stream/{job.id}"
-    return Response(
-        status_code=200,
-        content=json.dumps({"job_id": job.id, "stream_url": stream_url}),
-        media_type="application/json",
-    )
-
-
 @router.get("/oss/stream/{job_id}", response_class=StreamingResponse)
 async def oss_stream(
     project_id: str,
@@ -445,3 +393,257 @@ async def _run_oss_job(job_id: int) -> None:
     from orch.db.session import SessionLocal
 
     await run_job(lambda: SessionLocal(), job_id)
+
+
+# ---------------------------------------------------------------------------
+# New S09 endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/oss/fix/{check_id}", response_class=Response)
+def oss_fix(
+    project_id: str,
+    check_id: str,
+    payload: FixRequestBody = Body(...),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Preview (apply=false) or apply (apply=true) a single fix recipe.
+
+    Preview: returns JSON with target_files, full_contents, diffs, notes immediately.
+    Apply: enqueues a fix job, spawns the subprocess, returns {job_id, stream_url}.
+    """
+    project = get_project_or_404(project_id, db)
+
+    from orch.oss.fix_recipes import get_recipe
+
+    recipe = get_recipe(check_id)
+    if recipe is None:
+        raise HTTPException(status_code=404, detail=f"No recipe registered for {check_id}")
+
+    if not payload.apply:
+        preview = recipe.preview(Path(project.repo_root))
+        return Response(
+            content=json.dumps(
+                {
+                    "check_id": check_id,
+                    "target_files": [str(f) for f in preview.target_files],
+                    "full_contents": {str(k): v for k, v in preview.full_contents.items()},
+                    "diffs": {str(k): v for k, v in preview.diffs.items()},
+                    "notes": preview.notes,
+                }
+            ),
+            media_type="application/json",
+        )
+
+    existing = _running_job_of_kind(db, project_id, ProjectOssJobKind.fix)
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Fix job #{existing.id} is already running",
+        )
+
+    from dashboard.services.oss_service import enqueue_job
+
+    job = enqueue_job(db, project_id, ProjectOssJobKind.fix, check_id=check_id)
+    db.commit()
+    db.refresh(job)
+
+    thread = threading.Thread(
+        target=lambda: asyncio.run(_run_oss_job(job.id)),
+        daemon=True,
+        name=f"oss-fix-{job.id}",
+    )
+    thread.start()
+
+    toast = json.dumps({"showToast": {"message": f"Fix job #{job.id} started", "type": "info"}})
+    stream_url = f"/project/{project_id}/oss/stream/{job.id}"
+    return Response(
+        content=json.dumps({"job_id": job.id, "stream_url": stream_url}),
+        media_type="application/json",
+        headers={"HX-Trigger": toast},
+    )
+
+
+@router.post("/oss/recheck/{check_id}", response_class=Response)
+def oss_recheck(
+    project_id: str,
+    check_id: str,  # noqa: ARG001  # path param for routing; full scan is run in v1
+    db: Session = Depends(get_db),
+) -> Any:
+    """Re-run a single check by re-running the full scan (v1) — Phase F2 adds --check filter."""
+    get_project_or_404(project_id, db)
+
+    existing = _running_job_of_kind(db, project_id, ProjectOssJobKind.scan)
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Scan job #{existing.id} is already running",
+        )
+
+    from dashboard.services.oss_service import enqueue_job
+
+    job = enqueue_job(db, project_id, ProjectOssJobKind.scan)
+    db.commit()
+    db.refresh(job)
+
+    thread = threading.Thread(
+        target=lambda: asyncio.run(_run_oss_job(job.id)),
+        daemon=True,
+        name=f"oss-recheck-{job.id}",
+    )
+    thread.start()
+
+    toast = json.dumps(
+        {
+            "showToast": {
+                "message": f"Re-checking all findings (job #{job.id})",
+                "type": "info",
+            }
+        }
+    )
+    stream_url = f"/project/{project_id}/oss/stream/{job.id}"
+    return Response(
+        content=json.dumps({"job_id": job.id, "stream_url": stream_url}),
+        media_type="application/json",
+        headers={"HX-Trigger": toast},
+    )
+
+
+@router.post("/oss/accept/{check_id}", response_class=Response)
+def oss_accept(
+    project_id: str,
+    check_id: str,
+    payload: AcceptRequestBody = Body(...),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Append an accepted-risk entry to .iw/oss-accepted.yaml."""
+    from dashboard.services.oss_accepted import AcceptedEntry
+
+    project = get_project_or_404(project_id, db)
+    entry = AcceptedEntry(
+        check_id=check_id,
+        finding_hash=payload.finding_hash,
+        reason=payload.reason,
+        accepted_at=now_iso(),
+        accepted_by=accepted_by(),
+    )
+    append_accepted(Path(project.repo_root), entry)
+
+    trigger = json.dumps(
+        {
+            "showToast": {"message": "Risk accepted", "type": "success"},
+        }
+    )
+    return Response(
+        status_code=204,
+        headers={"HX-Trigger": trigger, "HX-Refresh": "false"},
+    )
+
+
+@router.post("/oss/apply-all-safe/preview", response_class=Response)
+def oss_apply_all_safe_preview(project_id: str, db: Session = Depends(get_db)) -> Any:
+    """Return list of previews for all auto_apply_safe=True failing findings."""
+    project = get_project_or_404(project_id, db)
+
+    from orch.db.models import OssScan, OssScanStatus
+    from orch.oss.fix_recipes import get_recipe
+
+    latest = db.scalars(
+        select(OssScan)
+        .where(OssScan.project_id == project_id, OssScan.status == OssScanStatus.complete)
+        .order_by(OssScan.started_at.desc())
+        .limit(1)
+    ).first()
+
+    if latest is None:
+        return Response(
+            content=json.dumps([]),
+            media_type="application/json",
+        )
+
+    results = []
+    for finding in latest.findings:
+        if finding.status.value != "fail" or not finding.auto_apply_safe:
+            continue
+        recipe = get_recipe(finding.check_id)
+        if recipe is None:
+            continue
+        preview = recipe.preview(Path(project.repo_root))
+        results.append(
+            {
+                "check_id": finding.check_id,
+                "target_files": [str(f) for f in preview.target_files],
+                "full_contents": {str(k): v for k, v in preview.full_contents.items()},
+                "diffs": {str(k): v for k, v in preview.diffs.items()},
+                "notes": preview.notes,
+            }
+        )
+
+    return Response(
+        content=json.dumps(results),
+        media_type="application/json",
+    )
+
+
+@router.post("/oss/apply-all-safe", response_class=Response)
+def oss_apply_all_safe(
+    project_id: str,
+    payload: ApplyAllSafeBody = Body(...),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Apply selected auto-apply-safe recipes sequentially."""
+    get_project_or_404(project_id, db)
+
+    from orch.oss.fix_recipes import get_recipe
+
+    for cid in payload.check_ids:
+        recipe = get_recipe(cid)
+        if recipe is None:
+            raise HTTPException(status_code=404, detail=f"No recipe for {cid}")
+        if not recipe.auto_apply_safe:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{cid} has auto_apply_safe=False — not allowed in apply-all-safe",
+            )
+
+    existing = _running_job_of_kind(db, project_id, ProjectOssJobKind.fix)
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Fix job #{existing.id} is already running",
+        )
+
+    from dashboard.services.oss_service import enqueue_job
+
+    job = enqueue_job(db, project_id, ProjectOssJobKind.fix, check_ids=payload.check_ids)
+    db.commit()
+    db.refresh(job)
+
+    thread = threading.Thread(
+        target=lambda: asyncio.run(_run_fixes_batch(job.id)),
+        daemon=True,
+        name=f"oss-apply-all-{job.id}",
+    )
+    thread.start()
+
+    toast = json.dumps(
+        {
+            "showToast": {
+                "message": (f"Applying {len(payload.check_ids)} fix(es) (job #{job.id})"),
+                "type": "info",
+            }
+        }
+    )
+    stream_url = f"/project/{project_id}/oss/stream/{job.id}"
+    return Response(
+        content=json.dumps({"job_id": job.id, "stream_url": stream_url}),
+        media_type="application/json",
+        headers={"HX-Trigger": toast},
+    )
+
+
+async def _run_fixes_batch(job_id: int) -> None:
+    from dashboard.services.oss_service import run_fixes
+    from orch.db.session import SessionLocal
+
+    await run_fixes(lambda: SessionLocal(), job_id)

@@ -56,6 +56,7 @@ def persist_findings(
             detail=f.get("detail"),
             remediation=f.get("remediation"),
             auto_fix_available=f.get("auto_fix_available", False),
+            auto_apply_safe=f.get("auto_apply_safe", False),
             osps_control=f.get("osps_control"),
             tool=f.get("tool"),
             evidence_json=evidence_json,

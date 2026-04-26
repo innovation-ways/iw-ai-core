@@ -26,6 +26,7 @@ def contributor_agreement(ctx: Context) -> list[Finding]:
                     status=Status.PASS,
                     domain=DOMAIN,
                     summary=f"DCO config present at {dco_cfg}",
+                    auto_apply_safe=False,
                 )
             )
         else:
@@ -41,6 +42,7 @@ def contributor_agreement(ctx: Context) -> list[Finding]:
                         "https://github.com/apps/dco"
                     ),
                     auto_fix_available=True,
+                    auto_apply_safe=True,
                 )
             )
     else:
@@ -56,6 +58,7 @@ def contributor_agreement(ctx: Context) -> list[Finding]:
                 remediation="Add CLA document and configure cla-assistant or EasyCLA."
                 if not cla_cfg
                 else None,
+                auto_apply_safe=False,
             )
         )
 
@@ -74,6 +77,7 @@ def contributor_agreement(ctx: Context) -> list[Finding]:
                 if has_signoff
                 else "CONTRIBUTING does not explain sign-off",
                 auto_fix_available=True,
+                auto_apply_safe=True,
             )
         )
 
@@ -88,6 +92,7 @@ def contributor_agreement(ctx: Context) -> list[Finding]:
                 domain=DOMAIN,
                 summary="Branch-protection DCO check verified under OSS-GH-01",
                 osps_control="OSPS-AC-03.01",
+                auto_apply_safe=False,
             )
         )
     else:
@@ -98,6 +103,7 @@ def contributor_agreement(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="Branch-protection check needs gh CLI + remote",
+                auto_apply_safe=False,
             )
         )
 

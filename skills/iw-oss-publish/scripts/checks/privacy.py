@@ -39,6 +39,7 @@ def privacy(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="ripgrep unavailable — PII scan skipped",
+                auto_apply_safe=False,
             )
         )
     else:
@@ -51,6 +52,7 @@ def privacy(ctx: Context) -> list[Finding]:
                     status=Status.PASS,
                     domain=DOMAIN,
                     summary="No real-looking emails in test fixtures",
+                    auto_apply_safe=False,
                 )
             )
         else:
@@ -64,6 +66,7 @@ def privacy(ctx: Context) -> list[Finding]:
                     detail="\n".join(flagged[:15]),
                     remediation="Replace with @example.com or @test.invalid; do not commit real PII.",
                     evidence={"samples": flagged[:30]},
+                    auto_apply_safe=False,
                 )
             )
 
@@ -78,6 +81,7 @@ def privacy(ctx: Context) -> list[Finding]:
                     status=Status.PASS,
                     domain=DOMAIN,
                     summary="No SSN-shaped patterns in fixtures",
+                    auto_apply_safe=False,
                 )
             )
         else:
@@ -90,6 +94,7 @@ def privacy(ctx: Context) -> list[Finding]:
                     summary=f"{len(ssn_hits)} SSN-shaped pattern(s) — human review required",
                     detail="\n".join(ssn_hits[:10]),
                     remediation="Verify test SSNs; replace with obviously fake values like 000-00-0000.",
+                    auto_apply_safe=False,
                 )
             )
 
@@ -103,6 +108,7 @@ def privacy(ctx: Context) -> list[Finding]:
                 domain=DOMAIN,
                 summary=f"{ctx.repo.contributor_email_count} distinct contributor email(s) in history",
                 detail="See OSS-HIST-03 for non-noreply breakdown.",
+                auto_apply_safe=False,
             )
         )
 

@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from orch.config import get_db_url
 from orch.db.models import DaemonEvent, PendingMigrationLog
+from orch.db.safe_migrate import _is_test_context_active
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +207,8 @@ def _emit_daemon_event(
     message: str,
 ) -> None:
     """Write a DaemonEvent row via a fresh short-lived session."""
+    if _is_test_context_active():
+        return
     db_url = get_db_url()
     engine = create_engine(db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)
@@ -235,6 +238,8 @@ def _write_rebase_log(
     batch_id: int,
 ) -> None:
     """Write a PendingMigrationLog row for a rebase-phase rewrite."""
+    if _is_test_context_active():
+        return
     db_url = get_db_url()
     engine = create_engine(db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)

@@ -52,7 +52,7 @@ BEGIN
 END$$;
 
 CREATE TYPE ossscan_status AS ENUM ('pending', 'running', 'complete', 'error');
-CREATE TYPE ossscan_mode AS ENUM ('scan', 'make_oss', 'publish');
+CREATE TYPE ossscan_mode AS ENUM ('scan');
 CREATE TYPE osspill_color AS ENUM ('green', 'yellow', 'red', 'gray');
 CREATE TYPE ossfinding_severity AS ENUM ('MUST', 'SHOULD', 'MAY', 'INFO');
 CREATE TYPE ossfinding_status AS ENUM ('pass_status', 'fail', 'skip', 'human_required');
@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS oss_finding (
     detail TEXT,
     remediation TEXT,
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
+    auto_apply_safe BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
     evidence_json JSONB,
@@ -111,9 +112,9 @@ ALTER TABLE oss_finding ADD CONSTRAINT fk_oss_finding_scan
 ALTER TABLE oss_tool_run ADD CONSTRAINT fk_oss_tool_run_scan
     FOREIGN KEY (scan_id) REFERENCES oss_scan(id) ON DELETE CASCADE;
 
-CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'prepare', 'publish', 'install');
+CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'install', 'fix');
 CREATE TYPE project_oss_job_status AS ENUM (
-    'queued', 'running', 'complete', 'error', 'cancelled', 'awaiting_review', 'discarded'
+    'queued', 'running', 'complete', 'error', 'cancelled'
 );
 
 CREATE TABLE IF NOT EXISTS project_oss_job (
@@ -125,22 +126,17 @@ CREATE TABLE IF NOT EXISTS project_oss_job (
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     exit_code INTEGER,
-    worktree_path TEXT,
     scan_id BIGINT,
     stdout_tail TEXT,
     error_message TEXT,
     base_sha TEXT,
-    branch_name TEXT,
-    commit_sha TEXT,
-    files_changed_summary TEXT
+    CONSTRAINT fk_project_oss_job_project FOREIGN KEY (project_id)
+        REFERENCES projects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_project_oss_job_scan FOREIGN KEY (scan_id)
+        REFERENCES oss_scan(id) ON DELETE SET NULL
 );
 CREATE INDEX ix_project_oss_job_project_created ON project_oss_job (project_id, created_at DESC);
 CREATE INDEX ix_project_oss_job_status ON project_oss_job (status);
-
-ALTER TABLE project_oss_job ADD CONSTRAINT fk_project_oss_job_project
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE;
-ALTER TABLE project_oss_job ADD CONSTRAINT fk_project_oss_job_scan
-    FOREIGN KEY (scan_id) REFERENCES oss_scan(id) ON DELETE SET NULL;
 
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS oss_enabled BOOLEAN NOT NULL DEFAULT false;
 """
@@ -270,6 +266,161 @@ def proj_enabled(oss_sse_session: Session, tmp_path: Path) -> Project:
     oss_sse_session.add(p)
     oss_sse_session.flush()
     return p
+
+
+class TestSseRowUpdateEvents:
+    def test_stream_emits_row_update_events(
+        self,
+        client: TestClient,
+        proj_enabled: Project,
+        oss_sse_session: Session,
+    ) -> None:
+        """CR-00022 AC8: scan SSE emits row-update events during scan."""
+        scan = OssScan(
+            project_id=proj_enabled.id,
+            status=OssScanStatus.running,
+            head_sha="abc123",
+        )
+        oss_sse_session.add(scan)
+        oss_sse_session.flush()
+
+        from orch.db.models import OssFinding, OssFindingSeverity, OssFindingStatus
+
+        finding = OssFinding(
+            scan_id=scan.id,
+            check_id="OSS-CH-01",
+            severity=OssFindingSeverity.MUST,
+            status=OssFindingStatus.fail,
+            domain="community",
+            summary="Missing README",
+            auto_apply_safe=True,
+            auto_fix_available=True,
+        )
+        oss_sse_session.add(finding)
+        oss_sse_session.commit()
+
+        job = ProjectOssJob(
+            project_id=proj_enabled.id,
+            kind=ProjectOssJobKind.scan,
+            status=ProjectOssJobStatus.complete,
+            scan_id=scan.id,
+            stdout_tail="",
+        )
+        oss_sse_session.add(job)
+        oss_sse_session.commit()
+
+        resp = client.get(
+            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
+            headers={"Accept": "text/event-stream"},
+            timeout=5,
+        )
+        assert resp.status_code == 200
+        content = b"".join(resp.iter_bytes()).decode("utf-8", errors="replace")
+
+        assert "event: row-update" in content, f"Expected row-update event in: {content[:500]}"
+        assert "OSS-CH-01" in content
+        assert "community" in content
+        assert "MUST" in content
+
+    def test_row_update_event_data_shape(
+        self,
+        client: TestClient,
+        proj_enabled: Project,
+        oss_sse_session: Session,
+    ) -> None:
+        """CR-00022 AC8: row-update data includes all required fields."""
+        scan = OssScan(
+            project_id=proj_enabled.id,
+            status=OssScanStatus.running,
+            head_sha="abc123",
+        )
+        oss_sse_session.add(scan)
+        oss_sse_session.flush()
+
+        from orch.db.models import OssFinding, OssFindingSeverity, OssFindingStatus
+
+        finding = OssFinding(
+            scan_id=scan.id,
+            check_id="OSS-CH-01",
+            severity=OssFindingSeverity.MUST,
+            status=OssFindingStatus.fail,
+            domain="community",
+            summary="Missing README",
+            auto_apply_safe=True,
+            auto_fix_available=True,
+        )
+        oss_sse_session.add(finding)
+        oss_sse_session.commit()
+
+        job = ProjectOssJob(
+            project_id=proj_enabled.id,
+            kind=ProjectOssJobKind.scan,
+            status=ProjectOssJobStatus.complete,
+            scan_id=scan.id,
+            stdout_tail="",
+        )
+        oss_sse_session.add(job)
+        oss_sse_session.commit()
+
+        resp = client.get(
+            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
+            headers={"Accept": "text/event-stream"},
+            timeout=5,
+        )
+        assert resp.status_code == 200
+        content = b"".join(resp.iter_bytes()).decode("utf-8", errors="replace")
+
+        import json
+
+        for line in content.split("\n"):
+            if line.startswith("data: ") and "OSS-CH-01" in line:
+                data = json.loads(line[6:])
+                assert "check_id" in data
+                assert "domain" in data
+                assert "severity" in data
+                assert "status" in data
+                assert "summary" in data
+                assert "auto_apply_safe" in data
+                assert "auto_fix_available" in data
+                assert "finding_hash" in data
+                break
+
+    def test_stream_emits_complete_event_at_end(
+        self,
+        client: TestClient,
+        proj_enabled: Project,
+        oss_sse_session: Session,
+    ) -> None:
+        """CR-00022 AC8: complete event still emitted at end of scan."""
+        scan = OssScan(
+            project_id=proj_enabled.id,
+            status=OssScanStatus.complete,
+            head_sha="abc123",
+            pill_color=OssPillColor.green,
+        )
+        oss_sse_session.add(scan)
+        oss_sse_session.flush()
+
+        job = ProjectOssJob(
+            project_id=proj_enabled.id,
+            kind=ProjectOssJobKind.scan,
+            status=ProjectOssJobStatus.complete,
+            exit_code=0,
+            scan_id=scan.id,
+            stdout_tail="done",
+        )
+        oss_sse_session.add(job)
+        oss_sse_session.commit()
+
+        resp = client.get(
+            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
+            headers={"Accept": "text/event-stream"},
+            timeout=5,
+        )
+        assert resp.status_code == 200
+        content = b"".join(resp.iter_bytes()).decode("utf-8", errors="replace")
+
+        assert "event: complete" in content
 
 
 class TestSseEmitsStatusProgressCompleteInOrder:

@@ -13,9 +13,12 @@ ENV PYTHONUNBUFFERED=1 \
     UV_SYSTEM_PYTHON=1 \
     PATH="/root/.local/bin:${PATH}"
 
-# Install uv for dependency resolution.
+# Install uv for dependency resolution. git is also installed because
+# browser_verification agents shell into this container to introspect git
+# state (e.g. `git -C /app status --short`) when verifying working-tree-only
+# fix recipes — see CR-00022 V3/V4/V7.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && apt-get install -y --no-install-recommends curl ca-certificates git \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -31,6 +34,16 @@ COPY . .
 
 # Reinstall to register the project entry points against the source.
 RUN uv sync --frozen --no-dev
+
+# Initialise /app as a git repo at image build time so browser_verification
+# agents can `git -C /app status --short` to confirm that fix recipes wrote
+# to the working tree. The host .git/ is excluded by .dockerignore so /app
+# is otherwise not a git work-tree.
+RUN git config --global user.email e2e@iw-ai-core.local \
+    && git config --global user.name "iw-ai-core e2e" \
+    && git init -q -b main \
+    && git add -A \
+    && git commit -q -m "e2e baseline"
 
 EXPOSE 9900 11434
 

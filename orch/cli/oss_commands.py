@@ -1,4 +1,4 @@
-"""OSS compliance commands: install, scan, prepare, publish, enable, disable, status."""
+"""OSS compliance commands: install, scan, enable, disable, status."""
 
 from __future__ import annotations
 
@@ -93,16 +93,9 @@ def install(ctx: click.Context, dry_run: bool, tier2: bool) -> None:  # noqa: AR
 
 @oss.command("scan")
 @click.option("--project", "project_id", required=True, help="Project ID")
-@click.option(
-    "--mode",
-    "mode",
-    type=click.Choice(["scan", "make_oss", "publish"]),
-    default="scan",
-    help="Scan mode (default: scan)",
-)
 @click.option("--json", "json_output", is_flag=True, help="Machine-readable JSON output")
 @click.pass_context
-def scan(ctx: click.Context, project_id: str, mode: str, json_output: bool) -> None:
+def scan(ctx: click.Context, project_id: str, json_output: bool) -> None:
     """Run OSS compliance scan against a project."""
     get_session = ctx.obj["get_session"]
 
@@ -143,7 +136,7 @@ def scan(ctx: click.Context, project_id: str, mode: str, json_output: bool) -> N
             scan_result = asyncio.get_event_loop().run_until_complete(
                 run_scan(
                     project,
-                    mode,
+                    "scan",
                     session_factory=session_factory,
                     skill_scan_path=SCAN_SCRIPT,
                 )
@@ -193,22 +186,6 @@ def scan(ctx: click.Context, project_id: str, mode: str, json_output: bool) -> N
         if pill_color == "red":
             sys.exit(1)
         sys.exit(0)
-
-
-@oss.command("prepare")
-@click.option("--project", "project_id", required=True, help="Project ID")
-@click.pass_context
-def prepare(ctx: click.Context, project_id: str) -> None:
-    """Prepare a project for OSS release (convenience alias for scan --mode make_oss)."""
-    ctx.invoke(scan, project_id=project_id, mode="make_oss", json_output=False)
-
-
-@oss.command("publish")
-@click.option("--project", "project_id", required=True, help="Project ID")
-@click.pass_context
-def publish(ctx: click.Context, project_id: str) -> None:
-    """Publish OSS artifacts (convenience alias for scan --mode publish)."""
-    ctx.invoke(scan, project_id=project_id, mode="publish", json_output=False)
 
 
 @oss.command("enable")
@@ -270,6 +247,60 @@ def disable(ctx: click.Context, project_id: str) -> None:
         session.commit()
 
         click.echo(f"OSS compliance disabled for {project_id}")
+
+
+@oss.command("fix")
+@click.argument("check_id")
+@click.option("--project", "project_id", required=True, help="Project ID")
+@click.option("--apply", is_flag=True, help="Apply the fix (default: preview only)")
+@click.option("--json", "json_output", is_flag=True, help="Machine-readable JSON output")
+@click.pass_context
+def fix(ctx: click.Context, check_id: str, project_id: str, apply: bool, json_output: bool) -> None:
+    """Preview or apply the auto-fix for a single OSS check."""
+    from orch.oss.fix_recipes import get_recipe
+
+    get_session = ctx.obj["get_session"]
+    with get_session() as session:
+        from orch.db.models import Project
+
+        project = session.get(Project, project_id)
+        if project is None:
+            click.echo(f"Project {project_id} not found", err=True)
+            sys.exit(2)
+        repo_root = Path(project.repo_root)
+
+    recipe = get_recipe(check_id)
+    if recipe is None:
+        click.echo(f"No auto-fix recipe registered for {check_id}", err=True)
+        sys.exit(2)
+
+    if apply:
+        preview = recipe.apply(repo_root)
+        action = "apply"
+    else:
+        preview = recipe.preview(repo_root)
+        action = "preview"
+
+    if json_output:
+        click.echo(
+            json.dumps(
+                {
+                    "action": action,
+                    "check_id": check_id,
+                    "target_files": [str(p) for p in preview.target_files],
+                    "full_contents": {str(p): c for p, c in preview.full_contents.items()},
+                    "diffs": {str(p): d for p, d in preview.diffs.items()},
+                    "notes": preview.notes,
+                }
+            )
+        )
+    else:
+        click.echo(f"{action}: {check_id} — {len(preview.target_files)} file(s)")
+        if preview.notes:
+            click.echo(f"  notes: {preview.notes}")
+        for p in preview.target_files:
+            click.echo(f"  - {p}")
+    sys.exit(0)
 
 
 @oss.command("status")

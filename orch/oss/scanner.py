@@ -68,6 +68,9 @@ async def run_scan(
     """
     session = session_factory()
 
+    if mode != "scan":
+        raise ValueError(f"Unsupported scan mode: {mode}")
+
     head_sha = _get_git_head(project.repo_root)
 
     scan = OssScan(

@@ -24,6 +24,7 @@ def github_live(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="GitHub live checks disabled via config",
+                auto_apply_safe=False,
             )
         )
         return out
@@ -36,6 +37,7 @@ def github_live(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="gh CLI unavailable — GitHub live checks skipped",
+                auto_apply_safe=False,
             )
         )
         return out
@@ -48,6 +50,7 @@ def github_live(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="No git remote — GitHub live checks skipped",
+                auto_apply_safe=False,
             )
         )
         return out
@@ -62,6 +65,7 @@ def github_live(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="`gh repo view` failed (not authenticated, or repo not on GitHub)",
+                auto_apply_safe=False,
             )
         )
         return out
@@ -80,6 +84,7 @@ def github_live(ctx: Context) -> list[Finding]:
             remediation='Set via `gh repo edit --description "..."` (emitted in publish playbook).'
             if not desc
             else None,
+            auto_apply_safe=False,
         )
     )
 
@@ -95,6 +100,7 @@ def github_live(ctx: Context) -> list[Finding]:
             status=Status.PASS if len(topics) >= 3 else Status.FAIL,
             domain=DOMAIN,
             summary=f"{len(topics)} topic(s): {', '.join(topics) or '(none)'}",
+            auto_apply_safe=False,
         )
     )
 
@@ -107,6 +113,7 @@ def github_live(ctx: Context) -> list[Finding]:
             status=Status.PASS if homepage else Status.FAIL,
             domain=DOMAIN,
             summary=f"Homepage: {homepage}" if homepage else "Homepage URL not set",
+            auto_apply_safe=False,
         )
     )
 
@@ -119,6 +126,7 @@ def github_live(ctx: Context) -> list[Finding]:
             status=Status.PASS if squash else Status.FAIL,
             domain=DOMAIN,
             summary="Squash-merge enabled" if squash else "Squash-merge disabled",
+            auto_apply_safe=False,
         )
     )
 
@@ -133,6 +141,7 @@ def github_live(ctx: Context) -> list[Finding]:
             summary="Merge-commit disabled"
             if merge_commit is False
             else "Merge-commit enabled (consider disabling for linear history)",
+            auto_apply_safe=False,
         )
     )
 
@@ -147,6 +156,7 @@ def github_live(ctx: Context) -> list[Finding]:
             summary="Delete-branch-on-merge enabled"
             if delete_on_merge
             else "Delete-branch-on-merge disabled",
+            auto_apply_safe=False,
         )
     )
 
@@ -161,6 +171,7 @@ def github_live(ctx: Context) -> list[Finding]:
             summary=f"{len(releases)} GitHub Release(s) present"
             if releases
             else "No GitHub Releases yet",
+            auto_apply_safe=False,
         )
     )
 
@@ -175,6 +186,7 @@ def github_live(ctx: Context) -> list[Finding]:
                 domain=DOMAIN,
                 summary="Could not read branch protection (not found, not admin, or private-repo repo setting)",
                 osps_control="OSPS-AC-03.01",
+                auto_apply_safe=False,
             )
         )
     else:
@@ -191,6 +203,7 @@ def github_live(ctx: Context) -> list[Finding]:
                 if blocks_direct
                 else "main branch protection does NOT block direct pushes",
                 osps_control="OSPS-AC-03.01",
+                auto_apply_safe=False,
             )
         )
 
@@ -206,6 +219,7 @@ def github_live(ctx: Context) -> list[Finding]:
                 if not allow_deletions
                 else "main branch deletion ENABLED",
                 osps_control="OSPS-AC-03.02",
+                auto_apply_safe=False,
             )
         )
 

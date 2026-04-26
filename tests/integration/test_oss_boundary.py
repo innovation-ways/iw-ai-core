@@ -89,6 +89,7 @@ CREATE TABLE oss_finding (
     detail TEXT,
     remediation TEXT,
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
+    auto_apply_safe BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
     evidence_json JSONB,

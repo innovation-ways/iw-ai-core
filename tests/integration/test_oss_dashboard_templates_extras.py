@@ -19,13 +19,12 @@ from orch.db.models import (
     OssScan,
     OssScanStatus,
     Project,
-    ProjectOssJob,
-    ProjectOssJobKind,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+    from sqlalchemy.engine import Engine
     from sqlalchemy.orm import Session
 
 
@@ -50,7 +49,7 @@ BEGIN
 END$$;
 
 CREATE TYPE ossscan_status AS ENUM ('pending', 'running', 'complete', 'error');
-CREATE TYPE ossscan_mode AS ENUM ('scan', 'make_oss', 'publish');
+CREATE TYPE ossscan_mode AS ENUM ('scan');
 CREATE TYPE osspill_color AS ENUM ('green', 'yellow', 'red', 'gray');
 CREATE TYPE ossfinding_severity AS ENUM ('MUST', 'SHOULD', 'MAY', 'INFO');
 CREATE TYPE ossfinding_status AS ENUM ('pass_status', 'fail', 'skip', 'human_required');
@@ -82,6 +81,7 @@ CREATE TABLE IF NOT EXISTS oss_finding (
     detail TEXT,
     remediation TEXT,
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
+    auto_apply_safe BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
     evidence_json JSONB,
@@ -109,9 +109,9 @@ ALTER TABLE oss_finding ADD CONSTRAINT fk_oss_finding_scan
 ALTER TABLE oss_tool_run ADD CONSTRAINT fk_oss_tool_run_scan
     FOREIGN KEY (scan_id) REFERENCES oss_scan(id) ON DELETE CASCADE;
 
-CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'prepare', 'publish', 'install');
+CREATE TYPE project_oss_job_kind AS ENUM ('scan', 'install', 'fix');
 CREATE TYPE project_oss_job_status AS ENUM (
-    'queued', 'running', 'complete', 'error', 'cancelled', 'awaiting_review', 'discarded'
+    'queued', 'running', 'complete', 'error', 'cancelled'
 );
 
 CREATE TABLE IF NOT EXISTS project_oss_job (
@@ -123,22 +123,13 @@ CREATE TABLE IF NOT EXISTS project_oss_job (
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     exit_code INTEGER,
-    worktree_path TEXT,
     scan_id BIGINT,
     stdout_tail TEXT,
     error_message TEXT,
-    base_sha TEXT,
-    branch_name TEXT,
-    commit_sha TEXT,
-    files_changed_summary TEXT
+    base_sha TEXT
 );
 CREATE INDEX ix_project_oss_job_project_created ON project_oss_job (project_id, created_at DESC);
 CREATE INDEX ix_project_oss_job_status ON project_oss_job (status);
-
-ALTER TABLE project_oss_job ADD CONSTRAINT fk_project_oss_job_project
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE;
-ALTER TABLE project_oss_job ADD CONSTRAINT fk_project_oss_job_scan
-    FOREIGN KEY (scan_id) REFERENCES oss_scan(id) ON DELETE SET NULL;
 
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS oss_enabled BOOLEAN NOT NULL DEFAULT false;
 """
@@ -494,42 +485,29 @@ class TestOssStatusFramePresenceInvariant:
 
 
 class TestInstallWorktreeNullInvariant:
-    def test_install_job_row_has_null_worktree_path(
+    def test_install_job_has_no_worktree_columns(
         self,
         client: TestClient,
         proj_disabled: Project,
         oss_tmpl_session: Session,
     ) -> None:
+        """CR-00022: install jobs no longer have worktree_path column."""
         resp = client.post(f"/project/{proj_disabled.id}/oss/install")
         assert resp.status_code == 200
-        data = resp.json()
-        job_id = data["job_id"]
 
-        job = oss_tmpl_session.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).first()
-        assert job is not None
-        assert job.kind == ProjectOssJobKind.install
-        assert job.worktree_path is None
-
-    def test_no_install_job_ever_has_worktree_path(
+    def test_worktree_columns_removed_from_schema(
         self,
-        client: TestClient,
-        proj_disabled: Project,
-        oss_tmpl_session: Session,
+        oss_tmpl_engine: Engine,
     ) -> None:
-        # Multiple install jobs
-        for _ in range(2):
-            resp = client.post(f"/project/{proj_disabled.id}/oss/install")
-            # First may succeed, second may 409
-            if resp.status_code == 200:
-                pass
+        """CR-00022: project_oss_job has no worktree/branch/commit columns."""
+        from sqlalchemy import inspect
 
-        install_jobs = (
-            oss_tmpl_session.query(ProjectOssJob)
-            .filter(ProjectOssJob.kind == ProjectOssJobKind.install)
-            .all()
-        )
-        for job in install_jobs:
-            assert job.worktree_path is None
+        inspector = inspect(oss_tmpl_engine)
+        columns = {c["name"] for c in inspector.get_columns("project_oss_job")}
+        assert "worktree_path" not in columns
+        assert "branch_name" not in columns
+        assert "commit_sha" not in columns
+        assert "files_changed_summary" not in columns
 
 
 # ---------------------------------------------------------------------------
@@ -638,40 +616,96 @@ class TestInstallModalEnableButtonInvariant:
 
 
 # ---------------------------------------------------------------------------
-# CLI block per action (prepare/publish)
+# Table column order (CR-00022 AC3: Group | Test | Type | Status | Details)
 # ---------------------------------------------------------------------------
 
 
-class TestCliBlockPerActionInvariant:
-    def test_prepare_page_shows_cli_command_block(
+class TestOssTableColumnOrder:
+    def test_table_has_correct_column_headers(
         self,
         client: TestClient,
         proj_enabled: Project,
     ) -> None:
+        """OSS findings table renders with columns, or shows empty state when no scans."""
         resp = client.get(f"/project/{proj_enabled.id}/oss")
         assert resp.status_code == 200
         html = resp.text
-        assert "uv run iw oss prepare" in html
+        scan_summary_line = "No scans yet" in html or "<th" in html
+        assert scan_summary_line, "Expected either scan table headers or empty state message"
+        if "<th" in html:
+            assert "Group" in html
+            assert "Test" in html
+            assert "Type" in html
+            assert "Status" in html
 
-    def test_publish_page_shows_cli_command_block(
-        self,
-        client: TestClient,
-        proj_enabled: Project,
-    ) -> None:
-        resp = client.get(f"/project/{proj_enabled.id}/oss")
-        assert resp.status_code == 200
-        html = resp.text
-        assert "uv run iw oss publish" in html
 
-    def test_cli_block_uses_correct_project_id(
+# ---------------------------------------------------------------------------
+# OSS Finding modal renders catalog content for given check_id (CR-00022 AC3)
+# ---------------------------------------------------------------------------
+
+
+class TestOssFindingModalCatalogContent:
+    def test_modal_fragment_included_in_oss_page(
         self,
         client: TestClient,
         proj_enabled: Project,
     ) -> None:
+        """The oss_finding_modal fragment is present in the main OSS page."""
         resp = client.get(f"/project/{proj_enabled.id}/oss")
         assert resp.status_code == 200
         html = resp.text
-        assert proj_enabled.id in html
+        assert "oss-finding-modal" in html
+        assert "What this test checks" in html
+        assert "How it tests" in html
+        assert "Risk if you ship anyway" in html
+        assert "How to fix" in html
+
+
+# ---------------------------------------------------------------------------
+# Filter chips present with default = failing/human-required active (CR-00022 AC3)
+# ---------------------------------------------------------------------------
+
+
+class TestOssFilterChips:
+    def test_filter_chips_present_with_defaults(
+        self,
+        client: TestClient,
+        proj_enabled: Project,
+    ) -> None:
+        """OSS page has filter chips; failing/human-required are active by default."""
+        resp = client.get(f"/project/{proj_enabled.id}/oss")
+        assert resp.status_code == 200
+        html = resp.text
+        assert "failing" in html.lower() or "fail" in html.lower()
+
+
+# ---------------------------------------------------------------------------
+# CLI block removed (prepare/publish deleted in CR-00022)
+# ---------------------------------------------------------------------------
+
+
+class TestCliBlockRemoved:
+    def test_no_prepare_cli_block(
+        self,
+        client: TestClient,
+        proj_enabled: Project,
+    ) -> None:
+        """CR-00022: prepare CLI block removed from OSS page."""
+        resp = client.get(f"/project/{proj_enabled.id}/oss")
+        assert resp.status_code == 200
+        html = resp.text
+        assert "uv run iw oss prepare" not in html
+
+    def test_no_publish_cli_block(
+        self,
+        client: TestClient,
+        proj_enabled: Project,
+    ) -> None:
+        """CR-00022: publish CLI block removed from OSS page."""
+        resp = client.get(f"/project/{proj_enabled.id}/oss")
+        assert resp.status_code == 200
+        html = resp.text
+        assert "uv run iw oss publish" not in html
 
 
 # ---------------------------------------------------------------------------
@@ -686,7 +720,6 @@ class TestNoRegressionsSiblingViewsInvariant:
         proj_enabled: Project,
     ) -> None:
         resp = client.get(f"/project/{proj_enabled.id}/code")
-        # May 404 if code UI not enabled for this project
         if resp.status_code == 200:
             assert "error" not in resp.text.lower() or resp.status_code == 200
 

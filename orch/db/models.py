@@ -238,8 +238,6 @@ class OssScanStatus(enum.Enum):
 
 class OssScanMode(enum.Enum):
     scan = "scan"
-    make_oss = "make_oss"
-    publish = "publish"
 
 
 class OssPillColor(enum.Enum):
@@ -272,9 +270,8 @@ class OssToolRunStatus(enum.Enum):
 
 class ProjectOssJobKind(enum.Enum):
     scan = "scan"
-    prepare = "prepare"
-    publish = "publish"
     install = "install"
+    fix = "fix"
 
 
 class ProjectOssJobStatus(enum.Enum):
@@ -283,8 +280,6 @@ class ProjectOssJobStatus(enum.Enum):
     complete = "complete"
     error = "error"
     cancelled = "cancelled"
-    awaiting_review = "awaiting_review"
-    discarded = "discarded"
 
 
 # ---------------------------------------------------------------------------
@@ -1629,6 +1624,9 @@ class OssFinding(Base):
     auto_fix_available: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    auto_apply_safe: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     osps_control: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="OSPS control reference"
     )
@@ -1677,7 +1675,7 @@ class OssToolRun(Base):
 
 
 class ProjectOssJob(Base):
-    """Async OSS scan/prepare/publish/install job tracking."""
+    """Async OSS scan/install/fix job tracking."""
 
     __tablename__ = "project_oss_job"
 
@@ -1693,11 +1691,6 @@ class ProjectOssJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
     exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    worktree_path: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Temp path for prepare/publish; NULL for scan/install",
-    )
     scan_id: Mapped[int | None] = mapped_column(
         BigInteger,
         nullable=True,
@@ -1710,22 +1703,7 @@ class ProjectOssJob(Base):
     base_sha: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
-        comment="Git HEAD SHA when Prepare was fired",
-    )
-    branch_name: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Prep branch name (iw-oss-publish/prep-<job_id>)",
-    )
-    commit_sha: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-        comment="Commit SHA on the prep branch",
-    )
-    files_changed_summary: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-        comment="git diff --stat at commit time",
+        comment="Git HEAD SHA when the job was fired",
     )
 
     project: Mapped["Project"] = relationship("Project", back_populates="oss_jobs")
@@ -1738,7 +1716,7 @@ class ProjectOssJob(Base):
         ForeignKeyConstraint(["scan_id"], ["oss_scan.id"], ondelete="SET NULL"),
         Index("ix_project_oss_job_project_created", "project_id", text("created_at DESC")),
         Index("ix_project_oss_job_status", "status"),
-        {"comment": "Async OSS scan/prepare/publish/install job tracking"},
+        {"comment": "Async OSS scan/install/fix job tracking"},
     )
 
 

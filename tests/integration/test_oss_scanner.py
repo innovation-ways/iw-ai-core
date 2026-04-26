@@ -32,7 +32,7 @@ BEGIN
 END$$;
 
 CREATE TYPE ossscan_status AS ENUM ('pending', 'running', 'complete', 'error');
-CREATE TYPE ossscan_mode AS ENUM ('scan', 'make_oss', 'publish');
+CREATE TYPE ossscan_mode AS ENUM ('scan');
 CREATE TYPE osspill_color AS ENUM ('green', 'yellow', 'red', 'gray');
 CREATE TYPE ossfinding_severity AS ENUM ('MUST', 'SHOULD', 'MAY', 'INFO');
 CREATE TYPE ossfinding_status AS ENUM ('pass_status', 'fail', 'skip', 'human_required');
@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS oss_finding (
     detail TEXT,
     remediation TEXT,
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
+    auto_apply_safe BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
     evidence_json JSONB,
@@ -276,3 +277,46 @@ class TestOssScannerRunScan:
         assert scan.id is not None
         oss_session.refresh(scan)
         assert scan.project_id == oss_test_project.id
+
+    def test_run_scan_rejects_make_oss_mode(
+        self,
+        oss_session: Session,
+        oss_test_project,
+        fixture_repo: Path,
+    ) -> None:
+        from orch.db.models import Project
+        from orch.oss.scanner import run_scan
+
+        project = oss_session.get(Project, oss_test_project.id)
+        assert project is not None
+
+        skill_scan_path = (
+            Path(__file__).resolve().parents[4]
+            / ".claude"
+            / "skills"
+            / "iw-oss-publish"
+            / "scripts"
+            / "scan.py"
+        )
+        if not skill_scan_path.exists():
+            pytest.skip("skill scan.py not found")
+
+        def session_factory():
+            return oss_session
+
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            with pytest.raises(ValueError, match="Unsupported scan mode"):
+                loop.run_until_complete(
+                    run_scan(
+                        project,
+                        "make_oss",
+                        session_factory=session_factory,
+                        skill_scan_path=skill_scan_path,
+                    )
+                )
+        finally:
+            loop.close()

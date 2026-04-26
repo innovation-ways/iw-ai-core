@@ -47,6 +47,7 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                 evidence={"paths": [str(p) for p in sbom_paths]},
                 tool="syft",
                 auto_fix_available=True,
+                auto_apply_safe=True,
             )
         )
     else:
@@ -58,6 +59,7 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                 domain=DOMAIN,
                 summary="syft unavailable or failed — SBOM not generated",
                 tool="syft",
+                auto_apply_safe=False,
             )
         )
 
@@ -76,6 +78,7 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                     domain=DOMAIN,
                     summary=f"No copyleft/proprietary deps incompatible with {outbound}",
                     tool="syft",
+                    auto_apply_safe=False,
                 )
             )
         else:
@@ -89,6 +92,7 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                     detail="\n".join(f"  - {name} ({lic})" for name, lic in flagged[:20]),
                     remediation="Replace incompatible deps, or change outbound license.",
                     evidence={"incompatible": [{"name": n, "license": l} for n, l in flagged[:50]]},
+                    auto_apply_safe=False,
                 )
             )
     else:
@@ -99,6 +103,7 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                 status=Status.SKIP,
                 domain=DOMAIN,
                 summary="SBOM unavailable — license policy check skipped",
+                auto_apply_safe=False,
             )
         )
 
@@ -117,6 +122,7 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                     summary=f"Critical vulnerabilities: {critical}",
                     detail=json.dumps(counts, indent=2) if critical else "",
                     tool="grype",
+                    auto_apply_safe=False,
                 )
             )
             out.append(
@@ -128,6 +134,7 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                     summary=f"High vulnerabilities: {high}",
                     detail=json.dumps(counts, indent=2) if high else "",
                     tool="grype",
+                    auto_apply_safe=False,
                 )
             )
         else:
@@ -138,6 +145,7 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                     status=Status.SKIP,
                     domain=DOMAIN,
                     summary="grype scan returned no data",
+                    auto_apply_safe=False,
                 )
             )
 
@@ -156,6 +164,7 @@ def dependency_checks(ctx: Context) -> list[Finding]:
             if not tpl
             else None,
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 

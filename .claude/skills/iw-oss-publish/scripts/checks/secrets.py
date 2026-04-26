@@ -73,6 +73,7 @@ def secrets(ctx: Context) -> list[Finding]:
             if not gl.exists()
             else None,
             auto_fix_available=True,
+            auto_apply_safe=True,
             source_research=["R-00061 #2"],
         )
     )
@@ -90,6 +91,7 @@ def secrets(ctx: Context) -> list[Finding]:
                 if baseline.exists()
                 else "detect-secrets baseline missing (opted in)",
                 auto_fix_available=True,
+                auto_apply_safe=True,
             )
         )
 

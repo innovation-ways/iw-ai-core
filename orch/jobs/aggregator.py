@@ -149,8 +149,6 @@ def _normalise_oss_job_status(status: ProjectOssJobStatus) -> str:
         ProjectOssJobStatus.complete: "completed",
         ProjectOssJobStatus.error: "failed",
         ProjectOssJobStatus.cancelled: "cancelled",
-        ProjectOssJobStatus.awaiting_review: "running",
-        ProjectOssJobStatus.discarded: "cancelled",
     }
     return mapping.get(status, status.value)
 
@@ -662,11 +660,7 @@ class JobsAggregator:
             "scan_id": job.scan_id,
             "stdout_tail": job.stdout_tail,
             "error_message": job.error_message,
-            "worktree_path": job.worktree_path,
-            "branch_name": job.branch_name,
             "base_sha": job.base_sha,
-            "commit_sha": job.commit_sha,
-            "files_changed_summary": job.files_changed_summary,
         }
         if scan is not None:
             raw["scan_status"] = scan.status.value
