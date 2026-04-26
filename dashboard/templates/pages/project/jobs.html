@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "components/status_badge.html" import status_badge %}
+{% from "components/multi_select.html" import multi_select %}
 
 {% macro fmt_duration(start, end) -%}
   {%- if start and end -%}
@@ -18,19 +19,6 @@
   {%- endif -%}
 {%- endmacro %}
 
-{% macro type_chip(job_type) -%}
-  {% set colors = {
-    'code_mapping': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    'doc_generation': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-    'batch_execution': 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-    'research': 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
-    'oss_scan': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-  } %}
-  <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium {{ colors.get(job_type, 'bg-muted text-muted-foreground') }}">
-    {{ job_type }}
-  </span>
-{%- endmacro %}
-
 {% block title %}Jobs — {{ current_project.display_name if current_project else '' }}{% endblock %}
 
 {% block content %}
@@ -43,30 +31,12 @@
 <form method="get" class="flex flex-wrap gap-3 mb-4 items-end">
   <div>
     <label class="block text-xs text-muted-foreground mb-1">Type</label>
-    <div class="flex flex-wrap gap-2">
-      {% for t in job_types %}
-        <label class="inline-flex items-center gap-1 text-xs cursor-pointer">
-          <input type="checkbox" name="type" value="{{ t }}"
-                 {% if t in type_filter %}checked{% endif %}
-                 class="accent-primary">
-          {{ t }}
-        </label>
-      {% endfor %}
-    </div>
+    {{ multi_select("type", "Type", job_types, type_filter) }}
   </div>
 
   <div>
     <label class="block text-xs text-muted-foreground mb-1">Status</label>
-    <div class="flex flex-wrap gap-2">
-      {% for s in job_statuses %}
-        <label class="inline-flex items-center gap-1 text-xs cursor-pointer">
-          <input type="checkbox" name="status" value="{{ s }}"
-                 {% if s in status_filter %}checked{% endif %}
-                 class="accent-primary">
-          {{ s }}
-        </label>
-      {% endfor %}
-    </div>
+    {{ multi_select("status", "Status", job_statuses, status_filter) }}
   </div>
 
   <div>
@@ -105,4 +75,5 @@
 <!-- Table — delegates to fragment for htmx refresh -->
 {% include "fragments/jobs_table.html" %}
 
+<script src="/static/multi_select.js" defer></script>
 {% endblock %}
