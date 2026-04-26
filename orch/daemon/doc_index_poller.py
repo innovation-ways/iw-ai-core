@@ -49,10 +49,13 @@ class DocIndexPoller:
         self._mark_stalled_jobs()
 
         with self._session_factory() as db:
-            projects = db.query(Project).filter(Project.enabled == True).all()  # noqa: E712
+            project_ids = [
+                pid
+                for (pid,) in db.query(Project.id).filter(Project.enabled == True).all()  # noqa: E712
+            ]
 
-        for project in projects:
-            self._process_project(project.id)
+        for project_id in project_ids:
+            self._process_project(project_id)
 
     def _mark_stalled_jobs(self) -> None:
         with self._session_factory() as db:
