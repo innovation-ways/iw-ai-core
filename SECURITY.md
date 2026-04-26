@@ -17,7 +17,7 @@
 
 Use GitHub's Private Vulnerability Reporting to send an encrypted report directly to maintainers:
 
-https://github.com/innovation-ways/IW AI Core Platform/security/advisories/new
+https://github.com//IW AI Core Platform/security/advisories/new
 
 ### Alternative: Email
 
@@ -67,4 +67,4 @@ For borderline cases, report anyway — we'd rather receive a report that turns 
 - Keep dependencies up to date (enable Dependabot alerts for your fork)
 - Use pinned versions of this package in production
 - Verify release signatures (if published with `cosign` attestations)
-- Subscribe to the project's [Security Advisories](https://github.com/innovation-ways/IW AI Core Platform/security/advisories) for announcements
+- Subscribe to the project's [Security Advisories](https://github.com//IW AI Core Platform/security/advisories) for announcements
