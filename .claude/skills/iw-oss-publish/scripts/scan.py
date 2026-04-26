@@ -123,9 +123,9 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--mode",
-        choices=["scan", "make_oss", "publish"],
+        choices=["scan"],
         default="scan",
-        help="Mode of operation (only 'scan' is functional in Phase 1)",
+        help="Mode of operation (only 'scan' is supported in Phase A)",
     )
     p.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     p.add_argument(
@@ -133,17 +133,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not abort on missing Tier-1 tools (useful for partial scans)",
     )
-    p.add_argument(
-        "--force",
-        action="store_true",
-        help="(make_oss) Allow running against an already-public repo",
-    )
-    p.add_argument(
-        "--no-clean-check",
-        action="store_true",
-        help="(make_oss) Skip the working-tree-clean precondition",
-    )
     return p.parse_args()
+
+
+def _validate_mode(mode: str) -> None:
+    if mode != "scan":
+        print(f"error: unsupported mode '{mode}' — only 'scan' is supported in Phase A", file=sys.stderr)
+        sys.exit(2)
 
 
 def run_scan(ctx) -> int:
@@ -483,29 +479,20 @@ def main() -> int:
         format="%(levelname)s %(name)s: %(message)s",
     )
 
+    _validate_mode(args.mode)
+
     ctx = build_context(args.target, args.mode)
     _print_missing_tools(ctx.tools)
 
-    if args.mode == "scan":
-        logger.info("scanning %s (mode=%s)", ctx.target, ctx.mode)
-        exit_code, _, md_path, sarif_path = run_scan(ctx)
-        print(md_path.read_text(encoding="utf-8"))
-        print("")
-        print(f"→ findings JSON: {ctx.iw_dir / 'oss-publish-findings.json'}")
-        print(f"→ report:        {md_path}")
-        if sarif_path:
-            print(f"→ SARIF:         {sarif_path}")
-        return exit_code
-
-    if args.mode == "make_oss":
-        logger.info("preparing %s for OSS release (mode=make_oss)", ctx.target)
-        return run_make_oss(ctx, args)
-
-    if args.mode == "publish":
-        logger.info("preparing publish playbook for %s (mode=publish)", ctx.target)
-        return run_publish(ctx, args)
-
-    return 2
+    logger.info("scanning %s (mode=%s)", ctx.target, ctx.mode)
+    exit_code, _, md_path, sarif_path = run_scan(ctx)
+    print(md_path.read_text(encoding="utf-8"))
+    print("")
+    print(f"→ findings JSON: {ctx.iw_dir / 'oss-publish-findings.json'}")
+    print(f"→ report:        {md_path}")
+    if sarif_path:
+        print(f"→ SARIF:         {sarif_path}")
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -682,52 +682,6 @@ class TestSseDisconnectBoundary:
 
 
 # ---------------------------------------------------------------------------
-# Boundary: Prepare on dirty tree → throwaway worktree, user's tree untouched
-# ---------------------------------------------------------------------------
-
-
-class TestPrepareOnDirtyTreeBoundary:
-    def test_prepare_job_does_not_create_worktree_in_project_repo(
-        self,
-        client: TestClient,
-        proj_enabled: Project,
-        oss_boundary_session: Session,
-    ) -> None:
-        # Enqueue a prepare job
-        resp = client.post(f"/project/{proj_enabled.id}/oss/prepare")
-        assert resp.status_code == 200
-        data = resp.json()
-        job_id = data["job_id"]
-
-        # The job row should have worktree_path set (throwaway)
-        job = oss_boundary_session.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).first()
-        assert job is not None
-        # worktree_path is set for prepare jobs (not null)
-        # It is NOT in the project's repo_root
-        if job.worktree_path:
-            assert job.worktree_path.startswith("/tmp/oss-")
-            assert not job.worktree_path.startswith(proj_enabled.repo_root)
-
-    def test_prepare_uses_throwaway_worktree_not_users_tree(
-        self,
-        client: TestClient,
-        proj_enabled: Project,
-        oss_boundary_session: Session,
-    ) -> None:
-        # Verify worktree_path is under /tmp, not under project repo_root
-        resp = client.post(f"/project/{proj_enabled.id}/oss/prepare")
-        assert resp.status_code == 200
-        data = resp.json()
-        job_id = data["job_id"]
-
-        job = oss_boundary_session.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).first()
-        assert job is not None
-        if job.worktree_path:
-            assert Path(job.worktree_path).is_absolute()
-            assert not job.worktree_path.startswith(proj_enabled.repo_root)
-
-
-# ---------------------------------------------------------------------------
 # Boundary: Delete project with active jobs → cascaded cleanup
 # ---------------------------------------------------------------------------
 
@@ -767,23 +721,6 @@ class TestDeleteProjectWithActiveJobsBoundary:
 # ---------------------------------------------------------------------------
 # Invariant tests (also boundary):
 # ---------------------------------------------------------------------------
-
-
-class TestInstallJobWorktreeInvariant:
-    """Inv #1: install jobs never create a worktree (worktree_path is null)."""
-
-    def test_install_job_worktree_is_null(
-        self, client: TestClient, proj_disabled: Project, oss_boundary_session: Session
-    ) -> None:
-        resp = client.post(f"/project/{proj_disabled.id}/oss/install")
-        assert resp.status_code == 200
-        data = resp.json()
-        job_id = data["job_id"]
-
-        job = oss_boundary_session.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).first()
-        assert job is not None
-        assert job.kind == ProjectOssJobKind.install
-        assert job.worktree_path is None
 
 
 class TestJobStatusMonotonicInvariant:

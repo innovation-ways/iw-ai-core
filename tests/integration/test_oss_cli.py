@@ -38,7 +38,7 @@ BEGIN
 END$$;
 
 CREATE TYPE ossscan_status AS ENUM ('pending', 'running', 'complete', 'error');
-CREATE TYPE ossscan_mode AS ENUM ('scan', 'make_oss', 'publish');
+CREATE TYPE ossscan_mode AS ENUM ('scan');
 CREATE TYPE osspill_color AS ENUM ('green', 'yellow', 'red', 'gray');
 CREATE TYPE ossfinding_severity AS ENUM ('MUST', 'SHOULD', 'MAY', 'INFO');
 CREATE TYPE ossfinding_status AS ENUM ('pass_status', 'fail', 'skip', 'human_required');
@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS oss_finding (
     detail TEXT,
     remediation TEXT,
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
+    auto_apply_safe BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
     evidence_json JSONB,
@@ -502,7 +503,7 @@ class TestOssInstall:
 
 class TestOssHelp:
     def test_oss_help_lists_all_subcommands(self) -> None:
-        """iw oss --help lists all 7 subcommands."""
+        """iw oss --help lists subcommands: install, scan, enable, disable, status, fix."""
 
         def _get_session():
             from orch.db.session import get_session
@@ -515,6 +516,40 @@ class TestOssHelp:
             obj={"get_session": _get_session},
         )
         assert result.exit_code == 0, result.output
-        subcommands = ["install", "scan", "prepare", "publish", "enable", "disable", "status"]
+        subcommands = ["install", "scan", "enable", "disable", "status", "fix"]
         for sub in subcommands:
             assert sub in result.output, f"Missing subcommand: {sub}"
+
+
+class TestOssPrepare:
+    def test_prepare_not_registered(self) -> None:
+        """iw oss prepare is removed in CR-00022."""
+
+        def _get_session():
+            from orch.db.session import get_session
+
+            return get_session()
+
+        result = CliRunner().invoke(
+            cli,
+            ["oss", "prepare", "--project", "any-proj"],
+            obj={"get_session": _get_session},
+        )
+        assert result.exit_code not in (0, 1), "prepare should not be a registered command"
+
+
+class TestOssPublish:
+    def test_publish_not_registered(self) -> None:
+        """iw oss publish is removed in CR-00022."""
+
+        def _get_session():
+            from orch.db.session import get_session
+
+            return get_session()
+
+        result = CliRunner().invoke(
+            cli,
+            ["oss", "publish", "--project", "any-proj"],
+            obj={"get_session": _get_session},
+        )
+        assert result.exit_code not in (0, 1), "publish should not be a registered command"

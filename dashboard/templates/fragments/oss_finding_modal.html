@@ -1,0 +1,395 @@
+<div id="oss-modal-overlay" class="oss-modal-backdrop" aria-hidden="true"></div>
+<div id="oss-finding-modal" class="oss-modal" role="dialog" aria-modal="true" aria-labelledby="oss-modal-title" aria-hidden="true" tabindex="-1">
+  <div class="oss-modal-inner">
+    <header class="oss-modal-header">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span id="oss-modal-severity" class="severity-pill"></span>
+        <span id="oss-modal-check-id" class="font-mono text-xs text-muted-foreground"></span>
+        <span id="oss-modal-osps" class="text-xs text-muted-foreground"></span>
+        <span id="oss-modal-status" class="status-pill ml-auto"></span>
+      </div>
+      <button type="button" class="modal-close" aria-label="Close modal">×</button>
+    </header>
+
+    <h3 id="oss-modal-title" class="oss-modal-title"></h3>
+
+    <div class="oss-modal-body">
+      <section class="oss-modal-section">
+        <h4>What this test checks</h4>
+        <p id="oss-modal-what-it-checks"></p>
+      </section>
+      <section class="oss-modal-section">
+        <h4>How it tests</h4>
+        <p id="oss-modal-how-it-tests"></p>
+      </section>
+      <section class="oss-modal-section">
+        <h4>Risk if you ship anyway</h4>
+        <p id="oss-modal-risk"></p>
+      </section>
+      <section class="oss-modal-section" id="oss-modal-evidence-section" hidden>
+        <h4>Evidence</h4>
+        <pre id="oss-modal-evidence" class="text-xs"></pre>
+      </section>
+      <section class="oss-modal-section">
+        <h4>How to fix</h4>
+        <p id="oss-modal-how-to-fix"></p>
+      </section>
+      <section class="oss-modal-section" id="oss-modal-preview-section" hidden>
+        <h4>Preview</h4>
+        <pre id="oss-modal-preview" class="oss-diff text-xs"></pre>
+      </section>
+      <section class="oss-modal-section" id="oss-modal-references-section" hidden>
+        <h4>References</h4>
+        <ul id="oss-modal-references" class="text-sm"></ul>
+      </section>
+    </div>
+
+    <footer class="oss-modal-footer">
+      <button type="button" class="modal-rerun" id="oss-modal-rerun">Re-run check</button>
+      <button type="button" class="modal-accept" id="oss-modal-accept">Mark accepted</button>
+      <span class="flex-1"></span>
+      <button type="button" class="modal-preview" id="oss-modal-preview-btn" hidden>Preview</button>
+      <button type="button" class="modal-apply" id="oss-modal-apply" hidden>Apply</button>
+      <button type="button" class="modal-close">Close</button>
+    </footer>
+    <div class="oss-accept-form" hidden id="oss-accept-form">
+      <div class="oss-accept-form-inner">
+        <label class="block text-xs text-muted-foreground mb-1" for="oss-accept-reason">
+          Reason (required, min 5 chars)
+        </label>
+        <textarea
+          id="oss-accept-reason"
+          name="reason"
+          rows="3"
+          class="w-full text-sm border border-border rounded p-2 bg-background text-foreground"
+          minlength="5"
+          placeholder="Explain why this risk is acceptable…"
+        ></textarea>
+        <div class="mt-2 flex gap-2 justify-end">
+          <button type="button" class="oss-accept-cancel px-3 py-1.5 text-sm border border-border rounded hover:bg-muted transition-colors">Cancel</button>
+          <button type="button" class="oss-accept-confirm px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:opacity-90 transition-opacity">Confirm acceptance</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const overlay = document.getElementById('oss-modal-overlay');
+  const modal = document.getElementById('oss-finding-modal');
+  if (!overlay || !modal) return;
+
+  let currentCheckId = null;
+  let currentFindingHash = null;
+  let currentCatalogEntry = null;
+  let lastFocusedElement = null;
+
+  function trapFocus(el) {
+    const focusable = el.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first) return;
+    first.focus();
+    function handleTab(e) {
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
+    el.addEventListener('keydown', handleTab);
+    return function () { el.removeEventListener('keydown', handleTab); };
+  }
+
+  function openModal(data) {
+    lastFocusedElement = document.activeElement;
+    currentCheckId = data.check_id;
+    currentFindingHash = data.finding_hash;
+    currentCatalogEntry = data.catalog || null;
+
+    document.getElementById('oss-modal-severity').textContent = data.severity || '';
+    document.getElementById('oss-modal-severity').className = 'severity-pill severity-' + ((data.severity || '').toLowerCase());
+    document.getElementById('oss-modal-check-id').textContent = data.check_id || '';
+    document.getElementById('oss-modal-osps').textContent = data.osps_control || '';
+    document.getElementById('oss-modal-osps').hidden = !data.osps_control;
+    document.getElementById('oss-modal-status').textContent = data.status_label || '';
+    document.getElementById('oss-modal-status').className = 'status-pill status-' + (data.status || '');
+    document.getElementById('oss-modal-title').textContent = data.summary || '';
+
+    if (currentCatalogEntry) {
+      document.getElementById('oss-modal-what-it-checks').textContent = currentCatalogEntry.what_it_checks || '';
+      document.getElementById('oss-modal-how-it-tests').textContent = currentCatalogEntry.how_it_tests || '';
+      document.getElementById('oss-modal-risk').textContent = currentCatalogEntry.risk_if_failing || '';
+      document.getElementById('oss-modal-how-to-fix').textContent = currentCatalogEntry.how_to_fix || '';
+
+      const refsSection = document.getElementById('oss-modal-references-section');
+      const refsList = document.getElementById('oss-modal-references');
+      if (currentCatalogEntry.references && currentCatalogEntry.references.length) {
+        refsSection.hidden = false;
+        refsList.innerHTML = '';
+        currentCatalogEntry.references.forEach(function(url) {
+          var li = document.createElement('li');
+          li.innerHTML = '<a href="' + url + '" target="_blank" rel="noopener" class="text-primary hover:underline">' + url + '</a>';
+          refsList.appendChild(li);
+        });
+      } else {
+        refsSection.hidden = true;
+      }
+    } else {
+      document.getElementById('oss-modal-what-it-checks').textContent = '';
+      document.getElementById('oss-modal-how-it-tests').textContent = '';
+      document.getElementById('oss-modal-risk').textContent = '';
+      document.getElementById('oss-modal-how-to-fix').textContent = '';
+      document.getElementById('oss-modal-references-section').hidden = true;
+    }
+
+    const evidenceSection = document.getElementById('oss-modal-evidence-section');
+    const evidencePre = document.getElementById('oss-modal-evidence');
+    if (data.evidence && Object.keys(data.evidence).length > 0) {
+      evidenceSection.hidden = false;
+      try {
+        evidencePre.textContent = JSON.stringify(data.evidence, null, 2);
+      } catch (_) {
+        evidencePre.textContent = String(data.evidence);
+      }
+    } else {
+      evidenceSection.hidden = true;
+    }
+
+    const previewSection = document.getElementById('oss-modal-preview-section');
+    const previewPre = document.getElementById('oss-modal-preview');
+    if (data.preview && (data.preview.diffs || data.preview.full_contents)) {
+      previewSection.hidden = false;
+      if (data.preview.diffs) {
+        previewPre.textContent = data.preview.diffs;
+        previewPre.className = 'oss-diff text-xs';
+      } else {
+        previewPre.textContent = data.preview.full_contents;
+        previewPre.className = 'oss-content text-xs';
+      }
+    } else {
+      previewSection.hidden = true;
+    }
+
+    const applyBtn = document.getElementById('oss-modal-apply');
+    if (data.auto_apply_safe && data.status && data.status !== 'pass') {
+      applyBtn.hidden = false;
+      applyBtn.dataset.checkId = data.check_id;
+    } else {
+      applyBtn.hidden = true;
+    }
+
+    const previewBtn = document.getElementById('oss-modal-preview-btn');
+    if (previewBtn) {
+      if (data.auto_apply_safe && data.status && data.status !== 'pass') {
+        previewBtn.hidden = false;
+        previewBtn.dataset.checkId = data.check_id;
+      } else {
+        previewBtn.hidden = true;
+      }
+    }
+
+    document.getElementById('oss-modal-rerun').dataset.checkId = data.check_id;
+    document.getElementById('oss-modal-accept').dataset.checkId = data.check_id;
+    document.getElementById('oss-modal-accept').dataset.findingHash = currentFindingHash || '';
+
+    modal.removeAttribute('aria-hidden');
+    overlay.removeAttribute('aria-hidden');
+    document.body.style.overflow = 'hidden';
+
+    const releaseTrap = trapFocus(modal);
+
+    modal._releaseTrap = releaseTrap;
+    modal._onClose = function () {
+      if (releaseTrap) releaseTrap();
+      modal.setAttribute('aria-hidden', 'true');
+      overlay.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      if (lastFocusedElement) lastFocusedElement.focus();
+      document.getElementById('oss-accept-form').hidden = true;
+      document.getElementById('oss-accept-reason').value = '';
+    };
+  }
+
+  function closeModal() {
+    if (modal._onClose) modal._onClose();
+    currentCheckId = null;
+    currentFindingHash = null;
+    currentCatalogEntry = null;
+  }
+
+  modal.addEventListener('click', function (ev) {
+    if (ev.target.classList.contains('modal-close')) {
+      ev.stopPropagation();
+      closeModal();
+    }
+  });
+
+  overlay.addEventListener('click', function () { closeModal(); });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && modal.getAttribute('aria-hidden') !== 'true') {
+      closeModal();
+    }
+  });
+
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest('.oss-details-btn');
+    if (!btn) return;
+    ev.preventDefault();
+    var checkId = btn.dataset.checkId;
+    var findingHash = btn.dataset.findingHash;
+    var row = document.getElementById('row-' + checkId);
+    if (!row) return;
+
+    var status = row.dataset.status;
+    var severity = row.dataset.severity;
+    var sevLabel = severity ? severity.toUpperCase() : '';
+    var statusLabel = status ? (status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')) : status;
+
+    var data = {
+      check_id: checkId,
+      finding_hash: findingHash,
+      severity: severity,
+      status: status,
+      status_label: statusLabel,
+      summary: row.querySelector('.font-medium') ? row.querySelector('.font-medium').textContent : '',
+      osps_control: null,
+      auto_apply_safe: row.dataset.autoApplySafe === 'true' || false,
+    };
+
+    var catalogKey = checkId.toUpperCase();
+    if (window.OSS_CATALOG && window.OSS_CATALOG[catalogKey]) {
+      data.catalog = window.OSS_CATALOG[catalogKey];
+    }
+
+    var acceptEntry = window.OSS_ACCEPTED ? window.OSS_ACCEPTED[checkId + ':' + findingHash] : null;
+    if (acceptEntry) {
+      data.accepted_reason = acceptEntry.reason;
+    }
+
+    openModal(data);
+  });
+
+  document.getElementById('oss-modal-apply') && document.getElementById('oss-modal-apply').addEventListener('click', function () {
+    var checkId = this.dataset.checkId;
+    if (!checkId) return;
+    var projectIdElement = document.querySelector('[data-project-id]');
+    var projectId = projectIdElement ? projectIdElement.dataset.projectId : null;
+    if (!projectId) return;
+    closeModal();
+    fetch('/project/' + encodeURIComponent(projectId) + '/oss/fix/' + encodeURIComponent(checkId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ apply: true }),
+    }).then(function(r) {
+      if (typeof window.ossShowToastFromHeaders === 'function') {
+        window.ossShowToastFromHeaders(r.headers);
+      }
+      return r.json();
+    }).then(function(data) {
+      if (data && data.stream_url && typeof window.ossStartProgressStream === 'function') {
+        window.ossStartProgressStream(data.stream_url, 'Apply');
+      }
+    }).catch(function() {});
+  });
+
+  document.getElementById('oss-modal-preview-btn') && document.getElementById('oss-modal-preview-btn').addEventListener('click', function () {
+    var checkId = this.dataset.checkId;
+    if (!checkId) return;
+    var projectIdElement = document.querySelector('[data-project-id]');
+    var projectId = projectIdElement ? projectIdElement.dataset.projectId : null;
+    if (!projectId) return;
+    fetch('/project/' + encodeURIComponent(projectId) + '/oss/fix/' + encodeURIComponent(checkId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ apply: false }),
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.diffs || data.full_contents) {
+        var previewSection = document.getElementById('oss-modal-preview-section');
+        var previewPre = document.getElementById('oss-modal-preview');
+        if (data.diffs) {
+          var diffText = Object.values(data.diffs).join('\n');
+          previewPre.textContent = diffText;
+          previewPre.className = 'oss-diff text-xs';
+        } else {
+          var contentText = Object.values(data.full_contents).join('\n');
+          previewPre.textContent = contentText;
+          previewPre.className = 'oss-content text-xs';
+        }
+        previewSection.hidden = false;
+      }
+    }).catch(function() {});
+  });
+
+  document.getElementById('oss-modal-rerun') && document.getElementById('oss-modal-rerun').addEventListener('click', function () {
+    var checkId = this.dataset.checkId;
+    if (!checkId) return;
+    var projectIdElement = document.querySelector('[data-project-id]');
+    var projectId = projectIdElement ? projectIdElement.dataset.projectId : null;
+    if (!projectId) return;
+    closeModal();
+    fetch('/project/' + encodeURIComponent(projectId) + '/oss/recheck/' + encodeURIComponent(checkId), {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+    }).then(function(r) {
+      if (typeof window.ossShowToastFromHeaders === 'function') {
+        window.ossShowToastFromHeaders(r.headers);
+      }
+      return r.json();
+    }).then(function(data) {
+      if (data && data.stream_url && typeof window.ossStartProgressStream === 'function') {
+        window.ossStartProgressStream(data.stream_url, 'Re-check');
+      }
+    }).catch(function() {});
+  });
+
+  document.getElementById('oss-modal-accept') && document.getElementById('oss-modal-accept').addEventListener('click', function () {
+    var acceptForm = document.getElementById('oss-accept-form');
+    var reasonTa = document.getElementById('oss-accept-reason');
+    if (!acceptForm || !reasonTa) return;
+    acceptForm.hidden = false;
+    reasonTa.focus();
+  });
+
+  document.querySelector('.oss-accept-cancel') && document.querySelector('.oss-accept-cancel').addEventListener('click', function () {
+    var acceptForm = document.getElementById('oss-accept-form');
+    var reasonTa = document.getElementById('oss-accept-reason');
+    if (acceptForm) acceptForm.hidden = true;
+    if (reasonTa) reasonTa.value = '';
+  });
+
+  document.querySelector('.oss-accept-confirm') && document.querySelector('.oss-accept-confirm').addEventListener('click', function () {
+    var checkId = currentCheckId;
+    var findingHash = currentFindingHash;
+    var reasonTa = document.getElementById('oss-accept-reason');
+    var reason = reasonTa ? reasonTa.value.trim() : '';
+    if (!reason || reason.length < 5) {
+      if (reasonTa) reasonTa.focus();
+      return;
+    }
+    var projectIdElement = document.querySelector('[data-project-id]');
+    var projectId = projectIdElement ? projectIdElement.dataset.projectId : null;
+    if (!projectId) return;
+    closeModal();
+    fetch('/project/' + encodeURIComponent(projectId) + '/oss/accept/' + encodeURIComponent(checkId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ finding_hash: findingHash, reason: reason }),
+    }).then(function(r) {
+      if (typeof window.ossShowToastFromHeaders === 'function') {
+        window.ossShowToastFromHeaders(r.headers);
+      }
+      if (r.ok && typeof window.ossMoveRowToAccepted === 'function') {
+        window.ossMoveRowToAccepted(checkId, reason);
+      }
+    }).catch(function() {});
+  });
+
+  window.ossModalOpen = openModal;
+  window.ossModalClose = closeModal;
+})();
+</script>

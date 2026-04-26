@@ -26,6 +26,7 @@ def env_preflight(ctx: Context) -> list[Finding]:
             if git_dir.exists()
             else "Target is NOT a git repository",
             auto_fix_available=False,
+            auto_apply_safe=False,
         )
     )
 
@@ -40,6 +41,7 @@ def env_preflight(ctx: Context) -> list[Finding]:
                 domain=DOMAIN,
                 summary="All Tier-1 tools installed",
                 evidence={"tools": {t: v for t, v in ctx.tools.items() if v}},
+                auto_apply_safe=False,
             )
         )
     else:
@@ -53,6 +55,7 @@ def env_preflight(ctx: Context) -> list[Finding]:
                 detail="Missing: " + ", ".join(missing),
                 remediation="Run `bash .claude/skills/iw-oss-publish/scripts/install_tools.sh`",
                 evidence={"missing": missing},
+                auto_apply_safe=False,
             )
         )
 
@@ -71,6 +74,7 @@ def env_preflight(ctx: Context) -> list[Finding]:
             if iw_config.exists()
             else "`make_oss` will write a resolved config here.",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 
@@ -86,6 +90,7 @@ def env_preflight(ctx: Context) -> list[Finding]:
             domain=DOMAIN,
             summary=".iw/ is in .gitignore" if has_iw_entry else ".iw/ not in .gitignore",
             auto_fix_available=True,
+            auto_apply_safe=True,
         )
     )
 

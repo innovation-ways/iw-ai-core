@@ -31,7 +31,7 @@ BEGIN
 END$$;
 
 CREATE TYPE ossscan_status AS ENUM ('pending', 'running', 'complete', 'error');
-CREATE TYPE ossscan_mode AS ENUM ('scan', 'make_oss', 'publish');
+CREATE TYPE ossscan_mode AS ENUM ('scan');
 CREATE TYPE osspill_color AS ENUM ('green', 'yellow', 'red', 'gray');
 CREATE TYPE ossfinding_severity AS ENUM ('MUST', 'SHOULD', 'MAY', 'INFO');
 CREATE TYPE ossfinding_status AS ENUM ('pass_status', 'fail', 'skip', 'human_required');
@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS oss_finding (
     detail TEXT,
     remediation TEXT,
     auto_fix_available BOOLEAN NOT NULL DEFAULT false,
+    auto_apply_safe BOOLEAN NOT NULL DEFAULT false,
     osps_control TEXT,
     tool TEXT,
     evidence_json JSONB,
@@ -201,6 +202,7 @@ class TestPersistFindings:
                     "detail": "No LICENSE found in root",
                     "remediation": "Run make_oss to generate",
                     "auto_fix_available": True,
+                    "auto_apply_safe": True,
                     "osps_control": "OSPS-LE-03.01",
                     "evidence": {"paths_checked": ["LICENSE", "LICENSE.md"]},
                     "tool": None,
@@ -215,6 +217,7 @@ class TestPersistFindings:
                     "detail": None,
                     "remediation": None,
                     "auto_fix_available": False,
+                    "auto_apply_safe": False,
                     "osps_control": None,
                     "evidence": {"tool": "gitleaks", "tool_version": "8.21.2"},
                     "tool": "gitleaks",
@@ -237,10 +240,12 @@ class TestPersistFindings:
         assert lic_finding.severity.value == "MUST"
         assert lic_finding.status.value == "fail"
         assert lic_finding.auto_fix_available is True
+        assert lic_finding.auto_apply_safe is True
 
         sec_finding = next(f for f in scan.findings if f.check_id == "OSS-SEC-01")
         assert sec_finding.severity.value == "MUST"
         assert sec_finding.status.value == "pass"
+        assert sec_finding.auto_apply_safe is False
 
 
 class TestComputePillColor:

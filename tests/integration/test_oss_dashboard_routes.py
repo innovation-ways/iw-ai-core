@@ -173,7 +173,6 @@ class TestOssInstall:
         job = db_session.query(ProjectOssJob).filter(ProjectOssJob.id == data["job_id"]).first()
         assert job is not None
         assert job.kind == ProjectOssJobKind.install
-        assert job.worktree_path is None
 
     def test_install_returns_stream_url(
         self, client: TestClient, project_with_oss_disabled: Project
@@ -286,61 +285,115 @@ class TestOssScan:
 
 
 class TestOssPrepare:
-    def test_prepare_returns_job_id_and_stream_url(
+    def test_prepare_returns_404(
         self, client: TestClient, project_with_oss_disabled: Project
     ) -> None:
+        """POST /oss/prepare is removed in CR-00022 (prepare/publish workflow deleted)."""
         resp = client.post(f"/project/{project_with_oss_disabled.id}/oss/prepare")
-        assert resp.status_code == 200
-
-        data = resp.json()
-        assert "job_id" in data
-        assert "stream_url" in data
-
-    def test_prepare_409_on_concurrent_prepare(
-        self,
-        client: TestClient,
-        project_with_oss_disabled: Project,
-        db_session: Session,
-    ) -> None:
-        existing = ProjectOssJob(
-            project_id=project_with_oss_disabled.id,
-            kind=ProjectOssJobKind.prepare,
-            status=ProjectOssJobStatus.running,
-        )
-        db_session.add(existing)
-        db_session.flush()
-
-        resp = client.post(f"/project/{project_with_oss_disabled.id}/oss/prepare")
-        assert resp.status_code == 409
+        assert resp.status_code == 404
 
 
 class TestOssPublish:
-    def test_publish_returns_job_id_and_stream_url(
+    def test_publish_returns_404(
         self, client: TestClient, project_with_oss_disabled: Project
     ) -> None:
+        """POST /oss/publish is removed in CR-00022 (prepare/publish workflow deleted)."""
         resp = client.post(f"/project/{project_with_oss_disabled.id}/oss/publish")
-        assert resp.status_code == 200
+        assert resp.status_code == 404
 
+
+class TestOssFix:
+    def test_fix_preview_returns_200(
+        self,
+        client: TestClient,
+        project_with_oss_disabled: Project,
+    ) -> None:
+        """POST /oss/fix/{check_id} with apply=False returns preview JSON."""
+        resp = client.post(
+            f"/project/{project_with_oss_disabled.id}/oss/fix/OSS-CH-01",
+            json={"apply": False},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "target_files" in data or "check_id" in data
+
+    def test_fix_apply_returns_job_id(
+        self,
+        client: TestClient,
+        project_with_oss_disabled: Project,
+    ) -> None:
+        """POST /oss/fix/{check_id} with apply=True returns job_id + stream_url."""
+        resp = client.post(
+            f"/project/{project_with_oss_disabled.id}/oss/fix/OSS-CH-01",
+            json={"apply": True},
+        )
+        assert resp.status_code == 200
         data = resp.json()
         assert "job_id" in data
         assert "stream_url" in data
 
-    def test_publish_409_on_concurrent_publish(
+
+class TestOssRecheck:
+    def test_recheck_returns_200(
         self,
         client: TestClient,
         project_with_oss_disabled: Project,
-        db_session: Session,
     ) -> None:
-        existing = ProjectOssJob(
-            project_id=project_with_oss_disabled.id,
-            kind=ProjectOssJobKind.publish,
-            status=ProjectOssJobStatus.running,
-        )
-        db_session.add(existing)
-        db_session.flush()
+        """POST /oss/recheck/{check_id} returns 200 and a job."""
+        resp = client.post(f"/project/{project_with_oss_disabled.id}/oss/recheck/OSS-CH-01")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "job_id" in data
 
-        resp = client.post(f"/project/{project_with_oss_disabled.id}/oss/publish")
-        assert resp.status_code == 409
+
+class TestOssAccept:
+    def test_accept_returns_204(
+        self,
+        client: TestClient,
+        project_with_oss_disabled: Project,
+    ) -> None:
+        """POST /oss/accept/{check_id} with valid body returns 204."""
+        resp = client.post(
+            f"/project/{project_with_oss_disabled.id}/oss/accept/OSS-CH-01",
+            json={"finding_hash": "abc123def456", "reason": "Test accepted"},
+        )
+        assert resp.status_code == 204
+
+    def test_accept_rejects_empty_reason(
+        self,
+        client: TestClient,
+        project_with_oss_disabled: Project,
+    ) -> None:
+        """POST /oss/accept/{check_id} with empty reason returns 422."""
+        resp = client.post(
+            f"/project/{project_with_oss_disabled.id}/oss/accept/OSS-CH-01",
+            json={"finding_hash": "abc123def456", "reason": ""},
+        )
+        assert resp.status_code == 422
+
+
+class TestOssApplyAllSafe:
+    def test_apply_all_safe_preview_returns_200(
+        self,
+        client: TestClient,
+        project_with_oss_enabled: Project,
+    ) -> None:
+        """POST /oss/apply-all-safe/preview returns 200 with array."""
+        resp = client.post(f"/project/{project_with_oss_enabled.id}/oss/apply-all-safe/preview")
+        assert resp.status_code == 200
+        assert resp.json() is not None
+
+    def test_apply_all_safe_rejects_unsafe(
+        self,
+        client: TestClient,
+        project_with_oss_enabled: Project,
+    ) -> None:
+        """POST /oss/apply-all-safe with unsafe check_ids returns 422."""
+        resp = client.post(
+            f"/project/{project_with_oss_enabled.id}/oss/apply-all-safe",
+            json={"check_ids": ["OSS-CH-99"]},
+        )
+        assert resp.status_code in (404, 422)
 
 
 class TestOssStream:

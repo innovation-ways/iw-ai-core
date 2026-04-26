@@ -268,7 +268,9 @@ class TestRewriteDownRevision:
 class TestEmitDaemonEvent:
     """Tests for _emit_daemon_event helper."""
 
-    def test_writes_daemon_event_row(self) -> None:
+    def test_writes_daemon_event_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("IW_CORE_DAEMON_CONTEXT", "true")
+        monkeypatch.delenv("IW_CORE_TEST_CONTEXT", raising=False)
         mock_session = MagicMock()
         mock_connection = MagicMock()
         mock_connection.__enter__ = MagicMock(return_value=mock_connection)
@@ -293,7 +295,9 @@ class TestEmitDaemonEvent:
 class TestWriteRebaseLog:
     """Tests for _write_rebase_log helper."""
 
-    def test_writes_pending_migration_log_row(self) -> None:
+    def test_writes_pending_migration_log_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("IW_CORE_DAEMON_CONTEXT", "true")
+        monkeypatch.delenv("IW_CORE_TEST_CONTEXT", raising=False)
         mock_session = MagicMock()
         mock_connection = MagicMock()
         mock_connection.__enter__ = MagicMock(return_value=mock_connection)
