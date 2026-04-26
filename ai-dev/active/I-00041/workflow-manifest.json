@@ -1,0 +1,86 @@
+{
+  "id": "I-00041",
+  "type": "Issue",
+  "title": "Connection-layer guard against integration tests writing to the live orchestration DB",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Add orch/db/live_db_guard.py chokepoint; wire safe_create_engine into orch/db/session.py and every create_engine call site across orch/ (safe_migrate.py, daemon/main.py create_session_factory, daemon/migration_pipeline.py, daemon/migration_rebase.py, daemon/worktree_compose.py, cli/merge_queue_commands.py); deprecate _assert_not_agent_context",
+      "prompt": "prompts/I-00041_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 chokepoint implementation",
+      "prompt": "prompts/I-00041_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Invert tests/conftest.py polarity (opt-out → opt-in); arm IW_CORE_DAEMON_CONTEXT in orch/daemon/__main__.py before Daemon construction; arm IW_CORE_OPERATOR_APPLY in iw migrations apply; add _agent_subprocess_env helper that strips allow-list flags at all 5 agent/gate launch sites in orch/daemon/",
+      "prompt": "prompts/I-00041_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 conftest inversion + opt-in env var arming + executor-strip wiring",
+      "prompt": "prompts/I-00041_S04_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Reproduction tests (test-context subprocess + daemon-armed-agent subprocess); 13 unit tests for the guard; 10 unit tests for _agent_subprocess_env; cleanup hardcoded batch_id=42 in test_migration_pipeline.py; operator-only smoke test for live-DB write absence",
+      "prompt": "prompts/I-00041_S05_Tests_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05 tests for semantic correctness and coverage of refused/allowed contexts",
+      "prompt": "prompts/I-00041_S06_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "Global review across S01/S03/S05 — verify defense-in-depth chain holds end-to-end",
+      "prompt": "prompts/I-00041_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    }
+  ]
+}
