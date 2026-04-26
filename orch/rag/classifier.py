@@ -94,7 +94,7 @@ async def _llm_classify(
                 f"{CLASSIFIER_SYSTEM_PROMPT}\n\n Question: {question}\n Category:",
                 max_tokens=20,
             )
-            return response.text.strip().lower()
+            return str(response.text).strip().lower()
 
         result = await asyncio.to_thread(_sync_complete)
         if "workitem_aware" in result:

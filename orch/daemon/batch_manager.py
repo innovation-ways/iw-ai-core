@@ -327,8 +327,12 @@ class BatchManager:
                     batch_item.worktree_compose_path = str(cfg.rendered_compose_path)
                     up_db_port = up_result.discovered_ports.get("IW_CORE_DB_PORT")
                     up_app_port = up_result.discovered_ports.get("IW_CORE_DASHBOARD_PORT")
-                    batch_item.worktree_db_port = int(up_db_port) if up_db_port is not None else None
-                    batch_item.worktree_app_port = int(up_app_port) if up_app_port is not None else None
+                    batch_item.worktree_db_port = (
+                        int(up_db_port) if up_db_port is not None else None
+                    )
+                    batch_item.worktree_app_port = (
+                        int(up_app_port) if up_app_port is not None else None
+                    )
                 else:
                     batch_item.status = BatchItemStatus.setup_failed
                     batch_item.notes = f"Compose up failed: {up_result.error_message}"

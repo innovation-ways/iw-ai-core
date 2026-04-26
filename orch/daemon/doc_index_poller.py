@@ -176,7 +176,7 @@ class DocIndexPoller:
                 index_path=config.index_path,
                 db_session_factory=self._session_factory,
             )
-            start_doc_index_job(job, project, config=config, runner=runner)
+            start_doc_index_job(job, config=config, runner=runner)
         except JobAlreadyRunningError:
             logger.warning(
                 "Doc index job for project %s is already running — skipping job %s",

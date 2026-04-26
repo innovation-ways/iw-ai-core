@@ -321,7 +321,10 @@ def _container_status_for_batch_item(
     batch_item_pk: int,
     findings: dict[int, worktree_reaper.ReaperFinding],
     db: Session,
-) -> tuple[Literal["running", "stopped", "missing"], Literal["active", "stale", "orphan", "malformed"]]:
+) -> tuple[
+    Literal["running", "stopped", "missing"],
+    Literal["active", "stale", "orphan", "malformed"],
+]:
     """Determine container status and classification for a batch item from scan findings.
 
     Returns (container_status, classification).
