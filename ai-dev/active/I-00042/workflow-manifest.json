@@ -1,0 +1,81 @@
+{
+  "id": "I-00042",
+  "type": "Issue",
+  "title": "PostgreSQL batch_item_status enum missing migration_invalid and migration_rolled_back labels",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/migrations/versions/*.py",
+      "tests/integration/test_batch_item_status_enum_drift.py",
+      "ai-dev/active/I-00042/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Add Alembic migration that adds 'migration_invalid' and 'migration_rolled_back' labels to the batch_item_status PG enum (autocommit, IF NOT EXISTS, off head c062b6bf5eb3)",
+      "prompt": "prompts/I-00042_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 migration: correctness, autocommit_block, IF NOT EXISTS, down_revision chain, label spelling, downgrade no-op",
+      "prompt": "prompts/I-00042_S02_CodeReview_Database_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Write tests/integration/test_batch_item_status_enum_drift.py: reproduction (specific label presence) + drift-prevention (Python ⊆ PG enum)",
+      "prompt": "prompts/I-00042_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 tests: semantic correctness (specific values, not shape); one-directional drift check; testcontainer fixture binding; falsifiability",
+      "prompt": "prompts/I-00042_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global review across S01 + S03 — verify migration and test compose into a complete fix; integration tests pass end-to-end",
+      "prompt": "prompts/I-00042_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    }
+  ]
+}
