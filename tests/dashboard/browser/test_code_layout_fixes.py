@@ -9,21 +9,64 @@ Run with:
 
 from __future__ import annotations
 
+import re
 import subprocess
+from pathlib import Path
 
 import pytest
 
 pytestmark = pytest.mark.browser
 
+# playwright-cli `eval` wraps the return value between `### Result` and the
+# trailing `### Ran Playwright code` block — extract just the value.
+_EVAL_RESULT_RE = re.compile(r"###\s*Result\s*\n(?P<value>.*?)(?:\n###\s+|\Z)", re.DOTALL)
+_SNAPSHOT_LINK_RE = re.compile(r"\[Snapshot\]\((?P<path>[^)]+\.yml)\)")
+
 
 def _snap(session: str) -> str:
-    return subprocess.check_output(["playwright-cli", f"-s={session}", "snapshot"], text=True)
+    """Capture a snapshot and inline its YAML body so callers can grep it."""
+    out = subprocess.check_output(["playwright-cli", f"-s={session}", "snapshot"], text=True)
+    match = _SNAPSHOT_LINK_RE.search(out)
+    if not match:
+        return out
+    yml_path = Path(match.group("path"))
+    if not yml_path.is_absolute():
+        yml_path = Path.cwd() / yml_path
+    body = yml_path.read_text(encoding="utf-8") if yml_path.is_file() else ""
+    return out + "\n" + body
 
 
 def _eval(session: str, code: str) -> str:
-    return subprocess.check_output(
-        ["playwright-cli", f"-s={session}", "run-code", code], text=True
-    ).strip()
+    """Evaluate JS in the page and return the result value as a string.
+
+    `code` may be either a `() => ...` arrow function (preferred) or a bare
+    expression — the helper wraps bare expressions automatically.
+    """
+    if not code.lstrip().startswith(("(", "function")):
+        code = f"() => ({code})"
+    out = subprocess.check_output(["playwright-cli", f"-s={session}", "eval", code], text=True)
+    match = _EVAL_RESULT_RE.search(out)
+    if not match:
+        return out.strip()
+    # Strip surrounding quotes from string results: `"foo"` → `foo`.
+    value = match.group("value").strip()
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        value = value[1:-1]
+    return value
+
+
+def _click(session: str, selector: str) -> None:
+    """Click an element by CSS selector via JS.
+
+    playwright-cli's `click` only takes refs from a snapshot, not CSS selectors,
+    so we dispatch a real click() via the DOM API instead.
+    """
+    _eval(
+        session,
+        f"() => {{ const el = document.querySelector({selector!r}); if (el) el.click(); }}",
+    )
 
 
 class TestBug1LastRunBannerDismissalPersists:
@@ -42,12 +85,7 @@ class TestBug1LastRunBannerDismissalPersists:
             "Close button with aria-label='Dismiss last-run banner' must exist (I-00033 bug 1)"
         )
 
-        subprocess.run(
-            ["playwright-cli", "-s=" + session, "click", '[aria-label="Dismiss last-run banner"]'],
-            check=True,
-            capture_output=True,
-            timeout=15,
-        )
+        _click(session, '[aria-label="Dismiss last-run banner"]')
 
         is_hidden = _eval(
             session,
@@ -121,12 +159,7 @@ class TestBug3ChatCollapseTogglesCssVariable:
             "getComputedStyle(document.documentElement).getPropertyValue('--chat-width').trim()",
         )
 
-        subprocess.run(
-            ["playwright-cli", "-s=" + session, "click", "#chat-collapse-btn"],
-            check=True,
-            capture_output=True,
-            timeout=15,
-        )
+        _click(session, "#chat-collapse-btn")
 
         collapsed_chat_width = _eval(
             session,
@@ -138,12 +171,7 @@ class TestBug3ChatCollapseTogglesCssVariable:
             "(I-00033 bug 3)"
         )
 
-        subprocess.run(
-            ["playwright-cli", "-s=" + session, "click", "#chat-collapse-btn"],
-            check=True,
-            capture_output=True,
-            timeout=15,
-        )
+        _click(session, "#chat-collapse-btn")
 
         restored_chat_width = _eval(
             session,
