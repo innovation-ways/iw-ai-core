@@ -80,8 +80,13 @@ uncommitted=$(git status --porcelain 2>/dev/null || echo "")
 if [[ -z "$uncommitted" ]]; then
     echo "[worktree_commit] INFO: Working tree is clean — no changes to commit" >&2
 else
-    echo "[worktree_commit] INFO: Found uncommitted changes — committing to branch" >&2
-    echo "$uncommitted" | head -20 >&2
+    # Print a count, not the file list. Piping a large status into `head -N`
+    # under `set -euo pipefail` is unsafe: head closes the pipe early and the
+    # producer is killed with SIGPIPE, which pipefail propagates as a non-zero
+    # pipeline exit and set -e then aborts the script before `git add -A`.
+    # The full diff lands in `git commit`'s output a few lines below anyway.
+    n_uncommitted=$(echo "$uncommitted" | wc -l | tr -d ' ')
+    echo "[worktree_commit] INFO: Found $n_uncommitted uncommitted line(s) — committing to branch" >&2
 
     git add -A
 
@@ -218,8 +223,8 @@ main_uncommitted=$(git status --porcelain 2>/dev/null || echo "")
 main_stashed=false
 
 if [[ -n "$main_uncommitted" ]]; then
-    echo "[worktree_commit] INFO: Found uncommitted changes on main — stashing before merge" >&2
-    echo "$main_uncommitted" | head -20 >&2
+    n_main_uncommitted=$(echo "$main_uncommitted" | wc -l | tr -d ' ')
+    echo "[worktree_commit] INFO: Found $n_main_uncommitted uncommitted line(s) on main — stashing before merge" >&2
     if git stash push --include-untracked -m "iw-pre-merge-stash($ITEM_ID)"; then
         main_stashed=true
         echo "[worktree_commit] OK: Uncommitted changes stashed on main" >&2
