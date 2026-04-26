@@ -110,8 +110,8 @@ def _clear_localstorage_after_browser_tests(playwright_session):
         [
             "playwright-cli",
             f"-s={session}",
-            "run-code",
-            "localStorage.clear()",
+            "eval",
+            "() => localStorage.clear()",
         ],
         capture_output=True,
         timeout=10,

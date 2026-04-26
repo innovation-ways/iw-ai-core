@@ -308,7 +308,7 @@ class WorktreeRow:
     container_status: Literal["running", "stopped", "missing", "n/a"] = "n/a"
     db_port: int | None = None
     app_port: int | None = None
-    classification: Literal["active", "stale", "orphan", "malformed"] = "malformed"
+    classification: Literal["active", "stale", "orphan", "malformed", "n/a"] = "n/a"
     batch_item_pk: int | None = None  # DB PK for teardown
 
 
@@ -397,7 +397,7 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
             label, mod, untr, ahead = "no_path", 0, 0, -1
 
         container_status: Literal["running", "stopped", "missing", "n/a"] = "n/a"
-        classification: Literal["active", "stale", "orphan", "malformed"] = "malformed"
+        classification: Literal["active", "stale", "orphan", "malformed", "n/a"] = "n/a"
         db_port: int | None = bi.worktree_db_port
         app_port: int | None = bi.worktree_app_port
 
