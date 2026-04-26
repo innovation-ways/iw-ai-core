@@ -77,12 +77,19 @@ def launch_test_run(run_id: int) -> None:
         if cleanup_cmd:
             _run_cleanup_command(cleanup_cmd, execution_dir)
 
-        # When the command is a make invocation, override ALLURE_RESULTS so the Makefile
-        # target writes to the run-specific directory instead of the shared default.
+        # Redirect Allure output to the run-specific directory so concurrent runs
+        # don't share state. Two shapes handled:
+        #   - pytest --alluredir=<x>  → rewrite the flag inline
+        #   - make <target>           → prefix ALLURE_RESULTS for Makefiles that read it
+        # Without this, the shared default dir is used and the post-run check at
+        # `Path(allure_results).is_dir()` silently fails, leaving run.summary NULL.
         command = run.command
-        if allure_results and "make " in command:
+        if allure_results:
             results_rel = Path(allure_results).relative_to(execution_dir)
-            command = f"ALLURE_RESULTS={results_rel} {command}"
+            if "--alluredir" in command:
+                command = re.sub(r"--alluredir[=\s]\S+", f"--alluredir={results_rel}", command)
+            elif "make " in command:
+                command = f"ALLURE_RESULTS={results_rel} {command}"
 
         # Update status to running
         run.status = TestRunStatus.running

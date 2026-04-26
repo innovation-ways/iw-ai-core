@@ -9,6 +9,8 @@ Tests the following:
 - launch_test_run skips allure report generation for quality runs
 - launch_test_run emits "quality_started" / "quality_completed" / "quality_failed" for quality runs
 - launch_test_run emits "test_started" / "test_completed" / "test_failed" for test runs
+- launch_test_run rewrites --alluredir to per-run dir for pytest commands
+- launch_test_run prefixes ALLURE_RESULTS for make commands
 """
 
 from __future__ import annotations
@@ -385,3 +387,115 @@ class TestLaunchTestRunAllureSkip:
     def test_quality_run_skips_allure_report_generation(self, tmp_path: Path) -> None:
         _, generate_called = self._run_launch_track_allure(run_type="quality", tmp_path=tmp_path)
         assert generate_called is False
+
+
+# ---------------------------------------------------------------------------
+# launch_test_run — Allure command rewriting
+# ---------------------------------------------------------------------------
+
+
+class TestLaunchTestRunCommandRewrite:
+    """Verify that the per-run Allure directory is propagated into the command.
+
+    Without this, raw pytest commands write to the shared default directory while
+    the runner expects results in `allure-results-<run_id>/`, leaving run.summary
+    NULL and the dashboard showing "No Test Results Yet" for failed runs.
+    """
+
+    def _capture_command(
+        self,
+        command: str,
+        tmp_path: Path,
+        results_base: str = "allure-results",
+        report_base: str = "allure-report",
+    ) -> str:
+        """Run launch_test_run with a Popen mock and return the command string passed in."""
+        from orch.test_runner import launch_test_run
+
+        captured: dict[str, str] = {}
+
+        def fake_popen(cmd: str, *args: Any, **kwargs: Any) -> MagicMock:
+            captured["command"] = cmd
+            proc = MagicMock()
+            proc.pid = 12345
+            proc.wait.return_value = 0
+            return proc
+
+        project_config = {
+            "test_config": {
+                "execution_dir": str(tmp_path),
+                "allure_results_dir": results_base,
+                "allure_report_dir": report_base,
+            },
+        }
+        mock_project = MagicMock()
+        mock_project.id = "proj-x"
+        mock_project.config = project_config
+
+        mock_run = _make_run(run_type="test")
+        mock_run.command = command
+
+        mock_db = MagicMock()
+
+        def _scalar_dispatch(stmt: Any) -> Any:
+            txt = str(stmt)
+            if "test_runs.project_id" in txt:
+                return mock_run
+            if "test_runs" in txt:
+                return TestRunStatus.running
+            return mock_project
+
+        mock_db.scalar.side_effect = _scalar_dispatch
+
+        with (
+            patch("orch.test_runner.SessionLocal", return_value=mock_db),
+            patch("orch.test_runner._emit_event"),
+            patch("orch.test_runner.subprocess.Popen", side_effect=fake_popen),
+            patch("orch.test_runner.shutil.rmtree"),
+            patch("orch.test_runner._generate_allure_report", return_value=True),
+            patch("orch.test_runner.parse_allure_summary", return_value=None),
+            patch.object(Path, "mkdir"),
+            patch.object(Path, "is_dir", return_value=False),
+            patch.object(Path, "open", MagicMock()),
+        ):
+            launch_test_run(1)
+
+        return captured["command"]
+
+    def test_pytest_alluredir_equals_is_rewritten_to_per_run_dir(self, tmp_path: Path) -> None:
+        cmd = self._capture_command("uv run pytest tests/ -v --alluredir=allure-results", tmp_path)
+        # Run id is 1 (from _make_run) → expect allure-results-1
+        assert "--alluredir=allure-results-1" in cmd
+        # The original literal directory must be gone — otherwise pytest writes
+        # to the shared dir and the per-run summary will be empty.
+        assert "--alluredir=allure-results " not in cmd + " "
+
+    def test_pytest_alluredir_space_separated_is_rewritten(self, tmp_path: Path) -> None:
+        cmd = self._capture_command("uv run pytest tests/ -v --alluredir allure-results", tmp_path)
+        assert "--alluredir=allure-results-1" in cmd
+
+    def test_pytest_alluredir_with_custom_base_dir_is_rewritten(self, tmp_path: Path) -> None:
+        cmd = self._capture_command(
+            "uv run pytest tests/ -v --alluredir=custom-out",
+            tmp_path,
+            results_base="custom-out",
+        )
+        assert "--alluredir=custom-out-1" in cmd
+
+    def test_make_command_gets_allure_results_env_prefix(self, tmp_path: Path) -> None:
+        cmd = self._capture_command("make allure-all", tmp_path)
+        assert cmd.startswith("ALLURE_RESULTS=allure-results-1 ")
+        assert "make allure-all" in cmd
+
+    def test_command_without_allure_flag_or_make_is_unchanged(self, tmp_path: Path) -> None:
+        cmd = self._capture_command("uv run pytest tests/unit/ -v", tmp_path)
+        assert cmd == "uv run pytest tests/unit/ -v"
+
+    def test_pytest_alluredir_takes_precedence_over_make_branch(self, tmp_path: Path) -> None:
+        # If a make target inlines --alluredir, the rewrite (not the env prefix)
+        # should win — env vars don't override Make's own assignment of the same
+        # name unless the Makefile uses `?=`, so the inline rewrite is the only
+        # reliable path.
+        cmd = self._capture_command("make allure-unit ARGS='--alluredir=allure-results'", tmp_path)
+        assert "--alluredir=allure-results-1" in cmd
+        assert not cmd.startswith("ALLURE_RESULTS=")
