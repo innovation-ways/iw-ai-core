@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from orch.rag.config import CodeUnderstandingConfig
 
-from orch.db.models import DocIndexJob, Project
+from orch.db.models import DocIndexJob
 
 JOB_REGISTRY_DOC: dict[str, DocIndexJobRunner] = {}
 
@@ -66,7 +66,7 @@ class DocIndexJobRunner:
             # to skip work items unchanged since then. Otherwise the project
             # has never been indexed (or the previous run failed), so index
             # everything from scratch.
-            previous_watermark = await asyncio.to_thread(indexer._get_previous_job_watermark)
+            previous_watermark = await asyncio.to_thread(indexer.get_previous_job_watermark)
             if previous_watermark is not None:
                 result = await asyncio.to_thread(
                     indexer.reindex_changed,
@@ -190,7 +190,6 @@ class DocIndexJobRunner:
 
 def start_doc_index_job(
     job: DocIndexJob,
-    project: Project,
     *,
     config: CodeUnderstandingConfig,
     db_session_factory: Any | None = None,

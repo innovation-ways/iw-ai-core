@@ -69,7 +69,7 @@ class DocIndexer:
         )
         return embed.get_text_embedding(text)
 
-    def _get_previous_job_watermark(self) -> datetime | None:
+    def get_previous_job_watermark(self) -> datetime | None:
         from sqlalchemy import select
 
         from orch.db.models import DocIndexJob
@@ -321,7 +321,7 @@ class DocIndexer:
                 return self.index_all(progress_queue)
 
         if watermark is None:
-            watermark = self._get_previous_job_watermark()
+            watermark = self.get_previous_job_watermark()
 
         work_items = self._fetch_work_items(watermark=watermark)
         items_discovered = len(work_items)

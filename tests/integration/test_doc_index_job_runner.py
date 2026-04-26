@@ -11,14 +11,13 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import Engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from sqlalchemy import Engine
-    from sqlalchemy.orm import Session, sessionmaker
+    from sqlalchemy.orm import Session
 
 from orch.db.models import DocIndexJob, Project, WorkItem, WorkItemType
 from orch.rag.config import CodeUnderstandingConfig
@@ -208,9 +207,9 @@ class TestDocIndexJobRunnerBasic:
             item = WorkItem(
                 project_id=project.id,
                 id="WI-DUP-1",
-                title=f"Item WI-DUP-1",
+                title="Item WI-DUP-1",
                 type=WorkItemType.Feature,
-                functional_doc_content=f"Functional doc content for WI-DUP-1.",
+                functional_doc_content="Functional doc content for WI-DUP-1.",
                 updated_at=now,
             )
             session.add(item)
@@ -240,7 +239,7 @@ class TestDocIndexJobRunnerBasic:
             index_path=index_path,
             db_session_factory=test_session_factory,
         )
-        start_doc_index_job(job1, project, config=config, runner=runner1)
+        start_doc_index_job(job1, config=config, runner=runner1)
 
         try:
             runner2 = DocIndexJobRunner(
@@ -251,7 +250,7 @@ class TestDocIndexJobRunnerBasic:
                 db_session_factory=test_session_factory,
             )
             with pytest.raises(JobAlreadyRunningError) as exc_info:
-                start_doc_index_job(job2, project, config=config, runner=runner2)
+                start_doc_index_job(job2, config=config, runner=runner2)
             assert exc_info.value.project_id == project_id
         finally:
             JOB_REGISTRY_DOC.pop(project_id, None)

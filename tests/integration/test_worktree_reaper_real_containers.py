@@ -12,10 +12,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.integration.conftest import (
-    db_engine,  # noqa: F401
-)
-
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
@@ -64,25 +60,25 @@ def test_reaper_classifies_and_reaps_orphan(
     from orch.daemon.worktree_reaper import reap, scan
     from orch.db.models import Batch, BatchItem, Project, WorkItem, WorkItemType
 
-    db_session.add(Project(id="test-proj", display_name="Test", repo_root="/tmp", config={}))
+    db_session.add(Project(id="test-proj-reaper", display_name="Test", repo_root="/tmp", config={}))
     db_session.flush()
     db_session.add(
         WorkItem(
-            project_id="test-proj",
+            project_id="test-proj-reaper",
             id="F-00001",
             type=WorkItemType.Feature,
             title="Test",
         )
     )
     db_session.flush()
-    db_session.add(Batch(project_id="test-proj", id="BATCH-00001"))
+    db_session.add(Batch(project_id="test-proj-reaper", id="BATCH-00001"))
     db_session.flush()
-    bi = BatchItem(project_id="test-proj", batch_id="BATCH-00001", work_item_id="F-00001")
+    bi = BatchItem(project_id="test-proj-reaper", batch_id="BATCH-00001", work_item_id="F-00001")
     db_session.add(bi)
     db_session.flush()
     batch_item_id = str(bi.id)
     db_session.delete(bi)
-    db_session.commit()
+    db_session.flush()
 
     compose_project_name = f"iwcore-{batch_item_id.lower().replace('_', '-')}"
 
