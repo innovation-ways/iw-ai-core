@@ -85,7 +85,7 @@ class WorktreeStackConfig:
 class UpResult:
     success: bool
     rendered_compose_path: Path | None
-    discovered_ports: dict[str, str]
+    discovered_ports: dict[str, int]
     error_message: str | None
     seed_stderr_tail: str | None
 
@@ -241,13 +241,13 @@ def _emit_daemon_event(
         engine.dispose()
 
 
-def discover_ports(cfg: WorktreeStackConfig) -> dict[str, str]:
+def discover_ports(cfg: WorktreeStackConfig) -> dict[str, int]:
     """Query docker compose for each [port_to_env] entry and return {env_var: port}.
 
     Parses ``docker compose -p <project> -f <compose> port <service> <container_port>``
     output of the form ``0.0.0.0:34567`` or ``[::]:34567``.
     """
-    discovered: dict[str, str] = {}
+    discovered: dict[str, int] = {}
 
     if not cfg.env_toml_path.is_file():
         return discovered
@@ -328,7 +328,7 @@ def discover_ports(cfg: WorktreeStackConfig) -> dict[str, str]:
 
 def rewrite_env(
     cfg: WorktreeStackConfig,
-    discovered_ports: dict[str, str],
+    discovered_ports: dict[str, int],
 ) -> None:
     """Rewrite the worktree's ``.env`` in-place with discovered ports and env overrides.
 
@@ -391,8 +391,8 @@ def rewrite_env(
     for key, val in overrides.items():
         env_vars[key] = val
 
-    for key, val in discovered_ports.items():
-        env_vars[key] = str(int(val))
+    for key, port in discovered_ports.items():
+        env_vars[key] = str(int(port))
 
     new_lines: list[str] = []
     new_lines.extend(f"{k}={v}" for k, v in sorted(env_vars.items()))
