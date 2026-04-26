@@ -200,6 +200,8 @@ def render_compose(cfg: WorktreeStackConfig) -> Path:
         worktree_path=str(cfg.worktree_path),
         project_name=cfg.project_id,
         compose_project_name=cfg.compose_project_name,
+        host_uid=os.getuid(),
+        host_gid=os.getgid(),
     )
 
     cfg.rendered_compose_path.write_text(rendered)
@@ -407,6 +409,56 @@ def rewrite_env(
     )
 
 
+_SEED_VAR_PATTERN = __import__("re").compile(
+    r"\$\{([A-Z_][A-Z0-9_]*)(?::[-?][^}]*)?\}|\$([A-Z_][A-Z0-9_]*)"
+)
+# Matches `FOO=...` and `FOO="..."` and `export FOO=...` at start of a (logical) line.
+_SEED_ASSIGN_PATTERN = __import__("re").compile(
+    r"^\s*(?:export\s+|local\s+|readonly\s+|declare\s+(?:-[a-zA-Z]+\s+)?)?([A-Z_][A-Z0-9_]*)\s*=",
+    __import__("re").MULTILINE,
+)
+# Bash builtins / shell vars that may legitimately appear in a seed script and
+# don't need to be set by the operator.
+_SEED_VAR_IGNORE = frozenset(
+    {"PATH", "HOME", "USER", "PWD", "SHELL", "LANG", "LC_ALL", "TMPDIR", "IFS"}
+)
+
+
+def _check_seed_env(seed_script_path: Path, seed_env: dict[str, str]) -> tuple[bool, str | None]:
+    """Pre-flight check: every ``${VAR}`` referenced by the seed script must be set.
+
+    Variables assigned within the script (``FOO=...``) are excluded — they are
+    locals, not env-var dependencies. Returns (True, None) if all remaining
+    references are bound. Returns (False, message) with a precise, actionable
+    error otherwise — better than a cryptic bash ``unbound variable``.
+    """
+    try:
+        source = seed_script_path.read_text()
+    except OSError:
+        return True, None  # If we can't read, defer to bash to surface the error.
+
+    locally_assigned = {m.group(1) for m in _SEED_ASSIGN_PATTERN.finditer(source)}
+
+    referenced: set[str] = set()
+    for m in _SEED_VAR_PATTERN.finditer(source):
+        name = m.group(1) or m.group(2)
+        if not name or name in _SEED_VAR_IGNORE or name in locally_assigned:
+            continue
+        referenced.add(name)
+
+    missing = sorted(name for name in referenced if name not in seed_env)
+    if not missing:
+        return True, None
+
+    msg = (
+        f"seed script {seed_script_path} references unset env var(s): "
+        f"{', '.join(missing)}. Add them to the daemon's .env "
+        f"(see .env.example). The worktree-env.toml [env_passthrough] keep-list "
+        f"only forwards vars that are already set in the daemon's environment."
+    )
+    return False, msg
+
+
 def run_seed(cfg: WorktreeStackConfig) -> tuple[bool, str | None]:
     """Execute the worktree-seed.sh script if present and executable.
 
@@ -429,6 +481,16 @@ def run_seed(cfg: WorktreeStackConfig) -> tuple[bool, str | None]:
             key, _, value = line.partition("=")
             env_vars[key.strip()] = value.strip()
         seed_env = {**seed_env, **env_vars}
+
+    # Inject identifiers the seed needs to address the per-worktree compose
+    # stack via docker exec (no host pg_dump/psql install required).
+    seed_env["IW_CORE_BATCH_ITEM_ID"] = cfg.batch_item_id
+    seed_env["IW_CORE_COMPOSE_PROJECT_NAME"] = cfg.compose_project_name
+
+    ok, err = _check_seed_env(cfg.seed_script_path, seed_env)
+    if not ok:
+        logger.error("seed pre-flight failed for %s: %s", cfg.batch_item_id, err)
+        return False, err
 
     try:
         result = subprocess.run(  # noqa: S603  from own config, not untrusted
