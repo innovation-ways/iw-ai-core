@@ -42,6 +42,15 @@ from orch.cli.worktree_commands import worktree_status
 @click.pass_context
 def cli(ctx: click.Context, project: str | None, json_output: bool, verbose: bool) -> None:
     """IW AI Core orchestration CLI."""
+    from orch.db.live_db_guard import iw_cli_orch_bridge  # noqa: PLC0415
+
+    # The iw CLI is the legitimate channel for agents to talk to the orch DB.
+    # Activate the bridge for the lifetime of this Click invocation so the
+    # connection-layer guard allows the CLI's own engine creation, while
+    # subprocesses spawned by CLI commands (and pytest contexts) do not
+    # inherit the bypass.
+    ctx.with_resource(iw_cli_orch_bridge())
+
     ctx.ensure_object(dict)
     ctx.obj["json"] = json_output
     ctx.obj["verbose"] = verbose

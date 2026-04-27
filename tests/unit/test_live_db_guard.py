@@ -6,6 +6,8 @@ Uses monkeypatch to control env vars and make_url to construct test URLs.
 Covers:
 - R1 (tests/unit/test_live_db_guard.py): all 13 test cases for is_live_db_url
   and assert_engine_url_allowed across test/agent/daemon/operator contexts.
+- I-00041 follow-up: iw_cli_orch_bridge — narrowly-scoped allow context for
+  the CLI's own engine creation (resolves the agent-CLI catch-22).
 """
 
 from __future__ import annotations
@@ -14,10 +16,12 @@ from unittest.mock import patch
 
 import pytest
 
+from orch.db import live_db_guard as guard_module
 from orch.db.live_db_guard import (
     LiveDbConnectionRefused,
     assert_engine_url_allowed,
     is_live_db_url,
+    iw_cli_orch_bridge,
 )
 
 # ---------------------------------------------------------------------------
@@ -200,3 +204,105 @@ def test_safe_create_engine_calls_guard_before_creating_engine(
         with pytest.raises(LiveDbConnectionRefused):
             sce("postgresql://x:y@localhost:5433/iw_orch")
         mock_create_engine.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# I-00041 follow-up — iw_cli_orch_bridge
+# ---------------------------------------------------------------------------
+
+
+def test_iw_cli_orch_bridge_allows_live_url_under_agent_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """IW_CORE_AGENT_CONTEXT=true + bridge active → live URL is allowed.
+
+    Resolves the catch-22 where the iw CLI (the legitimate channel for
+    agents to record orchestration state) was refused by its own guard.
+    """
+    monkeypatch.delenv("IW_CORE_TEST_CONTEXT", raising=False)
+    monkeypatch.delenv("IW_CORE_OPERATOR_APPLY", raising=False)
+    monkeypatch.delenv("IW_CORE_DAEMON_CONTEXT", raising=False)
+    monkeypatch.setenv("IW_CORE_AGENT_CONTEXT", "true")
+    monkeypatch.setenv("IW_CORE_DB_HOST", "localhost")
+    monkeypatch.setenv("IW_CORE_DB_PORT", "5433")
+
+    with iw_cli_orch_bridge():
+        result = assert_engine_url_allowed("postgresql://x:y@localhost:5433/iw_orch")
+        assert result is None
+
+
+def test_iw_cli_orch_bridge_does_not_bypass_test_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """IW_CORE_TEST_CONTEXT=true + bridge active → STILL refused.
+
+    Defense-in-depth: a CliRunner-driven test invoking the CLI in-process
+    must NOT be able to reach the live DB through the bridge. The test
+    context refusal fires before the bridge is consulted.
+    """
+    monkeypatch.delenv("IW_CORE_OPERATOR_APPLY", raising=False)
+    monkeypatch.delenv("IW_CORE_DAEMON_CONTEXT", raising=False)
+    monkeypatch.setenv("IW_CORE_TEST_CONTEXT", "true")
+    monkeypatch.setenv("IW_CORE_DB_HOST", "localhost")
+    monkeypatch.setenv("IW_CORE_DB_PORT", "5433")
+
+    with iw_cli_orch_bridge():
+        with pytest.raises(LiveDbConnectionRefused) as exc_info:
+            assert_engine_url_allowed("postgresql://x:y@localhost:5433/iw_orch")
+        assert "IW_CORE_TEST_CONTEXT" in str(exc_info.value)
+
+
+def test_iw_cli_orch_bridge_resets_on_normal_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bridge flag resets to False after exiting the context manager."""
+    monkeypatch.delenv("IW_CORE_TEST_CONTEXT", raising=False)
+    monkeypatch.delenv("IW_CORE_OPERATOR_APPLY", raising=False)
+    monkeypatch.delenv("IW_CORE_DAEMON_CONTEXT", raising=False)
+    monkeypatch.setenv("IW_CORE_AGENT_CONTEXT", "true")
+    monkeypatch.setenv("IW_CORE_DB_HOST", "localhost")
+    monkeypatch.setenv("IW_CORE_DB_PORT", "5433")
+
+    assert guard_module._iw_cli_orch_bridge_active is False
+    with iw_cli_orch_bridge():
+        assert guard_module._iw_cli_orch_bridge_active is True
+    assert guard_module._iw_cli_orch_bridge_active is False
+
+    # Post-exit, the agent-context refusal must fire again.
+    with pytest.raises(LiveDbConnectionRefused) as exc_info:
+        assert_engine_url_allowed("postgresql://x:y@localhost:5433/iw_orch")
+    assert "IW_CORE_AGENT_CONTEXT" in str(exc_info.value)
+
+
+def test_iw_cli_orch_bridge_resets_on_exception() -> None:
+    """Bridge flag resets to False even when the body raises.
+
+    The mid-flight state (flag is True inside the body) is covered by
+    test_iw_cli_orch_bridge_resets_on_normal_exit; this test specifically
+    verifies the try/finally cleanup path.
+    """
+    assert guard_module._iw_cli_orch_bridge_active is False
+
+    def _enter_and_raise() -> None:
+        with iw_cli_orch_bridge():
+            raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _enter_and_raise()
+    assert guard_module._iw_cli_orch_bridge_active is False
+
+
+def test_iw_cli_orch_bridge_nested_restores_previous_state() -> None:
+    """Nested bridge entry/exit restores the prior flag value, not False.
+
+    This protects against accidental resets if the CLI ever re-enters its
+    own group (e.g., a future composite command).
+    """
+    assert guard_module._iw_cli_orch_bridge_active is False
+    with iw_cli_orch_bridge():
+        assert guard_module._iw_cli_orch_bridge_active is True
+        with iw_cli_orch_bridge():
+            assert guard_module._iw_cli_orch_bridge_active is True
+        # Outer context's flag must still be True after inner exits.
+        assert guard_module._iw_cli_orch_bridge_active is True
+    assert guard_module._iw_cli_orch_bridge_active is False
