@@ -144,7 +144,7 @@ After CR-00024:
 
 3. The dashboard's `/system/running` page renders a "Last seen" column showing `f"{(now - run.last_heartbeat).total_seconds():.0f}s ago"` and a coloured pip indicating `pid_alive`. The same data appears in the `/system/worktrees` and `/system/jobs` tables. SSE-driven fragment refresh continues to work.
 
-4. `dashboard/routers/sse.py`'s event-type registry recognises `step_warning_50pct` (severity `info`) so the toast notifications render correctly.
+4. `dashboard/routers/sse.py`'s event-type registry recognises `step_warning_50pct`: the event_type is added to `_TOAST_EVENTS` (so the toast renders), `_TOAST_SEVERITY` maps it to severity `"info"`, and (optionally) it is added to `_RUNNING_UPDATE_EVENTS` so the running-table fragment refreshes when the warn fires.
 
 ## Impact Analysis
 
@@ -156,7 +156,7 @@ After CR-00024:
 | `orch/db/models.py:StepRun` | 19 mapped columns | 20 mapped columns |
 | `orch/daemon/step_monitor.py:get_timeout` | 3-level chain, ignores `gate` | 4-level chain consulting `step.gate` before step-type bucket; new `QV_GATE_TIMEOUT_DEFAULTS` constant |
 | `orch/daemon/step_monitor.py:_check_step_health` | Emits crashed/timeout/stalled only | Also emits `step_warning_50pct` once when elapsed > 50% |
-| `dashboard/routers/sse.py` | Recognises 3 step events | Recognises 4 (adds `step_warning_50pct` with severity `info`) |
+| `dashboard/routers/sse.py` | `_TOAST_EVENTS` lists `step_crashed`/`step_timeout`/`step_stalled`; `_TOAST_SEVERITY` maps each | Adds `step_warning_50pct` to `_TOAST_EVENTS`, `_TOAST_SEVERITY["step_warning_50pct"] = "info"`, and (optionally) adds it to `_RUNNING_UPDATE_EVENTS` so a 50%-warn refreshes the running-table fragment |
 | `dashboard/routers/running.py` | `RunningRow` has step_id, status, started_at, duration | + `last_heartbeat_age_secs`, `pid_alive` fields surfaced from `StepRun` |
 | `dashboard/routers/worktrees.py` | Renders worktree git status | Adds `last_heartbeat_age_secs`/`pid_alive` per active step |
 | `dashboard/routers/jobs_ui.py` | Aggregated jobs view | Same heartbeat surfacing for step-run rows |
@@ -166,7 +166,7 @@ After CR-00024:
 
 ### Breaking Changes
 
-- **None.** The `warned_50pct_at` column is nullable and additive. The new `QV_GATE_TIMEOUT_DEFAULTS` table is consulted only when `step.gate` is non-NULL, so legacy rows registered before CR-00023 (where `gate` is NULL) keep falling through to the existing `quality_validation: 600s` bucket. The `step_warning_50pct` event_type is additive — `dashboard/routers/sse.py`'s SUBSCRIBED_EVENT_TYPES filter currently ignores any unknown event_type silently (verified at sse.py:107-111), so any external consumers that don't know about the new type are unaffected.
+- **None.** The `warned_50pct_at` column is nullable and additive. The new `QV_GATE_TIMEOUT_DEFAULTS` table is consulted only when `step.gate` is non-NULL, so legacy rows registered before CR-00023 (where `gate` is NULL) keep falling through to the existing `quality_validation: 600s` bucket. The `step_warning_50pct` event_type is additive — `dashboard/routers/sse.py`'s SSE pump applies `_TOAST_SEVERITY.get(event.event_type, "info")` (sse.py line ~236), so any consumer that doesn't yet know about the new type silently defaults to severity `info` rather than crashing.
 
 ### Data Migration
 
@@ -354,8 +354,10 @@ Then the indicator pip is red/negative for that row.
 
 ```
 Given the daemon emits a `step_warning_50pct` DaemonEvent
-When the SSE stream at `/system/events/stream` includes that event
-Then the event's severity is `info` per `dashboard/routers/sse.py:SEVERITY_BY_TYPE`
+When the SSE stream includes that event
+Then `dashboard/routers/sse.py:_TOAST_EVENTS` contains "step_warning_50pct"
+  (so the SSE pump considers it a watched event)
+And `dashboard/routers/sse.py:_TOAST_SEVERITY["step_warning_50pct"] == "info"`
 And the dashboard's toast notification renders without a console error
 And no existing event-type handler regresses (step_crashed → error, step_timeout → warning,
   step_stalled → warning).

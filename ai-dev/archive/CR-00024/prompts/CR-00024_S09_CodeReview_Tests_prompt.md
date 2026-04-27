@@ -28,7 +28,7 @@
 - [ ] AC4: tests cover BOTH positive emission AND idempotency (post-stamp re-poll does NOT re-emit)
 - [ ] AC5: a test sets up a run past 100% timeout AND verifies that `step_warning_50pct` is NOT emitted in the same poll cycle
 - [ ] AC6: deferred to S15 BrowserVerification (acceptable — UI assertions need a real browser)
-- [ ] AC7: a test asserts `SEVERITY_BY_TYPE["step_warning_50pct"] == "info"` AND that the event_type is in `SUBSCRIBED_EVENT_TYPES`
+- [ ] AC7: a test asserts `dashboard.routers.sse._TOAST_SEVERITY["step_warning_50pct"] == "info"` AND that the event_type is in `_TOAST_EVENTS` AND `_RUNNING_UPDATE_EVENTS` (the actual constant names — reject any test that imports `SUBSCRIBED_EVENT_TYPES` or `SEVERITY_BY_TYPE`, which do not exist)
 
 ### Semantic correctness (per `tests/CLAUDE.md` lesson — I-00003)
 - [ ] Tests verify SPECIFIC VALUES, not shape only
