@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "components/status_badge.html" import status_badge %}
-{% from "components/action_button.html" import kill_button, restart_button, skip_button %}
+{% from "components/action_button.html" import kill_button, restart_button, skip_button with context %}
 {% from "macros/db_guard.html" import write_button_attrs %}
 
 {% block title %}Running Tasks{% endblock %}
