@@ -108,6 +108,10 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
 
     dev_clone: str | None = iw_config.get("dev_clone") or None
 
+    # Sanity-validate staleness config if present (log warning and continue — do NOT
+    # skip the project; staleness config is optional and read on demand at compute time).
+    _validate_staleness_config(project_id, entry)
+
     return ProjectConfig(
         id=project_id,
         display_name=display_name,
@@ -118,6 +122,34 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         config=iw_config,
         dev_clone=dev_clone,
     )
+
+
+def _validate_staleness_config(project_id: str, entry: dict[str, Any]) -> None:
+    """Parse and validate the staleness config for sanity — log on error, never raise.
+
+    This is a best-effort validation pass at registry-load time. The staleness
+    config is intentionally NOT stored on ProjectConfig; it is re-read from
+    disk on every staleness computation call (F-00063 Invariant 6).
+    """
+    if "services" not in entry and "alembic" not in entry:
+        return  # opt-out — nothing to validate
+
+    try:
+        from orch.staleness.config import parse_project_staleness  # noqa: PLC0415
+
+        parse_project_staleness(entry)
+    except ValueError as exc:
+        logger.warning(
+            "Project %r has invalid staleness config — services/alembic will be unavailable: %s",
+            project_id,
+            exc,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Project %r staleness config validation failed unexpectedly: %s",
+            project_id,
+            exc,
+        )
 
 
 def load_projects_toml(path: Path) -> dict[str, ProjectConfig]:

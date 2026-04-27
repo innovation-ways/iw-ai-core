@@ -98,6 +98,24 @@
     color: #374151;
   }
 
+  /* --- Staleness dot (F-00063) --- */
+  .iw-staleness-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    vertical-align: middle;
+  }
+
+  .iw-staleness-dot--red {
+    background-color: var(--destructive, #dc2626);
+  }
+
+  .iw-staleness-dot--grey {
+    background-color: var(--muted-foreground, #9ca3af);
+  }
+
   .oss-modal-backdrop {
     position: fixed;
     inset: 0;

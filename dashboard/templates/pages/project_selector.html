@@ -26,6 +26,10 @@
                 {{ proj.display_name }}
               </h2>
               <span class="text-xs text-muted-foreground">{{ proj.id }}</span>
+              <!-- Staleness dot: lazy-loaded, 15s auto-refresh; empty for projects with no service/alembic config -->
+              <span hx-get="/projects/{{ proj.id }}/staleness-dot"
+                    hx-trigger="load, every 15s"
+                    hx-swap="outerHTML"></span>
             </div>
             <div class="grid grid-cols-4 gap-3">
               <div class="bg-muted rounded-md p-3 text-center">
