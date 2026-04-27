@@ -649,7 +649,9 @@ class JobsAggregator:
         )
         title = f"OSS {job.kind.value}"
         raw: dict[str, object] = {
-            "id": job.id,
+            "id": job.public_id,
+            "internal_id": job.id,
+            "public_id": job.public_id,
             "project_id": job.project_id,
             "kind": job.kind.value,
             "status": job.status.value,
@@ -672,7 +674,7 @@ class JobsAggregator:
         return (
             JobRow(
                 job_type=JobType.oss_scan,
-                job_id=str(job.id),
+                job_id=job.public_id,
                 project_id=job.project_id,
                 title=title,
                 status=_normalise_oss_job_status(job.status),
@@ -702,11 +704,7 @@ class JobsAggregator:
         return [self._build_oss_job_row(job) for job in jobs]
 
     def _get_oss_scan(self, project_id: str, job_id: str) -> JobRow | None:
-        try:
-            pk = int(job_id)
-        except (TypeError, ValueError):
-            return None
-        job = self._session.get(ProjectOssJob, pk)
+        job = self._session.scalar(select(ProjectOssJob).where(ProjectOssJob.public_id == job_id))
         if job is None or job.project_id != project_id:
             return None
         if job.kind != ProjectOssJobKind.scan:

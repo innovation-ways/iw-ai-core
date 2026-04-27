@@ -1671,6 +1671,12 @@ class OssFinding(Base):
     )
 
     scan: Mapped["OssScan"] = relationship("OssScan", back_populates="findings")
+    details: Mapped[list["OssFindingDetail"]] = relationship(
+        "OssFindingDetail",
+        back_populates="finding",
+        cascade="all, delete-orphan",
+        order_by="OssFindingDetail.ordinal",
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(["scan_id"], ["oss_scan.id"], ondelete="CASCADE"),
@@ -1706,12 +1712,51 @@ class OssToolRun(Base):
     )
 
 
+class OssFindingDetail(Base):
+    """Per-result rows for a multi-result OSS finding (e.g. each gitleaks hit).
+
+    Lets the UI render a paginated table of file/line/rule/snippet without
+    bloating ``OssFinding.evidence_json`` when one finding aggregates thousands
+    of underlying matches.
+    """
+
+    __tablename__ = "oss_finding_detail"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    finding_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    ordinal: Mapped[int] = mapped_column(
+        Integer, nullable=False, comment="Stable order from the source SARIF"
+    )
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    line_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rule_id: Mapped[str] = mapped_column(Text, nullable=False)
+    snippet_masked: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Secret value with middle bytes redacted"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+
+    finding: Mapped["OssFinding"] = relationship("OssFinding", back_populates="details")
+
+    __table_args__ = (
+        ForeignKeyConstraint(["finding_id"], ["oss_finding.id"], ondelete="CASCADE"),
+        Index("ix_oss_finding_detail_finding", "finding_id"),
+        {"comment": "Per-result rows for a multi-result OSS finding"},
+    )
+
+
 class ProjectOssJob(Base):
     """Async OSS scan/install/fix job tracking."""
 
     __tablename__ = "project_oss_job"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    public_id: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Human-readable ID (O-00001, O-00002, ...). Allocated via id_sequences['O'].",
+    )
     project_id: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[ProjectOssJobKind] = mapped_column(_project_oss_job_kind_col, nullable=False)
     status: Mapped[ProjectOssJobStatus] = mapped_column(
@@ -1748,8 +1793,34 @@ class ProjectOssJob(Base):
         ForeignKeyConstraint(["scan_id"], ["oss_scan.id"], ondelete="SET NULL"),
         Index("ix_project_oss_job_project_created", "project_id", text("created_at DESC")),
         Index("ix_project_oss_job_status", "status"),
+        Index("ix_project_oss_job_public_id", "public_id", unique=True),
         {"comment": "Async OSS scan/install/fix job tracking"},
     )
+
+
+@event.listens_for(ProjectOssJob, "before_insert")
+def _project_oss_job_allocate_public_id(
+    _mapper: Mapper[Any], connection: Connection, target: ProjectOssJob
+) -> None:
+    """Auto-allocate ``O-NNNNN`` public_id from id_sequences if not set.
+
+    Uses an atomic UPSERT with RETURNING — equivalent to the
+    ``allocate_next_id(..., 'O')`` semantics but works at the connection
+    level inside an INSERT flush.
+    """
+    if target.public_id is not None:
+        return
+    n = connection.execute(
+        text(
+            """
+            INSERT INTO id_sequences (prefix, next_number) VALUES ('O', 2)
+            ON CONFLICT (prefix) DO UPDATE
+                SET next_number = id_sequences.next_number + 1
+            RETURNING next_number - 1 AS n
+            """
+        )
+    ).scalar()
+    target.public_id = f"O-{int(n):05d}"
 
 
 # ---------------------------------------------------------------------------

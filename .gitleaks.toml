@@ -37,12 +37,38 @@ tags = ["internal", "infra"]
 [allowlist]
 description = "Global allowlists for IW AI Core Platform"
 
-# Skip documentation, test fixtures, and the skill's own output.
+# Skip documentation, test fixtures, generated artefacts, vendored
+# dependencies, build output, lockfiles, and the skill's own output.
+#
+# IMPORTANT: gitleaks emits absolute paths when invoked with --source <abs>,
+# so each regex must match anywhere in the path (anchor `(?:^|/)`), not just
+# at the start of a relative path.
 paths = [
-  '''(?i)^docs/''',
-  '''(?i)^tests/fixtures/''',
-  '''(?i)^examples/''',
-  '''(?i)^\.iw/''',
+  '''(?i)(?:^|/)docs/''',
+  '''(?i)(?:^|/)tests/fixtures/''',
+  '''(?i)(?:^|/)examples/''',
+  '''(?i)(?:^|/)\.iw/''',
+  '''(?i)(?:^|/)\.git/''',
+  '''(?i)(?:^|/)\.venv/''',
+  '''(?i)(?:^|/)venv/''',
+  '''(?i)(?:^|/)node_modules/''',
+  '''(?i)(?:^|/)dist/''',
+  '''(?i)(?:^|/)build/''',
+  '''(?i)(?:^|/)__pycache__/''',
+  '''(?i)(?:^|/)logs?/''',
+  '''(?i)(?:^|/)allure-report/''',
+  '''(?i)(?:^|/)allure-results/''',
+  '''(?i)(?:^|/)coverage/''',
+  '''(?i)(?:^|/)htmlcov/''',
+  '''(?i)\.pyc$''',
+  '''(?i)\.lock$''',
+  '''(?i)(?:^|/)package-lock\.json$''',
+  '''(?i)(?:^|/)yarn\.lock$''',
+  '''(?i)(?:^|/)pnpm-lock\.yaml$''',
+  '''(?i)(?:^|/)uv\.lock$''',
+  '''(?i)(?:^|/)poetry\.lock$''',
+  '''(?i)(?:^|/)Pipfile\.lock$''',
+  '''(?i)\.min\.(?:js|css)$''',
 ]
 
 # Common example-value patterns that are not real secrets.

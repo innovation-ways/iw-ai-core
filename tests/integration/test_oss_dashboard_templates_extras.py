@@ -116,6 +116,7 @@ CREATE TYPE project_oss_job_status AS ENUM (
 
 CREATE TABLE IF NOT EXISTS project_oss_job (
     id BIGSERIAL PRIMARY KEY,
+    public_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
     kind project_oss_job_kind NOT NULL,
     status project_oss_job_status NOT NULL DEFAULT 'queued',
@@ -130,6 +131,7 @@ CREATE TABLE IF NOT EXISTS project_oss_job (
 );
 CREATE INDEX ix_project_oss_job_project_created ON project_oss_job (project_id, created_at DESC);
 CREATE INDEX ix_project_oss_job_status ON project_oss_job (status);
+CREATE UNIQUE INDEX ix_project_oss_job_public_id ON project_oss_job (public_id);
 
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS oss_enabled BOOLEAN NOT NULL DEFAULT false;
 """
@@ -630,9 +632,15 @@ class TestOssTableColumnOrder:
         resp = client.get(f"/project/{proj_enabled.id}/oss")
         assert resp.status_code == 200
         html = resp.text
-        scan_summary_line = "No scans yet" in html or "<th" in html
-        assert scan_summary_line, "Expected either scan table headers or empty state message"
-        if "<th" in html:
+        # Findings-table marker is unique to the OSS findings fragment;
+        # the modal also contains <th> tags (for the per-finding detail
+        # table), so a bare <th substring no longer distinguishes the
+        # two states.
+        has_findings_table = 'class="oss-findings' in html
+        assert has_findings_table or "No scans yet" in html, (
+            "Expected either scan table headers or empty state message"
+        )
+        if has_findings_table:
             assert "Group" in html
             assert "Test" in html
             assert "Type" in html

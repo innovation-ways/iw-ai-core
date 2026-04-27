@@ -119,16 +119,23 @@
   {# Summary stats #}
   {% if findings_by_domain and totals and totals.total > 0 %}
     {% set has_must_failures = totals.must_fail > 0 %}
-    <div class="mb-6 rounded-xl border border-border bg-card">
+    {% if has_must_failures %}
+      {% set banner_outer = "border-red-300/70 dark:border-red-900/60 bg-red-50/60 dark:bg-red-950/25" %}
+    {% elif totals.should_fail > 0 %}
+      {% set banner_outer = "border-amber-300/70 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/25" %}
+    {% else %}
+      {% set banner_outer = "border-emerald-300/70 dark:border-emerald-900/60 bg-emerald-50/60 dark:bg-emerald-950/25" %}
+    {% endif %}
+    <div class="mb-6 rounded-xl border bg-card overflow-hidden {{ banner_outer }}">
       {# Verdict banner #}
-      <div class="px-5 py-4 border-b border-border flex items-center justify-between gap-4">
+      <div class="px-5 py-4 border-b border-border/60 flex items-center justify-between gap-4">
         <div class="flex items-center gap-3 min-w-0">
           {% if has_must_failures %}
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 text-lg shrink-0">●</span>
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-red-500/15 text-red-700 dark:text-red-300 text-lg shrink-0">●</span>
           {% elif totals.should_fail > 0 %}
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-lg shrink-0">●</span>
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-lg shrink-0">●</span>
           {% else %}
-            <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-lg shrink-0">●</span>
+            <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-lg shrink-0">●</span>
           {% endif %}
           <div class="min-w-0">
             <div class="text-sm font-semibold text-foreground">
@@ -152,36 +159,44 @@
           <div class="text-sm font-semibold text-foreground tabular-nums">{{ totals.total }}</div>
         </div>
       </div>
-      {# Stat tiles #}
-      <div class="grid grid-cols-2 sm:grid-cols-5 divide-x divide-y sm:divide-y-0 divide-border">
-        <div class="px-5 py-4 flex items-start gap-3">
+      {# Stat tiles — clickable, drive the same filter as the chips below #}
+      <div class="grid grid-cols-2 sm:grid-cols-5 divide-x divide-y sm:divide-y-0 divide-border bg-card">
+        <button type="button"
+                data-stat-filter="all"
+                class="text-left px-5 py-4 flex items-start gap-3 hover:bg-muted/40 transition-colors">
           <span class="w-1.5 h-10 rounded-full bg-emerald-500/70 shrink-0"></span>
           <div>
             <div class="text-2xl font-semibold text-foreground tabular-nums">{{ totals.pass }}</div>
             <div class="text-[11px] uppercase tracking-wider text-muted-foreground mt-0.5">Passed</div>
           </div>
-        </div>
-        <div class="px-5 py-4 flex items-start gap-3">
-          <span class="w-1.5 h-10 rounded-full {{ 'bg-red-500/70' if totals.must_fail > 0 else 'bg-border' }} shrink-0"></span>
+        </button>
+        <button type="button"
+                data-stat-filter="MUST"
+                class="text-left px-5 py-4 flex items-start gap-3 hover:bg-muted/40 transition-colors">
+          <span class="w-1.5 h-10 rounded-full {{ 'bg-red-500/80' if totals.must_fail > 0 else 'bg-border' }} shrink-0"></span>
           <div>
-            <div class="text-2xl font-semibold tabular-nums {{ 'text-red-600 dark:text-red-400' if totals.must_fail > 0 else 'text-muted-foreground' }}">{{ totals.must_fail }}</div>
+            <div class="text-2xl font-semibold tabular-nums {{ 'text-red-700 dark:text-red-300' if totals.must_fail > 0 else 'text-muted-foreground' }}">{{ totals.must_fail }}</div>
             <div class="text-[11px] uppercase tracking-wider text-muted-foreground mt-0.5">Critical · MUST</div>
           </div>
-        </div>
-        <div class="px-5 py-4 flex items-start gap-3">
-          <span class="w-1.5 h-10 rounded-full {{ 'bg-amber-500/70' if totals.should_fail > 0 else 'bg-border' }} shrink-0"></span>
+        </button>
+        <button type="button"
+                data-stat-filter="SHOULD"
+                class="text-left px-5 py-4 flex items-start gap-3 hover:bg-muted/40 transition-colors">
+          <span class="w-1.5 h-10 rounded-full {{ 'bg-amber-500/80' if totals.should_fail > 0 else 'bg-border' }} shrink-0"></span>
           <div>
-            <div class="text-2xl font-semibold tabular-nums {{ 'text-amber-600 dark:text-amber-400' if totals.should_fail > 0 else 'text-muted-foreground' }}">{{ totals.should_fail }}</div>
+            <div class="text-2xl font-semibold tabular-nums {{ 'text-amber-700 dark:text-amber-300' if totals.should_fail > 0 else 'text-muted-foreground' }}">{{ totals.should_fail }}</div>
             <div class="text-[11px] uppercase tracking-wider text-muted-foreground mt-0.5">Warnings · SHOULD</div>
           </div>
-        </div>
-        <div class="px-5 py-4 flex items-start gap-3">
-          <span class="w-1.5 h-10 rounded-full {{ 'bg-sky-500/70' if totals.info_fail > 0 else 'bg-border' }} shrink-0"></span>
+        </button>
+        <button type="button"
+                data-stat-filter="INFO"
+                class="text-left px-5 py-4 flex items-start gap-3 hover:bg-muted/40 transition-colors">
+          <span class="w-1.5 h-10 rounded-full {{ 'bg-sky-500/80' if totals.info_fail > 0 else 'bg-border' }} shrink-0"></span>
           <div>
-            <div class="text-2xl font-semibold tabular-nums {{ 'text-sky-600 dark:text-sky-400' if totals.info_fail > 0 else 'text-muted-foreground' }}">{{ totals.info_fail }}</div>
+            <div class="text-2xl font-semibold tabular-nums {{ 'text-sky-700 dark:text-sky-300' if totals.info_fail > 0 else 'text-muted-foreground' }}">{{ totals.info_fail }}</div>
             <div class="text-[11px] uppercase tracking-wider text-muted-foreground mt-0.5">Info</div>
           </div>
-        </div>
+        </button>
         <div class="px-5 py-4 flex items-start gap-3">
           <span class="w-1.5 h-10 rounded-full bg-border shrink-0"></span>
           <div>
@@ -193,44 +208,52 @@
     </div>
   {% endif %}
 
-  {# Filter chips #}
+  {# Filter chips — exclusive selection. Each severity chip shows only OPEN
+     findings of that severity (fail + human_required), so the counts here
+     match the verdict tiles above. #}
   {% if findings_by_domain and totals and totals.total > 0 %}
     <div class="flex flex-wrap gap-2 mb-4" id="oss-filter-chips" role="group" aria-label="Filter findings">
       <button type="button"
-              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border transition-colors aria-pressed:opacity-100 opacity-70 border-primary bg-primary text-primary-foreground"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border transition-colors aria-pressed:opacity-100 opacity-100 border-primary bg-primary text-primary-foreground"
               data-filter="failing"
               aria-pressed="true">
-        Failing/human-required only
+        Open issues
+        <span class="ml-1 tabular-nums opacity-90">{{ totals.open }}</span>
       </button>
       <button type="button"
-              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
-              data-filter="all"
-              aria-pressed="false">
-        All
-      </button>
-      <button type="button"
-              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-foreground hover:bg-muted transition-colors aria-pressed:false"
               data-filter="MUST"
               aria-pressed="false">
-        MUST
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 align-middle"></span>Critical
+        <span class="ml-1 tabular-nums opacity-70">{{ totals.must_fail }}</span>
       </button>
       <button type="button"
-              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-foreground hover:bg-muted transition-colors aria-pressed:false"
               data-filter="SHOULD"
               aria-pressed="false">
-        SHOULD
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5 align-middle"></span>Warnings
+        <span class="ml-1 tabular-nums opacity-70">{{ totals.should_fail }}</span>
       </button>
       <button type="button"
-              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-foreground hover:bg-muted transition-colors aria-pressed:false"
               data-filter="INFO"
               aria-pressed="false">
-        INFO
+        <span class="inline-block w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5 align-middle"></span>Info
+        <span class="ml-1 tabular-nums opacity-70">{{ totals.info_fail }}</span>
       </button>
       <button type="button"
               class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
               data-filter="Accepted"
               aria-pressed="false">
         Accepted
+        <span class="ml-1 tabular-nums opacity-80">{{ accepted_findings|length }}</span>
+      </button>
+      <button type="button"
+              class="filter-chip px-3 py-1.5 rounded-full text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors aria-pressed:false"
+              data-filter="all"
+              aria-pressed="false">
+        All checks
+        <span class="ml-1 tabular-nums opacity-80">{{ totals.total }}</span>
       </button>
     </div>
   {% endif %}
@@ -246,6 +269,7 @@
       <div class="bg-card border border-border rounded-lg p-4">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
+            <span class="font-mono text-xs text-muted-foreground">{{ job.public_id }}</span>
             <span class="font-medium text-sm text-foreground">{{ job.kind.value|capitalize }}</span>
             {% if job.status.value == 'running' or job.status.value == 'queued' %}
               <svg class="w-3 h-3 animate-spin text-primary" fill="none" viewBox="0 0 24 24">
@@ -530,57 +554,50 @@ window.OSS_CATALOG = {{ catalog | tojson }};
   });
 
   var chips = document.querySelectorAll('.filter-chip');
+
+  function selectFilter(filter) {
+    chips.forEach(function (c) {
+      var active = c.dataset.filter === filter;
+      if (active) {
+        c.classList.add('border-primary', 'bg-primary', 'text-primary-foreground', 'opacity-100');
+        c.classList.remove('border-border', 'text-foreground', 'text-muted-foreground', 'opacity-70');
+        c.setAttribute('aria-pressed', 'true');
+      } else {
+        c.classList.remove('border-primary', 'bg-primary', 'text-primary-foreground', 'opacity-100');
+        c.classList.add('border-border');
+        // Keep severity chips with full-foreground text so the dot stays readable;
+        // mute the Accepted/All chips.
+        if (c.dataset.filter === 'Accepted' || c.dataset.filter === 'all') {
+          c.classList.add('text-muted-foreground');
+          c.classList.remove('text-foreground');
+        } else {
+          c.classList.add('text-foreground');
+          c.classList.remove('text-muted-foreground');
+        }
+        c.classList.remove('opacity-100');
+        c.setAttribute('aria-pressed', 'false');
+      }
+    });
+
+    var table = document.querySelector('.oss-findings');
+    if (!table) return;
+    table.classList.remove('filter-all', 'filter-MUST', 'filter-SHOULD', 'filter-INFO', 'filter-Accepted', 'filter-failing');
+    table.classList.add('filter-' + filter);
+  }
+
   chips.forEach(function (chip) {
     chip.addEventListener('click', function () {
-      var filter = chip.dataset.filter;
-      chips.forEach(function (c) {
-        c.classList.remove('border-primary', 'bg-primary', 'text-primary-foreground', 'opacity-100');
-        c.classList.add('border-border', 'text-muted-foreground', 'opacity-70');
-        c.setAttribute('aria-pressed', 'false');
-      });
-      chip.classList.add('border-primary', 'bg-primary', 'text-primary-foreground', 'opacity-100');
-      chip.classList.remove('border-border', 'text-muted-foreground', 'opacity-70');
-      chip.setAttribute('aria-pressed', 'true');
-
-      var table = document.querySelector('.oss-findings');
-      if (!table) return;
-      table.classList.remove('filter-all', 'filter-MUST', 'filter-SHOULD', 'filter-INFO', 'filter-Accepted', 'filter-failing');
-      table.classList.add('filter-' + filter);
+      selectFilter(chip.dataset.filter);
     });
   });
 
-  document.addEventListener('click', function (ev) {
-    var rerunBtn = ev.target.closest('.oss-rerun-btn');
-    if (rerunBtn) {
-      ev.preventDefault();
-      var btn = rerunBtn;
-      var checkId = btn.dataset.checkId;
-      var originalHtml = btn.innerHTML;
-      btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
-      btn.disabled = true;
-      var projectIdEl = document.querySelector('[data-project-id]');
-      var projectId = projectIdEl ? projectIdEl.dataset.projectId : null;
-      if (!projectId) return;
-      fetch('/project/' + encodeURIComponent(projectId) + '/oss/recheck/' + encodeURIComponent(checkId), {
-        method: 'POST',
-        headers: { 'Accept': 'application/json' },
-      }).then(function (r) { return r.json(); }).then(function (data) {
-        if (data.stream_url) {
-          var progressRow = document.getElementById('oss-progress-row');
-          var linesEl = progressRow ? renderProgress(progressRow, 'Re-check') : null;
-          startStream(data.stream_url, linesEl, function () {
-            btn.innerHTML = originalHtml;
-            btn.disabled = false;
-          });
-        } else {
-          btn.innerHTML = originalHtml;
-          btn.disabled = false;
-        }
-      }).catch(function () {
-        btn.innerHTML = originalHtml;
-        btn.disabled = false;
-      });
-    }
+  // Stat tiles are clickable shortcuts to the same filter set.
+  document.querySelectorAll('[data-stat-filter]').forEach(function (tile) {
+    tile.addEventListener('click', function () {
+      selectFilter(tile.dataset.statFilter);
+      var table = document.querySelector('.oss-findings');
+      if (table && table.scrollIntoView) table.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   });
 
   document.addEventListener('keydown', function (ev) {

@@ -187,7 +187,7 @@ def oss_engine(pg_container: PostgresContainer) -> Engine:
     # with a custom schema. project_oss_job has an FK to oss_scan, so create it
     # AFTER the raw SQL. Do NOT mutate Base.metadata — it's shared state.
     raw_sql_tables = {"oss_scan", "oss_finding", "oss_tool_run"}
-    deferred_tables = {"project_oss_job"}
+    deferred_tables = {"project_oss_job", "oss_finding_detail"}
     pre_tables = [
         t
         for name, t in Base.metadata.tables.items()
