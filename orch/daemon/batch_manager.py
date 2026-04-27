@@ -478,13 +478,10 @@ class BatchManager:
             )
             return
 
+        # CR-00023: manifest is the legacy fallback for items registered before
+        # the DB columns existed. Read it lazily — DB-first lookups hit it only
+        # when both step.command and step.gate are NULL.
         manifest_steps = self._read_workflow_manifest(item_id, worktree_path)
-        if manifest_steps is None:
-            logger.warning(
-                "[F-00061] No workflow manifest for %s — skipping baseline compute",
-                item_id,
-            )
-            return
 
         steps = (
             db.query(WorkflowStep)
@@ -504,13 +501,25 @@ class BatchManager:
         )
 
         for step in steps:
-            step_manifest = next((s for s in manifest_steps if s.get("step") == step.step_id), None)
-            if not step_manifest:
-                continue
-            gate = step_manifest.get("gate", step.step_id)
-            command = step_manifest.get("command")
-            if not command:
-                continue
+            # CR-00023: DB-first; manifest fallback for legacy NULL rows.
+            gate: str
+            command: str
+            if step.command:
+                gate = step.gate or step.step_id
+                command = step.command
+            else:
+                if manifest_steps is None:
+                    continue
+                step_manifest = next(
+                    (s for s in manifest_steps if s.get("step") == step.step_id), None
+                )
+                if not step_manifest:
+                    continue
+                gate = str(step_manifest.get("gate", step.step_id))
+                manifest_command = step_manifest.get("command")
+                if not manifest_command:
+                    continue
+                command = str(manifest_command)
 
             parser = GATE_PARSERS.get(gate)
             if parser is None:
@@ -862,45 +871,68 @@ class BatchManager:
     def _build_claude_prompt(self, step: WorkflowStep, worktree_path: str) -> str:
         """Build a direct prompt for claude that includes step instructions.
 
-        Reads the prompt file from the design doc and wraps it with
-        step lifecycle instructions (step-start/step-done/step-fail).
+        DB-first per CR-00023: prefers the WorkflowStep columns (prompt_file,
+        command, gate, description) and falls back to the on-disk manifest
+        only for legacy items registered before those columns existed.
         """
         item_id = step.work_item_id
         step_id = step.step_id
         design_dir = Path(worktree_path) / "ai-dev" / "active" / item_id
 
-        # Try to find and read the prompt file from the workflow manifest
         prompt_content = ""
-        manifest_path = design_dir / "workflow-manifest.json"
-        if manifest_path.exists():
-            import json  # noqa: PLC0415
 
-            manifest = json.loads(manifest_path.read_text())
-            for s in manifest.get("steps", []):
-                if s.get("step") == step_id:
-                    prompt_rel = s.get("prompt", "")
-                    if prompt_rel:
-                        prompt_path = design_dir / prompt_rel
-                        if prompt_path.exists():
-                            prompt_content = prompt_path.read_text()
-                    elif s.get("command"):
-                        # qv-gate step: build prompt from the explicit command field
-                        gate_cmd = s["command"]
-                        gate_name = s.get("gate", step_id)
-                        description = s.get("description", "")
-                        prompt_content = (
-                            f"Run the following quality gate and report results.\n\n"
-                            f"**Gate**: {gate_name}\n"
-                            f"**Command**: `{gate_cmd}`\n"
-                            f"**Description**: {description}\n\n"
-                            f"Execute exactly: `{gate_cmd}`\n"
-                            f"Capture the output. If exit code is 0, the gate passed. "
-                            f"Otherwise it failed.\n"
-                            f"Report PASS or FAIL with the relevant output.\n"
-                            f"Do NOT call `iw step-start`, `iw step-done`, or `iw step-fail` — "
-                            f"those are handled by the orchestrator."
-                        )
-                    break
+        # CR-00023: DB-first — qv-gate steps read command from the row.
+        if step.command:
+            gate_name = step.gate or step_id
+            description = step.description or ""
+            prompt_content = (
+                f"Run the following quality gate and report results.\n\n"
+                f"**Gate**: {gate_name}\n"
+                f"**Command**: `{step.command}`\n"
+                f"**Description**: {description}\n\n"
+                f"Execute exactly: `{step.command}`\n"
+                f"Capture the output. If exit code is 0, the gate passed. "
+                f"Otherwise it failed.\n"
+                f"Report PASS or FAIL with the relevant output.\n"
+                f"Do NOT call `iw step-start`, `iw step-done`, or `iw step-fail` — "
+                f"those are handled by the orchestrator."
+            )
+        elif step.prompt_file:
+            prompt_path = design_dir / step.prompt_file
+            if prompt_path.exists():
+                prompt_content = prompt_path.read_text()
+
+        # Legacy fallback: manifest read for items registered before CR-00023.
+        if not prompt_content:
+            manifest_path = design_dir / "workflow-manifest.json"
+            if manifest_path.exists():
+                import json  # noqa: PLC0415
+
+                manifest = json.loads(manifest_path.read_text())
+                for s in manifest.get("steps", []):
+                    if s.get("step") == step_id:
+                        prompt_rel = s.get("prompt", "")
+                        if prompt_rel:
+                            prompt_path = design_dir / prompt_rel
+                            if prompt_path.exists():
+                                prompt_content = prompt_path.read_text()
+                        elif s.get("command"):
+                            gate_cmd = s["command"]
+                            gate_name = s.get("gate", step_id)
+                            description = s.get("description", "")
+                            prompt_content = (
+                                f"Run the following quality gate and report results.\n\n"
+                                f"**Gate**: {gate_name}\n"
+                                f"**Command**: `{gate_cmd}`\n"
+                                f"**Description**: {description}\n\n"
+                                f"Execute exactly: `{gate_cmd}`\n"
+                                f"Capture the output. If exit code is 0, the gate passed. "
+                                f"Otherwise it failed.\n"
+                                f"Report PASS or FAIL with the relevant output.\n"
+                                f"Do NOT call `iw step-start`, `iw step-done`, or `iw step-fail` — "
+                                f"those are handled by the orchestrator."
+                            )
+                        break
 
         if not prompt_content:
             prompt_content = (

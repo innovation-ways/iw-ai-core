@@ -68,6 +68,10 @@ STOP and raise a blocker. Do not work around this rule.
 
 Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
+## Input Files
+
+- **Runtime step state** — for the current step list, status, prompt paths, gate commands, etc., prefer `uv run iw item-status {ID} --json`. The `workflow-manifest.json` file is a design-time snapshot and may be out of date (CR-00023).
+
 ## Quality Gates
 
 Run each gate in order. Record the exact command, result, and any error output.
