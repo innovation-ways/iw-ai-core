@@ -292,6 +292,35 @@ I001: Fix template rendering timeout
   Created: 2026-04-07 10:30 | Updated: 2026-04-07 11:15
 ```
 
+**JSON shape (CR-00023):** the `--json` form is the runtime source of truth
+for step state — preferred over reading `workflow-manifest.json`. Each entry
+in the `steps[]` array contains a true superset of the manifest's per-step
+fields plus runtime status:
+
+| Key | Source | Notes |
+|-----|--------|-------|
+| `step_id` | DB | e.g. `"S01"` |
+| `step_number` | DB | derived from `step_id` |
+| `label` / `agent_label` | DB | identical values; `label` retained for back-compat |
+| `opencode_agent` | DB | manifest `agent` slug, e.g. `"qv-gate"` |
+| `type` / `step_type` | DB | identical values |
+| `step_label` | DB | optional human-readable label |
+| `status` | DB | `pending`/`in_progress`/`completed`/`failed`/`skipped`/`needs_fix` |
+| `description` | DB | from manifest at register time |
+| `prompt_file` | DB | manifest `prompt` path; null for qv-gate steps |
+| `command` | DB | qv-gate command (e.g. `"make lint"`); null for impl steps |
+| `gate` | DB | qv-gate name (e.g. `"lint"`); null for impl steps |
+| `timeout_secs` | DB | per-step timeout override; null = project default |
+
+Items registered before CR-00023 keep `command`/`gate`/`timeout_secs`/`prompt_file`
+as `null`; the daemon falls back to reading the on-disk manifest for those
+rows.
+
+**Contract for future schema changes:** any new field added to
+`workflow-manifest.json` that is needed at runtime MUST be added to
+`WorkflowStep` and surfaced here as part of the same change. Do not let
+runtime data live in the manifest only.
+
 ---
 
 ### 3.3. Step Lifecycle

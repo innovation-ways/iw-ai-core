@@ -115,6 +115,51 @@ def parse_manifest_steps(manifest_path: Path) -> list[dict[str, Any]]:
     return [dict(s) for s in steps]
 
 
+# CR-00023: marker text written into manifests at register time. Agents reading
+# the manifest see this and know to prefer `iw item-status` for runtime state.
+MANIFEST_NOTE_TEXT = (
+    "This file is a design-time snapshot and may be out of date. "
+    "For current step state, run: iw item-status <ID> --json. "
+    "The DB is the authoritative source of truth (CR-00023)."
+)
+
+
+def _stamp_manifest_note(manifest_path: Path) -> None:
+    """Rewrite the manifest in place to add a top-level `_note` field.
+
+    Idempotent: skips the write when the note is already present and equal.
+    Preserves all existing keys with byte-identical contents (only the `_note`
+    key is added at the head of the JSON object). Failures to read or write
+    the manifest are reported as warnings but do not fail the register
+    operation.
+    """
+    try:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        click.echo(
+            f"Warning: could not read manifest to stamp _note: {exc}",
+            err=True,
+        )
+        return
+
+    if not isinstance(raw, dict):
+        return
+    if raw.get("_note") == MANIFEST_NOTE_TEXT:
+        return
+
+    stamped = {"_note": MANIFEST_NOTE_TEXT, **{k: v for k, v in raw.items() if k != "_note"}}
+    try:
+        manifest_path.write_text(
+            json.dumps(stamped, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        click.echo(
+            f"Warning: could not stamp manifest with _note header: {exc}",
+            err=True,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Lookup tables
 # ---------------------------------------------------------------------------
@@ -348,6 +393,35 @@ def register(
                 except ValueError:
                     step_number = idx + 1
 
+                # CR-00023: ingest manifest's prompt/command/gate/timeout into the
+                # WorkflowStep row so iw item-status --json is a true superset of
+                # the manifest and the daemon can read runtime info from the DB.
+                prompt_raw = step_data.get("prompt")
+                prompt_file = str(prompt_raw) if prompt_raw else None
+
+                command_raw = step_data.get("command")
+                command_val = str(command_raw) if command_raw else None
+
+                gate_raw = step_data.get("gate")
+                gate_val = str(gate_raw) if gate_raw else None
+
+                timeout_raw = step_data.get("timeout")
+                timeout_secs: int | None
+                if timeout_raw is None:
+                    timeout_secs = None
+                else:
+                    try:
+                        timeout_secs = int(timeout_raw)
+                    except (TypeError, ValueError):
+                        output_error(
+                            ctx,
+                            (
+                                f"Invalid 'timeout' for step {step_id_str}: "
+                                f"{timeout_raw!r} is not an integer"
+                            ),
+                            2,
+                        )
+
                 session.add(
                     WorkflowStep(
                         project_id=project_id,
@@ -359,10 +433,19 @@ def register(
                         step_type=step_type,
                         step_label=step_label,
                         description=description,
+                        prompt_file=prompt_file,
+                        command=command_val,
+                        gate=gate_val,
+                        timeout_secs=timeout_secs,
                     )
                 )
 
             session.flush()
+
+            # CR-00023: stamp the on-disk manifest as a non-authoritative snapshot.
+            # Idempotent: only writes if the _note key is missing or stale.
+            if steps_from:
+                _stamp_manifest_note(Path(steps_from))
 
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 1)
@@ -611,10 +694,24 @@ def item_status(ctx: click.Context, item_id: str, json_output: bool) -> None:
                 "updated_at": item.updated_at.isoformat() if item.updated_at else None,
                 "steps": [
                     {
+                        # CR-00023: per-step entries are a true superset of the
+                        # workflow-manifest.json `steps[]` shape so agents can
+                        # use iw item-status --json as the single source of
+                        # truth for runtime step info.
                         "step_id": s.step_id,
+                        "step_number": s.step_number,
                         "label": s.agent_label,
+                        "agent_label": s.agent_label,
+                        "opencode_agent": s.opencode_agent,
                         "type": s.step_type.value,
+                        "step_type": s.step_type.value,
+                        "step_label": s.step_label,
                         "status": s.status.value,
+                        "description": s.description,
+                        "prompt_file": s.prompt_file,
+                        "command": s.command,
+                        "gate": s.gate,
+                        "timeout_secs": s.timeout_secs,
                     }
                     for s in steps
                 ],

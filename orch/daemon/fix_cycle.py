@@ -675,7 +675,15 @@ def _get_qv_findings(
 def _get_gate_name_and_command(
     step: WorkflowStep, worktree_path: str
 ) -> tuple[str | None, str | None]:
-    """Read gate_name and command from the workflow manifest for a QV step."""
+    """Resolve (gate_name, command) for a QV step.
+
+    DB-first per CR-00023: returns the WorkflowStep row's columns when
+    populated. Falls back to the on-disk manifest for legacy items
+    registered before those columns existed.
+    """
+    if step.command:
+        return (step.gate or step.step_id), step.command
+
     import json
 
     manifest_path = (
