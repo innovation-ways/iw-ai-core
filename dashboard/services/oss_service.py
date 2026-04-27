@@ -162,11 +162,13 @@ async def _run_scan(
             job_status = ProjectOssJobStatus.complete
             error_message = None
         else:
+            # `iw oss scan` exits 0 on green/yellow, 1 on red — both mean the scan
+            # ran to completion. Any other exit code is a CLI/subprocess error.
             job_status = (
-                ProjectOssJobStatus.complete if exit_code == 0 else ProjectOssJobStatus.error
+                ProjectOssJobStatus.complete if exit_code in (0, 1) else ProjectOssJobStatus.error
             )
             error_message = (
-                f"Subprocess exited with code {exit_code}" if exit_code not in (0, 2) else None
+                f"Subprocess exited with code {exit_code}" if exit_code not in (0, 1) else None
             )
 
         sess.query(ProjectOssJob).filter(ProjectOssJob.id == job_id).update(
@@ -425,6 +427,9 @@ def enqueue_job(
 ) -> ProjectOssJob:
     """Create a new ProjectOssJob row with status=queued.
 
+    The ``public_id`` (O-XXXXX) is auto-allocated by the model's
+    ``before_insert`` event listener — no need to set it explicitly.
+
     For fix jobs: pass check_id for single-fix, or check_ids (JSON in stdout_tail) for batch.
     """
     if isinstance(kind, str):
@@ -650,6 +655,69 @@ def latest_scan(session: Session, project_id: str) -> OssScan | None:
         .order_by(OssScan.started_at.desc())
         .first()
     )
+
+
+def get_finding_details(
+    session: Session,
+    project_id: str,
+    finding_id: int,
+    *,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, Any] | None:
+    """Return paginated detail rows for a single OssFinding.
+
+    Returns ``None`` if the finding does not exist or belongs to a scan in a
+    different project — the caller surfaces this as a 404.
+
+    The shape mirrors what the modal expects: ``total`` is the number of
+    persisted ``oss_finding_detail`` rows (capped at the skill's
+    ``RESULT_CAP``), ``capped`` echoes the flag the skill set on the parent
+    finding's ``evidence_json``, and ``results`` is a paginated slice ordered
+    by ``ordinal`` so the UI can show a stable list across reloads.
+    """
+    from orch.db.models import OssFindingDetail
+
+    finding = (
+        session.query(OssFinding)
+        .join(OssScan, OssScan.id == OssFinding.scan_id)
+        .filter(OssFinding.id == finding_id, OssScan.project_id == project_id)
+        .first()
+    )
+    if finding is None:
+        return None
+
+    safe_limit = max(1, min(int(limit), 1000))
+    safe_offset = max(0, int(offset))
+
+    total = (
+        session.query(OssFindingDetail).filter(OssFindingDetail.finding_id == finding_id).count()
+    )
+    rows = (
+        session.query(OssFindingDetail)
+        .filter(OssFindingDetail.finding_id == finding_id)
+        .order_by(OssFindingDetail.ordinal)
+        .offset(safe_offset)
+        .limit(safe_limit)
+        .all()
+    )
+    capped = bool((finding.evidence_json or {}).get("capped"))
+    return {
+        "total": total,
+        "limit": safe_limit,
+        "offset": safe_offset,
+        "capped": capped,
+        "results": [
+            {
+                "ordinal": d.ordinal,
+                "file": d.file_path,
+                "line": d.line_number,
+                "rule": d.rule_id,
+                "snippet_masked": d.snippet_masked or "",
+            }
+            for d in rows
+        ],
+    }
 
 
 def scan_summary(session: Session, project_id: str) -> dict[str, Any]:

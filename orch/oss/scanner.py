@@ -63,7 +63,10 @@ async def run_scan(
       persistence.persist_findings() to populate oss_finding + oss_tool_run rows.
     - Sets oss_scan.status='complete', exit_code, pill_color (per invariant #3
       in the design doc), summary_json, completed_at.
-    - On subprocess error (non-2 exit), sets status='error', error_message.
+    - The skill's scan.py exits 0 when no MUST findings, 1 when MUST findings
+      remain (red gate), and 2 only on setup errors (e.g. not a git repo).
+      Both 0 and 1 mean the scan ran to completion and produced a findings
+      file — only other exit codes are treated as subprocess errors.
     - Returns the updated OssScan row.
     """
     session = session_factory()
@@ -114,7 +117,7 @@ async def run_scan(
 
         exit_code = await proc.wait()
 
-        if exit_code == 2:
+        if exit_code in (0, 1):
             findings_path = Path(project.repo_root) / ".iw" / "oss-publish-findings.json"
             if findings_path.exists():
                 findings_json = json.loads(findings_path.read_text())
@@ -126,8 +129,19 @@ async def run_scan(
 
                 scan.pill_color = OssPillColor(pill_color_str)
                 scan.summary_json = summary
-            scan.status = OssScanStatus.complete
+                scan.status = OssScanStatus.complete
+                scan.exit_code = exit_code
+                scan.completed_at = datetime.now(UTC)
+                session.commit()
+                return scan
+
+            # Exit code says scan ran but findings file is missing — treat as error.
+            scan.status = OssScanStatus.error
             scan.exit_code = exit_code
+            scan.error_message = _build_error_message(
+                exit_code,
+                stdout_lines + [f"\nfindings file not found at {findings_path}\n"],
+            )
             scan.completed_at = datetime.now(UTC)
             session.commit()
             return scan

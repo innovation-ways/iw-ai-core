@@ -30,6 +30,24 @@
         <h4>Evidence</h4>
         <pre id="oss-modal-evidence" class="text-xs"></pre>
       </section>
+      <section class="oss-modal-section" id="oss-modal-details-section" hidden>
+        <h4>Findings <span id="oss-modal-details-count" class="text-xs font-normal text-muted-foreground"></span></h4>
+        <p id="oss-modal-details-status" class="text-xs text-muted-foreground" hidden></p>
+        <p id="oss-modal-details-capped" class="text-xs text-amber-600" hidden></p>
+        <div class="oss-modal-details-wrap overflow-auto max-h-72 border border-border rounded">
+          <table class="w-full text-xs">
+            <thead class="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground sticky top-0">
+              <tr>
+                <th class="text-left px-2 py-1">File</th>
+                <th class="text-left px-2 py-1 w-14">Line</th>
+                <th class="text-left px-2 py-1 w-40">Rule</th>
+                <th class="text-left px-2 py-1">Snippet (masked)</th>
+              </tr>
+            </thead>
+            <tbody id="oss-modal-details-tbody"></tbody>
+          </table>
+        </div>
+      </section>
       <section class="oss-modal-section">
         <h4>How to fix</h4>
         <p id="oss-modal-how-to-fix"></p>
@@ -104,6 +122,85 @@
     return function () { el.removeEventListener('keydown', handleTab); };
   }
 
+  function escapeText(s) {
+    if (s === null || s === undefined) return '';
+    return String(s);
+  }
+
+  function loadFindingDetails(findingId) {
+    const section = document.getElementById('oss-modal-details-section');
+    const tbody = document.getElementById('oss-modal-details-tbody');
+    const countSpan = document.getElementById('oss-modal-details-count');
+    const statusEl = document.getElementById('oss-modal-details-status');
+    const cappedEl = document.getElementById('oss-modal-details-capped');
+    if (!section || !tbody) return;
+
+    tbody.innerHTML = '';
+    countSpan.textContent = '';
+    statusEl.hidden = true;
+    cappedEl.hidden = true;
+
+    if (!findingId) {
+      section.hidden = true;
+      return;
+    }
+
+    var projectIdElement = document.querySelector('[data-project-id]');
+    var projectId = projectIdElement ? projectIdElement.dataset.projectId : null;
+    if (!projectId) {
+      section.hidden = true;
+      return;
+    }
+
+    // Show the section optimistically with a loading line; hide it later if
+    // the finding has no detail rows.
+    section.hidden = false;
+    statusEl.hidden = false;
+    statusEl.textContent = 'Loading…';
+
+    fetch(
+      '/project/' + encodeURIComponent(projectId) +
+      '/oss/findings/' + encodeURIComponent(findingId) +
+      '/details?limit=200&offset=0',
+      { headers: { 'Accept': 'application/json' } }
+    ).then(function (r) {
+      if (!r.ok) {
+        throw new Error('details fetch failed: ' + r.status);
+      }
+      return r.json();
+    }).then(function (body) {
+      const total = body.total || 0;
+      if (total === 0) {
+        section.hidden = true;
+        return;
+      }
+      const shown = (body.results || []).length;
+      countSpan.textContent = '(' + shown + ' of ' + total + ')';
+      statusEl.hidden = true;
+      if (body.capped) {
+        cappedEl.hidden = false;
+        cappedEl.textContent =
+          'Result list capped at the scanner limit. The SARIF on disk has the full set.';
+      }
+      (body.results || []).forEach(function (row) {
+        var tr = document.createElement('tr');
+        tr.className = 'border-t border-border';
+        tr.innerHTML =
+          '<td class="px-2 py-1 font-mono text-[11px] break-all"></td>' +
+          '<td class="px-2 py-1 text-right tabular-nums"></td>' +
+          '<td class="px-2 py-1 font-mono text-[11px]"></td>' +
+          '<td class="px-2 py-1 font-mono text-[11px] break-all"></td>';
+        tr.children[0].textContent = escapeText(row.file);
+        tr.children[1].textContent = row.line == null ? '' : String(row.line);
+        tr.children[2].textContent = escapeText(row.rule);
+        tr.children[3].textContent = escapeText(row.snippet_masked);
+        tbody.appendChild(tr);
+      });
+    }).catch(function () {
+      statusEl.textContent = 'Could not load details.';
+    });
+  }
+
   function openModal(data) {
     lastFocusedElement = document.activeElement;
     currentCheckId = data.check_id;
@@ -158,6 +255,8 @@
     } else {
       evidenceSection.hidden = true;
     }
+
+    loadFindingDetails(data.finding_id);
 
     const previewSection = document.getElementById('oss-modal-preview-section');
     const previewPre = document.getElementById('oss-modal-preview');
@@ -219,11 +318,20 @@
     currentCheckId = null;
     currentFindingHash = null;
     currentCatalogEntry = null;
+    var detailsSection = document.getElementById('oss-modal-details-section');
+    var detailsTbody = document.getElementById('oss-modal-details-tbody');
+    if (detailsSection) detailsSection.hidden = true;
+    if (detailsTbody) detailsTbody.innerHTML = '';
   }
 
   modal.addEventListener('click', function (ev) {
     if (ev.target.classList.contains('modal-close')) {
       ev.stopPropagation();
+      closeModal();
+      return;
+    }
+    // Click landed on the flex wrapper itself (outside the inner card) — close.
+    if (ev.target === modal) {
       closeModal();
     }
   });
@@ -253,6 +361,7 @@
     var data = {
       check_id: checkId,
       finding_hash: findingHash,
+      finding_id: row.dataset.findingId || null,
       severity: severity,
       status: status,
       status_label: statusLabel,

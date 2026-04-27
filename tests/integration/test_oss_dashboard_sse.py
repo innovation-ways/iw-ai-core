@@ -119,6 +119,7 @@ CREATE TYPE project_oss_job_status AS ENUM (
 
 CREATE TABLE IF NOT EXISTS project_oss_job (
     id BIGSERIAL PRIMARY KEY,
+    public_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
     kind project_oss_job_kind NOT NULL,
     status project_oss_job_status NOT NULL DEFAULT 'queued',
@@ -137,6 +138,7 @@ CREATE TABLE IF NOT EXISTS project_oss_job (
 );
 CREATE INDEX ix_project_oss_job_project_created ON project_oss_job (project_id, created_at DESC);
 CREATE INDEX ix_project_oss_job_status ON project_oss_job (status);
+CREATE UNIQUE INDEX ix_project_oss_job_public_id ON project_oss_job (public_id);
 
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS oss_enabled BOOLEAN NOT NULL DEFAULT false;
 """
@@ -310,7 +312,7 @@ class TestSseRowUpdateEvents:
         oss_sse_session.commit()
 
         resp = client.get(
-            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
+            f"/project/{proj_enabled.id}/oss/stream/{job.public_id}",
             headers={"Accept": "text/event-stream"},
             timeout=5,
         )
@@ -363,7 +365,7 @@ class TestSseRowUpdateEvents:
         oss_sse_session.commit()
 
         resp = client.get(
-            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
+            f"/project/{proj_enabled.id}/oss/stream/{job.public_id}",
             headers={"Accept": "text/event-stream"},
             timeout=5,
         )
@@ -413,7 +415,7 @@ class TestSseRowUpdateEvents:
         oss_sse_session.commit()
 
         resp = client.get(
-            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
+            f"/project/{proj_enabled.id}/oss/stream/{job.public_id}",
             headers={"Accept": "text/event-stream"},
             timeout=5,
         )
@@ -451,7 +453,7 @@ class TestSseEmitsStatusProgressCompleteInOrder:
         oss_sse_session.commit()
 
         resp = client.get(
-            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
+            f"/project/{proj_enabled.id}/oss/stream/{job.public_id}",
             headers={"Accept": "text/event-stream"},
             timeout=5,
         )
@@ -486,7 +488,7 @@ class TestSseEmitsStatusProgressCompleteInOrder:
         oss_sse_session.commit()
 
         resp = client.get(
-            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
+            f"/project/{proj_enabled.id}/oss/stream/{job.public_id}",
             headers={"Accept": "text/event-stream"},
         )
         assert resp.status_code == 200
@@ -519,7 +521,7 @@ class TestSseReconnectReplaysTail:
         oss_sse_session.add(job)
         oss_sse_session.commit()
 
-        url = f"/project/{proj_enabled.id}/oss/stream/{job.id}"
+        url = f"/project/{proj_enabled.id}/oss/stream/{job.public_id}"
         # First connection
         resp1 = client.get(url, headers={"Accept": "text/event-stream"})
         assert resp1.status_code == 200
@@ -557,7 +559,7 @@ class TestSseReconnectReplaysTail:
         oss_sse_session.commit()
 
         resp = client.get(
-            f"/project/{proj_enabled.id}/oss/stream/{job.id}",
+            f"/project/{proj_enabled.id}/oss/stream/{job.public_id}",
             headers={"Accept": "text/event-stream"},
         )
         assert resp.status_code == 200

@@ -125,6 +125,7 @@ ALTER TABLE oss_tool_run ADD CONSTRAINT fk_oss_tool_run_scan
 
 CREATE TABLE IF NOT EXISTS project_oss_job (
     id BIGSERIAL PRIMARY KEY,
+    public_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
     kind project_oss_job_kind NOT NULL,
     status project_oss_job_status NOT NULL DEFAULT 'queued',
@@ -143,11 +144,13 @@ CREATE TABLE IF NOT EXISTS project_oss_job (
 );
 CREATE INDEX ix_project_oss_job_project_created ON project_oss_job (project_id, created_at DESC);
 CREATE INDEX ix_project_oss_job_status ON project_oss_job (status);
+CREATE UNIQUE INDEX ix_project_oss_job_public_id ON project_oss_job (public_id);
 """
 
 DOWNGRADE_SQL = """
 DO $$
 BEGIN
+    DROP INDEX IF EXISTS ix_project_oss_job_public_id;
     DROP INDEX IF EXISTS ix_project_oss_job_status;
     DROP INDEX IF EXISTS ix_project_oss_job_project_created;
     DROP TABLE IF EXISTS project_oss_job;
@@ -155,6 +158,9 @@ BEGIN
     DROP TYPE IF EXISTS project_oss_job_kind;
     DROP INDEX IF EXISTS ix_oss_tool_run_scan;
     DROP TABLE IF EXISTS oss_tool_run;
+    -- oss_finding_detail FKs into oss_finding; drop the child first.
+    DROP INDEX IF EXISTS ix_oss_finding_detail_finding;
+    DROP TABLE IF EXISTS oss_finding_detail;
     DROP INDEX IF EXISTS ix_oss_finding_scan_sev_stat;
     DROP INDEX IF EXISTS ix_oss_finding_scan;
     DROP TABLE IF EXISTS oss_finding;
@@ -192,9 +198,16 @@ def oss_job_engine(pg_container: PostgresContainer) -> Engine:
 
     # Raw SQL below (MIGRATION_SQL) creates all four OSS tables with the
     # migration-mirrored schema, so exclude them from ORM create_all.
+    # oss_finding_detail has an FK to oss_finding (raw-SQL-created), so defer
+    # it until after the raw SQL runs.
     # Do NOT mutate Base.metadata — it's shared state across fixtures.
     raw_sql_tables = {"oss_scan", "oss_finding", "oss_tool_run", "project_oss_job"}
-    tables_to_create = [t for name, t in Base.metadata.tables.items() if name not in raw_sql_tables]
+    deferred_tables = {"oss_finding_detail"}
+    tables_to_create = [
+        t
+        for name, t in Base.metadata.tables.items()
+        if name not in raw_sql_tables and name not in deferred_tables
+    ]
     Base.metadata.create_all(engine, tables=tables_to_create)
 
     with engine.connect() as conn:
@@ -204,6 +217,11 @@ def oss_job_engine(pg_container: PostgresContainer) -> Engine:
         conn.execute(text(PROJECT_DOCS_FTS_TRIGGER_SQL))
         conn.execute(text(MIGRATION_SQL))
         conn.commit()
+
+    Base.metadata.create_all(
+        engine,
+        tables=[Base.metadata.tables[name] for name in deferred_tables],
+    )
 
     return engine
 

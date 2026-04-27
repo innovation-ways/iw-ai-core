@@ -140,7 +140,7 @@ def oss_engine(pg_container: PostgresContainer):
     # be created AFTER the raw SQL. Do NOT mutate Base.metadata — it's shared
     # module-level state used by every other test fixture.
     raw_sql_tables = {"oss_scan", "oss_finding", "oss_tool_run"}
-    deferred_tables = {"project_oss_job"}
+    deferred_tables = {"project_oss_job", "oss_finding_detail"}
     pre_tables = [
         t
         for name, t in Base.metadata.tables.items()
