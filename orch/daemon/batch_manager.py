@@ -553,8 +553,6 @@ class BatchManager:
 
     def _run_gate_command(self, command: str, worktree_path: str, gate: str) -> str:  # noqa: ARG002
         """Run a gate command and return combined stdout+stderr."""
-        import os
-
         result = subprocess.run(  # noqa: S602
             command,
             shell=True,
@@ -562,7 +560,7 @@ class BatchManager:
             capture_output=True,
             text=True,
             timeout=300,
-            env={**os.environ, "IW_CORE_AGENT_CONTEXT": "true"},
+            env=_agent_subprocess_env(),
         )
         return result.stdout + result.stderr
 
@@ -771,9 +769,7 @@ class BatchManager:
         run_number = _next_run_number(db, step)
         log_file = log_dir / f"{step.work_item_id}_{step.step_id}_run{run_number}.log"
 
-        import os  # noqa: PLC0415
-
-        agent_env = {**os.environ, "IW_CORE_AGENT_CONTEXT": "true"}
+        agent_env = _agent_subprocess_env()
         if bv_env is not None:
             agent_env = {**agent_env, **bv_env}
         if worktree_info.get("worktree_compose_path") is not None:
@@ -1051,6 +1047,29 @@ def substitute_worktree_placeholders(
     return _WORKTREE_PLACEHOLDER_RE.sub(_replace, prompt)
 
 
+def _agent_subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """Build the env for any subprocess that runs agent or QV-gate code.
+
+    Strips the daemon's allow-list flags so the child cannot bypass the
+    live-DB guard, then arms agent context. Any caller that needs more
+    vars (e.g. browser env, per-worktree DB ports) merges them via `extra`.
+
+    See I-00041 for context. The leak this prevents was the proximate
+    cause of the 4-hour dashboard outage on 2026-04-26.
+    """
+    import os  # noqa: PLC0415
+
+    env = os.environ.copy()
+    # Strip allow-list flags — agents are NEVER trusted to write to live DB.
+    env.pop("IW_CORE_DAEMON_CONTEXT", None)
+    env.pop("IW_CORE_OPERATOR_APPLY", None)
+    # Arm refused-context for the child.
+    env["IW_CORE_AGENT_CONTEXT"] = "true"
+    if extra:
+        env.update(extra)
+    return env
+
+
 def _build_agent_env(cli_tool: str, item_id: str, worktree_path: str) -> dict[str, str]:  # noqa: ARG001
     """Build the subprocess environment for an agent launch.
 
@@ -1058,9 +1077,7 @@ def _build_agent_env(cli_tool: str, item_id: str, worktree_path: str) -> dict[st
     IW_CORE_* vars are available to the agent.  cli_tool / item_id are
     accepted for call-site symmetry but not currently used.
     """
-    import os
-
-    return os.environ.copy()
+    return _agent_subprocess_env()
 
 
 def _current_execution_group(items: list[BatchItem]) -> int | None:

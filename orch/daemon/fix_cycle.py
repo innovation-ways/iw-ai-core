@@ -720,7 +720,7 @@ def _recompute_baseline_for_gate(
     parser: Callable[[str], Fingerprint],
 ) -> Fingerprint | None:
     """Recompute baseline fingerprint for a single gate after rebase detection."""
-    import os
+    from orch.daemon.batch_manager import _agent_subprocess_env
 
     try:
         result = subprocess.run(  # noqa: S602
@@ -730,7 +730,7 @@ def _recompute_baseline_for_gate(
             capture_output=True,
             text=True,
             timeout=300,
-            env={**os.environ, "IW_CORE_AGENT_CONTEXT": "true"},
+            env=_agent_subprocess_env(),
         )
         output = result.stdout + result.stderr
         return parser(output)

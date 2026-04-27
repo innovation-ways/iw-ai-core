@@ -37,11 +37,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import jinja2
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from orch.config import get_db_url
 from orch.db.models import DaemonEvent
+from orch.db.session import safe_create_engine
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -218,13 +218,25 @@ def _emit_daemon_event(
     event_type: str,
     metadata: dict[str, Any],
     message: str | None = None,
+    db: Session | None = None,
 ) -> None:
-    """Write a DaemonEvent via a fresh short-lived session."""
-    db_url = get_db_url()
-    engine = create_engine(db_url, pool_pre_ping=True)
-    session_factory = sessionmaker(bind=engine)
-    session: Session = session_factory()
+    """Write a DaemonEvent via a fresh short-lived session.
+
+    Args:
+        event_type: The type of daemon event (e.g. 'up', 'down').
+        metadata: Event metadata dictionary.
+        message: Optional human-readable message.
+        db: Optional session to use. If not provided, creates its own connection
+            to the orch DB (suitable for daemon/CLI context).
+    """
+    _owns_session = False
     try:
+        if db is None:
+            db_url = get_db_url()
+            engine = safe_create_engine(db_url, pool_pre_ping=True)
+            session_factory = sessionmaker(bind=engine)
+            db = session_factory()
+            _owns_session = True
         event = DaemonEvent(
             project_id=None,
             event_type=event_type,
@@ -233,14 +245,15 @@ def _emit_daemon_event(
             message=message,
             event_metadata=metadata,
         )
-        session.add(event)
-        session.commit()
+        db.add(event)
+        db.commit()
     except Exception as exc:
         logger.warning("[worktree_compose] Failed to write daemon event: %s", exc)
-        session.rollback()
+        if db is not None:
+            db.rollback()
     finally:
-        session.close()
-        engine.dispose()
+        if _owns_session and db is not None:
+            db.close()
 
 
 def discover_ports(cfg: WorktreeStackConfig) -> dict[str, int]:

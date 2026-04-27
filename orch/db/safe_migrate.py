@@ -19,21 +19,22 @@ import logging
 import os
 import re
 import time
+import warnings
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlparse
 
 from alembic import command
 from alembic.config import Config as AlembicConfig
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from orch.config import get_db_url
+from orch.db.live_db_guard import assert_engine_url_allowed
 from orch.db.models import PendingMigrationLog
 
 __all__ = [
@@ -146,27 +147,21 @@ class RollbackResult:
 # ---------------------------------------------------------------------------
 
 
-def _assert_not_agent_context(db_url: str | None = None) -> None:
-    """Raise AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true'.
+def _assert_not_agent_context(url: str | None = None) -> None:
+    """DEPRECATED: use orch.db.live_db_guard.assert_engine_url_allowed.
 
-    When IW_CORE_PER_WORKTREE_DB='true' AND db_url points at the per-worktree
-    DB (host=localhost, port != 5433), the guard is relaxed — agents are
-    permitted to run alembic upgrade head against the per-worktree DB.
-    The live orch DB on port 5433 is NEVER protected by this relax.
+    Retained for backwards compatibility with any in-flight branches.
+    Will be removed in a follow-up incident no earlier than 2026-05-26.
     """
-    if os.environ.get("IW_CORE_AGENT_CONTEXT") != "true":
-        return
-
-    if os.getenv("IW_CORE_PER_WORKTREE_DB") == "true" and db_url is not None:
-        parsed = urlparse(db_url)
-        port = parsed.port or 5432
-        if port != 5433:
-            return
-
-    raise AgentContextForbiddenError(
-        "Migration operation refused: IW_CORE_AGENT_CONTEXT='true'. "
-        "Only the daemon may apply/rollback migrations against the live DB."
+    warnings.warn(
+        "_assert_not_agent_context is deprecated; use "
+        "orch.db.live_db_guard.assert_engine_url_allowed",
+        DeprecationWarning,
+        stacklevel=2,
     )
+    from orch.db.live_db_guard import assert_engine_url_allowed
+
+    assert_engine_url_allowed(url or get_db_url())
 
 
 def _is_live_db_url(url: str) -> bool:
@@ -182,6 +177,7 @@ def _build_alembic_config(
     script_location: str | None = None,
 ) -> AlembicConfig:
     """Build an alembic Config configured to point at db_url with our migrations."""
+    assert_engine_url_allowed(db_url)
     cfg = AlembicConfig()
     cfg.set_main_option("sqlalchemy.url", db_url)
     cfg.set_main_option("script_location", script_location or MIGRATIONS_SCRIPT_LOCATION)
@@ -190,7 +186,9 @@ def _build_alembic_config(
 
 def _current_revision_from_db(db_url: str) -> str | None:
     """Read the current revision from the DB's alembic_version table."""
-    engine = create_engine(db_url, pool_pre_ping=True)
+    from orch.db.session import safe_create_engine
+
+    engine = safe_create_engine(db_url, pool_pre_ping=True)
     try:
         with engine.connect() as conn:
             result = conn.execute(text("SELECT version_num FROM alembic_version"))
@@ -222,7 +220,9 @@ def _write_migration_log(
     if _is_test_context_active():
         return
     log_db_url = get_db_url()
-    engine = create_engine(log_db_url, pool_pre_ping=True)
+    from orch.db.session import safe_create_engine
+
+    engine = safe_create_engine(log_db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)
     session: Session = session_factory()
     try:
@@ -336,7 +336,9 @@ def _acquire_migration_lock(item: str = "daemon") -> None:
     if _is_test_context_active():
         return
     lock_db_url = get_db_url()
-    engine = create_engine(lock_db_url, pool_pre_ping=True)
+    from orch.db.session import safe_create_engine
+
+    engine = safe_create_engine(lock_db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)
     session: Session = session_factory()
     try:
@@ -372,7 +374,9 @@ def _release_migration_lock(item: str = "daemon") -> None:
     if _is_test_context_active():
         return
     lock_db_url = get_db_url()
-    engine = create_engine(lock_db_url, pool_pre_ping=True)
+    from orch.db.session import safe_create_engine
+
+    engine = safe_create_engine(lock_db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)
     session: Session = session_factory()
     try:
