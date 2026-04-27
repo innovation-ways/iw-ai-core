@@ -1,0 +1,133 @@
+{
+  "id": "CR-00023",
+  "type": "ChangeRequest",
+  "title": "Make iw item-status the runtime source of truth for step list and per-step runtime info",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**.py",
+      "orch/cli/item_commands.py",
+      "orch/daemon/batch_manager.py",
+      "orch/daemon/fix_cycle.py",
+      "templates/design/Implementation_Prompt_Template.md",
+      "templates/design/CodeReview_Prompt_Template.md",
+      "templates/design/CodeReview_Final_Prompt_Template.md",
+      "templates/design/QualityValidation_Template.md",
+      "ai-dev/templates/Implementation_Prompt_Template.md",
+      "ai-dev/templates/CodeReview_Prompt_Template.md",
+      "ai-dev/templates/CodeReview_Final_Prompt_Template.md",
+      "ai-dev/templates/QualityValidation_Template.md",
+      "docs/IW_AI_Core_CLI_Spec.md",
+      "tests/unit/test_item_commands_register.py",
+      "tests/unit/test_item_commands_item_status.py",
+      "tests/unit/test_template_hints.py",
+      "tests/integration/test_register_to_item_status_roundtrip.py",
+      "tests/integration/test_daemon_legacy_fallback.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Add nullable command/gate/timeout_secs columns to workflow_steps via Alembic; update WorkflowStep model with matching mapped columns",
+      "prompt": "prompts/CR-00023_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 schema migration + model update for correctness, reversibility, and naming conventions",
+      "prompt": "prompts/CR-00023_S02_CodeReview_Database_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Update iw register to populate command/gate/timeout_secs from manifest at ingest; rewrite manifest in place adding _note field; add fallback wiring in daemon read paths (batch_manager._build_claude_prompt, batch_manager._compute_qv_baselines, fix_cycle._get_gate_name_and_command) so legacy NULL rows still work via manifest read",
+      "prompt": "prompts/CR-00023_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 register-side ingest, manifest stamping, and daemon fallback wiring",
+      "prompt": "prompts/CR-00023_S04_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "backend-impl",
+      "description": "Enrich iw item-status --json per-step output with prompt_file, command, gate, timeout_secs, agent_label, opencode_agent (true superset of the manifest)",
+      "prompt": "prompts/CR-00023_S05_Backend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05 JSON enrichment for shape, key naming, and null handling",
+      "prompt": "prompts/CR-00023_S06_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "template-impl",
+      "description": "Add a one-line 'prefer iw item-status' hint to 8 prompt templates (Implementation/CodeReview/CodeReview_Final/QualityValidation in templates/design/ and the matching ai-dev/templates/ mirrors). Do NOT modify QualityValidation_FIX templates.",
+      "prompt": "prompts/CR-00023_S07_Template_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Review S07 template edits for consistency across the 8 files and that QualityValidation_FIX templates were not touched",
+      "prompt": "prompts/CR-00023_S08_CodeReview_Template_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "tests-impl",
+      "description": "Unit tests for register-side ingest + manifest stamping; unit tests for item-status JSON shape; integration round-trip test (register → item-status); regression test that daemon fallbacks work for legacy NULL rows; explicit AC6 regression test (I-00041 S14/S15 scenario)",
+      "prompt": "prompts/CR-00023_S09_Tests_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "code-review-impl",
+      "description": "Review S09 tests for semantic correctness and coverage of the 6 acceptance criteria",
+      "prompt": "prompts/CR-00023_S10_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "code-review-final-impl",
+      "description": "Cross-step global review of S01/S03/S05/S07/S09 — verify schema → register → CLI → templates → tests chain holds end-to-end and the daemon fallback contract is correct",
+      "prompt": "prompts/CR-00023_S11_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S16",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    }
+  ]
+}
