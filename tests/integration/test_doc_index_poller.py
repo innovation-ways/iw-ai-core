@@ -382,3 +382,95 @@ class TestDocIndexPollerLaunch:
             )
         finally:
             JOB_REGISTRY_DOC.pop(test_project.id, None)
+
+
+class TestDocIndexPollerSessionBoundary:
+    """Regression coverage for the DetachedInstanceError that caused poll() to
+    abort on every cycle until commit a82faa1 (2026-04-26). The fix materialises
+    plain project_id strings inside the `with self._session_factory()` block so
+    no ORM attribute is read after the session closes.
+
+    The test uses a session_factory wrapper that mimics production's
+    `orch.db.session.get_session()` semantics — commit-then-close — because that
+    is what causes `expire_on_commit=True` to mark attributes as expired before
+    the session closes. A bare `with sessionmaker() as db:` only calls close()
+    without commit, leaves cached column values in __dict__, and would let
+    `project.id` succeed on a detached instance — silently passing against the
+    buggy code (false green).
+    """
+
+    def test_poll_invokes_process_project_for_each_enabled_id_without_detached_error(
+        self,
+        db_session: Session,
+        db_engine: Engine,
+        db_session_factory: sessionmaker,
+        tmp_path: Path,
+    ) -> None:
+        """Two enabled projects + one disabled → poll() calls _process_project
+        once per enabled id (the disabled one is filtered) and never raises
+        DetachedInstanceError on the post-session ORM access.
+        """
+        enabled_a = Project(
+            id="proj-enabled-a",
+            display_name="Enabled A",
+            repo_root="/repos/a",
+            config={},
+            enabled=True,
+        )
+        enabled_b = Project(
+            id="proj-enabled-b",
+            display_name="Enabled B",
+            repo_root="/repos/b",
+            config={},
+            enabled=True,
+        )
+        disabled = Project(
+            id="proj-disabled",
+            display_name="Disabled",
+            repo_root="/repos/c",
+            config={},
+            enabled=False,
+        )
+        db_session.add_all([enabled_a, enabled_b, disabled])
+        db_session.flush()
+
+        @contextmanager
+        def production_like_session_factory() -> Generator[Session, None, None]:
+            """Mirror orch.db.session.get_session() lifecycle so attribute
+            expiration on close matches production. expire_all() before close
+            stands in for the production commit (which would break test
+            isolation against the outer transaction this fixture owns).
+            """
+            session = db_session_factory()
+            try:
+                yield session
+                session.expire_all()
+            except BaseException:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        config = type(
+            "MockDaemonConfig",
+            (),
+            {"index_path": str(tmp_path / "index")},
+        )()
+
+        poller = DocIndexPoller(production_like_session_factory, config)
+
+        seen: list[str] = []
+        poller._process_project = lambda pid: seen.append(pid)  # type: ignore[method-assign]
+
+        # The bug — if reintroduced — would raise DetachedInstanceError here on
+        # the line `self._process_project(project.id)` after the session closed
+        # and attributes were expired.
+        poller.poll()
+
+        assert sorted(seen) == ["proj-enabled-a", "proj-enabled-b"], (
+            f"Expected _process_project to be called for both enabled projects "
+            f"and only those projects, got {seen}"
+        )
+        assert "proj-disabled" not in seen, (
+            f"Disabled project must be filtered out, but {seen} includes it"
+        )
