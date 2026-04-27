@@ -21,9 +21,9 @@ Your work here does not require a migration; S01 already shipped one.
 - `ai-dev/active/CR-00024/CR-00024_CR_Design.md` — design (AC1, AC2, AC3, AC4, AC5, AC7)
 - `ai-dev/active/CR-00024/reports/CR-00024_S01_Database_report.md`, `CR-00024_S02_*_report.md`
 - `orch/daemon/step_monitor.py` — `PLATFORM_TIMEOUT_DEFAULTS` (line 32), `get_timeout` (line 51), `_check_step_health` (line 149), `_handle_timeout` (line 224)
-- `orch/daemon/batch_manager.py` — caller of `get_timeout` (line 704, 765)
-- `orch/daemon/fix_cycle.py` — caller of `get_timeout` (search for `get_timeout(`)
-- `dashboard/routers/sse.py` — `SUBSCRIBED_EVENT_TYPES` (line ~29) and `SEVERITY_BY_TYPE` (line ~107)
+- `orch/daemon/batch_manager.py` — callers of `get_timeout` (currently lines 737 and 798; verify with `grep -n "get_timeout(" orch/daemon/batch_manager.py` since line numbers drift)
+- `orch/daemon/fix_cycle.py` — caller of `get_timeout` inside `_launch_fix_agent` (currently line 1117). The local `step` IS in scope (it is a parameter to `_launch_fix_agent`), so adding `step=step` works. NOTE: the second positional arg is `fix_step_type` (a string from `_FIX_TIMEOUT_MAP`), NOT `step.step_type.value` — keep that argument as-is and only ADD the `step=step` kwarg.
+- `dashboard/routers/sse.py` — `_TOAST_EVENTS` frozenset (line ~50, lists which event_types should toast) and `_TOAST_SEVERITY` dict (line ~107, maps event_type → severity string). There is also `_RUNNING_UPDATE_EVENTS` (line ~22) — events listed here trigger a running-table fragment refresh.
 
 ## Output Files
 
@@ -102,9 +102,11 @@ Add `from orch.db.models import WorkflowStep` to the TYPE_CHECKING block (avoid 
 
 ### 2. Update daemon callers to pass `step=step`
 
-In `orch/daemon/batch_manager.py` find every `get_timeout(...)` call (currently at line 704 and 765) and add `step=step` (where `step` is the local `WorkflowStep` already in scope). Same for `orch/daemon/fix_cycle.py`.
+In `orch/daemon/batch_manager.py` find every `get_timeout(...)` call (currently lines 737 and 798 — re-verify with `grep -n "get_timeout(" orch/daemon/batch_manager.py` because line numbers drift) and add `step=step` (where `step` is the local `WorkflowStep` already in scope at both sites).
 
-If a caller does NOT have a `WorkflowStep` in scope (e.g., a future call site that operates on raw step_type), leave it without the kwarg — `step=None` falls through to the per-type bucket, which is the legacy behavior.
+In `orch/daemon/fix_cycle.py:_launch_fix_agent` the call is currently `get_timeout(project_config, fix_step_type)` (line ~1117). `step: WorkflowStep` is a parameter to that function so it IS in scope — add `step=step` to that call as well. Do NOT replace `fix_step_type` with `step.step_type.value`: the fix-cycle map intentionally remaps step types (e.g., `code_review` → `code_review_fix`) so its own fallback bucket is correct. Only the per-gate lookup needs `step.gate`, which the new code path already routes through the `step` kwarg.
+
+If any other caller does NOT have a `WorkflowStep` in scope (e.g., a future call site that operates on raw step_type), leave it without the kwarg — `step=None` falls through to the per-type bucket, which is the legacy behavior.
 
 ### 3. Emit the one-time `step_warning_50pct` event
 
@@ -163,12 +165,15 @@ The branch order in `_check_step_health` MUST be: dead-PID → timeout → 50%-w
 
 ### 4. Register the new event type in the SSE pipeline
 
-In `dashboard/routers/sse.py`:
+In `dashboard/routers/sse.py` there are several frozensets / dicts; the constant names matter — DO NOT invent `SUBSCRIBED_EVENT_TYPES` or `SEVERITY_BY_TYPE` (those don't exist):
 
-- Find the event-type subscription set (line ~29 — currently includes `step_crashed`, `step_timeout`, `step_stalled`). If `step_warning_50pct` should be subscribed (it should — operators want to see toasts when steps cross the half-way mark), add it.
-- Find `SEVERITY_BY_TYPE` (line ~107) and add `"step_warning_50pct": "info"`.
+- `_TOAST_EVENTS: frozenset[str]` (line ~50) — the SSE pump only emits toasts for event_types in this set. ADD `"step_warning_50pct"` here so the toast actually fires.
+- `_TOAST_SEVERITY: dict[str, str]` (line ~107) — maps event_type → severity string used by the toast renderer. ADD `"step_warning_50pct": "info"` here.
+- `_RUNNING_UPDATE_EVENTS: frozenset[str]` (line ~22) — events listed here trigger a running-table fragment refresh. ADD `"step_warning_50pct"` here too, so the dashboard's heartbeat-age column refreshes when the warn fires.
 
-Match the existing comma/quote style. Do NOT touch any other event type.
+Match the existing comma/quote style. Do NOT touch any other event type. Do NOT remove or rename any existing entry.
+
+`_WATCHED_EVENTS` (line ~99) is a union of the other sets, so it picks the new event up automatically — no edit needed.
 
 ### 5. Hard Constraints
 

@@ -1,5 +1,6 @@
 <!-- Worktree health table fragment — auto-refreshes every 30 s via htmx -->
 {% from "macros/db_guard.html" import write_button_attrs %}
+{% from "components/heartbeat_cell.html" import heartbeat_cell %}
 {% if prune_errors %}
 <div class="mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-2 text-xs text-destructive space-y-0.5">
   <p class="font-medium">git worktree prune failed for some projects:</p>
@@ -29,6 +30,7 @@
             <th class="px-4 py-2 text-right font-medium text-muted-foreground">Ahead</th>
             <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden lg:table-cell">Path</th>
             <th class="px-4 py-2 text-left font-medium text-muted-foreground">Container</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground text-xs">Last seen</th>
             <th class="px-4 py-2 text-center font-medium text-muted-foreground text-xs">DB :Port</th>
             <th class="px-4 py-2 text-center font-medium text-muted-foreground text-xs">App :Port</th>
             <th class="px-4 py-2 text-center font-medium text-muted-foreground text-xs">Class</th>
@@ -39,7 +41,7 @@
           {% for wt in worktrees %}
             {% if not loop.first and wt.batch_status != 'main' and loop.previtem.batch_status == 'main' %}
             <tr class="border-t-2 border-border/60">
-              <td colspan="12" class="px-4 py-0.5 text-xs text-muted-foreground bg-muted/20">Agent worktrees</td>
+              <td colspan="13" class="px-4 py-0.5 text-xs text-muted-foreground bg-muted/20">Agent worktrees</td>
             </tr>
             {% endif %}
 
@@ -174,6 +176,9 @@
                 {% endif %}
               </td>
 
+              <!-- Last seen (heartbeat-age + pid-alive pip) -->
+              {{ heartbeat_cell(wt) }}
+
               <!-- DB Port -->
               <td class="px-4 py-2.5 text-center font-mono text-xs text-muted-foreground">
                 {% if wt.db_port %}{{ wt.db_port }}{% else %}—{% endif %}
@@ -245,7 +250,7 @@
             <!-- Logs panel (hidden, populated by htmx) -->
             {% if wt.batch_item_pk %}
             <tr id="wt-logs-{{ wt.batch_item_pk }}" class="wt-logs-panel" style="display: none;">
-              <td colspan="12" class="px-4 py-2 bg-muted/50 border-b border-border">
+              <td colspan="13" class="px-4 py-2 bg-muted/50 border-b border-border">
                 <div class="text-xs text-muted-foreground font-mono max-h-48 overflow-auto bg-black/5 rounded p-2">
                   <!-- SSE logs stream here -->
                 </div>

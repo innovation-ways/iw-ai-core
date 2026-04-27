@@ -132,8 +132,11 @@ test clock by 30 seconds (mock `datetime.now`); call again; assert STILL only
 one event (no duplicate).
 
 #### test_step_warning_50pct_severity_is_info_in_sse_registry (AC7)
-Import `dashboard.routers.sse`; assert `SEVERITY_BY_TYPE["step_warning_50pct"] == "info"`.
-Assert `"step_warning_50pct"` is in `SUBSCRIBED_EVENT_TYPES`.
+Import `dashboard.routers.sse` (use the module attribute access, since the constants are name-mangled with a leading underscore: `from dashboard.routers import sse; sse._TOAST_SEVERITY[...]`).
+Assert `sse._TOAST_SEVERITY["step_warning_50pct"] == "info"`.
+Assert `"step_warning_50pct"` is in `sse._TOAST_EVENTS`.
+Assert `"step_warning_50pct"` is in `sse._RUNNING_UPDATE_EVENTS`.
+Add a `# noqa: SLF001` comment if ruff flags the private-attribute access — accessing module-private state in tests is acceptable per `tests/CLAUDE.md`.
 
 #### test_legacy_null_gate_row_keeps_existing_default (AC2 — integration)
 Insert a `WorkflowStep` with `step_type=quality_validation, gate=None`.

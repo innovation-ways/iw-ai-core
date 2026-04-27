@@ -27,7 +27,7 @@
 - [ ] `get_timeout` resolution order is: explicit `step_config["timeout_secs"]` → project override → gate default → step-type default → `_FALLBACK_TIMEOUT`
 - [ ] `step` parameter is keyword-only (`*, step: WorkflowStep | None = None`) — verify legacy 3-positional callers still type-check
 - [ ] When `step.gate` is NULL or unknown (not in `QV_GATE_TIMEOUT_DEFAULTS`), the function falls through to the step-type bucket — does NOT return None and does NOT crash
-- [ ] All daemon callers in `batch_manager.py` (lines 704, 765) and `fix_cycle.py` pass `step=step`
+- [ ] All daemon callers pass `step=step`: both call sites in `batch_manager.py` (verify with `grep -n "get_timeout(" orch/daemon/batch_manager.py`) and the call inside `fix_cycle.py:_launch_fix_agent`. The fix_cycle call must keep `fix_step_type` (the remapped string from `_FIX_TIMEOUT_MAP`) as the second positional arg — only `step=step` is added; `fix_step_type` is NOT replaced with `step.step_type.value`
 
 ### 50%-warn emission (AC4, AC5)
 - [ ] The warn branch in `_check_step_health` is positioned AFTER the timeout check and BEFORE the stall check
@@ -38,10 +38,12 @@
 - [ ] If a run has both `elapsed > 50%` AND `elapsed > 100%`, the timeout branch fires first; the warn branch is unreachable in that cycle (verify by branch ordering)
 
 ### SSE registry (AC7)
-- [ ] `step_warning_50pct` is added to the SUBSCRIBED_EVENT_TYPES set in `dashboard/routers/sse.py` (so the SSE stream actually delivers the event)
-- [ ] `SEVERITY_BY_TYPE["step_warning_50pct"] = "info"`
-- [ ] No existing event type was removed or renamed
+- [ ] `step_warning_50pct` is added to `_TOAST_EVENTS` in `dashboard/routers/sse.py` (so the SSE pump renders a toast for the event)
+- [ ] `_TOAST_SEVERITY["step_warning_50pct"] == "info"`
+- [ ] `step_warning_50pct` is added to `_RUNNING_UPDATE_EVENTS` (so the running-table fragment refreshes when the warn fires)
+- [ ] No existing event_type was removed or renamed from any of the three constants
 - [ ] Order/style of the additions matches the existing format
+- [ ] The implementing agent did NOT introduce new identifiers named `SUBSCRIBED_EVENT_TYPES` or `SEVERITY_BY_TYPE` (those names are not part of this codebase)
 
 ### Backward compatibility
 - [ ] Legacy NULL-gate rows still resolve to the existing `quality_validation: 600s` bucket (AC2)

@@ -44,7 +44,7 @@ to access the `gate` column on a row where CR-00023 hasn't been merged yet).
 
 ### Chain integrity
 - [ ] The new `warned_50pct_at` column (S01) matches the field name accessed by `_check_step_health` (S03) — exact spelling
-- [ ] The `step_warning_50pct` event_type emitted by `_emit_warn_50pct` (S03) matches the key added to `SUBSCRIBED_EVENT_TYPES` and `SEVERITY_BY_TYPE` (S03) — exact string match
+- [ ] The `step_warning_50pct` event_type emitted by `_emit_warn_50pct` (S03) matches the key added to `_TOAST_EVENTS`, `_TOAST_SEVERITY`, and `_RUNNING_UPDATE_EVENTS` in `dashboard/routers/sse.py` (S03) — exact string match across all three
 - [ ] `WorkflowStep.gate` is read in `get_timeout` only via the optional `step` kwarg, never as a positional or required argument — proves backward compat
 - [ ] `RunningRow.last_heartbeat_age_secs` and `pid_alive` (S05) source from the same DB columns the daemon writes (`StepRun.last_heartbeat`, `StepRun.pid_alive`)
 
@@ -55,7 +55,7 @@ to access the `gate` column on a row where CR-00023 hasn't been merged yet).
 - [ ] AC4: 50%-warn idempotency — `warned_50pct_at IS NULL` guard + stamp
 - [ ] AC5: timeout shadowing — branch order is dead → timeout (returns) → warn → stall
 - [ ] AC6: dashboard renders heartbeat age + pip — visible in the 3 fragments
-- [ ] AC7: SSE pipeline maps `step_warning_50pct` → `info` severity
+- [ ] AC7: `_TOAST_SEVERITY["step_warning_50pct"] == "info"`, and the event_type appears in `_TOAST_EVENTS` and `_RUNNING_UPDATE_EVENTS`
 
 ### Dependency on CR-00023
 - [ ] `step.gate` is NEVER assumed non-NULL; every read is guarded

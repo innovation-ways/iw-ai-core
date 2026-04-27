@@ -24,6 +24,9 @@ from orch.db.models import (
     BatchItemStatus,
     DaemonEvent,
     Project,
+    RunStatus,
+    StepRun,
+    WorkflowStep,
 )
 from orch.db.session import SessionLocal
 
@@ -310,6 +313,11 @@ class WorktreeRow:
     app_port: int | None = None
     classification: Literal["active", "stale", "orphan", "malformed", "n/a"] = "n/a"
     batch_item_pk: int | None = None  # DB PK for teardown
+    # CR-00024: per-worktree heartbeat surfacing — populated when there is a
+    # running StepRun for the work item; otherwise None and rendered as "—".
+    last_heartbeat_age_secs: int | None = None
+    pid_alive: bool | None = None
+    warned_50pct_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +349,36 @@ def _container_status_for_batch_item(
     return "missing", classification
 
 
+def _running_step_heartbeats(
+    db: Session,
+) -> dict[tuple[str, str], tuple[int | None, bool | None, datetime | None]]:
+    """CR-00024: bulk-load heartbeat info for all currently-running StepRuns.
+
+    Returns a mapping ``(project_id, work_item_id) -> (age_secs, pid_alive,
+    warned_50pct_at)`` so callers can patch heartbeat columns onto worktree
+    rows with a single dict lookup. Items without a running step are absent
+    from the map.
+    """
+    now = datetime.now(UTC)
+    stmt = (
+        select(StepRun, WorkflowStep)
+        .join(WorkflowStep, StepRun.step_id == WorkflowStep.id)
+        .where(StepRun.status == RunStatus.running)
+    )
+    out: dict[tuple[str, str], tuple[int | None, bool | None, datetime | None]] = {}
+    for run, step in db.execute(stmt).all():
+        age_secs: int | None = None
+        if run.last_heartbeat is not None:
+            hb = (
+                run.last_heartbeat
+                if run.last_heartbeat.tzinfo
+                else run.last_heartbeat.replace(tzinfo=UTC)
+            )
+            age_secs = int((now - hb).total_seconds())
+        out[(step.project_id, step.work_item_id)] = (age_secs, run.pid_alive, run.warned_50pct_at)
+    return out
+
+
 def _collect_worktrees(db: Session) -> list[WorktreeRow]:
     """Query active batch items and detect orphaned worktrees on disk.
 
@@ -350,6 +388,7 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
     now = datetime.now(UTC)
     rows: list[WorktreeRow] = []
     known_paths: set[str] = set()
+    heartbeats = _running_step_heartbeats(db)
 
     findings = worktree_reaper.scan()
     findings_by_bi: dict[int, worktree_reaper.ReaperFinding] = {}
@@ -409,6 +448,9 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
             else:
                 container_status = "stopped" if finding.container_id else "missing"
 
+        hb = heartbeats.get((bi.project_id, bi.work_item_id))
+        last_hb_age, hb_alive, hb_warned = hb if hb else (None, None, None)
+
         rows.append(
             WorktreeRow(
                 project_id=bi.project_id,
@@ -428,6 +470,9 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
                 app_port=app_port,
                 classification=classification,
                 batch_item_pk=bi.id,
+                last_heartbeat_age_secs=last_hb_age,
+                pid_alive=hb_alive,
+                warned_50pct_at=hb_warned,
             )
         )
 
