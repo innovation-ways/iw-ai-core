@@ -1,4 +1,5 @@
 <!-- Daemon status panel — rendered as an htmx fragment, no base.html -->
+{% from "macros/db_guard.html" import write_button_attrs %}
 <div id="daemon-panel"
      hx-get="/system/daemon/panel"
      hx-trigger="every 15s"
@@ -82,7 +83,8 @@
                 hx-swap="outerHTML"
                 hx-confirm="Stop the daemon? Running steps will finish but no new ones will launch."
                 class="px-3 py-1.5 bg-destructive text-destructive-foreground rounded text-xs
-                       hover:opacity-90 transition-opacity cursor-pointer">
+                       hover:opacity-90 transition-opacity cursor-pointer"
+                {{ write_button_attrs(request) }}>
           Stop
         </button>
         <button hx-post="/system/daemon/restart"
@@ -90,7 +92,8 @@
                 hx-swap="outerHTML"
                 hx-confirm="Restart the daemon? It will stop gracefully and start fresh."
                 class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded text-xs
-                       hover:opacity-90 transition-opacity cursor-pointer">
+                       hover:opacity-90 transition-opacity cursor-pointer"
+                {{ write_button_attrs(request) }}>
           Restart
         </button>
       {% else %}
@@ -98,7 +101,8 @@
                 hx-target="#daemon-panel"
                 hx-swap="outerHTML"
                 class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs
-                       hover:opacity-90 transition-opacity cursor-pointer">
+                       hover:opacity-90 transition-opacity cursor-pointer"
+                {{ write_button_attrs(request) }}>
           Start
         </button>
         <button disabled

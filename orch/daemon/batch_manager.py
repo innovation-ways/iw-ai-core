@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from orch.daemon import worktree_compose
+from orch.db.alembic_guard import check_db_at_head, remediation_message
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -276,6 +277,29 @@ class BatchManager:
     def _launch_item(self, db: Session, batch_item: BatchItem) -> None:
         """Two-phase launch: worktree setup + compose up, then first step."""
         item_id = batch_item.work_item_id
+
+        # R4 — re-check before any worktree is created
+        status = check_db_at_head()
+        if not status.ok:
+            batch_item.status = BatchItemStatus.setup_failed
+            batch_item.notes = remediation_message(status)
+            db.commit()
+            _emit_event(
+                db,
+                self.project_id,
+                "item_failed",
+                item_id,
+                "work_item",
+                remediation_message(status),
+                {
+                    "phase": "alembic_guard",
+                    "reason": "db_behind_head",
+                    "current_rev": status.current_rev,
+                    "head_rev": status.head_rev,
+                    "pending": status.pending,
+                },
+            )
+            return
 
         # Phase 1: Worktree setup
         batch_item.status = BatchItemStatus.setting_up
@@ -872,7 +896,9 @@ class BatchManager:
                             f"Execute exactly: `{gate_cmd}`\n"
                             f"Capture the output. If exit code is 0, the gate passed. "
                             f"Otherwise it failed.\n"
-                            f"Report PASS or FAIL with the relevant output."
+                            f"Report PASS or FAIL with the relevant output.\n"
+                            f"Do NOT call `iw step-start`, `iw step-done`, or `iw step-fail` — "
+                            f"those are handled by the orchestrator."
                         )
                     break
 

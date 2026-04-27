@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
+from dashboard.middlewares.alembic_guard import require_db_at_head
 from orch.archive.batch_archiver import archive_batch
 from orch.db.models import (
     Batch,
@@ -461,6 +462,7 @@ def approve_item(
     project_id: str,
     item_id: str,
     db: Session = Depends(get_db),
+    _guard: None = Depends(require_db_at_head),
 ) -> Any:
     item = _get_item(db, project_id, item_id)
     if item.type == WorkItemType.Research:
@@ -1239,6 +1241,7 @@ def approve_batch(
     project_id: str,
     batch_id: str,
     db: Session = Depends(get_db),
+    _guard: None = Depends(require_db_at_head),
 ) -> Any:
     batch = _get_batch(db, project_id, batch_id)
     if batch.status != BatchStatus.planning:

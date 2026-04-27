@@ -1,6 +1,7 @@
 {% from "components/step_pipeline.html" import step_pipeline %}
 {% from "components/status_badge.html" import status_badge %}
 {% from "components/action_button.html" import restart_button, skip_button, kill_button, restart_merge_button %}
+{% from "macros/db_guard.html" import write_button_attrs %}
 
 <!-- Step pipeline overview -->
 <div class="mb-6">

@@ -1,4 +1,5 @@
 {% from "components/status_badge.html" import status_badge %}
+{% from "macros/db_guard.html" import write_button_attrs %}
 
 {% if not has_config %}
   <div class="px-4 py-8 text-center text-muted-foreground text-sm">
@@ -89,7 +90,8 @@
                     hx-confirm="Launch {{ card.label }}?"
                     class="flex-1 px-3 py-2 rounded-md text-sm font-medium hover:opacity-90 transition-opacity
                            bg-primary text-primary-foreground"
-                    title="Run the gate command directly">
+                    title="Run the gate command directly"
+                    {{ write_button_attrs(request) }}>
               Launch
             </button>
             <button hx-post="/project/{{ current_project.id }}/api/quality/launch-fix/{{ card.key }}"
@@ -98,7 +100,8 @@
                     hx-confirm="Launch {{ card.label }} with auto-fix? Claude will run the gate and fix any errors automatically."
                     class="flex-1 px-3 py-2 rounded-md text-sm font-medium transition-colors
                            border border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-                    title="Run the gate and automatically fix errors using Claude">
+                    title="Run the gate and automatically fix errors using Claude"
+                    {{ write_button_attrs(request) }}>
               Auto-fix
             </button>
           </div>

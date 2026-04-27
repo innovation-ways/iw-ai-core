@@ -12,9 +12,12 @@ from fastapi import FastAPI
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from starlette.requests import Request  # noqa: TC002
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from dashboard.middlewares.alembic_guard import AlembicGuardMiddleware, is_db_stale
 from dashboard.routers import (
     actions,
     batches,
@@ -41,6 +44,7 @@ from dashboard.routers import (
     worktrees,
 )
 from dashboard.utils.timing import TimingMiddleware
+from orch.db.alembic_guard import check_db_at_head
 from orch.db.identity import verify_instance_identity
 from orch.db.session import SessionLocal, engine
 from orch.test_runner import mark_orphaned_runs
@@ -98,6 +102,19 @@ def create_app() -> FastAPI:
         slow_request_ms=int(os.environ.get("IW_CORE_SLOW_REQUEST_MS", "500")),
     )
 
+    # Register alembic guard middleware (R3 — throttle re-checks at most once per 10s)
+    app.add_middleware(AlembicGuardMiddleware)
+
+    # Initial alembic guard check at app construction (R3).
+    # Suppress failures: if the DB is unreachable at boot, the middleware
+    # will retry on each request (with the same suppress) and the banner
+    # stays hidden. Mirrors the middleware's contextlib.suppress pattern.
+    try:
+        app.state.alembic_guard_status = check_db_at_head()
+    except Exception:  # noqa: BLE001
+        logger.exception("alembic guard check failed at startup; continuing")
+        app.state.alembic_guard_status = None
+
     # Configure Jinja2 templates and store on app state so routers can access it
     templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
@@ -146,6 +163,11 @@ def create_app() -> FastAPI:
     templates.env.filters["timeago"] = _timeago
     templates.env.filters["fmt_ts_time"] = _fmt_ts_time
     templates.env.filters["localdt"] = _localdt
+
+    def _is_db_stale(request: Request) -> bool:
+        return is_db_stale(request)
+
+    templates.env.globals["is_db_stale"] = _is_db_stale
     app.state.templates = templates
 
     # Health check endpoint (used by browser_verification steps and monitoring)

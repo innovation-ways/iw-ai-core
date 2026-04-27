@@ -227,6 +227,19 @@ def _build_env(
         f"postgresql://{e2e_db_user}:{e2e_db_password}@127.0.0.1:{ports[2]}/{e2e_db_name}"
     )
 
+    # IW_CORE_DB_* must also be set so that "uv run alembic" and any other
+    # Python code that reads orch.config.get_db_url() inside the agent
+    # subprocess uses the per-worktree DB (127.0.0.1:N) instead of the live
+    # orch DB (5433) that the daemon's shell IW_CORE_DB_* points at.
+    # load_dotenv() does NOT override existing env vars, so without these
+    # explicit entries the agent would connect to the wrong DB and V2 would
+    # corrupt the live orch DB's alembic_version.
+    env["IW_CORE_DB_HOST"] = "127.0.0.1"
+    env["IW_CORE_DB_PORT"] = str(ports[2])
+    env["IW_CORE_DB_NAME"] = e2e_db_name
+    env["IW_CORE_DB_USER"] = e2e_db_user
+    env["IW_CORE_DB_PASSWORD"] = e2e_db_password
+
     return env
 
 

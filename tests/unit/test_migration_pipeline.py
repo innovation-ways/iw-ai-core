@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class TestIsMergeQueueFrozen:
@@ -21,7 +25,7 @@ class TestIsMergeQueueFrozen:
         mock_connection.__enter__ = MagicMock(return_value=mock_connection)
         mock_connection.__exit__ = MagicMock(return_value=False)
 
-        with patch("orch.daemon.migration_pipeline.create_engine") as mock_engine:
+        with patch("orch.daemon.migration_pipeline.safe_create_engine") as mock_engine:
             mock_engine.return_value.connect.return_value = mock_connection
             mock_engine.return_value.dispose = MagicMock()
             with patch("orch.daemon.migration_pipeline.sessionmaker") as mock_sm:
@@ -31,8 +35,13 @@ class TestIsMergeQueueFrozen:
 
         assert result is False
 
-    def test_returns_true_when_active_is_true(self) -> None:
+    def test_returns_true_when_active_is_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from orch.daemon.migration_pipeline import is_merge_queue_frozen
+
+        # is_merge_queue_frozen short-circuits to False under IW_CORE_TEST_CONTEXT
+        # to keep tests from making out-of-band live-DB connections. This test
+        # exercises the real query path with mocks, so opt out of that guard.
+        monkeypatch.delenv("IW_CORE_TEST_CONTEXT", raising=False)
 
         mock_result = MagicMock()
         mock_result.fetchone.return_value = ({"active": True},)
@@ -44,7 +53,7 @@ class TestIsMergeQueueFrozen:
         mock_connection.__enter__ = MagicMock(return_value=mock_connection)
         mock_connection.__exit__ = MagicMock(return_value=False)
 
-        with patch("orch.daemon.migration_pipeline.create_engine") as mock_engine:
+        with patch("orch.daemon.migration_pipeline.safe_create_engine") as mock_engine:
             mock_engine.return_value.connect.return_value = mock_connection
             mock_engine.return_value.dispose = MagicMock()
             with patch("orch.daemon.migration_pipeline.sessionmaker") as mock_sm:
@@ -67,7 +76,7 @@ class TestIsMergeQueueFrozen:
         mock_connection.__enter__ = MagicMock(return_value=mock_connection)
         mock_connection.__exit__ = MagicMock(return_value=False)
 
-        with patch("orch.daemon.migration_pipeline.create_engine") as mock_engine:
+        with patch("orch.daemon.migration_pipeline.safe_create_engine") as mock_engine:
             mock_engine.return_value.connect.return_value = mock_connection
             mock_engine.return_value.dispose = MagicMock()
             with patch("orch.daemon.migration_pipeline.sessionmaker") as mock_sm:
@@ -87,7 +96,7 @@ class TestSetMergeQueueFrozen:
         mock_connection.__enter__ = MagicMock(return_value=mock_connection)
         mock_connection.__exit__ = MagicMock(return_value=False)
 
-        with patch("orch.daemon.migration_pipeline.create_engine") as mock_engine:
+        with patch("orch.daemon.migration_pipeline.safe_create_engine") as mock_engine:
             mock_engine.return_value.connect.return_value = mock_connection
             mock_engine.return_value.dispose = MagicMock()
             with patch("orch.daemon.migration_pipeline.sessionmaker") as mock_sm:

@@ -9,12 +9,31 @@ Tests the compose up/down lifecycle integration in _launch_item:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from orch.daemon.batch_manager import BatchManager, WorktreeSetupError
+from orch.db.alembic_guard import GuardStatus
 from orch.db.models import BatchItem, BatchItemStatus, WorkItemStatus
+
+
+@pytest.fixture(autouse=True)
+def _alembic_guard_ok() -> Iterator[None]:
+    """Mock the I-00040 check_db_at_head() pre-flight in _launch_item.
+
+    Without this, _launch_item's first action is a real DB probe that fails
+    under the conftest env-hijack (port 1 unreachable). These tests target
+    worktree/compose lifecycle, not the alembic guard, so we stub it as ok.
+    """
+    ok = GuardStatus(
+        current_rev="abc123", head_rev="abc123", pending=[], multiple_heads=[], ok=True
+    )
+    with patch("orch.daemon.batch_manager.check_db_at_head", return_value=ok):
+        yield
 
 
 class TestWorktreeLifecycleHooks:

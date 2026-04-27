@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "components/status_badge.html" import status_badge %}
 {% from "components/action_button.html" import kill_button, restart_button, skip_button %}
+{% from "macros/db_guard.html" import write_button_attrs %}
 
 {% block title %}Running Tasks{% endblock %}
 
@@ -130,7 +131,8 @@
                   hx-swap="none"
                   hx-confirm="Reset this and all downstream steps to pending?"
                   class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
-                  title="Restart from this step (resets all downstream steps)">
+                  title="Restart from this step (resets all downstream steps)"
+                  {{ write_button_attrs(request) }}>
                   ↺ from here
                 </button>
               </div>

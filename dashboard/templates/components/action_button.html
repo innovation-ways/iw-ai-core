@@ -1,9 +1,12 @@
+{% from "macros/db_guard.html" import write_button_attrs %}
+
 {% macro kill_button(project_id, item_id, step_id) %}
   <button
     hx-get="/project/{{ project_id }}/api/confirm/kill-step/{{ item_id }}/{{ step_id }}"
     hx-target="#confirm-dialog"
     hx-swap="innerHTML"
-    class="px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+    class="px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    {{ write_button_attrs(request) }}>
     Kill
   </button>
 {% endmacro %}
@@ -14,7 +17,8 @@
     hx-target="#confirm-dialog"
     hx-swap="innerHTML"
     class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
-    title="Restart step">
+    title="Restart step"
+    {{ write_button_attrs(request) }}>
     ↻
   </button>
 {% endmacro %}
@@ -25,7 +29,8 @@
     hx-target="#confirm-dialog"
     hx-swap="innerHTML"
     class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
-    title="Skip step">
+    title="Skip step"
+    {{ write_button_attrs(request) }}>
     ⏭
   </button>
 {% endmacro %}
@@ -36,7 +41,8 @@
     hx-target="#confirm-dialog"
     hx-swap="innerHTML"
     class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
-    title="Retry merge">
+    title="Retry merge"
+    {{ write_button_attrs(request) }}>
     ↻ Retry Merge
   </button>
 {% endmacro %}

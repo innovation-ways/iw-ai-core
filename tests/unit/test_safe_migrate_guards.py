@@ -125,6 +125,7 @@ class TestMultipleHeadsErrorArgs:
         mock_script_dir.get_heads.return_value = ["rev_a", "rev_b"]
 
         with (
+            patch("orch.db.safe_migrate.assert_engine_url_allowed"),
             patch(
                 "alembic.script.ScriptDirectory.from_config",
                 return_value=mock_script_dir,
