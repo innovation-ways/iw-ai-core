@@ -147,11 +147,19 @@ class RollbackResult:
 # ---------------------------------------------------------------------------
 
 
-def _assert_not_agent_context(url: str | None = None) -> None:
+def _assert_not_agent_context(db_url: str | None = None) -> None:
     """DEPRECATED: use orch.db.live_db_guard.assert_engine_url_allowed.
 
     Retained for backwards compatibility with any in-flight branches.
     Will be removed in a follow-up incident no earlier than 2026-05-26.
+
+    Preserves the F-00062 semantics callers (apply/rollback) and tests still
+    rely on: only inspects IW_CORE_AGENT_CONTEXT (and IW_CORE_PER_WORKTREE_DB
+    for the per-worktree relax against non-5433 ports), and raises
+    AgentContextForbiddenError. The new live_db_guard chokepoint runs ahead of
+    real connections (in safe_create_engine / _build_alembic_config) — this
+    wrapper does not delegate to it, to avoid the TEST_CONTEXT/exception-type
+    coupling the deprecated tests don't model.
     """
     warnings.warn(
         "_assert_not_agent_context is deprecated; use "
@@ -159,9 +167,21 @@ def _assert_not_agent_context(url: str | None = None) -> None:
         DeprecationWarning,
         stacklevel=2,
     )
-    from orch.db.live_db_guard import assert_engine_url_allowed
+    if os.environ.get("IW_CORE_AGENT_CONTEXT") != "true":
+        return
 
-    assert_engine_url_allowed(url or get_db_url())
+    if os.environ.get("IW_CORE_PER_WORKTREE_DB") == "true" and db_url is not None:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(db_url)
+        port = parsed.port or 5432
+        if port != 5433:
+            return
+
+    raise AgentContextForbiddenError(
+        "Migration operation refused: IW_CORE_AGENT_CONTEXT='true'. "
+        "Only the daemon may apply/rollback migrations against the live DB."
+    )
 
 
 def _is_live_db_url(url: str) -> bool:
@@ -421,7 +441,7 @@ def list_pending_revisions(db_url: str | None = None) -> list[Revision]:
     current_rev = _current_revision_from_db(db_url)
     pending: list[Revision] = []
 
-    for rev in script_dir.walk_revisions("head", current_rev or "base"):
+    for rev in script_dir.walk_revisions(current_rev or "base", "head"):
         if rev.revision == current_rev:
             break
         if rev.revision not in (r.id for r in pending):

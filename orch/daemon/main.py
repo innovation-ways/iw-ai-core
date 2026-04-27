@@ -17,7 +17,9 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import sys
 import threading
+import time
 import traceback
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -32,6 +34,10 @@ from orch.daemon.doc_job_poller import DocJobPoller
 from orch.daemon.project_registry import ProjectConfig, ProjectRegistry, sync_project_to_db
 from orch.daemon.worktree_compose import is_alive as compose_is_alive
 from orch.daemon.worktree_reaper import reap as reap_orphan_containers
+from orch.db.alembic_guard import (
+    check_db_at_head,
+    remediation_message,
+)
 from orch.db.identity import verify_instance_identity
 from orch.db.models import (
     TERMINAL_BATCH_ITEM_STATUSES,
@@ -52,6 +58,9 @@ if TYPE_CHECKING:
     SessionFactory = Callable[[], AbstractContextManager[Session]]
 
 logger = logging.getLogger(__name__)
+
+SKIP_ALEMBIC_GUARD = os.environ.get("IW_CORE_SKIP_ALEMBIC_GUARD", "").lower() == "true"
+_last_mismatch_event_time: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +113,62 @@ def emit_event(
     )
     db.add(event)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Alembic guard (R2)
+# ---------------------------------------------------------------------------
+
+
+def _alembic_guard_startup(session_factory: SessionFactory) -> None:
+    """Fail-fast check at daemon startup.
+
+    Runs after verify_instance_identity. On mismatch:
+      - logs CRITICAL with remediation message
+      - emits a DaemonEvent of type db_schema_mismatch
+      - exits with code 2
+    Skippable via IW_CORE_SKIP_ALEMBIC_GUARD=true (operator override only).
+    """
+    global _last_mismatch_event_time
+
+    if SKIP_ALEMBIC_GUARD:
+        if os.environ.get("IW_CORE_AGENT_CONTEXT", "").lower() == "true":
+            logger.error("IW_CORE_SKIP_ALEMBIC_GUARD cannot be applied in agent context — refusing")
+            sys.exit(2)
+        logger.warning("IW_CORE_SKIP_ALEMBIC_GUARD is set — skipping alembic head check")
+        return
+
+    try:
+        status = check_db_at_head()
+    except Exception as exc:
+        logger.critical("alembic guard check failed: %s", exc)
+        sys.exit(2)
+
+    if status.ok:
+        return
+
+    now = time.time()
+    emit_guard_event = now - _last_mismatch_event_time >= 60.0
+
+    msg = remediation_message(status)
+    logger.critical("CRITICAL: %s", msg)
+
+    if emit_guard_event:
+        _last_mismatch_event_time = now
+        with session_factory() as db:
+            emit_event(
+                db,
+                project_id=None,
+                event_type="db_schema_mismatch",
+                message=msg,
+                metadata={
+                    "current_rev": status.current_rev,
+                    "head_rev": status.head_rev,
+                    "pending": status.pending,
+                },
+            )
+
+    sys.exit(2)
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +281,9 @@ class Daemon:
             import sys
 
             sys.exit(2)
+
+        # Alembic head guard — must be after identity check
+        _alembic_guard_startup(self._session_factory)
 
         # Load projects and sync to DB
         self._load_projects()

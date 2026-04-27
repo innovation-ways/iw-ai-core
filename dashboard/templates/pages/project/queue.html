@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "components/status_badge.html" import status_badge %}
+{% from "macros/db_guard.html" import write_button_attrs %}
 
 {% block title %}Queue — {{ current_project.display_name if current_project else '' }}{% endblock %}
 
@@ -95,7 +96,8 @@
     {% if approved_items %}
       <button type="submit" id="create-batch-btn" disabled
               class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium
-                     hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed">
+                     hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              {{ write_button_attrs(request) }}>
         Create Batch from Selected
       </button>
     {% endif %}
@@ -151,7 +153,8 @@
                     hx-swap="none"
                     hx-on::after-request="window.location.reload()"
                     class="px-2 py-1 bg-success text-success-foreground rounded text-xs
-                           hover:opacity-90 transition-opacity font-medium">
+                           hover:opacity-90 transition-opacity font-medium"
+                    {{ write_button_attrs(request) }}>
                     Approve
                   </button>
                   <button

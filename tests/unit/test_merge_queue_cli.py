@@ -55,10 +55,10 @@ class TestUnfreezeRefusesInAgentContext:
 
 class TestStatusJsonOutput:
     @patch("orch.cli.merge_queue_commands.is_merge_queue_frozen")
-    @patch("orch.cli.merge_queue_commands.create_engine")
+    @patch("orch.cli.merge_queue_commands.safe_create_engine")
     def test_status_json_output(
         self,
-        mock_create_engine: MagicMock,
+        mock_safe_create_engine: MagicMock,
         mock_is_frozen: MagicMock,
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
@@ -66,7 +66,7 @@ class TestStatusJsonOutput:
         mock_is_frozen.return_value = False
 
         mock_engine = MagicMock()
-        mock_create_engine.return_value = mock_engine
+        mock_safe_create_engine.return_value = mock_engine
 
         mock_session = MagicMock()
         mock_session.execute.return_value.fetchone.return_value = None
@@ -86,10 +86,10 @@ class TestStatusJsonOutput:
             assert "frozen" in data
 
     @patch("orch.cli.merge_queue_commands.is_merge_queue_frozen")
-    @patch("orch.cli.merge_queue_commands.create_engine")
+    @patch("orch.cli.merge_queue_commands.safe_create_engine")
     def test_status_frozen_state(
         self,
-        mock_create_engine: MagicMock,
+        mock_safe_create_engine: MagicMock,
         mock_is_frozen: MagicMock,
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
@@ -97,7 +97,7 @@ class TestStatusJsonOutput:
         mock_is_frozen.return_value = True
 
         mock_engine = MagicMock()
-        mock_create_engine.return_value = mock_engine
+        mock_safe_create_engine.return_value = mock_engine
 
         mock_session = MagicMock()
         mock_session.execute.return_value.fetchone.return_value = None

@@ -177,7 +177,26 @@ def make_batch_item(
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def _alembic_guard_ok():
+    """Mock the I-00040 check_db_at_head() pre-flight in _launch_item.
+
+    Tests in this file exercise BatchManager's lifecycle, not the alembic
+    guard. The pre-flight queries the live orch DB (port 5433 in the .env
+    cached engine) which we don't want hitting the test transaction.
+    """
+    from orch.db.alembic_guard import GuardStatus
+
+    ok = GuardStatus(current_rev="abc", head_rev="abc", pending=[], multiple_heads=[], ok=True)
+    with patch("orch.daemon.batch_manager.check_db_at_head", return_value=ok):
+        yield
+
+
 class TestBatchLifecycleFull:
+    @pytest.fixture(autouse=True)
+    def _mock_alembic_guard(self, _alembic_guard_ok):
+        pass
+
     def test_approved_batch_transitions_to_executing(
         self, db_session: Session, manager: BatchManager, test_project
     ):
@@ -285,6 +304,10 @@ class TestBatchLifecycleFull:
 
 
 class TestExecutionGroupAdvancement:
+    @pytest.fixture(autouse=True)
+    def _mock_alembic_guard(self, _alembic_guard_ok):
+        pass
+
     def test_group_1_launches_after_group_0_all_merged(
         self, db_session: Session, manager: BatchManager, test_project
     ):

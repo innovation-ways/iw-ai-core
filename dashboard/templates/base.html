@@ -33,6 +33,24 @@
   {% block head %}{% endblock %}
 </head>
 <body class="bg-background text-foreground font-sans antialiased">
+{% if is_db_stale(request) %}
+{% set status = request.state.alembic_guard_status %}
+<div role="alert"
+     aria-live="polite"
+     class="bg-destructive text-white px-4 py-3 text-sm flex items-center justify-between"
+     id="stale-db-banner">
+  <div>
+    <strong>Orch DB schema is behind head</strong> —
+    current_rev=<code>{{ status.current_rev or 'EMPTY' }}</code>
+    head_rev=<code>{{ status.head_rev }}</code>.
+    Run <code>make db-migrate</code> to fix.
+    Write actions are disabled until then.
+  </div>
+  <div>
+    {{ status.pending|length }} pending revision{{ '' if status.pending|length == 1 else 's' }}
+  </div>
+</div>
+{% endif %}
 
 <!-- Toast container (SSE toasts rendered here) -->
 <div id="toast-container"></div>
