@@ -173,6 +173,11 @@ def apply_migrations(ctx: click.Context, json_output: bool, i_am_operator: bool)
         )
         sys.exit(EXIT_MISSING_FLAG)
 
+    # I-00041: arm the live-DB connection guard for THIS invocation only.
+    # try/finally so a programmatic caller (test, wrapper, loop) doesn't
+    # leak the allow-list flag into surrounding code.
+    prior = os.environ.get("IW_CORE_OPERATOR_APPLY")
+    os.environ["IW_CORE_OPERATOR_APPLY"] = "true"
     try:
         live_url = get_db_url()
         result: ApplyResult = safe_apply(live_url)
@@ -213,3 +218,8 @@ def apply_migrations(ctx: click.Context, json_output: bool, i_am_operator: bool)
         output_error(ctx, str(exc), EXIT_MULTI_HEAD)
     except Exception as exc:
         output_error(ctx, f"Migration error: {exc}", EXIT_UNKNOWN)
+    finally:
+        if prior is None:
+            os.environ.pop("IW_CORE_OPERATOR_APPLY", None)
+        else:
+            os.environ["IW_CORE_OPERATOR_APPLY"] = prior

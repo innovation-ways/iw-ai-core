@@ -15,38 +15,65 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from orch.config import get_db_max_overflow, get_db_pool_size, get_db_url
+from orch.db.live_db_guard import safe_create_engine
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from sqlalchemy.orm import Session
+    from sqlalchemy.engine import Engine
 
-# ---------------------------------------------------------------------------
-# Engine — created lazily at import time (config must be loaded first).
-# Tests MUST NOT import this module; they create their own engine from
-# the testcontainer URL.
-# ---------------------------------------------------------------------------
+    engine: Engine
+    SessionLocal: sessionmaker[Session]
 
-engine = create_engine(
-    get_db_url(),
-    pool_pre_ping=True,
-    pool_size=get_db_pool_size(),
-    max_overflow=get_db_max_overflow(),
-    pool_recycle=1800,
-    pool_timeout=10,
-)
+__all__ = [
+    "get_session",
+    "safe_create_engine",
+]
 
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+_engine: Engine | None = None
+_session_local: sessionmaker[Session] | None = None
+
+
+def _get_engine() -> Engine:
+    global _engine
+    if _engine is None:
+        _engine = safe_create_engine(
+            get_db_url(),
+            pool_pre_ping=True,
+            pool_size=get_db_pool_size(),
+            max_overflow=get_db_max_overflow(),
+            pool_recycle=1800,
+            pool_timeout=10,
+        )
+    return _engine
+
+
+def _get_session_local() -> sessionmaker[Session]:
+    global _session_local
+    if _session_local is None:
+        _session_local = sessionmaker(
+            bind=_get_engine(),
+            autocommit=False,
+            autoflush=False,
+        )
+    return _session_local
+
+
+def __getattr__(name: str) -> object:
+    if name == "engine":
+        return _get_engine()
+    if name == "SessionLocal":
+        return _get_session_local()
+    raise AttributeError(f"module 'orch.db.session' has no attribute {name!r}")
 
 
 @contextmanager
 def get_session() -> Generator[Session, None, None]:
     """Yield a database session; commit on success, rollback on exception."""
-    session: Session = SessionLocal()
+    session: Session = _get_session_local()()
     try:
         yield session
         session.commit()

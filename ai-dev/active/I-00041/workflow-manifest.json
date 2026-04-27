@@ -81,6 +81,19 @@
       "command": "make allure-integration",
       "description": "QV: Integration tests",
       "timeout": 900
+    },
+    {
+      "step": "S13",
+      "agent": "backend-impl",
+      "description": "Fix architectural issues where daemon functions created their own DB connections instead of accepting sessions from callers; update is_merge_queue_frozen, set_merge_queue_frozen, and _emit_daemon_event to accept optional db session parameter",
+      "prompt": "prompts/I-00041_S13_Backend_prompt.md"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests (re-run after S13 fixes)"
     }
   ]
 }

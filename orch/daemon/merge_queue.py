@@ -55,7 +55,7 @@ def process_merge_queue(
     config: DaemonConfig,  # noqa: ARG001  (reserved for future throttling)
 ) -> None:
     """Merge the oldest completed batch item, if no merge is already in progress."""
-    if is_merge_queue_frozen():
+    if is_merge_queue_frozen(db):
         logger.debug("[%s] Merge queue is frozen — skipping this cycle", project_id)
         _emit_event(
             db,
