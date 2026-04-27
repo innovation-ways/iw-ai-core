@@ -63,8 +63,10 @@ The file must contain a single test function that:
 - Queries `pg_enum` for the `batch_item_status` type and collects the set of labels.
 - Asserts that **`migration_invalid`** and **`migration_rolled_back`** are present
   individually (semantic checks — not just "non-empty").
-- Asserts the drift-prevention condition: `set(BatchItemStatus.values) ⊆ pg_enum_labels`
-  with a clear assertion message that names any missing values.
+- Asserts the drift-prevention condition: `{e.value for e in BatchItemStatus} ⊆ pg_enum_labels`
+  with a clear assertion message that names any missing values. Note: `BatchItemStatus`
+  is a plain `enum.Enum` and has no `.values` attribute — derive the value set with the
+  set comprehension above (or `[e.value for e in BatchItemStatus]`).
 
 **Do NOT** assert exact equality (`pg_labels == py_labels`). PostgreSQL may have
 labels that the Python enum no longer references (CR-00019 left `awaiting_review` and
@@ -80,7 +82,7 @@ passed. But the bug was NOT fixed. Tests must verify SPECIFIC VALUES:
 - BAD: `assert len(pg_labels) >= 13` (only checks count — would pass with the wrong 13 labels)
 - GOOD: `assert "migration_invalid" in pg_labels` (semantic — verifies the specific expected value)
 - GOOD: `assert "migration_rolled_back" in pg_labels` (semantic — verifies the second specific value)
-- GOOD: `assert not (set(BatchItemStatus.values) - pg_labels)` with a message naming the missing values
+- GOOD: `assert not ({e.value for e in BatchItemStatus} - pg_labels)` with a message naming the missing values
 
 ### 2. Use the testcontainer fixture, not the live DB
 

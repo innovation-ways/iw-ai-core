@@ -233,7 +233,7 @@ Then logs/daemon.log contains no "Worktree re-attach failed" entries with Invali
 ## Regression Prevention
 
 The drift-prevention test in `tests/integration/test_batch_item_status_enum_drift.py`
-asserts `set(BatchItemStatus.values) ⊆ live_pg_enum_labels`. Any future addition to
+asserts `{e.value for e in BatchItemStatus} ⊆ live_pg_enum_labels`. Any future addition to
 the Python enum without a matching `ALTER TYPE … ADD VALUE` migration will fail this
 test in CI.
 
