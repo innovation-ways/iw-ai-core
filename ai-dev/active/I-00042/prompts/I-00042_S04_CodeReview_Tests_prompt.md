@@ -50,7 +50,9 @@ This is the most important check. The test MUST verify SPECIFIC VALUES, not shap
 
 - ✓ **Expected**: `assert "migration_invalid" in pg_labels`
 - ✓ **Expected**: `assert "migration_rolled_back" in pg_labels`
-- ✓ **Expected**: `assert not (set(BatchItemStatus.values) - pg_labels)`
+- ✓ **Expected**: `assert not ({e.value for e in BatchItemStatus} - pg_labels)`
+  (or equivalent: `BatchItemStatus` is a plain `enum.Enum` and has no `.values` attribute,
+  so derive the value set with a comprehension)
 - ✗ **CRITICAL finding**: `assert pg_labels` (just non-empty)
 - ✗ **CRITICAL finding**: `assert len(pg_labels) >= 13` (count only — passes with the wrong 13 labels)
 - ✗ **CRITICAL finding**: `assert "batch_item_status" in some_introspection_dict` (proves the type exists, not its labels)
