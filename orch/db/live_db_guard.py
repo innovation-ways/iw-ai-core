@@ -5,20 +5,29 @@ Public API:
     LiveDbConnectionRefused  — raised when a live-DB connection is attempted
     is_live_db_url(url)       — returns True if URL resolves to the live orch DB
     assert_engine_url_allowed(url) — raises LiveDbConnectionRefused if refused context
+    iw_cli_orch_bridge()      — context manager allowing the iw CLI process to
+                                connect to the orch DB (its legitimate channel)
+                                without leaking the bypass to subprocesses or
+                                pytest contexts.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from sqlalchemy.engine.url import make_url
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
+
+_iw_cli_orch_bridge_active: bool = False
 
 
 class LiveDbConnectionRefusedError(RuntimeError):
@@ -27,6 +36,33 @@ class LiveDbConnectionRefusedError(RuntimeError):
 
 
 LiveDbConnectionRefused = LiveDbConnectionRefusedError
+
+
+@contextmanager
+def iw_cli_orch_bridge() -> Iterator[None]:
+    """Mark the calling process as the iw CLI bridging an agent to the orch DB.
+
+    The iw CLI is the legitimate channel for agents to record orchestration
+    state (`step-start`, `step-done`, `item-status`, …). Without this marker,
+    every iw invocation under IW_CORE_AGENT_CONTEXT=true is refused — a
+    catch-22 because the agent has no way to talk to the orchestrator.
+
+    Strictly scoped:
+      - Process-local module flag (NOT an env var). Subprocesses spawned by
+        the CLI (pytest, alembic, agents the daemon launches downstream)
+        do NOT inherit the bypass.
+      - Loses to IW_CORE_TEST_CONTEXT (a CliRunner-driven test cannot bypass
+        the guard via this bridge — the test-context refusal fires first).
+      - Wins over IW_CORE_AGENT_CONTEXT (resolves the catch-22).
+      - Resets on exit (try/finally) so test isolation is preserved.
+    """
+    global _iw_cli_orch_bridge_active
+    previous = _iw_cli_orch_bridge_active
+    _iw_cli_orch_bridge_active = True
+    try:
+        yield
+    finally:
+        _iw_cli_orch_bridge_active = previous
 
 
 def _get_live_db_host_port() -> tuple[str, str]:
@@ -71,10 +107,15 @@ def assert_engine_url_allowed(url: str) -> None:
       2. Any allowed-context flag is set           → ALLOW (operator/daemon)
             - IW_CORE_OPERATOR_APPLY=true (iw migrations apply)
             - IW_CORE_DAEMON_CONTEXT=true (daemon entry point)
-      3. Any refused-context flag is set           → REFUSE (raise)
-            - IW_CORE_TEST_CONTEXT=true (pytest conftest)
-            - IW_CORE_AGENT_CONTEXT=true (deprecated alias)
-      4. No flags set                              → ALLOW (ad-hoc local scripts)
+      3. IW_CORE_TEST_CONTEXT=true                 → REFUSE (raise)
+            (pytest conftest — strictly refused; the iw CLI bridge below
+            cannot bypass this, so CliRunner-driven tests cannot reach the
+            live DB even when invoking the CLI in-process)
+      4. iw CLI orchestrator bridge is active      → ALLOW
+            (entered by `iw_cli_orch_bridge()` from the CLI entrypoint —
+            the legitimate channel for agents to record orchestration state)
+      5. IW_CORE_AGENT_CONTEXT=true                → REFUSE (raise)
+      6. No flags set                              → ALLOW (ad-hoc local scripts)
 
     Allowed-context wins over refused-context (rule 2 before rule 3).
     Rationale: an operator running daemon code locally inside a pytest
@@ -98,6 +139,9 @@ def assert_engine_url_allowed(url: str) -> None:
             "`iw migrations apply --i-am-operator` or run from the daemon "
             "entry point (which sets IW_CORE_DAEMON_CONTEXT=true)"
         )
+
+    if _iw_cli_orch_bridge_active:
+        return
 
     if os.environ.get("IW_CORE_AGENT_CONTEXT") == "true":
         raise LiveDbConnectionRefusedError(
