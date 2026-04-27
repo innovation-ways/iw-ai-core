@@ -24,7 +24,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from orch.daemon.batch_manager import BatchManager
@@ -42,6 +41,7 @@ from orch.db.models import (
     StepStatus,
     WorkflowStep,
 )
+from orch.db.session import safe_create_engine
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 def create_session_factory(db_url: str) -> SessionFactory:
     """Create a session factory bound to the given DB URL."""
-    engine = create_engine(db_url, pool_pre_ping=True)
+    engine = safe_create_engine(db_url, pool_pre_ping=True)
     session_cls = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
     @contextmanager

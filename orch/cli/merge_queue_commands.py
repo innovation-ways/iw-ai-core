@@ -12,7 +12,7 @@ import os
 import sys
 
 import click
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 from orch.cli.utils import output_error
@@ -21,6 +21,7 @@ from orch.daemon.migration_pipeline import (
     is_merge_queue_frozen,
     set_merge_queue_frozen,
 )
+from orch.db.session import safe_create_engine
 
 EXIT_SUCCESS = 0
 EXIT_AGENT_CONTEXT = 2
@@ -48,7 +49,7 @@ def merge_queue_status(ctx: click.Context, json_output: bool) -> None:
     This command is read-only and safe for anyone to run.
     """
     db_url = get_db_url()
-    engine = create_engine(db_url, pool_pre_ping=True)
+    engine = safe_create_engine(db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)
     session = session_factory()
 

@@ -3,7 +3,20 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
+
+
+def pytest_configure(config: pytest.Config) -> None:  # type: ignore[override]
+    """Unset IW_CORE_AGENT_CONTEXT before test collection begins.
+
+    This hook runs before pytest imports any test modules. Without this,
+    the live_db_guard triggers during collection because IW_CORE_AGENT_CONTEXT
+    is inherited from the agent context and the fixture (which unsets it)
+    only runs after collection completes.
+    """
+    os.environ.pop("IW_CORE_AGENT_CONTEXT", None)
 
 
 def pytest_sessionfinish(session: object, exitstatus: int) -> None:  # type: ignore[override]

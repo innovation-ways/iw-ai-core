@@ -33,12 +33,12 @@ from typing import Any
 
 from alembic.config import Config as AlembicConfig
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from orch.config import get_db_url
 from orch.db.models import DaemonEvent, PendingMigrationLog
 from orch.db.safe_migrate import _is_test_context_active
+from orch.db.session import safe_create_engine
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +210,7 @@ def _emit_daemon_event(
     if _is_test_context_active():
         return
     db_url = get_db_url()
-    engine = create_engine(db_url, pool_pre_ping=True)
+    engine = safe_create_engine(db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)
     session: Session = session_factory()
     try:
@@ -241,7 +241,7 @@ def _write_rebase_log(
     if _is_test_context_active():
         return
     db_url = get_db_url()
-    engine = create_engine(db_url, pool_pre_ping=True)
+    engine = safe_create_engine(db_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)
     session: Session = session_factory()
     now = datetime.now(UTC)

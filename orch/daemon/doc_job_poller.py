@@ -7,11 +7,11 @@ Runs as part of the main daemon poll loop.
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from orch.daemon.batch_manager import _agent_subprocess_env
 from orch.db.models import (
     DaemonEvent,
     DocGenerationJob,
@@ -168,7 +168,7 @@ class DocJobPoller:
             stdout=log_file.open("w"),
             stderr=subprocess.STDOUT,
             start_new_session=True,
-            env=os.environ.copy(),
+            env=_agent_subprocess_env(),
         )
 
         with self._session_factory() as db:
