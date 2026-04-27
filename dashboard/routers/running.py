@@ -46,6 +46,14 @@ class RunningRow:
     pid: int | None
     started_at: datetime | None
     run_id: int
+    # CR-00024: heartbeat-age and pid-alive are surfaced so operators can tell
+    # whether the daemon recently confirmed the step is alive (vs. been silent
+    # for ages and probably stuck).
+    last_heartbeat: datetime | None
+    last_heartbeat_age_secs: int | None
+    pid_alive: bool | None
+    warned_50pct_at: datetime | None
+    timeout_secs: int | None
 
 
 @dataclass
@@ -93,7 +101,13 @@ def _query_running_now(db: Session) -> list[RunningRow]:
         .order_by(StepRun.started_at)
     )
     rows = []
+    now = datetime.now(UTC)
     for run, step, item, project in db.execute(stmt).all():
+        last_hb = run.last_heartbeat
+        age_secs: int | None = None
+        if last_hb is not None:
+            hb_aware = last_hb if last_hb.tzinfo else last_hb.replace(tzinfo=UTC)
+            age_secs = int((now - hb_aware).total_seconds())
         rows.append(
             RunningRow(
                 project_id=project.id,
@@ -105,6 +119,11 @@ def _query_running_now(db: Session) -> list[RunningRow]:
                 pid=run.pid,
                 started_at=run.started_at,
                 run_id=run.id,
+                last_heartbeat=last_hb,
+                last_heartbeat_age_secs=age_secs,
+                pid_alive=run.pid_alive,
+                warned_50pct_at=run.warned_50pct_at,
+                timeout_secs=run.timeout_secs,
             )
         )
     return rows

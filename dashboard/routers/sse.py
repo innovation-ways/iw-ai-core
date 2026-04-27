@@ -28,6 +28,9 @@ _RUNNING_UPDATE_EVENTS = frozenset(
         "step_killed",
         "step_crashed",
         "step_timeout",
+        # CR-00024: refresh the running table when the soft-warn fires so the
+        # operator sees the new "Last seen" / 50% indicator without a reload.
+        "step_warning_50pct",
     }
 )
 # Entity-level status transitions (item/batch lifecycle + step actions)
@@ -59,6 +62,8 @@ _TOAST_EVENTS = frozenset(
         "step_timeout",
         "step_stalled",
         "step_crashed",
+        # CR-00024: one-time soft-warn at 50% of timeout (info-level toast).
+        "step_warning_50pct",
         "batch_completed",
         "batch_completed_with_errors",
         "item_merged",
@@ -109,6 +114,8 @@ _TOAST_SEVERITY: dict[str, str] = {
     "step_timeout": "warning",
     "step_stalled": "warning",
     "step_crashed": "error",
+    # CR-00024
+    "step_warning_50pct": "info",
     "batch_completed": "success",
     "batch_completed_with_errors": "warning",
     "item_merged": "info",

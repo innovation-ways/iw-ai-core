@@ -700,6 +700,14 @@ class StepRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
     duration_secs: Mapped[float | None] = mapped_column(Float, nullable=True)
+    warned_50pct_at: Mapped[datetime | None] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=True,
+        comment=(
+            "Set by step_monitor when a one-time 50%-of-timeout warning fires "
+            "for this run; suppresses duplicate warns across poll cycles (CR-00024)."
+        ),
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(["step_id"], ["workflow_steps.id"], ondelete="CASCADE"),

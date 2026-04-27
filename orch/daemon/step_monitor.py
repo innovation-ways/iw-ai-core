@@ -40,6 +40,20 @@ PLATFORM_TIMEOUT_DEFAULTS: dict[str, int] = {
     "browser_verification": 1800,
     "qv_browser_fix": 2700,
 }
+
+# CR-00024: per-gate defaults inserted between project-override and per-step-type
+# bucket. Real workloads diverge wildly inside `quality_validation` (lint runs
+# in 30s; integration tests routinely run 5–10 min). The legacy single bucket
+# of 600s caused S14 of I-00041 to inherit too-tight a timeout.
+QV_GATE_TIMEOUT_DEFAULTS: dict[str, int] = {
+    "lint": 120,
+    "format": 120,
+    "typecheck": 240,
+    "unit-tests": 300,
+    "integration-tests": 900,
+    "frontend-tests": 600,
+    "browser": 1800,
+}
 _FALLBACK_TIMEOUT = 1800
 
 
@@ -52,15 +66,22 @@ def get_timeout(
     project_config: ProjectConfig,
     step_type: str,
     step_config: dict[str, Any] | None = None,
+    *,
+    step: WorkflowStep | None = None,
 ) -> int:
-    """Resolve timeout (seconds) for a step type via the 3-level override chain.
+    """Resolve timeout (seconds) for a step via the 4-level override chain.
 
     Priority (highest → lowest):
     1. Step-level override: ``step_config["timeout_secs"]``
     2. Project-level override: ``.iw-orch.json`` ``timeout_overrides[step_type]``
-    3. Platform defaults (``PLATFORM_TIMEOUT_DEFAULTS``), fallback 1800s.
+    3. **CR-00024** Per-gate default for QV steps with a known ``step.gate``.
+    4. Platform defaults (``PLATFORM_TIMEOUT_DEFAULTS``), fallback 1800s.
+
+    The ``step`` argument is keyword-only and optional so legacy call sites
+    that don't have a ``WorkflowStep`` handy still work — they just skip
+    the per-gate lookup and fall through to the per-type bucket.
     """
-    # 1. Step-level override
+    # 1. Step-level override (manifest's `timeout` ingested at register time)
     if step_config and "timeout_secs" in step_config:
         return int(step_config["timeout_secs"])
 
@@ -69,7 +90,15 @@ def get_timeout(
     if step_type in project_overrides:
         return int(project_overrides[step_type])
 
-    # 3. Platform defaults
+    # 3. CR-00024: per-gate default. Only consulted when the step row carries
+    # a non-NULL `gate` (i.e., it was registered after CR-00023). Legacy items
+    # with NULL gate fall through to the per-type bucket below.
+    if step is not None and step.gate is not None:
+        gate_default = QV_GATE_TIMEOUT_DEFAULTS.get(step.gate)
+        if gate_default is not None:
+            return gate_default
+
+    # 4. Platform defaults
     return PLATFORM_TIMEOUT_DEFAULTS.get(step_type, _FALLBACK_TIMEOUT)
 
 
@@ -166,12 +195,18 @@ def _check_step_health(
     old_heartbeat = run.last_heartbeat
     run.last_heartbeat = now
 
-    # Check timeout (higher priority than stall)
+    # Check timeout (higher priority than stall and 50%-warn)
     if run.started_at is not None and run.timeout_secs is not None:
         elapsed = (now - run.started_at).total_seconds()
         if elapsed > run.timeout_secs:
             _handle_timeout(db, run, project_id, now, elapsed, project_config)
             return
+
+        # CR-00024: one-time 50%-of-timeout soft-warn. Only fires when we've
+        # not yet emitted it for this run (warned_50pct_at IS NULL) AND the
+        # timeout branch above did NOT fire (the `return` there ensures AC5).
+        if elapsed > run.timeout_secs * 0.5 and run.warned_50pct_at is None:
+            _handle_warn_50pct(db, run, project_id, now, elapsed)
 
     # Check stall using the heartbeat from before this poll cycle
     if old_heartbeat is not None:
@@ -307,6 +342,44 @@ def _maybe_teardown_browser_env(
             run.id,
             exc_info=True,
         )
+
+
+def _handle_warn_50pct(
+    db: Session,
+    run: StepRun,
+    project_id: str,
+    now: datetime,
+    elapsed: float,
+) -> None:
+    """CR-00024: one-time soft-warn when a running step crosses 50% of its timeout.
+
+    Stamps ``run.warned_50pct_at`` to suppress duplicate warns across poll
+    cycles and emits a non-terminal ``step_warning_50pct`` DaemonEvent. The
+    StepRun status stays ``running`` — this is purely an observability signal.
+    """
+    run.warned_50pct_at = now
+    timeout = run.timeout_secs or 0
+    percent = int((elapsed / timeout) * 100) if timeout > 0 else 50
+    msg = f"Step is past 50% of its timeout budget ({elapsed:.0f}s of {timeout}s, ~{percent}%)"
+
+    step = db.get(WorkflowStep, run.step_id)
+    work_item_id = step.work_item_id if step else None
+
+    _emit_event(
+        db,
+        project_id,
+        "step_warning_50pct",
+        work_item_id,
+        message=msg,
+        entity_type="work_item",
+        metadata={
+            "pid": run.pid,
+            "elapsed_secs": elapsed,
+            "timeout_secs": timeout,
+            "percent": percent,
+        },
+    )
+    logger.info("step_run %d past 50%% of timeout: %s", run.id, msg)
 
 
 def _handle_stall(

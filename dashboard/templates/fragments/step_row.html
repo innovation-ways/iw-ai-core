@@ -1,4 +1,5 @@
 {% from "components/action_button.html" import kill_button with context %}
+{% from "components/heartbeat_cell.html" import heartbeat_cell %}
 {# Single running step row — used for targeted OOB swaps #}
 <tr id="run-{{ row.run_id }}"
     class="border-b border-border last:border-0 hover:bg-muted/20">
@@ -18,6 +19,7 @@
       —
     {% endif %}
   </td>
+  {{ heartbeat_cell(row) }}
   <td class="px-4 py-2 text-right">
     {{ kill_button(row.project_id, row.item_id, row.step_id) }}
   </td>
