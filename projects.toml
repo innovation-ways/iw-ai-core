@@ -15,3 +15,8 @@ enabled = true
 display_name = "Curriculum Vitae"
 repo_root = "/home/sergiog/dev/iw-doc-plan/main/cv"
 enabled = true
+
+[projects.Podforger]
+display_name = "Podforger"
+repo_root = "/home/sergiog/dev/iw-doc-plan/main/podforger"
+enabled = true

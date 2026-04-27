@@ -1,0 +1,123 @@
+{
+  "id": "CR-00024",
+  "type": "ChangeRequest",
+  "title": "Step-monitor observability + per-gate timeout defaults",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**.py",
+      "orch/daemon/step_monitor.py",
+      "orch/daemon/batch_manager.py",
+      "orch/daemon/fix_cycle.py",
+      "dashboard/routers/sse.py",
+      "dashboard/routers/running.py",
+      "dashboard/routers/worktrees.py",
+      "dashboard/routers/jobs_ui.py",
+      "dashboard/templates/fragments/running_table.html",
+      "dashboard/templates/fragments/step_row.html",
+      "dashboard/templates/fragments/jobs_table.html",
+      "tests/unit/test_step_monitor_get_timeout.py",
+      "tests/unit/test_step_monitor_warn_50pct.py",
+      "tests/integration/test_step_monitor_lifecycle.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Add nullable warned_50pct_at TIMESTAMPTZ column to step_runs via Alembic; update StepRun model with matching mapped column",
+      "prompt": "prompts/CR-00024_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 schema migration + model update for correctness, reversibility, and naming conventions",
+      "prompt": "prompts/CR-00024_S02_CodeReview_Database_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Add QV_GATE_TIMEOUT_DEFAULTS dict + per-gate lookup in get_timeout (depends on CR-00023's gate column); update get_timeout signature with optional step kwarg; update batch_manager.py and fix_cycle.py callers; emit one-time step_warning_50pct DaemonEvent in _check_step_health; register the new event_type in dashboard/routers/sse.py",
+      "prompt": "prompts/CR-00024_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 daemon changes: per-gate dict, get_timeout resolution chain, 50%-warn idempotency contract, sse registry update",
+      "prompt": "prompts/CR-00024_S04_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "frontend-impl",
+      "description": "Surface last_heartbeat age (rendered as 'Xs ago') and pid_alive indicator pip on the running-tasks, worktrees, and jobs tables; touch RunningRow dataclass + running_table.html / step_row.html / jobs_table.html fragments",
+      "prompt": "prompts/CR-00024_S05_Frontend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05 dashboard changes for accessibility, no-regression of existing columns, and correctness of the heartbeat-age formatting",
+      "prompt": "prompts/CR-00024_S06_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "Cross-step global review of S01/S03/S05 — verify schema → daemon emission → SSE registry → dashboard rendering chain holds end-to-end",
+      "prompt": "prompts/CR-00024_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "tests-impl",
+      "description": "Unit tests for get_timeout per-gate lookup; unit tests for 50%-warn idempotency and timeout shadowing; integration test for full step-monitor lifecycle (launch → past 50% → assert single warning event); regression test for legacy NULL-gate rows",
+      "prompt": "prompts/CR-00024_S08_Tests_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-impl",
+      "description": "Review S08 tests for semantic correctness and coverage of the 7 acceptance criteria",
+      "prompt": "prompts/CR-00024_S09_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S15",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — heartbeat age + pid-alive indicator render on /system/running and /system/worktrees, no console errors, no regression in existing columns",
+      "prompt": "prompts/CR-00024_S15_BrowserVerification_prompt.md"
+    }
+  ]
+}
