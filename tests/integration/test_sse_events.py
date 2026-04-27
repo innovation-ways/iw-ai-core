@@ -30,7 +30,7 @@ def test_all_toast_events_have_severity():
 
 
 def test_running_update_events_unchanged():
-    """Running-update events should include the 6 step lifecycle events."""
+    """Running-update events list — bumped to 7 in CR-00024 (added step_warning_50pct)."""
     assert (
         frozenset(
             {
@@ -40,6 +40,8 @@ def test_running_update_events_unchanged():
                 "step_killed",
                 "step_crashed",
                 "step_timeout",
+                # CR-00024: 50%-of-timeout soft-warn refreshes the running table
+                "step_warning_50pct",
             }
         )
         == _RUNNING_UPDATE_EVENTS

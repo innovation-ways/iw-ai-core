@@ -734,7 +734,9 @@ class BatchManager:
                         log_file=str(log_path),
                         started_at=now,
                         completed_at=now,
-                        timeout_secs=get_timeout(self.project_config, step.step_type.value),
+                        timeout_secs=get_timeout(
+                            self.project_config, step.step_type.value, step=step
+                        ),
                     )
                     db.add(run)
                     step.status = StepStatus.failed
@@ -782,20 +784,32 @@ class BatchManager:
         else:
             command = f'claude -p "$(cat {prompt_file})" --dangerously-skip-permissions'
 
+        # CR-00023: prefer the DB column (populated at register time). Fall
+        # back to a manifest read for items registered before CR-00023.
         step_config: dict[str, Any] | None = None
-        manifest_path = (
-            Path(worktree_path) / "ai-dev" / "active" / step.work_item_id / "workflow-manifest.json"
-        )
-        if manifest_path.exists():
-            import json
+        if step.timeout_secs is not None:
+            step_config = {"timeout_secs": step.timeout_secs}
+        else:
+            manifest_path = (
+                Path(worktree_path)
+                / "ai-dev"
+                / "active"
+                / step.work_item_id
+                / "workflow-manifest.json"
+            )
+            if manifest_path.exists():
+                import json
 
-            manifest = json.loads(manifest_path.read_text())
-            for s in manifest.get("steps", []):
-                if s.get("step") == step.step_id:
-                    if "timeout" in s:
-                        step_config = {"timeout_secs": int(s["timeout"])}
-                    break
-        timeout = get_timeout(self.project_config, step.step_type.value, step_config=step_config)
+                manifest = json.loads(manifest_path.read_text())
+                for s in manifest.get("steps", []):
+                    if s.get("step") == step.step_id:
+                        if "timeout" in s:
+                            step_config = {"timeout_secs": int(s["timeout"])}
+                        break
+        # CR-00024: pass step so get_timeout consults step.gate for QV gates.
+        timeout = get_timeout(
+            self.project_config, step.step_type.value, step_config=step_config, step=step
+        )
 
         log_dir = Path(worktree_path) / "ai-dev" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
