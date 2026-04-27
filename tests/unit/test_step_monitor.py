@@ -87,6 +87,7 @@ def make_run(**kwargs) -> MagicMock:
     run.started_at = _FROZEN_NOW - timedelta(seconds=60)
     run.timeout_secs = 2700
     run.last_heartbeat = _FROZEN_NOW - timedelta(seconds=30)
+    run.warned_50pct_at = None  # CR-00024 idempotency marker
     run.error_message = None
     run.completed_at = None
     run.duration_secs = None
