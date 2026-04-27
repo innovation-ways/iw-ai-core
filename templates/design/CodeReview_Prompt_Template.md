@@ -8,6 +8,7 @@
 
 ## Input Files
 
+- **Runtime step state** — for the current step list, status, prompt paths, gate commands, etc., prefer `uv run iw item-status {ID} --json`. The `workflow-manifest.json` file is a design-time snapshot and may be out of date (CR-00023).
 - `ai-dev/work/{ID}/{ID}_{Type}_Design.md` -- Design document
 - `ai-dev/work/{ID}/reports/{ID}_S{NN}_{Agent}_report.md` -- Implementation step report
 - All files listed in the implementation report's `files_changed`

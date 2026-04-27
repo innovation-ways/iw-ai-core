@@ -568,6 +568,30 @@ class WorkflowStep(Base):
         comment="Short human-readable label for the step (e.g., 'ruff lint', 'unit tests')",
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    command: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "Shell command for qv-gate steps (e.g., 'make lint'). NULL for "
+            "non-gate steps and for items registered before CR-00023."
+        ),
+    )
+    gate: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "Gate name for qv-gate steps (e.g., 'lint', 'format', 'typecheck'). "
+            "NULL for non-gate steps and for items registered before CR-00023."
+        ),
+    )
+    timeout_secs: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment=(
+            "Per-step timeout override in seconds. NULL = use project default. "
+            "Sourced from the manifest's 'timeout' field at registration."
+        ),
+    )
     status: Mapped[StepStatus] = mapped_column(
         _step_status_col, nullable=False, server_default=text("'pending'")
     )
