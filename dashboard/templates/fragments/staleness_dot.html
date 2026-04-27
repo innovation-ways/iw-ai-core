@@ -1,0 +1,15 @@
+{% if staleness and (staleness.services or staleness.alembic) %}
+  {% if staleness.is_stale %}
+    <span class="iw-staleness-dot iw-staleness-dot--red"
+          title="Outdated processes — click for details"
+          hx-get="/projects/{{ project.id }}/staleness-dot"
+          hx-trigger="every 15s"
+          hx-swap="outerHTML"></span>
+  {% else %}
+    <span class="iw-staleness-dot iw-staleness-dot--grey"
+          title="All services up-to-date"
+          hx-get="/projects/{{ project.id }}/staleness-dot"
+          hx-trigger="every 15s"
+          hx-swap="outerHTML"></span>
+  {% endif %}
+{% endif %}

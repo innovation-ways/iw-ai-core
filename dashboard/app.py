@@ -39,6 +39,7 @@ from dashboard.routers import (
     running,
     search,
     sse,
+    staleness,
     system,
     tests,
     worktrees,
@@ -199,5 +200,6 @@ def create_app() -> FastAPI:
     app.include_router(code_ui.router)
     app.include_router(code_qa.router)
     app.include_router(research.router)
+    app.include_router(staleness.router)
 
     return app

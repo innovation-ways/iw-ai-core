@@ -11,6 +11,27 @@ display_name = "IW AI Core Platform"
 repo_root = "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core"
 enabled = true
 
+[[projects.iw-ai-core.services]]
+name = "daemon"
+watch_paths = ["orch/**", "executor/**"]
+ignore_paths = ["**/tests/**", "**/*.md"]
+restart_command = "./ai-core.sh daemon restart"
+detect = { type = "pidfile", path = ".daemon.pid" }
+
+[[projects.iw-ai-core.services]]
+name = "dashboard"
+watch_paths = ["dashboard/**", "orch/**"]
+ignore_paths = ["**/tests/**", "**/*.md"]
+restart_command = "bin/restart-dashboard.sh"
+detect = { type = "pidfile", path = ".dashboard.pid" }
+
+[projects.iw-ai-core.alembic]
+config = "alembic.ini"
+# db_url_env intentionally omitted — iw-ai-core's alembic env.py
+# already resolves the URL via orch.config.get_db_url() from
+# IW_CORE_DB_HOST/PORT/NAME/USER/PASSWORD in .env, so the alembic
+# subprocess inherits the parent environment unchanged.
+
 [projects.cv]
 display_name = "Curriculum Vitae"
 repo_root = "/home/sergiog/dev/iw-doc-plan/main/cv"
