@@ -108,9 +108,15 @@ def test_startup_writes_pid_file(tmp_path: Path) -> None:
 
     with (
         patch("orch.daemon.main.verify_instance_identity", return_value=_bootstrap_status()),
+        patch("orch.daemon.main.check_db_at_head") as mock_guard,
         patch.object(daemon, "_startup_health_check"),
         patch.object(daemon, "_load_projects"),
     ):
+        mock_guard.return_value.ok = True
+        mock_guard.return_value.current_rev = "abc123"
+        mock_guard.return_value.head_rev = "abc123"
+        mock_guard.return_value.pending = []
+        mock_guard.return_value.multiple_heads = []
         daemon._startup()
 
     pid_file = Path(daemon.config.pid_file)
@@ -120,13 +126,17 @@ def test_startup_writes_pid_file(tmp_path: Path) -> None:
 
 def test_startup_removes_stale_pid_file_and_continues(tmp_path: Path) -> None:
     """If a PID file exists with a dead PID, startup removes it and continues."""
+    from orch.db.alembic_guard import GuardStatus
+
     daemon = make_daemon(tmp_path)
     pid_file = Path(daemon.config.pid_file)
     pid_file.write_text("99999")  # dead PID
 
+    ok = GuardStatus(current_rev="abc", head_rev="abc", pending=[], multiple_heads=[], ok=True)
     with (
         patch("orch.daemon.main._is_pid_alive", side_effect=lambda pid: pid == os.getpid()),
         patch("orch.daemon.main.verify_instance_identity", return_value=_bootstrap_status()),
+        patch("orch.daemon.main.check_db_at_head", return_value=ok),
         patch.object(daemon, "_startup_health_check"),
         patch.object(daemon, "_load_projects"),
     ):
@@ -152,10 +162,14 @@ def test_startup_raises_if_daemon_already_running(tmp_path: Path) -> None:
 
 def test_startup_proceeds_when_no_pid_file(tmp_path: Path) -> None:
     """If no PID file exists, startup proceeds without error."""
+    from orch.db.alembic_guard import GuardStatus
+
     daemon = make_daemon(tmp_path)
 
+    ok = GuardStatus(current_rev="abc", head_rev="abc", pending=[], multiple_heads=[], ok=True)
     with (
         patch("orch.daemon.main.verify_instance_identity", return_value=_bootstrap_status()),
+        patch("orch.daemon.main.check_db_at_head", return_value=ok),
         patch.object(daemon, "_startup_health_check"),
         patch.object(daemon, "_load_projects"),
     ):

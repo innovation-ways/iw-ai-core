@@ -1,0 +1,5 @@
+{% macro write_button_attrs(request) -%}
+{% if is_db_stale(request) -%}
+disabled aria-disabled="true" title="Orch DB schema mismatch — run 'make db-migrate' to fix."
+{%- endif %}
+{%- endmacro %}

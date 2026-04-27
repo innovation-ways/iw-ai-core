@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/db_guard.html" import write_button_attrs %}
 
 {% block title %}{{ doc.title }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
 
@@ -62,7 +63,8 @@
               hx-target="#detail-generate-btn"
               hx-swap="innerHTML"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:opacity-90 transition-opacity"
-              aria-label="Generate documentation">
+              aria-label="Generate documentation"
+              {{ write_button_attrs(request) }}>
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
         Generate
       </button>
@@ -71,7 +73,8 @@
               hx-target="#generation-progress"
               hx-swap="innerHTML"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border bg-card text-foreground rounded-md text-xs font-medium hover:bg-muted transition-colors"
-              aria-label="Regenerate documentation">
+              aria-label="Regenerate documentation"
+              {{ write_button_attrs(request) }}>
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
         Regenerate
       </button>

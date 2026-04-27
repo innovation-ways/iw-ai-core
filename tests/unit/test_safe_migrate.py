@@ -61,9 +61,12 @@ class TestListPendingRevisions:
         mock_script_dir = MagicMock()
         mock_script_dir.get_heads.return_value = ["rev_a", "rev_b"]
 
-        with patch(
-            "alembic.script.ScriptDirectory.from_config",
-            return_value=mock_script_dir,
+        with (
+            patch("orch.db.safe_migrate.assert_engine_url_allowed"),
+            patch(
+                "alembic.script.ScriptDirectory.from_config",
+                return_value=mock_script_dir,
+            ),
         ):
             with pytest.raises(MultipleHeadsError) as exc_info:
                 list_pending_revisions()
@@ -111,7 +114,7 @@ class TestWriteMigrationLog:
                 "orch.db.safe_migrate.get_db_url",
                 return_value="postgresql+psycopg://u:p@host:5432/db",
             ),
-            patch("orch.db.safe_migrate.create_engine") as mock_engine,
+            patch("orch.db.session.safe_create_engine") as mock_engine,
         ):
             mock_session = MagicMock()
             mock_sm = MagicMock()
@@ -148,7 +151,7 @@ class TestWriteMigrationLog:
                 "orch.db.safe_migrate.get_db_url",
                 return_value="postgresql+psycopg://u:p@host:5432/db",
             ),
-            patch("orch.db.safe_migrate.create_engine") as mock_engine,
+            patch("orch.db.session.safe_create_engine") as mock_engine,
         ):
             mock_session = MagicMock()
             mock_sm = MagicMock()

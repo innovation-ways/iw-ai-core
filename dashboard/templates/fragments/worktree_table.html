@@ -1,4 +1,5 @@
 <!-- Worktree health table fragment — auto-refreshes every 30 s via htmx -->
+{% from "macros/db_guard.html" import write_button_attrs %}
 {% if prune_errors %}
 <div class="mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-2 text-xs text-destructive space-y-0.5">
   <p class="font-medium">git worktree prune failed for some projects:</p>
@@ -229,7 +230,8 @@
                           hx-confirm="Tear down this worktree's containers? This is irreversible."
                           hx-target="#worktree-table"
                           hx-swap="outerHTML"
-                          title="Force teardown">
+                          title="Force teardown"
+                          {{ write_button_attrs(request) }}>
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                     </svg>

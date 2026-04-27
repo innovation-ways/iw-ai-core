@@ -276,7 +276,7 @@ class TestEmitDaemonEvent:
         mock_connection.__enter__ = MagicMock(return_value=mock_connection)
         mock_connection.__exit__ = MagicMock(return_value=False)
 
-        with patch("orch.daemon.migration_rebase.create_engine") as mock_engine:
+        with patch("orch.daemon.migration_rebase.safe_create_engine") as mock_engine:
             mock_engine.return_value.connect.return_value = mock_connection
             mock_engine.return_value.dispose = MagicMock()
             with patch("orch.daemon.migration_rebase.sessionmaker") as mock_sm:
@@ -303,7 +303,7 @@ class TestWriteRebaseLog:
         mock_connection.__enter__ = MagicMock(return_value=mock_connection)
         mock_connection.__exit__ = MagicMock(return_value=False)
 
-        with patch("orch.daemon.migration_rebase.create_engine") as mock_engine:
+        with patch("orch.daemon.migration_rebase.safe_create_engine") as mock_engine:
             mock_engine.return_value.connect.return_value = mock_connection
             mock_engine.return_value.dispose = MagicMock()
             with patch("orch.daemon.migration_rebase.sessionmaker") as mock_sm:

@@ -1,4 +1,5 @@
 {% from "components/status_badge.html" import status_badge %}
+{% from "macros/db_guard.html" import write_button_attrs %}
 
 {% if not has_config %}
   <div class="px-4 py-8 text-center text-muted-foreground text-sm">
@@ -89,7 +90,8 @@
                            bg-primary text-primary-foreground
                          {% else %}
                            bg-primary text-primary-foreground
-                         {% endif %}">
+                         {% endif %}"
+                  {{ write_button_attrs(request) }}>
             Launch
           </button>
         {% endif %}

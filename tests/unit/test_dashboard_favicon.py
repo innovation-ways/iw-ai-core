@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -11,8 +12,14 @@ from dashboard.app import create_app
 
 def test_favicon_served_at_static_path() -> None:
     """GET /static/favicon.svg returns the SVG favicon."""
-    client = TestClient(create_app())
-    resp = client.get("/static/favicon.svg")
+    with patch("dashboard.app.check_db_at_head") as mock_guard:
+        mock_guard.return_value.ok = True
+        mock_guard.return_value.current_rev = "abc123"
+        mock_guard.return_value.head_rev = "abc123"
+        mock_guard.return_value.pending = []
+        mock_guard.return_value.multiple_heads = []
+        client = TestClient(create_app())
+        resp = client.get("/static/favicon.svg")
 
     assert resp.status_code == 200
     assert "svg" in resp.headers["content-type"]

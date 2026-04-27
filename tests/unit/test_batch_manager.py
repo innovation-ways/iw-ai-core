@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from orch.config import DaemonConfig
 
 if TYPE_CHECKING:
@@ -451,6 +453,20 @@ class TestStepLaunchFields:
 
 
 class TestWorktreeSetup:
+    @pytest.fixture(autouse=True)
+    def _alembic_guard_ok(self):
+        """Mock the I-00040 check_db_at_head() pre-flight at the top of _launch_item.
+
+        Without this, _launch_item's first action is a real DB probe that fails
+        under the conftest env-hijack (port 1 unreachable). These tests target
+        worktree setup error handling, not the alembic guard.
+        """
+        from orch.db.alembic_guard import GuardStatus
+
+        ok = GuardStatus(current_rev="abc", head_rev="abc", pending=[], multiple_heads=[], ok=True)
+        with patch("orch.daemon.batch_manager.check_db_at_head", return_value=ok):
+            yield
+
     def test_failed_setup_marks_item_failed(self, tmp_path):
         db = MagicMock()
         batch_item = MagicMock(spec=BatchItem)
