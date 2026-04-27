@@ -1,6 +1,6 @@
 ---
 name: iw-oss-publish
-version: "0.1.0"
+version: "0.2.0"
 description: >
   Verifies a private Innovation Ways repository for safe public OSS release.
   Runs secrets/history/license/community compliance checks and auto-generates

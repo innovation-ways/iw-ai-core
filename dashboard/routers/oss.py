@@ -110,7 +110,10 @@ def oss_page(
         "must_fail": 0,
         "should_fail": 0,
         "info_fail": 0,
+        "may_fail": 0,
+        "human_required": 0,
         "skipped": 0,
+        "open": 0,
     }
     catalog = {k: v.model_dump() for k, v in load_catalog().items()}
     accepted_file = load_accepted(Path(project.repo_root))
@@ -136,17 +139,29 @@ def oss_page(
             info_fail = sum(
                 1 for f in findings if f.severity.value == "INFO" and f.status.value == "fail"
             )
+            may_fail = sum(
+                1 for f in findings if f.severity.value == "MAY" and f.status.value == "fail"
+            )
+            human_required_count = sum(1 for f in findings if f.status.value == "human_required")
             pass_count = sum(1 for f in findings if f.status.value == "pass")
             fail_count = sum(1 for f in findings if f.status.value == "fail")
-            skipped_count = sum(1 for f in findings if f.status.value in ("skip", "human_required"))
+            skip_only_count = sum(1 for f in findings if f.status.value == "skip")
+            # "Skipped" UX bucket = skip + human_required so the existing tile
+            # matches what users see as "not actively running"; "open" is the
+            # actionable count surfaced in the new Open-issues chip.
+            skipped_count = skip_only_count + human_required_count
+            open_count = fail_count + human_required_count
             findings_by_domain[domain] = {
                 "findings": findings,
                 "counts": {
                     "must": must_fail,
                     "should": should_fail,
                     "info": info_fail,
+                    "may": may_fail,
+                    "human_required": human_required_count,
                     "pass_status": pass_count,
                     "fail": fail_count,
+                    "open": open_count,
                     "skipped": skipped_count,
                     "total": len(findings),
                 },
@@ -157,7 +172,10 @@ def oss_page(
             totals["must_fail"] += must_fail
             totals["should_fail"] += should_fail
             totals["info_fail"] += info_fail
+            totals["may_fail"] += may_fail
+            totals["human_required"] += human_required_count
             totals["skipped"] += skipped_count
+            totals["open"] += open_count
 
     for f in accepted_findings:
         h = compute_finding_hash(f.check_id, f.summary, f.evidence_json)
@@ -253,7 +271,7 @@ def oss_install(
     if existing:
         raise HTTPException(
             status_code=409,
-            detail=f"Install job #{existing.id} is already running",
+            detail=f"Install job {existing.public_id} is already running",
         )
 
     from dashboard.services.oss_service import enqueue_job
@@ -265,15 +283,17 @@ def oss_install(
     thread = threading.Thread(
         target=lambda: asyncio.run(_run_oss_job(job.id)),
         daemon=True,
-        name=f"oss-install-{job.id}",
+        name=f"oss-install-{job.public_id}",
     )
     thread.start()
 
-    toast = json.dumps({"showToast": {"message": f"Install job #{job.id} started", "type": "info"}})
-    stream_url = f"/project/{project_id}/oss/stream/{job.id}"
+    toast = json.dumps(
+        {"showToast": {"message": f"Install job {job.public_id} started", "type": "info"}}
+    )
+    stream_url = f"/project/{project_id}/oss/stream/{job.public_id}"
     return Response(
         status_code=200,
-        content=json.dumps({"job_id": job.id, "stream_url": stream_url}),
+        content=json.dumps({"job_id": job.public_id, "stream_url": stream_url}),
         media_type="application/json",
         headers={"HX-Trigger": toast},
     )
@@ -336,7 +356,7 @@ def oss_scan(
     if existing:
         raise HTTPException(
             status_code=409,
-            detail=f"Scan job #{existing.id} is already running",
+            detail=f"Scan job {existing.public_id} is already running",
         )
 
     from dashboard.services.oss_service import enqueue_job
@@ -348,14 +368,14 @@ def oss_scan(
     thread = threading.Thread(
         target=lambda: asyncio.run(_run_oss_job(job.id)),
         daemon=True,
-        name=f"oss-scan-{job.id}",
+        name=f"oss-scan-{job.public_id}",
     )
     thread.start()
 
-    stream_url = f"/project/{project_id}/oss/stream/{job.id}"
+    stream_url = f"/project/{project_id}/oss/stream/{job.public_id}"
     return Response(
         status_code=200,
-        content=json.dumps({"job_id": job.id, "stream_url": stream_url}),
+        content=json.dumps({"job_id": job.public_id, "stream_url": stream_url}),
         media_type="application/json",
     )
 
@@ -363,7 +383,7 @@ def oss_scan(
 @router.get("/oss/stream/{job_id}", response_class=StreamingResponse)
 async def oss_stream(
     project_id: str,
-    job_id: int,
+    job_id: str,
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
@@ -371,7 +391,7 @@ async def oss_stream(
 
     job = db.scalar(
         select(ProjectOssJob).where(
-            ProjectOssJob.id == job_id,
+            ProjectOssJob.public_id == job_id,
             ProjectOssJob.project_id == project_id,
         )
     )
@@ -379,7 +399,7 @@ async def oss_stream(
         raise HTTPException(status_code=404, detail="Job not found")
 
     return StreamingResponse(
-        _stream_job_events(request, job_id),
+        _stream_job_events(request, job.id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -398,6 +418,29 @@ async def _run_oss_job(job_id: int) -> None:
 # ---------------------------------------------------------------------------
 # New S09 endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.get("/oss/findings/{finding_id}/details", response_class=Response)
+def oss_finding_details(
+    project_id: str,
+    finding_id: int,
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Return paginated per-result rows for an OSS finding (e.g. gitleaks hits).
+
+    The modal calls this after opening so the user sees file/line/rule/masked
+    snippet for each underlying match instead of a single aggregate count.
+    """
+    get_project_or_404(project_id, db)
+
+    from dashboard.services.oss_service import get_finding_details
+
+    payload = get_finding_details(db, project_id, finding_id, limit=limit, offset=offset)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    return Response(content=json.dumps(payload), media_type="application/json")
 
 
 @router.post("/oss/fix/{check_id}", response_class=Response)
@@ -439,7 +482,7 @@ def oss_fix(
     if existing:
         raise HTTPException(
             status_code=409,
-            detail=f"Fix job #{existing.id} is already running",
+            detail=f"Fix job {existing.public_id} is already running",
         )
 
     from dashboard.services.oss_service import enqueue_job
@@ -451,14 +494,16 @@ def oss_fix(
     thread = threading.Thread(
         target=lambda: asyncio.run(_run_oss_job(job.id)),
         daemon=True,
-        name=f"oss-fix-{job.id}",
+        name=f"oss-fix-{job.public_id}",
     )
     thread.start()
 
-    toast = json.dumps({"showToast": {"message": f"Fix job #{job.id} started", "type": "info"}})
-    stream_url = f"/project/{project_id}/oss/stream/{job.id}"
+    toast = json.dumps(
+        {"showToast": {"message": f"Fix job {job.public_id} started", "type": "info"}}
+    )
+    stream_url = f"/project/{project_id}/oss/stream/{job.public_id}"
     return Response(
-        content=json.dumps({"job_id": job.id, "stream_url": stream_url}),
+        content=json.dumps({"job_id": job.public_id, "stream_url": stream_url}),
         media_type="application/json",
         headers={"HX-Trigger": toast},
     )
@@ -477,7 +522,7 @@ def oss_recheck(
     if existing:
         raise HTTPException(
             status_code=409,
-            detail=f"Scan job #{existing.id} is already running",
+            detail=f"Scan job {existing.public_id} is already running",
         )
 
     from dashboard.services.oss_service import enqueue_job
@@ -489,21 +534,21 @@ def oss_recheck(
     thread = threading.Thread(
         target=lambda: asyncio.run(_run_oss_job(job.id)),
         daemon=True,
-        name=f"oss-recheck-{job.id}",
+        name=f"oss-recheck-{job.public_id}",
     )
     thread.start()
 
     toast = json.dumps(
         {
             "showToast": {
-                "message": f"Re-checking all findings (job #{job.id})",
+                "message": f"Re-checking all findings (job {job.public_id})",
                 "type": "info",
             }
         }
     )
-    stream_url = f"/project/{project_id}/oss/stream/{job.id}"
+    stream_url = f"/project/{project_id}/oss/stream/{job.public_id}"
     return Response(
-        content=json.dumps({"job_id": job.id, "stream_url": stream_url}),
+        content=json.dumps({"job_id": job.public_id, "stream_url": stream_url}),
         media_type="application/json",
         headers={"HX-Trigger": toast},
     )
@@ -610,7 +655,7 @@ def oss_apply_all_safe(
     if existing:
         raise HTTPException(
             status_code=409,
-            detail=f"Fix job #{existing.id} is already running",
+            detail=f"Fix job {existing.public_id} is already running",
         )
 
     from dashboard.services.oss_service import enqueue_job
@@ -622,21 +667,21 @@ def oss_apply_all_safe(
     thread = threading.Thread(
         target=lambda: asyncio.run(_run_fixes_batch(job.id)),
         daemon=True,
-        name=f"oss-apply-all-{job.id}",
+        name=f"oss-apply-all-{job.public_id}",
     )
     thread.start()
 
     toast = json.dumps(
         {
             "showToast": {
-                "message": (f"Applying {len(payload.check_ids)} fix(es) (job #{job.id})"),
+                "message": (f"Applying {len(payload.check_ids)} fix(es) (job {job.public_id})"),
                 "type": "info",
             }
         }
     )
-    stream_url = f"/project/{project_id}/oss/stream/{job.id}"
+    stream_url = f"/project/{project_id}/oss/stream/{job.public_id}"
     return Response(
-        content=json.dumps({"job_id": job.id, "stream_url": stream_url}),
+        content=json.dumps({"job_id": job.public_id, "stream_url": stream_url}),
         media_type="application/json",
         headers={"HX-Trigger": toast},
     )

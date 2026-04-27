@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from orch.db.models import (
     OssFinding,
+    OssFindingDetail,
     OssFindingSeverity,
     OssFindingStatus,
     OssScan,
@@ -44,7 +45,17 @@ def persist_findings(
             status = status_map.get(status_raw, OssFindingStatus.fail)
 
         evidence = f.get("evidence")
-        evidence_json = evidence if isinstance(evidence, dict) else None
+        # `results` is the per-row detail payload (e.g. SARIF records). It
+        # belongs in oss_finding_detail, not in the JSONB blob, so we pop it
+        # off before persisting evidence_json.
+        results: list[dict[str, Any]] = []
+        if isinstance(evidence, dict):
+            evidence_json = dict(evidence)
+            raw_results = evidence_json.pop("results", None)
+            if isinstance(raw_results, list):
+                results = [r for r in raw_results if isinstance(r, dict)]
+        else:
+            evidence_json = None
 
         finding = OssFinding(
             scan_id=scan.id,
@@ -63,6 +74,19 @@ def persist_findings(
             rationale=f.get("rationale"),
         )
         session.add(finding)
+        if results:
+            session.flush()  # populate finding.id for FK
+            for ordinal, record in enumerate(results):
+                line_raw = record.get("line")
+                detail = OssFindingDetail(
+                    finding_id=finding.id,
+                    ordinal=ordinal,
+                    file_path=str(record.get("file") or ""),
+                    line_number=line_raw if isinstance(line_raw, int) else None,
+                    rule_id=str(record.get("rule") or "unknown"),
+                    snippet_masked=record.get("snippet_masked"),
+                )
+                session.add(detail)
 
     tools_available = findings_json.get("tools_available", {})
     for tool_name, version in tools_available.items():

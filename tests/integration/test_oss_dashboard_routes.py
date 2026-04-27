@@ -170,7 +170,11 @@ class TestOssInstall:
         assert "stream_url" in data
         assert f"/project/{project_with_oss_disabled.id}/oss/stream/" in data["stream_url"]
 
-        job = db_session.query(ProjectOssJob).filter(ProjectOssJob.id == data["job_id"]).first()
+        job = (
+            db_session.query(ProjectOssJob)
+            .filter(ProjectOssJob.public_id == data["job_id"])
+            .first()
+        )
         assert job is not None
         assert job.kind == ProjectOssJobKind.install
 
@@ -426,7 +430,7 @@ class TestOssStream:
         db_session.flush()
 
         resp = client.get(
-            f"/project/{project_with_oss_disabled.id}/oss/stream/{job.id}",
+            f"/project/{project_with_oss_disabled.id}/oss/stream/{job.public_id}",
             headers={"Accept": "text/event-stream"},
         )
         assert resp.status_code == 200
@@ -458,7 +462,7 @@ class TestOssStream:
         db_session.add(job)
         db_session.flush()
 
-        resp = client.get(f"/project/{project_with_oss_disabled.id}/oss/stream/{job.id}")
+        resp = client.get(f"/project/{project_with_oss_disabled.id}/oss/stream/{job.public_id}")
         assert resp.status_code == 404
 
 
@@ -480,7 +484,7 @@ class TestOssSseEventOrder:
         db_session.flush()
 
         resp = client.get(
-            f"/project/{project_with_oss_disabled.id}/oss/stream/{job.id}",
+            f"/project/{project_with_oss_disabled.id}/oss/stream/{job.public_id}",
             headers={"Accept": "text/event-stream"},
             timeout=5,
         )

@@ -267,11 +267,147 @@
     word-break: break-all;
   }
 
+  /* Default 'failing' filter: open issues only — fail + human_required.
+     Pass / skip / accepted rows hidden. */
+  .oss-findings.filter-failing .oss-finding-row[data-status="pass"],
+  .oss-findings.filter-failing .oss-finding-row[data-status="skip"],
+  .oss-findings.filter-failing .oss-finding-row[data-status="accepted"],
+  /* MUST / SHOULD / INFO chips: only OPEN issues at that severity
+     (severity match AND status in {fail, human_required}). */
   .oss-findings.filter-MUST .oss-finding-row:not([data-severity="MUST"]),
+  .oss-findings.filter-MUST .oss-finding-row[data-status="pass"],
+  .oss-findings.filter-MUST .oss-finding-row[data-status="skip"],
+  .oss-findings.filter-MUST .oss-finding-row[data-status="accepted"],
   .oss-findings.filter-SHOULD .oss-finding-row:not([data-severity="SHOULD"]),
+  .oss-findings.filter-SHOULD .oss-finding-row[data-status="pass"],
+  .oss-findings.filter-SHOULD .oss-finding-row[data-status="skip"],
+  .oss-findings.filter-SHOULD .oss-finding-row[data-status="accepted"],
   .oss-findings.filter-INFO .oss-finding-row:not([data-severity="INFO"]),
-  .oss-findings.filter-Accepted .oss-finding-row:not([data-status="accepted"]),
-  .oss-findings.filter-failing .oss-finding-row[data-status="pass"] {
+  .oss-findings.filter-INFO .oss-finding-row[data-status="pass"],
+  .oss-findings.filter-INFO .oss-finding-row[data-status="skip"],
+  .oss-findings.filter-INFO .oss-finding-row[data-status="accepted"],
+  /* Accepted chip: only accepted rows. */
+  .oss-findings.filter-Accepted .oss-finding-row:not([data-status="accepted"]) {
     display: none;
+  }
+
+  /* Hide domain-group headers when no row inside them is visible under the
+     current filter. Uses :has() (supported in all evergreen browsers since
+     2023). The "all" filter shows every group. */
+  .oss-findings.filter-failing .oss-domain-group:not(.oss-accepted-group):not(:has(.oss-finding-row[data-status="fail"], .oss-finding-row[data-status="human_required"])),
+  .oss-findings.filter-failing .oss-domain-group.oss-accepted-group,
+  .oss-findings.filter-MUST .oss-domain-group:not(.oss-accepted-group):not(:has(.oss-finding-row[data-severity="MUST"][data-status="fail"], .oss-finding-row[data-severity="MUST"][data-status="human_required"])),
+  .oss-findings.filter-MUST .oss-domain-group.oss-accepted-group,
+  .oss-findings.filter-SHOULD .oss-domain-group:not(.oss-accepted-group):not(:has(.oss-finding-row[data-severity="SHOULD"][data-status="fail"], .oss-finding-row[data-severity="SHOULD"][data-status="human_required"])),
+  .oss-findings.filter-SHOULD .oss-domain-group.oss-accepted-group,
+  .oss-findings.filter-INFO .oss-domain-group:not(.oss-accepted-group):not(:has(.oss-finding-row[data-severity="INFO"][data-status="fail"], .oss-finding-row[data-severity="INFO"][data-status="human_required"])),
+  .oss-findings.filter-INFO .oss-domain-group.oss-accepted-group,
+  .oss-findings.filter-Accepted .oss-domain-group:not(.oss-accepted-group) {
+    display: none;
+  }
+
+  /* Subtle severity-tinted backgrounds and accent borders on findings rows
+     so the table reads at a glance without resorting to bright colors. */
+  .oss-findings .oss-finding-row > td:first-child {
+    border-left: 3px solid transparent;
+  }
+  .oss-findings .oss-finding-row[data-status="fail"][data-severity="MUST"] > td:first-child {
+    border-left-color: #b92733;
+  }
+  .oss-findings .oss-finding-row[data-status="fail"][data-severity="SHOULD"] > td:first-child {
+    border-left-color: #d97706;
+  }
+  .oss-findings .oss-finding-row[data-status="fail"][data-severity="INFO"] > td:first-child {
+    border-left-color: #0284c7;
+  }
+  .oss-findings .oss-finding-row[data-status="human_required"] > td:first-child {
+    border-left-color: #9333ea;
+  }
+  .oss-findings .oss-finding-row[data-status="fail"][data-severity="MUST"] {
+    background-color: rgba(185, 39, 51, 0.04);
+  }
+  .oss-findings .oss-finding-row[data-status="fail"][data-severity="SHOULD"] {
+    background-color: rgba(217, 119, 6, 0.04);
+  }
+  .oss-findings .oss-finding-row[data-status="fail"][data-severity="INFO"] {
+    background-color: rgba(2, 132, 199, 0.04);
+  }
+  .oss-findings .oss-finding-row[data-status="human_required"] {
+    background-color: rgba(147, 51, 234, 0.035);
+  }
+  .oss-findings .oss-finding-row:hover {
+    background-color: rgba(88, 101, 242, 0.05);
+  }
+
+  /* Pull severity pills out of the bland gray range so MUST in particular
+     reads as critical without becoming a bright red badge. */
+  .severity-must {
+    background-color: rgba(185, 39, 51, 0.12);
+    color: #7f1d1d;
+    border-color: rgba(185, 39, 51, 0.4);
+  }
+  .severity-should {
+    background-color: rgba(217, 119, 6, 0.12);
+    color: #78350f;
+    border-color: rgba(217, 119, 6, 0.4);
+  }
+  .severity-info {
+    background-color: rgba(2, 132, 199, 0.12);
+    color: #0c4a6e;
+    border-color: rgba(2, 132, 199, 0.4);
+  }
+  .status-fail {
+    background-color: rgba(185, 39, 51, 0.12);
+    color: #7f1d1d;
+  }
+  .status-human_required {
+    background-color: rgba(147, 51, 234, 0.12);
+    color: #581c87;
+  }
+}
+
+@layer components {
+  /* Dark-mode tweaks: keep tints subtle, raise text contrast. */
+  .dark .oss-findings .oss-finding-row[data-status="fail"][data-severity="MUST"] {
+    background-color: rgba(248, 113, 113, 0.08);
+  }
+  .dark .oss-findings .oss-finding-row[data-status="fail"][data-severity="SHOULD"] {
+    background-color: rgba(251, 191, 36, 0.08);
+  }
+  .dark .oss-findings .oss-finding-row[data-status="fail"][data-severity="INFO"] {
+    background-color: rgba(56, 189, 248, 0.08);
+  }
+  .dark .oss-findings .oss-finding-row[data-status="human_required"] {
+    background-color: rgba(192, 132, 252, 0.07);
+  }
+  .dark .oss-findings .oss-finding-row:hover {
+    background-color: rgba(88, 101, 242, 0.12);
+  }
+  .dark .severity-must {
+    background-color: rgba(248, 113, 113, 0.18);
+    color: #fecaca;
+    border-color: rgba(248, 113, 113, 0.4);
+  }
+  .dark .severity-should {
+    background-color: rgba(251, 191, 36, 0.18);
+    color: #fde68a;
+    border-color: rgba(251, 191, 36, 0.4);
+  }
+  .dark .severity-info {
+    background-color: rgba(56, 189, 248, 0.18);
+    color: #bae6fd;
+    border-color: rgba(56, 189, 248, 0.4);
+  }
+  .dark .status-fail {
+    background-color: rgba(248, 113, 113, 0.18);
+    color: #fecaca;
+  }
+  .dark .status-human_required {
+    background-color: rgba(192, 132, 252, 0.18);
+    color: #e9d5ff;
+  }
+  .dark .status-pass {
+    background-color: rgba(74, 222, 128, 0.16);
+    color: #bbf7d0;
   }
 }

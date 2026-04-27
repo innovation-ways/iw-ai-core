@@ -132,6 +132,9 @@
     closeApplyAllModal();
   });
   overlay.addEventListener('click', function () { closeApplyAllModal(); });
+  modal.addEventListener('click', function (ev) {
+    if (ev.target === modal) closeApplyAllModal();
+  });
 
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape' && modal.getAttribute('aria-hidden') !== 'true') {

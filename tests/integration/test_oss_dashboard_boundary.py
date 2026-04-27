@@ -118,6 +118,7 @@ CREATE TYPE project_oss_job_status AS ENUM (
 
 CREATE TABLE IF NOT EXISTS project_oss_job (
     id BIGSERIAL PRIMARY KEY,
+    public_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
     kind project_oss_job_kind NOT NULL,
     status project_oss_job_status NOT NULL DEFAULT 'queued',
@@ -136,6 +137,7 @@ CREATE TABLE IF NOT EXISTS project_oss_job (
 );
 CREATE INDEX ix_project_oss_job_project_created ON project_oss_job (project_id, created_at DESC);
 CREATE INDEX ix_project_oss_job_status ON project_oss_job (status);
+CREATE UNIQUE INDEX ix_project_oss_job_public_id ON project_oss_job (public_id);
 
 ALTER TABLE project_oss_job ADD CONSTRAINT fk_project_oss_job_project
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE;
@@ -663,7 +665,7 @@ class TestSseDisconnectBoundary:
         oss_boundary_session.add(job)
         oss_boundary_session.commit()
 
-        url = f"/project/{proj_enabled.id}/oss/stream/{job.id}"
+        url = f"/project/{proj_enabled.id}/oss/stream/{job.public_id}"
         # First connection — get tail events
         resp1 = client.get(url, headers={"Accept": "text/event-stream"})
         assert resp1.status_code == 200
