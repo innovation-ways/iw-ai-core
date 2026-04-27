@@ -1,4 +1,4 @@
-{% from "components/action_button.html" import kill_button %}
+{% from "components/action_button.html" import kill_button with context %}
 {% for row in running_rows %}
   <tr class="border-b border-border last:border-0 hover:bg-muted/20">
     <td class="px-4 py-2 font-mono text-xs text-muted-foreground">{{ row.project_name }}</td>
