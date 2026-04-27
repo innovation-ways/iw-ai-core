@@ -11,6 +11,12 @@
   <p class="text-muted-foreground text-sm mt-1">Project overview</p>
 </div>
 
+<!-- Staleness panel — htmx lazy-load + 15s auto-refresh -->
+<div hx-get="/projects/{{ current_project.id }}/staleness"
+     hx-trigger="load, every 15s"
+     hx-swap="innerHTML">
+</div>
+
 <!-- Summary Cards -->
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
   <div class="bg-card border border-border rounded-lg p-4">
