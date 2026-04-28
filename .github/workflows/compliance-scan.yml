@@ -27,6 +27,11 @@ jobs:
           persist-credentials: false
 
       - name: Install compliance tools
+        env:
+          # gh release download (the preferred install path) needs an
+          # authenticated gh CLI. The runner provides GITHUB_TOKEN but
+          # doesn't expose it as GH_TOKEN by default.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           bash .claude/skills/iw-oss-publish/scripts/install_tools.sh
 
