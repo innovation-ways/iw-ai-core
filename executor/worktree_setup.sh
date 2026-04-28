@@ -194,6 +194,33 @@ if [[ -d "$SKILLS_SRC" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Step 7: Copy work item context (prompts, manifest, design doc) into the
+# worktree so agents can discover them via Glob immediately.
+# ---------------------------------------------------------------------------
+ACTIVE_SRC="$PROJECT_REPO_ROOT/ai-dev/active/$ITEM_ID"
+ACTIVE_DST="$WORKTREE_DIR/ai-dev/active/$ITEM_ID"
+
+if [[ -d "$ACTIVE_SRC" ]]; then
+    echo "Copying work item context into worktree..." >&2
+    mkdir -p "$(dirname "$ACTIVE_DST")"
+    cp -r "$ACTIVE_SRC" "$ACTIVE_DST"
+    echo "Context copied: $ACTIVE_DST" >&2
+
+    WORKTREE_GITDIR=$(git -C "$WORKTREE_DIR" rev-parse --git-dir)
+    if [[ "${WORKTREE_GITDIR:0:1}" != "/" ]]; then
+        WORKTREE_GITDIR="$WORKTREE_DIR/$WORKTREE_GITDIR"
+    fi
+    mkdir -p "$WORKTREE_GITDIR/info"
+    {
+        echo "# iw: read-only context copied from main repo — must not be committed to the branch"
+        echo "ai-dev/active/$ITEM_ID/prompts/"
+        echo "ai-dev/active/$ITEM_ID/workflow-manifest.json"
+        echo "ai-dev/active/$ITEM_ID/*.md"
+    } >> "$WORKTREE_GITDIR/info/exclude"
+    echo "Per-worktree git exclude written: $WORKTREE_GITDIR/info/exclude" >&2
+fi
+
+# ---------------------------------------------------------------------------
 # Done — output the worktree path (consumed by the daemon)
 # ---------------------------------------------------------------------------
 cd "$PROJECT_REPO_ROOT"
