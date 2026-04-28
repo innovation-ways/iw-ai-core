@@ -972,6 +972,9 @@ class BatchManager:
             agent_env = {**agent_env, **bv_env}
         if worktree_info.get("worktree_compose_path") is not None:
             agent_env["IW_CORE_PER_WORKTREE_DB"] = "true"
+        # Always inject IW_STEP_ID so browser-verification agents can call
+        # `iw step-done "$IW_ITEM_ID" --step "$IW_STEP_ID"` without hardcoding.
+        agent_env["IW_STEP_ID"] = step.step_id
 
         proc_env = agent_env
 
