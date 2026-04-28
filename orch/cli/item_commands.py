@@ -22,6 +22,7 @@ from orch.db.models import (
     Batch,
     BatchItem,
     BatchStatus,
+    EvidencePhase,
     StepStatus,
     StepType,
     WorkflowStep,
@@ -30,6 +31,7 @@ from orch.db.models import (
     WorkItemStatus,
     WorkItemType,
 )
+from orch.evidences import EvidenceTooLargeError, ingest_phase_from_disk
 
 # ---------------------------------------------------------------------------
 # Pure validation helpers (used by unit tests without DB)
@@ -492,8 +494,22 @@ def approve(ctx: click.Context, item_id: str) -> None:
                 except ValueError as exc:
                     output_error(ctx, str(exc), 1)
 
+            repo_root = ctx.obj.get("repo_root", "") or "."
+            try:
+                ingest_phase_from_disk(
+                    session=session,
+                    project_id=project_id,
+                    work_item_id=item_id,
+                    phase=EvidencePhase.pre,
+                    root=Path(repo_root),
+                    step_id=None,
+                )
+            except EvidenceTooLargeError as exc:
+                output_error(ctx, str(exc), 1)
+
             item.status = WorkItemStatus.approved
             item.updated_at = datetime.now(UTC)
+
             session.flush()
 
     except Exception as exc:

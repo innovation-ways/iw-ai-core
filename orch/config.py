@@ -123,6 +123,9 @@ class DaemonConfig:
     db_pool_size: int = 20
     db_max_overflow: int = 20
 
+    # Evidence ingestion
+    evidence_max_bytes: int = 5 * 1024 * 1024
+
     # Baseline QV gates (F-00061)
     baseline_qv_enabled: bool = True
 
@@ -166,4 +169,5 @@ def load_config() -> DaemonConfig:
         db_pool_size=int(os.environ.get("IW_CORE_DB_POOL_SIZE", "20")),
         db_max_overflow=int(os.environ.get("IW_CORE_DB_MAX_OVERFLOW", "20")),
         baseline_qv_enabled=_parse_truthy(os.environ.get("IW_CORE_BASELINE_QV", "true")),
+        evidence_max_bytes=int(os.environ.get("IW_CORE_EVIDENCE_MAX_BYTES", str(5 * 1024 * 1024))),
     )
