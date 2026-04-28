@@ -40,7 +40,13 @@ from orch.db.models import (
 def client(db_session: Any) -> Generator[TestClient, None, None]:
     import os
 
+    import dashboard.middlewares.alembic_guard as mg
+
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+    # Reset middleware globals so stale state from other test files doesn't
+    # cause require_db_at_head to return 503 for tests that don't expect it.
+    mg._alembic_guard_status = None
+    mg._dashboard_last_check = 0.0
     try:
 
         def override_get_db() -> Generator[Any, None, None]:
