@@ -10,7 +10,11 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from orch.staleness.alembic_check import AlembicStatus, RevisionSummary, check_alembic
+from orch.staleness.alembic_check import (
+    AlembicStatus,
+    RevisionSummary,
+    check_alembic,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -238,3 +242,125 @@ class TestAlembicStatusDataclass:
         assert len(s.pending) == 1
         assert s.pending[0].rev_id == "def"
         assert s.pending[0].message == "New migration"
+
+
+# ---------------------------------------------------------------------------
+# Real-world alembic verbose output — regression coverage
+# ---------------------------------------------------------------------------
+#
+# The fake fixtures above use a synthetic format that does not match what
+# `alembic current --verbose` / `alembic heads --verbose` actually emit.
+# These tests pin the parser to real-world output so that a divergence
+# between the parser and alembic's actual format is caught.
+
+
+_REAL_CURRENT_OUTPUT = (
+    "Current revision(s) for postgresql+psycopg://iw_orch:***@localhost:5433/iw_orch:\n"
+    "Rev: fdf63560ff02 (head)\n"
+    "Parent: bd4ed52cad71\n"
+    "Path: /repo/orch/db/migrations/versions/fdf63560ff02_oss_job_public_id.py\n"
+    "\n"
+    "    Add public_id (O-XXXXX) to project_oss_job and backfill\n"
+    "    \n"
+    "    Revision ID: fdf63560ff02\n"
+    "    Revises: bd4ed52cad71\n"
+    "    Create Date: 2026-04-27 23:00:00.000000\n"
+    "    \n"
+    "    OSS jobs previously surfaced their bigserial integer id (1, 2, 3, ...)\n"
+)
+
+_REAL_HEADS_OUTPUT = (
+    "Rev: fdf63560ff02 (head)\n"
+    "Parent: bd4ed52cad71\n"
+    "Path: /repo/orch/db/migrations/versions/fdf63560ff02_oss_job_public_id.py\n"
+    "\n"
+    "    Add public_id (O-XXXXX) to project_oss_job and backfill\n"
+    "    \n"
+    "    Revision ID: fdf63560ff02\n"
+    "    Revises: bd4ed52cad71\n"
+    "    Create Date: 2026-04-27 23:00:00.000000\n"
+    "    \n"
+    "    OSS jobs previously surfaced their bigserial integer id (1, 2, 3, ...)\n"
+)
+
+
+class TestParseRealAlembicOutput:
+    def test_parse_revision_from_real_current_output(self) -> None:
+        """`alembic current --verbose` stdout is parsed to the rev_id (not 'Current')."""
+        from orch.staleness.alembic_check import _parse_revision_from_verbose
+
+        assert _parse_revision_from_verbose(_REAL_CURRENT_OUTPUT) == "fdf63560ff02"
+
+    def test_parse_revision_from_real_heads_output(self) -> None:
+        """`alembic heads --verbose` stdout is parsed to the rev_id (not 'Rev:')."""
+        from orch.staleness.alembic_check import _parse_revision_from_verbose
+
+        assert _parse_revision_from_verbose(_REAL_HEADS_OUTPUT) == "fdf63560ff02"
+
+    def test_parse_message_from_real_heads_output(self) -> None:
+        """Message is the docstring's first line, not the docstring metadata."""
+        from orch.staleness.alembic_check import _parse_message_from_verbose
+
+        msg = _parse_message_from_verbose(_REAL_HEADS_OUTPUT)
+        assert msg == "Add public_id (O-XXXXX) to project_oss_job and backfill"
+        # Must NOT smush in docstring metadata or body.
+        assert "Revision ID:" not in msg
+        assert "Create Date:" not in msg
+
+    def test_check_alembic_at_head_with_real_output_returns_up_to_date(
+        self, tmp_path: Path
+    ) -> None:
+        """End-to-end: when DB and code are at the same revision, status='up_to_date'.
+
+        Regression: previously the parser returned the literal 'Current' for the
+        current rev and 'Rev:' for the head rev, so this case was always reported
+        as 'stale' with a nonsense message in the dashboard.
+        """
+        (tmp_path / "alembic.ini").write_text("[alembic]\n")
+
+        def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            if "current" in cmd:
+                result.stdout = _REAL_CURRENT_OUTPUT
+            else:
+                result.stdout = _REAL_HEADS_OUTPUT
+            result.stderr = ""
+            return result
+
+        with patch("subprocess.run", side_effect=fake_run):
+            status = check_alembic(tmp_path, "alembic.ini", db_url_env=None)
+
+        assert status.status == "up_to_date"
+        assert status.current == "fdf63560ff02"
+        assert status.head == "fdf63560ff02"
+        assert status.pending == []
+
+    def test_check_alembic_no_current_with_real_heads_output_returns_stale(
+        self, tmp_path: Path
+    ) -> None:
+        """Empty `alembic current` (no migrations applied) + heads present → stale."""
+        (tmp_path / "alembic.ini").write_text("[alembic]\n")
+
+        no_current_output = (
+            "Current revision(s) for postgresql+psycopg://iw_orch:***@localhost:5433/iw_orch:\n"
+        )
+
+        def fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = no_current_output if "current" in cmd else _REAL_HEADS_OUTPUT
+            result.stderr = ""
+            return result
+
+        with patch("subprocess.run", side_effect=fake_run):
+            status = check_alembic(tmp_path, "alembic.ini", db_url_env=None)
+
+        assert status.status == "stale"
+        assert status.current is None
+        assert status.head == "fdf63560ff02"
+        assert len(status.pending) == 1
+        assert status.pending[0].rev_id == "fdf63560ff02"
+        assert (
+            status.pending[0].message == "Add public_id (O-XXXXX) to project_oss_job and backfill"
+        )
