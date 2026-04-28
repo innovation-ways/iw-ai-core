@@ -7,3 +7,21 @@
 .tap { min-height: 44px; min-width: 44px; }
 
 #chat-messages { scroll-behavior: auto; }
+
+#chat-toggle-tab .chat-tab-icon,
+#chat-toggle-tab .chat-tab-label {
+  display: none;
+}
+#chat-panel[data-collapsed="true"] #chat-toggle-tab .chat-tab-icon,
+#chat-panel[data-collapsed="true"] #chat-toggle-tab .chat-tab-label {
+  display: flex;
+}
+#chat-panel[data-collapsed="true"] #chat-toggle-tab .toggle-collapse-icon {
+  display: none;
+}
+#chat-panel:not([data-collapsed="true"]) #chat-toggle-tab .toggle-expand-icon {
+  display: none;
+}
+#chat-panel:not([data-collapsed="true"]) #chat-toggle-tab .toggle-collapse-icon {
+  display: flex;
+}
