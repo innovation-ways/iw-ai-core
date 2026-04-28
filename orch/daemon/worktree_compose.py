@@ -219,6 +219,7 @@ def _emit_daemon_event(
     metadata: dict[str, Any],
     message: str | None = None,
     db: Session | None = None,
+    project_id: str | None = None,
 ) -> None:
     """Write a DaemonEvent via a fresh short-lived session.
 
@@ -228,6 +229,8 @@ def _emit_daemon_event(
         message: Optional human-readable message.
         db: Optional session to use. If not provided, creates its own connection
             to the orch DB (suitable for daemon/CLI context).
+        project_id: Optional project ID so the event appears in per-project
+            event feeds. Defaults to None for back-compat (global events).
     """
     _owns_session = False
     try:
@@ -238,7 +241,7 @@ def _emit_daemon_event(
             db = session_factory()
             _owns_session = True
         event = DaemonEvent(
-            project_id=None,
+            project_id=project_id,
             event_type=event_type,
             entity_id=None,
             entity_type=None,
@@ -648,6 +651,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
                 "error": str(exc),
             },
             message=f"worktree_compose up refused: {exc}",
+            project_id=cfg.project_id,
         )
         return UpResult(
             success=False,
@@ -670,6 +674,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
                 "error": f"render_compose failed: {exc}",
             },
             message=f"worktree_compose render failed: {exc}",
+            project_id=cfg.project_id,
         )
         return UpResult(
             success=False,
@@ -709,6 +714,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
                     "error": err,
                 },
                 message=f"worktree_compose up failed: {err}",
+                project_id=cfg.project_id,
             )
             return UpResult(
                 success=False,
@@ -730,6 +736,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
                 "error": err,
             },
             message=f"worktree_compose up timed out: {err}",
+            project_id=cfg.project_id,
         )
         return UpResult(
             success=False,
@@ -758,6 +765,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
                 "seed_stderr_tail": seed_stderr,
             },
             message=f"worktree_compose seed failed: {seed_stderr}",
+            project_id=cfg.project_id,
         )
         return UpResult(
             success=False,
@@ -776,6 +784,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
             "ports": discovered_ports,
         },
         message=f"worktree_compose up succeeded for {cfg.batch_item_id}",
+        project_id=cfg.project_id,
     )
 
     return UpResult(
@@ -787,7 +796,11 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
     )
 
 
-def down(batch_item_id: str, compose_path: Path | None) -> bool:
+def down(
+    batch_item_id: str,
+    compose_path: Path | None,
+    project_id: str | None = None,
+) -> bool:
     """Tear down the per-worktree compose stack.
 
     Runs ``docker compose down -v --remove-orphans`` followed by belt-and-suspenders
@@ -795,6 +808,12 @@ def down(batch_item_id: str, compose_path: Path | None) -> bool:
     nothing was running.
 
     Emits DaemonEvent(phase='down').
+
+    Args:
+        batch_item_id: The batch item ID whose stack should be torn down.
+        compose_path: Optional path to the rendered compose file (for -f flag).
+        project_id: Optional project ID so the event appears in per-project
+            event feeds. Defaults to None for back-compat (global events).
     """
     compose_project_name = _compose_project_name(batch_item_id)
 
@@ -861,6 +880,7 @@ def down(batch_item_id: str, compose_path: Path | None) -> bool:
             "success": True,
         },
         message=f"worktree_compose down completed for {batch_item_id}",
+        project_id=project_id,
     )
 
     logger.info("compose stack torn down for %s", batch_item_id)

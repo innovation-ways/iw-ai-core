@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from orch.daemon import worktree_compose
 from orch.db.alembic_guard import check_db_at_head, remediation_message
 from orch.db.models import (
+    TERMINAL_BATCH_ITEM_STATUSES,
     Batch,
     BatchItem,
     BatchItemStatus,
@@ -46,6 +47,12 @@ logger = logging.getLogger(__name__)
 
 # Executor scripts: iw-ai-core/executor/
 _EXECUTOR_DIR = Path(__file__).resolve().parent.parent.parent / "executor"
+
+# C3: default timeout (seconds) for items stuck in setting_up
+_DEFAULT_SETTING_UP_THRESHOLD_SECS = 600
+
+# H1: terminal statuses that block downstream execution groups (merged is success, not a failure)
+_BLOCKING_TERMINAL_STATUSES = TERMINAL_BATCH_ITEM_STATUSES - {BatchItemStatus.merged}
 
 
 class WorktreeSetupError(RuntimeError):
@@ -96,6 +103,13 @@ class BatchManager:
     def process_batches(self) -> None:
         """Find approved/executing batches and advance their items."""
         with self._session_factory() as db:
+            # C3: Recover items that are stuck in setting_up due to a prior daemon crash.
+            # Must run BEFORE the launch loop so the stuck items are cleared first.
+            try:
+                self._timeout_stuck_setting_up_items(db)
+            except Exception:
+                logger.exception("[%s] Error in _timeout_stuck_setting_up_items", self.project_id)
+
             batches = (
                 db.query(Batch)
                 .filter(
@@ -138,6 +152,123 @@ class BatchManager:
         logger.debug("[%s] check_auto_publish (stub)", self.project_id)
 
     # ------------------------------------------------------------------
+    # C3: stuck setting_up recovery
+    # ------------------------------------------------------------------
+
+    def _timeout_stuck_setting_up_items(self, db: Session) -> None:
+        """Transition BatchItems stuck in setting_up past the threshold to setup_failed.
+
+        When the daemon crashes between worktree_setup.sh completion and
+        worktree_compose.up() success, a BatchItem may be left in 'setting_up'
+        with worktree_compose_path=NULL.  _reattach_worktrees only re-attaches
+        items where worktree_compose_path IS NOT NULL, so without this recovery
+        method those items would be stuck forever.
+
+        Timing heuristic (in order of preference):
+        1. item.started_at (set when transitioning to 'executing') — but items
+           that never reached 'executing' will have NULL here.
+        2. Earliest daemon_event of type 'item_setup_started' for the item.
+        3. If neither exists → skip the item (safe default: don't false-positive).
+        """
+        from sqlalchemy import text  # noqa: PLC0415
+
+        threshold_secs = getattr(
+            self.config, "setting_up_threshold", _DEFAULT_SETTING_UP_THRESHOLD_SECS
+        )
+        now = datetime.now(UTC)
+
+        stuck_items = (
+            db.query(BatchItem)
+            .filter(
+                BatchItem.project_id == self.project_id,
+                BatchItem.status == BatchItemStatus.setting_up,
+            )
+            .all()
+        )
+
+        for item in stuck_items:
+            # Determine when this item entered setting_up
+            ref_time = item.started_at  # set at 'executing' transition — may be NULL
+
+            if ref_time is None:
+                # Fall back to the earliest item_setup_started daemon event
+                row = db.execute(
+                    text(
+                        "SELECT MIN(created_at) FROM daemon_events "
+                        "WHERE project_id = :project_id "
+                        "  AND event_type = 'item_setup_started' "
+                        "  AND entity_id = :entity_id"
+                    ),
+                    {"project_id": self.project_id, "entity_id": item.work_item_id},
+                ).scalar_one_or_none()
+                if row is None:
+                    # No reference time — skip to avoid false-positives
+                    logger.debug(
+                        "[%s] setting_up item %s has no ref time — skipping timeout check",
+                        self.project_id,
+                        item.work_item_id,
+                    )
+                    continue
+                ref_time = row
+
+            # Ensure ref_time is timezone-aware for comparison
+            if ref_time.tzinfo is None:
+                ref_time = ref_time.replace(tzinfo=UTC)
+
+            elapsed = (now - ref_time).total_seconds()
+            if elapsed < threshold_secs:
+                continue  # Not yet timed out
+
+            logger.warning(
+                "[%s] BatchItem %s (work_item=%s) stuck in setting_up for %.0fs "
+                "(threshold=%ds) — transitioning to setup_failed",
+                self.project_id,
+                item.id,
+                item.work_item_id,
+                elapsed,
+                threshold_secs,
+            )
+
+            # Transition item to setup_failed
+            item.status = BatchItemStatus.setup_failed
+            item.notes = f"Setting up exceeded {threshold_secs}s — likely daemon crash mid-setup"
+
+            # Revert the WorkItem to failed
+            work_item = (
+                db.query(WorkItem)
+                .filter_by(project_id=self.project_id, id=item.work_item_id)
+                .first()
+            )
+            if work_item is not None:
+                work_item.status = WorkItemStatus.failed
+
+            db.commit()
+
+            _emit_event(
+                db,
+                self.project_id,
+                "item_failed",
+                item.work_item_id,
+                "work_item",
+                f"Setting up exceeded {threshold_secs}s — likely daemon crash mid-setup",
+                {"phase": "setup", "reason": "setup_timeout"},
+            )
+
+            # Best-effort compose down to clean up any partial bring-up state
+            try:
+                compose_path = (
+                    Path(item.worktree_compose_path) if item.worktree_compose_path else None
+                )
+                worktree_compose.down(str(item.id), compose_path)
+            except Exception:
+                logger.warning(
+                    "[%s] worktree_compose.down failed for stuck item %s (non-fatal)",
+                    self.project_id,
+                    item.id,
+                    exc_info=True,
+                )
+
+    # ------------------------------------------------------------------
     # Batch processing
     # ------------------------------------------------------------------
 
@@ -169,10 +300,14 @@ class BatchManager:
             self._check_batch_completion(db, batch, items)
             return
 
-        # Block the current group from launching if any earlier group has failed items.
-        # A failed dependency means successor items cannot safely proceed.
+        # Block the current group from launching if any earlier group has a terminal-failure item.
+        # Any blocking terminal status (failed, setup_failed, stalled, skipped,
+        # migration_invalid, migration_rolled_back, migration_rebase_failed) in a prior
+        # group means successor items cannot safely proceed. 'merged' is the success
+        # terminal state and therefore does NOT block.
         failed_in_prior_group = any(
-            i.status == BatchItemStatus.failed and i.execution_group < current_group for i in items
+            i.status in _BLOCKING_TERMINAL_STATUSES and i.execution_group < current_group
+            for i in items
         )
         if failed_in_prior_group:
             # Mark all pending items in the current (and later) groups as failed.
@@ -763,6 +898,22 @@ class BatchManager:
                         step.work_item_id,
                         step.step_id,
                     )
+                    # H11: best-effort teardown of any partial bring-up state
+                    # (containers, sessions) so they do not leak after a failed env-up.
+                    try:
+                        browser_env.run_env_down_hook(
+                            self.project_config,
+                            worktree_path,
+                            bv_env,
+                            step.work_item_id,
+                            step.step_id,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "[%s] browser env_down after failed env_up raised (non-fatal)",
+                            self.project_id,
+                            exc_info=True,
+                        )
                     return
                 agent_env = bv_env
 

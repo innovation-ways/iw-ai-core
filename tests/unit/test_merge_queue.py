@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 from orch.daemon.merge_queue import _merge_item, process_merge_queue
 from orch.daemon.project_registry import ProjectConfig
-from orch.db.models import BatchItem, BatchItemStatus
+from orch.db.models import BatchItem, BatchItemStatus, WorkItem, WorkItemStatus
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -224,10 +224,11 @@ class TestMergeItem:
 
         assert status_at_call[0] == BatchItemStatus.merging
 
-    def test_merge_info_stdout_truncated_to_1000(self):
+    def test_merge_info_stdout_truncated_to_8000(self):
+        """M2: merge_info stores up to 8000 chars of stdout (was 1000)."""
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
-        long_output = "x" * 5000
+        long_output = "x" * 10000
 
         with (
             patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
@@ -236,7 +237,8 @@ class TestMergeItem:
             mock_run.return_value = MagicMock(returncode=0, stdout=long_output, stderr="")
             _merge_item(db, item, "test-proj", make_project_config())
 
-        assert len(item.merge_info["stdout"]) == 1000
+        assert len(item.merge_info["stdout"]) == 8000
+        assert item.merge_info["stdout_truncated"] is True
 
     def test_rebase_failure_sets_migration_rebase_failed_and_returns(self):
         db = MagicMock()
@@ -316,3 +318,241 @@ class TestMergeItem:
         mock_dry.assert_called_once()
         call_kwargs = mock_dry.call_args[1]
         assert call_kwargs["worktree_path"] == "/wt/F-00001"
+
+
+# ---------------------------------------------------------------------------
+# C4: WorkItem status revert on merge failure
+# ---------------------------------------------------------------------------
+
+
+def make_work_item_mock(status: WorkItemStatus = WorkItemStatus.completed) -> MagicMock:
+    """Build a mock WorkItem with the given status and completed_at set."""
+    wi = MagicMock(spec=WorkItem)
+    wi.status = status
+    wi.completed_at = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+    return wi
+
+
+def make_db_with_work_item(work_item: MagicMock | None) -> MagicMock:
+    """Build a mock Session returning work_item from query(WorkItem).filter_by().one_or_none()."""
+    db = MagicMock()
+
+    def query_side_effect(model):
+        q = MagicMock()
+        if model is WorkItem:
+            q.filter_by.return_value.one_or_none.return_value = work_item
+        return q
+
+    db.query.side_effect = query_side_effect
+    return db
+
+
+class TestMergeItemC4WorkItemRevert:
+    """C4: WorkItem.status must be reverted to failed on all merge failure paths."""
+
+    def _make_db_for_failure(self, work_item: MagicMock | None) -> MagicMock:
+        return make_db_with_work_item(work_item)
+
+    def test_merge_error_reverts_work_item_status(self):
+        """MergeError path: WorkItem.status reverted to failed, completed_at cleared."""
+        wi = make_work_item_mock(WorkItemStatus.completed)
+        db = make_db_with_work_item(wi)
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        item.project_id = "test-proj"
+
+        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict")
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        assert item.status == BatchItemStatus.failed
+        assert wi.status == WorkItemStatus.failed
+        assert wi.completed_at is None
+
+    def test_timeout_reverts_work_item_status(self):
+        """TimeoutExpired path: WorkItem.status reverted to failed, completed_at cleared."""
+        wi = make_work_item_mock(WorkItemStatus.completed)
+        db = make_db_with_work_item(wi)
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        item.project_id = "test-proj"
+
+        with patch(
+            "orch.daemon.merge_queue.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="bash", timeout=120),
+        ):
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        assert item.status == BatchItemStatus.failed
+        assert wi.status == WorkItemStatus.failed
+        assert wi.completed_at is None
+
+    def test_merge_error_does_not_revert_if_work_item_not_completed(self):
+        """If WorkItem is already failed/other, do not touch it."""
+        wi = make_work_item_mock(WorkItemStatus.failed)
+        db = make_db_with_work_item(wi)
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        item.project_id = "test-proj"
+        original_completed_at = wi.completed_at
+
+        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict")
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        # status was already failed; completed_at should not have been touched
+        assert wi.status == WorkItemStatus.failed
+        assert wi.completed_at == original_completed_at
+
+    def test_merge_error_handles_missing_work_item_gracefully(self):
+        """If WorkItem row not found, batch_item still marked failed, no crash."""
+        db = make_db_with_work_item(None)
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        item.project_id = "test-proj"
+
+        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict")
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        assert item.status == BatchItemStatus.failed
+
+    def test_rebase_failure_reverts_work_item_status(self):
+        """migration_rebase_failed path: WorkItem.status reverted to failed."""
+        wi = make_work_item_mock(WorkItemStatus.completed)
+        db = make_db_with_work_item(wi)
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        item.batch_id = 42
+        item.project_id = "test-proj"
+
+        from orch.daemon.migration_rebase import RebaseResult
+
+        mock_rebase_result = RebaseResult(
+            success=False,
+            rebased=False,
+            rewrites=[],
+            worktree_base_sha="abc123",
+            current_main_sha="def456",
+            message="Rebase failed",
+            error_message="boom",
+        )
+
+        with (
+            patch("orch.daemon.merge_queue.run_pre_merge_rebase", return_value=mock_rebase_result),
+            patch("orch.daemon.merge_queue.worktree_compose.down"),
+        ):
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        assert item.status == BatchItemStatus.migration_rebase_failed
+        assert wi.status == WorkItemStatus.failed
+        assert wi.completed_at is None
+
+    def test_migration_invalid_reverts_work_item_status(self):
+        """migration_invalid path: WorkItem.status reverted to failed."""
+        wi = make_work_item_mock(WorkItemStatus.completed)
+        db = make_db_with_work_item(wi)
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        item.batch_id = 42
+        item.project_id = "test-proj"
+
+        from orch.daemon.migration_pipeline import PipelineResult
+        from orch.daemon.migration_rebase import RebaseResult
+
+        mock_rebase_result = RebaseResult(
+            success=True,
+            rebased=False,
+            rewrites=[],
+            worktree_base_sha="abc123",
+            current_main_sha="abc123",
+            message="No rebase needed",
+            error_message=None,
+        )
+
+        # run_pre_merge_dry_run returns PipelineResult, not DryRunResult
+        mock_dry_result = PipelineResult(
+            phase="dry_run",
+            success=False,
+            final_batch_state="MIGRATION_INVALID",
+            frozen=False,
+            message="dry run failed: migration error",
+        )
+
+        with (
+            patch("orch.daemon.merge_queue.run_pre_merge_rebase", return_value=mock_rebase_result),
+            patch("orch.daemon.merge_queue.run_pre_merge_dry_run", return_value=mock_dry_result),
+            patch("orch.daemon.merge_queue.worktree_compose.down"),
+        ):
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        assert item.status == BatchItemStatus.migration_invalid
+        assert wi.status == WorkItemStatus.failed
+        assert wi.completed_at is None
+
+    def test_successful_merge_does_not_revert_work_item(self):
+        """Control: successful merge keeps WorkItem as completed with completed_at set."""
+        wi = make_work_item_mock(WorkItemStatus.completed)
+        db = make_db_with_work_item(wi)
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        item.project_id = "test-proj"
+
+        with (
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+            patch("orch.daemon.merge_queue._cleanup_worktree"),
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stdout="squash ok", stderr="")
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        assert item.status == BatchItemStatus.merged
+        # WorkItem status untouched by merge_queue (batch_manager owns that transition)
+        assert wi.status == WorkItemStatus.completed
+
+
+# ---------------------------------------------------------------------------
+# M2: merge_info stdout limit raised to 8000 with truncation flag
+# ---------------------------------------------------------------------------
+
+
+class TestMergeInfoM2:
+    def test_stdout_over_8000_truncated_to_8000_with_flag(self):
+        """stdout > 8000 chars: stored as 8000 chars, stdout_truncated=True."""
+        db = MagicMock()
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        long_output = "y" * 10000
+
+        with (
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+            patch("orch.daemon.merge_queue._cleanup_worktree"),
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stdout=long_output, stderr="")
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        assert len(item.merge_info["stdout"]) == 8000
+        assert item.merge_info["stdout_truncated"] is True
+
+    def test_stdout_under_8000_stored_in_full_with_flag_false(self):
+        """stdout < 8000 chars: stored completely, stdout_truncated=False."""
+        db = MagicMock()
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        short_output = "z" * 500
+
+        with (
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+            patch("orch.daemon.merge_queue._cleanup_worktree"),
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stdout=short_output, stderr="")
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        assert item.merge_info["stdout"] == short_output
+        assert item.merge_info["stdout_truncated"] is False
+
+    def test_stdout_exactly_8000_stored_in_full_with_flag_false(self):
+        """stdout exactly 8000 chars: stored in full, stdout_truncated=False."""
+        db = MagicMock()
+        item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
+        exact_output = "a" * 8000
+
+        with (
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+            patch("orch.daemon.merge_queue._cleanup_worktree"),
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stdout=exact_output, stderr="")
+            _merge_item(db, item, "test-proj", make_project_config())
+
+        assert len(item.merge_info["stdout"]) == 8000
+        assert item.merge_info["stdout_truncated"] is False

@@ -2,6 +2,8 @@
 
 All DB interaction is mocked. All time-sensitive tests use freezegun.
 os.kill is patched at orch.daemon.step_monitor.os.kill throughout.
+For tests that exercise the kill pathway (timeout, hard stall), we patch
+kill_process_group directly to avoid coupling with os.getpgid/os.killpg.
 """
 
 from __future__ import annotations
@@ -9,7 +11,7 @@ from __future__ import annotations
 import signal
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from freezegun import freeze_time
@@ -21,6 +23,7 @@ from orch.daemon.step_monitor import (
     PLATFORM_TIMEOUT_DEFAULTS,
     get_timeout,
     kill_process,
+    kill_process_group,
     monitor_running_steps,
 )
 from orch.db.models import RunStatus, StepStatus
@@ -212,14 +215,18 @@ def test_pid_alive_timeout_exceeded(tmp_path: Path) -> None:
     )
     db = make_db([run])
 
-    with patch("orch.daemon.step_monitor.os.kill") as mock_kill:
-        mock_kill.return_value = None  # kill(pid, 0) succeeds
+    # Patch kill_process_group (the termination path) and os.kill separately
+    # (the latter is used for aliveness probe via kill(pid, 0)).
+    with (
+        patch("orch.daemon.step_monitor.os.kill", return_value=None) as mock_os_kill,
+        patch("orch.daemon.step_monitor.kill_process_group", return_value=True) as mock_kill_pg,
+    ):
         monitor_running_steps(db, "proj", make_config(tmp_path))
 
-    # kill(pid, 0) for aliveness check + kill(pid, SIGTERM) for termination
-    assert mock_kill.call_count == 2
-    assert call(12345, 0) in mock_kill.call_args_list
-    assert call(12345, signal.SIGTERM) in mock_kill.call_args_list
+    # os.kill(pid, 0) for aliveness check only
+    mock_os_kill.assert_called_once_with(12345, 0)
+    # kill_process_group used for termination
+    mock_kill_pg.assert_called_once_with(12345)
 
     assert run.status == RunStatus.timeout
     assert "Timeout after" in run.error_message
@@ -418,32 +425,182 @@ def test_get_timeout_all_platform_defaults() -> None:
 
 
 # ---------------------------------------------------------------------------
-# kill_process
+# kill_process_group — H7
 # ---------------------------------------------------------------------------
 
 
-def test_kill_process_sends_sigterm_returns_true() -> None:
-    """kill_process sends SIGTERM and returns True on success."""
-    with patch("orch.daemon.step_monitor.os.kill") as mock_kill:
-        mock_kill.return_value = None
-        result = kill_process(12345)
+def test_kill_process_group_uses_killpg_when_getpgid_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """H7: killpg is called with the group ID when os.getpgid succeeds."""
+    mock_getpgid = MagicMock(return_value=55555)
+    mock_killpg = MagicMock()
+
+    monkeypatch.setattr("orch.daemon.step_monitor.os.getpgid", mock_getpgid)
+    monkeypatch.setattr("orch.daemon.step_monitor.os.killpg", mock_killpg)
+
+    result = kill_process_group(12345)
+
+    assert result is True
+    mock_getpgid.assert_called_once_with(12345)
+    mock_killpg.assert_called_once_with(55555, signal.SIGTERM)
+
+
+def test_kill_process_group_falls_back_to_os_kill_when_getpgid_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """H7: when os.getpgid raises ProcessLookupError, falls back to os.kill."""
+    monkeypatch.setattr(
+        "orch.daemon.step_monitor.os.getpgid", MagicMock(side_effect=ProcessLookupError)
+    )
+    mock_kill = MagicMock(return_value=None)
+    monkeypatch.setattr("orch.daemon.step_monitor.os.kill", mock_kill)
+
+    result = kill_process_group(12345)
 
     assert result is True
     mock_kill.assert_called_once_with(12345, signal.SIGTERM)
 
 
-def test_kill_process_dead_pid_returns_false() -> None:
-    """kill_process returns False (no exception) when process is already dead."""
-    with patch("orch.daemon.step_monitor.os.kill", side_effect=ProcessLookupError):
-        result = kill_process(99999)
+def test_kill_process_group_returns_false_when_process_already_dead(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """H7: when both getpgid and os.kill raise ProcessLookupError, returns False."""
+    monkeypatch.setattr(
+        "orch.daemon.step_monitor.os.getpgid", MagicMock(side_effect=ProcessLookupError)
+    )
+    monkeypatch.setattr(
+        "orch.daemon.step_monitor.os.kill", MagicMock(side_effect=ProcessLookupError)
+    )
+
+    result = kill_process_group(12345)
 
     assert result is False
 
 
-def test_kill_process_does_not_raise_on_dead_pid() -> None:
+def test_kill_process_group_does_not_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+    """H7: kill_process_group never raises even when everything fails."""
+    monkeypatch.setattr(
+        "orch.daemon.step_monitor.os.getpgid", MagicMock(side_effect=ProcessLookupError)
+    )
+    monkeypatch.setattr(
+        "orch.daemon.step_monitor.os.kill", MagicMock(side_effect=ProcessLookupError)
+    )
+    kill_process_group(99999)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# kill_process (back-compat wrapper)
+# ---------------------------------------------------------------------------
+
+
+def test_kill_process_delegates_to_kill_process_group() -> None:
+    """kill_process is a back-compat wrapper: it delegates to kill_process_group."""
+    with patch("orch.daemon.step_monitor.kill_process_group", return_value=True) as mock_kpg:
+        result = kill_process(12345)
+
+    assert result is True
+    mock_kpg.assert_called_once_with(12345)
+
+
+def test_kill_process_dead_pid_returns_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    """kill_process returns False when the process is already dead."""
+    monkeypatch.setattr(
+        "orch.daemon.step_monitor.os.getpgid", MagicMock(side_effect=ProcessLookupError)
+    )
+    monkeypatch.setattr(
+        "orch.daemon.step_monitor.os.kill", MagicMock(side_effect=ProcessLookupError)
+    )
+    result = kill_process(99999)
+    assert result is False
+
+
+def test_kill_process_does_not_raise_on_dead_pid(monkeypatch: pytest.MonkeyPatch) -> None:
     """Calling kill_process on a dead PID never raises."""
-    with patch("orch.daemon.step_monitor.os.kill", side_effect=ProcessLookupError):
-        kill_process(99999)  # should not raise
+    monkeypatch.setattr(
+        "orch.daemon.step_monitor.os.getpgid", MagicMock(side_effect=ProcessLookupError)
+    )
+    monkeypatch.setattr(
+        "orch.daemon.step_monitor.os.kill", MagicMock(side_effect=ProcessLookupError)
+    )
+    kill_process(99999)  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# C6: hard stall — heartbeat > 2x stall_threshold → kill + fail
+# ---------------------------------------------------------------------------
+
+
+@freeze_time(_FROZEN_TIME)
+def test_hard_stall_kills_and_fails_step(tmp_path: Path) -> None:
+    """C6: heartbeat_age > 2x stall_threshold → kill_process_group, status=failed,
+    parent step failed, step_stall_killed event emitted.
+    """
+    run = make_run(
+        pid=12345,
+        started_at=_FROZEN_NOW - timedelta(seconds=120),
+        timeout_secs=2700,
+        # 1500s > 2 * 600s threshold
+        last_heartbeat=_FROZEN_NOW - timedelta(seconds=1500),
+    )
+    db = make_db([run])
+
+    with (
+        patch("orch.daemon.step_monitor.os.kill", return_value=None),
+        patch("orch.daemon.step_monitor.kill_process_group", return_value=True) as mock_kill_pg,
+    ):
+        monitor_running_steps(db, "proj", make_config(tmp_path))
+
+    # Process group must be killed
+    mock_kill_pg.assert_called_once_with(12345)
+
+    # StepRun must be failed (not stalled)
+    assert run.status == RunStatus.failed
+    assert "Killed after stall" in run.error_message
+    assert run.completed_at == _FROZEN_NOW
+
+    # Parent step must be failed
+    mock_step = db.get.return_value
+    assert mock_step.status == StepStatus.failed
+
+    # A step_stall_killed event must be emitted
+    event = db.add.call_args[0][0]
+    assert event.event_type == "step_stall_killed"
+    assert event.project_id == "proj"
+
+
+@freeze_time(_FROZEN_TIME)
+def test_soft_stall_does_not_kill_or_fail(tmp_path: Path) -> None:
+    """C6 control: heartbeat_age between 1x and 2x stall_threshold → soft stall only,
+    no kill, step stays running with step_stalled event.
+    """
+    run = make_run(
+        pid=12345,
+        started_at=_FROZEN_NOW - timedelta(seconds=120),
+        timeout_secs=2700,
+        # 700s > 600s but < 1200s (2x threshold)
+        last_heartbeat=_FROZEN_NOW - timedelta(seconds=700),
+    )
+    db = make_db([run])
+
+    with (
+        patch("orch.daemon.step_monitor.os.kill", return_value=None),
+        patch("orch.daemon.step_monitor.kill_process_group") as mock_kill_pg,
+    ):
+        monitor_running_steps(db, "proj", make_config(tmp_path))
+
+    # No kill should happen for soft stall
+    mock_kill_pg.assert_not_called()
+
+    assert run.status == RunStatus.stalled  # not escalated to failed
+
+    # Parent step should NOT be failed
+    mock_step = db.get.return_value
+    assert mock_step.status != StepStatus.failed
+
+    # step_stalled event (not step_stall_killed)
+    event = db.add.call_args[0][0]
+    assert event.event_type == "step_stalled"
 
 
 # ---------------------------------------------------------------------------

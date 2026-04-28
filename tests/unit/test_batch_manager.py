@@ -17,6 +17,7 @@ from orch.config import DaemonConfig
 if TYPE_CHECKING:
     from pathlib import Path
 from orch.daemon.batch_manager import (
+    _BLOCKING_TERMINAL_STATUSES,
     BatchManager,
     WorktreeSetupError,
     _current_execution_group,
@@ -525,3 +526,236 @@ class TestNextRunNumber:
         step.id = 1
         db.query.return_value.filter.return_value.count.return_value = 1
         assert _next_run_number(db, step) == 2
+
+
+# ---------------------------------------------------------------------------
+# H1: _BLOCKING_TERMINAL_STATUSES and execution-group dependency check
+# ---------------------------------------------------------------------------
+
+
+class TestBlockingTerminalStatuses:
+    """Unit tests for the H1 fix: _BLOCKING_TERMINAL_STATUSES set."""
+
+    def test_merged_is_not_blocking(self):
+        assert BatchItemStatus.merged not in _BLOCKING_TERMINAL_STATUSES
+
+    def test_failed_is_blocking(self):
+        assert BatchItemStatus.failed in _BLOCKING_TERMINAL_STATUSES
+
+    def test_setup_failed_is_blocking(self):
+        assert BatchItemStatus.setup_failed in _BLOCKING_TERMINAL_STATUSES
+
+    def test_migration_invalid_is_blocking(self):
+        assert BatchItemStatus.migration_invalid in _BLOCKING_TERMINAL_STATUSES
+
+    def test_migration_rolled_back_is_blocking(self):
+        assert BatchItemStatus.migration_rolled_back in _BLOCKING_TERMINAL_STATUSES
+
+    def test_migration_rebase_failed_is_blocking(self):
+        assert BatchItemStatus.migration_rebase_failed in _BLOCKING_TERMINAL_STATUSES
+
+    def test_stalled_is_blocking(self):
+        assert BatchItemStatus.stalled in _BLOCKING_TERMINAL_STATUSES
+
+    def test_skipped_is_blocking(self):
+        assert BatchItemStatus.skipped in _BLOCKING_TERMINAL_STATUSES
+
+
+class TestExecutionGroupDependencyCheck:
+    """Unit tests for H1: process_batch blocks on all terminal-failure statuses."""
+
+    def _make_db_for_items(self, items: list[MagicMock]) -> MagicMock:
+        db = MagicMock()
+        q = MagicMock()
+        q.filter.return_value.order_by.return_value.all.return_value = items
+        step_q = MagicMock()
+        step_q.filter.return_value.first.return_value = None
+        step_q.filter.return_value.order_by.return_value.first.return_value = None
+        db.query.side_effect = lambda model: q if model is BatchItem else step_q
+        return db
+
+    def _make_batch(self) -> MagicMock:
+        batch = MagicMock(spec=Batch)
+        batch.id = "B001"
+        batch.max_parallel = 4
+        batch.status = BatchStatus.executing
+        return batch
+
+    @pytest.mark.parametrize(
+        "blocking_status",
+        [
+            BatchItemStatus.setup_failed,
+            BatchItemStatus.migration_invalid,
+            BatchItemStatus.migration_rolled_back,
+            BatchItemStatus.migration_rebase_failed,
+            BatchItemStatus.stalled,
+            BatchItemStatus.skipped,
+        ],
+    )
+    def test_blocking_status_in_group_0_cascades_to_group_1(self, tmp_path, blocking_status):
+        """Non-'failed' terminal statuses in group 0 must block group 1."""
+        item_a = make_batch_item("F-00001", execution_group=0, status=blocking_status)
+        item_b = make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending)
+
+        db = self._make_db_for_items([item_a, item_b])
+        batch = self._make_batch()
+
+        launched: list[str] = []
+        manager = make_manager(tmp_path, db)
+        manager._launch_item = lambda _db, item_: launched.append(item_.work_item_id)  # type: ignore[method-assign]  # noqa: ARG005
+
+        manager._process_batch(db, batch)
+
+        assert item_b.status == BatchItemStatus.failed
+        assert "F-00002" not in launched
+
+    def test_merged_in_group_0_does_not_block_group_1(self, tmp_path):
+        """merged is the success terminal — group 1 must NOT be blocked."""
+        item_a = make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merged)
+        item_b = make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending)
+
+        db = self._make_db_for_items([item_a, item_b])
+        batch = self._make_batch()
+
+        launched: list[str] = []
+        manager = make_manager(tmp_path, db)
+        manager._launch_item = lambda _db, item_: launched.append(item_.work_item_id)  # type: ignore[method-assign]  # noqa: ARG005
+
+        manager._process_batch(db, batch)
+
+        # item_b should have been launched, not failed
+        assert item_b.status != BatchItemStatus.failed
+        assert "F-00002" in launched
+
+    def test_setup_failed_cascades_to_groups_1_and_2(self, tmp_path):
+        """setup_failed in group 0 blocks BOTH group 1 and group 2."""
+        item_a = make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.setup_failed)
+        item_b = make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending)
+        item_c = make_batch_item("F-00003", execution_group=2, status=BatchItemStatus.pending)
+
+        db = self._make_db_for_items([item_a, item_b, item_c])
+        batch = self._make_batch()
+
+        manager = make_manager(tmp_path, db)
+        manager._launch_item = MagicMock()  # type: ignore[method-assign]
+
+        manager._process_batch(db, batch)
+
+        assert item_b.status == BatchItemStatus.failed
+        assert item_c.status == BatchItemStatus.failed
+        manager._launch_item.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# H11: browser env-up failure triggers env-down teardown
+# ---------------------------------------------------------------------------
+
+
+class TestBrowserEnvUpFailureTeardown:
+    """Unit test for H11: run_env_down_hook called when run_env_up_hook returns False."""
+
+    @pytest.fixture(autouse=True)
+    def _alembic_guard_ok(self):
+        from orch.db.alembic_guard import GuardStatus
+
+        ok = GuardStatus(current_rev="abc", head_rev="abc", pending=[], multiple_heads=[], ok=True)
+        with patch("orch.daemon.batch_manager.check_db_at_head", return_value=ok):
+            yield
+
+    def test_env_down_called_when_env_up_fails(self, tmp_path):
+        """When run_env_up_hook returns False, run_env_down_hook must be called."""
+        from orch.daemon.step_monitor import get_timeout  # noqa: F401
+
+        db = MagicMock()
+        step = MagicMock(spec=WorkflowStep)
+        step.work_item_id = "F-00001"
+        step.step_id = "S01"
+        step.step_type = MagicMock()
+        step.id = 1
+        step.started_at = None
+        step.command = None
+        step.prompt_file = None
+        step.timeout_secs = None
+        step.opencode_agent = None
+        step.agent_label = "test-agent"
+
+        worktree_info = {"path": "/wt/F-00001"}
+        bv_env = {"E2E_FRONTEND_PORT": "3100", "COMPOSE_PROJECT_NAME": "test-e2e"}
+        fake_log_path = tmp_path / "env_up.log"
+        fake_log_path.write_text("some failure output\n")
+
+        manager = make_manager(tmp_path, db)
+        db.query.return_value.filter.return_value.count.return_value = 0
+        db.query.return_value.filter_by.return_value.first.return_value = MagicMock()
+
+        with (
+            patch(
+                "orch.daemon.browser_env.is_browser_verification_step",
+                return_value=True,
+            ),
+            patch(
+                "orch.daemon.browser_env.allocate_browser_env",
+                return_value=bv_env,
+            ),
+            patch(
+                "orch.daemon.browser_env.run_env_up_hook",
+                return_value=(False, fake_log_path),
+            ),
+            patch("orch.daemon.browser_env.run_env_down_hook") as mock_down,
+        ):
+            manager._launch_step(db, step, worktree_info)
+
+        mock_down.assert_called_once_with(
+            manager.project_config,
+            "/wt/F-00001",
+            bv_env,
+            "F-00001",
+            "S01",
+        )
+
+    def test_env_down_called_even_when_it_raises(self, tmp_path):
+        """run_env_down_hook raising must be caught — _launch_step must not propagate it."""
+        db = MagicMock()
+        step = MagicMock(spec=WorkflowStep)
+        step.work_item_id = "F-00002"
+        step.step_id = "S01"
+        step.step_type = MagicMock()
+        step.id = 2
+        step.started_at = None
+        step.command = None
+        step.prompt_file = None
+        step.timeout_secs = None
+        step.opencode_agent = None
+        step.agent_label = "test-agent"
+
+        worktree_info = {"path": "/wt/F-00002"}
+        bv_env = {"E2E_FRONTEND_PORT": "3101"}
+        fake_log_path = tmp_path / "env_up2.log"
+        fake_log_path.write_text("failure\n")
+
+        manager = make_manager(tmp_path, db)
+        db.query.return_value.filter.return_value.count.return_value = 0
+        db.query.return_value.filter_by.return_value.first.return_value = MagicMock()
+
+        with (
+            patch(
+                "orch.daemon.browser_env.is_browser_verification_step",
+                return_value=True,
+            ),
+            patch(
+                "orch.daemon.browser_env.allocate_browser_env",
+                return_value=bv_env,
+            ),
+            patch(
+                "orch.daemon.browser_env.run_env_up_hook",
+                return_value=(False, fake_log_path),
+            ),
+            patch(
+                "orch.daemon.browser_env.run_env_down_hook",
+                side_effect=RuntimeError("teardown bombed"),
+            ) as mock_down,
+        ):
+            # Must not raise — the exception from run_env_down_hook is swallowed
+            manager._launch_step(db, step, worktree_info)
+
+        mock_down.assert_called_once()

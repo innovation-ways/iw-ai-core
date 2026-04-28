@@ -102,18 +102,43 @@ def get_timeout(
     return PLATFORM_TIMEOUT_DEFAULTS.get(step_type, _FALLBACK_TIMEOUT)
 
 
-def kill_process(pid: int) -> bool:
-    """Send SIGTERM to ``pid``.
+def kill_process_group(pid: int) -> bool:
+    """Send SIGTERM to the entire process group of ``pid``.
 
-    Returns True if the signal was delivered, False if the process was already dead.
+    Agents are launched with ``start_new_session=True`` (new session/pgid).
+    Killing the process group ensures child processes (e.g. the inner agent
+    spawned by ``script -qec``) also receive SIGTERM rather than only the
+    shell wrapper that started them.
+
+    Falls back to a single-PID kill if the process group lookup fails
+    (e.g. the process already exited between the check and the kill).
+
+    Returns True if a signal was delivered, False if the process was already
+    dead or the caller has no permission to signal it.
     """
     try:
-        os.kill(pid, signal.SIGTERM)
-        logger.info("Sent SIGTERM to PID %d", pid)
+        pgid = os.getpgid(pid)
+        os.killpg(pgid, signal.SIGTERM)
+        logger.info("Sent SIGTERM to process group PGID %d (PID %d)", pgid, pid)
         return True
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
+        # Process group gone or inaccessible — try single-PID kill as fallback.
+        pass
+    try:
+        os.kill(pid, signal.SIGTERM)
+        logger.info("Sent SIGTERM to PID %d (fallback from process-group kill)", pid)
+        return True
+    except (ProcessLookupError, PermissionError):
         logger.debug("PID %d already dead — SIGTERM not sent", pid)
         return False
+
+
+def kill_process(pid: int) -> bool:
+    """Send SIGTERM to the process group of ``pid``.
+
+    Kept for back-compatibility; delegates to ``kill_process_group``.
+    """
+    return kill_process_group(pid)
 
 
 def monitor_running_steps(
@@ -208,9 +233,14 @@ def _check_step_health(
         if elapsed > run.timeout_secs * 0.5 and run.warned_50pct_at is None:
             _handle_warn_50pct(db, run, project_id, now, elapsed)
 
-    # Check stall using the heartbeat from before this poll cycle
+    # Check stall using the heartbeat from before this poll cycle.
+    # Hard stall (>= 2x threshold): kill the process and fail the step.
+    # Soft stall (>= 1x threshold): emit event but keep running (existing behavior).
     if old_heartbeat is not None:
         heartbeat_age = (now - old_heartbeat).total_seconds()
+        if heartbeat_age > config.stall_threshold * 2:
+            _handle_hard_stall(db, run, project_id, now, heartbeat_age, project_config)
+            return
         if heartbeat_age > config.stall_threshold:
             _handle_stall(db, run, project_id, config.stall_threshold)
 
@@ -388,7 +418,12 @@ def _handle_stall(
     project_id: str,
     stall_threshold: int,
 ) -> None:
-    """Mark a StepRun as stalled (PID alive but heartbeat is stale)."""
+    """Mark a StepRun as stalled (PID alive but heartbeat is stale).
+
+    This is a soft stall (heartbeat_age between 1x and 2x stall_threshold).
+    The process is not killed — only an event is emitted to surface the
+    stall in the dashboard. The step remains in_progress.
+    """
     msg = f"No progress for {stall_threshold}s"
     run.status = RunStatus.stalled
     run.error_message = msg
@@ -407,6 +442,54 @@ def _handle_stall(
         metadata={"pid": run.pid},
     )
     logger.warning("step_run %d stalled: %s", run.id, msg)
+
+
+def _handle_hard_stall(
+    db: Session,
+    run: StepRun,
+    project_id: str,
+    now: datetime,
+    heartbeat_age: float,
+    project_config: ProjectConfig | None = None,
+) -> None:
+    """Kill and fail a StepRun whose heartbeat has exceeded 2x the stall threshold.
+
+    This is a "hard stall" — the process is unresponsive for so long that
+    waiting further is counterproductive. We SIGTERM the process group (to
+    catch child processes spawned by ``script -qec``), mark the run as failed,
+    transition the parent step to failed, and emit a ``step_stall_killed`` event
+    so the failure pathway (fix-cycle or retry logic) can take over immediately.
+    """
+    msg = f"Killed after stall (heartbeat exceeded {heartbeat_age:.0f}s)"
+    if run.pid is not None:
+        kill_process_group(run.pid)
+
+    run.status = RunStatus.failed
+    run.error_message = msg
+    run.completed_at = now
+    if run.started_at is not None:
+        run.duration_secs = (now - run.started_at).total_seconds()
+    capture_log_content(run)
+
+    # Look up work_item_id for correct entity routing
+    step = db.get(WorkflowStep, run.step_id)
+    work_item_id = step.work_item_id if step else None
+
+    _update_parent_step(db, run.step_id, StepStatus.failed, now)
+
+    # Tear down browser env if applicable (before emitting event)
+    _maybe_teardown_browser_env(db, run, project_id, project_config)
+
+    _emit_event(
+        db,
+        project_id,
+        "step_stall_killed",
+        work_item_id,
+        message=msg,
+        entity_type="work_item",
+        metadata={"pid": run.pid, "heartbeat_age_secs": heartbeat_age},
+    )
+    logger.warning("step_run %d hard-stalled and killed: %s", run.id, msg)
 
 
 def _update_parent_step(

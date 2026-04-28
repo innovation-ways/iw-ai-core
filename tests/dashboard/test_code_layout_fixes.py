@@ -36,6 +36,10 @@ def jinja_env() -> Environment:
     # we render with a raw Jinja environment — provide a stub so templates
     # that pull in base.html don't blow up at render time.
     env.globals["url_for"] = lambda name, **kwargs: kwargs.get("path", f"/{name}")
+    # base.html also calls is_db_stale(request) — registered on the real env
+    # in dashboard/app.py. Stub it for layout tests where DB state is
+    # irrelevant.
+    env.globals["is_db_stale"] = lambda _request: False
     return env
 
 

@@ -92,13 +92,13 @@ cd "$WORKTREE_DIR"
 
 if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]] || [[ -f "requirements.txt" ]]; then
     if command -v uv >/dev/null 2>&1; then
-        uv sync --quiet >&2 2>&1 || true
+        uv sync --quiet >&2
     else
         python3 -m venv .venv >&2
         if [[ -f "pyproject.toml" ]]; then
-            .venv/bin/pip install --cache-dir ~/.cache/pip -q -e ".[dev]" >&2 || true
+            .venv/bin/pip install --cache-dir ~/.cache/pip -q -e ".[dev]" >&2
         elif [[ -f "requirements.txt" ]]; then
-            .venv/bin/pip install --cache-dir ~/.cache/pip -q -r requirements.txt >&2 || true
+            .venv/bin/pip install --cache-dir ~/.cache/pip -q -r requirements.txt >&2
         fi
     fi
 fi
@@ -109,7 +109,7 @@ fi
 if [[ -d "$WORKTREE_DIR/frontend" ]]; then
     echo "Installing frontend dependencies..." >&2
     cd "$WORKTREE_DIR/frontend"
-    npm install --silent >&2 || true
+    npm install --silent >&2
 fi
 
 # ---------------------------------------------------------------------------
@@ -120,25 +120,56 @@ fi
 # $VAR / ${VAR} references using the current shell environment.
 if [[ -f "$PROJECT_REPO_ROOT/.env" ]]; then
     echo "Generating worktree .env with expanded values..." >&2
-    (
-        set -a
-        # shellcheck disable=SC1091
-        source "$PROJECT_REPO_ROOT/.env" 2>/dev/null || true
-        set +a
-        # Write all vars that originated from the .env (re-read and expand)
-        env | sort | while IFS='=' read -r key value; do
-            # Skip common system vars to keep the .env focused on app config
-            case "$key" in
-                PATH|HOME|USER|SHELL|TERM|LANG|LC_*|OLDPWD|PWD|SHLVL|_)
-                    continue ;;
-                *)
-                    # Escape single quotes in value
-                    value="${value//\'/\'\\\'\'}"
-                    printf "%s='%s'\n" "$key" "$value"
-                    ;;
-            esac
-        done > "$WORKTREE_DIR/.env"
-    ) || true
+    # Parse the project .env file line-by-line, expanding ${VAR} references
+    # using the daemon's environment. Only keys declared in the project .env
+    # are written — daemon process vars are never added.
+    # Unresolved ${UNSET_VAR} references are preserved verbatim.
+    while IFS= read -r line; do
+        # Preserve blank lines and comment lines as-is
+        if [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]]; then
+            printf "%s\n" "$line"
+            continue
+        fi
+        # Extract key from KEY=VALUE or KEY='VALUE' or KEY="VALUE"
+        if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then
+            key="${BASH_REMATCH[1]}"
+            raw_value="${line#*=}"
+            # Strip surrounding quotes if present
+            if [[ "$raw_value" =~ ^\"(.*)\"$ ]]; then
+                raw_value="${BASH_REMATCH[1]}"
+            elif [[ "$raw_value" =~ ^\'(.*)\'$ ]]; then
+                raw_value="${BASH_REMATCH[1]}"
+            fi
+            # Expand ${VAR} and $VAR references using the daemon env.
+            # Walk through the value and replace references one at a time.
+            expanded=""
+            remaining="$raw_value"
+            while [[ "$remaining" =~ (.*)\$\{([A-Za-z_][A-Za-z0-9_]*)\}(.*) ]]; do
+                prefix="${BASH_REMATCH[1]}"
+                var_name="${BASH_REMATCH[2]}"
+                suffix="${BASH_REMATCH[3]}"
+                if [[ -v "$var_name" ]]; then
+                    remaining="${prefix}${!var_name}${suffix}"
+                else
+                    # Variable not set — preserve the literal ${VAR} token.
+                    # Replace with a sentinel, process the rest, then restore.
+                    # Use a unique placeholder to avoid infinite loops.
+                    sentinel="__IW_SENTINEL_${var_name}__"
+                    remaining="${prefix}${sentinel}${suffix}"
+                fi
+            done
+            # Restore any sentinels back to ${VAR} form
+            while [[ "$remaining" =~ __IW_SENTINEL_([A-Za-z_][A-Za-z0-9_]*)__ ]]; do
+                var_name="${BASH_REMATCH[1]}"
+                remaining="${remaining/__IW_SENTINEL_${var_name}__/\${${var_name}\}}"
+            done
+            expanded="$remaining"
+            printf "%s=%s\n" "$key" "$expanded"
+        else
+            # Not a KEY=VALUE line — write it as-is
+            printf "%s\n" "$line"
+        fi
+    done < "$PROJECT_REPO_ROOT/.env" > "$WORKTREE_DIR/.env"
 fi
 
 # ---------------------------------------------------------------------------

@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import signal
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -797,19 +795,15 @@ def step_kill(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
             if active_run is None:
                 output_error(ctx, "No active run found for this step", 1)
 
-            # Send SIGTERM to the process if PID exists
+            # Send SIGTERM to the process group if PID exists.
+            # kill_process_group targets the whole process group (agents use
+            # start_new_session=True) so child processes (e.g. the inner
+            # agent spawned by `script -qec`) also receive the signal.
             if active_run.pid is not None:
                 killed_pid = active_run.pid
-                try:
-                    os.kill(active_run.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass  # Already dead — still mark as killed
-                except PermissionError:
-                    output_error(
-                        ctx,
-                        f"Permission denied killing PID {active_run.pid}",
-                        1,
-                    )
+                from orch.daemon.step_monitor import kill_process_group  # noqa: PLC0415
+
+                kill_process_group(active_run.pid)
 
             # Mark run as killed
             now = datetime.now(UTC)
