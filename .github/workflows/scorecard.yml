@@ -17,6 +17,11 @@ jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
+    # Scorecard is built for public OSS projects: it publishes to a public
+    # dashboard and uploads SARIF to Code Scanning (which needs GHAS on
+    # private repos). Skip the whole job while private; it activates
+    # automatically once the repo is published.
+    if: ${{ !github.event.repository.private }}
     permissions:
       security-events: write   # upload SARIF
       id-token: write          # publish results to public dashboard
