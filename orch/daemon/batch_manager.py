@@ -1318,6 +1318,7 @@ def _current_execution_group(items: list[BatchItem]) -> int | None:
             BatchItemStatus.setting_up,
             BatchItemStatus.executing,
             BatchItemStatus.completed,
+            BatchItemStatus.merging,
         ):
             return item.execution_group
     return None

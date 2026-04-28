@@ -150,6 +150,14 @@ class TestCurrentExecutionGroup:
         ]
         assert _current_execution_group(items) == 0
 
+    def test_merging_item_keeps_group_active(self):
+        # 'merging' means squash-merge subprocess is running — dependent group must not launch yet
+        items = [
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merging),
+            make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
+        ]
+        assert _current_execution_group(items) == 0
+
     def test_mixed_groups_returns_lowest_non_terminal(self):
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merged),
