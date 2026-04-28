@@ -250,7 +250,7 @@ def is_merge_queue_frozen(db: Session | None = None) -> bool:
             _owns_session = True
         result = db.execute(
             text(
-                "SELECT event_metadata FROM daemon_events "
+                "SELECT metadata FROM daemon_events "
                 "WHERE event_type = 'merge_queue_frozen' "
                 "ORDER BY created_at DESC LIMIT 1"
             )
@@ -261,6 +261,8 @@ def is_merge_queue_frozen(db: Session | None = None) -> bool:
         metadata = row[0]
         return bool(metadata.get("active", False)) if metadata else False
     except Exception:
+        if not _owns_session and db is not None:
+            db.rollback()
         return False
     finally:
         if _owns_session and db is not None:

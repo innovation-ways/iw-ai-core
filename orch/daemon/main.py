@@ -484,24 +484,26 @@ class Daemon:
                     )
                     .all()
                 )
-            if not non_terminal:
-                return
+                if not non_terminal:
+                    return
 
-            for item in non_terminal:
-                alive = compose_is_alive(str(item.id))
-                if alive:
-                    logger.info(
-                        "Re-attached to existing compose stack for batch_item id=%d (worktree: %s)",
-                        item.id,
-                        item.worktree_info.get("path") if item.worktree_info else "unknown",
-                    )
-                else:
-                    logger.info(
-                        "Compose stack missing for non-terminal batch_item id=%d "
-                        "(worktree: %s); will re-setup on next poll",
-                        item.id,
-                        item.worktree_info.get("path") if item.worktree_info else "unknown",
-                    )
+                for item in non_terminal:
+                    item_id = item.id
+                    item_path = item.worktree_info.get("path") if item.worktree_info else "unknown"
+                    alive = compose_is_alive(str(item_id))
+                    if alive:
+                        logger.info(
+                            "Re-attached to existing compose stack for batch_item id=%d (worktree: %s)",
+                            item_id,
+                            item_path,
+                        )
+                    else:
+                        logger.info(
+                            "Compose stack missing for non-terminal batch_item id=%d "
+                            "(worktree: %s); will re-setup on next poll",
+                            item_id,
+                            item_path,
+                        )
         except Exception:
             logger.exception("Worktree re-attach failed — continuing")
 
