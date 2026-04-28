@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from orch.config import get_db_max_overflow, get_db_pool_size, get_db_url
+from orch.config import get_db_max_overflow, get_db_pool_size, get_db_url, get_orch_db_url
 from orch.db.live_db_guard import safe_create_engine
 
 if TYPE_CHECKING:
@@ -29,12 +29,16 @@ if TYPE_CHECKING:
     SessionLocal: sessionmaker[Session]
 
 __all__ = [
+    "get_orch_session",
     "get_session",
     "safe_create_engine",
 ]
 
 _engine: Engine | None = None
 _session_local: sessionmaker[Session] | None = None
+
+_orch_engine: Engine | None = None
+_orch_session_local: sessionmaker[Session] | None = None
 
 
 def _get_engine() -> Engine:
@@ -62,6 +66,31 @@ def _get_session_local() -> sessionmaker[Session]:
     return _session_local
 
 
+def _get_orch_engine() -> Engine:
+    global _orch_engine
+    if _orch_engine is None:
+        _orch_engine = safe_create_engine(
+            get_orch_db_url(),
+            pool_pre_ping=True,
+            pool_size=2,
+            max_overflow=0,
+            pool_recycle=1800,
+            pool_timeout=10,
+        )
+    return _orch_engine
+
+
+def _get_orch_session_local() -> sessionmaker[Session]:
+    global _orch_session_local
+    if _orch_session_local is None:
+        _orch_session_local = sessionmaker(
+            bind=_get_orch_engine(),
+            autocommit=False,
+            autoflush=False,
+        )
+    return _orch_session_local
+
+
 def __getattr__(name: str) -> object:
     if name == "engine":
         return _get_engine()
@@ -74,6 +103,25 @@ def __getattr__(name: str) -> object:
 def get_session() -> Generator[Session, None, None]:
     """Yield a database session; commit on success, rollback on exception."""
     session: Session = _get_session_local()()
+    try:
+        yield session
+        session.commit()
+    except BaseException:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+@contextmanager
+def get_orch_session() -> Generator[Session, None, None]:
+    """Yield a session to the orchestration DB.
+
+    Prefers IW_CORE_ORCH_DB_* over IW_CORE_DB_* so that iw step-done/fail/start
+    always reach the real orch DB even when IW_CORE_DB_* has been overridden to
+    an isolated E2E container by browser_env._build_env.
+    """
+    session: Session = _get_orch_session_local()()
     try:
         yield session
         session.commit()

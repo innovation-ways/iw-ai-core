@@ -49,6 +49,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import socket
 import subprocess
@@ -227,6 +228,21 @@ def _build_env(
         f"postgresql://{e2e_db_user}:{e2e_db_password}@127.0.0.1:{ports[2]}/{e2e_db_name}"
     )
 
+    # Before overriding IW_CORE_DB_*, snapshot the daemon's orch DB credentials
+    # as IW_CORE_ORCH_DB_*. The iw CLI step commands (step-done/fail/start)
+    # prefer IW_CORE_ORCH_DB_* so they always reach the real orch DB, while
+    # alembic, SessionLocal, and the E2E dashboard keep using the isolated DB.
+    for _src, _dst in (
+        ("IW_CORE_DB_HOST", "IW_CORE_ORCH_DB_HOST"),
+        ("IW_CORE_DB_PORT", "IW_CORE_ORCH_DB_PORT"),
+        ("IW_CORE_DB_NAME", "IW_CORE_ORCH_DB_NAME"),
+        ("IW_CORE_DB_USER", "IW_CORE_ORCH_DB_USER"),
+        ("IW_CORE_DB_PASSWORD", "IW_CORE_ORCH_DB_PASSWORD"),
+    ):
+        _val = os.environ.get(_src)
+        if _val:
+            env[_dst] = _val
+
     # IW_CORE_DB_* must also be set so that "uv run alembic" and any other
     # Python code that reads orch.config.get_db_url() inside the agent
     # subprocess uses the per-worktree DB (127.0.0.1:N) instead of the live
@@ -389,8 +405,6 @@ def run_env_up_hook(
 
     log_path = _log_path(worktree_path, item_id, step_id, "browser_env_up")
 
-    import os  # noqa: PLC0415
-
     merged_env = {**os.environ, **env}
 
     logger.info(
@@ -466,8 +480,6 @@ def run_env_down_hook(
             step_id,
         )
         return
-
-    import os  # noqa: PLC0415
 
     merged_env = {**os.environ, **env}
 
