@@ -26,7 +26,9 @@ htmlcov/
 
 # Allure test reporting
 allure-results/
+allure-report-*/
 allure-report/
+
 
 # Git worktrees (parallel AI agent isolation)
 .worktrees/
