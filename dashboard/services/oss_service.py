@@ -720,6 +720,24 @@ def get_finding_details(
     }
 
 
+def _format_summary(summary: dict[str, Any]) -> str:
+    """Format summary dict as a compact human-readable string for the status pill."""
+    must_fail = summary.get("must_fail", 0)
+    should_fail = summary.get("should_fail", 0)
+    info_fail = summary.get("info_fail", 0)
+    total = summary.get("total", 0)
+    parts = []
+    if must_fail > 0:
+        parts.append(f"{must_fail} MUST failure{'s' if must_fail != 1 else ''}")
+    if should_fail > 0:
+        parts.append(f"{should_fail} SHOULD warning{'s' if should_fail != 1 else ''}")
+    if info_fail > 0:
+        parts.append(f"{info_fail} INFO")
+    if not parts and total > 0:
+        parts.append(f"{total} checks all clear")
+    return ", ".join(parts) if parts else ""
+
+
 def scan_summary(session: Session, project_id: str) -> dict[str, Any]:
     """Return the AC1 contract shape for the latest scan, or a 'not yet scanned' dict.
 
@@ -741,7 +759,7 @@ def scan_summary(session: Session, project_id: str) -> dict[str, Any]:
         "scan_id": scan.id,
         "status": scan.status.value if scan.status else None,
         "pill_color": scan.pill_color.value if scan.pill_color else None,
-        "summary": scan.summary_json,
+        "summary": _format_summary(scan.summary_json) if scan.summary_json else "",
         "is_stale": not freshness["is_fresh"],
         "stale_message": freshness["message"],
         "head_sha": scan.head_sha,
