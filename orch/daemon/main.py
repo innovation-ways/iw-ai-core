@@ -493,7 +493,8 @@ class Daemon:
                     alive = compose_is_alive(str(item_id))
                     if alive:
                         logger.info(
-                            "Re-attached to existing compose stack for batch_item id=%d (worktree: %s)",
+                            "Re-attached to existing compose stack for batch_item id=%d "
+                            "(worktree: %s)",
                             item_id,
                             item_path,
                         )
