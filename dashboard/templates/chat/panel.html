@@ -6,7 +6,7 @@
   #chat-panel[data-collapsed="true"] #chat-toggle-tab svg.toggle-expand-icon { transform: rotate(180deg); }
   #chat-panel:not([data-collapsed="true"]) #chat-toggle-tab svg.toggle-collapse-icon { transform: rotate(0deg); }
 </style>
-<div id="chat-panel-slot" class="relative lg:overflow-visible">
+<div class="relative flex-1 min-h-0">
   <!-- Slide-out toggle tab — always visible on the left edge of the chat panel slot -->
   <button id="chat-toggle-tab"
           class="absolute top-1/2 -translate-y-1/2 z-50 flex flex-col items-center justify-center gap-1

@@ -106,8 +106,9 @@
        class="grid gap-0 lg:gap-4 grid-cols-1 lg:grid-cols-[1fr_var(--chat-width)]
               lg:h-[calc(100vh-12rem)] lg:grid-rows-[1fr]">
     <div id="code-content-root"
-       data-context-level="architecture"
-       data-context-doc-id="{{ index_status.level1_doc_id | default('') }}"
+         class="lg:min-h-0"
+         data-context-level="architecture"
+         data-context-doc-id="{{ index_status.level1_doc_id | default('') }}"
        data-arch-context-doc-id="{{ index_status.level1_doc_id | default('') }}"
        data-module-path=""
        data-module-name=""
@@ -121,7 +122,7 @@
 
   <!-- Chat panel slot: docks panel on desktop; panel renders as off-canvas drawer on mobile (via fixed positioning) -->
   <aside id="chat-panel-slot"
-         class="lg:border-l lg:border-border flex flex-col lg:overflow-hidden"
+         class="lg:border-l lg:border-border flex flex-col lg:min-h-0"
          aria-label="Code module chat">
     {% include "chat/panel.html" %}
   </aside>
