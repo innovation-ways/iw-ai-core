@@ -21,6 +21,11 @@ jobs:
   release-please:
     name: Create or update release PR
     runs-on: ubuntu-latest
+    # Opening the release PR requires the repo-level setting "Allow GitHub
+    # Actions to create and approve pull requests", which is off while the
+    # repo is private. Skip the job until publication; release-please will
+    # start managing the release PR automatically once the repo is public.
+    if: ${{ !github.event.repository.private }}
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name:        ${{ steps.release.outputs.tag_name }}
