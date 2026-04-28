@@ -132,6 +132,24 @@ def _make_test_client(app):
     return __import__("fastapi.testclient", fromlist=["TestClient"]).TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _restore_middleware_state():
+    """Restore alembic guard module-level state after each test.
+
+    Tests in this file intentionally set _alembic_guard_status to a stale
+    GuardStatus via the middleware. Without cleanup, that state persists for
+    the rest of the pytest session — any test running >10 s later gets 503
+    because needs_check fires, check_db_at_head() is blocked by the hijacked
+    env (LiveDbConnectionRefusedError), and the suppress() leaves the stale
+    status in place.
+    """
+    yield
+    import dashboard.middlewares.alembic_guard as mg
+
+    mg._dashboard_last_check = 0.0
+    mg._alembic_guard_status = None
+
+
 class TestAlembicGuardBanner:
     def test_no_banner_at_head(
         self, migrated_engine: Engine, db_session, monkeypatch: pytest.MonkeyPatch
