@@ -25,7 +25,7 @@ from orch.daemon.migration_pipeline import (
     run_rollback,
 )
 from orch.daemon.migration_rebase import run_pre_merge_rebase
-from orch.db.models import BatchItem, BatchItemStatus, DaemonEvent
+from orch.db.models import BatchItem, BatchItemStatus, DaemonEvent, WorkItem, WorkItemStatus
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 
 # Executor scripts: iw-ai-core/executor/
 _EXECUTOR_DIR = Path(__file__).resolve().parent.parent.parent / "executor"
+
+# Maximum bytes kept in merge_info["stdout"] for audit log
+_MERGE_INFO_STDOUT_LIMIT = 8000
 
 
 class MergeError(RuntimeError):
@@ -104,6 +107,18 @@ def process_merge_queue(
 # ---------------------------------------------------------------------------
 
 
+def _revert_work_item(db: Session, project_id: str, item_id: str) -> None:
+    """Revert WorkItem.status to failed and clear completed_at after a merge failure.
+
+    Only touches the WorkItem if its current status is completed — guards against
+    double-application and preserves any status already set by other code paths.
+    """
+    work_item = db.query(WorkItem).filter_by(project_id=project_id, id=item_id).one_or_none()
+    if work_item is not None and work_item.status == WorkItemStatus.completed:
+        work_item.status = WorkItemStatus.failed
+        work_item.completed_at = None
+
+
 def _merge_item(
     db: Session,
     batch_item: BatchItem,
@@ -143,6 +158,8 @@ def _merge_item(
         if not rebase_result.success:
             batch_item.status = BatchItemStatus.migration_rebase_failed
             batch_item.notes = f"Pre-merge rebase failed: {rebase_result.error_message}"
+            # C4: revert WorkItem so it is not orphaned as completed
+            _revert_work_item(db, project_id, item_id)
             db.commit()
             compose_path = (
                 Path(batch_item.worktree_compose_path) if batch_item.worktree_compose_path else None
@@ -178,6 +195,8 @@ def _merge_item(
         if not dry_result.success:
             batch_item.status = BatchItemStatus.migration_invalid
             batch_item.notes = f"Phase 1 dry-run failed: {dry_result.message}"
+            # C4: revert WorkItem so it is not orphaned as completed
+            _revert_work_item(db, project_id, item_id)
             db.commit()
             compose_path = (
                 Path(batch_item.worktree_compose_path) if batch_item.worktree_compose_path else None
@@ -213,7 +232,12 @@ def _merge_item(
 
         batch_item.status = BatchItemStatus.merged
         batch_item.merged_at = datetime.now(UTC)
-        batch_item.merge_info = {"stdout": result.stdout[:1000]}
+        # M2: keep up to 8000 chars; flag when output was truncated
+        stdout = result.stdout
+        batch_item.merge_info = {
+            "stdout": stdout[:_MERGE_INFO_STDOUT_LIMIT],
+            "stdout_truncated": len(stdout) > _MERGE_INFO_STDOUT_LIMIT,
+        }
         db.commit()
         _emit_event(
             db, project_id, "item_merged", item_id, "work_item", f"Merged {item_id} successfully"
@@ -265,6 +289,8 @@ def _merge_item(
     except (MergeError, subprocess.TimeoutExpired) as e:
         batch_item.status = BatchItemStatus.failed
         batch_item.notes = f"Merge failed: {e}"
+        # C4: revert WorkItem so it is not orphaned as completed
+        _revert_work_item(db, project_id, item_id)
         db.commit()
         worktree_compose.down(
             str(batch_item.id),

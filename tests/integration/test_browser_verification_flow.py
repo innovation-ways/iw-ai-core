@@ -233,12 +233,17 @@ def test_launch_step_env_up_failure_marks_step_failed(
     with (
         patch("orch.daemon.browser_env.allocate_browser_env", return_value=fake_env),
         patch("orch.daemon.browser_env.run_env_up_hook", return_value=(False, Path("/log.txt"))),
+        # H11: env_up failure now triggers env_down teardown — mock it to a no-op
+        patch("orch.daemon.browser_env.run_env_down_hook") as mock_env_down,
         patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen,
     ):
         manager_with_bv._launch_step(db_session, step, worktree_info)
 
-    # Agent was NOT launched
+    # Agent was NOT launched (the only Popen-equivalent path that should run is env_down,
+    # which we mocked above to a no-op)
     mock_popen.assert_not_called()
+    # H11: env_down should have been called to clean up partial bring-up state
+    mock_env_down.assert_called_once()
 
     # Step should be failed
     db_session.refresh(step)

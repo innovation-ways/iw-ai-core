@@ -9,9 +9,7 @@ Loops up to fix_cycle_max (default 5) times before giving up.
 from __future__ import annotations
 
 import logging
-import os
 import re
-import signal
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -245,31 +243,80 @@ def attempt_fix_cycle(
     max_cycles = _max_cycles_for(step.step_type, project_config)
     existing_count = db.query(FixCycle).filter(FixCycle.step_id == step.id).count()
     cycle_number = existing_count + 1
+    trigger = _TRIGGER_MAP[step.step_type]
 
-    # Get the review findings from the latest failed StepRun
-    findings = _get_review_findings(db, step, worktree_path, config)
+    # --- Steps 1 & 2: findings extraction + prompt generation ---
+    # These steps can raise (missing file, disk error, etc.). If they fail
+    # we must still persist a FixCycle row with status=failed so that
+    # should_attempt_fix() counts it toward max_cycles and prevents an
+    # infinite re-launch loop (the daemon would otherwise see status=failed
+    # with 0 FixCycle rows and keep calling attempt_fix_cycle forever).
+    try:
+        # Get the review findings from the latest failed StepRun
+        findings = _get_review_findings(db, step, worktree_path, config)
 
-    # Grab the latest StepRun's --reason so the fix prompt can call out
-    # mis-classified ENV_DATA_MISSING / ENVIRONMENT failures.
-    prior_reason = _latest_failure_reason(db, step)
+        # Grab the latest StepRun's --reason so the fix prompt can call out
+        # mis-classified ENV_DATA_MISSING / ENVIRONMENT failures.
+        prior_reason = _latest_failure_reason(db, step)
 
-    # Generate fix prompt
-    prompt_path = _generate_fix_prompt(
-        step,
-        worktree_path,
-        cycle_number,
-        findings,
-        max_cycles,
-        prior_failure_reason=prior_reason,
-    )
+        # Generate fix prompt
+        prompt_path = _generate_fix_prompt(
+            step,
+            worktree_path,
+            cycle_number,
+            findings,
+            max_cycles,
+            prior_failure_reason=prior_reason,
+        )
+    except Exception as exc:
+        # Record a failed FixCycle so the next poll's should_attempt_fix
+        # increments toward max_cycles even when prompt generation can't complete.
+        now = datetime.now(UTC)
+        failed_cycle = FixCycle(
+            step_id=step.id,
+            cycle_number=cycle_number,
+            trigger_type=trigger,
+            trigger_report=step.report_file,
+            fix_prompt=None,
+            status=FixStatus.failed,
+            started_at=now,
+            completed_at=now,
+            fix_metadata={
+                "error": "prompt_generation_failed",
+                "exception": str(exc),
+            },
+        )
+        db.add(failed_cycle)
+        db.commit()
+        _emit_event(
+            db,
+            project_id,
+            "fix_cycle_failed",
+            step.work_item_id,
+            "work_item",
+            f"Fix cycle {cycle_number} prompt generation failed: {exc}",
+            {"reason": "prompt_generation_failed", "cycle_number": cycle_number},
+        )
+        db.commit()
+        logger.error(
+            "[%s] Fix cycle %d prompt generation failed for %s/%s: %s",
+            project_id,
+            cycle_number,
+            step.work_item_id,
+            step.step_id,
+            exc,
+            exc_info=True,
+        )
+        # step.status remains failed — do not transition to needs_fix
+        return
 
+    # --- Steps 3+: persist FixCycle and launch agent ---
     # Transition step: failed → needs_fix
     step.status = StepStatus.needs_fix
     step.started_at = None
     step.completed_at = None
 
     # Create FixCycle record
-    trigger = _TRIGGER_MAP[step.step_type]
     fix_cycle = FixCycle(
         step_id=step.id,
         cycle_number=cycle_number,
@@ -1186,11 +1233,9 @@ def _is_pid_alive(pid: int | None) -> bool:
 def _kill_pid(pid: int | None) -> None:
     if pid is None:
         return
-    try:
-        os.kill(pid, signal.SIGTERM)
-        logger.info("Sent SIGTERM to fix agent PID %d", pid)
-    except ProcessLookupError:
-        pass
+    from orch.daemon.step_monitor import kill_process_group  # noqa: PLC0415
+
+    kill_process_group(pid)
 
 
 def _emit_event(

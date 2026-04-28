@@ -153,6 +153,10 @@ class TestRunningPageRenders:
                 status="in_progress",
                 started_at=None,
                 runtime_secs=10,
+                # CR-00024: heartbeat_cell macro reads these attrs on every row.
+                last_heartbeat_age_secs=5,
+                pid_alive=True,
+                warned_50pct_at=None,
             )
         ]
         request = SimpleNamespace(state=SimpleNamespace())
@@ -177,6 +181,10 @@ class TestStepRowFragmentRenders:
             status="in_progress",
             started_at=None,
             runtime_secs=10,
+            # CR-00024: heartbeat_cell macro reads these attrs on every row.
+            last_heartbeat_age_secs=5,
+            pid_alive=True,
+            warned_50pct_at=None,
         )
         request = SimpleNamespace(state=SimpleNamespace())
         html = tmpl.render(row=row, request=request)
