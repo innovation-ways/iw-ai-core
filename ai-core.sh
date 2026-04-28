@@ -647,6 +647,23 @@ cmd_install() {
   print_header "Installing IW AI Core"
   print_info "Syncing Python dependencies..."
   uv sync
+
+  # Optional diagram tool availability check (non-blocking)
+  echo ""
+  echo "Checking optional diagram tools..."
+  if ! command -v mmdc &>/dev/null && [ ! -f "$HOME/.local/bin/mmdc" ]; then
+    echo -e "  \033[33m⚠ mmdc not found — Mermaid server-side rendering disabled.\033[0m"
+    echo    "    To enable: npm install -g @mermaid-js/mermaid-cli"
+  else
+    echo    "  ✓ mmdc available"
+  fi
+  if ! command -v d2 &>/dev/null; then
+    echo -e "  \033[33m⚠ d2 not found — D2 diagram rendering disabled.\033[0m"
+    echo    "    To enable: go install oss.terrastruct.com/d2@latest"
+  else
+    echo    "  ✓ d2 available"
+  fi
+
   print_info "Starting database..."
   cmd_db start
   print_info "Running migrations..."

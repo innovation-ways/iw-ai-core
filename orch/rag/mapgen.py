@@ -171,6 +171,47 @@ class MapGenerator:
         mermaid = await asyncio.to_thread(self._build_mermaid, answers["components"], config)
         markdown = self._assemble_markdown(answers, mermaid)
 
+        def store_arch_diagram(dsl: str) -> None:
+            from orch.db.models import DocTier, DocType, EditorialCategory, Project
+            from orch.db.session import SessionLocal as DefaultSessionLocal
+
+            factory = db_session_factory or DefaultSessionLocal
+            with factory() as session:
+                project = session.get(Project, project_id)
+                if project is None:
+                    return
+                doc_service = DocService(session)
+                existing = doc_service.get_doc(project_id, "diagram-architecture")
+                if existing is None:
+                    doc_service.create_doc(
+                        project_id=project_id,
+                        doc_id="diagram-architecture",
+                        title=f"{project.display_name} — Architecture Diagram",
+                        doc_type=DocType.diagram,
+                        tier=DocTier.fully_automated,
+                        editorial_category=EditorialCategory.technical,
+                        content=dsl,
+                        generated_by="code-understanding:mapgen",
+                        source_paths=["*"],
+                    )
+                else:
+                    doc_service.update_doc(
+                        project_id=project_id,
+                        doc_id="diagram-architecture",
+                        title=f"{project.display_name} — Architecture Diagram",
+                        content=dsl,
+                        generated_by="code-understanding:mapgen",
+                        source_paths=["*"],
+                    )
+                session.commit()
+
+        try:
+            await asyncio.to_thread(store_arch_diagram, mermaid)
+        except Exception as exc:
+            import logging
+
+            logging.warning("Architecture diagram storage failed for %s: %s", project_id, exc)
+
         def do_upsert() -> ProjectDoc:
             from orch.db.models import DocTier, DocType, EditorialCategory
             from orch.db.session import SessionLocal as DefaultSessionLocal
@@ -231,21 +272,30 @@ class MapGenerator:
             request_timeout=300.0,
         )
         prompt = (
-            "You are generating a component diagram for a software system.\n"
+            "You are generating a Mermaid component diagram for a software system.\n"
             f"Components and their descriptions:\n{components_answer}\n\n"
+            "The diagram MUST start with this exact YAML frontmatter block:\n"
+            "---\n"
+            "config:\n"
+            "  layout: elk\n"
+            "---\n\n"
             "Produce ONLY a valid Mermaid `graph TD` diagram showing the "
             "relationships between these components. Use short alphanumeric "
             "node IDs and put the human label in brackets, e.g. `CLI[iw CLI]`. "
             "Wrap the diagram in a ```mermaid ... ``` fenced code block. "
             "No prose, no explanation.\n"
+            "Maximum 15 nodes. If the system has more components, group minor ones.\n"
         )
         response = llm.complete(prompt)
         text = response.text
 
         match = re.search(r"```mermaid\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        return "graph TD\n  A[System]"
+        mermaid_dsl = match.group(1).strip() if match else "graph TD\n  A[System]"
+
+        elk_frontmatter = "---\nconfig:\n  layout: elk\n---\n"
+        if "layout: elk" not in mermaid_dsl:
+            mermaid_dsl = elk_frontmatter + mermaid_dsl
+        return mermaid_dsl
 
     def _assemble_markdown(self, answers: dict[str, str], mermaid: str) -> str:
         lines = ["# Architecture Map", ""]
