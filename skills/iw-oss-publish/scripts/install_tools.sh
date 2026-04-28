@@ -224,8 +224,25 @@ install_grype() {
 }
 
 install_osv_scanner() {
+  # Prefer the gh release download path — it always lands on the current
+  # major (v2.x today) and writes directly to $INSTALL_DIR, so it survives
+  # a $PATH that doesn't include $GOPATH/bin.
+  local work; work=$(mktemp -d)
+  local asset
+  asset=$(gh_download "google/osv-scanner" "osv-scanner_${OS}_amd64" "$work") || true
+  if [ -n "$asset" ]; then
+    mv -f "$asset" "$INSTALL_DIR/osv-scanner"
+    chmod +x "$INSTALL_DIR/osv-scanner"
+    rm -rf "$work"
+    return 0
+  fi
+  rm -rf "$work"
   if command -v go >/dev/null 2>&1; then
-    go install github.com/google/osv-scanner/cmd/osv-scanner@latest
+    # GOBIN forces install into $INSTALL_DIR (otherwise binaries land in
+    # $GOPATH/bin which is not on $PATH on GitHub runners). The /v2/
+    # segment is required for go install @latest to resolve to the v2.x
+    # major line — without it Go fetches the stale v1 series.
+    GOBIN="$INSTALL_DIR" go install github.com/google/osv-scanner/v2/cmd/osv-scanner@latest
   else
     local url="https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_${OS}_amd64"
     curl -sSfL "$url" -o "$INSTALL_DIR/osv-scanner"
@@ -245,7 +262,10 @@ install_pinact() {
   fi
   rm -rf "$work"
   if command -v go >/dev/null 2>&1; then
-    go install github.com/suzuki-shunsuke/pinact/cmd/pinact@latest
+    # GOBIN puts the binary on $PATH; /v3/ is required for @latest to
+    # resolve to the current major (v3.x). Without it Go silently picks
+    # the last v1 tag (v1.6.0) which is far below MIN_VER[pinact].
+    GOBIN="$INSTALL_DIR" go install github.com/suzuki-shunsuke/pinact/v3/cmd/pinact@latest
   else
     echo "  pinact: gh release download failed and go toolchain missing." >&2
     echo "    Either authenticate gh (gh auth login) or install Go: https://go.dev/dl/" >&2
