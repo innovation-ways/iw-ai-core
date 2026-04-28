@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -9,6 +10,7 @@ from typing import TYPE_CHECKING
 import httpx
 import lancedb  # type: ignore[import-untyped]
 from llama_index.embeddings.ollama import OllamaEmbedding
+from llama_index.llms.ollama import Ollama
 from sqlalchemy import select
 
 from orch.db.models import DocTier, DocType, EditorialCategory, ProjectDoc
@@ -138,6 +140,7 @@ class ModuleGenerator:
         start_progress(project_id, module_path, module_name, llm_model)
 
         answers: list[str] = []
+        last_context_chunks: list[str] = []
         for idx, (question_template, label) in enumerate(
             zip(self.MODULE_QUESTIONS, _STEP_LABELS, strict=True), start=1
         ):
@@ -150,6 +153,7 @@ class ModuleGenerator:
 
             context_chunks = [r.get("text", "") for r in results if r.get("text")]
             context = "\n\n---\n\n".join(context_chunks)
+            last_context_chunks = context_chunks
 
             answer = await self._call_ollama(question, context, llm_model, ollama_url)
             answers.append(answer)
@@ -173,6 +177,23 @@ class ModuleGenerator:
             generated_by="code-understanding:level2",
         )
         session.flush()
+
+        try:
+            await self._generate_and_store_module_diagram(
+                project_id=project_id,
+                module_path=module_path,
+                module_name=module_name,
+                config=config,
+                session=session,
+                retrieved_nodes=last_context_chunks,
+            )
+        except Exception as exc:
+            import logging
+
+            logging.warning(
+                "Module diagram generation failed for %s/%s: %s", project_id, module_path, exc
+            )
+
         update_progress(project_id, module_path, step=5, step_label="complete", done=True)
         return doc
 
@@ -206,6 +227,75 @@ Rules:
             data: dict[str, str] = response.json()
             result: str = data.get("response", "")
             return _strip_filler_preamble(result)
+
+    async def _generate_and_store_module_diagram(
+        self,
+        project_id: str,
+        module_path: str,
+        module_name: str,
+        config: CodeUnderstandingConfig,
+        session: Session,
+        retrieved_nodes: list[str],
+    ) -> None:
+        context_str = "\n\n---\n\n".join(retrieved_nodes)
+
+        llm = Ollama(
+            model=config.resolved_llm_model(),
+            base_url=config.ollama_url,
+            request_timeout=300.0,
+        )
+        prompt = (
+            f"You are generating a Mermaid component diagram for the '{module_name}' module.\n\n"
+            f"Code context:\n{context_str}\n\n"
+            "Rules:\n"
+            "- Output ONLY a fenced ```mermaid block. No prose, no explanation.\n"
+            "- The diagram MUST start with this YAML frontmatter:\n"
+            "  ---\n"
+            "  config:\n"
+            "    layout: elk\n"
+            "  ---\n"
+            "- Use 'graph TD' direction.\n"
+            "- Maximum 12 nodes. Group minor items if needed.\n"
+            "- Node IDs: short alphanumeric (e.g., QA, IDX, CFG). Labels in [brackets].\n"
+            "- Show the main internal components and their key dependencies.\n"
+        )
+        response = await asyncio.to_thread(llm.complete, prompt)
+        text = response.text
+
+        match = re.search(r"```mermaid\s*(.*?)\s*```", text, re.DOTALL)
+        mermaid_dsl = match.group(1).strip() if match else f"graph TD\n  A[{module_name}]"
+
+        elk_frontmatter = "---\nconfig:\n  layout: elk\n---\n"
+        if "layout: elk" not in mermaid_dsl:
+            mermaid_dsl = elk_frontmatter + mermaid_dsl
+
+        slug = self._make_slug(project_id, module_path)
+        doc_id = f"diagram-module-{slug}"
+
+        doc_service = DocService(session)
+        existing = doc_service.get_doc(project_id, doc_id)
+        if existing is None:
+            doc_service.create_doc(
+                project_id=project_id,
+                doc_id=doc_id,
+                title=f"Module Diagram: {module_name} ({module_path})",
+                doc_type=DocType.diagram,
+                tier=DocTier.fully_automated,
+                editorial_category=EditorialCategory.technical,
+                content=mermaid_dsl,
+                generated_by="code-understanding:module_gen",
+                source_paths=[module_path],
+            )
+        else:
+            doc_service.update_doc(
+                project_id=project_id,
+                doc_id=doc_id,
+                title=f"Module Diagram: {module_name} ({module_path})",
+                content=mermaid_dsl,
+                generated_by="code-understanding:module_gen",
+                source_paths=[module_path],
+            )
+        session.flush()
 
     async def run_standalone(
         self,

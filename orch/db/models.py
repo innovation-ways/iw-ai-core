@@ -193,6 +193,7 @@ class DocType(enum.Enum):
     product_overview = "product_overview"
     feature_catalog = "feature_catalog"
     research = "research"
+    diagram = "diagram"
 
 
 class DocTier(enum.Enum):

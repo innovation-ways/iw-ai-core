@@ -486,10 +486,11 @@ def approve(ctx: click.Context, item_id: str) -> None:
                 output_error(ctx, error, 1)
 
             repo_root = ctx.obj.get("repo_root", "")
-            try:
-                ensure_active_files_committed(repo_root, item_id, item.title)
-            except ValueError as exc:
-                output_error(ctx, str(exc), 1)
+            if repo_root:
+                try:
+                    ensure_active_files_committed(repo_root, item_id, item.title)
+                except ValueError as exc:
+                    output_error(ctx, str(exc), 1)
 
             item.status = WorkItemStatus.approved
             item.updated_at = datetime.now(UTC)
