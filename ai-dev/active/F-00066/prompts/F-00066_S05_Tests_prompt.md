@@ -22,9 +22,18 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 - `ai-dev/active/F-00066/reports/F-00066_S05_Tests_report.md`
 - `tests/unit/dashboard/test_code_qa_diagram_intercept.py` (new)
 
+## ⚠️ I003 Semantic Correctness Warning
+
+**Test intent, not implementation.** Verify that the code does the right thing for the user — not just that methods were called or that internal state matches. Avoid:
+- Asserting only on method call counts or mock call signatures
+- Mirroring the implementation instead of testing behavior
+- Tests that pass because mocks return the "right" value without exercising the real path
+
+Each test must assert something a real user would observe (SSE event presence, payload content, decoded SVG value).
+
 ## Context
 
-Read `tests/CLAUDE.md`. Unit tests use `monkeypatch` and `pytest.mark.asyncio`. No live DB connections. Import `_find_new_diagram_blocks` and `_sse_generator` from `dashboard.routers.code_qa`.
+Read `tests/CLAUDE.md`. Unit tests use `monkeypatch` and `pytest.mark.asyncio`. **No live DB connections, no testcontainers** — this is a unit test file. Import `_find_new_diagram_blocks` and `_sse_generator` from `dashboard.routers.code_qa`.
 
 ## Requirements
 
@@ -86,12 +95,22 @@ Monkeypatch `_DIAGRAM_RENDER_AVAILABLE` to `False`.
 
 Assert no `event: image` line appears (block detection is gated by the flag).
 
-### Test setup helpers
+### Test setup helpers for `_sse_generator` tests
 
-For `_sse_generator` tests: look at how `tests/dashboard/test_code_qa_sse_wire.py` sets up a `FakeEngine` and calls `_sse_generator` with a testcontainer DB session. Follow the same pattern:
-- Import `_sse_generator` from `dashboard.routers.code_qa`
-- Use `testcontainers.postgres.PostgresContainer` for the DB session
-- Use `pytest.mark.asyncio` and `async def`
+**Important**: These are **unit tests** — do NOT use testcontainers or any real DB connection.
+
+Read `tests/dashboard/test_code_qa_sse_wire.py` to understand the `_sse_generator` signature and what arguments it expects. Then mock ALL external dependencies (DB session, QAEngine, etc.) using `unittest.mock.MagicMock` / `AsyncMock`:
+
+```python
+from unittest.mock import AsyncMock, MagicMock, patch
+
+# Example pattern (adapt based on actual _sse_generator signature):
+mock_session = MagicMock()
+mock_engine = MagicMock()
+mock_engine.answer_stream_v2 = AsyncMock(return_value=aiter(tokens))
+```
+
+Use `pytest.mark.asyncio` and `async def` for all async tests.
 
 Collect all yielded SSE strings:
 ```python

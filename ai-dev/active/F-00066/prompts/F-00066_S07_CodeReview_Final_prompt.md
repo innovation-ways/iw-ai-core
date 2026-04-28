@@ -28,7 +28,7 @@ All S01–S06 reports and all changed files. Refer to the File Manifest in the d
 
 ### Integration consistency
 - [ ] `onImage` is passed from `render.js` to `stream.js` `streamAnswer` call
-- [ ] `block_index` correctly selects the right `<pre>` element (0-based, scoped to `source_type`)
+- [ ] `block_index` is **per-type** (backend uses `emit_counts[lang]`; frontend queries `pre[data-lang="${sourceType}"]` without `:not()` filter and uses `pres[block_index]`)
 - [ ] `_DIAGRAM_RENDER_AVAILABLE` flag correctly gates block detection when F-00064 is absent
 - [ ] D2 blocks handled alongside Mermaid blocks (not silently dropped)
 

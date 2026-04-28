@@ -32,11 +32,11 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 ### `render.js` changes
 - [ ] `onImage` implemented in `createAssistantRenderer` return object
 - [ ] `onImage` passed to `streamAnswer` options
-- [ ] `block_index` used to select the correct un-rendered `<pre>` — not the first one every time
+- [ ] `block_index` used to select the correct `<pre>` — queries ALL elements of that `source_type` (no `:not([data-iw-server-rendered])` filter), uses absolute position
 - [ ] `data-iw-server-rendered` attribute set on the matched `<pre>` before inserting the figure
 - [ ] Figure inserted after `<pre>`, not replacing it (the `<pre>` stays hidden, not deleted)
 - [ ] Try/catch wraps the entire `onImage` body — no uncaught exceptions
-- [ ] `onDone` hides server-rendered `<pre>` elements after `upgradeAllMermaidBlocks`
+- [ ] `onDone` hides server-rendered `<pre>` elements BEFORE calling `upgradeAllMermaidBlocks` (not after)
 
 ### Security
 - [ ] SVG is embedded as a `data:` URI in `img.src` — browser sandboxes it, no XSS vector

@@ -22,7 +22,7 @@
 - [ ] `test_sse_generator_emits_image_event_when_render_succeeds` — correctly decodes base64 SVG
 - [ ] `test_sse_generator_no_image_event_when_render_returns_none` — no `image` event
 - [ ] `test_sse_generator_no_image_event_when_render_unavailable` — flag gates the feature
-- [ ] No live DB connections; uses testcontainers pattern from `test_code_qa_sse_wire.py`
+- [ ] No live DB connections, no testcontainers — all external deps mocked (`MagicMock`/`AsyncMock`)
 - [ ] Tests match project conventions (`tests/CLAUDE.md`)
 - [ ] `pytest.mark.asyncio` used for all async tests
 

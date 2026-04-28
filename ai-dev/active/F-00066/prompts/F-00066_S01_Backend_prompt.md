@@ -84,8 +84,10 @@ In `_sse_generator`, add these variables at the top of the function:
 ```python
 accumulated_text = ""
 processed_diagram_blocks: set[tuple[str, str]] = set()
-block_emit_index = 0
+emit_counts: dict[str, int] = {"mermaid": 0, "d2": 0}
 ```
+
+`emit_counts` tracks, per diagram language, how many blocks have been processed (regardless of whether rendering succeeded). This gives each `<pre>` element a stable absolute index within its language group, which the frontend uses to locate the correct element.
 
 After the existing `yield f"event: token\ndata: ..."` line (not the error path), add the block detection:
 
@@ -104,10 +106,10 @@ if _DIAGRAM_RENDER_AVAILABLE:
                 "svg_b64": svg_b64,
                 "alt": "Diagram",
                 "source_type": lang,
-                "block_index": block_emit_index,
+                "block_index": emit_counts[lang],
             })
             yield f"event: image\ndata: {img_payload}\n\n"
-        block_emit_index += 1
+        emit_counts[lang] += 1  # increment regardless of render success/failure
 ```
 
 **Important**: the `base64` module is already imported at the top of `code_qa.py`. Use the existing import, not a local re-import.

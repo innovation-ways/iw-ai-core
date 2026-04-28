@@ -38,8 +38,8 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 - [ ] Both token paths (dict `kind=="token"` AND raw `str` fallback) accumulate to `accumulated_text`
 - [ ] `loop.run_in_executor(None, render_func, dsl)` — async-safe, doesn't block the event loop
 - [ ] `image` event emitted ONLY when `svg` is not None
-- [ ] `block_emit_index` increments for ALL processed blocks (including ones where render returned None)
-- [ ] `block_emit_index` is initialized before the while loop, not inside it
+- [ ] `emit_counts: dict[str, int] = {"mermaid": 0, "d2": 0}` — per-type index, initialized before the event loop
+- [ ] `emit_counts[lang]` used as `block_index` in the SSE payload, then incremented for ALL processed blocks (including ones where render returned None)
 
 ### Security
 - [ ] SVG content from render is base64-encoded before embedding in JSON — no raw SVG in the SSE payload

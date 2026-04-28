@@ -6,6 +6,9 @@
 
 ---
 
+## ⛔ Docker is off-limits / Migrations: agents generate, daemon applies
+Full policy: docs/IW_AI_Core_Agent_Constraints.md
+
 ## Input Files
 
 - `ai-dev/active/F-00065/F-00065_Feature_Design.md`

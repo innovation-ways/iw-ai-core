@@ -13,7 +13,7 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
 - `ai-dev/active/F-00065/F-00065_Feature_Design.md`
 - `dashboard/routers/code.py`
-- `dashboard/utils/markdown.py`
+- `dashboard/routers/code_ui.py`
 - `tests/conftest.py`
 - `tests/dashboard/` (existing dashboard tests for convention)
 
@@ -22,6 +22,15 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 - `ai-dev/active/F-00065/reports/F-00065_S05_Tests_report.md`
 - `tests/unit/dashboard/test_preprocess_mermaid.py` (new)
 - `tests/dashboard/test_code_diagram_endpoint.py` (new)
+
+## ⚠️ I003 Semantic Correctness Warning
+
+**Test intent, not implementation.** Verify that the code does the right thing for the user — not just that methods were called or that internal state matches. Avoid:
+- Asserting only on method call counts or mock call signatures
+- Mirroring the implementation instead of testing behavior
+- Tests that pass because mocks return the "right" value without exercising the real path
+
+Each test must assert something a real user would observe (HTTP status, fragment content, element presence/absence).
 
 ## Context
 
