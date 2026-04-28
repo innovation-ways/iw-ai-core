@@ -10,6 +10,7 @@ from typing import Any
 import click
 from sqlalchemy import select
 
+from orch.active_files import ensure_active_files_committed
 from orch.archive import archive_all_completed, archive_work_item
 from orch.cli.utils import TYPE_TO_ID_PREFIX, output_error, resolve_project, validate_id_prefix
 from orch.daemon.execution_report import (
@@ -483,6 +484,12 @@ def approve(ctx: click.Context, item_id: str) -> None:
             error = validate_approve_transition(item.status, item.type)
             if error:
                 output_error(ctx, error, 1)
+
+            repo_root = ctx.obj.get("repo_root", "")
+            try:
+                ensure_active_files_committed(repo_root, item_id, item.title)
+            except ValueError as exc:
+                output_error(ctx, str(exc), 1)
 
             item.status = WorkItemStatus.approved
             item.updated_at = datetime.now(UTC)

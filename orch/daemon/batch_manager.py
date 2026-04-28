@@ -1289,6 +1289,10 @@ def _agent_subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]
     # Strip allow-list flags — agents are NEVER trusted to write to live DB.
     env.pop("IW_CORE_DAEMON_CONTEXT", None)
     env.pop("IW_CORE_OPERATOR_APPLY", None)
+    # Agents run inside worktrees that have their own .venv; inheriting the
+    # daemon's VIRTUAL_ENV (pointing at the main repo's .venv) causes uv to
+    # emit a mismatch warning on every invocation.
+    env.pop("VIRTUAL_ENV", None)
     # Arm refused-context for the child.
     env["IW_CORE_AGENT_CONTEXT"] = "true"
     if extra:
