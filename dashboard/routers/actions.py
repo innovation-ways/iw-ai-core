@@ -19,6 +19,7 @@ from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from dashboard.middlewares.alembic_guard import require_db_at_head
+from orch.active_files import ensure_active_files_committed
 from orch.archive.batch_archiver import archive_batch
 from orch.db.models import (
     Batch,
@@ -478,6 +479,13 @@ def approve_item(
             status_code=422,
             detail=f"Cannot approve: item status is '{item.status.value}' (must be draft)",
         )
+    project = db.scalar(select(Project).where(Project.id == project_id))
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+    try:
+        ensure_active_files_committed(project.repo_root, item_id, item.title)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     item.status = WorkItemStatus.approved
     _emit(db, "item_approved", project_id, item_id, "work_item", f"Item {item_id} approved by user")
     db.commit()
