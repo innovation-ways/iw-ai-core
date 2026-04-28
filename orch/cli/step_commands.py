@@ -13,13 +13,16 @@ from sqlalchemy import select
 from orch.cli.utils import output_error, resolve_project
 from orch.db.models import (
     DaemonEvent,
+    EvidencePhase,
     RunStatus,
     StepRun,
     StepStatus,
+    StepType,
     WorkflowStep,
     WorkItem,
     WorkItemStatus,
 )
+from orch.evidences import EvidenceTooLargeError, ingest_phase_from_disk
 from orch.utils.log_capture import capture_log_content
 
 # ---------------------------------------------------------------------------
@@ -333,6 +336,19 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
                 capture_log_content(step_run)
                 _worktree_path = step_run.worktree_path or ""
             _step_type_val = step.step_type
+
+            if step.step_type == StepType.browser_verification:
+                try:
+                    ingest_phase_from_disk(
+                        session=session,
+                        project_id=project_id,
+                        work_item_id=item_id,
+                        phase=EvidencePhase.post,
+                        root=Path.cwd(),
+                        step_id=step_id,
+                    )
+                except EvidenceTooLargeError as exc:
+                    output_error(ctx, str(exc), 1)
 
             session.add(
                 DaemonEvent(
