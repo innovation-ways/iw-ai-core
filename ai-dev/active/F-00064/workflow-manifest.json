@@ -1,0 +1,87 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "F-00064",
+  "type": "Feature",
+  "title": "Code mapping diagram generation pipeline — per-module and architecture diagrams stored as ProjectDocs",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Add DocType.diagram enum value + generate Alembic migration",
+      "prompt": "prompts/F-00064_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review: S01 migration and enum change",
+      "prompt": "prompts/F-00064_S02_CodeReview_Database_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "orch/diagram/ package; update mapgen.py, module_gen.py, ai-core.sh",
+      "prompt": "prompts/F-00064_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review: S03 backend implementation",
+      "prompt": "prompts/F-00064_S04_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Unit tests: render.py and mapgen ELK prompt",
+      "prompt": "prompts/F-00064_S05_Tests_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Code review: S05 tests",
+      "prompt": "prompts/F-00064_S06_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-agent review of all F-00064 changes",
+      "prompt": "prompts/F-00064_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00025",
+  "type": "ChangeRequest",
+  "title": "Implement missing evidence-ingestion pipeline (CR-00020 follow-up) and backfill archived items",
+  "browser_verification": true,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Create orch/evidences.py:ingest_phase_from_disk, add IW_CORE_EVIDENCE_MAX_BYTES, hook into iw approve (pre) and iw step-done (post for browser_verification), update docs",
+      "prompt": "prompts/CR-00025_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: transaction scope, size-limit semantics, upsert correctness, no agent-facing surface change",
+      "prompt": "prompts/CR-00025_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Unit tests for ingest helper + integration tests for iw approve/step-done ingestion + post-archive regression test (the gap CR-00020 S15 missed)",
+      "prompt": "prompts/CR-00025_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: AC coverage, no DB mocking in integration tests, regression test exercises archiver cleanup",
+      "prompt": "prompts/CR-00025_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Cross-layer review: AC1–AC8 coverage, transactional correctness, archive-survival behaviour, docs synced",
+      "prompt": "prompts/CR-00025_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — verify the new ingestion path end-to-end in the isolated worktree stack (approve → pre ingested; browser-step-done → post ingested; archive cleanup → tab still populated)",
+      "prompt": "prompts/CR-00025_S11_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "backend-impl",
+      "description": "Write scripts/CR-00025_backfill_evidences.py, run against the production orch DB, screenshot I-00044 Evidences tab as post evidence, then DELETE the script before completing",
+      "prompt": "prompts/CR-00025_S12_Backend_Backfill_prompt.md"
+    }
+  ]
+}
