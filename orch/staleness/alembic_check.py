@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -24,10 +23,16 @@ logger = logging.getLogger(__name__)
 
 _ALEMBIC_TIMEOUT = 10  # seconds
 
-# Matches a revision ID at the start of a line, optionally followed by
-# markers like "(head)", "(rev)", "(current)", "(base)", etc.
-# Revision IDs are typically hex strings but can contain underscores too.
-_REV_ID_RE = re.compile(r"^([0-9a-f_]+)\s*(?:\([^)]*\))?", re.MULTILINE)
+# Docstring metadata prefixes that appear inside the migration script
+# docstring (after Path:) and must be skipped when extracting the message.
+_DOCSTRING_METADATA_PREFIXES = (
+    "Revision ID:",
+    "Revises:",
+    "Create Date:",
+    "Branch labels:",
+    "Branches:",
+    "Depends on:",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -77,52 +82,48 @@ class AlembicStatus:
 def _parse_revision_from_verbose(output: str) -> str | None:
     """Extract the first revision ID from verbose alembic output.
 
-    Verbose output looks like::
+    Real ``alembic current --verbose`` stdout starts with a header line
+    (``Current revision(s) for postgresql+...:``) followed by per-revision
+    blocks beginning with ``Rev: <rev_id>``. ``alembic heads --verbose``
+    starts directly with ``Rev: <rev_id>``. We scan for the first line
+    whose stripped form starts with ``Rev: `` and return the token after it.
 
-        abc123def456 (head)
-        Rev: abc123def456
-        Parent: <base>
-        Path: versions/abc123def456_add_table.py
-        Add user table
-
-    The first non-empty line is always the revision ID line.  It starts with
-    the revision identifier, optionally followed by space-separated markers
-    such as ``(head)``, ``(rev)``, ``(current)``.
-
-    Returns the leading token (revision ID) or None if output is empty.
+    Returns None when no ``Rev:`` line is present (e.g. an empty database
+    with no migrations applied yet).
     """
     for line in output.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        # The very first non-empty line of alembic verbose output is the
-        # revision summary line: "<rev_id> <markers...>"
-        # Extract the first whitespace-delimited token as the revision ID.
-        parts = line.split()
-        if parts:
-            return parts[0]
+        stripped = line.strip()
+        if stripped.startswith("Rev:"):
+            parts = stripped.split(maxsplit=2)
+            if len(parts) >= 2:
+                return parts[1]
     return None
 
 
 def _parse_message_from_verbose(output: str) -> str:
     """Extract the human-readable description from verbose alembic output.
 
-    Looks for the last non-blank, non-metadata line in a revision block.
-    Falls back to an empty string if no description is found.
+    Alembic embeds the migration script's docstring after the ``Path:``
+    metadata line. The first line of the docstring is the human-readable
+    message; subsequent lines are docstring metadata
+    (``Revision ID:``/``Revises:``/``Create Date:``) and the long-form body.
+
+    We return the first non-empty line after ``Path:`` that isn't a
+    docstring-metadata line. Falls back to an empty string.
     """
-    lines = [line.strip() for line in output.splitlines()]
-    # Skip lines that look like metadata (Rev:, Parent:, Path:)
-    desc_lines = []
-    for line in lines:
-        if not line:
+    seen_path = False
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not seen_path:
+            if stripped.startswith("Path:"):
+                seen_path = True
             continue
-        if line.startswith(("Rev:", "Parent:", "Path:", "Branches:", "Branch labels:")):
+        if not stripped:
             continue
-        # The first line is the revision ID line — skip it
-        if re.match(r"^[0-9a-f_]{4,}", line):
+        if stripped.startswith(_DOCSTRING_METADATA_PREFIXES):
             continue
-        desc_lines.append(line)
-    return " ".join(desc_lines).strip() if desc_lines else ""
+        return stripped
+    return ""
 
 
 # ---------------------------------------------------------------------------
