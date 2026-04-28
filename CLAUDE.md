@@ -98,7 +98,10 @@ Headless WSL/Linux — use `playwright-cli` exclusively. Binary: `~/.local/bin/p
 playwright-cli kill-all              # Kill all sessions first
 playwright-cli open <url>            # Open URL in browser
 playwright-cli snapshot              # Accessibility snapshot of current page
-playwright-cli screenshot            # Take screenshot
+playwright-cli screenshot            # Saves to .playwright-cli/page-<ts>.png (no path arg!)
+                                     #   cp .playwright-cli/page-*.png <target>  ← to name the file
+                                     #   playwright-cli screenshot <path> is INVALID — treats path
+                                     #   as a page element ref, not a file destination
 playwright-cli click <selector>      # Click an element
 playwright-cli fill <selector> <v>   # Fill a form field
 playwright-cli -s=<name> open <url>  # Named session (for auth persistence)

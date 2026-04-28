@@ -26,6 +26,7 @@ __all__ = (
     "DEFAULT_INDEX_PATH",
     "DaemonConfig",
     "get_db_url",
+    "get_orch_db_url",
     "get_db_pool_size",
     "get_db_max_overflow",
     "load_config",
@@ -50,6 +51,26 @@ def get_db_url() -> str:
     name = _require("IW_CORE_DB_NAME")
     user = _require("IW_CORE_DB_USER")
     password = _require("IW_CORE_DB_PASSWORD")
+    return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{name}"
+
+
+def get_orch_db_url() -> str:
+    """Build the orch DB URL, preferring IW_CORE_ORCH_DB_* over IW_CORE_DB_*.
+
+    In browser-verification steps IW_CORE_DB_* is overridden to an isolated
+    E2E container. IW_CORE_ORCH_DB_* is injected by browser_env._build_env to
+    preserve the real orch DB credentials. The iw CLI uses this function so
+    step-done/fail/start always reach the orch DB regardless of context.
+    """
+
+    def _prefer(orch_key: str, fallback_key: str) -> str:
+        return os.environ.get(orch_key) or _require(fallback_key)
+
+    host = _prefer("IW_CORE_ORCH_DB_HOST", "IW_CORE_DB_HOST")
+    port = _prefer("IW_CORE_ORCH_DB_PORT", "IW_CORE_DB_PORT")
+    name = _prefer("IW_CORE_ORCH_DB_NAME", "IW_CORE_DB_NAME")
+    user = _prefer("IW_CORE_ORCH_DB_USER", "IW_CORE_DB_USER")
+    password = _prefer("IW_CORE_ORCH_DB_PASSWORD", "IW_CORE_DB_PASSWORD")
     return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{name}"
 
 

@@ -108,7 +108,7 @@ Replace the V1..V(n) below with concrete, per-acceptance-criterion verifications
 1. **What to navigate to** -- a route under `{{IW_BROWSER_BASE_URL}}` (the platform substitutes this placeholder with the concrete base URL at launch time, so the LLM sees a real URL).
 2. **What to click or type** -- with a one-sentence rationale explaining why that interaction triggers the feature.
 3. **What to verify** -- exact text, element visibility, URL change, or the absence of console errors.
-4. **Capture an evidence screenshot** via `playwright-cli screenshot --filename ai-dev/active/{{ID}}/evidences/post/{{ID}}_v{N}_{{short_name}}.png`.
+4. **Capture an evidence screenshot:** `playwright-cli screenshot` (no path argument — saves to `.playwright-cli/page-<ts>.png`), then `cp .playwright-cli/page-*.png ai-dev/active/{{ID}}/evidences/post/{{ID}}_v{N}_{{short_name}}.png`. Passing a path to `playwright-cli screenshot` is invalid — the tool treats it as a page element ref and errors.
 
 ### V1: {{one-line description of the primary user-visible feature}}
 

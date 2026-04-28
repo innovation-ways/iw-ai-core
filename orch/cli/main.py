@@ -60,11 +60,24 @@ def cli(ctx: click.Context, project: str | None, json_output: bool, verbose: boo
 
     # Lazy session factory — only set if not already injected (tests inject their own)
     if "get_session" not in ctx.obj:
+        import os  # noqa: PLC0415
 
-        def _get_session():  # type: ignore[no-untyped-def]
-            from orch.db.session import get_session  # noqa: PLC0415
+        if os.environ.get("IW_CORE_ORCH_DB_HOST"):
+            # Browser-verification context: IW_CORE_DB_* points at the isolated
+            # E2E container. IW_CORE_ORCH_DB_* was injected by browser_env to
+            # preserve the real orch DB credentials. Use it so step-done/fail/start
+            # reach the orch DB while everything else uses the E2E DB.
+            def _get_session():  # type: ignore[no-untyped-def]
+                from orch.db.session import get_orch_session  # noqa: PLC0415
 
-            return get_session()
+                return get_orch_session()
+
+        else:
+
+            def _get_session():  # type: ignore[no-untyped-def]
+                from orch.db.session import get_session  # noqa: PLC0415
+
+                return get_session()
 
         ctx.obj["get_session"] = _get_session
 

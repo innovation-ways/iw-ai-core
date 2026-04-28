@@ -57,7 +57,7 @@ The step prompt you receive (typically `prompts/<ITEM>_S<NN>_BrowserVerification
    playwright-cli fill <ref> "$IW_BROWSER_E2E_PASSWORD"
    playwright-cli click <submit-ref>
    ```
-4. For each V(n): navigate, assert, screenshot to `ai-dev/active/$IW_ITEM_ID/evidences/post/<ITEM>_v<N>_<desc>.png`.
+4. For each V(n): navigate, assert, then capture: `playwright-cli screenshot` (no path — saves to `.playwright-cli/page-<ts>.png`), then `cp .playwright-cli/page-*.png ai-dev/active/$IW_ITEM_ID/evidences/post/<ITEM>_v<N>_<desc>.png`. Never pass a path to `playwright-cli screenshot` — it treats it as a page element ref and errors.
 5. Write the report to `ai-dev/active/$IW_ITEM_ID/reports/<ITEM>_$IW_STEP_ID_BrowserVerification_Report.md`.
 6. Report outcome:
    - Every V passes (or `n/a`): `uv run iw step-done "$IW_ITEM_ID" --step "$IW_STEP_ID" --report <report>`
