@@ -760,6 +760,9 @@ CREATE TABLE work_item_evidences (
 **FK without cascade rationale:**
 When an item is archived and its `ai-dev/active/<id>/` directory is deleted, the `work_items` row remains (for audit/history). The `work_item_evidences` rows must also remain so the dashboard Evidences tab continues to show all captured images. If the FK had `ON DELETE CASCADE`, deleting the work_item would wipe all evidences permanently.
 
+**Ingestion pipeline (CR-00025):**
+Prior to CR-00025 the table was empty because no code wrote to it. Ingestion pipeline implemented in CR-00025 — see `orch/evidences.py`. The `iw approve` command ingests pre-evidences (phase=`pre`, `step_id=NULL`); `iw step-done` for `browser_verification` steps ingests post-evidences (phase=`post`, `step_id=<S>`).
+
 **Downgrade:**
 ```sql
 DROP TABLE work_item_evidences;

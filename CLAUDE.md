@@ -19,6 +19,7 @@ AI orchestration platform that drives AI-assisted development across multiple pr
 | Worktree container isolation | `orch/daemon/worktree_compose.py` · `orch/daemon/worktree_reaper.py` · `docs/IW_AI_Core_Worktree_Isolation.md` |
 | Test patterns & rules | `tests/conftest.py` · see `tests/CLAUDE.md` |
 | Configuration | `orch/config.py` (reads `.env`) · `projects.toml` |
+| Evidences ingestion (CR-00025) | `orch/evidences.py` · hooks in `orch/cli/item_commands.py` (approve) and `orch/cli/step_commands.py` (step-done) |
 | Migrations | `orch/db/migrations/versions/` |
 | Pre-merge migration rebase (CR-00021) | `orch/daemon/migration_rebase.py` · `docs/IW_AI_Core_Daemon_Design.md` |
 | Skills master copies | `skills/` (synced to each project via `iw skills sync`) |
