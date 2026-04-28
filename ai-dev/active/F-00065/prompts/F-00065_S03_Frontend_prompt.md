@@ -15,7 +15,7 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 - `ai-dev/active/F-00065/reports/F-00065_S01_API_report.md`
 - `dashboard/templates/fragments/code_module_detail.html`
 - `dashboard/templates/fragments/code_architecture_view.html`
-- `dashboard/utils/markdown.py`
+- `dashboard/routers/code_ui.py`
 - `dashboard/static/chat/mermaid.js`
 - `dashboard/templates/project_code.html`
 
@@ -26,7 +26,7 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 - `dashboard/templates/fragments/code_architecture_diagram.html` (new)
 - `dashboard/templates/fragments/code_module_detail.html` (modified)
 - `dashboard/templates/fragments/code_architecture_view.html` (modified)
-- `dashboard/utils/markdown.py` (modified)
+- `dashboard/routers/code_ui.py` (modified — fix _preprocess_mermaid)
 
 ## Context
 
@@ -40,19 +40,11 @@ Read `CLAUDE.md` and `dashboard/CLAUDE.md`. Key constraints:
 
 ## Requirements
 
-### 1. Fix `dashboard/utils/markdown.py` — `_preprocess_mermaid`
+### 1. Fix `dashboard/routers/code_ui.py` — `_preprocess_mermaid`
 
-**Current (broken)**: `_preprocess_mermaid` converts ` ```mermaid ... ``` ` to `<div class="mermaid">...</div>`. This never renders because `chat/mermaid.js` sets `startOnLoad: false` globally.
+**Current (broken)**: `_preprocess_mermaid` (line ~61) converts ` ```mermaid ... ``` ` to `<div class="mermaid">...</div>`. This never renders because `chat/mermaid.js` sets `startOnLoad: false` globally.
 
-**Fix**: Change the output format to `<pre data-lang="mermaid"><code>{dsl}</code></pre>` so `upgradeAllMermaidBlocks` picks it up.
-
-Before changing, run:
-```bash
-grep -rn "_preprocess_mermaid\|preprocess_mermaid" dashboard/ orch/
-```
-If `_preprocess_mermaid` is called in contexts that do NOT have the chat JS loaded (e.g., PDF rendering, doc export), add a `use_mermaid_pre: bool = True` parameter and change the format conditionally so existing callers with no chat JS can keep the old format.
-
-The fix in `code_ui.py` calls use `use_mermaid_pre=True` (new default or explicit). Other callers use whatever they need.
+**Fix**: Change the `pattern.sub` replacement to output `<pre data-lang="mermaid"><code>\1</code></pre>` instead. This function has exactly one caller (`_render_architecture_html`, same file) — no parameter change needed, no other callers to worry about.
 
 ### 2. New fragment: `dashboard/templates/fragments/code_module_diagram.html`
 
@@ -162,7 +154,7 @@ This rebuilds `dashboard/static/styles.css`. Commit the updated CSS file.
   "work_item": "F-00065",
   "completion_status": "complete|partial|blocked",
   "files_changed": [
-    "dashboard/utils/markdown.py",
+    "dashboard/routers/code_ui.py",
     "dashboard/templates/fragments/code_module_diagram.html",
     "dashboard/templates/fragments/code_architecture_diagram.html",
     "dashboard/templates/fragments/code_module_detail.html",

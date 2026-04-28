@@ -21,9 +21,9 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
 ## Review Checklist
 
-### `_preprocess_mermaid` fix
+### `_preprocess_mermaid` fix (in `dashboard/routers/code_ui.py`)
 - [ ] Output is now `<pre data-lang="mermaid"><code>...</code></pre>` (not `<div class="mermaid">`)
-- [ ] Other callers of `_preprocess_mermaid` (if any) are not broken
+- [ ] `_render_architecture_html` (the sole caller) still passes the output to `render_markdown` correctly
 - [ ] DSL content is escaped in templates using `| e` filter, not `| safe`
 
 ### Fragment templates

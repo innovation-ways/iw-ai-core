@@ -64,7 +64,7 @@ Do NOT hardcode ports (no `localhost:5173`, no `localhost:9900`, etc.). Always u
 - `ai-dev/active/F-00065/F-00065_Feature_Design.md`
 - `dashboard/routers/code.py`
 - `dashboard/routers/code_ui.py`
-- `dashboard/utils/markdown.py`
+- `dashboard/routers/code_ui.py`
 - `dashboard/templates/fragments/code_module_diagram.html`
 - `dashboard/templates/fragments/code_architecture_diagram.html`
 - `dashboard/templates/fragments/code_module_detail.html`

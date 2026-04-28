@@ -77,10 +77,11 @@ onImage: function (data) {
     var sourceType = data.source_type || 'mermaid';
     var blockIndex = typeof data.block_index === 'number' ? data.block_index : 0;
 
-    // Find the (blockIndex+1)-th un-rendered <pre data-lang="mermaid|d2"> in bodyEl
-    var pres = bodyEl.querySelectorAll(
-      'pre[data-lang="' + sourceType + '"]:not([data-iw-server-rendered])'
-    );
+    // Find the pre at absolute position blockIndex among all <pre data-lang="type"> elements.
+    // Do NOT filter by :not([data-iw-server-rendered]) — block_index is an absolute position
+    // within all elements of this source_type (marked or not). The <pre> is guaranteed to
+    // exist in the DOM by the time the image event arrives (all tokens have already streamed).
+    var pres = bodyEl.querySelectorAll('pre[data-lang="' + sourceType + '"]');
     var targetPre = pres[blockIndex] || null;
 
     if (!targetPre) return;
@@ -130,18 +131,17 @@ window.iwChat.streamAnswer({
 
 #### 2c. In `onDone`, skip server-rendered blocks
 
-The existing `upgradeAllMermaidBlocks(bodyEl)` call upgrades ALL `<pre data-lang="mermaid">` elements. Since `mermaid.js` is upstream code we should NOT modify, hide the server-rendered `<pre>` elements with a CSS attribute selector instead of modifying the upgrade function.
-
-After the `upgradeAllMermaidBlocks(bodyEl)` call in `onDone`, add:
+The existing `upgradeAllMermaidBlocks(bodyEl)` call upgrades ALL `<pre data-lang="mermaid">` elements. Since `mermaid.js` is upstream code we should NOT modify, hide the server-rendered `<pre>` elements BEFORE calling `upgradeAllMermaidBlocks` so they are not visible during the upgrade pass:
 
 ```js
-// Hide <pre> blocks that were already rendered server-side as SVG images
+// Hide server-rendered <pre> blocks BEFORE upgrading — prevents brief flash of duplicate content
 bodyEl.querySelectorAll('pre[data-iw-server-rendered]').forEach(function (preEl) {
   preEl.style.display = 'none';
 });
+upgradeAllMermaidBlocks(bodyEl);
 ```
 
-**Note**: `upgradeAllMermaidBlocks` will attempt to render the marked `<pre>` elements too, but hiding them after the call ensures they don't show duplicate content. If the Mermaid upgrade fails for a server-rendered block (already hidden), no visible error occurs.
+**Note**: Hiding first ensures no visible duplicate — `upgradeAllMermaidBlocks` may still internally process hidden elements, but since they are already `display:none` the user never sees duplicate content.
 
 ### 3. CSS — add `.chat-diagram-figure` styles
 

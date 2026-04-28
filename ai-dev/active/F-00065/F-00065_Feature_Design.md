@@ -39,7 +39,7 @@ as `window.iwChat.upgradeMermaidBlock` / `upgradeAllMermaidBlocks`.
 - Updated fragment: `dashboard/templates/fragments/code_architecture_view.html` — includes the architecture diagram panel, and fixes Mermaid rendering by changing `_preprocess_mermaid` output format
 - Updated router: `dashboard/routers/code_ui.py` — loads `diagram-architecture` doc on code page load
 - Updated router: `dashboard/routers/code.py` — new `GET .../modules/{slug}/diagram` endpoint
-- Fix: `dashboard/utils/markdown.py:_preprocess_mermaid` — change output to `<pre data-lang="mermaid"><code>` format so `upgradeAllMermaidBlocks` can pick it up (current `<div class="mermaid">` format never renders because chat JS sets `startOnLoad: false`)
+- Fix: `dashboard/routers/code_ui.py:_preprocess_mermaid` — change output to `<pre data-lang="mermaid"><code>` format so `upgradeAllMermaidBlocks` can pick it up (current `<div class="mermaid">` format never renders because chat JS sets `startOnLoad: false`)
 - Small JS init in `code_architecture_view.html` — calls `iwChat.upgradeAllMermaidBlocks(container)` after htmx loads the fragment
 - `make css` — run after any template changes to rebuild `dashboard/static/styles.css`
 
@@ -87,7 +87,7 @@ as `window.iwChat.upgradeMermaidBlock` / `upgradeAllMermaidBlocks`.
 - **New fragment**: `code_architecture_diagram.html`
 - **Modified fragment**: `code_module_detail.html` — add diagram section
 - **Modified fragment**: `code_architecture_view.html` — add architecture diagram panel + JS init
-- **Modified utility**: `dashboard/utils/markdown.py` — fix `_preprocess_mermaid` output format
+- **Modified router**: `dashboard/routers/code_ui.py` — fix `_preprocess_mermaid` output format (function lives here, not in utils/markdown.py)
 
 ## File Manifest
 
@@ -104,8 +104,7 @@ as `window.iwChat.upgradeMermaidBlock` / `upgradeAllMermaidBlocks`.
 | `ai-dev/active/F-00065/prompts/F-00065_S07_CodeReview_Final_prompt.md` | Prompt | S07: global review |
 | `ai-dev/active/F-00065/prompts/F-00065_S13_BrowserVerification_prompt.md` | Prompt | S13: browser QV |
 | `dashboard/routers/code.py` | Modified | New diagram endpoint |
-| `dashboard/routers/code_ui.py` | Modified | Load diagram-architecture doc |
-| `dashboard/utils/markdown.py` | Modified | Fix _preprocess_mermaid |
+| `dashboard/routers/code_ui.py` | Modified | Fix _preprocess_mermaid; load arch_diagram_dsl |
 | `dashboard/templates/fragments/code_module_diagram.html` | New | Module diagram fragment |
 | `dashboard/templates/fragments/code_architecture_diagram.html` | New | Architecture diagram panel |
 | `dashboard/templates/fragments/code_module_detail.html` | Modified | Add diagram section |
@@ -149,12 +148,13 @@ Then the Mermaid block is rendered as a brand-themed diagram
      (not raw DSL text, not a blank div)
 ```
 
-### AC5: Diagram endpoint returns 404 for unknown project/slug
+### AC5: Diagram endpoint returns 404 for unknown project
 
 ```
-Given a project_id or slug that does not exist in the DB
+Given a project_id that does not exist in the DB
 When GET /api/projects/{project_id}/code/modules/{slug}/diagram is called
 Then the response is 404
+Note: an unknown slug (but valid project) returns 200 with empty state — not 404
 ```
 
 ## Boundary Behavior
@@ -191,6 +191,6 @@ Then the response is 404
 
 ## Notes
 
-- The `_preprocess_mermaid` function in `dashboard/utils/markdown.py` is also used for rendering docs in other places (check all callers with `grep -rn "_preprocess_mermaid\|preprocess_mermaid"` before changing). If it's used outside the code architecture view in contexts that DON'T have the chat JS loaded, the change from `<div class="mermaid">` to `<pre data-lang="mermaid">` would break rendering there. Check callers carefully and apply the fix only where safe, or add a parameter to control output format.
+- `_preprocess_mermaid` is a private helper in `dashboard/routers/code_ui.py` with exactly one caller (`_render_architecture_html`, same file). It does NOT live in `dashboard/utils/markdown.py`. The fix is straightforward — change the `pattern.sub` replacement string directly. No multi-format parameter is needed.
 - The `upgradeAllMermaidBlocks` function in `mermaid.js` queries for `pre[data-lang="mermaid"]`. The new fragments use this format exactly.
 - Browser verification must confirm: (1) module diagram renders with ELK/brand theming, (2) architecture diagram renders, (3) empty state shows for modules without diagrams, (4) no console errors.
