@@ -131,7 +131,10 @@ async def get_module(
     slug = gen._make_slug(project_id, module_path)  # noqa: SLF001
 
     # Fast path: doc already generated — return cached content.
-    cached = DocService(db).get_doc(project_id, slug)
+    # Use _get_by_slug to query by ProjectDoc.slug field directly,
+    # since DocService.get_doc expects doc_id (not slug) and constructs
+    # a PK lookup that misses when e2e fixtures seed docs with slug != doc_id.
+    cached = gen._get_by_slug(slug, db)  # noqa: SLF001
     if cached is not None:
         doc_html = render_markdown(cached.content) if cached.content else None
         templates = request.app.state.templates
@@ -160,7 +163,7 @@ async def get_module(
         await asyncio.wait_for(asyncio.shield(task), timeout=0.5)
 
     # Re-check cache after the short wait — may have just completed.
-    fresh = DocService(db).get_doc(project_id, slug)
+    fresh = gen._get_by_slug(slug, db)  # noqa: SLF001
     if fresh is not None:
         doc_html = render_markdown(fresh.content) if fresh.content else None
         templates = request.app.state.templates

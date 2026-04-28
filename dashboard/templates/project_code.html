@@ -103,7 +103,8 @@
 
 <!-- Reading surface (full width on mobile, 1fr on desktop) -->
   <div id="page-body"
-       class="grid gap-0 lg:gap-4 grid-cols-1 lg:grid-cols-[1fr_var(--chat-width)] lg:h-[calc(100vh-12rem)]">
+       class="grid gap-0 lg:gap-4 grid-cols-1 lg:grid-cols-[1fr_var(--chat-width)]
+              lg:h-[calc(100vh-12rem)] lg:grid-rows-[1fr]">
     <div id="code-content-root"
        data-context-level="architecture"
        data-context-doc-id="{{ index_status.level1_doc_id | default('') }}"

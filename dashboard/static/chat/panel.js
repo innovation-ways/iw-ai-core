@@ -1,7 +1,8 @@
 (function () {
   var panel = document.getElementById('chat-panel');
+  var panelSlot = document.getElementById('chat-panel-slot');
   var resizeHandle = document.getElementById('chat-resize-handle');
-  var collapseBtn = document.getElementById('chat-collapse-btn');
+  var toggleTab = document.getElementById('chat-toggle-tab');
   var closeBtn = document.getElementById('chat-close-btn');
   var drawerOpen = document.getElementById('chat-drawer-open');
   var drawerBackdrop = document.getElementById('chat-drawer-backdrop');
@@ -20,11 +21,17 @@
     if (collapsed) {
       document.documentElement.style.setProperty('--chat-width', '48px');
       panel.style.width = '48px';
-      if (collapseBtn) collapseBtn.setAttribute('aria-label', 'Expand chat panel (Cmd+\\)');
+      if (toggleTab) {
+        toggleTab.setAttribute('aria-label', 'Expand chat panel (Cmd+\)');
+        toggleTab.dataset.collapsed = 'true';
+      }
     } else {
       document.documentElement.style.setProperty('--chat-width', chatWidth + 'px');
       panel.style.width = '';
-      if (collapseBtn) collapseBtn.setAttribute('aria-label', 'Collapse chat panel (Cmd+\\)');
+      if (toggleTab) {
+        toggleTab.setAttribute('aria-label', 'Collapse chat panel (Cmd+\)');
+        toggleTab.dataset.collapsed = 'false';
+      }
     }
   }
 
@@ -51,7 +58,7 @@
     return panel && !panel.classList.contains('translate-x-full');
   }
 
-  if (collapseBtn) collapseBtn.addEventListener('click', togglePanel);
+  if (toggleTab) toggleTab.addEventListener('click', togglePanel);
   if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
   if (drawerOpen) drawerOpen.addEventListener('click', openDrawer);
   if (drawerBackdrop) drawerBackdrop.addEventListener('click', closeDrawer);
