@@ -462,6 +462,39 @@ class TestUp:
         assert metadata["success"] is True
         assert metadata["batch_item_id"] == "F-00062"
 
+    def test_up_emits_daemon_event_with_project_id(self, tmp_path: Path) -> None:
+        """H10 — up() passes cfg.project_id to _emit_daemon_event so events appear
+        in per-project event feeds rather than being dropped into the global NULL bucket.
+        """
+        worktree = tmp_path / "worktree"
+        worktree.mkdir(parents=True)
+        git_dir = worktree / ".git"
+        git_dir.mkdir()
+        iw_config = worktree / "ai-dev" / "iw-config"
+        iw_config.mkdir(parents=True)
+
+        template = iw_config / "worktree-compose.template.yml"
+        template.write_text("services:\n  db:\n    image: postgres")
+        env_file = worktree / ".env"
+        env_file.write_text("")
+        gitignore = worktree / ".gitignore"
+        gitignore.write_text(".env\n.iw/\n")
+
+        cfg = load_config("F-00062", "proj-A", worktree)
+
+        with (
+            patch("subprocess.run") as mock_run,
+            patch("orch.daemon.worktree_compose._emit_daemon_event") as mock_emit,
+        ):
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            result = up(cfg)
+
+        assert result.success is True
+        mock_emit.assert_called_once()
+        # project_id is passed as a keyword argument
+        call_kwargs = mock_emit.call_args[1]
+        assert call_kwargs.get("project_id") == "proj-A"
+
     def test_legacy_fallback_when_iw_config_missing(self, tmp_path: Path) -> None:
         worktree = tmp_path / "worktree"
         worktree.mkdir()

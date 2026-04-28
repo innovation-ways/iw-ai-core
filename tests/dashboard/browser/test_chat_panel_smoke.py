@@ -24,33 +24,9 @@ import pytest
 _SNAPSHOT_LINK_RE = re.compile(r"\[Snapshot\]\((?P<path>[^)]+\.yml)\)")
 
 
-@pytest.fixture(scope="module")
-def dashboard_server():
-    """Start the dashboard app via Uvicorn on a free port; yield the base URL."""
-    import subprocess
-
-    port = 18750
-    proc = subprocess.Popen(
-        [
-            "uv",
-            "run",
-            "uvicorn",
-            "dashboard.app:create_app",
-            "--factory",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-        ],
-        cwd=Path(__file__).parent.parent.parent,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    time.sleep(3)
-    base_url = f"http://127.0.0.1:{port}"
-    yield base_url
-    proc.terminate()
-    proc.wait(timeout=5)
+# dashboard_server fixture is provided by tests/dashboard/browser/conftest.py
+# (uses /health readiness probe + kernel-allocated port, avoiding the race
+# the local override here used to have).
 
 
 @pytest.fixture(scope="module")
@@ -131,6 +107,10 @@ class TestChatPanelSmoke:
 
     def test_ctrl_backslash_collapses_panel(self, playwright_session):
         """AC2 — Pressing Ctrl+\\ collapses the panel (data-collapsed=true)."""
+        # Clear first so the slash-menu listener sees a real value transition
+        # (prior test in this module-scoped session may have left input set).
+        _set_input_value(playwright_session, "#chat-input", "")
+        time.sleep(0.1)
         _set_input_value(playwright_session, "#chat-input", "/ex")
         time.sleep(0.5)
         snapshot = _snapshot_text(playwright_session).lower()
@@ -140,6 +120,8 @@ class TestChatPanelSmoke:
 
     def test_slash_command_menu_shows_explain(self, playwright_session):
         """AC12 — Typing /ex in composer shows slash command menu with /explain."""
+        _set_input_value(playwright_session, "#chat-input", "")
+        time.sleep(0.1)
         _set_input_value(playwright_session, "#chat-input", "/ex")
         time.sleep(0.5)
         snap = _snapshot_text(playwright_session).lower()

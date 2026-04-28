@@ -47,10 +47,43 @@ _restore_main_stash() {
     if [[ "$main_stashed" == true ]]; then
         echo "[worktree_commit] INFO: Restoring stashed changes on main (exit trap)" >&2
         cd "$PROJECT_REPO_ROOT"
-        if git stash pop; then
+        if git stash pop >&2; then
             echo "[worktree_commit] OK: Stashed changes restored on main" >&2
         else
-            echo "[worktree_commit] WARN: git stash pop had conflicts — run 'git stash list' to recover iw-pre-merge-stash($ITEM_ID)" >&2
+            # git stash pop can fail when the merge committed a file that also
+            # existed as an untracked file in the stash (e.g. local_notes.md
+            # written by the user before the worktree was created). Git refuses
+            # to overwrite the tracked version with the stashed untracked copy.
+            # Solution: extract the colliding files manually, save them with a
+            # .iw-collision suffix, then drop the stash so the repo is clean.
+            echo "[worktree_commit] INFO: Stash pop had conflicts — checking for untracked collisions" >&2
+            local _stash_tmp
+            _stash_tmp=$(mktemp -d)
+            # Export the stash as a tar to access its untracked files safely
+            if git stash show -p stash@{0} >/dev/null 2>&1; then
+                # List files in the stash's untracked-file tree (stash^3 is the
+                # untracked-files pseudo-commit that --include-untracked records)
+                local _untracked_tree
+                _untracked_tree=$(git rev-parse stash@{0}^3 2>/dev/null || true)
+                if [[ -n "$_untracked_tree" ]]; then
+                    git ls-tree -r --name-only "$_untracked_tree" 2>/dev/null | while IFS= read -r _f; do
+                        _dest="$PROJECT_REPO_ROOT/$_f"
+                        if [[ -e "$_dest" ]]; then
+                            # Collision: tracked file exists from the merge.
+                            # Save the stashed user copy with .iw-collision suffix.
+                            git show "${_untracked_tree}:${_f}" 2>/dev/null > "${_dest}.iw-collision" || true
+                            echo "[worktree_commit] WARN: Collision on $_f — user copy saved as ${_dest}.iw-collision" >&2
+                        else
+                            mkdir -p "$(dirname "$_dest")"
+                            git show "${_untracked_tree}:${_f}" 2>/dev/null > "$_dest" || true
+                        fi
+                    done
+                fi
+            fi
+            rm -rf "$_stash_tmp"
+            # Drop the stash so the repo is in a clean state
+            git stash drop stash@{0} >/dev/null 2>&1 || true
+            echo "[worktree_commit] OK: Stash conflicts resolved (any collisions saved with .iw-collision suffix)" >&2
         fi
     fi
 }
@@ -207,7 +240,7 @@ echo "[worktree_commit] OK: Branch is $ahead commit(s) ahead of main — safe to
 # Step 4: Show what will be merged (summary for logs)
 # ---------------------------------------------------------------------------
 echo "[worktree_commit] Files on branch vs main:" >&2
-git diff main..HEAD --name-status 2>/dev/null | head -30 || true >&2
+git diff main..HEAD --name-status 2>/dev/null | head -30 >&2 || true
 
 # ---------------------------------------------------------------------------
 # Step 5: Squash-merge into main
@@ -225,7 +258,7 @@ main_stashed=false
 if [[ -n "$main_uncommitted" ]]; then
     n_main_uncommitted=$(echo "$main_uncommitted" | wc -l | tr -d ' ')
     echo "[worktree_commit] INFO: Found $n_main_uncommitted uncommitted line(s) on main — stashing before merge" >&2
-    if git stash push --include-untracked -m "iw-pre-merge-stash($ITEM_ID)"; then
+    if git stash push --include-untracked -m "iw-pre-merge-stash($ITEM_ID)" >&2; then
         main_stashed=true
         echo "[worktree_commit] OK: Uncommitted changes stashed on main" >&2
     else
@@ -257,6 +290,34 @@ if [[ "$stashed_count" -gt 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Restore helper: moves files from $STASH_DIR back to their original locations
+# under $PROJECT_REPO_ROOT after a SUCCESSFUL merge. On the failure path the
+# inline restore block does the same thing.
+#
+# If the merge added a file at the same path (a legitimate collision), the
+# merged version wins — the user's original is preserved with a .iw-collision
+# suffix so they can recover it manually.
+# ---------------------------------------------------------------------------
+_restore_stash_dir_files() {
+    if [[ "$stashed_count" -eq 0 ]]; then
+        return
+    fi
+    cd "$STASH_DIR"
+    find . -type f | while IFS= read -r f; do
+        dest="$PROJECT_REPO_ROOT/${f#./}"
+        mkdir -p "$(dirname "$dest")"
+        if [[ -e "$dest" ]]; then
+            # Merge wrote a file here — save the user's original as a .iw-collision
+            mv "$f" "${dest}.iw-collision"
+            echo "[worktree_commit] WARN: Collision on $dest — user copy saved as ${dest}.iw-collision" >&2
+        else
+            mv "$f" "$dest"
+        fi
+    done
+    cd "$PROJECT_REPO_ROOT"
+}
+
+# ---------------------------------------------------------------------------
 # Cleanup helper: restores main's worktree to a clean HEAD state after a
 # failed merge. `git merge --squash` can leave partial changes in both the
 # index and the working tree even on failure; a plain `git reset HEAD` only
@@ -277,7 +338,7 @@ _cleanup_main_after_failed_merge() {
 }
 
 # Perform the squash merge
-if ! git merge --squash "$BRANCH_NAME" 2>&1; then
+if ! git merge --squash "$BRANCH_NAME" >&2; then
     echo "[worktree_commit] ERROR: git merge --squash failed (possible conflict)" >&2
     _cleanup_main_after_failed_merge
     # Restore file-level stash
@@ -303,8 +364,26 @@ if [[ -z "$merge_status" ]]; then
     exit 1  # exit trap restores main stash
 fi
 
-# Commit the squash merge
-if git commit --no-verify -m "Merge $ITEM_ID: squash-merge from $BRANCH_NAME"; then
+# Commit the squash merge — build a descriptive body
+ITEM_TITLE="(title unavailable)"
+if command -v iw >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    _title_json=$(iw item-status "$ITEM_ID" --json 2>/dev/null || true)
+    if [[ -n "$_title_json" ]]; then
+        _fetched=$(echo "$_title_json" | jq -r '.title // empty' 2>/dev/null || true)
+        [[ -n "$_fetched" ]] && ITEM_TITLE="$_fetched"
+    fi
+fi
+FILES_CHANGED=$(git diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ')
+SOURCE_COMMITS=$(git log main..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')
+
+if git commit --no-verify -m "$(cat <<COMMIT_EOF
+Merge $ITEM_ID: $ITEM_TITLE
+
+Branch: $BRANCH_NAME
+Files changed: $FILES_CHANGED
+Source commits: $SOURCE_COMMITS
+COMMIT_EOF
+)" >&2; then
     echo "[worktree_commit] OK: Squash-merge committed on main" >&2
 else
     echo "[worktree_commit] ERROR: Squash-merge commit failed" >&2
@@ -313,6 +392,7 @@ else
     exit 1  # exit trap restores main stash
 fi
 
+_restore_stash_dir_files
 rm -rf "$STASH_DIR"
 echo "[worktree_commit] OK: $ITEM_ID merged to main successfully" >&2
 exit 0  # exit trap restores main stash

@@ -472,3 +472,94 @@ def test_check_active_cycles_kills_on_timeout(
 
     db_session.refresh(step)
     assert step.status == StepStatus.failed
+
+
+# ---------------------------------------------------------------------------
+# C5: prompt generation failure persists a failed FixCycle (infinite-loop guard)
+# ---------------------------------------------------------------------------
+
+
+@patch("orch.daemon.fix_cycle._launch_fix_agent")
+@patch("orch.daemon.fix_cycle._generate_fix_prompt")
+def test_attempt_fix_cycle_records_failed_cycle_on_prompt_error(
+    mock_generate: Any,
+    mock_launch: Any,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    """C5: when _generate_fix_prompt raises, a FixCycle with status=failed is
+    persisted so that should_attempt_fix() counts it toward max_cycles.
+
+    Without this guard the daemon would see status=failed + 0 FixCycle rows and
+    call attempt_fix_cycle again every poll cycle → infinite loop.
+    """
+    from orch.db.models import DaemonEvent
+
+    mock_generate.side_effect = OSError("disk full")
+    # _launch_fix_agent should never be called if prompt generation fails
+    mock_launch.return_value = (12345, "/tmp/log.log", 2700)  # noqa: S108
+
+    _make_item(db_session)
+    step = _make_step(db_session, step_type=StepType.code_review, status=StepStatus.failed)
+    _make_step_run(db_session, step)
+
+    attempt_fix_cycle(
+        db_session,
+        step,
+        "test-proj",
+        _project_config(),
+        _daemon_config(),
+        {"path": "/tmp/worktree"},  # noqa: S108
+    )
+
+    # A FixCycle row must have been persisted with status=failed
+    cycles = db_session.query(FixCycle).filter_by(step_id=step.id).all()
+    assert len(cycles) == 1, "expected exactly one FixCycle row"
+    fc = cycles[0]
+    assert fc.status == FixStatus.failed
+    assert fc.cycle_number == 1
+    assert "exception" in fc.fix_metadata
+    assert "disk full" in fc.fix_metadata["exception"]
+    assert fc.fix_metadata["error"] == "prompt_generation_failed"
+    assert fc.completed_at is not None
+
+    # The fix agent must NOT have been launched
+    mock_launch.assert_not_called()
+
+    # A fix_cycle_failed event must have been emitted with reason=prompt_generation_failed
+    events = (
+        db_session.query(DaemonEvent)
+        .filter_by(project_id="test-proj", event_type="fix_cycle_failed")
+        .all()
+    )
+    assert len(events) == 1
+    assert events[0].event_metadata.get("reason") == "prompt_generation_failed"
+
+    # step.status stays failed — it was NOT transitioned to needs_fix
+    db_session.refresh(step)
+    assert step.status == StepStatus.failed
+
+
+@patch("orch.daemon.fix_cycle._launch_fix_agent")
+@patch("orch.daemon.fix_cycle._generate_fix_prompt")
+def test_attempt_fix_cycle_failed_cycle_counts_toward_max(
+    mock_generate: Any,
+    mock_launch: Any,
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    """C5: a failed FixCycle (from prompt error) counts toward max_cycles so
+    should_attempt_fix returns False once the budget is exhausted.
+    """
+    mock_generate.side_effect = OSError("disk full")
+    mock_launch.return_value = (12345, "/tmp/log.log", 2700)  # noqa: S108
+
+    _make_item(db_session)
+    step = _make_step(db_session, step_type=StepType.code_review, status=StepStatus.failed)
+    _make_step_run(db_session, step)
+
+    # Simulate max_cycles=1: any existing FixCycle (failed or not) exhausts the budget
+    _make_fix_cycle(db_session, step, cycle_number=1, status=FixStatus.failed)
+
+    # With 1 existing failed cycle and fix_cycle_max=1, should_attempt_fix must return False
+    assert should_attempt_fix(db_session, step, _project_config(fix_cycle_max=1)) is False
