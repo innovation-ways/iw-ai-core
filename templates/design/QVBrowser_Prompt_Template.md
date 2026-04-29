@@ -77,6 +77,13 @@ The file must export `def seed(db: Session) -> None`. Make it idempotent
 (`db.get(...)` before insert). Multiple files load in lexical order; use
 `001_`, `002_`, … prefixes.
 
+**Module diagram fixtures:** if you seed a `diagram-module-X` doc, the `X`
+must match the module's URL slug as produced by the parser:
+`path.strip("/").replace("/", "-").lower()` — e.g. `orch/rag/` → `orch-rag`,
+so the doc_id must be `diagram-module-orch-rag`. The module must also appear
+in the architecture-map doc (`diagram-architecture`) or the base seed's
+`LEVEL1_CONTENT` so it shows up in the UI's module list.
+
 **After writing a fixture file you MUST re-run the seed inside the `app`
 container before opening the browser.** The worktree directory is already
 mounted at `/workspace` inside the container, so any file you write on the
