@@ -281,8 +281,8 @@ class TestGateParsers:
     def test_unit_tests_maps_to_parse_pytest(self) -> None:
         assert GATE_PARSERS["unit-tests"] is parse_pytest
 
-    def test_integration_tests_maps_to_parse_pytest(self) -> None:
-        assert GATE_PARSERS["integration-tests"] is parse_pytest
+    def test_integration_tests_is_not_in_gate_parsers(self) -> None:
+        assert "integration-tests" not in GATE_PARSERS
 
     def test_frontend_tests_maps_to_parse_pytest(self) -> None:
         assert GATE_PARSERS["frontend-tests"] is parse_pytest
