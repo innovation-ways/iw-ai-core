@@ -592,19 +592,44 @@ def _get_browser_findings(db: Session, step: WorkflowStep, worktree_path: str) -
     Browser reports are short and highly structured — we pass the whole thing so
     the fix agent sees failed Vs, expected vs. actual, screenshot paths, and any
     file:line references the qv-browser agent logged.
+
+    Note: step.report_file and step.report_content reflect run 1's agent-reported
+    failure. Newer daemon-detected failures (where the StepRun has report_file=None
+    but error_message is set) are prepended as the leading context so the fix agent
+    sees the current blocking issue first. The original report is always preserved
+    below as secondary context for V table reference.
     """
-    # Prefer the report file on disk
+    content = None
+
     if step.report_file:
         report_path = Path(worktree_path) / step.report_file
         if report_path.exists():
             content = report_path.read_text()
-            return _truncate(content, 8000)
 
-    # Fall back to DB-stored report content
-    if step.report_content:
-        return _truncate(step.report_content, 8000)
+    if content is None and step.report_content:
+        content = step.report_content
 
-    # Last resort: latest failed StepRun's error_message
+    if content is not None:
+        latest_failed = db.execute(
+            select(StepRun)
+            .where(
+                StepRun.step_id == step.id,
+                StepRun.status.in_([RunStatus.failed, RunStatus.timeout]),
+            )
+            .order_by(StepRun.run_number.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        if latest_failed and not latest_failed.report_file and latest_failed.error_message:
+            content = (
+                f"## ⚠️ Most Recent Failure (run {latest_failed.run_number})\n\n"
+                f"{latest_failed.error_message}\n\n"
+                "---\n\n"
+                "## Original Browser Report (for V table context)\n\n" + content
+            )
+
+        return _truncate(content, 8000)
+
     latest_run = db.execute(
         select(StepRun)
         .where(
