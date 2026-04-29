@@ -89,6 +89,26 @@ This review looks at the complete picture -- not individual steps in isolation, 
 
 Read the design document to understand the full intended scope. Read all implementation and review reports to understand what was built. Then review all changed files holistically.
 
+## Pre-Review Lint & Format Gate (NON-NEGOTIABLE)
+
+Before reading any code, run these two commands on the files listed in the
+implementation report's `files_changed`. Fix nothing yourself — only report.
+
+```bash
+make lint          # ruff check — catches ARG001, F811, unused imports, etc.
+make format  # ruff format --check — catches formatting drift (does NOT auto-fix)
+```
+
+If either command reports NEW violations in the changed files (i.e., violations
+that do not appear on the `main` branch before this step), classify each one as
+a **CRITICAL** finding in your review result contract with:
+- `"category": "conventions"`
+- `"file"` and `"line"` from the tool output
+- `"description"` quoting the exact violation code and message
+
+If a command is unavailable (e.g., `make` not found), STOP and raise a blocker.
+Do NOT skip this step or mark it as optional.
+
 ## Review Checklist
 
 ### 1. Completeness vs Design Document
@@ -136,9 +156,8 @@ Read the design document to understand the full intended scope. Read all impleme
 Before submitting your review:
 
 1. Run the **full test suite** (both unit AND integration tests)
-2. Run lint and type checking
-3. Report test results accurately in the result contract
-4. If integration tests fail, this is a CRITICAL finding
+2. Report test results accurately in the result contract
+3. If integration tests fail, this is a CRITICAL finding
 
 ## Severity Levels
 
