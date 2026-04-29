@@ -121,6 +121,16 @@ All tests MUST honor `tests/CLAUDE.md` rules. The new coverage tests are filesys
 
 Write each test RED first (run, confirm it fails) before claiming the deliverable is GREEN. The implementation already exists from S01/S02 — the RED phase here is about asserting your test design is correct, not about driving implementation.
 
+### CRITICAL: Semantic Correctness Over Shape Checking (I003 Lesson)
+
+I002's tests checked API response SHAPE (key exists, is a list, is non-empty) and passed.
+But the bug was NOT fixed. Tests must verify SPECIFIC VALUES:
+
+- BAD: `assert "overall_line_pct" in vars(view)` (shape only — doesn't prove the right value is computed)
+- GOOD: `assert view.overall_line_pct == pytest.approx(75.0)` (semantic — proves the exact computation)
+- GOOD: `assert view.packages[0].badge == "amber"` (proves specific boundary logic, not just badge exists)
+- GOOD: `assert "No coverage data" in response.text` (proves specific message, not just status 200)
+
 ## Pre-flight Quality Gates
 
 1. `make format`
