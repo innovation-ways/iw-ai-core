@@ -52,7 +52,7 @@ class PipelineResult:
 
 
 def run_pre_merge_dry_run(
-    batch_id: int,
+    batch_id: str | int | None,
     worktree_path: str | None = None,
 ) -> PipelineResult:
     """Phase 1: Spin testcontainer, apply pending revisions, run integration tests.
@@ -65,7 +65,7 @@ def run_pre_merge_dry_run(
     """
     from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
-    logger.info("[pipeline] Phase 1 dry-run starting for batch %d", batch_id)
+    logger.info("[pipeline] Phase 1 dry-run starting for batch %s", batch_id)
 
     container: PostgresContainer | None = None
     try:
@@ -96,7 +96,7 @@ def run_pre_merge_dry_run(
         )
 
     except Exception as exc:
-        logger.exception("[pipeline] Phase 1 dry-run error for batch %d", batch_id)
+        logger.exception("[pipeline] Phase 1 dry-run error for batch %s", batch_id)
         return PipelineResult(
             phase="dry_run",
             success=False,
@@ -118,14 +118,14 @@ def run_pre_merge_dry_run(
 # ---------------------------------------------------------------------------
 
 
-def run_post_merge_apply(batch_id: int) -> PipelineResult:
+def run_post_merge_apply(batch_id: str | int | None) -> PipelineResult:
     """Phase 2: Apply pending migrations to the live DB after squash-merge.
 
     On failure → triggers Phase 3 rollback.
     On success → no state change (item already merged).
     """
     live_url = get_db_url()
-    logger.info("[pipeline] Phase 2 apply starting for batch %d", batch_id)
+    logger.info("[pipeline] Phase 2 apply starting for batch %s", batch_id)
 
     try:
         result = safe_apply(live_url, batch_id=batch_id)
@@ -152,7 +152,7 @@ def run_post_merge_apply(batch_id: int) -> PipelineResult:
         )
 
     except Exception as exc:
-        logger.exception("[pipeline] Phase 2 apply error for batch %d", batch_id)
+        logger.exception("[pipeline] Phase 2 apply error for batch %s", batch_id)
         return PipelineResult(
             phase="apply",
             success=False,
@@ -167,14 +167,14 @@ def run_post_merge_apply(batch_id: int) -> PipelineResult:
 # ---------------------------------------------------------------------------
 
 
-def run_rollback(batch_id: int) -> PipelineResult:
+def run_rollback(batch_id: str | int | None) -> PipelineResult:
     """Phase 3: Attempt alembic downgrade -1 on the live DB.
 
     On success → batch marked MIGRATION_ROLLED_BACK.
     On failure → merge_queue_frozen flag set, subsequent merges halted.
     """
     live_url = get_db_url()
-    logger.info("[pipeline] Phase 3 rollback starting for batch %d", batch_id)
+    logger.info("[pipeline] Phase 3 rollback starting for batch %s", batch_id)
 
     try:
         result = safe_rollback(live_url, steps=1, batch_id=batch_id)
@@ -202,7 +202,7 @@ def run_rollback(batch_id: int) -> PipelineResult:
         )
 
     except Exception as exc:
-        logger.exception("[pipeline] Phase 3 rollback error for batch %d", batch_id)
+        logger.exception("[pipeline] Phase 3 rollback error for batch %s", batch_id)
         set_merge_queue_frozen(
             active=True,
             reason=f"Rollback error for batch {batch_id}: {exc}",

@@ -151,7 +151,7 @@ def _merge_item(
     )
     logger.info("[%s] Merging %s (worktree: %s)", project_id, item_id, worktree_path)
 
-    if batch_item.batch_id is not None and isinstance(batch_item.batch_id, int):
+    if batch_item.batch_id is not None:
         rebase_result = run_pre_merge_rebase(
             batch_item.batch_id, worktree_path, project_config.working_dir
         )
@@ -181,7 +181,7 @@ def _merge_item(
                 },
             )
             logger.warning(
-                "[%s] Pre-merge rebase failed for %s (batch %d): %s",
+                "[%s] Pre-merge rebase failed for %s (batch %s): %s",
                 project_id,
                 item_id,
                 batch_item.batch_id,
@@ -189,8 +189,8 @@ def _merge_item(
             )
             return
 
-    # Phase 1: dry-run migration against testcontainer (only for numeric batch IDs)
-    if batch_item.batch_id is not None and isinstance(batch_item.batch_id, int):
+    # Phase 1: dry-run migration against testcontainer
+    if batch_item.batch_id is not None:
         dry_result = run_pre_merge_dry_run(batch_item.batch_id, worktree_path=worktree_path)
         if not dry_result.success:
             batch_item.status = BatchItemStatus.migration_invalid
@@ -212,7 +212,7 @@ def _merge_item(
                 {"phase": "dry_run", "success": False, "batch_id": batch_item.batch_id},
             )
             logger.warning(
-                "[%s] Phase 1 dry-run failed for %s — batch item %d marked MIGRATION_INVALID",
+                "[%s] Phase 1 dry-run failed for %s — batch item %s marked MIGRATION_INVALID",
                 project_id,
                 item_id,
                 batch_item.batch_id,
@@ -254,17 +254,16 @@ def _merge_item(
         if project is not None:
             trigger_doc_regeneration_on_merge(db, batch_item, project)
 
-        # Phase 2: apply migrations to live DB (only for numeric batch IDs)
-        if batch_item.batch_id is not None and isinstance(batch_item.batch_id, int):
-            int_batch_id = batch_item.batch_id
-            apply_result = run_post_merge_apply(int_batch_id)
+        # Phase 2: apply migrations to live DB
+        if batch_item.batch_id is not None:
+            apply_result = run_post_merge_apply(batch_item.batch_id)
             if not apply_result.success:
                 logger.warning(
-                    "[%s] Phase 2 apply failed for batch %d — running rollback",
+                    "[%s] Phase 2 apply failed for batch %s — running rollback",
                     project_id,
-                    int_batch_id,
+                    batch_item.batch_id,
                 )
-                rollback_result = run_rollback(int_batch_id)
+                rollback_result = run_rollback(batch_item.batch_id)
                 _emit_event(
                     db,
                     project_id,
@@ -281,7 +280,7 @@ def _merge_item(
                 )
                 if rollback_result.frozen:
                     logger.error(
-                        "[%s] Merge queue FROZEN after rollback failure for batch %d",
+                        "[%s] Merge queue FROZEN after rollback failure for batch %s",
                         project_id,
                         batch_item.batch_id,
                     )
