@@ -165,11 +165,11 @@ function toggleSelectMode() {
   var grid = document.getElementById('docs-grid');
   var actionBar = document.getElementById('export-action-bar');
   var selectBtn = document.getElementById('select-mode-btn');
-  
+
   if (grid) {
     grid.dataset.selectMode = selectModeActive;
   }
-  
+
   if (selectBtn) {
     if (selectModeActive) {
       selectBtn.classList.add('bg-primary', 'text-primary-foreground', 'border-primary');
@@ -192,11 +192,11 @@ function toggleSelectMode() {
       clearSelection();
     }
   }
-  
+
   if (!selectModeActive) {
     if (actionBar) actionBar.classList.add('hidden');
   }
-  
+
   updateCheckboxVisibility();
 }
 
@@ -214,11 +214,11 @@ function updateSelectedCount() {
   var count = checked.length;
   var countEl = document.getElementById('selected-count');
   var actionBar = document.getElementById('export-action-bar');
-  
+
   if (countEl) {
     countEl.textContent = count + ' selected';
   }
-  
+
   if (actionBar) {
     if (count > 0) {
       actionBar.classList.remove('hidden');
@@ -231,9 +231,9 @@ function updateSelectedCount() {
 function exportSelected() {
   var checked = document.querySelectorAll('.doc-select-checkbox:checked');
   var docIds = Array.from(checked).map(function(cb) { return cb.value; });
-  
+
   if (docIds.length === 0) return;
-  
+
   var projectId = '{{ current_project.id }}';
   var url = '/api/project/' + projectId + '/docs/export?doc_ids=' + docIds.join(',');
   window.location.href = url;

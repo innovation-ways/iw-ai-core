@@ -1356,4 +1356,3 @@ OSS-TM-08:
     Add a Trademark section to the README that states the project name is a registered or common-law
     trademark and lists any applicable symbols. Run `uv run iw oss fix <CHECK_ID> --apply` which appends
     a compliant Trademark section automatically when generating a new README.
-
