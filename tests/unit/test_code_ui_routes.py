@@ -48,7 +48,7 @@ class TestMermaidPreprocessing:
         input_md = "```mermaid\ngraph TD\n  A-->B\n```"
         result = _preprocess_mermaid(input_md)
         assert '<pre data-lang="mermaid">' in result
-        assert '<code>' in result
+        assert "<code>" in result
         assert "graph TD" in result
 
     def test_multiple_mermaid_blocks_converted(self) -> None:
@@ -57,7 +57,7 @@ class TestMermaidPreprocessing:
         input_md = "Some text\n```mermaid\ng1\n```\nMore\n```mermaid\ng2\n```\nEnd"
         result = _preprocess_mermaid(input_md)
         assert result.count('<pre data-lang="mermaid">') == 2
-        assert '<code>' in result
+        assert "<code>" in result
 
     def test_no_mermaid_blocks_unchanged(self) -> None:
         from dashboard.routers.code_ui import _preprocess_mermaid

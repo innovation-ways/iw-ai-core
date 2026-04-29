@@ -26,6 +26,43 @@
     });
   }
 
+  var CALLOUT_TYPES = {
+    'note':      { icon: 'ℹ️', cls: 'callout-note' },
+    'tip':       { icon: '💡', cls: 'callout-tip' },
+    'warning':   { icon: '⚠️', cls: 'callout-warning' },
+    'danger':    { icon: '🚨', cls: 'callout-danger' },
+    'important': { icon: '📌', cls: 'callout-important' }
+  };
+
+  function iwProcessChatCallouts(container) {
+    var blockquotes = container.querySelectorAll('blockquote');
+    for (var i = 0; i < blockquotes.length; i++) {
+      var bq = blockquotes[i];
+      var firstP = bq.querySelector('p');
+      if (!firstP) continue;
+      var text = firstP.textContent || '';
+      var match = text.match(/^\[!(NOTE|TIP|WARNING|DANGER|IMPORTANT)\]/i);
+      if (!match) continue;
+      var typeName = match[1].toLowerCase();
+      var spec = CALLOUT_TYPES[typeName];
+      if (!spec) continue;
+      firstP.textContent = firstP.textContent.replace(/^\[!(NOTE|TIP|WARNING|DANGER|IMPORTANT)\]\s*/i, '');
+      if (!firstP.textContent.trim()) firstP.remove();
+      var div = document.createElement('div');
+      div.className = 'callout ' + spec.cls;
+      var header = document.createElement('div');
+      header.className = 'callout-header';
+      header.innerHTML = '<span class="callout-icon">' + spec.icon + '</span>'
+        + '<span class="callout-label">' + typeName.toUpperCase() + '</span>';
+      var body = document.createElement('div');
+      body.className = 'callout-body';
+      while (bq.firstChild) { body.appendChild(bq.firstChild); }
+      div.appendChild(header);
+      div.appendChild(body);
+      bq.parentNode.replaceChild(div, bq);
+    }
+  }
+
   function walkAndSanitizeLinks(container) {
     var walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, null, false);
     var nodesToProcess = [];
@@ -396,6 +433,7 @@
                   chip.dataset.currentTone = newTone;
                   chip.textContent = newTone === 'technical' ? 'Show functional summary' : 'Show implementation details';
                   chip.removeAttribute('disabled');
+                  if (rerenderBodyEl) iwProcessChatCallouts(rerenderBodyEl);
                   return;
                 }
                 buffer += decoder.decode(result.value, { stream: true });
@@ -526,6 +564,7 @@
             window.iwChat.upgradeAllMermaidBlocks(bodyEl);
           }
           finalizeWorkItemFeed();
+          iwProcessChatCallouts(bodyEl);
         },
         onError: function (data) {
           if (done) return;
