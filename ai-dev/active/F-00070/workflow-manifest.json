@@ -8,7 +8,7 @@
     {
       "step": "S01",
       "agent": "backend-impl",
-      "description": "Backend: extend .pre-commit-config.yaml with 8 hooks (trailing-whitespace, end-of-file-fixer, check-yaml/json/toml, check-added-large-files, detect-private-key, check-merge-conflict, check-case-conflict); run pre-commit run --all-files; document auto-fix diff",
+      "description": "Backend: extend .pre-commit-config.yaml with 9 hooks (trailing-whitespace, end-of-file-fixer, check-yaml, check-json, check-toml, check-added-large-files, detect-private-key, check-merge-conflict, check-case-conflict); run pre-commit run --all-files; document auto-fix diff",
       "prompt": "prompts/F-00070_S01_Backend_prompt.md"
     },
     {

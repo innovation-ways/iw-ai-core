@@ -17,7 +17,7 @@ This feature does NOT modify migrations. No alembic invocations.
 
 ## Description
 
-Expand `.pre-commit-config.yaml` from the current 2 hooks (ruff + mypy) to a richer set that catches common mistakes locally before they reach CI: trailing whitespace, missing-newline-at-EOF, malformed YAML/JSON, accidentally committed large binaries, accidentally committed private keys, and unresolved merge-conflict markers. This reduces CI churn and prevents an entire class of trivially-fixable failures.
+Expand `.pre-commit-config.yaml` from the current 3 hooks (ruff, ruff-format, and mypy) to a richer set that catches common mistakes locally before they reach CI: trailing whitespace, missing-newline-at-EOF, malformed YAML/JSON, accidentally committed large binaries, accidentally committed private keys, and unresolved merge-conflict markers. This reduces CI churn and prevents an entire class of trivially-fixable failures.
 
 ## Project Context
 
