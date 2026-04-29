@@ -6,8 +6,11 @@ Handles the full lifecycle of batch execution:
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
 import re
+import signal
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -720,17 +723,30 @@ class BatchManager:
             return None
 
     def _run_gate_command(self, command: str, worktree_path: str, gate: str) -> str:  # noqa: ARG002
-        """Run a gate command and return combined stdout+stderr."""
-        result = subprocess.run(  # noqa: S602
+        """Run a gate command and return combined stdout+stderr.
+
+        Uses start_new_session=True so the shell and all its descendants share
+        a new process group. On TimeoutExpired the entire group is SIGKILL'd
+        before draining pipes, preventing the FD-inheritance deadlock that
+        blocks the daemon thread indefinitely.
+        """
+        with subprocess.Popen(  # noqa: S602
             command,
             shell=True,
             cwd=worktree_path,
-            capture_output=True,
-            text=True,
-            timeout=300,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
             env=_agent_subprocess_env(),
-        )
-        return result.stdout + result.stderr
+        ) as proc:
+            try:
+                stdout, stderr = proc.communicate(timeout=300)
+                return stdout.decode(errors="replace") + stderr.decode(errors="replace")
+            except subprocess.TimeoutExpired:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                stdout, stderr = proc.communicate()
+                return stdout.decode(errors="replace") + stderr.decode(errors="replace")
 
     def _upsert_qv_baseline(
         self,
