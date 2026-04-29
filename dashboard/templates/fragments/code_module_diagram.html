@@ -1,0 +1,30 @@
+<div id="code-module-diagram-{{ slug }}" class="code-module-diagram mt-4">
+  {% if diagram_dsl %}
+  <div class="px-4 pb-2">
+    <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Component Diagram</h4>
+    <div class="code-diagram-container">
+      <div class="mermaid">{{ diagram_dsl | e }}</div>
+    </div>
+  </div>
+  {% else %}
+  <div class="code-diagram-empty px-4 pb-2 text-xs text-muted-foreground italic">
+    No diagram yet — run "Generate Code Map" to create one.
+  </div>
+  {% endif %}
+</div>
+<script>
+(function () {
+  function upgrade() {
+    var container = document.getElementById('code-module-diagram-{{ slug }}');
+    if (!container) return;
+    if (typeof window.iwRenderMermaid === 'function') {
+      window.iwRenderMermaid(container);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', upgrade);
+  } else {
+    upgrade();
+  }
+})();
+</script>

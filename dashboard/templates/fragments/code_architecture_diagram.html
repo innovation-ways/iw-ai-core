@@ -1,0 +1,26 @@
+{% if arch_diagram_dsl %}
+<div id="code-arch-diagram" class="mt-4 border-t border-border pt-4">
+  <div class="px-4 pb-2">
+    <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Architecture Diagram</h3>
+    <div class="code-diagram-container">
+      <div class="mermaid">{{ arch_diagram_dsl | e }}</div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  function upgrade() {
+    var container = document.getElementById('code-arch-diagram');
+    if (!container) return;
+    if (typeof window.iwRenderMermaid === 'function') {
+      window.iwRenderMermaid(container);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', upgrade);
+  } else {
+    upgrade();
+  }
+})();
+</script>
+{% endif %}

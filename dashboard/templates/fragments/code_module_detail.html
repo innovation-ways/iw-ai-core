@@ -78,6 +78,11 @@
       </div>
     {% elif doc_html %}
       <div class="prose-doc text-sm">{{ doc_html | safe }}</div>
+      <div id="code-module-diagram-slot"
+           hx-get="/api/projects/{{ project_id }}/code/modules/{{ module.slug }}/diagram"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+      </div>
     {% else %}
       <p class="text-sm text-muted-foreground">No documentation available.</p>
     {% endif %}

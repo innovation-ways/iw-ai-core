@@ -69,6 +69,8 @@ and a CLI bridge.
   worktrees, and drives the fix-cycle state machine
 - `dashboard/` -- FastAPI Dashboard: real-time visibility and manual controls
   for the orchestration platform, served at port 9900
+- `orch/rag/` -- Code Understanding: LanceDB indexing, module-gen, symbol-gen,
+  and RAG Q&A with work-item-aware citations
 
 ## Data Flow
 
@@ -76,6 +78,10 @@ The daemon reads approved batches from PostgreSQL and launches agents in
 isolated git worktrees. Progress is streamed to the dashboard via SSE.
 """
 
+# Module slug derivation: path.strip("/").replace("/", "-").lower()
+# e.g.  "orch/daemon/" → "orch-daemon",  "orch/rag/" → "orch-rag"
+# Per-item fixtures that seed diagram docs MUST use "diagram-module-{slug}"
+# as the doc_id so the /modules/{slug}/diagram endpoint resolves them.
 MODULE_DOCS: list[dict[str, str]] = [
     {
         "path": "orch/daemon",
@@ -107,6 +113,22 @@ MODULE_DOCS: list[dict[str, str]] = [
             "- Work item detail with per-step logs and evidence\n"
             "- Batch view with parallel execution timeline\n"
             "- Search across designs, prompts, and reports\n"
+        ),
+    },
+    {
+        "path": "orch/rag",
+        "slug": "orch-rag",
+        "title": "Code Understanding (RAG)",
+        "content": (
+            "# Code Understanding (RAG)\n\n"
+            "The RAG module provides code indexing, module documentation\n"
+            "generation, symbol explanation, and streaming Q&A with\n"
+            "work-item-aware citations.\n\n"
+            "## Components\n\n"
+            "- `indexer.py` — file discovery, chunking, embedding via LanceDB\n"
+            "- `module_gen.py` — Level-2 per-module doc generation\n"
+            "- `qa.py` — streaming RAG Q&A with citations\n"
+            "- `parser.py` — architecture map module extraction\n"
         ),
     },
 ]

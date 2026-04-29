@@ -5,6 +5,7 @@
     mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
     window.iwRenderMermaid = async function(root) {
       var scope = root || document;
+      // div.mermaid format (legacy / chat-inserted blocks)
       var nodes = scope.querySelectorAll('.mermaid:not([data-processed])');
       for (var i = 0; i < nodes.length; i++) {
         var node = nodes[i];
@@ -20,6 +21,23 @@
           node.innerHTML = '<pre style="color:var(--destructive);font-size:12px;white-space:pre-wrap">Mermaid error: ' +
             (e && e.message ? e.message : String(e)).replace(/[<>&]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}) +
             '</pre>';
+        }
+      }
+      // pre[data-lang="mermaid"] format (diagram fragments)
+      var preNodes = scope.querySelectorAll('pre[data-lang="mermaid"]:not([data-processed])');
+      for (var j = 0; j < preNodes.length; j++) {
+        var preEl = preNodes[j];
+        var src = preEl.textContent;
+        var id = 'iw-mermaid-' + Math.random().toString(36).slice(2);
+        try {
+          var result = await mermaid.render(id, src);
+          var wrapper = document.createElement('div');
+          wrapper.innerHTML = result.svg;
+          if (result.bindFunctions) { result.bindFunctions(wrapper); }
+          preEl.parentNode.replaceChild(wrapper, preEl);
+        } catch (e) {
+          preEl.setAttribute('data-processed', 'true');
+          preEl.textContent = 'Mermaid error: ' + (e && e.message ? e.message : String(e));
         }
       }
     };
