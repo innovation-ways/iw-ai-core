@@ -24,7 +24,7 @@
 
 ### 1. Coverage of design
 
-- [ ] All 12 expected hook IDs (3 existing + 8 new) are listed in `EXPECTED_HOOK_IDS`.
+- [ ] All 12 expected hook IDs (3 existing + 9 new) are listed in `EXPECTED_HOOK_IDS`.
 - [ ] Each ID is asserted via parametrize so failure messages identify which hook is missing.
 - [ ] Rev-pin assertion rejects `HEAD`, `latest`, `main`, `master`.
 - [ ] `--maxkb=<n>` assertion present.

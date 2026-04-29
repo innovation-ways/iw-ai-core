@@ -51,7 +51,7 @@
 ## Test Verification (NON-NEGOTIABLE)
 
 1. `make lint`
-2. `make format-check`
+2. `make format`
 3. `make typecheck`
 4. `make test-unit`
 5. `make test-integration` — should pass (no integration logic changed)
