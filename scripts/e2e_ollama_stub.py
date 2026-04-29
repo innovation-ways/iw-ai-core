@@ -200,6 +200,84 @@ def _now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+_DIAGRAM_QUESTION_RE = re.compile(
+    r"\b(flowchart|class\s+diagram|sequence\s+diagram|state\s+diagram|ER\s*diagram|entity.*diagram|architecture\s+diagram|component\s+diagram|git\s*graph)\b",
+    re.IGNORECASE,
+)
+
+_MERMAID_TEMPLATES = {
+    "flowchart": """```mermaid
+flowchart TD
+    A[Question] --> B{Decision}
+    B -->|Yes| C[Step 1]
+    B -->|No| D[Step 2]
+    C --> E[Result]
+    D --> E
+```""",
+    "class_diagram": """```mermaid
+classDiagram
+    class QAEngine {
+        +answer_stream_v2()
+        +_build_workitem_system_prompt()
+    }
+    class Session {
+        +query()
+    }
+    QAEngine --> Session
+```""",
+    "sequence_diagram": """```mermaid
+sequenceDiagram
+    participant U as User
+    participant QA as QAEngine
+    participant RAG as RAG Layer
+    U->>QA: question
+    QA->>RAG: retrieve context
+    RAG-->>QA: context
+    QA-->>U: streaming answer
+```""",
+    "state_diagram": """```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Processing: question
+    Processing --> Streaming: tokens ready
+    Streaming --> Done: complete
+    Done --> [*]
+```""",
+    "architecture": """```mermaid
+flowchart LR
+    A[Dashboard] --> B[QAEngine]
+    B --> C[RAG Layer]
+    C --> D[LanceDB Index]
+    B --> E[Ollama LLM]
+```""",
+}
+
+
+def _build_mermaid_block(question: str) -> str:
+    q = question.lower()
+    if "class" in q and "diagram" in q:
+        template = _MERMAID_TEMPLATES["class_diagram"]
+    elif "sequence" in q:
+        template = _MERMAID_TEMPLATES["sequence_diagram"]
+    elif "state" in q:
+        template = _MERMAID_TEMPLATES["state_diagram"]
+    elif "architecture" in q or "component" in q:
+        template = _MERMAID_TEMPLATES["architecture"]
+    elif "ER" in q or "entity" in q:
+        template = """```mermaid
+erDiagram
+    PROJECT ||--o{ WORK_ITEM : contains
+    WORK_ITEM {
+        string id PK
+        string title
+        string status
+    }
+```"""
+    else:
+        template = _MERMAID_TEMPLATES["flowchart"]
+    return f"\n\n{template}\n\n"
+
+
 def _build_reply(
     module_ref: str | None,
     question: str,
@@ -213,6 +291,10 @@ def _build_reply(
     ID flows through the allowlist into the UI. Without candidates it
     falls back to the old module-ref / generic echo shape that code-only
     and pre-F-00060 verifications rely on.
+
+    When the question mentions a diagram type, a Mermaid block is injected
+    so the server-side rendering pipeline (mmdc) and client-side fallback
+    (upgradeAllMermaidBlocks) are both exercised in browser verification.
     """
     if candidates:
         ranked = _rank_candidates(candidates, question)
@@ -231,18 +313,24 @@ def _build_reply(
             f"the behaviour asked about in: {question!r}. "
             "This is a deterministic stub response for E2E verification."
         )
-        return first_line + body
-    if module_ref:
-        return (
+        reply = first_line + body
+    elif module_ref:
+        reply = (
             f"The `{module_ref}` module handles its slice of the system. "
             f"Based on the excerpts above, it coordinates the behaviour "
             f"asked about in: {question!r}. "
             "This is a deterministic stub response for E2E verification."
         )
-    return (
-        "This is a deterministic stub response for E2E verification — "
-        f"question received: {question!r}."
-    )
+    else:
+        reply = (
+            "This is a deterministic stub response for E2E verification — "
+            f"question received: {question!r}."
+        )
+
+    if _DIAGRAM_QUESTION_RE.search(question):
+        reply += _build_mermaid_block(question)
+
+    return reply
 
 
 async def _stream_chat(model: str, reply: str) -> AsyncGenerator[bytes, None]:

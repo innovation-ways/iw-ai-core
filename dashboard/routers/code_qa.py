@@ -33,6 +33,43 @@ if TYPE_CHECKING:
 
 WORK_ITEM_ID_RE = re.compile(r"^(F|I|CR)-\d{5}$")
 
+_FENCED_BLOCK_RE = re.compile(r"```(mermaid|d2)\n(.*?)```", re.DOTALL)
+
+
+def _find_new_diagram_blocks(
+    text: str,
+    processed: set[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    """Return (lang, dsl) pairs for newly completed fenced mermaid/d2 blocks.
+
+    Never raises — returns empty list on any error.
+    """
+    try:
+        results = []
+        for m in _FENCED_BLOCK_RE.finditer(text):
+            lang = m.group(1)
+            dsl = m.group(2).strip()
+            key = (lang, dsl)
+            if key not in processed:
+                results.append((lang, dsl))
+        return results
+    except Exception:
+        return []
+
+
+try:
+    from orch.diagram.render import render_d2, render_mermaid
+
+    _DIAGRAM_RENDER_AVAILABLE = True
+except ImportError:
+    _DIAGRAM_RENDER_AVAILABLE = False
+
+    def render_mermaid(dsl: str) -> str | None:
+        return None
+
+    def render_d2(dsl: str) -> str | None:
+        return None
+
 
 class ConversationMessage(BaseModel):
     role: str
@@ -190,6 +227,9 @@ async def _sse_generator(
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     loop = asyncio.get_event_loop()
+    accumulated_text = ""
+    processed_diagram_blocks: set[tuple[str, str]] = set()
+    emit_counts: dict[str, int] = {"mermaid": 0, "d2": 0}
     executor.submit(
         _run_qa_in_thread,
         project_id,
@@ -221,6 +261,27 @@ async def _sse_generator(
                 b64 = base64.b64encode(token_text.encode("utf-8")).decode("ascii")
                 payload = json.dumps({"b64": b64})
                 yield f"event: token\ndata: {payload}\n\n"
+                accumulated_text += token_text
+                if _DIAGRAM_RENDER_AVAILABLE:
+                    new_blocks = _find_new_diagram_blocks(
+                        accumulated_text, processed_diagram_blocks
+                    )
+                    for lang, dsl in new_blocks:
+                        processed_diagram_blocks.add((lang, dsl))
+                        render_func = render_mermaid if lang == "mermaid" else render_d2
+                        svg = await loop.run_in_executor(None, render_func, dsl)
+                        if svg:
+                            svg_b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+                            img_payload = json.dumps(
+                                {
+                                    "svg_b64": svg_b64,
+                                    "alt": "Diagram",
+                                    "source_type": lang,
+                                    "block_index": emit_counts[lang],
+                                }
+                            )
+                            yield f"event: image\ndata: {img_payload}\n\n"
+                        emit_counts[lang] += 1
             elif kind == "phase":
                 payload = json.dumps({"name": event.get("name"), "detail": event.get("detail", {})})
                 yield f"event: phase\ndata: {payload}\n\n"
@@ -240,6 +301,25 @@ async def _sse_generator(
             b64 = base64.b64encode(str(event).encode("utf-8")).decode("ascii")
             payload = json.dumps({"b64": b64})
             yield f"event: token\ndata: {payload}\n\n"
+            accumulated_text += str(event)
+            if _DIAGRAM_RENDER_AVAILABLE:
+                new_blocks = _find_new_diagram_blocks(accumulated_text, processed_diagram_blocks)
+                for lang, dsl in new_blocks:
+                    processed_diagram_blocks.add((lang, dsl))
+                    render_func = render_mermaid if lang == "mermaid" else render_d2
+                    svg = await loop.run_in_executor(None, render_func, dsl)
+                    if svg:
+                        svg_b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
+                        img_payload = json.dumps(
+                            {
+                                "svg_b64": svg_b64,
+                                "alt": "Diagram",
+                                "source_type": lang,
+                                "block_index": emit_counts[lang],
+                            }
+                        )
+                        yield f"event: image\ndata: {img_payload}\n\n"
+                    emit_counts[lang] += 1
 
     executor.shutdown(wait=False, cancel_futures=True)
 

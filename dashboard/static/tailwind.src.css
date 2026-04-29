@@ -367,6 +367,15 @@
 }
 
 @layer components {
+  /* F-00066: proactive diagram rendering in QA chat */
+  .chat-diagram-figure { margin: 1rem 0; }
+  .chat-diagram-img { max-width: 100%; height: auto; display: block; }
+  .chat-diagram-caption { font-size: 0.75rem; color: var(--muted-foreground, #888); margin-top: 0.25rem; }
+  .chat-diagram-download { color: var(--primary, #3b82f6); text-decoration: underline; }
+  pre[data-iw-server-rendered] { display: none; }
+}
+
+@layer components {
   /* Dark-mode tweaks: keep tints subtle, raise text contrast. */
   .dark .oss-findings .oss-finding-row[data-status="fail"][data-severity="MUST"] {
     background-color: rgba(248, 113, 113, 0.08);

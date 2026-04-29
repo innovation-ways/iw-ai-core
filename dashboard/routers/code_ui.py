@@ -60,7 +60,7 @@ def _format_duration(job: CodeIndexJob) -> str | None:
 
 def _preprocess_mermaid(text: str) -> str:
     pattern = re.compile(r"```mermaid\s*(.*?)\s*```", re.DOTALL)
-    return pattern.sub(r'<div class="mermaid">\1</div>', text)
+    return pattern.sub(r'<pre data-lang="mermaid"><code>\1</code></pre>', text)
 
 
 def _render_architecture_html(arch_doc: Any) -> str | None:
