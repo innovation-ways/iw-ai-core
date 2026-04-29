@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from orch.config import DaemonConfig
 from orch.daemon.fix_cycle import (
+    _get_browser_findings,
     attempt_fix_cycle,
     check_active_fix_cycles,
     should_attempt_fix,
@@ -563,3 +564,84 @@ def test_attempt_fix_cycle_failed_cycle_counts_toward_max(
 
     # With 1 existing failed cycle and fix_cycle_max=1, should_attempt_fix must return False
     assert should_attempt_fix(db_session, step, _project_config(fix_cycle_max=1)) is False
+
+
+# ---------------------------------------------------------------------------
+# _get_browser_findings — I-00050 integration tests
+# ---------------------------------------------------------------------------
+
+
+def test_i00050_get_browser_findings_integration(
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    """I-00050: integration test for _get_browser_findings with real DB.
+
+    Scenario: browser_verification step has run 1 agent-reported failure
+    (report_file set) and run 2 daemon-detected failure (report_file=None,
+    error_message set). The latest run's error must lead the findings string
+    with the original V table preserved as secondary context.
+    """
+    from orch.db.models import (
+        StepRun,
+        StepStatus,
+        StepType,
+        WorkItemPhase,
+        WorkItemStatus,
+        WorkItemType,
+    )
+
+    item = WorkItem(
+        project_id="test-proj",
+        id="I-00050",
+        type=WorkItemType.Issue,
+        title="I-00050 integration test",
+        status=WorkItemStatus.in_progress,
+        phase=WorkItemPhase.active,
+        config={},
+        depends_on=[],
+        blocks=[],
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    step = WorkflowStep(
+        project_id="test-proj",
+        work_item_id="I-00050",
+        step_number=1,
+        step_id="S01",
+        agent_label="qv-browser",
+        step_type=StepType.browser_verification,
+        status=StepStatus.failed,
+        report_file="reports/I-00050_S01_BV_report.md",
+        report_content="| V1 | FAIL |\n| expected | actual |\n",
+    )
+    db_session.add(step)
+    db_session.flush()
+
+    run1 = StepRun(
+        step_id=step.id,
+        run_number=1,
+        status=RunStatus.failed,
+        report_file="reports/I-00050_S01_BV_report.md",
+        error_message="ENV_DATA_MISSING: no callouts in DB",
+    )
+    db_session.add(run1)
+
+    run2 = StepRun(
+        step_id=step.id,
+        run_number=2,
+        status=RunStatus.failed,
+        report_file=None,
+        error_message="browser env setup failed: e2e-dashboard-1 exited (1)",
+    )
+    db_session.add(run2)
+    db_session.flush()
+
+    result = _get_browser_findings(db_session, step, "/tmp/fake_worktree_that_does_not_exist")
+
+    assert "browser env setup failed" in result
+    assert "e2e-dashboard-1 exited (1)" in result
+    assert "V1" in result
+    assert "FAIL" in result
+    assert result.index("browser env setup failed") < result.index("V1")
