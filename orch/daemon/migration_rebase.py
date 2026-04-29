@@ -235,7 +235,7 @@ def _emit_daemon_event(
 def _write_rebase_log(
     revision: str,
     old_revision: str,
-    batch_id: int,
+    batch_id: str | int,
 ) -> None:
     """Write a PendingMigrationLog row for a rebase-phase rewrite."""
     if _is_test_context_active():
@@ -275,7 +275,7 @@ def _write_rebase_log(
 
 
 def run_pre_merge_rebase(
-    batch_id: int,
+    batch_id: str | int,
     worktree_path: str,
     _repo_root: str,
 ) -> RebaseResult:
@@ -287,7 +287,7 @@ def run_pre_merge_rebase(
     Returns RebaseResult with success=False on fatal errors (git failure,
     parse error, chain cycle). Exceptions must NOT propagate to merge_queue.
     """
-    logger.info("[rebase] Starting pre-merge rebase for batch %d", batch_id)
+    logger.info("[rebase] Starting pre-merge rebase for batch %s", batch_id)
 
     try:
         # Step 1: Preflight SHAs
@@ -524,7 +524,7 @@ def run_pre_merge_rebase(
         )
 
     except GitCommandError as exc:
-        logger.exception("[rebase] Git command failed for batch %d", batch_id)
+        logger.exception("[rebase] Git command failed for batch %s", batch_id)
         return RebaseResult(
             success=False,
             rebased=False,
@@ -536,7 +536,7 @@ def run_pre_merge_rebase(
         )
 
     except Exception as exc:
-        logger.exception("[rebase] Unexpected error for batch %d", batch_id)
+        logger.exception("[rebase] Unexpected error for batch %s", batch_id)
         return RebaseResult(
             success=False,
             rebased=False,
