@@ -81,6 +81,21 @@ def _is_test_context_active() -> bool:
 
 MAX_TAIL_BYTES = 16 * 1024
 
+
+def _to_int_batch_id(batch_id: str | int | None) -> int | None:
+    """Convert a batch_id to int for storage in pending_migration_log (BigInteger column).
+
+    String batch IDs (e.g. "BATCH-00060") are parsed by extracting the trailing digits.
+    Returns None if batch_id is None or contains no digits.
+    """
+    if batch_id is None:
+        return None
+    if isinstance(batch_id, int):
+        return batch_id
+    m = re.search(r"\d+$", str(batch_id))
+    return int(m.group()) if m else None
+
+
 # The orch DB is a single shared store; migration_locks is a per-project mutex
 # with a FK to projects.id. We key the lock on the orch project's own row
 # ("iw-ai-core") because the orch DB migrations are global and there is only
@@ -229,7 +244,7 @@ def _write_migration_log(
     revision: str,
     direction: Literal["upgrade", "downgrade"],
     phase: Literal["dry_run", "apply", "rollback", "rebase"],
-    batch_id: int | None,
+    batch_id: str | int | None,
     success: bool,
     stdout_tail: str,
     stderr_tail: str,
@@ -250,7 +265,7 @@ def _write_migration_log(
             revision=revision,
             direction=direction,
             phase=phase,
-            batch_id=batch_id,
+            batch_id=_to_int_batch_id(batch_id),
             started_at=datetime.now(UTC),
             completed_at=datetime.now(UTC),
             success=success,
@@ -461,7 +476,7 @@ def list_pending_revisions(db_url: str | None = None) -> list[Revision]:
 
 def dry_run(
     tempdb_url: str,
-    batch_id: int | None = None,
+    batch_id: str | int | None = None,
     script_location: str | None = None,
 ) -> DryRunResult:
     """Spin up alembic context against tempdb_url, upgrade to head, record log entry.
@@ -505,7 +520,7 @@ def dry_run(
     )
 
 
-def apply(live_db_url: str, batch_id: int | None = None) -> ApplyResult:
+def apply(live_db_url: str, batch_id: str | int | None = None) -> ApplyResult:
     """Acquire migration lock, upgrade to head against live DB, release lock.
 
     RAISES AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true' unless
@@ -567,7 +582,7 @@ def apply(live_db_url: str, batch_id: int | None = None) -> ApplyResult:
         _release_migration_lock(item="daemon")
 
 
-def rollback(live_db_url: str, steps: int = 1, batch_id: int | None = None) -> RollbackResult:
+def rollback(live_db_url: str, steps: int = 1, batch_id: str | int | None = None) -> RollbackResult:
     """Alembic downgrade -N against live DB.
 
     RAISES AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true' unless
