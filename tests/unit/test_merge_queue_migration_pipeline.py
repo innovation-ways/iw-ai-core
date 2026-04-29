@@ -56,7 +56,7 @@ class TestToIntBatchId:
         assert _to_int_batch_id("") is None
 
     @pytest.mark.parametrize(
-        "batch_id, expected",
+        ("batch_id", "expected"),
         [
             ("BATCH-00060", 60),
             ("BATCH-00001", 1),
@@ -250,7 +250,6 @@ class TestMergeItemStringBatchIdInvokesPipeline:
         item = _make_batch_item(batch_id="BATCH-00060", worktree_path="/wt/F-00060")
         mocks = self._run_merge_item(item)
         call_args = mocks["rebase"].call_args
-        # positional: (batch_id, worktree_path, working_dir)
         assert call_args[0][0] == "BATCH-00060"
         assert call_args[0][1] == "/wt/F-00060"
 

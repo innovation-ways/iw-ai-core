@@ -13,18 +13,17 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from orch.db.models import (
-    StepStatus,
-    StepType,
-    WorkItem,
-    WorkItemPhase,
-    WorkItemType,
-    WorkflowStep,
-)
-
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+from orch.db.models import (
+    StepStatus,
+    StepType,
+    WorkflowStep,
+    WorkItem,
+    WorkItemPhase,
+    WorkItemType,
+)
 
 PROJECT_ID = "iw-ai-core"
 WORK_ITEM_ID = "CR-99025"

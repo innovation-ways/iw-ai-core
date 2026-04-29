@@ -65,9 +65,7 @@ class TestI00049RunGateCommandNonBlocking:
     TimeoutExpired so the process group is torn down before draining pipes.
     """
 
-    def test_run_gate_command_does_not_deadlock_with_background_grandchild(
-        self, tmp_path: Path
-    ):
+    def test_run_gate_command_does_not_deadlock_with_background_grandchild(self, tmp_path: Path):
         """
         Regression test for I-00049.
 
@@ -135,9 +133,7 @@ class TestRunGateCommandReturnsOutput:
         """Gate command that exits non-zero must return output, not raise."""
         manager = make_manager(tmp_path)
 
-        result = manager._run_gate_command(
-            "echo err >&2; exit 1", str(tmp_path), "lint"
-        )
+        result = manager._run_gate_command("echo err >&2; exit 1", str(tmp_path), "lint")
 
         assert "err" in result
 
@@ -170,9 +166,7 @@ class TestRunGateCommandKillpgOnTimeout:
             patch("orch.daemon.batch_manager.os.killpg") as mock_killpg,
             patch("orch.daemon.batch_manager.os.getpgid", return_value=12345),
         ):
-            result = manager._run_gate_command(
-                "bash -c 'sleep 600 &'", str(tmp_path), "lint"
-            )
+            result = manager._run_gate_command("bash -c 'sleep 600 &'", str(tmp_path), "lint")
 
         mock_killpg.assert_called_once_with(12345, signal.SIGKILL)
         assert isinstance(result, str)
@@ -197,9 +191,7 @@ class TestRunGateCommandKillpgOnTimeout:
             patch("orch.daemon.batch_manager.os.killpg"),
             patch("orch.daemon.batch_manager.os.getpgid", return_value=99999),
         ):
-            result = manager._run_gate_command(
-                "bash -c 'sleep 600 &'", str(tmp_path), "lint"
-            )
+            result = manager._run_gate_command("bash -c 'sleep 600 &'", str(tmp_path), "lint")
 
         assert "partial output before timeout" in result
 
@@ -227,6 +219,4 @@ class TestGATEPARSERSExcludesIntegrationTests:
     def test_fast_gates_remain_in_gate_parsers(self):
         """lint, typecheck, unit-tests, frontend-tests must still be registered."""
         for gate in ("lint", "typecheck", "unit-tests", "frontend-tests"):
-            assert gate in GATE_PARSERS, (
-                f"Expected gate '{gate}' to remain in GATE_PARSERS"
-            )
+            assert gate in GATE_PARSERS, f"Expected gate '{gate}' to remain in GATE_PARSERS"
