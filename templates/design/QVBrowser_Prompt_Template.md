@@ -61,40 +61,40 @@ Rules for interacting with the page:
 
 ## E2E DB seed data
 
-The E2E stack starts with a **fresh PostgreSQL** that has the project's
-schema and migrations applied, plus the baseline seed in
-`scripts/e2e_seed.py` (project row, architecture map, three demo work
-items: F-00055, CR-00001, I-00001). It does **not** mirror the production
-database.
+The E2E stack's PostgreSQL is seeded from the production orchestration DB
+via `pg_dump` (run by `ai-dev/iw-config/worktree-seed.sh`). It reflects
+current production state. It does **not** contain data that only exists in
+`scripts/e2e_seed.py`'s baseline unless that script has been explicitly run.
 
-If any of your verifications require historical data (work-item history,
-step retries, fix-cycle records, dashboard tables that aggregate past
-runs, anything that reads `step_runs` / `fix_cycles`), add a fixture file:
+If your verifications require data not yet in production (e.g. a new document
+type, diagram rows, or specific work-item history), add a fixture file:
 
 ```
 ai-dev/active/{{ID}}/e2e_fixtures/001_<descriptive_name>.py
 ```
 
-The file must export `def seed(db: Session) -> None` and is auto-run by
-`scripts/e2e_seed.py` after the central seed. Make seeding idempotent
-(check `db.get(...)` before insert) — `e2e_up.sh` may re-run on retry.
-Multiple files load in lexical order; use `001_`, `002_`, … prefixes.
+The file must export `def seed(db: Session) -> None`. Make it idempotent
+(`db.get(...)` before insert). Multiple files load in lexical order; use
+`001_`, `002_`, … prefixes.
 
-`docker-compose.e2e.yml` bind-mounts the worktree's `ai-dev/` directory
-read-only into the dashboard container, so fixtures written at any time
-(including by a qv-browser agent mid-step) are visible to the next
-invocation of `scripts/e2e_seed.py` without a rebuild.
+**After writing a fixture file you MUST re-run the seed inside the `app`
+container before opening the browser.** The worktree directory is already
+mounted at `/workspace` inside the container, so any file you write on the
+host is immediately visible. Run:
 
-> ⚠️ **NEVER run the fixture seed from your host shell.** The host's
-> `.env` resolves to the production orchestration DB on port 5433; a
-> command like `uv run python -c "from orch.db.session import
-> get_session; ..."` run outside a container will write your test rows
-> into the real DB and the E2E dashboard will still 404 because it
-> reads from a different Postgres. If a fixture needs to be re-seeded
-> against a running E2E stack, exec INTO the container:
-> `docker compose -p "$COMPOSE_PROJECT_NAME" exec e2e-dashboard uv run
-> python scripts/e2e_seed.py`. If that is not possible, `iw step-fail`
-> with `ENV_DATA_MISSING:` so the daemon re-provisions the stack.
+```bash
+docker compose -p "$COMPOSE_PROJECT_NAME" exec app \
+  uv run python scripts/e2e_seed.py
+```
+
+> ⚠️ **NEVER run the seed from your host shell.** The host's `.env`
+> resolves to the production orchestration DB on port 5433 — running
+> `uv run python scripts/e2e_seed.py` outside a container will write test
+> rows into the real DB.
+>
+> Only if `docker compose exec` fails (container unreachable) should you
+> call `iw step-fail` with `ENV_DATA_MISSING:` so the daemon
+> re-provisions the stack.
 
 If your verifications can't be satisfied with seed data alone (e.g. they
 require a live agent run), call `iw step-fail` with reason prefixed

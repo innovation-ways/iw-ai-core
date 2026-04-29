@@ -146,8 +146,11 @@ The file must export `def seed(db: Session) -> None` and insert:
 
 Make seeding idempotent (check `db.scalar(select(...).where(ProjectDoc.doc_id == ...))` before insert). If the project row doesn't exist yet, call `iw step-fail` with `ENV_DATA_MISSING:` prefix.
 
-> ⚠️ NEVER run the fixture seed from your host shell. Exec into the container if needed:
-> `docker compose -p "$COMPOSE_PROJECT_NAME" exec e2e-dashboard uv run python scripts/e2e_seed.py`
+> ⚠️ NEVER run the seed from your host shell. After writing the fixture file, you MUST exec into the `app` container and re-run the seed **before opening the browser**:
+> ```bash
+> docker compose -p "$COMPOSE_PROJECT_NAME" exec app uv run python scripts/e2e_seed.py
+> ```
+> Only if this `exec` fails should you fall back to `iw step-fail` with `ENV_DATA_MISSING:`.
 
 ## Verification Steps
 

@@ -340,7 +340,7 @@ Leave the Environment, Prerequisites, Pass Criteria, Report, and Result Contract
 
 **Hard rules for the QV Browser prompt:**
 - **NEVER** hardcode URLs, ports, or credentials. No `localhost:5173`, no `localhost:5174`, no literal passwords. The IW daemon spins up an isolated e2e stack built from the worktree's source and exports `$IW_BROWSER_BASE_URL`, `$IW_BROWSER_E2E_USER`, `$IW_BROWSER_E2E_PASSWORD`, `$IW_ITEM_ID`, and `$IW_STEP_ID` at runtime. Use those env vars (or the equivalent `{{IW_BROWSER_BASE_URL}}` placeholder, which the daemon substitutes at launch).
-- **NEVER** instruct the agent to run `make dev`, `make e2e-up`, `docker compose`, or any install command — the stack is already up and will be torn down afterwards.
+- **NEVER** instruct the agent to run `make dev`, `make e2e-up`, `docker compose up/down/restart/build`, or any install command — the stack is already up. `docker compose exec app` is allowed and required when re-running the seed after writing a fixture file.
 - Use `playwright-cli` exclusively (not `agent-browser`, not direct `chromium.launch()`).
 
 ## Step 5b: Generate Workflow Manifest (only after GO)
