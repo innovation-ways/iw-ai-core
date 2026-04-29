@@ -1,0 +1,231 @@
+{# containers_table.html — htmx fragment for the container health table #}
+{% from "macros/db_guard.html" import write_button_attrs %}
+
+{% macro svc_badge(svc) %}
+  {% if svc.state == 'running' %}
+    {% set cls = 'bg-success/15 text-success' %}
+  {% elif svc.state in ('exited', 'dead') %}
+    {% set cls = 'bg-destructive/15 text-destructive' %}
+  {% elif svc.state == 'paused' %}
+    {% set cls = 'bg-warning/15 text-warning' %}
+  {% else %}
+    {% set cls = 'bg-muted text-muted-foreground' %}
+  {% endif %}
+  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono {{ cls }}"
+        title="{{ svc.status_text }}">{{ svc.name }}={{ svc.state }}</span>
+{% endmacro %}
+
+{% macro classify_badge(cls) %}
+  {% if cls == 'active' %}
+    {% set c = 'bg-success/15 text-success' %}
+  {% elif cls == 'stale' %}
+    {% set c = 'bg-warning/15 text-warning' %}
+  {% elif cls == 'orphan' %}
+    {% set c = 'bg-destructive/15 text-destructive' %}
+  {% else %}
+    {% set c = 'bg-muted text-muted-foreground' %}
+  {% endif %}
+  <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium {{ c }}">{{ cls }}</span>
+{% endmacro %}
+
+{# Build refresh URL preserving current filters #}
+{% set _qs = [] %}
+{% for p in project_filter|default([]) %}{{ _qs.append('project=' + p | urlencode) or '' }}{% endfor %}
+{% for c in classification_filter|default([]) %}{{ _qs.append('classification=' + c | urlencode) or '' }}{% endfor %}
+{% if item_filter|default('') %}{{ _qs.append('item=' + item_filter | urlencode) or '' }}{% endif %}
+{% if age_filter|default('') %}{{ _qs.append('age=' + age_filter | urlencode) or '' }}{% endif %}
+{% set _refresh_url = '/system/containers/table' + ('?' + _qs | join('&') if _qs else '') %}
+
+<div id="containers-table"
+     hx-get="{{ _refresh_url }}"
+     hx-trigger="every 30s"
+     hx-swap="outerHTML">
+
+  {% if not stacks %}
+  <div class="text-sm text-muted-foreground py-8 text-center">
+    No per-worktree containers found{% if filtered != total %} matching the selected filters{% endif %}.
+  </div>
+  {% else %}
+  <div class="overflow-x-auto rounded-lg border border-border">
+    <table id="containers-tbl" class="w-full text-sm">
+      <thead class="bg-muted/40 text-muted-foreground">
+        <tr>
+          <th class="px-3 py-2 text-left font-medium cursor-pointer select-none hover:text-foreground"
+              data-sort-key="compose_project" onclick="sortContainersTable('compose_project')">
+            <span class="inline-flex items-center gap-1">
+              Compose Project
+              <svg class="w-3 h-3 sort-icon opacity-0 transition-opacity" viewBox="0 0 10 6" fill="none"
+                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1 L5 5 L9 1"/></svg>
+            </span>
+          </th>
+          <th class="px-3 py-2 text-left font-medium cursor-pointer select-none hover:text-foreground"
+              data-sort-key="item_id" onclick="sortContainersTable('item_id')">
+            <span class="inline-flex items-center gap-1">
+              Item
+              <svg class="w-3 h-3 sort-icon opacity-0 transition-opacity" viewBox="0 0 10 6" fill="none"
+                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1 L5 5 L9 1"/></svg>
+            </span>
+          </th>
+          <th class="px-3 py-2 text-left font-medium cursor-pointer select-none hover:text-foreground"
+              data-sort-key="project_id" onclick="sortContainersTable('project_id')">
+            <span class="inline-flex items-center gap-1">
+              Project
+              <svg class="w-3 h-3 sort-icon opacity-0 transition-opacity" viewBox="0 0 10 6" fill="none"
+                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1 L5 5 L9 1"/></svg>
+            </span>
+          </th>
+          <th class="px-3 py-2 text-left font-medium cursor-pointer select-none hover:text-foreground"
+              data-sort-key="services" onclick="sortContainersTable('services')">
+            <span class="inline-flex items-center gap-1">
+              Services
+              <svg class="w-3 h-3 sort-icon opacity-0 transition-opacity" viewBox="0 0 10 6" fill="none"
+                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1 L5 5 L9 1"/></svg>
+            </span>
+          </th>
+          <th class="px-3 py-2 text-left font-medium cursor-pointer select-none hover:text-foreground"
+              data-sort-key="classification" onclick="sortContainersTable('classification')">
+            <span class="inline-flex items-center gap-1">
+              Classification
+              <svg class="w-3 h-3 sort-icon opacity-0 transition-opacity" viewBox="0 0 10 6" fill="none"
+                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1 L5 5 L9 1"/></svg>
+            </span>
+          </th>
+          <th class="px-3 py-2 text-left font-medium">Ports</th>
+          <th class="px-3 py-2 text-left font-medium cursor-pointer select-none hover:text-foreground"
+              data-sort-key="age" onclick="sortContainersTable('age')">
+            <span class="inline-flex items-center gap-1">
+              Age
+              <svg class="w-3 h-3 sort-icon opacity-0 transition-opacity" viewBox="0 0 10 6" fill="none"
+                   stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1 1 L5 5 L9 1"/></svg>
+            </span>
+          </th>
+          <th class="px-3 py-2 text-left font-medium">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-border">
+        {% for stack in stacks %}
+        <tr class="hover:bg-muted/20 transition-colors"
+            data-sort-compose_project="{{ stack.compose_project }}"
+            data-sort-item_id="{{ stack.item_id or '' }}"
+            data-sort-project_id="{{ stack.project_id or '' }}"
+            data-sort-services="{{ stack.service_summary }}"
+            data-sort-classification="{{ stack.classification }}"
+            data-sort-age="{{ stack.age_secs | int }}">
+
+          <td class="px-3 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
+            {{ stack.compose_project }}
+          </td>
+
+          <td class="px-3 py-2 whitespace-nowrap">
+            {% if stack.item_id %}
+              <a href="/project/{{ stack.project_id }}/items/{{ stack.item_id }}"
+                 class="text-primary hover:underline font-mono text-xs">{{ stack.item_id }}</a>
+            {% else %}
+              <span class="text-muted-foreground text-xs">—</span>
+            {% endif %}
+          </td>
+
+          <td class="px-3 py-2 whitespace-nowrap">
+            {% if stack.project_id %}
+              <span class="text-xs">{{ stack.project_id }}</span>
+            {% else %}
+              <span class="text-muted-foreground text-xs">—</span>
+            {% endif %}
+          </td>
+
+          <td class="px-3 py-2">
+            <div class="flex flex-wrap gap-1">
+              {% for svc in stack.services %}
+                {{ svc_badge(svc) }}
+              {% endfor %}
+            </div>
+          </td>
+
+          <td class="px-3 py-2 whitespace-nowrap">
+            {{ classify_badge(stack.classification) }}
+          </td>
+
+          <td class="px-3 py-2 font-mono text-xs text-muted-foreground max-w-xs truncate"
+              title="{{ stack.all_ports }}">
+            {{ stack.all_ports }}
+          </td>
+
+          <td class="px-3 py-2 whitespace-nowrap text-xs text-muted-foreground"
+              title="{{ stack.created_at.isoformat() if stack.created_at else '' }}">
+            {{ stack.age_display }}
+          </td>
+
+          <td class="px-3 py-2 whitespace-nowrap">
+            {% if stack.classification in ('stale', 'orphan', 'malformed') %}
+            <button hx-post="/system/containers/{{ stack.compose_project }}/remove"
+                    hx-target="#containers-table"
+                    hx-swap="outerHTML"
+                    hx-confirm="Remove compose stack {{ stack.compose_project }}? This will run docker compose down -v."
+                    class="inline-flex items-center px-2 py-1 rounded text-xs font-medium
+                           border border-destructive/40 text-destructive hover:bg-destructive/10
+                           transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    {{ write_button_attrs(request) }}>
+              Remove
+            </button>
+            {% else %}
+            <span class="text-muted-foreground text-xs">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <p class="text-xs text-muted-foreground mt-2">
+    {% if filtered != total %}
+      Showing {{ filtered }} of {{ total }} stacks · auto-refreshes every 30 s
+    {% else %}
+      {{ total }} stack{{ 's' if total != 1 else '' }} · auto-refreshes every 30 s
+    {% endif %}
+  </p>
+</div>
+
+<script>
+(function () {
+  var currentSort = null;
+  var currentDir = 'asc';
+
+  window.sortContainersTable = function (key) {
+    if (currentSort === key) {
+      currentDir = currentDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      currentSort = key;
+      currentDir = 'asc';
+    }
+
+    var tbody = document.querySelector('#containers-tbl tbody');
+    if (!tbody) return;
+
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort(function (a, b) {
+      var va = a.getAttribute('data-sort-' + key) || '';
+      var vb = b.getAttribute('data-sort-' + key) || '';
+      var cmp = key === 'age'
+        ? parseFloat(va) - parseFloat(vb)
+        : va.localeCompare(vb);
+      return currentDir === 'asc' ? cmp : -cmp;
+    });
+    rows.forEach(function (r) { tbody.appendChild(r); });
+
+    document.querySelectorAll('#containers-tbl th[data-sort-key]').forEach(function (th) {
+      var icon = th.querySelector('.sort-icon');
+      if (!icon) return;
+      if (th.getAttribute('data-sort-key') === currentSort) {
+        icon.style.opacity = '1';
+        icon.style.transform = currentDir === 'asc' ? 'rotate(180deg)' : 'rotate(0)';
+        th.setAttribute('aria-sort', currentDir === 'asc' ? 'ascending' : 'descending');
+      } else {
+        icon.style.opacity = '0';
+        th.removeAttribute('aria-sort');
+      }
+    });
+  };
+})();
+</script>
