@@ -124,10 +124,14 @@ def code_page(
 
     arch_doc_for_template: Any = None
     content_html: str | None = None
+    arch_diagram_dsl: str | None = None
     if last_completed_job and last_completed_job.doc_id:
         arch_doc_for_template = DocService(db).get_doc(project_id, "architecture-map")
         if arch_doc_for_template:
             content_html = _render_architecture_html(arch_doc_for_template)
+        arch_diagram_doc = DocService(db).get_doc(project_id, "diagram-architecture")
+        if arch_diagram_doc:
+            arch_diagram_dsl = arch_diagram_doc.content
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -143,6 +147,7 @@ def code_page(
             "last_completed_duration": last_completed_duration,
             "arch_doc": arch_doc_for_template,
             "content_html": content_html,
+            "arch_diagram_dsl": arch_diagram_dsl,
         },
     )
 
@@ -239,6 +244,8 @@ def code_architecture(
 
     svc = DocService(db)
     arch_doc = svc.get_doc(project_id, "architecture-map")
+    arch_diagram_doc = svc.get_doc(project_id, "diagram-architecture")
+    arch_diagram_dsl = arch_diagram_doc.content if arch_diagram_doc else None
 
     if arch_doc is None:
         templates: Jinja2Templates = request.app.state.templates
@@ -257,6 +264,7 @@ def code_architecture(
             "current_project": _get_project_or_404(project_id, db),
             "content_html": content_html,
             "arch_doc": arch_doc,
+            "arch_diagram_dsl": arch_diagram_dsl,
         },
     )
 
