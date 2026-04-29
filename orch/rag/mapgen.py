@@ -14,6 +14,7 @@ from llama_index.vector_stores.lancedb import LanceDBVectorStore
 
 from orch.db.models import Project, ProjectDoc
 from orch.doc_service import DocService
+from orch.rag.module_gen import _MERMAID_CLASSDEF, _ensure_classdef_in_dsl
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -168,14 +169,17 @@ class MapGenerator:
             response = await asyncio.to_thread(llm.complete, prompt)
             answers[key] = str(response).strip()
 
-        mermaid = await asyncio.to_thread(self._build_mermaid, answers["components"], config)
-        markdown = self._assemble_markdown(answers, mermaid)
+        mermaid, purpose = await asyncio.to_thread(
+            self._build_mermaid, answers["components"], config
+        )
+        markdown = self._assemble_markdown(answers, mermaid, purpose)
 
-        def store_arch_diagram(dsl: str) -> None:
+        def store_arch_diagram(dsl: str, purpose: str) -> None:
             from orch.db.models import DocTier, DocType, EditorialCategory, Project
             from orch.db.session import SessionLocal as DefaultSessionLocal
 
             factory = db_session_factory or DefaultSessionLocal
+            content = f"<!-- purpose: {purpose} -->\n{dsl}"
             with factory() as session:
                 project = session.get(Project, project_id)
                 if project is None:
@@ -190,7 +194,7 @@ class MapGenerator:
                         doc_type=DocType.diagram,
                         tier=DocTier.fully_automated,
                         editorial_category=EditorialCategory.technical,
-                        content=dsl,
+                        content=content,
                         generated_by="code-understanding:mapgen",
                         source_paths=["*"],
                     )
@@ -199,14 +203,14 @@ class MapGenerator:
                         project_id=project_id,
                         doc_id="diagram-architecture",
                         title=f"{project.display_name} — Architecture Diagram",
-                        content=dsl,
+                        content=content,
                         generated_by="code-understanding:mapgen",
                         source_paths=["*"],
                     )
                 session.commit()
 
         try:
-            await asyncio.to_thread(store_arch_diagram, mermaid)
+            await asyncio.to_thread(store_arch_diagram, mermaid, purpose)
         except Exception as exc:
             import logging
 
@@ -265,7 +269,9 @@ class MapGenerator:
             parts.append(f"// {path}  ({lang})\n{text}")
         return "\n\n---\n\n".join(parts)
 
-    def _build_mermaid(self, components_answer: str, config: CodeUnderstandingConfig) -> str:
+    def _build_mermaid(
+        self, components_answer: str, config: CodeUnderstandingConfig
+    ) -> tuple[str, str]:
         llm = Ollama(
             model=config.resolved_llm_model(),
             base_url=config.ollama_url,
@@ -274,17 +280,33 @@ class MapGenerator:
         prompt = (
             "You are generating a Mermaid component diagram for a software system.\n"
             f"Components and their descriptions:\n{components_answer}\n\n"
-            "The diagram MUST start with this exact YAML frontmatter block:\n"
-            "---\n"
-            "config:\n"
-            "  layout: elk\n"
-            "---\n\n"
             "Produce ONLY a valid Mermaid `graph TD` diagram showing the "
             "relationships between these components. Use short alphanumeric "
             "node IDs and put the human label in brackets, e.g. `CLI[iw CLI]`. "
             "Wrap the diagram in a ```mermaid ... ``` fenced code block. "
             "No prose, no explanation.\n"
-            "Maximum 15 nodes. If the system has more components, group minor ones.\n"
+            "Maximum 15 nodes. If the system has more components, group minor ones.\n\n"
+            + _MERMAID_CLASSDEF
+            + "\n"
+            "Class assignment rules:\n"
+            "- API/CLI entry points and routers → `class NodeID api`\n"
+            "- Database models, repositories, data stores → `class NodeID data`\n"
+            "- Background jobs, daemon, pipeline workers → `class NodeID worker`\n"
+            "- External APIs, third-party services → `class NodeID external`\n"
+            "- Dashboard/UI components → `class NodeID ui`\n"
+            "- Core orchestration services → `class NodeID core`\n\n"
+            "Abstraction-level instruction:\n"
+            "Show only high-level architectural components "
+            "(services, entry points, data stores, workers).\n"
+            "Do NOT include: utility classes, helper functions, DTOs, "
+            "configuration classes, or import details.\n"
+            "Every node must be at the same abstraction level — "
+            "no mixing services with low-level utilities.\n\n"
+            "After the diagram block, output a second fenced block:\n"
+            "```purpose\n"
+            "[One or two sentences describing what this diagram shows "
+            "and when a developer should refer to it.]\n"
+            "```\n"
         )
         response = llm.complete(prompt)
         text = response.text
@@ -292,12 +314,16 @@ class MapGenerator:
         match = re.search(r"```mermaid\s*(.*?)\s*```", text, re.DOTALL)
         mermaid_dsl = match.group(1).strip() if match else "graph TD\n  A[System]"
 
-        elk_frontmatter = "---\nconfig:\n  layout: elk\n---\n"
-        if "layout: elk" not in mermaid_dsl:
-            mermaid_dsl = elk_frontmatter + mermaid_dsl
-        return mermaid_dsl
+        purpose_match = re.search(r"```purpose\s*(.*?)\s*```", text, re.DOTALL)
+        if purpose_match:
+            purpose = purpose_match.group(1).strip().replace("\n", " ")
+        else:
+            purpose = "This diagram shows the top-level architecture of the system."
 
-    def _assemble_markdown(self, answers: dict[str, str], mermaid: str) -> str:
+        mermaid_dsl = _ensure_classdef_in_dsl(mermaid_dsl)
+        return mermaid_dsl, purpose
+
+    def _assemble_markdown(self, answers: dict[str, str], mermaid: str, purpose: str) -> str:
         lines = ["# Architecture Map", ""]
         for key, _question, _retrieval in self.QUESTIONS:
             value = answers.get(key, "").strip()
@@ -306,6 +332,8 @@ class MapGenerator:
             lines.append(value if value else "_(no answer)_")
             lines.append("")
         lines.append("## Architecture Diagram")
+        lines.append("")
+        lines.append(f"<!-- purpose: {purpose} -->")
         lines.append("")
         lines.append("```mermaid")
         lines.append(mermaid)

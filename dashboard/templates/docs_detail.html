@@ -189,11 +189,12 @@
     <div id="view-markdown" class="p-8 overflow-y-auto" style="max-height: calc(100vh - 220px);">
       <div class="prose-doc max-w-4xl mx-auto">
         <style>
-          .prose-doc h1,.prose-doc h2,.prose-doc h3,.prose-doc h4 { color:var(--foreground); font-weight:600; margin-top:1.5em; margin-bottom:0.5em; }
-          .prose-doc h1 { font-size:1.5rem; }
-          .prose-doc h2 { font-size:1.15rem; border-bottom:1px solid var(--border); padding-bottom:0.3em; }
-          .prose-doc h3 { font-size:1rem; }
-          .prose-doc p  { color:var(--foreground); line-height:1.75; margin-bottom:0.85em; font-size:0.9375rem; }
+          .prose-doc h1,.prose-doc h2,.prose-doc h3,.prose-doc h4 { color:var(--foreground); margin-top:1.5em; margin-bottom:0.5em; }
+          .prose-doc h1 { font-size:1.6rem; font-weight:700; border-bottom:2px solid var(--border); padding-bottom:0.4em; margin-top:0; }
+          .prose-doc h2 { font-size:1.2rem; font-weight:600; border-bottom:1px solid var(--border); padding-bottom:0.25em; }
+          .prose-doc h3 { font-size:1rem; font-weight:600; color:var(--muted-foreground); }
+          .prose-doc h4 { font-size:0.9375rem; font-weight:600; color:var(--muted-foreground); }
+          .prose-doc p  { color:var(--foreground); line-height:1.8; max-width:72ch; margin-bottom:0.85em; font-size:0.9375rem; }
           .prose-doc ul,.prose-doc ol { padding-left:1.5em; margin-bottom:0.75em; font-size:0.9375rem; color:var(--foreground); }
           .prose-doc li { margin-bottom:0.3em; line-height:1.65; }
           .prose-doc code { font-family:var(--font-mono); font-size:0.8rem; background:var(--muted); color:var(--foreground); padding:0.1em 0.35em; border-radius:3px; }
@@ -206,7 +207,27 @@
           .prose-doc a { color:var(--primary); text-decoration:underline; }
           .prose-doc img { max-width:100%; border-radius:var(--radius); border:1px solid var(--border); margin:1em 0; }
           .prose-doc hr { border:none; border-top:1px solid var(--border); margin:2em 0; }
+          .callout { border-left:4px solid; border-radius:0 var(--radius) var(--radius) 0; padding:0.75em 1em; margin:1.25em 0; font-size:0.9rem; }
+          .callout-header { display:flex; align-items:center; gap:0.4em; font-weight:600; margin-bottom:0.4em; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em; }
+          .callout-note     { border-color:#3B82F6; background:#EFF6FF; }
+          .callout-note     .callout-header { color:#1D4ED8; }
+          .callout-tip      { border-color:#10B981; background:#ECFDF5; }
+          .callout-tip      .callout-header { color:#065F46; }
+          .callout-warning  { border-color:#F59E0B; background:#FFFBEB; }
+          .callout-warning  .callout-header { color:#92400E; }
+          .callout-danger   { border-color:#EF4444; background:#FEF2F2; }
+          .callout-danger   .callout-header { color:#991B1B; }
+          .callout-important{ border-color:#8B5CF6; background:#F5F3FF; }
+          .callout-important .callout-header { color:#4C1D95; }
+          .doc-toc { position:sticky; top:1rem; font-size:0.8rem; max-width:220px; float:right; margin-left:1.5rem; margin-bottom:1rem; border-left:2px solid var(--border); padding-left:0.75rem; }
+          .doc-toc ul { list-style:none; padding:0; margin:0; }
+          .doc-toc > ul > li { margin-bottom:0.35em; }
+          .doc-toc > ul > li > ul { padding-left:0.75em; margin-top:0.25em; }
+          .doc-toc a { color:var(--muted-foreground); text-decoration:none; }
+          .doc-toc a:hover { color:var(--foreground); }
+          @media (max-width:1279px) { .doc-toc { display:none; } }
         </style>
+        <div id="doc-toc-container"></div>
         {{ content_html | safe }}
       </div>
     </div>
@@ -307,6 +328,81 @@ document.body.addEventListener('docJobFailed', function(e) {
   if (el && detail.error) {
     var msg = detail.error.length > 120 ? detail.error.substring(0,120) + '…' : detail.error;
     el.innerHTML = '<div class="p-3 mb-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300"><span class="font-medium">Generation failed:</span> ' + msg + '</div>';
+  }
+});
+
+function iwProcessCallouts(container) {
+  if (!container) return;
+  var blockquotes = container.querySelectorAll('blockquote');
+  blockquotes.forEach(function(bq) {
+    var firstP = bq.querySelector('p');
+    if (!firstP) return;
+    var text = firstP.textContent || '';
+    var match = text.match(/^\[!(NOTE|TIP|WARNING|DANGER|IMPORTANT)\]/i);
+    if (!match) return;
+    var type = match[1].toLowerCase();
+    var iconMap = { note: 'ℹ️', tip: '💡', warning: '⚠️', danger: '🚨', important: '📌' };
+    var labelMap = { note: 'Note', tip: 'Tip', warning: 'Warning', danger: 'Danger', important: 'Important' };
+    var icon = iconMap[type] || 'ℹ️';
+    var label = labelMap[type] || type;
+    var callout = document.createElement('div');
+    callout.className = 'callout callout-' + type;
+    var header = document.createElement('div');
+    header.className = 'callout-header';
+    header.textContent = icon + ' ' + label;
+    var body = document.createElement('div');
+    body.className = 'callout-body';
+    while (bq.firstChild) { body.appendChild(bq.firstChild); }
+    callout.appendChild(header);
+    callout.appendChild(body);
+    bq.parentNode.replaceChild(callout, bq);
+  });
+}
+
+function iwBuildToc(container) {
+  if (!container) return;
+  var headings = container.querySelectorAll('h2, h3');
+  if (headings.length < 3) return;
+  headings.forEach(function(h) {
+    if (!h.id) {
+      var id = h.textContent || '';
+      id = id.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      h.id = id;
+    }
+  });
+  var nav = document.createElement('nav');
+  nav.className = 'doc-toc';
+  var ul = document.createElement('ul');
+  var currentUl = ul;
+  var prevLevel = 2;
+  headings.forEach(function(h) {
+    var level = parseInt(h.tagName.charAt(1));
+    var li = document.createElement('li');
+    var a = document.createElement('a');
+    a.href = '#' + h.id;
+    a.textContent = h.textContent || '';
+    li.appendChild(a);
+    if (level === 2) {
+      ul.appendChild(li);
+      var subUl = document.createElement('ul');
+      li.appendChild(subUl);
+      currentUl = subUl;
+    } else {
+      currentUl.appendChild(li);
+    }
+  });
+  nav.appendChild(ul);
+  var tocContainer = document.getElementById('doc-toc-container');
+  if (tocContainer) {
+    tocContainer.appendChild(nav);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var proseDoc = document.querySelector('.prose-doc');
+  if (proseDoc) {
+    iwProcessCallouts(proseDoc);
+    iwBuildToc(proseDoc);
   }
 });
 </script>

@@ -31,6 +31,21 @@ if TYPE_CHECKING:
 router = APIRouter(prefix="/project/{project_id}")
 
 
+def _clean_diagram_dsl(raw: str) -> str:
+    """Strip HTML comments and YAML frontmatter from a stored diagram DSL.
+
+    Stored docs may contain a '<!-- purpose: ... -->' comment prefix and/or
+    a '---\\nconfig:\\n  layout: elk\\n---' frontmatter block. Both must be
+    removed before the DSL is handed to the Mermaid renderer.
+    """
+    dsl = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL).strip()
+    if dsl.startswith("---"):
+        end = dsl.find("\n---", 3)
+        if end != -1:
+            dsl = dsl[end + 4 :].lstrip()
+    return dsl
+
+
 def _get_project_or_404(project_id: str, db: Session) -> Project:
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
@@ -125,13 +140,17 @@ def code_page(
     arch_doc_for_template: Any = None
     content_html: str | None = None
     arch_diagram_dsl: str | None = None
+    arch_purpose: str | None = None
     if last_completed_job and last_completed_job.doc_id:
         arch_doc_for_template = DocService(db).get_doc(project_id, "architecture-map")
         if arch_doc_for_template:
             content_html = _render_architecture_html(arch_doc_for_template)
         arch_diagram_doc = DocService(db).get_doc(project_id, "diagram-architecture")
-        if arch_diagram_doc:
-            arch_diagram_dsl = arch_diagram_doc.content
+        if arch_diagram_doc and arch_diagram_doc.content:
+            m = re.search(r"<!-- purpose: (.*?) -->", arch_diagram_doc.content)
+            if m:
+                arch_purpose = m.group(1).strip()
+            arch_diagram_dsl = _clean_diagram_dsl(arch_diagram_doc.content)
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -148,6 +167,7 @@ def code_page(
             "arch_doc": arch_doc_for_template,
             "content_html": content_html,
             "arch_diagram_dsl": arch_diagram_dsl,
+            "arch_purpose": arch_purpose,
         },
     )
 
@@ -245,7 +265,7 @@ def code_architecture(
     svc = DocService(db)
     arch_doc = svc.get_doc(project_id, "architecture-map")
     arch_diagram_doc = svc.get_doc(project_id, "diagram-architecture")
-    arch_diagram_dsl = arch_diagram_doc.content if arch_diagram_doc else None
+    arch_diagram_dsl = None
 
     if arch_doc is None:
         templates: Jinja2Templates = request.app.state.templates
@@ -256,6 +276,13 @@ def code_architecture(
         )
 
     content_html = _render_architecture_html(arch_doc)
+    arch_purpose = None
+    if arch_diagram_doc and arch_diagram_doc.content:
+        m = re.search(r"<!-- purpose: (.*?) -->", arch_diagram_doc.content)
+        if m:
+            arch_purpose = m.group(1).strip()
+        arch_diagram_dsl = _clean_diagram_dsl(arch_diagram_doc.content)
+
     templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -265,6 +292,7 @@ def code_architecture(
             "content_html": content_html,
             "arch_doc": arch_doc,
             "arch_diagram_dsl": arch_diagram_dsl,
+            "arch_purpose": arch_purpose,
         },
     )
 

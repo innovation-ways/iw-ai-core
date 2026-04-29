@@ -2,7 +2,7 @@
 <script>
   if (typeof mermaid !== 'undefined') {
     var isDark = document.documentElement.classList.contains('dark');
-    mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'default', securityLevel: 'loose' });
+    mermaid.initialize({ startOnLoad: false, theme: isDark ? 'dark' : 'base', securityLevel: 'loose' });
     window.iwRenderMermaid = async function(root) {
       var scope = root || document;
       // div.mermaid format (legacy / chat-inserted blocks)
