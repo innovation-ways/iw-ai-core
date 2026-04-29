@@ -396,8 +396,16 @@ class TestMergeQueueIntegration:
         def fake_commit_script(*args, **kwargs):
             result = MagicMock()
             result.returncode = 0
-            result.stdout = "squash ok"
-            result.stderr = ""
+            cmd = args[0] if args else kwargs.get("args", [])
+            if cmd and cmd[0] == "git":
+                result.stdout = ""
+                result.stderr = ""
+            elif cmd and "worktree_commit.sh" in str(cmd):
+                result.stdout = "squash ok"
+                result.stderr = ""
+            else:
+                result.stdout = ""
+                result.stderr = ""
             return result
 
         with (

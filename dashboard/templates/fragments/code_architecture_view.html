@@ -22,8 +22,6 @@
         .prose-doc a { color:var(--primary); text-decoration:underline; }
         .prose-doc img { max-width:100%; border-radius:var(--radius); border:1px solid var(--border); margin:1em 0; }
         .prose-doc hr { border:none; border-top:1px solid var(--border); margin:2em 0; }
-        .prose-doc .mermaid { margin: 1.5em 0; text-align: center; }
-        .prose-doc .mermaid svg { max-width: 100%; height: auto; }
       </style>
       {{ content_html | safe }}
     </div>
@@ -41,4 +39,8 @@
   <div id="code-loading-spinner" class="htmx-indicator hidden">
     {% include "fragments/code_module_spinner.html" %}
   </div>
+
+  {% if arch_diagram_dsl %}
+    {% include "fragments/code_architecture_diagram.html" %}
+  {% endif %}
 </div>

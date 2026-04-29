@@ -23,13 +23,7 @@ class TestBuildMermaidElkInjection:
         from orch.rag.mapgen import MapGenerator
 
         mock_response = MagicMock()
-        mock_response.text = (
-            "```mermaid\n"
-            "graph TD\n"
-            "  A[CLI] --> B[Daemon]\n"
-            "  B --> C[DB]\n"
-            "```"
-        )
+        mock_response.text = "```mermaid\ngraph TD\n  A[CLI] --> B[Daemon]\n  B --> C[DB]\n```"
 
         with patch("orch.rag.mapgen.Ollama") as mock_ollama_cls:
             mock_llm_instance = MagicMock()
@@ -51,14 +45,7 @@ class TestBuildMermaidElkInjection:
 
         mock_response = MagicMock()
         mock_response.text = (
-            "```mermaid\n"
-            "---\n"
-            "config:\n"
-            "  layout: elk\n"
-            "---\n"
-            "graph TD\n"
-            "  A[CLI] --> B[Daemon]\n"
-            "```"
+            "```mermaid\n---\nconfig:\n  layout: elk\n---\ngraph TD\n  A[CLI] --> B[Daemon]\n```"
         )
 
         with patch("orch.rag.mapgen.Ollama") as mock_ollama_cls:

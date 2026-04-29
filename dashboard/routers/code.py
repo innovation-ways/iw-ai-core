@@ -251,6 +251,31 @@ async def regenerate_module(
     )
 
 
+@router.get("/modules/{module_slug}/diagram", response_class=HTMLResponse)
+async def get_module_diagram(
+    project_id: str,
+    module_slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    _get_project_or_404(project_id, db)
+
+    doc_service = DocService(db)
+    diagram_doc = doc_service.get_doc(project_id, f"diagram-module-{module_slug}")
+    diagram_dsl = diagram_doc.content if diagram_doc else None
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/code_module_diagram.html",
+        {
+            "project_id": project_id,
+            "slug": module_slug,
+            "diagram_dsl": diagram_dsl,
+        },
+    )
+
+
 @router.get("/symbol", response_class=HTMLResponse)
 async def explain_symbol(
     project_id: str,

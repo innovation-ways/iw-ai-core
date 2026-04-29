@@ -129,9 +129,7 @@ The file must export `def seed(db: Session) -> None` and insert:
      ```
 
 2. A `ProjectDoc` row for a module diagram:
-   - `doc_id`: `"diagram-module-orch-rag"` — must match the slug derived from the module path.
-     The slug formula is: `path.strip("/").replace("/", "-").lower()`, so `orch/rag/` → `orch-rag`
-     and the diagram doc_id is `diagram-module-{slug}` = `diagram-module-orch-rag`.
+   - `doc_id`: `"diagram-module-rag"` (or any slug that matches a module visible in the code view)
    - `doc_type`: `"diagram"`
    - `tier`: `"fully_automated"`
    - `content`: a short valid Mermaid DSL, e.g.:
@@ -148,29 +146,23 @@ The file must export `def seed(db: Session) -> None` and insert:
 
 Make seeding idempotent (check `db.scalar(select(...).where(ProjectDoc.doc_id == ...))` before insert). If the project row doesn't exist yet, call `iw step-fail` with `ENV_DATA_MISSING:` prefix.
 
-> ⚠️ NEVER run the seed from your host shell. After writing the fixture file, you MUST exec into the `app` container and re-run the seed **before opening the browser**:
-> ```bash
-> docker compose -p "$COMPOSE_PROJECT_NAME" exec app uv run python scripts/e2e_seed.py
-> ```
-> Only if this `exec` fails should you fall back to `iw step-fail` with `ENV_DATA_MISSING:`.
+> ⚠️ NEVER run the fixture seed from your host shell. Exec into the container if needed:
+> `docker compose -p "$COMPOSE_PROJECT_NAME" exec e2e-dashboard uv run python scripts/e2e_seed.py`
 
 ## Verification Steps
 
 ### V1: Architecture diagram visible on code index page (AC2)
 
 1. Navigate to `$IW_BROWSER_BASE_URL/projects/<project-slug>/code`.
-2. Wait for the page to load fully. Call `playwright-cli snapshot` to read the DOM.
-3. Scroll down (or call snapshot again) until you find a heading "Architecture Diagram" or an element with `id="code-arch-diagram"`.
-4. **Verify:** Inside `#code-arch-diagram`, look for an `<svg>` element in the snapshot output — the DSL has been rendered by mermaid. If you only see raw mermaid DSL text (e.g., "graph TD"), take a second snapshot after 2 seconds; mermaid rendering is asynchronous and may not be complete immediately.
-5. **Screenshot:** `playwright-cli screenshot` → `cp .playwright-cli/page-*.png ai-dev/active/F-00065/evidences/post/F-00065_v1_arch_diagram.png`
+2. Wait for the page to load fully. Scroll down to find the Architecture section — the architecture diagram panel should be rendered below or alongside the architecture map text.
+3. **Verify:** An element with `id="code-arch-diagram"` (or a heading "Architecture Diagram") is visible on the page. The Mermaid DSL has been rendered into an SVG inside the diagram container — NOT shown as raw text.
+4. **Screenshot:** `playwright-cli screenshot` → `cp .playwright-cli/page-*.png ai-dev/active/F-00065/evidences/post/F-00065_v1_arch_diagram.png`
 
 ### V2: Module diagram visible in module detail view (AC1)
 
-> ⚠️ **CRITICAL**: You MUST navigate to the full code page and click the module in the UI. Do NOT navigate directly to the API fragment URL (`/api/projects/.../code/modules/orch-rag` or `.../diagram`) — those endpoints return bare HTML fragments without mermaid.js loaded, so the diagram will never render.
-
-1. From the code index page (`/projects/<project-slug>/code`), call `playwright-cli snapshot` to find the module list. Click on the card for the `orch-rag` module (title "Code Understanding (RAG)") using the ref from the snapshot. Wait for the module detail to load in-page via htmx.
-2. Call `playwright-cli snapshot` again. The module documentation appears first, then a "Component Diagram" section appears after an htmx sub-request for the diagram fragment.
-3. **Verify:** Look for an `<svg>` element inside the `code-module-diagram` container in the snapshot output. If only raw DSL text is visible, wait 2 seconds and call snapshot again.
+1. From the code index page, click on a module that has a seeded diagram doc (e.g., the `rag` module if `diagram-module-rag` was seeded).
+2. Wait for the module detail fragment to load. The module documentation should appear first, followed by a "Component Diagram" section below it.
+3. **Verify:** A `<div>` with class `code-module-diagram` (or heading "Component Diagram") is visible. The Mermaid block is rendered as an SVG — not raw DSL text, not a blank container.
 4. **Screenshot:** `playwright-cli screenshot` → `cp .playwright-cli/page-*.png ai-dev/active/F-00065/evidences/post/F-00065_v2_module_diagram.png`
 
 ### V3: Empty state for module without a diagram (AC3)
