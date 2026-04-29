@@ -160,11 +160,11 @@ class TestMermaid:
             mock_ollama_class.return_value = mock_llm
 
             gen = MapGenerator()
-            result = gen._build_mermaid(
+            dsl, _purpose = gen._build_mermaid(
                 "main.py -> utils.py -> database", CodeUnderstandingConfig()
             )
 
-        assert "graph TD" in result
+        assert "graph TD" in dsl
 
 
 class TestAssembleMarkdown:
@@ -183,7 +183,8 @@ class TestAssembleMarkdown:
             "key_patterns": "MVC.",
         }
         mermaid = "graph TD\n  A[System]"
-        md = gen._assemble_markdown(answers, mermaid)
+        purpose = "Test purpose."
+        md = gen._assemble_markdown(answers, mermaid, purpose)
 
         for key in answers:
             assert f"## {key.replace('_', ' ').title()}" in md or f"## {key}" in md

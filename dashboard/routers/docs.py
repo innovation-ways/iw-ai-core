@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingRes
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
-from dashboard.utils.markdown import render_markdown
+from dashboard.utils.markdown import render_markdown, render_markdown_with_callouts
 from orch.db.models import DocStatus, DocType, JobStatus, Project
 from orch.doc_service import DocService
 
@@ -75,7 +75,7 @@ def docs_detail(
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
     versions = svc.list_doc_versions(project_id, doc_id)
-    content_html = render_markdown(doc.content) if doc.content else ""
+    content_html = render_markdown_with_callouts(doc.content) if doc.content else ""
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -110,7 +110,7 @@ def docs_html_view(
         return Response(content=html_bytes, media_type="text/html")
 
     # Fallback: render markdown inline with minimal styling
-    rendered = render_markdown(doc.content)
+    rendered = render_markdown_with_callouts(doc.content)
     fallback_html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>

@@ -23,6 +23,25 @@ if TYPE_CHECKING:
     from orch.rag.config import CodeUnderstandingConfig
 
 
+_MERMAID_CLASSDEF = """\
+After the graph declaration, add this classDef block verbatim:
+  classDef api fill:#DBEAFE,stroke:#3B82F6,color:#1E3A5F
+  classDef data fill:#D1FAE5,stroke:#10B981,color:#065F46
+  classDef worker fill:#FEF3C7,stroke:#F59E0B,color:#78350F
+  classDef external fill:#F3F4F6,stroke:#9CA3AF,color:#374151
+  classDef ui fill:#EDE9FE,stroke:#8B5CF6,color:#3B0764
+  classDef core fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D
+"""
+
+_MERMAID_CLASSDEF_BLOCK = """\
+  classDef api fill:#DBEAFE,stroke:#3B82F6,color:#1E3A5F
+  classDef data fill:#D1FAE5,stroke:#10B981,color:#065F46
+  classDef worker fill:#FEF3C7,stroke:#F59E0B,color:#78350F
+  classDef external fill:#F3F4F6,stroke:#9CA3AF,color:#374151
+  classDef ui fill:#EDE9FE,stroke:#8B5CF6,color:#3B0764
+  classDef core fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D
+"""
+
 _STEP_LABELS: list[str] = [
     "Primary responsibility",
     "Key files",
@@ -41,6 +60,45 @@ _FILLER_PREAMBLE_RE = re.compile(
     r"[^.:\n]*?:\s*\n?",
     re.IGNORECASE,
 )
+
+
+def _strip_yaml_frontmatter(dsl: str) -> str:
+    """Strip YAML frontmatter (---...---) from a Mermaid DSL string.
+
+    LLMs sometimes emit frontmatter even when not instructed to. Mermaid
+    versions without ELK plugin support fail with a parse error when they
+    encounter layout directives. Stripping prevents that regression.
+    """
+    stripped = dsl.lstrip()
+    if not stripped.startswith("---"):
+        return dsl
+    end = stripped.find("\n---", 3)
+    if end == -1:
+        return dsl
+    return stripped[end + 4 :].lstrip()
+
+
+def _ensure_classdef_in_dsl(dsl: str) -> str:
+    """Ensure the classDef block is present in the Mermaid DSL.
+
+    The LLM often uses individual 'class NodeID api' assignments instead of
+    including the 'classDef' color definitions. This function post-processes
+    the DSL to inject the classDef block right after the diagram-type line
+    (e.g. 'graph TD').
+    """
+    dsl = _strip_yaml_frontmatter(dsl)
+    if "classDef api" in dsl:
+        return dsl
+
+    lines = dsl.split("\n")
+    insert_idx = 0
+    for i, line in enumerate(lines):
+        if line.strip().startswith("graph ") or line.strip().startswith("flowchart "):
+            insert_idx = i + 1
+            break
+
+    new_lines = lines[:insert_idx] + [_MERMAID_CLASSDEF_BLOCK, ""] + lines[insert_idx:]
+    return "\n".join(new_lines)
 
 
 def _strip_filler_preamble(text: str) -> str:
@@ -249,25 +307,44 @@ Rules:
             f"Code context:\n{context_str}\n\n"
             "Rules:\n"
             "- Output ONLY a fenced ```mermaid block. No prose, no explanation.\n"
-            "- The diagram MUST start with this YAML frontmatter:\n"
-            "  ---\n"
-            "  config:\n"
-            "    layout: elk\n"
-            "  ---\n"
-            "- Use 'graph TD' direction.\n"
+            "- Use 'graph LR' direction (left-to-right).\n"
             "- Maximum 12 nodes. Group minor items if needed.\n"
             "- Node IDs: short alphanumeric (e.g., QA, IDX, CFG). Labels in [brackets].\n"
-            "- Show the main internal components and their key dependencies.\n"
+            "- Show the main internal components and their key dependencies.\n\n"
+            + _MERMAID_CLASSDEF
+            + "\n"
+            "Class assignment rules:\n"
+            "- API handlers, controllers, routers → `class NodeID api`\n"
+            "- Database models, repositories, data access layers → `class NodeID data`\n"
+            "- Background jobs, daemon workers, pipeline stages → `class NodeID worker`\n"
+            "- External API clients, third-party integrations → `class NodeID external`\n"
+            "- Dashboard/UI components, frontend adapters → `class NodeID ui`\n"
+            "- Core domain models, business logic services → `class NodeID core`\n\n"
+            "Structural-elements-only instruction:\n"
+            "Show only: controllers, API handlers, services, repositories, data access layers, "
+            "integration adapters, core domain models.\n"
+            "Do NOT show: utility classes, helpers, DTOs, config objects.\n\n"
+            "After the diagram block, output a second fenced block:\n"
+            "```purpose\n"
+            "[One or two sentences describing what this diagram shows and when to refer to it.]\n"
+            "```\n"
         )
         response = await asyncio.to_thread(llm.complete, prompt)
         text = response.text
 
         match = re.search(r"```mermaid\s*(.*?)\s*```", text, re.DOTALL)
-        mermaid_dsl = match.group(1).strip() if match else f"graph TD\n  A[{module_name}]"
+        mermaid_dsl = match.group(1).strip() if match else f"graph LR\n  A[{module_name}]"
 
-        elk_frontmatter = "---\nconfig:\n  layout: elk\n---\n"
-        if "layout: elk" not in mermaid_dsl:
-            mermaid_dsl = elk_frontmatter + mermaid_dsl
+        purpose_match = re.search(r"```purpose\s*(.*?)\s*```", text, re.DOTALL)
+        if purpose_match:
+            purpose = purpose_match.group(1).strip().replace("\n", " ")
+        else:
+            purpose = (
+                f"This diagram shows the internal component structure of the {module_name} module."
+            )
+
+        mermaid_dsl = _ensure_classdef_in_dsl(mermaid_dsl)
+        content = f"<!-- purpose: {purpose} -->\n{mermaid_dsl}"
 
         slug = self._make_slug(project_id, module_path)
         doc_id = f"diagram-module-{slug}"
@@ -282,7 +359,7 @@ Rules:
                 doc_type=DocType.diagram,
                 tier=DocTier.fully_automated,
                 editorial_category=EditorialCategory.technical,
-                content=mermaid_dsl,
+                content=content,
                 generated_by="code-understanding:module_gen",
                 source_paths=[module_path],
             )
@@ -291,7 +368,7 @@ Rules:
                 project_id=project_id,
                 doc_id=doc_id,
                 title=f"Module Diagram: {module_name} ({module_path})",
-                content=mermaid_dsl,
+                content=content,
                 generated_by="code-understanding:module_gen",
                 source_paths=[module_path],
             )

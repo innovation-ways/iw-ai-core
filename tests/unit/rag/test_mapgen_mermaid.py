@@ -31,13 +31,13 @@ class TestBuildMermaidElkInjection:
             mock_ollama_cls.return_value = mock_llm_instance
 
             generator = MapGenerator()
-            result = generator._build_mermaid(
+            dsl, _purpose = generator._build_mermaid(
                 "- **CLI**: command interface\n- **Daemon**: background runner",
                 mock_config,
             )
 
-        assert "layout: elk" in result, "ELK frontmatter must be injected when LLM omits it"
-        assert result.count("layout: elk") == 1, "ELK frontmatter must appear exactly once"
+        assert "layout: elk" in dsl, "ELK frontmatter must be injected when LLM omits it"
+        assert dsl.count("layout: elk") == 1, "ELK frontmatter must appear exactly once"
 
     def test_elk_frontmatter_not_duplicated_when_llm_includes_it(self, mock_config):
         """When LLM already includes ELK frontmatter, it is not duplicated."""
@@ -54,12 +54,12 @@ class TestBuildMermaidElkInjection:
             mock_ollama_cls.return_value = mock_llm_instance
 
             generator = MapGenerator()
-            result = generator._build_mermaid(
+            dsl, _purpose = generator._build_mermaid(
                 "- **CLI**: command interface\n- **Daemon**: background runner",
                 mock_config,
             )
 
-        assert result.count("layout: elk") == 1, "ELK frontmatter must not be duplicated"
+        assert dsl.count("layout: elk") == 1, "ELK frontmatter must not be duplicated"
 
     def test_fallback_dsl_when_no_fenced_block(self, mock_config):
         """When LLM returns prose with no fenced mermaid block, fallback DSL is returned."""
@@ -74,10 +74,10 @@ class TestBuildMermaidElkInjection:
             mock_ollama_cls.return_value = mock_llm_instance
 
             generator = MapGenerator()
-            result = generator._build_mermaid(
+            dsl, _purpose = generator._build_mermaid(
                 "- **CLI**: command interface\n- **Daemon**: background runner",
                 mock_config,
             )
 
-        assert "graph TD" in result, "Fallback DSL must contain 'graph TD'"
-        assert "layout: elk" in result, "Fallback DSL must still get ELK frontmatter injected"
+        assert "graph TD" in dsl, "Fallback DSL must contain 'graph TD'"
+        assert "layout: elk" in dsl, "Fallback DSL must still get ELK frontmatter injected"

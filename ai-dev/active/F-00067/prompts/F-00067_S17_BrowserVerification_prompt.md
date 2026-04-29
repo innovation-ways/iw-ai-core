@@ -87,7 +87,7 @@ Use `playwright-cli` exclusively for all browser interactions.
 ### V7: No Regressions
 
 1. Navigate to `$IW_BROWSER_BASE_URL/project/iw-ai-core/docs` and verify the docs library loads.
-2. Open the PDF download link on any doc and verify it returns a PDF (no 500 error).
+2. Open the PDF download link on any doc. A **501 Not Implemented** response is **acceptable and expected** in E2E (WeasyPrint is not installed in the E2E environment). Only a **500 Internal Server Error** is a regression. Do NOT fail V7 for a 501.
 3. Navigate to `$IW_BROWSER_BASE_URL/project/iw-ai-core/code` and verify the code map page loads without JS errors.
 4. Open the "Regenerate" button on a module diagram and verify no console errors.
 5. **Verify**: No new console errors appeared on any page visited during V1–V6.
