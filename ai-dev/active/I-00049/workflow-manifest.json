@@ -1,0 +1,75 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00049",
+  "type": "Issue",
+  "title": "Daemon blocked by synchronous QV baseline gate command pipe deadlock",
+  "browser_verification": false,
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Fix _run_gate_command: Popen + process-group kill on timeout; remove integration-tests from GATE_PARSERS",
+      "prompt": "prompts/I-00049_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 — verify process-group kill correctness and GATE_PARSERS change",
+      "prompt": "prompts/I-00049_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Write reproduction test (non-blocking wall-clock contract) and regression tests",
+      "prompt": "prompts/I-00049_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 — verify semantic correctness and real subprocess coverage",
+      "prompt": "prompts/I-00049_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review of all I-00049 work",
+      "prompt": "prompts/I-00049_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    }
+  ]
+}
