@@ -151,7 +151,11 @@ After implementation:
 1. Run the project's unit test command (check Makefile or `CLAUDE.md` for the exact command)
 2. Run lint and type checking (check Makefile or `CLAUDE.md` for the exact command)
 3. Do **NOT** report `tests_passed: true` unless ALL unit tests pass with zero failures
-4. If tests fail, fix them before reporting completion
+4. If tests fail, debug the root cause and fix them. If after genuine debugging the failures
+   cannot be resolved (platform constraint, missing fixture, import blocker, guard mechanism),
+   use `completion_status: blocked`, list every unresolved failure with its full error in
+   `blockers`, and **call `iw step-fail` before exiting**. Exiting without calling
+   `iw step-fail` leaves the item permanently stalled with no auto-recovery path.
 
 ## Subagent Result Contract
 
@@ -179,6 +183,6 @@ When your work is complete, report results in this JSON structure:
 }
 ```
 
-- `completion_status`: Use `complete` when all deliverables are done and tests pass. Use `partial` if some deliverables are done but others remain. Use `blocked` if external dependencies prevent progress.
+- `completion_status`: Use `complete` when all deliverables are done and tests pass. Use `partial` if some deliverables are done but others remain. Use `blocked` when you cannot proceed — including unresolvable test failures, missing fixtures, or platform constraints (e.g. a test import chain hitting a guard). **`blocked` always requires a `iw step-fail` call before you exit.**
 - `blockers`: List any issues that prevented full completion. Include enough detail for the orchestrator to decide next steps.
 - `notes`: Any context the next step or reviewer should know.

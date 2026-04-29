@@ -66,6 +66,7 @@ uv run pytest -k "test_next_id" -v         # Match by test name
 ## Gotchas
 
 - Unit tests must not import `orch.config` at module level if env vars are being patched — import inside the test function or use `importlib` carefully
+- **NEVER import `dashboard.routers.*` or `dashboard.dependencies` in a unit test unless a testcontainer `db_session` is in scope.** These modules load `SessionLocal` on import via `orch.db.session.__getattr__`, which calls `safe_create_engine()`. The live-DB guard fires immediately because `tests/conftest.py` redirects `IW_CORE_DB_HOST:PORT` to a blocked address — making any engine URL look like the "live" DB to `is_live_db_url()`. You will see `LiveDbConnectionRefusedError` at *collection time*, before any test body runs, and every test in the file will fail. To unit-test a pure function from a router module (e.g. `_preprocess_mermaid`): either (a) extract it to a utility module with no DB in its import chain, or (b) use the testcontainer-backed `db_session` fixture + `app.dependency_overrides[get_db]` pattern shown in `tests/dashboard/test_jobs_filter_ui.py`.
 - Integration test fixtures are `scope="session"` for the container, `scope="function"` for DB transactions (rollback after each test)
 - `test_project` fixture creates a `Project` row; tests that create work items must use this project's `id`
 

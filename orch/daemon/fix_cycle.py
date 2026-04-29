@@ -55,12 +55,13 @@ _FIXABLE_STEP_TYPES = frozenset(
 )
 
 # Step types that get plain retries (no LLM fix agent — just reset to pending).
-# Currently empty — browser_verification used to live here, but failures there
-# are almost always code defects surfaced by the browser checks, not transient
-# environment issues. Kept as a hook for future step types (e.g. flaky external
-# API smoke tests) that genuinely need plain retry.
-_RETRYABLE_STEP_TYPES: frozenset[StepType] = frozenset()
+# implementation: PID-dead / silent-exit failures get up to 2 retries, but only
+# when the agent wrote no report (report_file and report_content both None).
+# A present report means the agent reached end-of-step and deliberately failed;
+# retrying against unchanged code would just re-fail.
+_RETRYABLE_STEP_TYPES: frozenset[StepType] = frozenset({StepType.implementation})
 _DEFAULT_BROWSER_VERIFY_MAX_RETRIES = 3
+_DEFAULT_IMPLEMENTATION_MAX_RETRIES = 2
 
 _TRIGGER_MAP: dict[StepType, FixTrigger] = {
     StepType.code_review: FixTrigger.code_review,
@@ -168,15 +169,28 @@ def should_retry_step(
 ) -> bool:
     """Return True if this failed step should be retried (reset to pending) without a fix cycle.
 
-    Used for browser_verification and other environment-dependent steps where the
-    failure is transient (e.g. dashboard not yet up) rather than a code defect.
+    implementation steps are retried only when the agent exited without writing a report
+    (PID-dead / silent exit). A present report means the agent deliberately stopped —
+    retrying against unchanged code would just re-fail.
     """
     if step.step_type not in _RETRYABLE_STEP_TYPES:
         return False
 
-    max_retries = project_config.config.get(
-        "browser_verify_max_retries", _DEFAULT_BROWSER_VERIFY_MAX_RETRIES
-    )
+    if step.step_type is StepType.implementation:
+        if step.report_file is not None or step.report_content is not None:
+            return False
+        max_retries = int(
+            project_config.config.get(
+                "implementation_max_retries", _DEFAULT_IMPLEMENTATION_MAX_RETRIES
+            )
+        )
+    else:
+        max_retries = int(
+            project_config.config.get(
+                "browser_verify_max_retries", _DEFAULT_BROWSER_VERIFY_MAX_RETRIES
+            )
+        )
+
     run_count = db.query(StepRun).filter(StepRun.step_id == step.id).count()
 
     if run_count >= max_retries:
