@@ -756,8 +756,23 @@ class BatchManager:
         base_sha: str,
         fingerprint: dict[str, object],
     ) -> None:
-        """Upsert a QvBaseline row (on conflict, update fingerprint + computed_at)."""
+        """Upsert a QvBaseline row (on conflict, update fingerprint + computed_at).
+
+        Only one baseline per (step_id, gate_name) is valid at any time. Stale
+        rows from a previous base_sha (e.g. after a rebase) are deleted first
+        so scalar_one_or_none() in fix_cycle.py never sees duplicates.
+        """
         from sqlalchemy import text
+
+        # Delete any stale rows with a different SHA before checking for an exact match.
+        # This ensures at most one row exists per (step_id, gate_name).
+        db.execute(
+            text(
+                "DELETE FROM qv_baselines WHERE step_id = :step_id "
+                "AND gate_name = :gate_name AND base_sha != :base_sha"
+            ),
+            {"step_id": step_id, "gate_name": gate_name, "base_sha": base_sha},
+        )
 
         existing = db.execute(
             text(
