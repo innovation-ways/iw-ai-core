@@ -35,6 +35,7 @@ def make_batch_item(
     status: BatchItemStatus = BatchItemStatus.completed,
     started_at: datetime | None = None,
     worktree_info: dict | None = None,
+    batch_id: str | int | None = None,
 ) -> MagicMock:
     item = MagicMock(spec=BatchItem)
     item.work_item_id = work_item_id
@@ -45,6 +46,8 @@ def make_batch_item(
     item.merge_info = None
     item.merged_at = None
     item.notes = None
+    item.batch_id = batch_id  # None skips migration pipeline; set explicitly to test it
+    item.worktree_compose_path = None
     return item
 
 
