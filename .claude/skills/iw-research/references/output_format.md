@@ -60,7 +60,7 @@ Include any relevant context about the project or decision driving this research
 
 ### {Finding Title} [LOW confidence]
 
-{Finding text — when confidence is low, be explicit about uncertainty: 
+{Finding text — when confidence is low, be explicit about uncertainty:
 "This finding is based on [single source](url) and requires additional validation."}
 
 ---
@@ -143,7 +143,7 @@ For LOW confidence findings, be explicit about uncertainty in the body:
 ```markdown
 ### Community considers X a pain point [LOW confidence]
 
-This assessment is based on a single G2 review mentioning the issue; 
+This assessment is based on a single G2 review mentioning the issue;
 broader community sentiment is unclear and requires additional research.
 ```
 
@@ -173,10 +173,10 @@ Be honest. Research has boundaries. Common limitations to include:
 ```markdown
 ### FastAPI outperforms Flask on async endpoints [HIGH confidence]
 
-FastAPI handles 23,000 requests/second versus Flask's 4,200 on identical 
-async endpoint workloads, a 5.4x performance advantage [TechEmpower 
+FastAPI handles 23,000 requests/second versus Flask's 4,200 on identical
+async endpoint workloads, a 5.4x performance advantage [TechEmpower
 Framework Benchmarks Round 21](https://www.techempower.com/benchmarks/
-preamble/r21/). This gap widens under concurrent load, with FastAPI 
-maintaining sub-10ms latency at 1,000 concurrent connections while 
+preamble/r21/). This gap widens under concurrent load, with FastAPI
+maintaining sub-10ms latency at 1,000 concurrent connections while
 Flask degrades to 45ms [async-benchmark-blog.netlify.app].
 ```

@@ -283,22 +283,22 @@ gh api repos/"$ORG"/"$REPO"/private-vulnerability-reporting --method PUT
 cat <<REMINDERS
 
   MANUAL FOLLOW-UPS (not automatable):
-  
+
   [ ] Install cncf/dco2 GitHub App on the org (if not already):
       https://github.com/apps/dco
-  
+
   [ ] Run USPTO and WIPO trademark searches for "my-oss-project":
       https://tmsearch.uspto.gov/
       https://branddb.wipo.int/
-  
+
   [ ] (IF HISTORY WAS REWRITTEN) Open GitHub Support ticket for SHA cache purge:
       https://support.github.com/contact
-  
+
   [ ] Tag first release and create GitHub Release:
       git tag -s v0.1.0 -m "Initial public release"
       git push origin v0.1.0
       gh release create v0.1.0 --generate-notes
-  
+
   [ ] Add OpenSSF Scorecard badge to README:
       https://api.securityscorecards.dev/projects/github.com/$ORG/$REPO/badge
 

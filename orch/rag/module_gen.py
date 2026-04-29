@@ -42,6 +42,13 @@ _MERMAID_CLASSDEF_BLOCK = """\
   classDef core fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D
 """
 
+_ELK_FRONTMATTER = """\
+---
+config:
+  layout: elk
+---
+"""
+
 _STEP_LABELS: list[str] = [
     "Primary responsibility",
     "Key files",
@@ -79,16 +86,18 @@ def _strip_yaml_frontmatter(dsl: str) -> str:
 
 
 def _ensure_classdef_in_dsl(dsl: str) -> str:
-    """Ensure the classDef block is present in the Mermaid DSL.
+    """Ensure the classDef block and ELK frontmatter are present in the Mermaid DSL.
 
     The LLM often uses individual 'class NodeID api' assignments instead of
     including the 'classDef' color definitions. This function post-processes
     the DSL to inject the classDef block right after the diagram-type line
     (e.g. 'graph TD').
+
+    ELK frontmatter (layout: elk) is also injected to ensure proper layout
+    of the diagram.
     """
     dsl = _strip_yaml_frontmatter(dsl)
-    if "classDef api" in dsl:
-        return dsl
+    has_classdef = "classDef api" in dsl
 
     lines = dsl.split("\n")
     insert_idx = 0
@@ -97,8 +106,15 @@ def _ensure_classdef_in_dsl(dsl: str) -> str:
             insert_idx = i + 1
             break
 
-    new_lines = lines[:insert_idx] + [_MERMAID_CLASSDEF_BLOCK, ""] + lines[insert_idx:]
-    return "\n".join(new_lines)
+    new_lines = lines[:insert_idx]
+    if not has_classdef:
+        new_lines += [_MERMAID_CLASSDEF_BLOCK, ""]
+    new_lines += lines[insert_idx:]
+
+    result = "\n".join(new_lines)
+    if "layout: elk" not in result:
+        result = _ELK_FRONTMATTER + result
+    return result
 
 
 def _strip_filler_preamble(text: str) -> str:
@@ -307,6 +323,13 @@ Rules:
             f"Code context:\n{context_str}\n\n"
             "Rules:\n"
             "- Output ONLY a fenced ```mermaid block. No prose, no explanation.\n"
+            "- Prefix the diagram with this YAML frontmatter block:\n"
+            "  ```\n"
+            "  ---\n"
+            "  config:\n"
+            "    layout: elk\n"
+            "  ---\n"
+            "  ```\n"
             "- Use 'graph LR' direction (left-to-right).\n"
             "- Maximum 12 nodes. Group minor items if needed.\n"
             "- Node IDs: short alphanumeric (e.g., QA, IDX, CFG). Labels in [brackets].\n"

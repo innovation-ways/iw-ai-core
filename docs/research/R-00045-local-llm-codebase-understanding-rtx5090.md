@@ -328,15 +328,15 @@ Based on these findings, the configurable provider should support:
 # Per-project code_understanding config
 code_understanding:
   provider: local | claude-code | opencode  # required
-  
+
   # Local provider settings
   ollama_url: http://localhost:11434         # default
   llm_model: gemma4:26b                     # default for local
   embed_model: manutic/nomic-embed-code     # default for local
-  
+
   # Cloud provider settings (claude-code / opencode)
   cloud_llm_model: null                     # null = use project default
-  
+
   # Analysis settings
   index_path: ~/.iw-ai-core/indexes/{project_id}/
   max_context_tokens: 32000                 # safe limit for 256K-context models
