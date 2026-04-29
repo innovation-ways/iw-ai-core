@@ -335,6 +335,7 @@
                 window.iwChat.injectToneSwitchChip(assistantArticle, renderId, tone);
               }
             },
+            onImage: renderer ? renderer.onImage : function () {},
             onError: renderer ? renderer.onError : function (err) {
               if (assistantBubble) assistantBubble.textContent = 'Error: ' + err.message;
             },

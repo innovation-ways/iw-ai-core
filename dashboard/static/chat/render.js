@@ -17,7 +17,7 @@
         'input', 'span', 'div', 'details', 'summary'],
       ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'type', 'disabled',
         'checked', 'target', 'rel', 'data-cite', 'aria-haspopup', 'aria-label',
-        'data-language', 'data-partial', 'data-copy-payload', 'open', 'summary'],
+        'data-language', 'data-lang', 'data-partial', 'data-copy-payload', 'open', 'summary'],
       FORBID_TAGS: FORBIDDEN_TAGS,
       FORBID_ATTR: FORBIDDEN_ATTRS,
       ALLOW_DATA_ATTR: false,
@@ -156,6 +156,17 @@
       highlightCodeBlock(pre);
       attachCopyButton(pre);
       pre.removeAttribute('data-partial');
+    }
+    // smd.min.js sets class="mermaid"|"d2" on <code>, not data-lang on <pre>.
+    // upgradeAllMermaidBlocks and onImage both query pre[data-lang="mermaid"],
+    // so we normalise here after every sanitize pass.
+    var diagrams = container.querySelectorAll('pre > code.mermaid, pre > code.d2');
+    for (var j = 0; j < diagrams.length; j++) {
+      var codeEl = diagrams[j];
+      var preEl = codeEl.parentElement;
+      if (preEl && !preEl.getAttribute('data-lang')) {
+        preEl.setAttribute('data-lang', codeEl.className.trim());
+      }
     }
   }
 
@@ -459,6 +470,43 @@
           feedItems.push(data);
           updateWorkItemFeed();
         },
+        onImage: function (data) {
+          try {
+            var svgB64 = data.svg_b64;
+            var sourceType = data.source_type || 'mermaid';
+            var blockIndex = typeof data.block_index === 'number' ? data.block_index : 0;
+
+            var pres = bodyEl.querySelectorAll('pre[data-lang="' + sourceType + '"]');
+            var targetPre = pres[blockIndex] || null;
+
+            if (!targetPre) return;
+
+            targetPre.setAttribute('data-iw-server-rendered', '1');
+
+            var figure = document.createElement('figure');
+            figure.className = 'chat-diagram-figure';
+
+            var img = document.createElement('img');
+            img.src = 'data:image/svg+xml;base64,' + svgB64;
+            img.alt = data.alt || 'Diagram';
+            img.className = 'chat-diagram-img';
+            figure.appendChild(img);
+
+            var caption = document.createElement('figcaption');
+            caption.className = 'chat-diagram-caption';
+            var dlLink = document.createElement('a');
+            dlLink.href = 'data:image/svg+xml;base64,' + svgB64;
+            dlLink.download = sourceType + '-diagram.svg';
+            dlLink.className = 'chat-diagram-download';
+            dlLink.textContent = 'Download SVG';
+            caption.appendChild(dlLink);
+            figure.appendChild(caption);
+
+            if (targetPre.parentNode) {
+              targetPre.parentNode.insertBefore(figure, targetPre.nextSibling);
+            }
+          } catch (err) {}
+        },
         onDone: function () {
           done = true;
           try { parser_end(p); } catch (err) {}
@@ -470,6 +518,9 @@
           tables.forEach(function (tbl) {
             var wrapper = tbl.closest('.table-wrapper');
             if (wrapper) attachCopyCSVToTable(wrapper);
+          });
+          bodyEl.querySelectorAll('pre[data-iw-server-rendered]').forEach(function (preEl) {
+            preEl.style.display = 'none';
           });
           if (window.iwChat && window.iwChat.upgradeAllMermaidBlocks) {
             window.iwChat.upgradeAllMermaidBlocks(bodyEl);

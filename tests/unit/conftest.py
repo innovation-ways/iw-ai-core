@@ -10,13 +10,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from tests.integration.conftest import db_engine, pg_container, test_project
+
 
 @pytest.fixture
 def db_session() -> MagicMock:
     """Provide a MagicMock session for unit tests that need to mock DB calls."""
     return MagicMock()
 
-
-from tests.integration.conftest import db_engine, pg_container, test_project
 
 __all__ = ["db_engine", "db_session", "pg_container", "test_project"]

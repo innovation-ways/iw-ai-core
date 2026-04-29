@@ -193,12 +193,16 @@ class QAEngine:
         "- Mermaid diagrams — emit a fenced ```mermaid block. The UI renders it "
         "as an interactive SVG with expand and retry controls. Supported types: "
         "flowchart, sequenceDiagram, classDiagram, erDiagram, stateDiagram-v2, gantt.\n"
+        "- D2 diagrams — emit a fenced ```d2 block. D2 excels at architecture, "
+        "network topology, and multi-container system diagrams (rendered server-side "
+        "as SVG; falls back to source if the d2 binary is absent).\n"
         "- Tables — use GitHub-flavored markdown tables when comparing multiple "
         "items side by side.\n"
         "- Code — use fenced blocks with a language tag (```python, ```typescript, "
         "etc.) so syntax highlighting applies.\n\n"
         "Do not preface answers with disclaimers about being a text-based AI; "
-        "emit diagrams and code directly in the response.\n\n"
+        "emit diagrams and code directly in the response. If a diagram would make "
+        "an architectural relationship clearer than prose, include it proactively.\n\n"
     )
 
     DIAGRAM_DIRECTIVE_BLOCK: str = (

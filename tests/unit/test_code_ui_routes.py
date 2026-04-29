@@ -42,13 +42,13 @@ def _make_project(project_id: str = "test-proj") -> MagicMock:
 class TestMermaidPreprocessing:
     """Tests for _preprocess_mermaid helper."""
 
-    def test_mermaid_blocks_converted_to_div(self) -> None:
+    def test_mermaid_blocks_converted_to_pre(self) -> None:
         from dashboard.routers.code_ui import _preprocess_mermaid
 
         input_md = "```mermaid\ngraph TD\n  A-->B\n```"
         result = _preprocess_mermaid(input_md)
-        assert '<div class="mermaid">' in result
-        assert "</div>" in result
+        assert '<pre data-lang="mermaid">' in result
+        assert '<code>' in result
         assert "graph TD" in result
 
     def test_multiple_mermaid_blocks_converted(self) -> None:
@@ -56,22 +56,22 @@ class TestMermaidPreprocessing:
 
         input_md = "Some text\n```mermaid\ng1\n```\nMore\n```mermaid\ng2\n```\nEnd"
         result = _preprocess_mermaid(input_md)
-        assert result.count('<div class="mermaid">') == 2
-        assert result.count("</div>") == 2
+        assert result.count('<pre data-lang="mermaid">') == 2
+        assert '<code>' in result
 
     def test_no_mermaid_blocks_unchanged(self) -> None:
         from dashboard.routers.code_ui import _preprocess_mermaid
 
         input_md = "Just regular text\n```python\nprint('hi')\n```"
         result = _preprocess_mermaid(input_md)
-        assert '<div class="mermaid">' not in result
+        assert '<pre data-lang="mermaid">' not in result
 
     def test_mermaid_blocks_with_whitespace_converted(self) -> None:
         from dashboard.routers.code_ui import _preprocess_mermaid
 
         input_md = "```mermaid\n  graph TD\n    A-->B\n```"
         result = _preprocess_mermaid(input_md)
-        assert '<div class="mermaid">' in result
+        assert '<pre data-lang="mermaid">' in result
         assert "graph TD" in result
 
 
