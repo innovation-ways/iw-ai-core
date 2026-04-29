@@ -6,6 +6,37 @@ Diagram requirements, selection criteria, and quality standards for technical do
 
 ---
 
+## Canonical Color Palette
+
+| Class   | Role                              | Fill    | Stroke  | Text    |
+|---------|-----------------------------------|---------|---------|---------|
+| api     | API / router / CLI entry points   | #DBEAFE | #3B82F6 | #1E3A5F |
+| data    | Database / repository / storage   | #D1FAE5 | #10B981 | #065F46 |
+| worker  | Background jobs / daemon          | #FEF3C7 | #F59E0B | #78350F |
+| external| External APIs / third-party       | #F3F4F6 | #9CA3AF | #374151 |
+| ui      | Dashboard / frontend              | #EDE9FE | #8B5CF6 | #3B0764 |
+| core    | Core orchestration / services     | #FEE2E2 | #EF4444 | #7F1D1D |
+
+Always add this block after the graph declaration:
+```
+classDef api fill:#DBEAFE,stroke:#3B82F6,color:#1E3A5F
+classDef data fill:#D1FAE5,stroke:#10B981,color:#065F46
+classDef worker fill:#FEF3C7,stroke:#F59E0B,color:#78350F
+classDef external fill:#F3F4F6,stroke:#9CA3AF,color:#374151
+classDef ui fill:#EDE9FE,stroke:#8B5CF6,color:#3B0764
+classDef core fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D
+```
+
+## Why Paragraph Rule
+
+Every diagram MUST be preceded by a 1–2 sentence paragraph answering:
+- What question does this diagram answer?
+- When should a developer refer to it?
+
+Example: _"This diagram shows the internal component structure of the `auth` module. Use it when adding a new authentication provider or tracing a login request through the system."_
+
+---
+
 ## Diagram Selection by Document Type
 
 ### Architecture Documents

@@ -135,6 +135,26 @@ class CodeIndexJobRunner:
             await self._db_set_status_async(self.job_id, "completed", completed=True)
             self._queue.put_nowait({"event": "progress", "phase": "done"})
 
+            try:
+                from orch.rag.index_gen import generate_index_page
+
+                def do_index() -> None:
+                    from orch.db import session as db_session_module
+
+                    factory = self._db_session_factory or db_session_module.SessionLocal
+                    with factory() as sess:
+                        generate_index_page(project_id=self.project_id, session=sess)
+
+                await asyncio.to_thread(do_index)
+            except Exception as exc:
+                import logging
+
+                logging.warning(
+                    "Index page generation failed for project %s (non-fatal): %s",
+                    self.project_id,
+                    exc,
+                )
+
         except asyncio.CancelledError:
             await self._handle_cancel()
         except Exception as e:

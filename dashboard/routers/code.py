@@ -260,9 +260,16 @@ async def get_module_diagram(
 ) -> Any:
     _get_project_or_404(project_id, db)
 
+    import re
+
     doc_service = DocService(db)
     diagram_doc = doc_service.get_doc(project_id, f"diagram-module-{module_slug}")
     diagram_dsl = diagram_doc.content if diagram_doc else None
+    diagram_purpose = None
+    if diagram_doc and diagram_doc.content:
+        m = re.search(r"<!-- purpose: (.*?) -->", diagram_doc.content)
+        if m:
+            diagram_purpose = m.group(1).strip()
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -272,6 +279,7 @@ async def get_module_diagram(
             "project_id": project_id,
             "slug": module_slug,
             "diagram_dsl": diagram_dsl,
+            "diagram_purpose": diagram_purpose,
         },
     )
 
