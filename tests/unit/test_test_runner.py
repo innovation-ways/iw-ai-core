@@ -27,12 +27,12 @@ from orch.test_runner import _resolve_allure_dirs, _resolve_execution_dir
 # ---------------------------------------------------------------------------
 
 
-def _make_run(run_type: str = "test") -> Any:
+def _make_run(run_type: str = "test", category: str = "unit") -> Any:
     """Build a minimal mock TestRun (avoids SQLAlchemy instrumentation issues)."""
     run = MagicMock()
     run.id = 1
     run.project_id = "proj-x"
-    run.category = "unit"
+    run.category = category
     run.status = TestRunStatus.pending
     run.command = "make test"
     run.exit_code = None
@@ -148,7 +148,7 @@ class TestResolveAllureDirs:
         results, report = _resolve_allure_dirs(run, db, "/exec")
 
         assert results == "/exec/test-results"
-        assert report == "/exec/test-report"
+        assert report == "/exec/test-report/unit"
 
     def test_uses_quality_config_for_quality_run_type(self) -> None:
         config = {
@@ -168,7 +168,7 @@ class TestResolveAllureDirs:
         results, report = _resolve_allure_dirs(run, db, "/exec")
 
         assert results == "/exec/quality-results"
-        assert report == "/exec/quality-report"
+        assert report == "/exec/quality-report/unit"
 
     def test_falls_back_to_defaults_for_test_run_type(self) -> None:
         project = _make_project_with_config({"test_config": {}})
@@ -178,7 +178,7 @@ class TestResolveAllureDirs:
         results, report = _resolve_allure_dirs(run, db, "/exec")
 
         assert results == "/exec/allure-results"
-        assert report == "/exec/allure-report"
+        assert report == "/exec/allure-report/unit"
 
     def test_falls_back_to_defaults_for_quality_run_type(self) -> None:
         project = _make_project_with_config({"quality_config": {}})
@@ -188,7 +188,7 @@ class TestResolveAllureDirs:
         results, report = _resolve_allure_dirs(run, db, "/exec")
 
         assert results == "/exec/allure-results"
-        assert report == "/exec/allure-report"
+        assert report == "/exec/allure-report/unit"
 
     def test_returns_none_when_project_not_found(self) -> None:
         db = MagicMock()
@@ -199,6 +199,55 @@ class TestResolveAllureDirs:
 
         assert results is None
         assert report is None
+
+    def test_report_dir_uses_category_subdir(self) -> None:
+        """Default config: report dir is allure-report/<category>."""
+        project = _make_project_with_config({"test_config": {}})
+        db = _make_db_scalar(project)
+        run = _make_run(run_type="test", category="unit")
+
+        results, report = _resolve_allure_dirs(run, db, "/exec")
+
+        assert results == "/exec/allure-results"
+        assert report == "/exec/allure-report/unit"
+
+    def test_report_dir_uses_config_override_with_category(self) -> None:
+        """Custom allure_report_dir base: report dir is <override>/<category>."""
+        config = {
+            "test_config": {
+                "allure_report_dir": "my-reports",
+            },
+        }
+        project = _make_project_with_config(config)
+        db = _make_db_scalar(project)
+        run = _make_run(run_type="test", category="integration")
+
+        results, report = _resolve_allure_dirs(run, db, "/exec")
+
+        assert results == "/exec/allure-results"
+        assert report == "/exec/my-reports/integration"
+
+    def test_results_dir_retains_run_id_suffix(self) -> None:
+        """Results dir still appends run_id suffix for concurrent-run isolation."""
+        project = _make_project_with_config({"test_config": {}})
+        db = _make_db_scalar(project)
+        run = _make_run(run_type="test", category="unit")
+
+        results, report = _resolve_allure_dirs(run, db, "/exec", run_id=99)
+
+        assert results == "/exec/allure-results-99"
+        assert report == "/exec/allure-report/unit"
+
+    def test_report_dir_no_run_id_suffix(self) -> None:
+        """Report dir does NOT contain the run_id — verifies old behavior is gone."""
+        project = _make_project_with_config({"test_config": {}})
+        db = _make_db_scalar(project)
+        run = _make_run(run_type="test", category="e2e")
+
+        results, report = _resolve_allure_dirs(run, db, "/exec", run_id=42)
+
+        assert "42" not in report
+        assert report == "/exec/allure-report/e2e"
 
 
 # ---------------------------------------------------------------------------

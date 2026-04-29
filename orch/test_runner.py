@@ -65,7 +65,7 @@ def launch_test_run(run_id: int) -> None:
         log_path = log_dir / f"{run_id}.log"
 
         # Resolve per-run allure directories so concurrent runs don't clobber each other.
-        # Results use a unique run-scoped name; the persistent HTML report keeps the run_id too.
+        # Results use a unique run-scoped name; the report uses a category subdir.
         allure_results, allure_report = _resolve_allure_dirs(run, db, execution_dir, run_id)
         run.allure_results_dir = allure_results
         run.allure_report_dir = allure_report
@@ -599,8 +599,11 @@ def _resolve_allure_dirs(
 ) -> tuple[str | None, str | None]:
     """Get per-run allure results and report directories.
 
-    Directory names are scoped by run_id (e.g. ``allure-results-42``,
-    ``allure-report-42``) so concurrent test runs never share a directory.
+    Results dir is scoped by run_id (e.g. ``allure-results-42``) so concurrent
+    test runs never share a directory. Report dir is scoped by category
+    (e.g. ``allure-report/unit``) — the last run for a category overwrites
+    the previous one automatically because _generate_allure_report removes the
+    target directory before generating.
     """
     project = db.scalar(select(Project).where(Project.id == run.project_id))
     if project is None:
@@ -612,10 +615,9 @@ def _resolve_allure_dirs(
     results_base = section.get("allure_results_dir", "allure-results")
     report_base = section.get("allure_report_dir", "allure-report")
 
-    # Append run_id suffix for isolation when provided
     suffix = f"-{run_id}" if run_id is not None else ""
     results_abs = str(Path(execution_dir) / f"{results_base}{suffix}")
-    report_abs = str(Path(execution_dir) / f"{report_base}{suffix}")
+    report_abs = str(Path(execution_dir) / report_base / run.category)
     return results_abs, report_abs
 
 
