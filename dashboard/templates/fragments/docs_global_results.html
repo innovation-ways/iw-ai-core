@@ -3,7 +3,7 @@
   {% for project_id, items in results_by_project.items() %}
     {% set ns.total = ns.total + items|length %}
   {% endfor %}
-  
+
   <!-- Results count -->
   <div class="mb-4 text-sm text-muted-foreground">
     {{ ns.total }} result{{ 's' if ns.total != 1 else '' }} across {{ results_by_project|length }} project{{ 's' if results_by_project|length != 1 else '' }}

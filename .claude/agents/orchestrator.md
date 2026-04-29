@@ -97,10 +97,10 @@ make test-unit 2>&1 | tail -20
 - If tests fail: re-invoke the SAME implementation subagent with a regression fix instruction:
   ```
   The previous implementation introduced test failures. Fix the regressions.
-  
+
   Test output:
   {paste the failing test output}
-  
+
   Original prompt: ai-dev/work/{ID}/prompts/{prompt_filename}
   Save updated report to: ai-dev/work/{ID}/reports/{report_filename_next_run}
   ```
@@ -129,12 +129,12 @@ When a review agent returns its verdict:
      - Invoke the appropriate fix agent with:
        ```
        Fix the issues identified in the code review.
-       
+
        Review report: ai-dev/work/{ID}/reports/{review_report_filename}
        Original implementation prompt: ai-dev/work/{ID}/prompts/{original_prompt_filename}
-       
+
        Read BOTH files, then fix all CRITICAL and HIGH findings.
-       
+
        Save your fix report to: ai-dev/work/{ID}/reports/{fix_report_filename}
        ```
      - After the fix agent completes, re-invoke the review agent to re-evaluate
