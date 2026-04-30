@@ -1,9 +1,6 @@
 # {ID} — Functional Design
 
 <!--
-⛔ Docker is off-limits
-⛔ Migrations: agents generate, daemon applies
-
 Audience: humans (product owners, support, onboarding engineers).
 DO NOT include file paths, class names, SQL, code fences, or implementation
 steps. If you need to capture those, they belong in the technical design doc.

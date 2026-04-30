@@ -2,7 +2,7 @@
 description: >
   Specialist for background processing, worker pipelines, task queues, and async job implementations.
   Reads the project's CLAUDE.md for queue technology, worker patterns, and processing conventions.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 300
 permission:

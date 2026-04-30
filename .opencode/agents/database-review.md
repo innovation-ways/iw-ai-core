@@ -2,7 +2,7 @@
 description: >
   Reviews database schema changes, migrations, ORM models, and query
   patterns for correctness, safety, and performance.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

@@ -2,7 +2,7 @@
 description: >
   Specialist for API endpoint implementation including routes, controllers, request/response schemas,
   and validation. Reads the project's CLAUDE.md for framework choice and API conventions.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 300
 permission:

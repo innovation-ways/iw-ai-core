@@ -2,7 +2,7 @@
 description: >
   Reviews background processing, worker pipelines, and async job implementations
   for correctness, reliability, error handling, and idempotency.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

@@ -4,7 +4,7 @@ description: >
   For React projects, handles components, hooks, and state. For server-rendered
   projects (Jinja2+htmx, Django templates), handles templates, CSS, and interactions.
   Reads CLAUDE.md to understand which frontend stack is in use.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 300
 permission:

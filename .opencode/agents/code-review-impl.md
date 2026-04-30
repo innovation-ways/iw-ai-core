@@ -2,7 +2,7 @@
 description: >
   Per-agent code review. Reviews a single agent's implementation output against the design document,
   CLAUDE.md conventions, and quality standards. Produces structured findings with severity levels.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

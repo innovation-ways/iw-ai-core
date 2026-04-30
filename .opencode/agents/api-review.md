@@ -2,7 +2,7 @@
 description: >
   Reviews API endpoint implementation for correctness, request/response
   contracts, authentication, validation, and error handling.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

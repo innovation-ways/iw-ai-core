@@ -2,7 +2,7 @@
 description: >
   Verifies that cross-agent final review fixes were applied correctly. Checks integration
   issues are resolved and cross-boundary consistency is maintained.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

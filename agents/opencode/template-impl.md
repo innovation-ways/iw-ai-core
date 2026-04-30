@@ -2,7 +2,7 @@
 description: >
   Specialist for document and template generation including report templates, email templates,
   PDF generation, and structured document output. Reads CLAUDE.md for template engine and conventions.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 300
 permission:

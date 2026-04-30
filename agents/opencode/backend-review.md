@@ -2,7 +2,7 @@
 description: >
   Reviews backend implementation for correctness, architecture compliance,
   security, error handling, and TDD compliance.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:
