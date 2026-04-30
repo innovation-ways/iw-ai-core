@@ -885,11 +885,16 @@ class BatchManager:
                     # Fail the step — don't launch the agent
                     now = datetime.now(UTC)
                     log_tail = ""
+                    container_crash_logs = ""
                     if log_path and log_path.exists():
-                        lines = log_path.read_text(errors="replace").splitlines()
+                        compose_output = log_path.read_text(errors="replace")
+                        lines = compose_output.splitlines()
                         log_tail = "\n".join(lines[-20:])
+                        container_crash_logs = browser_env._capture_crashed_container_logs(  # noqa: SLF001
+                            compose_output
+                        )
                     run_number = _next_run_number(db, step)
-                    error_msg = f"browser env setup failed: {log_tail}"
+                    error_msg = f"browser env setup failed: {log_tail}{container_crash_logs}"
                     run = StepRun(
                         step_id=step.id,
                         run_number=run_number,

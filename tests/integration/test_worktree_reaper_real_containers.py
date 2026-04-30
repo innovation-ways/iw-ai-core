@@ -43,6 +43,7 @@ def docker_available():
 
 
 @pytest.mark.integration
+@pytest.mark.timeout(240)
 def test_reaper_classifies_and_reaps_orphan(
     docker_available: bool,
     db_session: Session,

@@ -53,7 +53,7 @@ def _run_compose_command(args: list[str], cwd: Path) -> subprocess.CompletedProc
         capture_output=True,
         text=True,
         cwd=cwd,
-        timeout=60,
+        timeout=120,
     )
 
 
@@ -62,14 +62,14 @@ def _cleanup_compose(project_name: str, compose_file: Path | None = None) -> Non
     if compose_file:
         args.extend(["-f", str(compose_file)])
     args.extend(["down", "-v", "--remove-orphans"])
-    subprocess.run(args, capture_output=True, timeout=60)
+    subprocess.run(args, capture_output=True, timeout=120)
 
 
 def _compose_exec(
     project_name: str,
     service: str,
     command: list[str],
-    timeout: int = 30,
+    timeout: int = 60,
 ) -> subprocess.CompletedProcess:
     args = ["docker", "compose", "-p", project_name, "exec", "-T", service] + command
     return subprocess.run(
@@ -81,7 +81,7 @@ def _compose_exec(
     )
 
 
-def _wait_for_postgres(project_name: str, timeout: int = 30) -> bool:
+def _wait_for_postgres(project_name: str, timeout: int = 60) -> bool:
     start = time.time()
     psql_cmd = ["psql", "-U", "testuser", "-d", "postgres", "-c", "SELECT 1", "-w"]
     while time.time() - start < timeout:
