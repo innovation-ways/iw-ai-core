@@ -117,6 +117,14 @@ def _extract_frontmatter(dsl: str) -> tuple[str, str]:
     return frontmatter, stripped[end + 4 :].lstrip()
 
 
+def _inject_elk_frontmatter(dsl: str) -> str:
+    """Prepend ELK layout frontmatter to a Mermaid DSL string if not already present."""
+    if "layout: elk" in dsl:
+        return dsl
+    dsl = _strip_yaml_frontmatter(dsl)
+    return _ELK_FRONTMATTER + dsl
+
+
 def _ensure_classdef_in_dsl(dsl: str) -> str:
     """Ensure the classDef block and ELK frontmatter are present in the Mermaid DSL.
 
