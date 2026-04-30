@@ -192,8 +192,28 @@ fi
 # we replay our commit(s) on top so the squash-merge in Step 5 is a trivial
 # fast-forward that cannot conflict.
 #
-# On conflict we abort the rebase (returning the branch to its pre-rebase
-# state) and exit 1 — main is never touched.
+# Auto-resolution of recurring infrastructure conflicts:
+#   uv.lock  — always conflicts when multiple items add dependencies; resolved
+#              by taking main's version (--ours during rebase = main's tip).
+#              After squash-merge, uv lock --no-upgrade regenerates it from the
+#              merged pyproject.toml so no dependency is lost.
+#   Makefile — build-target lines often touched by multiple items; resolved by
+#              preferring the branch's version (--theirs = this item's changes,
+#              which are typically a superset of concurrent Makefile edits).
+#
+# On conflict in any other file we abort the rebase and report the file list.
+# Main is never touched on failure.
+
+# Files resolved by taking main's version (--ours in rebase context = main's tip).
+# These are auto-generated files that will be regenerated post-merge.
+_REBASE_TAKE_OURS="uv.lock"
+
+# Files resolved by taking the branch's version (--theirs = commits being replayed).
+# Used for build/config files where concurrent edits are typically additive.
+_REBASE_TAKE_THEIRS="Makefile"
+
+# Auto-generated files to regenerate after squash-merge (space-separated).
+_REGEN_AFTER_MERGE="uv.lock"
 
 MAIN_SHA=$(git rev-parse main 2>/dev/null || echo "")
 BRANCH_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
@@ -212,12 +232,57 @@ else
         NEW_BRANCH_SHA=$(git rev-parse HEAD)
         echo "[worktree_commit] OK: Rebased $BRANCH_NAME: $BRANCH_SHA → $NEW_BRANCH_SHA" >&2
     else
-        echo "[worktree_commit] ERROR: Rebase conflict — aborting" >&2
-        echo "[worktree_commit]        Another batch item modified the same files before this one merged." >&2
-        echo "[worktree_commit]        Conflicts must be resolved manually in $WORKTREE_DIR" >&2
-        git rebase --abort 2>/dev/null || true
-        # Main is untouched — nothing to clean up there.
-        exit 1
+        # Rebase failed — identify conflicting files and auto-resolve where safe.
+        conflicting=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "")
+
+        if [[ -z "$conflicting" ]]; then
+            echo "[worktree_commit] ERROR: Rebase failed (no conflict markers — unexpected state)" >&2
+            git rebase --abort 2>/dev/null || true
+            exit 1
+        fi
+
+        echo "[worktree_commit] INFO: Rebase conflicts detected:" >&2
+        while IFS= read -r _cf; do
+            [[ -z "$_cf" ]] && continue
+            echo "[worktree_commit]   - $_cf" >&2
+        done <<< "$conflicting"
+
+        # Separate into auto-resolvable and blocking conflicts.
+        _blocking=""
+        while IFS= read -r _cf; do
+            [[ -z "$_cf" ]] && continue
+            if echo " $_REBASE_TAKE_OURS " | grep -qF " $_cf "; then
+                git checkout --ours "$_cf" 2>/dev/null && git add "$_cf"
+                echo "[worktree_commit] INFO: Auto-resolved $_cf (--ours = main's version; will regenerate post-merge)" >&2
+            elif echo " $_REBASE_TAKE_THEIRS " | grep -qF " $_cf "; then
+                git checkout --theirs "$_cf" 2>/dev/null && git add "$_cf"
+                echo "[worktree_commit] INFO: Auto-resolved $_cf (--theirs = branch's version)" >&2
+            else
+                _blocking="$_blocking $_cf"
+            fi
+        done <<< "$conflicting"
+
+        if [[ -n "$_blocking" ]]; then
+            echo "[worktree_commit] ERROR: Rebase conflict in implementation files — manual resolution required:" >&2
+            for _bf in $_blocking; do
+                echo "[worktree_commit]   - $_bf" >&2
+            done
+            echo "[worktree_commit]        Another batch item modified the same files before this one merged." >&2
+            echo "[worktree_commit]        Conflicts must be resolved manually in $WORKTREE_DIR" >&2
+            echo "[worktree_commit]        Then run: iw merge-queue retry-merge $ITEM_ID" >&2
+            git rebase --abort 2>/dev/null || true
+            exit 1
+        fi
+
+        # All conflicts auto-resolved — continue the rebase.
+        if GIT_EDITOR=true git rebase --continue 2>&1; then
+            NEW_BRANCH_SHA=$(git rev-parse HEAD)
+            echo "[worktree_commit] OK: Rebased $BRANCH_NAME (auto-resolved conflicts): $BRANCH_SHA → $NEW_BRANCH_SHA" >&2
+        else
+            echo "[worktree_commit] ERROR: Rebase --continue failed after auto-resolution" >&2
+            git rebase --abort 2>/dev/null || true
+            exit 1
+        fi
     fi
 fi
 
@@ -394,5 +459,34 @@ fi
 
 _restore_stash_dir_files
 rm -rf "$STASH_DIR"
+
+# ---------------------------------------------------------------------------
+# Step 6: Regenerate auto-generated files from merged sources (if needed)
+# ---------------------------------------------------------------------------
+# uv.lock is auto-generated from pyproject.toml. When the rebase resolved a
+# uv.lock conflict by taking main's version, the lock may not reflect this
+# item's new dependencies. Regenerate so the merge commit includes a correct
+# combined lock that covers both main's and this item's dependency changes.
+if echo " $_REGEN_AFTER_MERGE " | grep -qF " uv.lock "; then
+    if command -v uv >/dev/null 2>&1; then
+        echo "[worktree_commit] INFO: Regenerating uv.lock from merged pyproject.toml" >&2
+        if uv lock --no-upgrade 2>/dev/null; then
+            _lock_diff=$(git status --porcelain uv.lock 2>/dev/null || echo "")
+            if [[ -n "$_lock_diff" ]]; then
+                git add uv.lock
+                if git commit --no-verify --amend --no-edit 2>/dev/null; then
+                    echo "[worktree_commit] OK: uv.lock regenerated and included in merge commit" >&2
+                else
+                    echo "[worktree_commit] WARN: Failed to amend merge commit with regenerated uv.lock" >&2
+                fi
+            else
+                echo "[worktree_commit] INFO: uv.lock unchanged after regeneration — no amend needed" >&2
+            fi
+        else
+            echo "[worktree_commit] WARN: uv lock --no-upgrade failed — uv.lock may be stale" >&2
+        fi
+    fi
+fi
+
 echo "[worktree_commit] OK: $ITEM_ID merged to main successfully" >&2
 exit 0  # exit trap restores main stash
