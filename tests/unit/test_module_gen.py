@@ -90,6 +90,11 @@ class TestModuleGeneratorGenerateLevel2:
             patch("orch.rag.module_gen.lancedb.connect") as mock_lancedb_connect,
             patch("orch.rag.module_gen.httpx.AsyncClient") as mock_httpx_cls,
             patch("orch.rag.module_gen.OllamaEmbedding") as mock_embed_cls,
+            # F-00064 added _generate_and_store_module_diagram, which constructs
+            # llama_index's Ollama LLM and calls .complete() — bypassing the
+            # patched httpx client. Without this mock, the test hits the real
+            # local Ollama (or its connection timeout) and takes 20-30s.
+            patch("orch.rag.module_gen.Ollama") as mock_llm_cls,
         ):
             mock_table = MagicMock()
             mock_lancedb_connect.return_value.open_table.return_value = mock_table
@@ -109,6 +114,14 @@ class TestModuleGeneratorGenerateLevel2:
             mock_embed = MagicMock()
             mock_embed.aget_text_embedding = AsyncMock(return_value=[0.1] * 384)
             mock_embed_cls.return_value = mock_embed
+
+            mock_llm_response = MagicMock()
+            mock_llm_response.text = (
+                "```mermaid\n---\nconfig:\n  layout: elk\n---\n"
+                "graph LR\n  A[Engine]\n```\n\n"
+                "```purpose\nEngine module overview.\n```"
+            )
+            mock_llm_cls.return_value.complete = MagicMock(return_value=mock_llm_response)
 
             doc = await gen.generate_level2("proj", "engine/", "Engine", config, mock_session)
 

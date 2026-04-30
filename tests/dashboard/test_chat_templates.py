@@ -54,8 +54,12 @@ class TestChatPanelTemplate:
         assert 'aria-label="Conversation"' in chat_panel_html
 
     def test_collapse_button_44px(self, chat_panel_html):
-        assert 'id="chat-collapse-btn"' in chat_panel_html
-        assert "min-h-[44px]" in chat_panel_html
+        # I-00046 replaced the original #chat-collapse-btn header button with a
+        # vertical slide-out tab (#chat-toggle-tab) on the panel's left edge.
+        # The tab is 88px tall × 44px wide — both ≥44px so it still satisfies
+        # the WCAG hit-target requirement this test guards.
+        assert 'id="chat-toggle-tab"' in chat_panel_html
+        assert "min-h-[88px]" in chat_panel_html
         assert "min-w-[44px]" in chat_panel_html
 
     def test_scroll_to_bottom_button(self, chat_panel_html):

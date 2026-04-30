@@ -7,6 +7,14 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+# Module-level imports so that orch.db.session._engine is initialised during
+# pytest collection — i.e. before the session-scoped _arm_live_db_guard fixture
+# sets IW_CORE_TEST_CONTEXT=true. Mirrors the pattern used by
+# tests/dashboard/test_jobs_filter_ui.py and test_staleness_router.py
+# (see tests/CLAUDE.md "Gotchas" section for the rationale).
+from dashboard.app import create_app
+from dashboard.dependencies import get_db
+
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
@@ -15,13 +23,9 @@ class TestDiagramEndpoint:
     """Tests for the /diagram fragment endpoint."""
 
     def _make_app(self) -> FastAPI:
-        from dashboard.app import create_app
-
         return create_app()
 
     def _make_client(self, mock_db: MagicMock) -> TestClient:
-        from dashboard.dependencies import get_db
-
         app = self._make_app()
         app.dependency_overrides[get_db] = lambda: mock_db
         return TestClient(app, raise_server_exceptions=False)
@@ -54,7 +58,10 @@ class TestDiagramEndpoint:
 
         assert response.status_code == 200
         assert "graph TD" in response.text
-        assert 'data-lang="mermaid"' in response.text
+        # F-00065 renders code-module diagrams via <div class="mermaid">…</div>
+        # (the chat code-block path uses <pre data-lang="mermaid">). Both render
+        # via mermaid.js but only the former selector is correct here.
+        assert 'class="mermaid"' in response.text
 
     def test_diagram_endpoint_returns_empty_state_when_no_doc(self) -> None:
         """Returns 200 with empty-state indicator when no diagram doc exists."""

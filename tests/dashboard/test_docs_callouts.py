@@ -13,6 +13,14 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+# Module-level imports so that orch.db.session._engine is initialised during
+# pytest collection — i.e. before the session-scoped _arm_live_db_guard fixture
+# sets IW_CORE_TEST_CONTEXT=true. Mirrors the pattern used by
+# tests/dashboard/test_jobs_filter_ui.py and test_staleness_router.py
+# (see tests/CLAUDE.md "Gotchas" section for the rationale).
+from dashboard.app import create_app
+from dashboard.dependencies import get_db
+
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
@@ -21,13 +29,9 @@ class TestDocsCallouts:
     """Tests for callout blockquote → callout div server-side conversion."""
 
     def _make_app(self) -> FastAPI:
-        from dashboard.app import create_app
-
         return create_app()
 
     def _make_client(self, mock_db: MagicMock) -> TestClient:
-        from dashboard.dependencies import get_db
-
         app = self._make_app()
         app.dependency_overrides[get_db] = lambda: mock_db
         return TestClient(app, raise_server_exceptions=False)
@@ -150,4 +154,10 @@ class TestDocsCallouts:
             response = client.get("/project/test-proj/docs/test-doc")
 
         assert response.status_code == 200
-        assert "callout-" not in response.text, "Regular blockquote should not become a callout div"
+        # F-00067 inlines the .callout-* CSS rules in docs_detail.html, so a
+        # bare `"callout-" not in response.text` would now match the CSS, not
+        # the rendered markdown. Check for the actual callout div pattern
+        # produced by render_markdown_with_callouts() instead.
+        assert 'class="callout callout-' not in response.text, (
+            "Regular blockquote should not become a callout div"
+        )
