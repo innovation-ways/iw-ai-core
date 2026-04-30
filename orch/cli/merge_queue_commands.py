@@ -1,7 +1,8 @@
-"""Merge-queue CLI commands — operator surface for merge queue freeze/unfreeze.
+"""Merge-queue CLI commands — operator surface for merge queue freeze/unfreeze/retry.
 
-iw merge-queue status    — show frozen/unfrozen state + last migration log
-iw merge-queue unfreeze   — clear frozen flag (requires --ack reason)
+iw merge-queue status        — show frozen/unfrozen state + last migration log
+iw merge-queue unfreeze      — clear frozen flag (requires --ack reason)
+iw merge-queue retry-merge   — reset a failed merge so the daemon re-attempts it
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import getpass
 import json
 import os
 import sys
+from pathlib import Path
 
 import click
 from sqlalchemy import text
@@ -190,3 +192,108 @@ def merge_queue_unfreeze(ctx: click.Context, json_output: bool, ack_text: str) -
 
     except Exception as exc:
         output_error(ctx, f"Unfreeze error: {exc}", EXIT_UNKNOWN)
+
+
+@merge_queue_group.command("retry-merge")
+@click.argument("item_id")
+@click.option("--json", "-j", "json_output", is_flag=True, help="Machine-readable JSON output")
+@click.pass_context
+def merge_queue_retry(ctx: click.Context, item_id: str, json_output: bool) -> None:
+    """Reset a failed merge so the daemon re-attempts it on the next poll cycle.
+
+    The worktree must still exist. Use this after manually resolving rebase
+    conflicts in the worktree, or when the merge failed due to a transient
+    conflict that the updated worktree_commit.sh can now auto-resolve.
+
+    Example:
+        iw merge-queue retry-merge F-00073
+    """
+    from sqlalchemy import select
+
+    from orch.db.models import BatchItem, BatchItemStatus, DaemonEvent, WorkItem, WorkItemStatus
+
+    get_session = ctx.obj.get("get_session")
+    if get_session is None:
+        output_error(ctx, "No database session available", EXIT_UNKNOWN)
+        return
+
+    try:
+        with get_session() as session:
+            # Find the most recent failed BatchItem for this work item
+            batch_item = (
+                session.execute(
+                    select(BatchItem)
+                    .where(BatchItem.work_item_id == item_id)
+                    .where(BatchItem.status == BatchItemStatus.failed)
+                    .order_by(BatchItem.id.desc())
+                )
+                .scalars()
+                .first()
+            )
+
+            if batch_item is None:
+                msg = f"No failed batch item found for {item_id}"
+                if json_output:
+                    click.echo(json.dumps({"error": msg}))
+                else:
+                    click.echo(f"Error: {msg}", err=True)
+                sys.exit(EXIT_UNKNOWN)
+
+            # Verify worktree still exists
+            worktree_path = (batch_item.worktree_info or {}).get("path")
+            if not worktree_path or not Path(worktree_path).exists():
+                msg = f"Worktree not found at {worktree_path} — cannot retry merge"
+                if json_output:
+                    click.echo(json.dumps({"error": msg}))
+                else:
+                    click.echo(f"Error: {msg}", err=True)
+                sys.exit(EXIT_UNKNOWN)
+
+            # Reset BatchItem → completed so merge queue picks it up again
+            batch_item.status = BatchItemStatus.completed
+            batch_item.notes = "Retry requested via iw merge-queue retry-merge"
+
+            # Reset WorkItem → completed (merge_queue._revert_work_item set it to failed)
+            work_item = (
+                session.execute(
+                    select(WorkItem)
+                    .where(WorkItem.id == item_id)
+                    .where(WorkItem.project_id == batch_item.project_id)
+                )
+                .scalars()
+                .first()
+            )
+            if work_item is not None and work_item.status == WorkItemStatus.failed:
+                work_item.status = WorkItemStatus.completed
+
+            # Emit audit event
+            session.add(
+                DaemonEvent(
+                    project_id=batch_item.project_id,
+                    event_type="merge_retry_requested",
+                    entity_id=item_id,
+                    entity_type="work_item",
+                    message=f"Merge retry requested for {item_id} (batch item {batch_item.id})",
+                    event_metadata={"batch_item_id": batch_item.id, "worktree_path": worktree_path},
+                )
+            )
+            session.commit()
+
+        if json_output:
+            click.echo(
+                json.dumps(
+                    {
+                        "item_id": item_id,
+                        "batch_item_id": batch_item.id,
+                        "worktree_path": worktree_path,
+                        "status": "retry_queued",
+                    },
+                    indent=2,
+                )
+            )
+        else:
+            click.echo(f"Merge retry queued for {item_id} — daemon will re-attempt on next poll.")
+            click.echo(f"  Worktree: {worktree_path}")
+
+    except Exception as exc:
+        output_error(ctx, f"retry-merge error: {exc}", EXIT_UNKNOWN)
