@@ -16,7 +16,7 @@ import logging
 import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from orch.daemon.worktree_reaper import LABEL_BATCH_ITEM, LABEL_PROJECT, LABEL_ROLE
 from orch.db.models import TERMINAL_BATCH_ITEM_STATUSES, BatchItem
@@ -46,9 +46,9 @@ def _parse_docker_time(raw: str) -> datetime | None:
     return None
 
 
-def _parse_labels(raw: str | dict[str, str]) -> dict[str, str]:
+def _parse_labels(raw: str | dict[str, object]) -> dict[str, str]:
     if isinstance(raw, dict):
-        return raw
+        return raw  # type: ignore[return-value]
     labels: dict[str, str] = {}
     if not isinstance(raw, str):
         return labels
@@ -128,13 +128,13 @@ def scan_stacks(db: Session) -> list[ContainerStack]:
     if not raw:
         return []
 
-    groups: dict[str, list[dict[str, str]]] = {}
+    groups: dict[str, list[dict[str, Any]]] = {}
     for c in raw:
         labels = _parse_labels(c.get("Labels", ""))
         project = labels.get("com.docker.compose.project") or (
             f"iwcore-{labels[LABEL_BATCH_ITEM]}"
             if LABEL_BATCH_ITEM in labels
-            else f"unlabelled-{c.get('ID', 'x')[:8]}"
+            else f"unlabelled-{(c.get('ID', 'x') or 'x')[:8]}"
         )
         groups.setdefault(project, []).append(c)
 
@@ -230,7 +230,7 @@ def remove_stack(compose_project: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
-def _docker_ps_all() -> list[dict[str, str]]:
+def _docker_ps_all() -> list[dict[str, Any]]:
     try:
         result = subprocess.run(  # noqa: S603
             [  # noqa: S607
@@ -254,7 +254,7 @@ def _docker_ps_all() -> list[dict[str, str]]:
         logger.warning("[container_info] docker query failed: %s", exc)
         return []
 
-    rows: list[dict[str, str]] = []
+    rows: list[dict[str, object]] = []
     for line in result.stdout.splitlines():
         line = line.strip()
         if not line:

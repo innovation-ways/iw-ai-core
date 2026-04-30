@@ -380,24 +380,33 @@ class TestAC3:
 
         monkeypatch.setenv("IW_CORE_BASELINE_QV", "true")
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(stdout="abc123\n", stderr="", returncode=0)
-            bm = BatchManager(
-                project_id=test_project.id,
-                project_config=MagicMock(
-                    id=test_project.id,
-                    worktree_base=".worktrees",
-                    working_dir=str(worktree.parent.parent),
-                ),
-                session_factory=lambda: db_session,
-                config=MagicMock(baseline_qv_enabled=True),
-            )
+        def subprocess_side_effect(cmd: list[str], **kwargs: Any) -> MagicMock:
+            if isinstance(cmd, list) and "merge-base" in cmd:
+                return MagicMock(stdout="abc123\n", stderr="", returncode=0)
+            return MagicMock(stdout="", stderr="", returncode=0)
 
-            with (
-                patch.object(bm, "_setup_worktree", return_value={"path": str(worktree)}),
-                patch.object(bm, "_launch_next_step"),
-            ):
-                bm._compute_qv_baselines(db_session, batch_item, {"path": str(worktree)})
+        with patch("orch.daemon.batch_manager.subprocess.run", side_effect=subprocess_side_effect):
+            with patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen:
+                mock_proc = MagicMock()
+                mock_proc.communicate.return_value = (b"", b"")
+                mock_proc.pid = 12345
+                mock_popen.return_value.__enter__.return_value = mock_proc
+                bm = BatchManager(
+                    project_id=test_project.id,
+                    project_config=MagicMock(
+                        id=test_project.id,
+                        worktree_base=".worktrees",
+                        working_dir=str(worktree.parent.parent),
+                    ),
+                    session_factory=lambda: db_session,
+                    config=MagicMock(baseline_qv_enabled=True),
+                )
+
+                with (
+                    patch.object(bm, "_setup_worktree", return_value={"path": str(worktree)}),
+                    patch.object(bm, "_launch_next_step"),
+                ):
+                    bm._compute_qv_baselines(db_session, batch_item, {"path": str(worktree)})
 
         rows = db_session.query(QvBaseline).all()
         assert len(rows) == 3
@@ -685,7 +694,7 @@ class TestBaselineBoundary:
                     return (b"abc123\n", b"")
                 return (b"", b"")
 
-            def __enter__(self) -> "MockPopen":
+            def __enter__(self) -> MockPopen:
                 return self
 
             def __exit__(self, *args: Any) -> None:

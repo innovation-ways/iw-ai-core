@@ -51,7 +51,7 @@ allure-unit:
 	uv run pytest tests/unit/ -v --alluredir=allure-results
 
 allure-integration:
-	uv run pytest tests/integration/ -v --alluredir=allure-results
+	uv run pytest tests/integration/ -v --timeout=900 --timeout-method=signal --alluredir=allure-results
 
 allure-all:
 	uv run pytest tests/ -v --alluredir=allure-results

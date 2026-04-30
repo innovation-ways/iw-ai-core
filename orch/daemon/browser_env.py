@@ -455,6 +455,37 @@ def run_env_up_hook(
         return False, log_path
 
 
+def _capture_crashed_container_logs(compose_log: str, tail: int = 50) -> str:
+    """Parse compose output for exited containers and capture their docker logs.
+
+    Returns a formatted string ready to append to StepRun.error_message.
+    Never raises — all failures are silently ignored so a logging failure
+    cannot block the step-failure recording path.
+    """
+    pattern = re.compile(r"container\s+([\w\-]+)\s+exited\s+\(\d+\)", re.IGNORECASE)
+    container_names = list(dict.fromkeys(pattern.findall(compose_log)))
+    if not container_names:
+        return ""
+
+    parts: list[str] = []
+    for name in container_names:
+        try:
+            result = subprocess.run(  # noqa: S603, S607
+                ["docker", "logs", name, "--tail", str(tail)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            combined = (result.stdout + result.stderr).strip()
+            if combined:
+                parts.append(f"### docker logs {name} (last {tail} lines)\n\n{combined}")
+        except Exception:  # noqa: BLE001
+            parts.append(f"### docker logs {name}\n\n(unavailable — docker logs failed)")
+    if not parts:
+        return ""
+    return "\n\n## Container Crash Logs\n\n" + "\n\n".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # run_env_down_hook — public
 # ---------------------------------------------------------------------------
