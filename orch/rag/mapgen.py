@@ -293,6 +293,13 @@ class MapGenerator:
             "node IDs and put the human label in brackets, e.g. `CLI[iw CLI]`. "
             "Wrap the diagram in a ```mermaid ... ``` fenced code block. "
             "No prose, no explanation.\n"
+            "Include this YAML frontmatter block at the very start of the mermaid block:\n"
+            "```yaml\n"
+            "---\n"
+            "config:\n"
+            "  layout: elk\n"
+            "---\n"
+            "```\n"
             "Maximum 15 nodes. If the system has more components, group minor ones.\n\n"
             + _MERMAID_CLASSDEF
             + "\n"

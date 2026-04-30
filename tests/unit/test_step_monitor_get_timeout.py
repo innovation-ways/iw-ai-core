@@ -43,14 +43,14 @@ def _step(gate: str | None) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-def test_integration_tests_gate_returns_900_not_600() -> None:
-    """AC1: gate=integration-tests returns 900s, not the legacy 600s."""
+def test_integration_tests_gate_returns_1200_not_600() -> None:
+    """AC1: gate=integration-tests returns 1200s, not the legacy 600s."""
     project_config = _project_config()
     step = _step(gate="integration-tests")
 
     result = get_timeout(project_config, "quality_validation", step=step)
 
-    assert result == 900
+    assert result == 1200
     assert result != PLATFORM_TIMEOUT_DEFAULTS["quality_validation"]
 
 

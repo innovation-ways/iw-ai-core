@@ -77,6 +77,26 @@ _FILLER_PREAMBLE_RE = re.compile(
 )
 
 
+_ELK_FRONTMATTER = """\
+---
+config:
+  layout: elk
+---
+"""
+
+
+def _inject_elk_frontmatter(dsl: str) -> str:
+    """Inject ELK frontmatter into Mermaid DSL if not already present.
+
+    After stripping any pre-existing frontmatter, checks whether 'layout: elk'
+    is already present. If not, prepends the standard ELK frontmatter block.
+    """
+    dsl = _strip_yaml_frontmatter(dsl)
+    if "layout: elk" in dsl:
+        return dsl
+    return _ELK_FRONTMATTER + dsl
+
+
 def _strip_yaml_frontmatter(dsl: str) -> str:
     """Strip YAML frontmatter (---...---) from a Mermaid DSL string.
 
@@ -426,6 +446,7 @@ Rules:
             )
 
         mermaid_dsl = _ensure_classdef_in_dsl(mermaid_dsl)
+        mermaid_dsl = _inject_elk_frontmatter(mermaid_dsl)
         content = f"<!-- purpose: {purpose} -->\n{mermaid_dsl}"
 
         slug = self._make_slug(project_id, module_path)
