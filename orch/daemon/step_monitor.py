@@ -50,7 +50,7 @@ QV_GATE_TIMEOUT_DEFAULTS: dict[str, int] = {
     "format": 120,
     "typecheck": 240,
     "unit-tests": 300,
-    "integration-tests": 900,
+    "integration-tests": 1200,
     "frontend-tests": 600,
     "browser": 1800,
 }

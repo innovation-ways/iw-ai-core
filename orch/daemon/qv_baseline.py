@@ -226,6 +226,7 @@ GATE_PARSERS: Mapping[str, Callable[[str], Fingerprint]] = {
     "typecheck": parse_mypy,
     "unit-tests": parse_pytest,
     "frontend-tests": parse_pytest,
+    "integration-tests": parse_pytest,
 }
 
 

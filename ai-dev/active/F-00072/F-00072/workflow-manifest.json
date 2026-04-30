@@ -69,7 +69,7 @@
       "gate": "integration-tests",
       "command": "make allure-integration",
       "description": "QV: Integration tests (includes roundtrip test)",
-      "timeout": 1200
+      "timeout": 900
     }
   ]
 }

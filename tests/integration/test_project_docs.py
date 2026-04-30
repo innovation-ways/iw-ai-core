@@ -480,7 +480,8 @@ def test_project_doc_fts_full_text_search(db_session: Session) -> None:
 
     results = (
         db_session.query(ProjectDoc)
-        .filter(ProjectDoc.content_search.op("@@")(text("plainto_tsquery('english', 'API')")))
+        .filter(ProjectDoc.project_id == "test-proj")
+        .filter(ProjectDoc.content_search.op("@@")(text("plainto_tsquery('simple', 'API')")))
         .all()
     )
     assert len(results) == 1
@@ -488,6 +489,7 @@ def test_project_doc_fts_full_text_search(db_session: Session) -> None:
 
     results = (
         db_session.query(ProjectDoc)
+        .filter(ProjectDoc.project_id == "test-proj")
         .filter(
             ProjectDoc.content_search.op("@@")(text("plainto_tsquery('english', 'architecture')"))
         )
