@@ -2,7 +2,7 @@
 description: >
   Plans batch execution of multiple work items. Analyzes dependencies, identifies parallelizable
   items, and creates optimal batch groupings. Uses iw CLI for batch operations.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 100
 permission:

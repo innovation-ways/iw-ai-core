@@ -2,7 +2,7 @@
 description: >
   Reviews frontend and UI implementation for correctness, accessibility,
   responsiveness, and user experience quality.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

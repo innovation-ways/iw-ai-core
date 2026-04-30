@@ -2,7 +2,7 @@
 description: >
   Reviews document and template generation implementations for correctness,
   security (XSS), formatting consistency, and edge case handling.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

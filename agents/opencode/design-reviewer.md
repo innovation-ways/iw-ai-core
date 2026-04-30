@@ -2,7 +2,7 @@
 description: >
   Reviews a design document for completeness, feasibility, test strategy, and risk assessment
   before implementation begins. Produces a structured review with GO/NO-GO recommendation.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 100
 permission:

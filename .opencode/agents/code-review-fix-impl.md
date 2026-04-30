@@ -2,7 +2,7 @@
 description: >
   Fixes issues found during per-agent code review. Reads the review findings,
   applies fixes for all CRITICAL and HIGH issues, and verifies tests pass.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 300
 permission:

@@ -2,7 +2,7 @@
 description: >
   Specialist for writing additional test coverage including unit tests and integration tests.
   Reads the project's CLAUDE.md for test framework, organization, naming conventions, and fixture patterns.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 300
 permission:

@@ -2,7 +2,7 @@
 description: >
   Runs a single declared quality gate command from a workflow manifest and reports pass/fail
   based on the exit code. Does NOT run extra gates, fix failures, or substitute alternatives.
-mode: subagent
+mode: primary
 temperature: 0.0
 steps: 60
 permission:

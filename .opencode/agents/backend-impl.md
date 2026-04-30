@@ -2,7 +2,7 @@
 description: >
   Specialist for backend and business logic implementation. Follows TDD (RED-GREEN-REFACTOR).
   Reads the project's CLAUDE.md to understand architecture, layer boundaries, and coding conventions.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 300
 permission:

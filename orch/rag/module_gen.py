@@ -85,18 +85,6 @@ config:
 """
 
 
-def _inject_elk_frontmatter(dsl: str) -> str:
-    """Inject ELK frontmatter into Mermaid DSL if not already present.
-
-    After stripping any pre-existing frontmatter, checks whether 'layout: elk'
-    is already present. If not, prepends the standard ELK frontmatter block.
-    """
-    dsl = _strip_yaml_frontmatter(dsl)
-    if "layout: elk" in dsl:
-        return dsl
-    return _ELK_FRONTMATTER + dsl
-
-
 def _strip_yaml_frontmatter(dsl: str) -> str:
     """Strip YAML frontmatter (---...---) from a Mermaid DSL string.
 

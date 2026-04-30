@@ -2,7 +2,7 @@
 description: >
   Fixes issues found during the global cross-agent final review. Addresses integration issues,
   cross-boundary problems, and consistency fixes across multiple agents' code.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 300
 permission:
