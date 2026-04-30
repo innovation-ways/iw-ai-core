@@ -23,8 +23,8 @@
 
 <span class="font-medium text-foreground">MiniMax</span>
 
-<div class="hidden sm:flex items-center gap-1.5">
-  <span class="text-muted-foreground">5h</span>
+<div class="hidden sm:flex items-center gap-1.5"{% if minimax_5h_used is not none and minimax_5h_total is not none %} title="{{ minimax_5h_used }} / {{ minimax_5h_total }} requests"{% endif %}>
+  <span class="text-muted-foreground">{{ minimax_reset or '5h' }}</span>
   <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
     <div class="h-full {{ minimax_5h_color }} rounded-full transition-all duration-700" style="width: {{ minimax_5h_pct }}%"></div>
   </div>
