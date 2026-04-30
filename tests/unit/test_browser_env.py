@@ -13,9 +13,10 @@ from __future__ import annotations
 import socket
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from orch.daemon.browser_env import (
+    _capture_crashed_container_logs,
     _compute_port_offset,
     _is_port_free,
     _load_persisted_offset,
@@ -535,5 +536,74 @@ def test_run_env_down_hook_deletes_state_file(tmp_path: Path) -> None:
     _save_persisted_offset(str(tmp_path), "F-00001", 7)
     pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "/bin/true"})
     run_env_down_hook(pc, str(tmp_path), {}, "F-00001", "S01")
-    # State file removed after teardown so the next run allocates fresh.
     assert _load_persisted_offset(str(tmp_path), "F-00001") is None
+
+
+# ---------------------------------------------------------------------------
+# _capture_crashed_container_logs — I-00052
+# ---------------------------------------------------------------------------
+
+
+def test_i00052_capture_crashed_container_logs_happy_path() -> None:
+    compose_log = (
+        "dependency failed to start: container iw-ai-core-e2e-f00067-e2e-dashboard-1 exited (1)\n"
+    )
+    mock_result = MagicMock(
+        stdout="ImportError: cannot import name 'foo'\n", stderr="", returncode=0
+    )
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        result = _capture_crashed_container_logs(compose_log)
+    mock_run.assert_called_once_with(
+        ["docker", "logs", "iw-ai-core-e2e-f00067-e2e-dashboard-1", "--tail", "50"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert "ImportError: cannot import name 'foo'" in result
+    assert "Container Crash Logs" in result
+    assert "iw-ai-core-e2e-f00067-e2e-dashboard-1" in result
+
+
+def test_i00052_capture_crashed_container_logs_docker_unavailable() -> None:
+    compose_log = "container foo-dashboard-1 exited (1)\n"
+    with patch(
+        "orch.daemon.browser_env.subprocess.run",
+        side_effect=FileNotFoundError("docker not found"),
+    ):
+        result = _capture_crashed_container_logs(compose_log)
+    assert result != ""
+    assert "unavailable" in result
+
+
+def test_i00052_capture_crashed_container_logs_docker_timeout() -> None:
+    with patch(
+        "orch.daemon.browser_env.subprocess.run",
+        side_effect=subprocess.TimeoutExpired("docker", 10),
+    ):
+        result = _capture_crashed_container_logs("container foo-dashboard-1 exited (1)\n")
+    assert result != ""
+    assert "unavailable" in result
+
+
+def test_i00052_capture_crashed_container_logs_empty_input() -> None:
+    with patch("orch.daemon.browser_env.subprocess.run") as mock_run:
+        result = _capture_crashed_container_logs("")
+    assert result == ""
+    mock_run.assert_not_called()
+
+
+def test_i00052_capture_crashed_container_logs_no_crashed_containers() -> None:
+    compose_log = "container foo-dashboard-1 starting\ncontainer foo-dashboard-1 stopped\n"
+    with patch("orch.daemon.browser_env.subprocess.run") as mock_run:
+        result = _capture_crashed_container_logs(compose_log)
+    assert result == ""
+    mock_run.assert_not_called()
+
+
+def test_i00052_capture_crashed_container_logs_deduplicates() -> None:
+    compose_log = "container foo-dashboard-1 exited (1)\ncontainer foo-dashboard-1 exited (1)\n"
+    mock_result = MagicMock(stdout="error log\n", stderr="", returncode=0)
+    with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:
+        result = _capture_crashed_container_logs(compose_log)
+    mock_run.assert_called_once()
+    assert "foo-dashboard-1" in result
