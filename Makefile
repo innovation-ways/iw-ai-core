@@ -8,7 +8,6 @@
          daemon-start daemon-stop dashboard-start css \
          allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
          e2e-health e2e-logs e2e-stats \
-         smoke \
          security-deps security-iac security-image-dashboard security-all security-report
 
 # --- Setup ---
@@ -47,16 +46,12 @@ test: test-unit test-integration
 test-parallel:
 	uv run pytest tests/unit tests/integration -v -n auto --dist=loadfile
 
-# --- Smoke ---
-smoke:
-	uv run pytest tests -m smoke -v --no-header --strict-markers --no-cov --ignore=tests/dashboard/browser/
-
 # --- Allure test reporting ---
 allure-unit:
 	uv run pytest tests/unit/ -v --alluredir=allure-results
 
 allure-integration:
-	uv run pytest tests/integration/ -v --timeout=900 --timeout-method=signal --alluredir=allure-results --tb=no
+	uv run pytest tests/integration/ -v --timeout=600 --timeout-method=thread --alluredir=allure-results
 
 allure-all:
 	uv run pytest tests/ -v --alluredir=allure-results
