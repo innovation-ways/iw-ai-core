@@ -204,6 +204,7 @@ def test_signal_handler_wakes_sleep(tmp_path: Path) -> None:
     assert woken, "Wake event was not set by shutdown signal"
 
 
+@pytest.mark.smoke
 def test_sighup_handler_sets_stale_mtime(tmp_path: Path) -> None:
     """SIGHUP handler forces a project reload by resetting the registry mtime."""
     daemon = make_daemon(tmp_path)

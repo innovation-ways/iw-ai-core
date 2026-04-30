@@ -84,6 +84,7 @@ dev = [
     "beautifulsoup4>=4.14.3",
     "pip-audit>=2.7",
     "bandit[toml]>=1.7",
+    "pytest-timeout>=2.4.0",
 ]
 
 # --- Ruff ---
@@ -122,6 +123,8 @@ testpaths = ["tests"]
 addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
+    "smoke: fast critical-path tests; ~10 covering core flows; run via `make smoke`",
+    "slow: marks tests as slow (deselected by default unless -m slow is passed)",
 ]
 env = ["IW_CORE_AGENT_CONTEXT="]
 

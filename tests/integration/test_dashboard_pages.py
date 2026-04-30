@@ -186,6 +186,7 @@ def make_daemon_event(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.smoke
 def test_project_dashboard_returns_200(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
     resp = client.get("/project/test-proj/")

@@ -56,7 +56,7 @@ Plus lifecycle wrappers: `iw step-start`, a report file path to write, and `iw s
 ## Workflow
 
 1. Extract the `<command>` from the prompt. It appears verbatim inside backticks after `Execute exactly:`.
-2. Run the command. Capture stdout and stderr together. Record the exit code.
+2. Run the command via Bash with a timeout of **550000 ms** (9+ min). Integration test suites can take several minutes — never use the default 120s timeout. Capture stdout and stderr together. Record the exit code.
 3. Use the Write tool to write the report to the path specified by the prompt's lifecycle section (typically `ai-dev/active/<ITEM_ID>/reports/<ITEM_ID>_<STEP_ID>_QvGate_report.md`) using the Report Template below.
 4. On exit code `0`: `uv run iw step-done "$IW_ITEM_ID" --step "$IW_STEP_ID" --report <report_path>`
 5. On non-zero exit code: `uv run iw step-fail "$IW_ITEM_ID" --step "$IW_STEP_ID" --reason "<gate_name> failed: exit=<code>" --report <report_path>`

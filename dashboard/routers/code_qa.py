@@ -64,10 +64,10 @@ try:
 except ImportError:
     _DIAGRAM_RENDER_AVAILABLE = False
 
-    def render_mermaid(_dsl: str) -> str | None:
+    def render_mermaid(dsl: str) -> str | None:
         return None
 
-    def render_d2(_dsl: str) -> str | None:
+    def render_d2(dsl: str) -> str | None:
         return None
 
 
