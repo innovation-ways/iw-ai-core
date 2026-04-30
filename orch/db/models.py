@@ -21,11 +21,13 @@ from sqlalchemy import (
     Connection,
     DateTime,
     Float,
+    ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
     SmallInteger,
+    String,
     Text,
     UniqueConstraint,
     event,
@@ -1822,6 +1824,88 @@ def _project_oss_job_allocate_public_id(
         )
     ).scalar()
     target.public_id = f"O-{int(n):05d}"
+
+
+# ---------------------------------------------------------------------------
+# Keep-Alive Scheduler models
+# ---------------------------------------------------------------------------
+
+
+class KeepAliveConfig(Base):
+    """Singleton global configuration for the Keep-Alive Scheduler (id=1 always)."""
+
+    __tablename__ = "keep_alive_config"
+    __table_args__ = {"comment": "Singleton global config for the Keep-Alive Scheduler"}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # always 1
+    model: Mapped[str] = mapped_column(String(100), nullable=False, default="claude-sonnet-4-6")
+    window_duration_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    updated_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    slots: Mapped[list["KeepAliveSlot"]] = relationship(
+        "KeepAliveSlot", back_populates="config", passive_deletes=True
+    )
+
+
+class KeepAliveSlot(Base):
+    """One row per scheduled keep-alive time slot."""
+
+    __tablename__ = "keep_alive_slots"
+    __table_args__ = (
+        UniqueConstraint("time_hhmm", name="uq_keep_alive_slots_time"),
+        {"comment": "Scheduled keep-alive time slots"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    time_hhmm: Mapped[str] = mapped_column(String(5), nullable=False)  # "HH:MM"
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+
+    config_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("keep_alive_config.id", ondelete="CASCADE"),
+        nullable=False,
+        default=1,
+    )
+    config: Mapped["KeepAliveConfig"] = relationship("KeepAliveConfig", back_populates="slots")
+    runs: Mapped[list["KeepAliveRun"]] = relationship(
+        "KeepAliveRun", back_populates="slot", passive_deletes=True
+    )
+
+
+class KeepAliveRun(Base):
+    """Execution log for keep-alive firings."""
+
+    __tablename__ = "keep_alive_runs"
+    __table_args__ = {"comment": "Execution log for keep-alive firings"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    slot_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("keep_alive_slots.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    slot_time: Mapped[str] = mapped_column(
+        String(5), nullable=False, comment="Snapshot of 'HH:MM' at fire time"
+    )
+    fired_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        comment="success|failed|retried_success|retried_failed",
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    slot: Mapped["KeepAliveSlot | None"] = relationship("KeepAliveSlot", back_populates="runs")
 
 
 # ---------------------------------------------------------------------------

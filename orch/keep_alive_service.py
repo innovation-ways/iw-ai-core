@@ -1,0 +1,257 @@
+"""KeepAliveService — business logic for the Keep-Alive Scheduler.
+
+All DB operations for KeepAliveConfig, KeepAliveSlot, and KeepAliveRun.
+Subprocess fire logic and message randomisation are also here.
+"""
+
+from __future__ import annotations
+
+import logging
+import random
+import subprocess
+from datetime import datetime, timedelta
+
+from sqlalchemy import func
+from sqlalchemy.orm import Session  # noqa: TC002  same pattern as rest of orch package
+
+from orch.db.models import KeepAliveConfig, KeepAliveRun, KeepAliveSlot
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Message pool (hardcoded — not configurable via UI)
+# ---------------------------------------------------------------------------
+
+_MESSAGES = [
+    "Hi! How are you doing today?",
+    "Hello there! Anything interesting going on?",
+    "Hey! Just checking in.",
+    "Good to connect! What's new?",
+    "Hi! Hope you're having a great day.",
+    "Hello! Ready for some interesting work?",
+    "Hey there! What shall we explore today?",
+    "Greetings! How can I help?",
+    "Hi! Everything going well?",
+    "Hello! Just a quick hello from the scheduler.",
+    "Hey! Keeping the connection warm.",
+    "Hi! What's on your mind?",
+    "Good to hear from you! All good here.",
+    "Hello! Just popping in to say hi.",
+    "Hey! The day is going well, I hope.",
+]
+
+
+def pick_message() -> str:
+    return random.choice(_MESSAGES)  # noqa: S311
+
+
+# ---------------------------------------------------------------------------
+# Config CRUD
+# ---------------------------------------------------------------------------
+
+DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_WINDOW_DURATION_HOURS = 5
+
+
+def get_config(db: Session) -> KeepAliveConfig:
+    """Return the singleton config row (id=1). Creates it with defaults if missing."""
+    config = db.get(KeepAliveConfig, 1)
+    if config is None:
+        config = KeepAliveConfig(
+            id=1,
+            model=DEFAULT_MODEL,
+            window_duration_hours=DEFAULT_WINDOW_DURATION_HOURS,
+        )
+        db.add(config)
+        db.flush()
+    return config
+
+
+def upsert_config(db: Session, model: str, window_duration_hours: int) -> KeepAliveConfig:
+    """Update the singleton (id=1). Uses INSERT … ON CONFLICT DO UPDATE."""
+    config = get_config(db)
+    config.model = model
+    config.window_duration_hours = window_duration_hours
+    db.flush()
+    return config
+
+
+# ---------------------------------------------------------------------------
+# Slot CRUD
+# ---------------------------------------------------------------------------
+
+
+def list_slots(db: Session) -> list[KeepAliveSlot]:
+    """Return all slots ordered by time_hhmm."""
+    return db.query(KeepAliveSlot).order_by(KeepAliveSlot.time_hhmm).all()
+
+
+def add_slot(db: Session, time_hhmm: str) -> KeepAliveSlot:
+    """Add a new slot.
+
+    Validates time_hhmm format ("HH:MM", 00:00–23:59).
+    Raises ValueError on invalid format.
+    Raises IntegrityError (from DB) on duplicate — let the router handle it.
+    """
+    _validate_time_hhmm(time_hhmm)
+    slot = KeepAliveSlot(time_hhmm=time_hhmm, enabled=True, config_id=1)
+    db.add(slot)
+    db.flush()
+    return slot
+
+
+def delete_slot(db: Session, slot_id: int) -> bool:
+    """Delete slot. Returns False if not found."""
+    slot = db.get(KeepAliveSlot, slot_id)
+    if slot is None:
+        return False
+    db.delete(slot)
+    db.flush()
+    return True
+
+
+def toggle_slot(db: Session, slot_id: int) -> KeepAliveSlot | None:
+    """Flip enabled. Returns updated slot or None if not found."""
+    slot = db.get(KeepAliveSlot, slot_id)
+    if slot is None:
+        return None
+    slot.enabled = not slot.enabled
+    db.flush()
+    return slot
+
+
+# ---------------------------------------------------------------------------
+# Due-slot detection
+# ---------------------------------------------------------------------------
+
+
+def get_due_slots(db: Session) -> list[KeepAliveSlot]:
+    """Return enabled slots that should fire right now.
+
+    A slot is due when ALL of:
+    1. slot.enabled is True
+    2. slot.time_hhmm parsed as today's local datetime falls within [now - 30min, now]
+    3. No KeepAliveRun exists for today (calendar day, local time) with this slot's
+       time_hhmm AND status in ('success', 'retried_success')
+
+    Uses datetime.now() (no timezone — local time, matching user's schedule intent).
+    """
+    now = datetime.now()  # noqa: DTZ005 local time per design intent
+    today_date = now.date()
+
+    # Parse enabled slots and filter to those within the 30-min window
+    enabled_slots = db.query(KeepAliveSlot).filter(KeepAliveSlot.enabled == True).all()  # noqa: E712
+
+    due: list[KeepAliveSlot] = []
+    for slot in enabled_slots:
+        # Parse slot time as today's local datetime
+        try:
+            hour, minute = slot.time_hhmm.split(":")
+            slot_dt = now.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
+        except (ValueError, OverflowError):
+            # Malformed time in DB — skip
+            continue
+
+        # Window: [now - 30min, now]
+        window_start = now - timedelta(minutes=30)
+        if slot_dt < window_start or slot_dt > now:
+            continue
+
+        # Check: no already-successful run today for this time_hhmm
+        run_exists = (
+            db.query(KeepAliveRun)
+            .filter(
+                KeepAliveRun.slot_time == slot.time_hhmm,
+                func.date(KeepAliveRun.fired_at) == today_date,
+                KeepAliveRun.status.in_(("success", "retried_success")),
+            )
+            .first()
+        )
+        if run_exists:
+            continue
+
+        due.append(slot)
+
+    return due
+
+
+# ---------------------------------------------------------------------------
+# Run logging
+# ---------------------------------------------------------------------------
+
+VALID_RUN_STATUSES = ("success", "failed", "retried_success", "retried_failed")
+
+
+def log_run(
+    db: Session,
+    slot_id: int | None,
+    slot_time: str,
+    status: str,
+    error: str | None = None,
+) -> KeepAliveRun:
+    """Insert a KeepAliveRun row. status must be one of the four defined values."""
+    if status not in VALID_RUN_STATUSES:
+        raise ValueError(f"Invalid status {status!r}; must be one of {VALID_RUN_STATUSES}")
+    run = KeepAliveRun(
+        slot_id=slot_id,
+        slot_time=slot_time,
+        status=status,
+        error=error,
+    )
+    db.add(run)
+    db.flush()
+    return run
+
+
+def get_recent_runs(db: Session, limit: int = 10) -> list[KeepAliveRun]:
+    """Return most recent runs ordered by fired_at DESC, limit rows."""
+    return db.query(KeepAliveRun).order_by(KeepAliveRun.fired_at.desc()).limit(limit).all()
+
+
+# ---------------------------------------------------------------------------
+# Subprocess fire
+# ---------------------------------------------------------------------------
+
+
+def fire_claude(message: str, timeout: int = 30) -> tuple[bool, str | None]:
+    """Spawn a claude CLI subprocess.
+
+    Runs: subprocess.run(["claude", "-p", message], capture_output=True, text=True, timeout=timeout)
+    Returns (True, None) on returncode==0.
+    Returns (False, stderr_or_exception_str) on failure.
+    Does NOT retry — retry logic is in the poller.
+    subprocess.TimeoutExpired → treat as failure.
+    """
+    try:
+        result = subprocess.run(
+            ["claude", "-p", message],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode == 0:
+            return (True, None)
+        return (False, result.stderr or result.stdout or "")
+    except subprocess.TimeoutExpired:
+        return (False, "subprocess timed out")
+    except FileNotFoundError:
+        return (False, "claude binary not found on PATH")
+    except Exception as exc:
+        return (False, str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _validate_time_hhmm(time_hhmm: str) -> None:
+    """Raise ValueError if time_hhmm is not a valid HH:MM in 00:00–23:59."""
+    if len(time_hhmm) != 5 or time_hhmm[2] != ":":
+        raise ValueError(f"Invalid time format {time_hhmm!r}; expected HH:MM")
+    try:
+        h, m = int(time_hhmm[:2]), int(time_hhmm[3:])
+    except ValueError:  # noqa: PERF203
+        raise ValueError(f"Invalid time format {time_hhmm!r}; expected HH:MM") from None
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        raise ValueError(f"Invalid time {time_hhmm!r}; hour must be 0–23, minute 0–59")

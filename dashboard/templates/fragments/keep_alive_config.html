@@ -1,0 +1,37 @@
+<form hx-post="/api/keep-alive/config"
+      hx-ext="json-enc"
+      hx-target="#config-form"
+      hx-swap="outerHTML"
+      id="config-form">
+  <div class="space-y-4">
+    <div>
+      <label for="model-select" class="block text-sm font-medium text-foreground mb-1">Claude Model</label>
+      <select name="model"
+              id="model-select"
+              class="w-full max-w-xs px-3 py-2 bg-background border border-border rounded-md text-sm
+                     text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+        {% for m in available_models %}
+          <option value="{{ m }}" {% if m == config.model %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="duration-select" class="block text-sm font-medium text-foreground mb-1">Usage Window Duration</label>
+      <select name="window_duration_hours"
+              id="duration-select"
+              class="w-full max-w-xs px-3 py-2 bg-background border border-border rounded-md text-sm
+                     text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+        {% for h in available_durations %}
+          <option value="{{ h }}" {% if h == config.window_duration_hours %}selected{% endif %}>{{ h }} hours</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit"
+              class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium
+                     hover:bg-primary/90 transition-colors">
+        Save Config
+      </button>
+    </div>
+  </div>
+</form>
