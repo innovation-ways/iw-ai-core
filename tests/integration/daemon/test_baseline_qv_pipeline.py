@@ -675,15 +675,31 @@ class TestBaselineBoundary:
 
         monkeypatch.setenv("IW_CORE_BASELINE_QV", "true")
 
+        class MockPopen:
+            def __init__(self, cmd: str, **kwargs: Any) -> None:
+                self.cmd = cmd
+                self.kwargs = kwargs
+
+            def communicate(self, **kwargs: Any) -> tuple[bytes, bytes]:
+                if "merge-base" in self.cmd:
+                    return (b"abc123\n", b"")
+                return (b"", b"")
+
+            def __enter__(self) -> "MockPopen":
+                return self
+
+            def __exit__(self, *args: Any) -> None:
+                pass
+
         def subprocess_side_effect(cmd: list[str], **kwargs: Any) -> MagicMock:
-            """Return different values depending on the command being run."""
             if isinstance(cmd, list) and "merge-base" in cmd:
-                # git merge-base call for base SHA resolution
                 return MagicMock(stdout="abc123\n", stderr="", returncode=0)
-            # Gate command execution - empty passing output
             return MagicMock(stdout="", stderr="", returncode=0)
 
-        with patch("orch.daemon.batch_manager.subprocess.run", side_effect=subprocess_side_effect):
+        with (
+            patch("orch.daemon.batch_manager.subprocess.run", side_effect=subprocess_side_effect),
+            patch("orch.daemon.batch_manager.subprocess.Popen", side_effect=MockPopen),
+        ):
             bm = BatchManager(
                 project_id=test_project.id,
                 project_config=MagicMock(

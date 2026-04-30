@@ -1051,3 +1051,11 @@ def _handle_reload(self, signum, frame):
 | **Never merges concurrently** | One merge at a time per project (merge queue). |
 | **Always recoverable** | Every step_run has command + worktree_path. Restart = re-run the stored command. |
 | **Always observable** | Every action emits a daemon_event. Dashboard queries events for display. |
+
+### Migration safety net
+
+`tests/integration/test_migration_roundtrip.py` runs an upgrade/downgrade/upgrade cycle for the **latest 3** alembic revisions on each test run. The window is dynamic — adding a new migration auto-shifts it without code edits.
+
+`alembic check` runs on every PR via `.github/workflows/schema-validation.yml` to catch drift between model definitions and migrations.
+
+Older revisions are not roundtripped on every PR (pragmatic choice — they were verified at the time via the daemon's pre-merge dry-run).

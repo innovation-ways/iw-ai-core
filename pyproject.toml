@@ -97,7 +97,7 @@ select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "ARG001", "ARG002", "SLF001", "S603", "S607", "TC003", "S110", "S108"]  # assert ok; fixture side effects; private access in tests ok; git subprocess in test fixtures
 "orch/db/migrations/**" = ["E501", "TC003"]  # migration files: long column definitions; Sequence used at runtime in upgrade()
-"dashboard/routers/**" = ["B008", "PT028", "TC001"]  # FastAPI Depends() in default args is canonical; PT028 false-positives on route params; TC001 conflicts with FastAPI runtime model resolution
+"dashboard/routers/**" = ["B008", "TC001"]  # FastAPI Depends() in default args is canonical; TC001 conflicts with FastAPI runtime model resolution
 "dashboard/services/oss_service.py" = ["S603", "S607", "S108"]  # git subprocess; /tmp paths for worktrees
 "scripts/backfill_functional_doc.py" = ["S603", "S607"]  # opencode subprocess; agent script
 "scripts/e2e_health_check.py" = ["T201", "S310"]  # CLI script; print output; http URL fetch
