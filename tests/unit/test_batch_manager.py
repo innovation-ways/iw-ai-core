@@ -457,6 +457,177 @@ class TestStepLaunchFields:
 
 
 # ---------------------------------------------------------------------------
+# QV direct-exec (no LLM) for quality_validation steps
+# ---------------------------------------------------------------------------
+
+
+class TestQvDirectExec:
+    """Quality-validation steps with a populated `step.command` are run via a
+    self-contained bash wrapper — no LLM CLI is launched. Legacy QV steps
+    (no `step.command`) still fall through to the LLM path.
+    """
+
+    def _make_qv_step(self, *, item_id: str, step_id: str, command: str | None) -> MagicMock:
+        step = MagicMock(spec=WorkflowStep)
+        step.work_item_id = item_id
+        step.step_id = step_id
+        step.step_type = StepType.quality_validation
+        step.id = 42
+        step.started_at = None
+        step.command = command
+        step.gate = "lint"
+        step.agent_label = "QvGate"
+        step.opencode_agent = "qv-gate"
+        step.timeout_secs = 120
+        return step
+
+    def test_qv_step_with_command_runs_directly_without_llm(self, tmp_path):
+        db = MagicMock()
+        step = self._make_qv_step(item_id="F-00010", step_id="S06", command="make lint")
+        worktree_info = {"path": str(tmp_path)}
+
+        with patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen:
+            mock_popen.return_value = MagicMock(pid=4242)
+            manager = make_manager(tmp_path, db, cli_tool="claude")
+            db.query.return_value.filter.return_value.count.return_value = 0
+            manager._launch_step(db, step, worktree_info)
+
+        cmd = mock_popen.call_args[0][0]
+        assert cmd.startswith("bash ")
+        assert ".qv-wrap.sh" in cmd
+        # No LLM in the launch command.
+        assert "claude -p" not in cmd
+        assert "opencode run" not in cmd
+
+        # Wrapper + gate scripts are written under the worktree.
+        wrap_script = tmp_path / ".tmp" / "F-00010_S06.qv-wrap.sh"
+        gate_script = tmp_path / ".tmp" / "F-00010_S06.qv-gate.sh"
+        assert wrap_script.exists()
+        assert gate_script.exists()
+        wrapper_text = wrap_script.read_text()
+        assert "iw step-done" in wrapper_text
+        assert "iw step-fail" in wrapper_text
+        assert "QvGate Report" in wrapper_text
+        assert gate_script.read_text().strip().endswith("make lint")
+
+    def test_qv_step_records_bash_wrapper_in_step_run(self, tmp_path):
+        """StepRun.command must reflect the bash wrapper, not an LLM invocation."""
+        db = MagicMock()
+        step = self._make_qv_step(item_id="F-00011", step_id="S07", command="make test-unit")
+        worktree_info = {"path": str(tmp_path)}
+
+        with patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen:
+            mock_popen.return_value = MagicMock(pid=4343)
+            manager = make_manager(tmp_path, db, cli_tool="claude")
+            db.query.return_value.filter.return_value.count.return_value = 0
+            manager._launch_step(db, step, worktree_info)
+
+        added_runs = [
+            call.args[0] for call in db.add.call_args_list if hasattr(call.args[0], "pid")
+        ]
+        assert len(added_runs) == 1
+        run = added_runs[0]
+        assert run.command.startswith("bash ")
+        assert "claude" not in run.command
+        assert "opencode" not in run.command
+
+    def test_qv_step_without_command_falls_back_to_llm(self, tmp_path):
+        """Legacy items registered before CR-00023 (NULL step.command) still use the LLM path."""
+        db = MagicMock()
+        step = self._make_qv_step(item_id="F-00012", step_id="S08", command=None)
+        worktree_info = {"path": "/wt/F-00012"}
+
+        with (
+            patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen,
+            patch("pathlib.Path.open", MagicMock()),
+            patch("pathlib.Path.mkdir"),
+            patch("pathlib.Path.exists", return_value=False),
+            patch("pathlib.Path.write_text"),
+        ):
+            mock_popen.return_value = MagicMock(pid=4444)
+            manager = make_manager(tmp_path, db, cli_tool="claude")
+            db.query.return_value.filter.return_value.count.return_value = 0
+            manager._launch_step(db, step, worktree_info)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "claude -p" in cmd  # LLM fallback
+        assert "bash " not in cmd.split(" ")[0:1]  # not the bash wrapper
+
+
+class TestBuildQvDirectCommand:
+    """Pure unit tests for the wrapper-script builder."""
+
+    def test_returns_bash_invocation_of_wrap_script(self, tmp_path):
+        from orch.daemon.batch_manager import _build_qv_direct_command
+
+        cmd = _build_qv_direct_command(
+            item_id="F-00020",
+            step_id="S06",
+            gate_name="lint",
+            gate_command="make lint",
+            agent_label="QvGate",
+            worktree_path=str(tmp_path),
+        )
+        assert cmd == "bash .tmp/F-00020_S06.qv-wrap.sh"
+
+    def test_writes_gate_and_wrap_scripts(self, tmp_path):
+        from orch.daemon.batch_manager import _build_qv_direct_command
+
+        _build_qv_direct_command(
+            item_id="F-00021",
+            step_id="S07",
+            gate_name="format",
+            gate_command="ruff format --check .",
+            agent_label="QvGate",
+            worktree_path=str(tmp_path),
+        )
+        gate_script = tmp_path / ".tmp" / "F-00021_S07.qv-gate.sh"
+        wrap_script = tmp_path / ".tmp" / "F-00021_S07.qv-wrap.sh"
+        assert gate_script.read_text().strip().endswith("ruff format --check .")
+        wrapper = wrap_script.read_text()
+        # Both branches are present
+        assert "iw step-done" in wrapper
+        assert "iw step-fail" in wrapper
+        # Report path uses the agent_label
+        assert "F-00021_S07_QvGate_report.md" in wrapper
+        # Gate name appears in the report
+        assert "format" in wrapper
+
+    def test_gate_command_with_special_chars_is_preserved(self, tmp_path):
+        from orch.daemon.batch_manager import _build_qv_direct_command
+
+        gate_cmd = "pytest -k 'parser or schema' --maxfail=1"
+        _build_qv_direct_command(
+            item_id="F-00022",
+            step_id="S08",
+            gate_name="unit-tests",
+            gate_command=gate_cmd,
+            agent_label="QvGate",
+            worktree_path=str(tmp_path),
+        )
+        gate_script = tmp_path / ".tmp" / "F-00022_S08.qv-gate.sh"
+        # The gate script body is the gate command verbatim — quotes preserved.
+        assert gate_cmd in gate_script.read_text()
+
+    def test_scripts_are_executable(self, tmp_path):
+        import stat
+
+        from orch.daemon.batch_manager import _build_qv_direct_command
+
+        _build_qv_direct_command(
+            item_id="F-00023",
+            step_id="S09",
+            gate_name="typecheck",
+            gate_command="mypy orch",
+            agent_label="QvGate",
+            worktree_path=str(tmp_path),
+        )
+        for name in ("F-00023_S09.qv-gate.sh", "F-00023_S09.qv-wrap.sh"):
+            mode = (tmp_path / ".tmp" / name).stat().st_mode
+            assert mode & stat.S_IXUSR
+
+
+# ---------------------------------------------------------------------------
 # Worktree setup error handling
 # ---------------------------------------------------------------------------
 

@@ -67,6 +67,14 @@ STOP and raise a blocker. Do not work around this rule.
 
 Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
+## ⛔ Docker is off-limits
+
+(Standard policy. Testcontainer fixtures in tests are exempt.)
+
+## ⛔ Migrations: agents generate, daemon applies
+
+(Standard policy. State whether this item adds, modifies, or leaves migrations unchanged.)
+
 ## Why
 
 Two to four sentences explaining why this work was requested — the problem,

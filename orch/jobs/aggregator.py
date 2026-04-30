@@ -273,7 +273,7 @@ class JobsAggregator:
                 (
                     JobRow(
                         job_type=JobType.code_mapping,
-                        job_id=job.id,
+                        job_id=job.public_id or job.id,
                         project_id=job.project_id,
                         title=title,
                         status=job.status,
@@ -505,7 +505,7 @@ class JobsAggregator:
                 (
                     JobRow(
                         job_type=JobType.research,
-                        job_id=doc.id,
+                        job_id=doc.doc_id,
                         project_id=doc.project_id,
                         title=doc.title,
                         status=status_norm,
@@ -520,8 +520,13 @@ class JobsAggregator:
         return results
 
     def _get_code_mapping(self, project_id: str, job_id: str) -> JobRow | None:
-        job = self._session.get(CodeIndexJob, job_id)
-        if job is None or job.project_id != project_id:
+        job = self._session.scalar(
+            select(CodeIndexJob).where(
+                CodeIndexJob.public_id == job_id,
+                CodeIndexJob.project_id == project_id,
+            )
+        )
+        if job is None:
             return None
         raw: dict[str, object] = {
             "id": job.id,
@@ -544,7 +549,7 @@ class JobsAggregator:
         }
         return JobRow(
             job_type=JobType.code_mapping,
-            job_id=job.id,
+            job_id=job.public_id or job.id,
             project_id=job.project_id,
             title=f"Code map — {job.index_tier or 'default'}",
             status=job.status,
@@ -627,13 +632,19 @@ class JobsAggregator:
         )
 
     def _get_research(self, project_id: str, job_id: str) -> JobRow | None:
-        doc = self._session.get(ProjectDoc, job_id)
-        if doc is None or doc.project_id != project_id:
+        doc = self._session.scalar(
+            select(ProjectDoc).where(
+                ProjectDoc.project_id == project_id,
+                ProjectDoc.doc_id == job_id,
+                ProjectDoc.doc_type == DocType.research,
+            )
+        )
+        if doc is None:
             return None
         status_norm = _normalise_doc_status(doc.status)
         return JobRow(
             job_type=JobType.research,
-            job_id=doc.id,
+            job_id=doc.doc_id,
             project_id=doc.project_id,
             title=doc.title,
             status=status_norm,

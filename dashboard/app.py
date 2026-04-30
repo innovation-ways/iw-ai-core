@@ -45,6 +45,7 @@ from dashboard.routers import (
     staleness,
     system,
     tests,
+    usage,
     worktrees,
 )
 from dashboard.utils.timing import TimingMiddleware
@@ -207,5 +208,6 @@ def create_app() -> FastAPI:
     app.include_router(research.router)
     app.include_router(staleness.router)
     app.include_router(coverage.router)
+    app.include_router(usage.router)
 
     return app

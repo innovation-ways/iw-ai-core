@@ -8,6 +8,14 @@
 
 ---
 
+## ⛔ Docker is off-limits
+
+(Standard policy. Testcontainer fixtures in tests are exempt.)
+
+## ⛔ Migrations: agents generate, daemon applies
+
+(Standard policy. State whether this item adds, modifies, or leaves migrations unchanged.)
+
 ## Description
 
 {What is broken and the user-visible impact. 2-3 sentences.}

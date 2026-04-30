@@ -247,7 +247,7 @@ def test_type_filter_narrows_to_one(db_session, project: Project) -> None:
 
 def test_status_filter_narrows_results(db_session, project: Project) -> None:
     """statuses=['completed'] returns only completed rows (failed row is excluded)."""
-    _seed_code_index(db_session, project.id, "cij-1", "completed")
+    completed_job = _seed_code_index(db_session, project.id, "cij-1", "completed")
     _seed_code_index(db_session, project.id, "cij-2", "failed")
     db_session.flush()
 
@@ -256,14 +256,16 @@ def test_status_filter_narrows_results(db_session, project: Project) -> None:
 
     assert len(result.rows) == 1
     assert result.rows[0].status == "completed"
-    assert result.rows[0].job_id == "cij-1"
+    assert result.rows[0].job_id == completed_job.public_id
 
 
 def test_date_range_filter(db_session, project: Project) -> None:
     """date_from / date_to narrow results to the seeded time window."""
     now = datetime.now(UTC)
     _seed_code_index(db_session, project.id, "cij-old", "completed", started_offset_h=48)
-    _seed_code_index(db_session, project.id, "cij-recent", "completed", started_offset_h=1)
+    recent_job = _seed_code_index(
+        db_session, project.id, "cij-recent", "completed", started_offset_h=1
+    )
     db_session.flush()
 
     agg = JobsAggregator(db_session)
@@ -274,7 +276,7 @@ def test_date_range_filter(db_session, project: Project) -> None:
     )
 
     assert len(result.rows) == 1
-    assert result.rows[0].job_id == "cij-recent"
+    assert result.rows[0].job_id == recent_job.public_id
 
 
 def test_pagination_returns_correct_page(db_session, project: Project) -> None:
@@ -298,42 +300,50 @@ def test_pagination_returns_correct_page(db_session, project: Project) -> None:
 
 def test_sort_descending(db_session, project: Project) -> None:
     """sort_dir='desc' orders rows by started_at descending (most recent first)."""
+    jobs = {}
     for i in [1, 5, 3]:
-        _seed_code_index(db_session, project.id, f"cij-{i}", "completed", started_offset_h=i)
+        jobs[i] = _seed_code_index(
+            db_session, project.id, f"cij-{i}", "completed", started_offset_h=i
+        )
     db_session.flush()
 
     agg = JobsAggregator(db_session)
     result = agg.list_jobs(project_id=project.id, sort_by="started_at", sort_dir="desc")
 
     ids = [row.job_id for row in result.rows]
-    assert ids == ["cij-1", "cij-3", "cij-5"]
+    # most recent first: offset 1h < offset 3h < offset 5h
+    assert ids == [jobs[1].public_id, jobs[3].public_id, jobs[5].public_id]
 
 
 def test_sort_ascending(db_session, project: Project) -> None:
     """sort_dir='asc' orders rows by started_at ascending (oldest first)."""
+    jobs = {}
     for i in [1, 5, 3]:
-        _seed_code_index(db_session, project.id, f"cij-{i}", "completed", started_offset_h=i)
+        jobs[i] = _seed_code_index(
+            db_session, project.id, f"cij-{i}", "completed", started_offset_h=i
+        )
     db_session.flush()
 
     agg = JobsAggregator(db_session)
     result = agg.list_jobs(project_id=project.id, sort_by="started_at", sort_dir="asc")
 
     ids = [row.job_id for row in result.rows]
-    assert ids == ["cij-5", "cij-3", "cij-1"]
+    # oldest first: offset 5h > offset 3h > offset 1h
+    assert ids == [jobs[5].public_id, jobs[3].public_id, jobs[1].public_id]
 
 
 def test_get_job_returns_correct_row_per_type(db_session, project: Project) -> None:
     """get_job returns the exact seeded row for each of the four types; None for bad id."""
-    _seed_code_index(db_session, project.id, "cij-1", "completed")
+    cm_job = _seed_code_index(db_session, project.id, "cij-1", "completed")
     _seed_doc_gen(db_session, project.id, "dgj-1", None, JobStatus.completed)
     _seed_batch(db_session, project.id, "B-001", BatchStatus.completed)
-    _seed_research_doc(db_session, project.id, "res-1", DocStatus.published)
+    res_doc = _seed_research_doc(db_session, project.id, "res-1", DocStatus.published)
     db_session.flush()
 
     agg = JobsAggregator(db_session)
 
     assert (
-        agg.get_job(project_id=project.id, job_type=JobType.code_mapping, job_id="cij-1")
+        agg.get_job(project_id=project.id, job_type=JobType.code_mapping, job_id=cm_job.public_id)
         is not None
     )
     assert (
@@ -344,10 +354,16 @@ def test_get_job_returns_correct_row_per_type(db_session, project: Project) -> N
         agg.get_job(project_id=project.id, job_type=JobType.batch_execution, job_id="B-001")
         is not None
     )
-    assert agg.get_job(project_id=project.id, job_type=JobType.research, job_id="res-1") is not None
+    assert (
+        agg.get_job(project_id=project.id, job_type=JobType.research, job_id=res_doc.doc_id)
+        is not None
+    )
 
     assert agg.get_job(project_id=project.id, job_type=JobType.code_mapping, job_id="bogus") is None
-    assert agg.get_job(project_id="bogus", job_type=JobType.code_mapping, job_id="cij-1") is None
+    assert (
+        agg.get_job(project_id="bogus", job_type=JobType.code_mapping, job_id=cm_job.public_id)
+        is None
+    )
 
 
 def test_batch_executing_normalises_to_running(db_session, project: Project) -> None:

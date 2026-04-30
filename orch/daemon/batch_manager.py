@@ -10,6 +10,7 @@ import contextlib
 import logging
 import os
 import re
+import shlex
 import signal
 import subprocess
 from datetime import UTC, datetime
@@ -689,7 +690,7 @@ class BatchManager:
     def _resolve_worktree_base_sha(self, worktree_path: str) -> str | None:
         """Resolve the worktree's base SHA via git merge-base HEAD main."""
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603
                 ["git", "merge-base", "HEAD", "main"],  # noqa: S607
                 cwd=worktree_path,
                 capture_output=True,
@@ -740,7 +741,7 @@ class BatchManager:
             env=_agent_subprocess_env(),
         ) as proc:
             try:
-                stdout, stderr = proc.communicate(timeout=300)
+                stdout, stderr = proc.communicate(timeout=900)
                 return stdout.decode(errors="replace") + stderr.decode(errors="replace")
             except subprocess.TimeoutExpired:
                 with contextlib.suppress(ProcessLookupError):
@@ -953,23 +954,41 @@ class BatchManager:
                     return
                 agent_env = bv_env
 
-        # Build prompt from the step's manifest prompt file (shared by all CLI tools)
-        prompt = self._build_claude_prompt(step, worktree_path)
-        if agent_env is not None:
-            prompt = browser_env.render_prompt_substitutions(prompt, agent_env)
-        prompt = substitute_worktree_placeholders(prompt, worktree_info)
-        prompt_file = Path(worktree_path) / ".tmp" / f"{step.work_item_id}_{step.step_id}.prompt"
-        prompt_file.parent.mkdir(parents=True, exist_ok=True)
-        prompt_file.write_text(prompt)
-
-        if cli_tool == "opencode":
-            agent_name = step.opencode_agent or step.agent_label
-            agent_args = f"--agent {agent_name}" if agent_name else ""
-            command = (
-                f'opencode run "$(cat {prompt_file})" --dangerously-skip-permissions {agent_args}'
-            ).strip()
+        # Quality validation gates run as plain bash subprocesses — no LLM. The
+        # wrapper script writes a QvGate-format report and finalises the step
+        # via `iw step-done` / `iw step-fail`, preserving the existing StepRun
+        # lifecycle. Legacy items registered before CR-00023 (no step.command)
+        # fall through to the LLM path below.
+        if step.step_type == StepType.quality_validation and step.command:
+            command = _build_qv_direct_command(
+                item_id=step.work_item_id,
+                step_id=step.step_id,
+                gate_name=step.gate or step.step_id,
+                gate_command=step.command,
+                agent_label=step.agent_label,
+                worktree_path=worktree_path,
+            )
         else:
-            command = f'claude -p "$(cat {prompt_file})" --dangerously-skip-permissions'
+            # Build prompt from the step's manifest prompt file (shared by all CLI tools)
+            prompt = self._build_claude_prompt(step, worktree_path)
+            if agent_env is not None:
+                prompt = browser_env.render_prompt_substitutions(prompt, agent_env)
+            prompt = substitute_worktree_placeholders(prompt, worktree_info)
+            prompt_file = (
+                Path(worktree_path) / ".tmp" / f"{step.work_item_id}_{step.step_id}.prompt"
+            )
+            prompt_file.parent.mkdir(parents=True, exist_ok=True)
+            prompt_file.write_text(prompt)
+
+            if cli_tool == "opencode":
+                agent_name = step.opencode_agent or step.agent_label
+                agent_args = f"--agent {agent_name}" if agent_name else ""
+                command = (
+                    f'opencode run "$(cat {prompt_file})" --dangerously-skip-permissions '
+                    f"{agent_args}"
+                ).strip()
+            else:
+                command = f'claude -p "$(cat {prompt_file})" --dangerously-skip-permissions'
 
         # CR-00023: prefer the DB column (populated at register time). Fall
         # back to a manifest read for items registered before CR-00023.
@@ -1364,6 +1383,124 @@ def _next_run_number(db: Session, step: WorkflowStep) -> int:
     """Return the next run_number for a step (existing count + 1)."""
     count = db.query(StepRun).filter(StepRun.step_id == step.id).count()
     return count + 1
+
+
+def _build_qv_direct_command(
+    item_id: str,
+    step_id: str,
+    gate_name: str,
+    gate_command: str,
+    agent_label: str,
+    worktree_path: str,
+) -> str:
+    """Build the launch command for a quality_validation step that runs without an LLM.
+
+    Writes two helper scripts under ``<worktree>/.tmp/`` and returns the
+    shell command that invokes the wrapper:
+
+      - ``<item>_<step>.qv-gate.sh``  — the gate command, verbatim.
+      - ``<item>_<step>.qv-wrap.sh``  — runs the gate, writes a QvGate-format
+        report, and finalises the step via ``iw step-done`` / ``iw step-fail``.
+
+    The wrapper preserves the existing StepRun lifecycle (PID monitoring,
+    timeouts, log capture, fix cycle) — only the LLM is removed.
+    """
+    worktree = Path(worktree_path)
+    tmp_dir = worktree / ".tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    gate_script = tmp_dir / f"{item_id}_{step_id}.qv-gate.sh"
+    gate_script.write_text(f"#!/usr/bin/env bash\n{gate_command}\n")
+    gate_script.chmod(0o755)
+    gate_script_rel = str(gate_script.relative_to(worktree))
+
+    report_dir_rel = f"ai-dev/active/{item_id}/reports"
+    report_file_rel = f"{report_dir_rel}/{item_id}_{step_id}_{agent_label}_report.md"
+
+    wrap_script = tmp_dir / f"{item_id}_{step_id}.qv-wrap.sh"
+    wrap_script_rel = str(wrap_script.relative_to(worktree))
+
+    item_q = shlex.quote(item_id)
+    step_q = shlex.quote(step_id)
+    gate_name_q = shlex.quote(gate_name)
+    gate_disp_q = shlex.quote(gate_command)
+    report_dir_q = shlex.quote(report_dir_rel)
+    report_file_q = shlex.quote(report_file_rel)
+    gate_script_q = shlex.quote(gate_script_rel)
+
+    wrapper = rf"""#!/usr/bin/env bash
+# QV direct-exec wrapper for {item_id} {step_id} ({gate_name}).
+# Auto-generated by orch.daemon.batch_manager — do not edit by hand.
+# Runs the gate, writes a QvGate-format report, and finalises the step
+# via `iw step-done` or `iw step-fail`. No LLM is involved.
+
+ITEM_ID={item_q}
+STEP_ID={step_q}
+GATE_NAME={gate_name_q}
+GATE_DISPLAY={gate_disp_q}
+REPORT_DIR={report_dir_q}
+REPORT_FILE={report_file_q}
+GATE_SCRIPT={gate_script_q}
+
+mkdir -p "$REPORT_DIR"
+RAW_LOG=$(mktemp)
+START_TS=$(date +%s)
+
+bash "$GATE_SCRIPT" >"$RAW_LOG" 2>&1
+RC=$?
+
+END_TS=$(date +%s)
+DURATION=$((END_TS - START_TS))
+TAIL_OUTPUT=$(tail -200 "$RAW_LOG" 2>/dev/null || true)
+rm -f "$RAW_LOG"
+
+if [ "$RC" -eq 0 ]; then
+    RESULT=PASS
+    VERDICT=pass
+else
+    RESULT=FAIL
+    VERDICT=fail
+fi
+
+cat > "$REPORT_FILE" <<REPORTEOF
+# $ITEM_ID $STEP_ID QvGate Report
+
+## Gate
+
+| Field        | Value           |
+|--------------|-----------------|
+| Gate         | $GATE_NAME      |
+| Command      | \`$GATE_DISPLAY\` |
+| Exit code    | $RC             |
+| Result       | $RESULT         |
+| Duration (s) | $DURATION       |
+
+## Output (tail)
+
+\`\`\`
+$TAIL_OUTPUT
+\`\`\`
+
+## Verdict
+
+\`\`\`
+$VERDICT
+\`\`\`
+REPORTEOF
+
+if [ "$RC" -eq 0 ]; then
+    uv run iw step-done "$ITEM_ID" --step "$STEP_ID" --report "$REPORT_FILE"
+else
+    uv run iw step-fail "$ITEM_ID" --step "$STEP_ID" \
+        --reason "$GATE_NAME failed: exit=$RC" --report "$REPORT_FILE"
+fi
+
+exit $RC
+"""
+    wrap_script.write_text(wrapper)
+    wrap_script.chmod(0o755)
+
+    return f"bash {shlex.quote(wrap_script_rel)}"
 
 
 def _emit_event(
