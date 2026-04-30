@@ -65,7 +65,16 @@ class TestClassifyQuery:
         """Without chips, non-behavioral query defaults to code_only."""
         from orch.rag.classifier import classify_query
 
-        result = await classify_query("show me the signature", mock_config, context_chips=None)
+        # Mock the LLM so the test doesn't reach the real Ollama instance —
+        # otherwise the call adds ~5s per run on machines with Ollama up,
+        # or 2s of timeout where it isn't.
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = "code_only"
+        mock_llm.complete = MagicMock(return_value=mock_response)
+
+        with patch("orch.rag.classifier.Ollama", return_value=mock_llm):
+            result = await classify_query("show me the signature", mock_config, context_chips=None)
         assert result == "code_only"
 
     @pytest.mark.asyncio

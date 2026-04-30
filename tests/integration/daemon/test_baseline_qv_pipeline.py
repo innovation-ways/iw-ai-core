@@ -411,7 +411,17 @@ class TestAC3:
                 bm._compute_qv_baselines(db_session, batch_item, {"path": str(worktree)})
 
         rows = db_session.query(QvBaseline).all()
-        assert len(rows) == 3
+        # I-00049 removed `integration-tests` from GATE_PARSERS because running
+        # `make test-integration` (which spawns testcontainers) as a daemon
+        # baseline reproduced the synchronous-pipe deadlock that froze the
+        # daemon. Steps with that gate are now logged as "Unknown gate … —
+        # skipping baseline" and contribute no QvBaseline row, so we expect
+        # only the lint and unit-tests baselines (2 of the 3 manifest steps).
+        rows_by_gate = {r.gate_name: r for r in rows}
+        assert set(rows_by_gate) == {"lint", "unit-tests"}, (
+            f"Expected lint and unit-tests baselines only "
+            f"(integration-tests is excluded by design); got {sorted(rows_by_gate)}"
+        )
         base_shas = {r.base_sha for r in rows}
         assert len(base_shas) == 1
         assert "abc123" in base_shas

@@ -34,12 +34,25 @@ class TestModuleGeneratorIntegration:
             patch("orch.rag.module_gen.lancedb") as mock_lancedb,
             patch("orch.rag.module_gen.httpx.AsyncClient") as mock_httpx_cls,
             patch("orch.rag.module_gen.OllamaEmbedding") as mock_embed_cls,
+            # F-00064 added _generate_and_store_module_diagram, which constructs
+            # llama_index's Ollama LLM and calls .complete() — bypassing the
+            # patched httpx client. Without this mock, the test hits the real
+            # local Ollama (or its connection timeout) and adds 20-30s per call.
+            patch("orch.rag.module_gen.Ollama") as mock_llm_cls,
         ):
             mock_table = MagicMock()
             mock_lancedb.connect.return_value = mock_table
             mock_table.search.return_value = mock_table
             mock_table.limit.return_value = mock_table
             mock_table.to_list = AsyncMock(return_value=[])
+
+            mock_llm_response = MagicMock()
+            mock_llm_response.text = (
+                "```mermaid\n---\nconfig:\n  layout: elk\n---\n"
+                "graph LR\n  A[Engine]\n```\n\n"
+                "```purpose\nEngine module overview.\n```"
+            )
+            mock_llm_cls.return_value.complete = MagicMock(return_value=mock_llm_response)
 
             mock_client = MagicMock()
             mock_httpx_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -86,12 +99,25 @@ class TestModuleGeneratorIntegration:
             patch("orch.rag.module_gen.lancedb") as mock_lancedb,
             patch("orch.rag.module_gen.httpx.AsyncClient") as mock_httpx_cls,
             patch("orch.rag.module_gen.OllamaEmbedding") as mock_embed_cls,
+            # F-00064 added _generate_and_store_module_diagram, which constructs
+            # llama_index's Ollama LLM and calls .complete() — bypassing the
+            # patched httpx client. Without this mock, the test hits the real
+            # local Ollama (or its connection timeout) and adds 20-30s per call.
+            patch("orch.rag.module_gen.Ollama") as mock_llm_cls,
         ):
             mock_table = MagicMock()
             mock_lancedb.connect.return_value = mock_table
             mock_table.search.return_value = mock_table
             mock_table.limit.return_value = mock_table
             mock_table.to_list = AsyncMock(return_value=[])
+
+            mock_llm_response = MagicMock()
+            mock_llm_response.text = (
+                "```mermaid\n---\nconfig:\n  layout: elk\n---\n"
+                "graph LR\n  A[Engine]\n```\n\n"
+                "```purpose\nEngine module overview.\n```"
+            )
+            mock_llm_cls.return_value.complete = MagicMock(return_value=mock_llm_response)
 
             mock_client = MagicMock()
             mock_httpx_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)

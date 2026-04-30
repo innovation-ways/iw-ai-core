@@ -159,7 +159,7 @@ class TestBug3ChatCollapseTogglesCssVariable:
             "getComputedStyle(document.documentElement).getPropertyValue('--chat-width').trim()",
         )
 
-        _click(session, "#chat-collapse-btn")
+        _click(session, "#chat-toggle-tab")
 
         collapsed_chat_width = _eval(
             session,
@@ -171,7 +171,7 @@ class TestBug3ChatCollapseTogglesCssVariable:
             "(I-00033 bug 3)"
         )
 
-        _click(session, "#chat-collapse-btn")
+        _click(session, "#chat-toggle-tab")
 
         restored_chat_width = _eval(
             session,
