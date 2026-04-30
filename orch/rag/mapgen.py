@@ -14,7 +14,7 @@ from llama_index.vector_stores.lancedb import LanceDBVectorStore
 
 from orch.db.models import Project, ProjectDoc
 from orch.doc_service import DocService
-from orch.rag.module_gen import _MERMAID_CLASSDEF, _ensure_classdef_in_dsl
+from orch.rag.module_gen import _MERMAID_CLASSDEF, _ensure_classdef_in_dsl, _inject_elk_frontmatter
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -329,6 +329,7 @@ class MapGenerator:
             purpose = "This diagram shows the top-level architecture of the system."
 
         mermaid_dsl = _ensure_classdef_in_dsl(mermaid_dsl)
+        mermaid_dsl = _inject_elk_frontmatter(mermaid_dsl)
         return mermaid_dsl, purpose
 
     def _assemble_markdown(self, answers: dict[str, str], mermaid: str, purpose: str) -> str:

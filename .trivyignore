@@ -1,0 +1,10 @@
+# .trivyignore — justified Trivy ignores live here.
+#
+# Format:
+#   <CVE-ID>             # Reason (expiry: YYYY-MM-DD)
+#   <misconfig-rule-id>  # Reason (expiry: YYYY-MM-DD)
+#
+# Every entry MUST have a reason and an expiry date. Stale entries (past
+# expiry) should be reviewed and either renewed with new reason or removed.
+#
+# (No active ignores at the time of F-00071.)

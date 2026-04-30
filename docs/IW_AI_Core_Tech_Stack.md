@@ -843,3 +843,19 @@ Central registry in the iw-ai-core repo root. Read by the daemon on startup and 
 | D10 | Bash script tests | None (manual) | bats, shunit2 | Scripts are ported from InnoForge and battle-tested. Low defect rate vs test maintenance cost. |
 | D11 | Configuration | `.env` + python-dotenv | pydantic-settings, dynaconf | python-dotenv is minimal, no magic, explicit. Pydantic-settings adds unnecessary abstraction for a single-user tool. |
 | D12 | No hardcoded ports | All via `.env` | Convention defaults | Prevents collisions, enables running multiple instances, tests never touch live services. |
+
+---
+
+## 11. Security Scanning
+
+Three security axes are covered:
+
+| Axis | Tool | CI Job | Local target | Gating |
+|------|------|--------|--------------|--------|
+| SAST / secrets | Bandit | `deps-audit` | `make security-deps` | HIGH/CRITICAL fails |
+| Dependency audit | pip-audit | `deps-audit` | `make security-deps` | Any vuln fails `--strict` |
+| IaC scanning | Trivy | `iac-scan` | `make security-iac` | HIGH/CRITICAL fails |
+
+Developers can run `make security-deps security-iac` locally before committing. The CI workflow runs on every PR and push and is gated on HIGH/CRITICAL findings for Bandit and Trivy, and any vulnerability for pip-audit (with `--strict`).
+
+Trivy image scanning is TODO pending a build step for versioned images in CI.
