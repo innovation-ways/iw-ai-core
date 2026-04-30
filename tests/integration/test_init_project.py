@@ -70,11 +70,13 @@ def test_full_init_creates_db_records(
     assert project.display_name == "New Project"
     assert project.repo_root == str(repo_path)
 
-    # ID sequences exist for all prefixes
+    # ID sequences exist for all item-type prefixes (other system prefixes like CM
+    # may exist if a prior test committed a CodeIndexJob, so use a subset check)
     sequences = db_session.execute(select(IdSequence)).scalars().all()
     prefixes = {seq.prefix for seq in sequences}
-    assert prefixes == {"F", "I", "CR", "BATCH"}
-    for seq in sequences:
+    assert {"F", "I", "CR", "BATCH"}.issubset(prefixes)
+    item_sequences = [s for s in sequences if s.prefix in {"F", "I", "CR", "BATCH"}]
+    for seq in item_sequences:
         assert seq.next_number == 1
 
     # Migration lock exists

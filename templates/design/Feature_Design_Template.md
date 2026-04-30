@@ -7,6 +7,14 @@
 
 ---
 
+## ⛔ Docker is off-limits
+
+(Standard policy. Testcontainer fixtures in tests are exempt.)
+
+## ⛔ Migrations: agents generate, daemon applies
+
+(Standard policy. State whether this item adds, modifies, or leaves migrations unchanged.)
+
 ## Description
 
 {What this feature does and why it's needed. 2-3 sentences.}
