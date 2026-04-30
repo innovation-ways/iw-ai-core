@@ -3,9 +3,11 @@
 # ============================================================
 
 .PHONY: install lint lint-js format typecheck quality \
-        test-unit test-integration test check \
-        db-up db-down db-migrate db-revision \
-        daemon-start daemon-stop dashboard-start css
+         test-unit test-integration test test-parallel check \
+         db-up db-down db-migrate db-revision \
+         daemon-start daemon-stop dashboard-start css \
+         allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
+         e2e-health e2e-logs e2e-stats
 
 # --- Setup ---
 install:
@@ -40,6 +42,9 @@ test-integration:
 
 test: test-unit test-integration
 
+test-parallel:
+	uv run pytest tests/unit tests/integration -v -n auto --dist=loadfile
+
 # --- Allure test reporting ---
 allure-unit:
 	uv run pytest tests/unit/ -v --alluredir=allure-results
@@ -51,10 +56,42 @@ allure-all:
 	uv run pytest tests/ -v --alluredir=allure-results
 
 allure-serve:
-	npx allure serve allure-results --host 0.0.0.0 --port 9999
+	@command -v allure >/dev/null 2>&1 || { \
+		echo "ERROR: 'allure' CLI not found on PATH."; \
+		echo ""; \
+		echo "Install via npm:  npm install -g allure-commandline"; \
+		echo "Install via brew: brew install allure"; \
+		echo "Or see: https://allurereport.org/docs/install/"; \
+		exit 1; \
+	}
+	allure serve allure-results --host 0.0.0.0 --port 9999
+
+allure-report:
+	@command -v allure >/dev/null 2>&1 || { \
+		echo "ERROR: 'allure' CLI not found on PATH."; \
+		echo ""; \
+		echo "Install via npm:  npm install -g allure-commandline"; \
+		echo "Install via brew: brew install allure"; \
+		echo "Or see: https://allurereport.org/docs/install/"; \
+		exit 1; \
+	}
+	allure generate --clean -o allure-report allure-results
+	@echo "Allure HTML report generated at allure-report/index.html"
 
 allure-clean:
 	rm -rf allure-results allure-report
+
+COMPOSE_E2E := docker compose -f docker-compose.e2e.yml -p $${COMPOSE_PROJECT_NAME:-iw-ai-core-e2e}
+
+e2e-health:
+	@uv run python scripts/e2e_health_check.py
+
+e2e-logs:
+	$(COMPOSE_E2E) logs --tail=200 -f
+
+e2e-stats:
+	@docker stats --no-stream $$(docker ps --filter "label=com.docker.compose.project=$${COMPOSE_PROJECT_NAME:-iw-ai-core-e2e}" -q) 2>/dev/null || \
+	  echo "No running containers for project $${COMPOSE_PROJECT_NAME:-iw-ai-core-e2e}"
 
 # --- CSS (Tailwind build) ---
 css:

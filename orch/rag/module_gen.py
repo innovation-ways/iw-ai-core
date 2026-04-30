@@ -23,6 +23,14 @@ if TYPE_CHECKING:
     from orch.rag.config import CodeUnderstandingConfig
 
 
+_ELK_FRONTMATTER = """\
+---
+config:
+  layout: elk
+---
+"""
+
+
 _MERMAID_CLASSDEF = """\
 After the graph declaration, add this classDef block verbatim:
   classDef api fill:#DBEAFE,stroke:#3B82F6,color:#1E3A5F
@@ -96,6 +104,18 @@ def _ensure_classdef_in_dsl(dsl: str) -> str:
     ELK frontmatter (layout: elk) is also injected to ensure proper layout
     of the diagram.
     """
+    if "layout: elk" in dsl:
+        if "classDef api" in dsl:
+            return dsl
+        lines = dsl.split("\n")
+        insert_idx = 0
+        for i, line in enumerate(lines):
+            if line.strip().startswith("graph ") or line.strip().startswith("flowchart "):
+                insert_idx = i + 1
+                break
+        new_lines = lines[:insert_idx] + [_MERMAID_CLASSDEF_BLOCK, ""] + lines[insert_idx:]
+        return "\n".join(new_lines)
+
     dsl = _strip_yaml_frontmatter(dsl)
     has_classdef = "classDef api" in dsl
 
@@ -333,7 +353,9 @@ Rules:
             "- Use 'graph LR' direction (left-to-right).\n"
             "- Maximum 12 nodes. Group minor items if needed.\n"
             "- Node IDs: short alphanumeric (e.g., QA, IDX, CFG). Labels in [brackets].\n"
-            "- Show the main internal components and their key dependencies.\n\n"
+            "- Show the main internal components and their key dependencies.\n"
+            "- The diagram MUST include ELK layout frontmatter: 'layout: elk' inside\n"
+            "  a '---' YAML block right after the opening ```mermaid line.\n\n"
             + _MERMAID_CLASSDEF
             + "\n"
             "Class assignment rules:\n"

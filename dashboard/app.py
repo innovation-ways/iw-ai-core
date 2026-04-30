@@ -25,6 +25,7 @@ from dashboard.routers import (
     code_qa,
     code_ui,
     containers,
+    coverage,
     daemon_control,
     docs,
     docs_global,
@@ -203,5 +204,6 @@ def create_app() -> FastAPI:
     app.include_router(code_qa.router)
     app.include_router(research.router)
     app.include_router(staleness.router)
+    app.include_router(coverage.router)
 
     return app

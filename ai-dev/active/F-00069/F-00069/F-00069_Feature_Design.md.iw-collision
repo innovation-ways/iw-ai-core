@@ -395,7 +395,11 @@ And the only behavioral change is that coverage data is collected and the thresh
 
 ## Baseline Coverage Snapshot
 
-- **Measured on**: 2026-04-29
-- **Baseline line coverage**: 51.25%
-- **Threshold floor (`fail_under`)**: 46%
-- **Notes**: Baseline measured via `make test-unit` (2064 passed, 9 pre-existing failures unrelated to F-00069 changes). The `executor/` package has low absolute coverage due to shell-script coverage tracking limitations; `orch/` and `dashboard/` drive the average. The floor (46%) allows a ~5% buffer before the gate fails.
+> _This section is populated during S01 implementation. The agent MUST
+> append `baseline_percent`, `floor_percent`, and the date here after
+> measuring on a clean checkout._
+
+- **Measured on**: _(YYYY-MM-DD)_
+- **Baseline line coverage**: _(N.N%)_
+- **Threshold floor (`fail_under`)**: _(M%)_
+- **Notes**: _(any anomalies — e.g. modules with very low coverage that drove the choice of floor)_

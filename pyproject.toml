@@ -69,6 +69,7 @@ packages = ["orch", "dashboard"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
+    "pytest-xdist>=3.5.0",
     "testcontainers[postgres]>=4.0",
     "factory-boy>=3.3",
     "freezegun>=1.4",
@@ -97,6 +98,7 @@ select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN
 "dashboard/routers/**" = ["B008", "PT028", "TC001"]  # FastAPI Depends() in default args is canonical; PT028 false-positives on route params; TC001 conflicts with FastAPI runtime model resolution
 "dashboard/services/oss_service.py" = ["S603", "S607", "S108"]  # git subprocess; /tmp paths for worktrees
 "scripts/backfill_functional_doc.py" = ["S603", "S607"]  # opencode subprocess; agent script
+"scripts/e2e_health_check.py" = ["T201", "S310"]  # CLI script; print output; http URL fetch
 "orch/test_runner.py" = ["S602", "S603", "S607"]  # shell=True and npx are intentional for running user-configured test commands
 "orch/doc_service.py" = ["S603", "S607"]  # git log is intentional for staleness detection
 
@@ -111,8 +113,25 @@ plugins = ["sqlalchemy.ext.mypy.plugin"]
 # --- pytest ---
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--import-mode=importlib"
+# xdist is opt-in only via `make test-parallel` which passes `-n auto --dist=loadfile`.
+# Do NOT add xdist defaults here — that would change `make test-unit` / `make test-integration` semantics.
+addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
 ]
 env = ["IW_CORE_AGENT_CONTEXT="]
+
+[tool.coverage.run]
+source = ["orch", "dashboard", "executor"]
+omit = [
+    "orch/db/migrations/versions/*",
+    "tests/*",
+    "scripts/*",
+    "bin/*",
+]
+branch = true
+
+[tool.coverage.report]
+fail_under = 46
+skip_covered = true
+show_missing = true
