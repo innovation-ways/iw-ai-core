@@ -1,0 +1,103 @@
+name: Test & Quality
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-typecheck:
+    name: Lint, format, typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - run: uv sync --frozen
+      - run: make lint
+      - run: make format-check || make format
+      - run: make typecheck
+
+  unit:
+    name: Unit tests + coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - run: uv sync --frozen
+      - run: make test-unit
+      - name: Upload coverage XML artefact
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: coverage-xml
+          path: tests/output/coverage/coverage.xml
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: iw
+          POSTGRES_PASSWORD: iw
+          POSTGRES_DB: iw_ai_core
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U iw"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      IW_CORE_DB_HOST: localhost
+      IW_CORE_DB_PORT: "5433"
+      IW_CORE_DB_NAME: iw_ai_core
+      IW_CORE_DB_USER: iw
+      IW_CORE_DB_PASSWORD: iw
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - run: uv sync --frozen
+      - run: make test-integration
+
+  smoke:
+    name: Smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: iw
+          POSTGRES_PASSWORD: iw
+          POSTGRES_DB: iw_ai_core
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U iw"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      IW_CORE_DB_HOST: localhost
+      IW_CORE_DB_PORT: "5433"
+      IW_CORE_DB_NAME: iw_ai_core
+      IW_CORE_DB_USER: iw
+      IW_CORE_DB_PASSWORD: iw
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - run: uv sync --frozen
+      - run: make smoke

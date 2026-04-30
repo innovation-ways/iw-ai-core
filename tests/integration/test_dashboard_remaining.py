@@ -140,6 +140,7 @@ def make_batch_item(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.smoke
 def test_queue_returns_200(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
     resp = client.get("/project/test-proj/queue")
@@ -197,6 +198,7 @@ def test_queue_404_for_unknown_project(client: TestClient, db_session: Any) -> N
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.smoke
 def test_history_returns_200(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
     resp = client.get("/project/test-proj/history")
