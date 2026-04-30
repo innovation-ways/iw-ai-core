@@ -1,0 +1,40 @@
+"""LLM usage footer endpoint."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+
+from orch.llm_usage import get_llm_usage
+
+router = APIRouter(prefix="/api/usage", tags=["usage"])
+
+
+def _bar_color(pct: int) -> str:
+    if pct >= 90:
+        return "bg-red-500"
+    if pct >= 70:
+        return "bg-amber-500"
+    return "bg-primary"
+
+
+@router.get("/llm/fragment", response_class=HTMLResponse)
+def llm_usage_fragment(request: Request) -> Any:
+    usage = get_llm_usage()
+    claude = usage["claude"]
+    minimax = usage["minimax"]
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "fragments/llm_usage_footer.html",
+        {
+            "claude_5h_pct": claude["block_pct"],
+            "claude_7d_pct": claude["week_pct"],
+            "claude_reset": claude.get("block_reset"),
+            "minimax_5h_pct": minimax["block_pct"],
+            "claude_5h_color": _bar_color(claude["block_pct"]),
+            "claude_7d_color": _bar_color(claude["week_pct"]),
+            "minimax_5h_color": _bar_color(minimax["block_pct"]),
+        },
+    )

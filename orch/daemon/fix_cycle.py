@@ -792,7 +792,7 @@ def _get_gate_name_and_command(
 def _resolve_worktree_base_sha(worktree_path: str) -> str | None:
     """Resolve the worktree's base SHA via git merge-base HEAD main."""
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603
             ["git", "merge-base", "HEAD", "main"],  # noqa: S607
             cwd=worktree_path,
             capture_output=True,
@@ -823,7 +823,7 @@ def _recompute_baseline_for_gate(
             cwd=worktree_path,
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=900,
             env=_agent_subprocess_env(),
         )
         output = result.stdout + result.stderr

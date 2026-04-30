@@ -7,6 +7,14 @@ steps. If you need to capture those, they belong in the technical design doc.
 Keep the total body at most 500 words (the review skill blocks >500).
 -->
 
+## ⛔ Docker is off-limits
+
+(Standard policy. Testcontainer fixtures in tests are exempt.)
+
+## ⛔ Migrations: agents generate, daemon applies
+
+(Standard policy. State whether this item adds, modifies, or leaves migrations unchanged.)
+
 ## Why
 
 Two to four sentences explaining why this work was requested — the problem,

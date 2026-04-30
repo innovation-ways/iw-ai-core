@@ -76,25 +76,25 @@ def _seed_all_sources(db_session: Session, project_id: str) -> dict[str, str]:
     """Seed one row in each of the four job sources. Returns IDs."""
     now = datetime.now(UTC)
 
-    cij_id = "cij-test-001"
-    db_session.add(
-        CodeIndexJob(
-            id=cij_id,
-            project_id=project_id,
-            status="completed",
-            provider="local",
-            llm_model="gemma4:31b",
-            embed_model="manutic/nomic-embed-code",
-            index_tier="balanced",
-            files_discovered=10,
-            files_indexed=9,
-            chunks_created=120,
-            languages_detected=["Python"],
-            errors=[],
-            triggered_at=now - timedelta(hours=2),
-            completed_at=now - timedelta(hours=1),
-        )
+    cij = CodeIndexJob(
+        id="cij-test-001",
+        project_id=project_id,
+        status="completed",
+        provider="local",
+        llm_model="gemma4:31b",
+        embed_model="manutic/nomic-embed-code",
+        index_tier="balanced",
+        files_discovered=10,
+        files_indexed=9,
+        chunks_created=120,
+        languages_detected=["Python"],
+        errors=[],
+        triggered_at=now - timedelta(hours=2),
+        completed_at=now - timedelta(hours=1),
     )
+    db_session.add(cij)
+    db_session.flush()  # triggers before_insert → allocates public_id
+    cij_id = cij.public_id or cij.id
 
     doc_id_for_dgj = f"{project_id}:doc-test-001"
     db_session.add(
@@ -147,12 +147,12 @@ def _seed_all_sources(db_session: Session, project_id: str) -> dict[str, str]:
         )
     )
 
-    res_doc_id = f"{project_id}:res-test-001"
+    res_doc_id = "res-test-001"
     db_session.add(
         ProjectDoc(
-            id=res_doc_id,
+            id=f"{project_id}:res-test-001",
             project_id=project_id,
-            doc_id="res-test-001",
+            doc_id=res_doc_id,
             title="Research: Test",
             slug="research-test",
             doc_type=DocType.research,
@@ -235,29 +235,28 @@ def test_code_mapping_job_detail_returns_200(
     client: TestClient, db_session: Session, test_project: Project
 ) -> None:
     """GET /project/{p}/jobs/code_mapping/{job_id} returns HTTP 200 with job fields."""
-    cij_id = "cij-detail-001"
-    db_session.add(
-        CodeIndexJob(
-            id=cij_id,
-            project_id=test_project.id,
-            status="completed",
-            provider="local",
-            llm_model="gemma4:31b",
-            embed_model="manutic/nomic-embed-code",
-            index_tier="balanced",
-            files_discovered=10,
-            files_indexed=9,
-            chunks_created=120,
-            languages_detected=["Python"],
-            errors=[],
-            triggered_at=datetime.now(UTC) - timedelta(hours=2),
-            completed_at=datetime.now(UTC) - timedelta(hours=1),
-        )
+    cij = CodeIndexJob(
+        id="cij-detail-001",
+        project_id=test_project.id,
+        status="completed",
+        provider="local",
+        llm_model="gemma4:31b",
+        embed_model="manutic/nomic-embed-code",
+        index_tier="balanced",
+        files_discovered=10,
+        files_indexed=9,
+        chunks_created=120,
+        languages_detected=["Python"],
+        errors=[],
+        triggered_at=datetime.now(UTC) - timedelta(hours=2),
+        completed_at=datetime.now(UTC) - timedelta(hours=1),
     )
-    db_session.flush()
+    db_session.add(cij)
+    db_session.flush()  # triggers before_insert → allocates public_id
     db_session.commit()
+    cij_public_id = cij.public_id or cij.id
 
-    resp = client.get(f"/project/{test_project.id}/jobs/code_mapping/{cij_id}")
+    resp = client.get(f"/project/{test_project.id}/jobs/code_mapping/{cij_public_id}")
     assert resp.status_code == 200
     html = resp.text
     assert "gemma4:31b" in html

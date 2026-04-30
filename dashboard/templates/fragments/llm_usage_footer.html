@@ -1,0 +1,34 @@
+{# LLM usage footer fragment — returned by GET /api/usage/llm/fragment
+   Replaces the footer's innerHTML via htmx every 60s. No base.html extend. #}
+
+<span class="font-medium text-foreground">Claude</span>
+
+<div class="hidden sm:flex items-center gap-1.5">
+  <span class="text-muted-foreground">{{ claude_reset or '5h' }}</span>
+  <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
+    <div class="h-full {{ claude_5h_color }} rounded-full transition-all duration-700" style="width: {{ claude_5h_pct }}%"></div>
+  </div>
+  <span class="font-medium tabular-nums">{{ claude_5h_pct }}%</span>
+</div>
+
+<div class="hidden sm:flex items-center gap-1.5">
+  <span class="text-muted-foreground">7d</span>
+  <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
+    <div class="h-full {{ claude_7d_color }} rounded-full transition-all duration-700" style="width: {{ claude_7d_pct }}%"></div>
+  </div>
+  <span class="font-medium tabular-nums">{{ claude_7d_pct }}%</span>
+</div>
+
+<span class="hidden sm:block text-border select-none mx-1">·</span>
+
+<span class="font-medium text-foreground">MiniMax</span>
+
+<div class="hidden sm:flex items-center gap-1.5">
+  <span class="text-muted-foreground">5h</span>
+  <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
+    <div class="h-full {{ minimax_5h_color }} rounded-full transition-all duration-700" style="width: {{ minimax_5h_pct }}%"></div>
+  </div>
+  <span class="font-medium tabular-nums">{{ minimax_5h_pct }}%</span>
+</div>
+
+<span class="ml-auto text-muted-foreground">IW AI Core v0.1</span>

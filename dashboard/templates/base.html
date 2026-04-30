@@ -181,23 +181,15 @@
       {% block content %}{% endblock %}
     </main>
 
-    <!-- LLM Quota footer bar (static placeholder) -->
-    <footer class="flex-shrink-0 border-t border-border bg-muted px-3 sm:px-6 py-2 flex items-center gap-4 sm:gap-6 text-xs text-muted-foreground">
-      <span class="font-medium">Claude:</span>
-      <div class="hidden sm:flex items-center gap-2">
-        <span>5h</span>
-        <div class="w-24 h-1.5 bg-border rounded-full overflow-hidden">
-          <div class="h-full bg-primary rounded-full" style="width: 0%"></div>
-        </div>
-        <span>—</span>
-      </div>
-      <div class="hidden sm:flex items-center gap-2">
-        <span>7d</span>
-        <div class="w-24 h-1.5 bg-border rounded-full overflow-hidden">
-          <div class="h-full bg-primary rounded-full" style="width: 0%"></div>
-        </div>
-        <span>—</span>
-      </div>
+    <!-- LLM usage footer — polls every 5m, only while tab is visible -->
+    <footer
+      class="flex-shrink-0 border-t border-border bg-muted px-3 sm:px-6 py-2 flex items-center gap-3 sm:gap-4 text-xs text-muted-foreground"
+      hx-get="/api/usage/llm/fragment"
+      hx-trigger="load, every 300s [document.visibilityState=='visible'], visibilitychange[document.visibilityState=='visible'] from:document"
+      hx-swap="innerHTML"
+    >
+      <span class="font-medium">Claude</span>
+      <span class="text-muted-foreground">—</span>
       <span class="ml-auto text-muted-foreground">IW AI Core v0.1</span>
     </footer>
   </div>
