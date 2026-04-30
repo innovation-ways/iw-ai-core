@@ -93,6 +93,22 @@ def _strip_yaml_frontmatter(dsl: str) -> str:
     return stripped[end + 4 :].lstrip()
 
 
+def _extract_frontmatter(dsl: str) -> tuple[str, str]:
+    """Extract YAML frontmatter from a Mermaid DSL string.
+
+    Returns (frontmatter, stripped_dsl) where frontmatter includes the --- markers,
+    or ('', dsl) if no frontmatter found.
+    """
+    stripped = dsl.lstrip()
+    if not stripped.startswith("---"):
+        return "", dsl
+    end = stripped.find("\n---", 3)
+    if end == -1:
+        return "", dsl
+    frontmatter = stripped[: end + 4]
+    return frontmatter, stripped[end + 4 :].lstrip()
+
+
 def _ensure_classdef_in_dsl(dsl: str) -> str:
     """Ensure the classDef block and ELK frontmatter are present in the Mermaid DSL.
 
@@ -135,6 +151,25 @@ def _ensure_classdef_in_dsl(dsl: str) -> str:
     if "layout: elk" not in result:
         result = _ELK_FRONTMATTER + result
     return result
+
+
+def _inject_elk_frontmatter(dsl: str) -> str:
+    """Inject ELK layout frontmatter into Mermaid DSL if not already present.
+
+    The ELK layout plugin requires `layout: elk` in a YAML frontmatter block.
+    Preserves any existing frontmatter structure and classDef blocks.
+    """
+    if "layout: elk" in dsl:
+        return dsl
+
+    frontmatter, stripped = _extract_frontmatter(dsl)
+    if frontmatter:
+        if "config:" in frontmatter:
+            new_frontmatter = frontmatter.rstrip() + "\n  layout: elk\n"
+        else:
+            new_frontmatter = frontmatter.rstrip() + "\nconfig:\n  layout: elk\n"
+        return new_frontmatter + "\n" + stripped
+    return _ELK_FRONTMATTER + stripped
 
 
 def _strip_filler_preamble(text: str) -> str:
@@ -343,12 +378,14 @@ Rules:
             f"Code context:\n{context_str}\n\n"
             "Rules:\n"
             "- Output ONLY a fenced ```mermaid block. No prose, no explanation.\n"
-            "- Prefix the diagram with this YAML frontmatter block:\n"
-            "  ```\n"
+            "- The diagram block MUST start with a YAML frontmatter:\n"
+            "  ```mermaid\n"
             "  ---\n"
             "  config:\n"
             "    layout: elk\n"
             "  ---\n"
+            "  graph LR\n"
+            "  ...\n"
             "  ```\n"
             "- Use 'graph LR' direction (left-to-right).\n"
             "- Maximum 12 nodes. Group minor items if needed.\n"

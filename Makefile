@@ -7,7 +7,8 @@
          db-up db-down db-migrate db-revision \
          daemon-start daemon-stop dashboard-start css \
          allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
-         e2e-health e2e-logs e2e-stats
+         e2e-health e2e-logs e2e-stats \
+         security-deps security-iac security-image-dashboard security-all security-report
 
 # --- Setup ---
 install:
@@ -124,3 +125,45 @@ daemon-stop:
 
 dashboard-start:
 	uv run uvicorn dashboard.app:create_app --factory --host 0.0.0.0 --port 9900 --reload
+
+# --- Security ---
+SECURITY_DIR := tests/output/security
+
+security-deps:
+	@command -v pip-audit >/dev/null 2>&1 || { \
+		echo "ERROR: 'pip-audit' not found."; \
+		echo "Install: uv add --dev pip-audit"; \
+		exit 1; \
+	}
+	@command -v bandit >/dev/null 2>&1 || { \
+		echo "ERROR: 'bandit' not found."; \
+		echo "Install: uv add --dev bandit[toml]"; \
+		exit 1; \
+	}
+	@mkdir -p $(SECURITY_DIR)
+	@echo "[security-deps] pip-audit ..."
+	@uv run pip-audit -l --format=json --output=$(SECURITY_DIR)/pip-audit.json || true
+	@uv run pip-audit -l --strict
+	@echo "[security-deps] bandit ..."
+	@uv run bandit -r orch dashboard executor -c pyproject.toml -f json -o $(SECURITY_DIR)/bandit.json -ll || true
+	@uv run bandit -r orch dashboard executor -c pyproject.toml -ll
+	@echo "[security-deps] OK"
+
+security-iac:
+	@command -v trivy >/dev/null 2>&1 || { \
+		echo "ERROR: 'trivy' not found."; \
+		echo "Install: brew install trivy   (or)   curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin"; \
+		exit 1; \
+	}
+	@mkdir -p $(SECURITY_DIR)
+	@echo "[security-iac] trivy config ..."
+	@trivy config --severity HIGH,CRITICAL --format json --output $(SECURITY_DIR)/trivy-iac.json --exit-code 1 .
+
+security-image-dashboard:
+	@echo "no built image — N/A for this project"
+
+security-all: security-deps security-iac
+	@echo "[security-all] complete (image scans run separately if images are built)"
+
+security-report:
+	@uv run python scripts/security_report.py
