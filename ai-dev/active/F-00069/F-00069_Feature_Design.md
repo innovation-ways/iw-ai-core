@@ -163,15 +163,11 @@ rules. Specifically:
 
 ### Out of Scope
 
-- `@smoke` pytest marker and `make smoke` target — owned by F-00070.
-- `.github/workflows/test-quality.yml` — owned by F-00070.
-- `tests/unit/test_logging.py` and any other observability tests —
-  owned by F-00070.
-- Pre-commit hook additions — owned by F-C (separate feature).
-- Local or CI security scanning Make targets / workflows — owned by F-D
-  (separate feature).
-- Migration roundtrip tests / `schema-validation.yml` — owned by F-E
-  (separate feature).
+- `@smoke` pytest marker and `make smoke` target — owned by F-00073.
+- The `test-quality` GitHub Actions workflow — owned by F-00073.
+- Logging configuration tests under `tests/unit/` — owned by F-00073.
+- Pre-commit hook additions — owned by F-00070.
+- Migration roundtrip tests / `schema-validation` workflow — owned by F-00072.
 - Codecov upload (explicitly skipped per user decision 2026-04-29).
 - ERD auto-regeneration (explicitly skipped per user decision
   2026-04-29).
@@ -357,7 +353,7 @@ And the only behavioral change is that coverage data is collected and the thresh
 ## Dependencies
 
 - **Depends on**: None
-- **Blocks**: F-00070 (Smoke + CI) — F-00070's `test-quality.yml` invokes `make test-parallel` and consumes the coverage gate established here.
+- **Blocks**: F-00073 (Smoke + active test CI) — F-00073's `test-quality.yml` invokes `make test-parallel` and consumes the coverage gate established here.
 
 ## TDD Approach
 
