@@ -109,7 +109,13 @@ class TestButtonHitTargets:
         return "min-height: 44px" in match.group(1)
 
     def test_buttons_have_hit_target_classes(self):
-        """Every <button> has min-h-[44px], h-11, or .tap inline OR class is defined in chat.css."""
+        """Every <button> has a hit target ≥44px via inline class, .tap, or chat.css.
+
+        Accepts any inline `min-h-[Npx]` / `h-N` whose pixel value is ≥44 — the
+        I-00046 chat toggle tab is vertical (88px tall × 44px wide), so the
+        original literal `min-h-[44px]` check no longer matches even though
+        the WCAG hit target requirement is fully satisfied.
+        """
         templates = [
             "chat/panel.html",
             "chat/composer.html",
@@ -121,14 +127,21 @@ class TestButtonHitTargets:
         css_content = css_path.read_text()
         tap_defines_44 = ".tap {" in css_content and "min-height: 44px" in css_content
 
+        # min-h-[Npx] where N is any integer ≥44, or h-11 (Tailwind's 44px helper).
+        inline_min_h_re = re.compile(r"min-h-\[(\d+)px\]")
+
+        def _has_inline_44(class_str: str) -> bool:
+            if "h-11" in class_str:
+                return True
+            return any(int(match.group(1)) >= 44 for match in inline_min_h_re.finditer(class_str))
+
         failures = []
         for name in templates:
             soup = BeautifulSoup(_make_env().get_template(name).render(), "html.parser")
             for btn in soup.find_all("button"):
                 cls = btn.get("class", [])
                 class_str = " ".join(cls) if isinstance(cls, list) else str(cls)
-                has_inline_44 = "min-h-[44px]" in class_str or "h-11" in class_str
-                if has_inline_44:
+                if _has_inline_44(class_str):
                     continue
                 if tap_defines_44 and "tap" in class_str:
                     continue

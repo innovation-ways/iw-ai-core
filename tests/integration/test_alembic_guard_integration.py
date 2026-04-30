@@ -107,7 +107,14 @@ def _get_current_rev(engine: Engine) -> str:
 
 
 def _downgrade_by_one(engine: Engine) -> None:
-    """Downgrade by one revision using specific target (not -1) per CLAUDE.md rule 4a."""
+    """Downgrade by one revision using specific target (not -1) per CLAUDE.md rule 4a.
+
+    When the current head is a merge revision, ``rev.down_revision`` is a
+    tuple of parent revision IDs and ``alembic.command.downgrade`` rejects
+    non-string targets. Pick the first parent — alembic will walk both
+    parents' lineages to put the database at that specific target, which
+    is enough for the guard tests (they only need ``current_rev != head_rev``).
+    """
     cfg = Config()
     cfg.set_main_option("script_location", "orch/db/migrations")
     cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))
@@ -119,9 +126,13 @@ def _downgrade_by_one(engine: Engine) -> None:
         pytest.skip("Cannot test downgrade with multiple heads")
     head = heads[0]
     rev = script.get_revision(head)
-    down_rev = rev.down_revision if rev and rev.down_revision else None
+    down_rev: str | tuple[str, ...] | None = (
+        rev.down_revision if rev and rev.down_revision else None
+    )
     if down_rev is None:
         pytest.skip("Cannot downgrade further — already at base")
+    if isinstance(down_rev, tuple):
+        down_rev = down_rev[0]
     command.downgrade(cfg, down_rev)
 
 
