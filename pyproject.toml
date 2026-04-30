@@ -105,6 +105,7 @@ select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN
 "scripts/e2e_health_check.py" = ["T201", "S310"]  # CLI script; print output; http URL fetch
 "orch/test_runner.py" = ["S602", "S603", "S607"]  # shell=True and npx are intentional for running user-configured test commands
 "orch/doc_service.py" = ["S603", "S607"]  # git log is intentional for staleness detection
+"orch/keep_alive_service.py" = ["S603", "S607"]  # claude CLI subprocess with hardcoded greetings; never user input
 "orch/daemon/browser_env.py" = ["S603", "S607"]  # docker logs is read-only; name from compose output
 
 # --- mypy ---

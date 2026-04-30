@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from orch.daemon.batch_manager import BatchManager
 from orch.daemon.doc_index_poller import DocIndexPoller, recover_orphaned_doc_index_jobs
 from orch.daemon.doc_job_poller import DocJobPoller
+from orch.daemon.keep_alive_poller import KeepAlivePoller
 from orch.daemon.project_registry import ProjectConfig, ProjectRegistry, sync_project_to_db
 from orch.daemon.worktree_compose import is_alive as compose_is_alive
 from orch.daemon.worktree_reaper import reap as reap_orphan_containers
@@ -212,6 +213,8 @@ class Daemon:
         self.managers: dict[str, BatchManager] = {}
         self.doc_job_poller: DocJobPoller | None = None
         self.doc_index_poller: DocIndexPoller | None = None
+        self._keep_alive_poller: KeepAlivePoller | None = None
+        self._last_keep_alive_poll_count: int = 0
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -334,6 +337,7 @@ class Daemon:
 
         self.doc_job_poller = DocJobPoller(self._session_factory, self.config)
         self.doc_index_poller = DocIndexPoller(self._session_factory, self.config)
+        self._keep_alive_poller = KeepAlivePoller()
 
         with self._session_factory() as db:
             for project_id, cfg in self.projects.items():
@@ -578,6 +582,15 @@ class Daemon:
         if self._poll_count - self._last_reap_poll_count >= 5:
             self._last_reap_poll_count = self._poll_count
             self._reap_orphan_containers()
+
+        # Phase 7: Keep-alive scheduler (every 6 poll cycles ≈ 60 s)
+        if self._poll_count - self._last_keep_alive_poll_count >= 6:
+            self._last_keep_alive_poll_count = self._poll_count
+            if self._keep_alive_poller is not None:
+                try:
+                    self._keep_alive_poller.poll()
+                except Exception:
+                    logger.exception("KeepAlivePoller.poll() raised unexpectedly")
 
     # ------------------------------------------------------------------
     # Project reload
