@@ -331,7 +331,7 @@ QV gates are **script-driven** — no QV prompt file needed for gate steps.
 {"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — verify fix end-to-end in isolated worktree stack", "prompt": "prompts/{ID}_S{N}_BrowserVerification_prompt.md"}
 ```
 
-To create the prompt file, **copy `ai-dev/templates/QVBrowser_Prompt_Template.md`** (synced from `templates/design/` by `iw init-project` / `iw skills sync`) and fill in ONLY the `{{ID}}`, `{{STEP}}`, `{{TITLE}}`, `{{TYPE}}`, input-files list, and V1..V(n) sections. The V(n) verifications must cover:
+To create the prompt file, **copy `ai-dev/templates/QVBrowser_Prompt_Template.md`** (synced from `templates/design/` by `iw init-project` / `iw sync-templates`) and fill in ONLY the `{{ID}}`, `{{STEP}}`, `{{TITLE}}`, `{{TYPE}}`, input-files list, and V1..V(n) sections. The V(n) verifications must cover:
 
 1. **The reproduction case** — navigate to the exact URL/interaction that triggered the bug and verify it now behaves correctly.
 2. **Adjacent flows (No Regressions)** — confirm the fix didn't break neighboring functionality, and no new console errors appeared.

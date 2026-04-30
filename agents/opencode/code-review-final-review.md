@@ -2,7 +2,7 @@
 description: >
   Meta-review of the global cross-agent code review. Validates that the final review's findings
   are accurate and complete, and that integration concerns are properly identified.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

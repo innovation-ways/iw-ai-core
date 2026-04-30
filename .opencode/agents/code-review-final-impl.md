@@ -2,7 +2,7 @@
 description: >
   Global cross-agent code review. Reviews all agent outputs together for integration issues,
   consistency across boundaries, and holistic quality. Runs after all per-agent reviews pass.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

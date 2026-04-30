@@ -3,7 +3,7 @@ description: >
   Executes browser-based end-to-end verification for a work item using playwright-cli.
   Follows the step's browser verification prompt literally. Captures screenshots to
   ai-dev/active/<ITEM>/evidences/post/. Never substitutes a different check.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 300
 permission:

@@ -2,7 +2,7 @@
 description: >
   Specialist for database schema design, ORM model definitions, and migration scripts.
   Reads the project's CLAUDE.md for ORM choice, naming conventions, and migration tooling.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 300
 permission:

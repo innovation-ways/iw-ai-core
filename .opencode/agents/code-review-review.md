@@ -2,7 +2,7 @@
 description: >
   Meta-review of a per-agent code review. Validates that the code-review-impl agent's findings
   are accurate, complete, and correctly prioritized. Guards against false positives and missed issues.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

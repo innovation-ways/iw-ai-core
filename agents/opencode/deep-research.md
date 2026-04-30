@@ -2,7 +2,7 @@
 description: >
   Comprehensive research agent. Investigates topics using web search,
   documentation, and codebase analysis. Technology-agnostic.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

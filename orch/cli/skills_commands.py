@@ -152,6 +152,99 @@ def sync_agents_cmd(ctx: click.Context) -> None:
     click.echo(f"Total: {total} files synced.")
 
 
+@click.command("sync-templates")
+@click.option("--check", is_flag=True, help="Report what would change without modifying files")
+@click.option(
+    "--project", "project_id", default=None, help="Sync a specific project only (default: all)"
+)
+@click.pass_context
+def sync_templates_cmd(ctx: click.Context, check: bool, project_id: str | None) -> None:
+    """Sync design templates from templates/design/ to all registered projects."""
+    import filecmp
+    import shutil
+
+    from sqlalchemy import select
+
+    from orch.db.models import Project
+
+    platform_root = Path(__file__).resolve().parent.parent.parent
+    templates_src = platform_root / "templates" / "design"
+
+    if not templates_src.is_dir():
+        output_error(ctx, f"Source directory not found: {templates_src}", 1)
+
+    source_files = sorted(f for f in templates_src.iterdir() if f.is_file() and f.suffix == ".md")
+
+    get_session = ctx.obj["get_session"]
+    with get_session() as session:
+        q = select(Project)
+        if project_id:
+            q = q.where(Project.id == project_id)
+        projects_data = [(p.id, p.repo_root) for p in session.execute(q).scalars().all()]
+
+    if not projects_data:
+        target = f"project '{project_id}'" if project_id else "any registered project"
+        output_error(ctx, f"No projects found for {target}", 3)
+
+    results: dict[str, dict[str, list[str]]] = {}
+    for pid, repo_root in projects_data:
+        dst = Path(repo_root) / "ai-dev" / "templates"
+        updated: list[str] = []
+        up_to_date: list[str] = []
+        errors: list[str] = []
+
+        if not check:
+            try:
+                dst.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                errors.append(f"Cannot create {dst}: {exc}")
+                results[pid] = {
+                    "updated": updated,
+                    "up_to_date": up_to_date,
+                    "errors": errors,
+                }
+                continue
+
+        for src_file in source_files:
+            dst_file = dst / src_file.name
+            needs_update = not dst_file.exists() or not filecmp.cmp(
+                src_file, dst_file, shallow=False
+            )
+            if needs_update:
+                if not check:
+                    try:
+                        shutil.copy2(src_file, dst_file)
+                    except OSError as exc:
+                        errors.append(f"{src_file.name}: {exc}")
+                        continue
+                updated.append(src_file.name)
+            else:
+                up_to_date.append(src_file.name)
+
+        results[pid] = {"updated": updated, "up_to_date": up_to_date, "errors": errors}
+
+    if ctx.obj.get("json"):
+        import json
+
+        click.echo(json.dumps({"check_only": check, "projects": results}))
+        return
+
+    action = "Checking" if check else "Syncing"
+    click.echo(f"{action} design templates for {len(results)} project(s)...")
+    for pid, r in results.items():
+        n_updated = len(r["updated"])
+        n_ok = len(r["up_to_date"])
+        verb = "would update" if check else "updated"
+        click.echo(f"  {pid}: {n_updated} {verb}, {n_ok} up to date")
+        for err in r["errors"]:
+            click.echo(f"    WARNING: {err}", err=True)
+
+    total_updated = sum(len(r["updated"]) for r in results.values())
+    qualifier = "would be " if check else ""
+    plural = "s" if total_updated != 1 else ""
+    click.echo(f"Done. {total_updated} template file{plural} {qualifier}synced.")
+
+
 @click.command("init-project")
 @click.option("--id", "project_id", required=True, help="Unique project identifier")
 @click.option(

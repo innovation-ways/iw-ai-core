@@ -2,7 +2,7 @@
 description: >
   Runs the full quality pipeline (tests, linting, formatting, type checking) and reports results.
   Reads CLAUDE.md and Makefile to discover project-specific quality commands.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

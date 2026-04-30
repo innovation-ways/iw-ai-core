@@ -2,7 +2,7 @@
 description: >
   Reviews test implementations for coverage, correctness, isolation,
   and adherence to project testing conventions.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

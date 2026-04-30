@@ -22,7 +22,12 @@ from orch.cli.migrations_commands import migrations_group
 from orch.cli.oss_commands import oss
 from orch.cli.project_commands import projects
 from orch.cli.search_commands import search
-from orch.cli.skills_commands import init_project_cmd, sync_agents_cmd, sync_skills_cmd
+from orch.cli.skills_commands import (
+    init_project_cmd,
+    sync_agents_cmd,
+    sync_skills_cmd,
+    sync_templates_cmd,
+)
 from orch.cli.step_commands import (
     step_done,
     step_fail,
@@ -106,6 +111,7 @@ cli.add_command(migration_lock)
 cli.add_command(search)
 cli.add_command(sync_skills_cmd, name="sync-skills")
 cli.add_command(sync_agents_cmd, name="sync-agents")
+cli.add_command(sync_templates_cmd, name="sync-templates")
 cli.add_command(init_project_cmd, name="init-project")
 cli.add_command(daemon)
 cli.add_command(projects)

@@ -2,7 +2,7 @@
 description: >
   Verifies that per-agent code review fixes were applied correctly. Checks that all CRITICAL
   and HIGH findings are resolved and no new issues were introduced.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

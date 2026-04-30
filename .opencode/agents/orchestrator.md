@@ -2,7 +2,7 @@
 description: >
   Orchestrates the execution of a work item's workflow steps. Reads the workflow manifest,
   dispatches agents in sequence, tracks results, and handles failures. Uses iw CLI for status tracking.
-mode: subagent
+mode: primary
 temperature: 0.1
 steps: 200
 permission:

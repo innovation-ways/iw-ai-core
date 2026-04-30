@@ -22,7 +22,7 @@ AI orchestration platform that drives AI-assisted development across multiple pr
 | Evidences ingestion (CR-00025) | `orch/evidences.py` · hooks in `orch/cli/item_commands.py` (approve) and `orch/cli/step_commands.py` (step-done) |
 | Migrations | `orch/db/migrations/versions/` |
 | Pre-merge migration rebase (CR-00021) | `orch/daemon/migration_rebase.py` · `docs/IW_AI_Core_Daemon_Design.md` |
-| Skills master copies | `skills/` (synced to each project via `iw skills sync`) |
+| Skills master copies | `skills/` (synced via `iw sync-skills`); design templates in `templates/design/` (synced via `iw sync-templates`) |
 | Editorial guidelines (doc system) | `doc-system/` (brand, catalog, editorial) |
 
 ## Architecture
@@ -116,10 +116,11 @@ playwright-cli -s=<name> open <url>  # Named session (for auth persistence)
 | `dashboard/` | FastAPI web UI (routers, Jinja2 templates, htmx fragments) |
 | `executor/` | Bash scripts invoked by the daemon (worktree setup/commit, step launch) |
 | `tests/` | pytest suite — `unit/`, `integration/`, `dashboard/` |
-| `skills/` | Master copies of agent skills, synced to managed projects |
-| `commands/` · `agents/` | Agent command specs (claude, opencode) |
+| `skills/` | Master copies of agent skills — sync with `iw sync-skills` |
+| `templates/design/` | Master copies of design doc templates — sync with `iw sync-templates` |
+| `commands/` · `agents/` | Agent command specs (claude, opencode) — sync with `iw sync-agents` |
 | `doc-system/` | Editorial config (brand, catalog, guidelines) used by doc-generator skills |
-| `templates/` · `ai-dev/templates/` | Workflow markdown + design doc templates |
+| `ai-dev/templates/` | Per-project copy of design doc templates (written by `iw sync-templates`) |
 | `docs/` | Architecture, schema, CLI spec, daemon design, implementation plan |
 
 ## Docs Reference
