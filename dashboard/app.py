@@ -32,6 +32,7 @@ from dashboard.routers import (
     healthz,
     items,
     jobs_ui,
+    keep_alive,
     oss,
     project_dashboard,
     project_pages,
@@ -185,6 +186,7 @@ def create_app() -> FastAPI:
     app.include_router(actions.router)
     app.include_router(sse.router)
     app.include_router(system.router)
+    app.include_router(keep_alive.router)
     app.include_router(daemon_control.router)
     app.include_router(project_dashboard.router)
     app.include_router(batches.router)

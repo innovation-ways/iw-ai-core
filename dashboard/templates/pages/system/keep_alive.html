@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Keep-Alive Scheduler — IW AI Core{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Page header -->
+  <div class="mb-6">
+    <h1 class="text-2xl font-semibold text-foreground">Keep-Alive Scheduler</h1>
+    <p class="text-muted-foreground text-sm mt-1">Automatically maintains Claude Max usage windows by sending scheduled messages.</p>
+  </div>
+
+  <!-- Config card -->
+  <div class="rounded-lg border border-border bg-card p-5">
+    <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Configuration</h2>
+    {% include "fragments/keep_alive_config.html" %}
+  </div>
+
+  <!-- 24-hour Timeline card -->
+  <div class="rounded-lg border border-border bg-card p-5">
+    <div id="timeline-container">
+      <div class="text-sm font-medium text-foreground mb-2">Coverage Timeline</div>
+
+      <!-- Hour labels: 00 06 12 18 24 -->
+      <div class="relative flex justify-between text-xs text-muted-foreground mb-1">
+        <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+      </div>
+
+      <!-- Timeline bar -->
+      <div class="relative h-8 rounded bg-red-100 dark:bg-red-900/30 overflow-hidden" id="timeline-bar">
+        {% include "fragments/keep_alive_timeline.html" %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Slots section -->
+  <div class="rounded-lg border border-border bg-card p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Scheduled Slots</h2>
+      <form hx-post="/api/keep-alive/slots"
+            hx-ext="json-enc"
+            hx-target="#slot-list"
+            hx-swap="outerHTML"
+            class="flex gap-2">
+        <input type="text"
+               name="time_hhmm"
+               placeholder="HH:MM"
+               pattern="\d{2}:\d{2}"
+               title="24-hour time, e.g. 05:00"
+               required
+               class="px-3 py-1.5 bg-background border border-border rounded-md text-sm
+                      text-foreground placeholder:text-muted-foreground
+                      focus:outline-none focus:ring-2 focus:ring-ring max-w-[100px]" />
+        <button type="submit"
+                class="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm font-medium
+                       hover:bg-primary/90 transition-colors">
+          Add Slot
+        </button>
+      </form>
+    </div>
+
+    <div id="slot-list">
+      {% include "fragments/keep_alive_slots.html" %}
+    </div>
+  </div>
+
+  <!-- Last 10 Runs table -->
+  <div class="rounded-lg border border-border bg-card p-5">
+    <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Recent Executions</h2>
+    <div id="runs-table"
+         hx-get="/api/keep-alive/runs"
+         hx-trigger="every 60s"
+         hx-swap="innerHTML">
+      {% include "fragments/keep_alive_runs.html" %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
