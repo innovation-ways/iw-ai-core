@@ -59,7 +59,7 @@ Plus lifecycle wrappers: `iw step-start`, a report file path to write, and `iw s
 
 1. Call `iw step-start $IW_ITEM_ID --step $IW_STEP_ID` (if the daemon has not already done so).
 2. Extract the `<command>` from the prompt. It appears verbatim inside backticks after `Execute exactly:`.
-3. Run the command. Capture stdout and stderr together. Record the exit code.
+3. Run the command with a **timeout of 870000 ms** (14.5 min). Integration test suites take several minutes — always pass this timeout explicitly so the bash tool does not terminate the command at the default 300 s limit. Capture stdout and stderr together. Record the exit code.
 4. Write the report to the path specified by the prompt's lifecycle section (typically `ai-dev/active/<ITEM_ID>/reports/<ITEM_ID>_<STEP_ID>_QvGate_report.md`) using the Report Template below.
 5. On exit code `0`:
    ```bash

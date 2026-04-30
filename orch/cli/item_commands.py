@@ -31,6 +31,7 @@ from orch.db.models import (
     WorkItemStatus,
     WorkItemType,
 )
+from orch.design_doc_parser import parse_dependencies
 from orch.evidences import EvidenceTooLargeError, ingest_phase_from_disk
 
 # ---------------------------------------------------------------------------
@@ -345,6 +346,15 @@ def register(
                         functional_doc_content = None
                 # else: candidate absent — leave both fields None, proceed normally
 
+            # Parse dependencies from design doc content
+            deps = parse_dependencies(design_doc_content)
+            filtered_depends_on = [d for d in deps.depends_on if d != item_id]
+            if any(d == item_id for d in deps.depends_on):
+                click.echo(
+                    f"Warning: {item_id} declares a self-dependency — filtering out",
+                    err=True,
+                )
+
             # Insert work item
             work_item = WorkItem(
                 project_id=project_id,
@@ -358,11 +368,25 @@ def register(
                 status=WorkItemStatus.draft,
                 phase=WorkItemPhase.active,
                 config={},
-                depends_on=[],
-                blocks=[],
+                depends_on=filtered_depends_on,
+                blocks=deps.blocks,
             )
             session.add(work_item)
             session.flush()
+
+            # Blocks inversion: for each item this work item blocks, add this
+            # item's ID to the blocked item's depends_on (de-duplicated).
+            for blocked_id in deps.blocks:
+                blocked_item = session.get(WorkItem, (project_id, blocked_id))
+                if blocked_item is None:
+                    click.echo(
+                        f"Warning: {item_id} blocks '{blocked_id}' which is not yet "
+                        f"registered — skipping inversion",
+                        err=True,
+                    )
+                    continue
+                if item_id not in blocked_item.depends_on:
+                    blocked_item.depends_on = blocked_item.depends_on + [item_id]
 
             # Insert workflow steps from manifest
             for idx, step_data in enumerate(manifest_steps):

@@ -52,8 +52,10 @@ def test_pre_commit_hooks_repo_rev_pinned() -> None:
     """Reject HEAD / latest / branch refs."""
     data = yaml.safe_load(CONFIG_PATH.read_text())
     for repo in data.get("repos", []):
-        rev = str(repo.get("rev", ""))
         url = str(repo.get("repo", ""))
+        if url == "local":
+            continue
+        rev = str(repo.get("rev", ""))
         assert rev, f"Repo {url} has no rev pin"
         assert rev.lower() not in {"head", "latest", "main", "master"}, (
             f"Repo {url} uses unpinned rev '{rev}' — pin to a tag"

@@ -17,6 +17,8 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+from orch.design_doc_parser import strip_excluded_sections
+
 logger = logging.getLogger("iw-ai-core.batch_planner")
 
 # ---------------------------------------------------------------------------
@@ -116,11 +118,14 @@ def extract_affected_files(design_doc: str | None) -> list[str]:
 
     Looks for source file paths in tables and code blocks.
     Excludes test files — conflicts there are trivially resolvable.
+    Skips ``## Out of Scope`` and ``## Notes`` sections to avoid false-positive
+    overlaps from prose mentions (I-00053).
     """
     if not design_doc:
         return []
+    cleaned = strip_excluded_sections(design_doc)
     files: set[str] = set()
-    for match in _FILE_PATH_RE.finditer(design_doc):
+    for match in _FILE_PATH_RE.finditer(cleaned):
         path = match.group(0)
         if not _is_test_path(path):
             files.add(path)
