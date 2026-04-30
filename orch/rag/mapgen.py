@@ -26,6 +26,14 @@ if TYPE_CHECKING:
 _SIMILARITY_TOP_K = 20
 
 
+_ELK_FRONTMATTER = """\
+---
+config:
+  layout: elk
+---
+"""
+
+
 _SECTION_TITLES: dict[str, str] = {
     "purpose": "Purpose",
     "components": "Components",
