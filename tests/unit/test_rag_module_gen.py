@@ -106,14 +106,11 @@ component structure of the module.
             create_call = mock_doc_service.create_doc.call_args
             content = create_call[1]["content"]
             import re
+
             purpose_comment_match = re.search(r"<!-- purpose: ([^>]+) -->", content)
-            assert purpose_comment_match, (
-                f"Purpose comment missing, got: {content[:200]}"
-            )
+            assert purpose_comment_match, f"Purpose comment missing, got: {content[:200]}"
             purpose_text = purpose_comment_match.group(1)
-            assert "\n" not in purpose_text, (
-                f"Purpose should be single line, got: {purpose_text!r}"
-            )
+            assert "\n" not in purpose_text, f"Purpose should be single line, got: {purpose_text!r}"
 
     def test_fallback_purpose_uses_module_name(self, mock_config, mock_session):
         """When no purpose block found, fallback uses the module name."""

@@ -207,6 +207,7 @@ class TestDashboardHealthzIdentity:
                 )
                 conn.commit()
 
+    @pytest.mark.smoke
     def test_healthz_identity_200_on_match(
         self,
         migrated_engine: Engine,
@@ -223,6 +224,7 @@ class TestDashboardHealthzIdentity:
         finally:
             session.close()
 
+    @pytest.mark.smoke
     def test_healthz_identity_503_on_mismatch(
         self,
         migrated_engine: Engine,
@@ -239,6 +241,7 @@ class TestDashboardHealthzIdentity:
         finally:
             session.close()
 
+    @pytest.mark.smoke
     def test_healthz_identity_200_on_bootstrap(
         self,
         migrated_engine: Engine,

@@ -161,25 +161,6 @@ def _ensure_classdef_in_dsl(dsl: str) -> str:
     return result
 
 
-def _inject_elk_frontmatter(dsl: str) -> str:
-    """Inject ELK layout frontmatter into Mermaid DSL if not already present.
-
-    The ELK layout plugin requires `layout: elk` in a YAML frontmatter block.
-    Preserves any existing frontmatter structure and classDef blocks.
-    """
-    if "layout: elk" in dsl:
-        return dsl
-
-    frontmatter, stripped = _extract_frontmatter(dsl)
-    if frontmatter:
-        if "config:" in frontmatter:
-            new_frontmatter = frontmatter.rstrip() + "\n  layout: elk\n"
-        else:
-            new_frontmatter = frontmatter.rstrip() + "\nconfig:\n  layout: elk\n"
-        return new_frontmatter + "\n" + stripped
-    return _ELK_FRONTMATTER + stripped
-
-
 def _strip_filler_preamble(text: str) -> str:
     """Remove a leading list-intro preamble like 'Based on the provided code, X are:'.
 

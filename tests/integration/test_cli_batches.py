@@ -3,6 +3,7 @@
 import json
 from typing import Any
 
+import pytest
 from click.testing import CliRunner
 
 from orch.cli.main import cli
@@ -137,6 +138,7 @@ def make_batch(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.smoke
 def test_batch_create_independent_items_all_group_0(
     db_session: Any,
     test_project: Project,
