@@ -23,6 +23,7 @@ logs/
 .ruff_cache/
 .pytest_cache/
 htmlcov/
+tests/output/
 
 # Allure test reporting
 allure-results/
