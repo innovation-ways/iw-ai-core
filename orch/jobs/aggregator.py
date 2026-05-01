@@ -375,25 +375,7 @@ class JobsAggregator:
             status_norm = _normalise_job_status(job.status)
             started = job.started_at or job.requested_at or job.created_at
             triggered_by = job.skill_used or job.trigger_reason
-            raw: dict[str, object] = {
-                "id": job.id,
-                "project_id": job.project_id,
-                "doc_id": job.doc_id,
-                "status": job.status.value,
-                "requested_at": job.requested_at,
-                "started_at": job.started_at,
-                "completed_at": job.completed_at,
-                "agent_output": job.agent_output,
-                "error": job.error,
-                "agent_pid": job.agent_pid,
-                "skill_used": job.skill_used,
-                "trigger_reason": job.trigger_reason,
-                "lint_warnings": job.lint_warnings,
-                "duration_seconds": job.duration_seconds,
-                "section_guides_snapshot": job.section_guides_snapshot,
-                "guide_snapshot": job.guide_snapshot,
-                "created_at": job.created_at,
-            }
+            raw = self._build_doc_generation_raw(job)
             results.append(
                 (
                     JobRow(
@@ -411,6 +393,33 @@ class JobsAggregator:
                 )
             )
         return results
+
+    def _build_doc_generation_raw(self, job: DocGenerationJob) -> dict[str, object]:
+        """Build the raw dict for a DocGenerationJob.
+
+        Used by both _fetch_doc_generation (list view) and _get_doc_generation
+        (detail page) to ensure the same field set is always returned,
+        preventing missing fields on the detail page.
+        """
+        return {
+            "id": job.id,
+            "project_id": job.project_id,
+            "doc_id": job.doc_id,
+            "status": job.status.value,
+            "requested_at": job.requested_at,
+            "started_at": job.started_at,
+            "completed_at": job.completed_at,
+            "agent_output": job.agent_output,
+            "error": job.error,
+            "agent_pid": job.agent_pid,
+            "skill_used": job.skill_used,
+            "trigger_reason": job.trigger_reason,
+            "lint_warnings": job.lint_warnings,
+            "duration_seconds": job.duration_seconds,
+            "section_guides_snapshot": job.section_guides_snapshot,
+            "guide_snapshot": job.guide_snapshot,
+            "created_at": job.created_at,
+        }
 
     def _fetch_batch_execution(
         self,
@@ -612,7 +621,7 @@ class JobsAggregator:
             started_at=job.started_at or job.requested_at or job.created_at,
             finished_at=job.completed_at,
             triggered_by=job.skill_used or job.trigger_reason,
-            raw={"id": job.id, "project_id": job.project_id, "status": job.status.value},
+            raw=self._build_doc_generation_raw(job),
         )
 
     def _get_batch_execution(self, project_id: str, job_id: str) -> JobRow | None:
