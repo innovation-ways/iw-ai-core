@@ -24,6 +24,9 @@ logs/
 .pytest_cache/
 htmlcov/
 tests/output/
+.coverage
+.coverage.*
+coverage.xml
 
 # Allure test reporting
 allure-results/
