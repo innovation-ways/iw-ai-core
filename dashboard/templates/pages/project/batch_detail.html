@@ -47,8 +47,25 @@
 </div>
 
 <!-- Plan tab -->
-{% if active_tab == 'plan' and has_plan %}
+{% if active_tab == 'plan' %}
 <div class="space-y-6">
+  <!-- Max parallel control -->
+  <div class="flex items-center gap-3">
+    <label for="max-parallel-select" class="text-sm text-muted-foreground">Max parallel executions:</label>
+    <select id="max-parallel-select"
+            name="max_parallel"
+            hx-post="/project/{{ current_project.id }}/api/batch/{{ batch.id }}/max-parallel"
+            hx-trigger="change"
+            hx-swap="none"
+            hx-on::after-request="htmx.trigger('#batch-header-sse-trigger', 'batch-header-refresh')"
+            {% if batch_status not in ('planning', 'approved', 'paused') %}disabled{% endif %}
+            class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-sm border border-border disabled:opacity-50 disabled:cursor-not-allowed">
+      {% for n in range(1, 21) %}
+        <option value="{{ n }}" {% if batch.max_parallel == n %}selected{% endif %}>{{ n }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
   {% if has_diagram %}
   <div class="bg-card border border-border rounded-lg p-4">
     <div class="flex items-center justify-between mb-3">

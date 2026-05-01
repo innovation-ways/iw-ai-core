@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
@@ -556,7 +556,7 @@ async def create_batch_from_selection(
         project_id=project_id,
         id=batch_id,
         status=BatchStatus.planning,
-        max_parallel=4,
+        max_parallel=5,
         cli_tool="claude",
         auto_publish=False,
     )
@@ -1384,3 +1384,31 @@ def archive_batch_endpoint(
         toast_type="info",
         reload=True,
     )
+
+
+@router.post("/batch/{batch_id}/max-parallel", response_class=Response)
+def update_batch_max_parallel(
+    project_id: str,
+    batch_id: str,
+    max_parallel: int = Form(...),
+    db: Session = Depends(get_db),
+) -> Any:
+    batch = _get_batch(db, project_id, batch_id)
+    if batch.status not in (
+        BatchStatus.planning,
+        BatchStatus.approved,
+        BatchStatus.paused,
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot update: batch status is '{batch.status.value}'",
+        )
+    if max_parallel < 1 or max_parallel > 20:
+        raise HTTPException(
+            status_code=422,
+            detail="max_parallel must be between 1 and 20",
+        )
+    batch.max_parallel = max_parallel
+    batch.updated_at = datetime.now(UTC)
+    db.commit()
+    return _action_response(f"Max parallel set to {max_parallel}.", toast_type="success")
