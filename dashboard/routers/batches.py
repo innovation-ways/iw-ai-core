@@ -271,7 +271,7 @@ def batch_detail(
     project_id: str,
     batch_id: str,
     request: Request,
-    tab: str = "items",
+    tab: str = "plan",
     db: Session = Depends(get_db),
 ) -> Any:
     project = _get_project_or_404(project_id, db)
@@ -294,6 +294,10 @@ def batch_detail(
 
     has_plan = batch.execution_plan_md is not None
     has_diagram = batch.execution_plan_png is not None
+
+    # Fall back to items if plan tab requested but no plan exists yet
+    if tab == "plan" and not has_plan:
+        tab = "items"
 
     # Compute gantt bounds for the timeline tab
     import datetime as _dt
