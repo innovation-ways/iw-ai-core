@@ -40,10 +40,12 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 You MUST NOT run the following alembic commands against the live
 orchestration DB (port 5433) from an agent context:
 
-  alembic upgrade head
-  alembic upgrade <revision>
-  alembic downgrade <anything>
-  alembic stamp <anything>
+```
+alembic upgrade head
+alembic upgrade <revision>
+alembic downgrade <anything>
+alembic stamp <anything>
+```
 
 Your job in a Database step is to WRITE the migration FILE. The daemon
 will apply it as part of the merge pipeline (pre-merge dry-run against
@@ -81,7 +83,15 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
 The Quality Validation for **{Work Item Title}** failed one or more gates. You must fix **only** the failing gates listed below. Do not refactor unrelated code or make changes beyond what is needed to pass the gates.
 
-## Failing Gates
+## Design Doc — Source of Truth (READ FIRST)
+
+The design document at `ai-dev/work/{ID}/{ID}_{Type}_Design.md` is the authoritative spec for the change. **Read it before applying any fix.**
+
+Why this matters: prior fix cycles have failed because the agent trusted the gate's *error message* and drifted away from the design doc's explicit spec while patching the symptom. **The design doc wins when the two disagree.**
+
+## Diagnostic Hypothesis — Failing Gates
+
+The failures below are **one hypothesis** about what's broken. Verify them against the design doc spec above before applying any fix; the spec wins on conflict.
 
 {For each failing gate from the QV report, include:}
 
@@ -117,6 +127,13 @@ The Quality Validation for **{Work Item Title}** failed one or more gates. You m
 
 The 2026-04-22 I-00034 retrospective is the precedent: S06 and S10 fix-cycles expanded scope by 30 files while "fixing" lint/test failures that were all pre-existing. The gate now blocks that class of merge; this classification step is what keeps the gate from firing.
 
+## Pre-fix Procedure
+
+1. **Read the design doc** at the path above. Skim the section that covers this step's scope; the gate failure may point at code that drifted from a spec the doc already got right.
+2. **Diff the implicated file(s) against the spec** — list deviations explicitly before editing.
+3. **Apply the minimum patch** to align code with the spec; the failing gate(s) should pass as a side effect of that alignment.
+4. **If the gate output disagrees with the spec, the spec wins.** Note the disagreement in your output rather than silently following the gate output.
+
 ## Constraints
 
 1. **Only fix the failing gates, and only within scope.** Do not refactor unrelated code, do not touch files outside `scope.allowed_paths`, do not add features, do not reorganize files.
@@ -126,7 +143,7 @@ The 2026-04-22 I-00034 retrospective is the precedent: S06 and S10 fix-cycles ex
 
 ## Escalation
 
-This is fix cycle **{cycle_number} of 5**. If this is cycle 5 and you cannot resolve all gate failures, report the unresolvable gates in `gates_skipped` with a clear explanation. The orchestrator will escalate to a human reviewer.
+This is fix cycle **{cycle_number} of 5**. **PREFER honest escalation over a Hail-Mary fix that drifts from the design spec.** If this is cycle 5 and you cannot resolve every gate failure while staying aligned with the design doc, report the unresolvable gates in `gates_skipped` with a clear explanation — the human reviewer can act on the evidence.
 
 ## Test Verification (NON-NEGOTIABLE)
 

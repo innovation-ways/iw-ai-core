@@ -930,6 +930,96 @@ def _extract_mandatory_findings(content: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Internal: design-doc references for fix prompts (anti-drift)
+# ---------------------------------------------------------------------------
+
+
+_MAX_DESIGN_QUOTE_CHARS = 8000
+
+
+def _find_design_doc(worktree_path: str, item_id: str) -> Path | None:
+    """Locate the design doc for a work item under the worktree.
+
+    Convention: ``ai-dev/active/<item_id>/<item_id>_*_Design.md`` (Issue,
+    Feature, or Change-Request). Returns the first match or None.
+    """
+    base = Path(worktree_path) / "ai-dev" / "active" / item_id
+    if not base.is_dir():
+        return None
+    for path in sorted(base.glob(f"{item_id}_*_Design.md")):
+        if path.is_file():
+            return path
+    return None
+
+
+def _extract_step_section(design_text: str, step_id: str) -> str | None:
+    """Best-effort extract a step-specific section from the design doc.
+
+    Looks for headings like ``### Detailed Fix Specification for S01``,
+    ``### S01 — Frontend``, or ``### Step S01``. Returns the matched block
+    (heading + body, up to the next same-or-higher heading) or None.
+    Absence is non-fatal: callers fall back to linking the full doc.
+    """
+    if not design_text or not step_id:
+        return None
+    # Heading shapes, first hit wins. Multiline + DOTALL + IGNORECASE.
+    candidates = (
+        rf"(?ims)^(\#{{1,6}}\s+detailed\s+fix\s+specification\s+for\s+{step_id}\b[^\n]*\n.*?)"
+        rf"(?=^\#{{1,6}}\s+|\Z)",
+        rf"(?ims)^(\#{{1,6}}\s+{step_id}\b[^\n]*\n.*?)(?=^\#{{1,6}}\s+|\Z)",
+        rf"(?ims)^(\#{{1,6}}\s+step\s+{step_id}\b[^\n]*\n.*?)(?=^\#{{1,6}}\s+|\Z)",
+    )
+    for pattern in candidates:
+        match = re.search(pattern, design_text)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def _build_design_doc_block(worktree_path: str, item_id: str, step_id: str) -> str:
+    """Return a markdown section pointing the fix agent at the design doc.
+
+    Always names the doc by absolute path so the agent can `Read` it. When a
+    step-specific slice can be located, quotes it inline (truncated to
+    ``_MAX_DESIGN_QUOTE_CHARS``). Returns an empty string when no design doc
+    is found — callers must tolerate that case (legacy items, dry-run tests).
+    """
+    doc_path = _find_design_doc(worktree_path, item_id)
+    if doc_path is None:
+        return ""
+    try:
+        text = doc_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+    slice_text = _extract_step_section(text, step_id)
+    quoted = ""
+    if slice_text:
+        body = slice_text[:_MAX_DESIGN_QUOTE_CHARS]
+        truncation_note = (
+            "\n\n*(slice truncated — read the full doc for the rest)*"
+            if len(slice_text) > _MAX_DESIGN_QUOTE_CHARS
+            else ""
+        )
+        quoted = (
+            f"\n\n### Step-specific slice (verbatim from the doc above)\n\n"
+            f"{body}{truncation_note}\n"
+        )
+
+    return (
+        "## Design Doc — Source of Truth (READ FIRST)\n\n"
+        "The design document for this work item is the authoritative spec for "
+        "the change. Read it before applying any fix:\n\n"
+        f"- **Path**: `{doc_path}`\n"
+        "- Why this matters: prior fix cycles on this codebase have failed "
+        "because the agent trusted the failure-report's *root-cause hypothesis* "
+        "and drifted away from the design doc's explicit fix spec. **The design "
+        "doc wins when the two disagree.**"
+        f"{quoted}\n"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Internal: fix prompt generation
 # ---------------------------------------------------------------------------
 
@@ -946,11 +1036,21 @@ def _generate_fix_prompt(
     item_id = step.work_item_id
     step_id = step.step_id
 
+    # Resolve design-doc reference once and pass to whichever builder handles
+    # the step type. Empty string = no doc found (legacy or partial worktree).
+    design_doc_block = _build_design_doc_block(worktree_path, item_id, step_id)
+
     # Build the prompt content — QV and browser steps get step-specific prompts
     if step.step_type == StepType.quality_validation:
         gate_command = _get_gate_command(step, worktree_path)
         prompt = _build_qv_fix_prompt_content(
-            item_id, step_id, cycle_number, findings, max_cycles, gate_command
+            item_id,
+            step_id,
+            cycle_number,
+            findings,
+            max_cycles,
+            gate_command,
+            design_doc_block=design_doc_block,
         )
     elif step.step_type == StepType.browser_verification:
         prompt = _build_browser_fix_prompt_content(
@@ -960,6 +1060,7 @@ def _generate_fix_prompt(
             findings,
             max_cycles,
             prior_failure_reason=prior_failure_reason,
+            design_doc_block=design_doc_block,
         )
     else:
         prompt = _build_fix_prompt_content(
@@ -968,6 +1069,7 @@ def _generate_fix_prompt(
             cycle_number,
             findings,
             max_cycles,
+            design_doc_block=design_doc_block,
         )
 
     # Write to a separate fix-cycles directory (NOT prompts/ — review agents scan that)
@@ -1001,13 +1103,18 @@ def _build_qv_fix_prompt_content(
     findings: str,
     max_cycles: int,
     gate_command: str,
+    *,
+    design_doc_block: str = "",
 ) -> str:
     """Build a fix prompt for a quality validation failure."""
     escalation = ""
     if cycle_number == max_cycles:
         escalation = (
             f"\n\n**ESCALATION**: This is the FINAL fix cycle ({cycle_number}/{max_cycles}). "
-            "If you cannot resolve all issues, clearly document which remain and why."
+            "**PREFER honest escalation over a Hail-Mary fix that drifts from the design "
+            "spec.** If you cannot resolve every issue while staying aligned with the "
+            "design doc, document which issues remain and why — the human reviewer can "
+            "act on the evidence."
         )
 
     command_hint = ""
@@ -1018,12 +1125,29 @@ def _build_qv_fix_prompt_content(
             f"After applying fixes, re-run this command to verify the issues are resolved.\n"
         )
 
+    design_section = f"{design_doc_block}\n" if design_doc_block else ""
+
     return (
         f"# {item_id} {step_id} QV Fix Cycle {cycle_number}/{max_cycles}\n\n"
         f"Quality gate {step_id} for work item {item_id} failed. "
         f"Fix the issues below so the gate passes on re-run.\n\n"
-        f"## Errors to Fix\n\n{findings}\n"
+        f"{design_section}"
+        f"## Diagnostic Hypothesis — Errors to Address\n\n"
+        f"The block below is **one hypothesis** generated from the failed gate. "
+        f"Verify it against the design doc spec above before applying any fix; "
+        f"the spec wins on conflict.\n\n"
+        f"{findings}\n"
         f"{command_hint}\n"
+        f"## Pre-fix Procedure\n\n"
+        f"1. **Read the design doc** at the path above. Skim the section that "
+        f"covers this step's scope; quote-of-the-doc lives in this prompt when "
+        f"available.\n"
+        f"2. **Diff your target file(s) against the spec** — list deviations "
+        f"explicitly before editing.\n"
+        f"3. **Apply the minimum patch** to align code with the spec; the "
+        f"reported errors should resolve as a side effect of that alignment.\n"
+        f"4. **If the errors disagree with the spec, the spec wins.** Note the "
+        f"disagreement in your output rather than silently following the errors.\n\n"
         f"## Constraints\n\n"
         f"1. **Only fix the reported errors.** Do not refactor unrelated code.\n"
         f"2. **Preserve existing behavior.** Fixes must not break working functionality.\n"
@@ -1042,6 +1166,8 @@ def _build_browser_fix_prompt_content(
     findings: str,
     max_cycles: int,
     prior_failure_reason: str | None = None,
+    *,
+    design_doc_block: str = "",
 ) -> str:
     """Build a fix prompt for a browser_verification failure.
 
@@ -1059,9 +1185,11 @@ def _build_browser_fix_prompt_content(
     if cycle_number == max_cycles:
         escalation = (
             f"\n\n**ESCALATION**: This is the FINAL browser fix cycle "
-            f"({cycle_number}/{max_cycles}). If you cannot resolve every failing "
-            "verification, document which remain and why so the human reviewer "
-            "can act on the evidence."
+            f"({cycle_number}/{max_cycles}). **PREFER honest escalation over a "
+            "Hail-Mary fix that drifts from the design spec.** If you cannot "
+            "make every failing V pass while staying aligned with the design "
+            "doc above, document which V's remain and why so the human "
+            "reviewer can act on the evidence."
         )
 
     env_suspicion_block = ""
@@ -1099,6 +1227,8 @@ def _build_browser_fix_prompt_content(
                 "   and fixtures under `scripts/` are in-scope.\n"
             )
 
+    design_section = f"{design_doc_block}\n" if design_doc_block else ""
+
     return (
         f"# {item_id} {step_id} Browser Verification Fix Cycle "
         f"{cycle_number}/{max_cycles}\n\n"
@@ -1108,15 +1238,37 @@ def _build_browser_fix_prompt_content(
         f"reported code defects. Apply the minimum patch to make every failing "
         f"V pass; the daemon will rebuild the E2E stack and re-run the browser "
         f"checks.\n\n"
-        f"## Browser Verification Report\n\n{findings}\n"
+        f"{design_section}"
+        f"## Diagnostic Hypothesis — Browser Verification Report\n\n"
+        f"The report below is **one hypothesis** about what's broken. The "
+        f"qv-browser agent's *Root Cause* and `file:line` callouts are useful "
+        f"clues, but they are not the spec. Verify against the design doc above "
+        f"before applying any fix; the spec wins on conflict.\n\n"
+        f"{findings}\n"
         f"{env_suspicion_block}"
-        f"\n## Where to look\n\n"
-        f"1. Read the **Issues Found** section above for a root-cause diagnosis "
-        f"and `file:line` references. Trust it and start there.\n"
-        f"2. Screenshots are under "
+        f"\n## Pre-fix Procedure\n\n"
+        f"1. **Read the design doc** at the path above. Look for a "
+        f"`Detailed Fix Specification` section or any spec for `{step_id}` / "
+        f"the implementation step that this V suite verifies.\n"
+        f"2. **Diff the target template / route / fixture against the spec.** "
+        f"List deviations explicitly before editing — missing attributes, "
+        f"wrong selectors, dropped guards. Browser failures are very often "
+        f"the *implementation* drifting from a spec the design doc already "
+        f"got right.\n"
+        f"3. **Apply the minimum patch** to align code with the spec; failing "
+        f"V's should resolve as a side effect of that alignment.\n"
+        f"4. **If the report's root-cause hypothesis disagrees with the spec, "
+        f"the spec wins.** Note the disagreement in your output rather than "
+        f"silently following the report.\n\n"
+        f"## Where to look\n\n"
+        f"1. The design doc above is authoritative for *what should be true*.\n"
+        f"2. The Diagnostic Hypothesis above points at *what's currently false*; "
+        f"`file:line` references and screenshots are corroborating evidence, "
+        f"not gospel.\n"
+        f"3. Screenshots are under "
         f"`ai-dev/active/{item_id}/evidences/post/` — open the ones named in "
         f"the report's `v1_*`, `v2_*`, ... columns to see expected vs. actual.\n"
-        f"3. The failing Vs map to files typically in:\n"
+        f"4. The failing Vs typically map to:\n"
         f"   - `dashboard/templates/**` — if the UI rendered the wrong element\n"
         f"   - `dashboard/routers/**` — if an HTTP route returned the wrong status/fragment\n"
         f"   - `orch/cli/**` — if a CLI command emitted the wrong exit code or message\n"
@@ -1148,21 +1300,42 @@ def _build_fix_prompt_content(
     cycle_number: int,
     findings: str,
     max_cycles: int,
+    *,
+    design_doc_block: str = "",
 ) -> str:
     """Build the fix prompt content."""
     escalation = ""
     if cycle_number == max_cycles:
         escalation = (
             f"\n\n**ESCALATION**: This is the FINAL fix cycle ({cycle_number}/{max_cycles}). "
-            "If you cannot resolve all findings, clearly document which findings remain "
-            "and why they could not be fixed."
+            "**PREFER honest escalation over a Hail-Mary fix that drifts from the design "
+            "spec.** If you cannot resolve every finding while staying aligned with the "
+            "design doc, document which findings remain and why — the human reviewer "
+            "can act on the evidence."
         )
+
+    design_section = f"{design_doc_block}\n" if design_doc_block else ""
 
     return (
         f"# {item_id} {step_id} Fix Cycle {cycle_number}/{max_cycles}\n\n"
         f"The code review for step {step_id} of work item {item_id} found issues "
         f"that must be fixed.\n\n"
-        f"## Findings to Fix\n\n{findings}\n\n"
+        f"{design_section}"
+        f"## Diagnostic Hypothesis — Findings to Address\n\n"
+        f"The findings below are **one hypothesis** generated by a reviewer agent. "
+        f"Verify them against the design doc spec above before applying any fix; "
+        f"the spec wins on conflict.\n\n"
+        f"{findings}\n\n"
+        f"## Pre-fix Procedure\n\n"
+        f"1. **Read the design doc** at the path above. Skim the section that "
+        f"covers this step's scope.\n"
+        f"2. **Diff your target file(s) against the spec** — list deviations "
+        f"explicitly before editing.\n"
+        f"3. **Apply the minimum patch** to align code with the spec; the "
+        f"reported findings should resolve as a side effect of that alignment.\n"
+        f"4. **If the findings disagree with the spec, the spec wins.** Note "
+        f"the disagreement in your output rather than silently following the "
+        f"findings.\n\n"
         f"## Constraints\n\n"
         f"1. **Only fix the flagged issues.** Do not refactor unrelated code.\n"
         f"2. **Preserve existing behavior.** Fixes must not break working functionality.\n"
@@ -1170,8 +1343,9 @@ def _build_fix_prompt_content(
         f"4. **Run tests after every fix.** Ensure no regressions.\n"
         f"{escalation}\n\n"
         f"## Instructions\n\n"
-        f"1. Read the findings above carefully\n"
-        f"2. Apply the minimum changes needed to resolve each finding\n"
+        f"1. Walk through the Pre-fix Procedure above before editing any file\n"
+        f"2. Apply the minimum changes needed to align code with the spec and "
+        f"resolve each finding\n"
         f"3. Run tests to verify no regressions\n"
         f"4. Exit when done — the daemon will detect completion and re-run the review\n\n"
         f"**IMPORTANT**: Do NOT call `iw step-done` or `iw step-fail`. "

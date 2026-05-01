@@ -7,9 +7,13 @@ from unittest.mock import MagicMock
 
 from orch.daemon.fix_cycle import (
     _FIXABLE_STEP_TYPES,
+    _build_browser_fix_prompt_content,
+    _build_design_doc_block,
     _build_fix_prompt_content,
     _build_qv_fix_prompt_content,
     _extract_mandatory_findings,
+    _extract_step_section,
+    _find_design_doc,
     _get_browser_findings,
 )
 from orch.db.models import RunStatus, StepType
@@ -412,3 +416,164 @@ def test_i00050_get_browser_findings_unchanged_when_latest_run_has_report(tmp_pa
     assert "Most Recent Failure" not in result
     assert "## V1 FAIL original" in result
     assert "Should not appear" not in result
+
+
+# ---------------------------------------------------------------------------
+# Design-doc discovery + extraction (anti-drift fix prompts)
+# ---------------------------------------------------------------------------
+
+
+def _seed_design_doc(tmp_path: Path, item_id: str, body: str) -> Path:
+    """Write a design doc at the conventional location and return its path."""
+    item_dir = tmp_path / "ai-dev" / "active" / item_id
+    item_dir.mkdir(parents=True)
+    doc_path = item_dir / f"{item_id}_Issue_Design.md"
+    doc_path.write_text(body, encoding="utf-8")
+    return doc_path
+
+
+def test_find_design_doc_returns_path_when_present(tmp_path: Path) -> None:
+    expected = _seed_design_doc(tmp_path, "I-00099", "# I-00099\n")
+    found = _find_design_doc(str(tmp_path), "I-00099")
+    assert found == expected
+
+
+def test_find_design_doc_returns_none_when_dir_missing(tmp_path: Path) -> None:
+    assert _find_design_doc(str(tmp_path), "I-99999") is None
+
+
+def test_find_design_doc_returns_none_when_no_design_file(tmp_path: Path) -> None:
+    item_dir = tmp_path / "ai-dev" / "active" / "I-00099"
+    item_dir.mkdir(parents=True)
+    (item_dir / "notes.md").write_text("not a design doc")
+    assert _find_design_doc(str(tmp_path), "I-00099") is None
+
+
+def test_extract_step_section_matches_detailed_fix_specification() -> None:
+    text = (
+        "# Title\n\n"
+        "## Detailed Fix Specification for S01\n\n"
+        "Step body for S01.\n"
+        "More text.\n\n"
+        "## Detailed Fix Specification for S02\n\n"
+        "Step body for S02.\n"
+    )
+    slice_text = _extract_step_section(text, "S01")
+    assert slice_text is not None
+    assert "Step body for S01" in slice_text
+    assert "Step body for S02" not in slice_text
+
+
+def test_extract_step_section_matches_step_id_heading() -> None:
+    text = "## S03 — Tests\n\nWrite tests.\n\n## S04\n\nReview.\n"
+    slice_text = _extract_step_section(text, "S03")
+    assert slice_text is not None
+    assert "Write tests" in slice_text
+    assert "Review" not in slice_text
+
+
+def test_extract_step_section_returns_none_on_no_match() -> None:
+    text = "# Title\n\n## Some other section\n\nIrrelevant.\n"
+    assert _extract_step_section(text, "S01") is None
+
+
+def test_extract_step_section_handles_empty_inputs() -> None:
+    assert _extract_step_section("", "S01") is None
+    assert _extract_step_section("text", "") is None
+
+
+def test_build_design_doc_block_returns_empty_when_doc_missing(tmp_path: Path) -> None:
+    assert _build_design_doc_block(str(tmp_path), "I-99999", "S01") == ""
+
+
+def test_build_design_doc_block_includes_path_and_slice(tmp_path: Path) -> None:
+    body = "# Title\n\n## Detailed Fix Specification for S01\n\nSpec: do X then Y.\n"
+    doc_path = _seed_design_doc(tmp_path, "I-00099", body)
+    block = _build_design_doc_block(str(tmp_path), "I-00099", "S01")
+    assert "Design Doc — Source of Truth" in block
+    assert str(doc_path) in block
+    assert "Step-specific slice" in block
+    assert "Spec: do X then Y" in block
+
+
+def test_build_design_doc_block_no_slice_when_step_section_absent(tmp_path: Path) -> None:
+    """Doc found but no S07 heading — block still names the path, no slice."""
+    body = "# Title\n\n## Overview\n\nGeneral info.\n"
+    _seed_design_doc(tmp_path, "I-00099", body)
+    block = _build_design_doc_block(str(tmp_path), "I-00099", "S07")
+    assert "Design Doc — Source of Truth" in block
+    assert "Step-specific slice" not in block
+
+
+# ---------------------------------------------------------------------------
+# Anti-drift copy in fix prompts (hypothesis framing + escalation tightening)
+# ---------------------------------------------------------------------------
+
+
+def test_build_fix_prompt_includes_design_doc_block_when_provided() -> None:
+    block = "## Design Doc — Source of Truth (READ FIRST)\n\nPath: /tmp/x.md\n"
+    prompt = _build_fix_prompt_content("CR-00002", "S06", 1, "findings", 5, design_doc_block=block)
+    assert "Design Doc — Source of Truth" in prompt
+    assert "Diagnostic Hypothesis" in prompt
+    assert "Pre-fix Procedure" in prompt
+    assert "spec wins" in prompt
+
+
+def test_build_fix_prompt_omits_design_section_when_empty() -> None:
+    """Legacy items without a design doc still produce a usable prompt."""
+    prompt = _build_fix_prompt_content("CR-00002", "S06", 1, "findings", 5)
+    assert "Design Doc — Source of Truth" not in prompt
+    # Hypothesis framing always present
+    assert "Diagnostic Hypothesis" in prompt
+
+
+def test_build_fix_prompt_escalation_prefers_honest_escalation() -> None:
+    prompt = _build_fix_prompt_content("F-00001", "S03", 5, "findings", 5)
+    assert "ESCALATION" in prompt
+    assert "PREFER honest escalation" in prompt
+    assert "Hail-Mary" in prompt
+
+
+def test_build_qv_fix_prompt_includes_design_doc_block_when_provided() -> None:
+    block = "## Design Doc — Source of Truth (READ FIRST)\n\nPath: /tmp/x.md\n"
+    prompt = _build_qv_fix_prompt_content(
+        "CR-00002", "S09", 1, "errors", 5, "make lint", design_doc_block=block
+    )
+    assert "Design Doc — Source of Truth" in prompt
+    assert "Diagnostic Hypothesis" in prompt
+    assert "Pre-fix Procedure" in prompt
+    assert "spec wins" in prompt
+
+
+def test_build_qv_fix_prompt_escalation_prefers_honest_escalation() -> None:
+    prompt = _build_qv_fix_prompt_content("CR-00002", "S09", 5, "errors", 5, "make lint")
+    assert "PREFER honest escalation" in prompt
+    assert "Hail-Mary" in prompt
+
+
+def test_build_browser_fix_prompt_includes_design_doc_block_when_provided() -> None:
+    block = "## Design Doc — Source of Truth (READ FIRST)\n\nPath: /tmp/x.md\n"
+    prompt = _build_browser_fix_prompt_content(
+        item_id="I-00099",
+        step_id="S11",
+        cycle_number=1,
+        findings="V1 failed",
+        max_cycles=3,
+        design_doc_block=block,
+    )
+    assert "Design Doc — Source of Truth" in prompt
+    assert "Diagnostic Hypothesis" in prompt
+    assert "Pre-fix Procedure" in prompt
+    assert "spec wins" in prompt
+
+
+def test_build_browser_fix_prompt_escalation_prefers_honest_escalation() -> None:
+    prompt = _build_browser_fix_prompt_content(
+        item_id="I-00099",
+        step_id="S11",
+        cycle_number=3,
+        findings="V1 failed",
+        max_cycles=3,
+    )
+    assert "PREFER honest escalation" in prompt
+    assert "Hail-Mary" in prompt
