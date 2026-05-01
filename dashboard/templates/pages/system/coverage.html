@@ -73,9 +73,11 @@
             <tr class="border-t border-border hover:bg-muted/30 cursor-pointer"
                 role="button"
                 tabindex="0"
+                data-pkg-toggle="{{ pkg.name }}"
+                data-expanded="false"
                 hx-get="/system/coverage/files/{{ pkg.name }}"
                 hx-target="#files-{{ pkg.name }}"
-                hx-trigger="click, keydown[key=='Enter']"
+                hx-trigger="click[this.dataset.expanded!='true'], keydown[key=='Enter'][this.dataset.expanded!='true']"
                 hx-swap="innerHTML">
               <td class="px-4 py-3 font-medium text-foreground">{{ pkg.name }}</td>
               <td class="px-4 py-3 text-foreground">{{ "%.1f"|format(pkg.line_pct) }}%</td>
@@ -89,7 +91,7 @@
                   {{ pkg.badge|upper }}
                 </span>
               </td>
-              <td class="px-4 py-3 text-xs text-muted-foreground">click to expand</td>
+              <td id="expand-label-{{ pkg.name }}" class="px-4 py-3 text-xs text-muted-foreground">click to expand</td>
             </tr>
             <tr class="border-t border-border bg-muted/10">
               <td colspan="6" class="px-4 py-2">
@@ -102,4 +104,32 @@
     </div>
   {% endif %}
 </div>
+<script>
+  (function () {
+    document.querySelectorAll('[data-pkg-toggle]').forEach(function (row) {
+      var pkgName = row.dataset.pkgToggle;
+      row.addEventListener('click', function () {
+        if (row.dataset.expanded === 'true') {
+          var filesDiv = document.getElementById('files-' + pkgName);
+          var label = document.getElementById('expand-label-' + pkgName);
+          if (filesDiv) filesDiv.innerHTML = '';
+          row.dataset.expanded = 'false';
+          if (label) label.textContent = 'click to expand';
+        }
+      });
+    });
+
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
+      var target = evt.detail.target;
+      if (!target || !target.id || !target.id.startsWith('files-')) return;
+      var pkgName = target.id.slice('files-'.length);
+      var row = document.querySelector('[data-pkg-toggle="' + pkgName + '"]');
+      var label = document.getElementById('expand-label-' + pkgName);
+      if (row && label && target.children.length > 0) {
+        row.dataset.expanded = 'true';
+        label.textContent = 'click to collapse';
+      }
+    });
+  }());
+</script>
 {% endblock %}
