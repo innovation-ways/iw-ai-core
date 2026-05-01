@@ -2,53 +2,50 @@
   #chat-panel[data-collapsed="true"] #chat-context-label,
   #chat-panel[data-collapsed="true"] #chat-messages,
   #chat-panel[data-collapsed="true"] #chat-scroll-to-bottom-wrap,
-  #chat-panel[data-collapsed="true"] #chat-composer { display: none; }
-  #chat-panel[data-collapsed="true"] #chat-toggle-tab svg.toggle-expand-icon { transform: rotate(180deg); }
-  #chat-panel:not([data-collapsed="true"]) #chat-toggle-tab svg.toggle-collapse-icon { transform: rotate(0deg); }
+  #chat-panel[data-collapsed="true"] #chat-composer,
+  #chat-panel[data-collapsed="true"] #chat-collapse-btn { display: none; }
+  #chat-panel:not([data-collapsed="true"]) #chat-expand-rail { display: none; }
 </style>
 <div class="relative flex-1 min-h-0">
-  <!-- Slide-out toggle tab — always visible on the left edge of the chat panel slot -->
-  <button id="chat-toggle-tab"
-          class="absolute top-1/2 -translate-y-1/2 z-50 flex flex-col items-center justify-center gap-1
-                 bg-card border border-border rounded-r-lg shadow-md
-                 min-h-[88px] min-w-[44px] cursor-pointer
-                 transition-all duration-200 ease-in-out"
-          style="left: -48px;"
-          aria-label="Collapse chat panel (Cmd+\)">
-    <!-- Chat bubble icon (visible when collapsed) -->
-    <svg class="chat-tab-icon w-5 h-5 text-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h12M12 8v8M7 20h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v11a2 2 0 002 2z"/>
-    </svg>
-    <!-- Rotated "Chat" label (visible when collapsed) -->
-    <span class="chat-tab-label text-xs font-medium text-foreground" style="writing-mode: vertical-rl; transform: rotate(180deg);">Chat</span>
-    <!-- Collapse/expand chevron icon -->
-    <svg class="toggle-collapse-icon w-4 h-4 text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-    </svg>
-    <svg class="toggle-expand-icon w-4 h-4 text-muted-foreground flex-shrink-0 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-    </svg>
-  </button>
-
   <div id="chat-panel"
        class="bg-card border-l border-border flex flex-col
               translate-x-full transition-transform duration-200 ease-in-out
               lg:relative lg:inset-auto lg:translate-x-0 lg:transition-none
               h-full"
-       data-collapsed="false"
+       data-collapsed="true"
        role="region"
        aria-label="Code module chat">
     <div id="chat-resize-handle" aria-hidden="true" class="hidden lg:block absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/30"></div>
+
+    <!-- Expanded header: title + collapse button -->
     <header class="flex items-center justify-between px-3 py-2 border-b border-border">
       <h2 id="chat-context-label" class="text-sm font-medium truncate" title="Chat — Architecture">Chat — Architecture</h2>
-      <button id="chat-close-btn"
-              class="lg:hidden min-h-[44px] min-w-[44px] inline-flex items-center justify-center"
-              aria-label="Close chat panel">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      <button id="chat-collapse-btn"
+              class="tap inline-flex items-center justify-center"
+              aria-label="Collapse chat panel (Cmd+\)">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
         </svg>
       </button>
     </header>
+
+    <!-- Collapsed rail (shown when data-collapsed="true") -->
+    <div id="chat-expand-rail"
+         class="flex flex-col items-center justify-center gap-2 p-2 cursor-pointer min-h-[200px]"
+         role="button"
+         aria-label="Expand chat panel (Cmd+\)">
+      <!-- Chat bubble icon -->
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h12M12 8v8M7 20h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v11a2 2 0 002 2z"/>
+      </svg>
+      <!-- Rotated "Chat" label -->
+      <span class="text-xs font-medium" style="writing-mode: vertical-rl; transform: rotate(180deg);">Chat</span>
+      <!-- Expand chevron -->
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </div>
+
     <div id="chat-messages" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation" class="flex-1 overflow-y-auto px-3 py-2 space-y-3">
       <div id="chat-empty-state" class="text-sm text-muted-foreground py-8 px-2 text-center space-y-2">
         <p class="font-medium text-foreground">Ask about this module</p>
