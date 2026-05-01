@@ -380,7 +380,7 @@ class JobsAggregator:
                 (
                     JobRow(
                         job_type=JobType.doc_generation,
-                        job_id=job.id,
+                        job_id=job.public_id or job.id,
                         project_id=job.project_id,
                         title=title,
                         status=status_norm,
@@ -403,6 +403,7 @@ class JobsAggregator:
         """
         return {
             "id": job.id,
+            "public_id": job.public_id,
             "project_id": job.project_id,
             "doc_id": job.doc_id,
             "status": job.status.value,
@@ -603,7 +604,12 @@ class JobsAggregator:
         )
 
     def _get_doc_generation(self, project_id: str, job_id: str) -> JobRow | None:
-        job = self._session.get(DocGenerationJob, job_id)
+        # Try lookup by public_id first (new rows), fall back to UUID PK (legacy rows)
+        job = self._session.scalar(
+            select(DocGenerationJob).where(DocGenerationJob.public_id == job_id)
+        )
+        if job is None:
+            job = self._session.get(DocGenerationJob, job_id)
         if job is None or job.project_id != project_id:
             return None
         doc_title = None
@@ -614,7 +620,7 @@ class JobsAggregator:
         title = doc_title or "Doc generation (orphan)"
         return JobRow(
             job_type=JobType.doc_generation,
-            job_id=job.id,
+            job_id=job.public_id or job.id,
             project_id=job.project_id,
             title=title,
             status=_normalise_job_status(job.status),

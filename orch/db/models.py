@@ -1329,6 +1329,11 @@ class DocGenerationJob(Base):
         primary_key=True,
         comment="UUID primary key",
     )
+    public_id: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Human-readable ID (DOC-00001, DOC-00002, ...). Allocated via id_sequences['DOC'].",
+    )
     project_id: Mapped[str] = mapped_column(Text, nullable=False)
     doc_id: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="FK to project_docs.id; job survives doc deletion"
@@ -1374,8 +1379,27 @@ class DocGenerationJob(Base):
         Index("idx_doc_generation_jobs_project_id", "project_id"),
         Index("idx_doc_generation_jobs_doc_id", "doc_id"),
         Index("idx_doc_generation_jobs_status", "status"),
+        Index("ix_doc_generation_jobs_public_id", "public_id", unique=True),
         {"comment": "Async AI documentation generation job tracking"},
     )
+
+
+@event.listens_for(DocGenerationJob, "before_insert")
+def _doc_generation_job_allocate_public_id(
+    _mapper: Mapper[Any], connection: Connection, target: DocGenerationJob
+) -> None:
+    """Auto-allocate ``DOC-NNNNN`` public_id from id_sequences if not set."""
+    if target.public_id is not None:
+        return
+    n = connection.execute(
+        text(
+            "INSERT INTO id_sequences (prefix, next_number) VALUES ('DOC', 2)"
+            " ON CONFLICT (prefix) DO UPDATE"
+            " SET next_number = id_sequences.next_number + 1"
+            " RETURNING next_number - 1"
+        )
+    ).scalar()
+    target.public_id = f"DOC-{int(n or 1):05d}"
 
 
 class DocTypeGuide(Base):
