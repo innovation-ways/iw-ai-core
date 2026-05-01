@@ -420,28 +420,27 @@ def test_is_port_free_false_when_port_in_use() -> None:
 def test_pick_free_offset_returns_hash_offset_when_free() -> None:
     """When the deterministic slot is free, the pick returns that offset."""
     pool_cfg = {
-        "frontend_base": 49152,  # high range unlikely to be bound
-        "api_base": 49300,
-        "db_base": 49450,
-        "redis_base": 49600,
+        "frontend_base": 59152,
+        "api_base": 59300,
+        "db_base": 59450,
+        "redis_base": 59600,
         "pool_size": 50,
     }
-    offset = _pick_free_offset(pool_cfg, "proj", "F-00001")
     expected = _compute_port_offset("proj", "F-00001", 50)
+    offset = _pick_free_offset(pool_cfg, "proj", "F-00001")
     assert offset == expected
 
 
 def test_pick_free_offset_scans_forward_on_collision() -> None:
     """When the hash slot's frontend port is taken, the scan moves to the next offset."""
     pool_cfg = {
-        "frontend_base": 49152,
-        "api_base": 49300,
-        "db_base": 49450,
-        "redis_base": 49600,
+        "frontend_base": 59152,
+        "api_base": 59300,
+        "db_base": 59450,
+        "redis_base": 59600,
         "pool_size": 50,
     }
     base = _compute_port_offset("proj", "F-00001", 50)
-    # Reserve the hash slot's frontend port
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("127.0.0.1", pool_cfg["frontend_base"] + base))
     s.listen(1)
