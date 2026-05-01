@@ -10,27 +10,33 @@ FROM python:3.12-slim AS base
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_SYSTEM_PYTHON=1 \
-    PATH="/root/.local/bin:${PATH}"
+    UV_SYSTEM_PYTHON=1
 
-# Install uv for dependency resolution. git is also installed because
-# browser_verification agents shell into this container to introspect git
-# state (e.g. `git -C /app status --short`) when verifying working-tree-only
-# fix recipes — see CR-00022 V3/V4/V7.
+# Install uv to a system-wide location so the non-root runtime user can invoke
+# it. git is also installed because browser_verification agents shell into this
+# container to introspect git state (e.g. `git -C /app status --short`) when
+# verifying working-tree-only fix recipes — see CR-00022 V3/V4/V7.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates git \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 \
+       sh -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Run as a non-root user (Trivy AVD-DS-0002). /app is the user's home so
+# `git config --global` (writes ~/.gitconfig) and uv-sync (writes /app/.venv)
+# both stay inside writable storage.
+RUN groupadd --system app && useradd --system --gid app --home-dir /app --shell /bin/bash app
 WORKDIR /app
+RUN chown app:app /app
+USER app
 
 # Install dependencies first so they are cached when source changes.
-COPY pyproject.toml uv.lock ./
+COPY --chown=app:app pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Bring in the source tree.
-COPY . .
+COPY --chown=app:app . .
 
 # Reinstall to register the project entry points against the source.
 RUN uv sync --frozen --no-dev
