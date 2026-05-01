@@ -2,7 +2,7 @@
 # IW AI Core — Developer Commands
 # ============================================================
 
-.PHONY: install lint lint-js format typecheck quality \
+.PHONY: install lint lint-js format format-check typecheck type-check quality \
          test-unit test-integration test test-parallel smoke check \
          db-up db-down db-migrate db-revision \
          daemon-start daemon-stop dashboard-start css \
@@ -29,8 +29,15 @@ lint-js:
 format:
 	uv run ruff format --check .
 
+# Aliases — skill templates (iw-new-feature/incident/cr) emit `make format-check`
+# and `make type-check` in QV gate manifests; keep them working alongside the
+# original target names.
+format-check: format
+
 typecheck:
 	uv run mypy orch/ dashboard/
+
+type-check: typecheck
 
 quality: lint format typecheck
 
