@@ -1,0 +1,90 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00055",
+  "type": "Issue",
+  "title": "Architecture Diagram renders twice on Code page; inline copy unreadable in dark mode",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/rag/mapgen.py",
+      "dashboard/routers/code_ui.py",
+      "tests/unit/rag/test_mapgen.py",
+      "tests/dashboard/test_code_page_arch_diagram.py",
+      "ai-dev/active/I-00055/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Stop emitting the trailing '## Architecture Diagram' block in MapGenerator._assemble_markdown; add a defensive strip helper applied in _render_architecture_html so legacy stored docs render only one diagram",
+      "prompt": "prompts/I-00055_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: mapgen content correctness, strip helper conservatism (trailing H2 only), idempotency, no regression for docs without the section",
+      "prompt": "prompts/I-00055_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Write unit tests for _assemble_markdown + strip helper, plus a dashboard reproduction test asserting exactly one mermaid container on the Code page",
+      "prompt": "prompts/I-00055_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: semantic correctness, falsifiability of the mermaid-count assertion, regression coverage of strip helper edges",
+      "prompt": "prompts/I-00055_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Cross-step review — mapgen change + render-time guard + tests compose into a complete fix; integration tests pass end-to-end",
+      "prompt": "prompts/I-00055_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — Code page renders exactly one architecture diagram, readable in both themes",
+      "prompt": "prompts/I-00055_S11_BrowserVerification_prompt.md"
+    }
+  ]
+}
