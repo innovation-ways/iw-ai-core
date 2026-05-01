@@ -2,7 +2,8 @@
   var panel = document.getElementById('chat-panel');
   var panelSlot = document.getElementById('chat-panel-slot');
   var resizeHandle = document.getElementById('chat-resize-handle');
-  var toggleTab = document.getElementById('chat-toggle-tab');
+  var collapseBtn = document.getElementById('chat-collapse-btn');
+  var expandRail = document.getElementById('chat-expand-rail');
   var closeBtn = document.getElementById('chat-close-btn');
   var drawerOpen = document.getElementById('chat-drawer-open');
   var drawerBackdrop = document.getElementById('chat-drawer-backdrop');
@@ -21,23 +22,19 @@
     if (collapsed) {
       document.documentElement.style.setProperty('--chat-width', '48px');
       panel.style.width = '48px';
-      if (toggleTab) {
-        toggleTab.setAttribute('aria-label', 'Expand chat panel (Cmd+\)');
-        toggleTab.dataset.collapsed = 'true';
-      }
     } else {
       document.documentElement.style.setProperty('--chat-width', chatWidth + 'px');
       panel.style.width = '';
-      if (toggleTab) {
-        toggleTab.setAttribute('aria-label', 'Collapse chat panel (Cmd+\)');
-        toggleTab.dataset.collapsed = 'false';
-      }
     }
   }
 
   function togglePanel() {
     var isCollapsed = panel && panel.dataset.collapsed === 'true';
-    applyCollapsedState(!isCollapsed);
+    var next = !isCollapsed;
+    applyCollapsedState(next);
+    try {
+      localStorage.setItem('iw_chat_collapsed', String(next));
+    } catch (_) { /* localStorage unavailable, ignore */ }
   }
 
   function openDrawer() {
@@ -58,7 +55,8 @@
     return panel && !panel.classList.contains('translate-x-full');
   }
 
-  if (toggleTab) toggleTab.addEventListener('click', togglePanel);
+  if (collapseBtn) collapseBtn.addEventListener('click', togglePanel);
+  if (expandRail) expandRail.addEventListener('click', togglePanel);
   if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
   if (drawerOpen) drawerOpen.addEventListener('click', openDrawer);
   if (drawerBackdrop) drawerBackdrop.addEventListener('click', closeDrawer);
@@ -118,7 +116,9 @@
     }
   });
 
-  applyCollapsedState(false);
+  var storedCollapsed = localStorage.getItem('iw_chat_collapsed');
+  var initialCollapsed = storedCollapsed === null ? true : storedCollapsed === 'true';
+  applyCollapsedState(initialCollapsed);
 
   function syncChatHeader() {
     var root = document.getElementById('code-content-root');
