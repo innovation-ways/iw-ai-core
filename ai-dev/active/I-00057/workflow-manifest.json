@@ -1,0 +1,91 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00057",
+  "type": "Issue",
+  "title": "Chat panel collapse toggle is intrusive and panel starts open",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/templates/chat/panel.html",
+      "dashboard/static/chat/panel.js",
+      "dashboard/static/styles.css",
+      "dashboard/static/chat.css",
+      "tests/dashboard/test_chat_panel_default_collapsed.py",
+      "ai-dev/active/I-00057/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "frontend-impl",
+      "description": "Relocate chat panel collapse toggle into the panel itself (header + rail), default data-collapsed='true', persist iw_chat_collapsed in localStorage",
+      "prompt": "prompts/I-00057_S01_Frontend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: markup correctness, no orphan IDs, accessibility, persistence round-trip",
+      "prompt": "prompts/I-00057_S02_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Dashboard test: panel ships collapsed, no absolute left:-48px toggle leaks, expand affordance present in panel",
+      "prompt": "prompts/I-00057_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: falsifiability, regression coverage of the floating-tab pattern",
+      "prompt": "prompts/I-00057_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Cross-step review — template + JS + tests compose into a complete fix",
+      "prompt": "prompts/I-00057_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — initial collapsed, expand persists across reloads, collapse persists, no floating tab",
+      "prompt": "prompts/I-00057_S11_BrowserVerification_prompt.md"
+    }
+  ]
+}
