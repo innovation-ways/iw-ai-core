@@ -95,6 +95,39 @@ async def list_modules(
     )
 
 
+@router.get("/modules/chips", response_class=HTMLResponse)
+async def list_modules_chips(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Return a compact horizontal strip of module chips — name + path code.
+
+    Used at the top of the Code page so the user lands on navigation, not on
+    the architecture-map prose. Same parser as list_modules; subset rendering.
+    """
+    _get_project_or_404(project_id, db)
+    level1_doc = _get_level1_doc(project_id, db)
+
+    if level1_doc is None:
+        templates: Jinja2Templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request,
+            "fragments/code_empty_state.html",
+            {"project_id": project_id},
+            status_code=404,
+        )
+
+    modules = parse_modules_from_level1(level1_doc.content or "")
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/code_module_chips.html",
+        {"modules": modules, "project_id": project_id},
+    )
+
+
 @router.get("/modules/{module_slug}", response_class=HTMLResponse)
 async def get_module(
     project_id: str,

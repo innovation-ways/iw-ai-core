@@ -6,9 +6,11 @@ import re
 from typing import TYPE_CHECKING
 
 import markdown as md_lib
+from bs4 import BeautifulSoup
 
 if TYPE_CHECKING:
     from bs4.element import Tag
+
 
 TYPE_MAP = {
     "NOTE": ("note", "Note"),
@@ -50,8 +52,6 @@ def render_markdown_with_callouts(text: str | None) -> str:
 
 
 def _convert_callout_blockquotes(html: str) -> str:
-    from bs4 import BeautifulSoup
-
     soup = BeautifulSoup(html, "html.parser")
 
     for blockquote in soup.find_all("blockquote"):
@@ -84,5 +84,60 @@ def _convert_callout_blockquotes(html: str) -> str:
             for el in callout_divs:
                 blockquote.insert_before(el)
             blockquote.decompose()
+
+    return str(soup)
+
+
+def wrap_h2_sections_collapsible(html: str) -> str:
+    """Wrap each H2 (and the content following it up to the next H2 or end)
+    in a <details> block with a <summary> derived from the H2 text.
+
+    The FIRST H2 in document order is rendered with the ``open`` attribute.
+    Subsequent H2s render closed by default. Text outside any H2 (e.g. the
+    leading H1 + paragraph) is left untouched.
+
+    Idempotent: running the helper twice is a no-op (the second pass detects
+    that H2s are already inside a <details> and returns the input unchanged).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Idempotency: if an H2 is already inside a <summary>, skip wrapping.
+    for h2 in soup.find_all("h2"):
+        if h2.parent and h2.parent.name in ("summary", "details"):
+            return html
+
+    body_tag = soup.find("body")
+    body: Tag | BeautifulSoup = body_tag if body_tag else soup
+    h2_elements = [el for el in body.find_all(["h2"], recursive=False) if el.parent is body]
+    if not h2_elements:
+        return html
+
+    for idx, h2 in enumerate(h2_elements):
+        is_first = idx == 0
+        summary_text = h2.get_text(strip=True)
+        h2.clear()
+
+        details = soup.new_tag("details")
+        if is_first:
+            details["open"] = ""
+
+        summary_tag = soup.new_tag("summary")
+        summary_tag.string = summary_text
+        details.append(summary_tag)
+
+        sibling = h2.next_sibling
+        while sibling is not None:
+            next_sibling = sibling.next_sibling
+            # Stop when we hit the next H2 (at the body level).
+            if isinstance(sibling, str) and sibling.strip() == "":
+                sibling = next_sibling
+                continue
+            if hasattr(sibling, "name") and sibling.name == "h2" and sibling.parent is body:
+                break
+            details.append(sibling)
+            sibling = next_sibling
+
+        h2.insert_before(details)
+        details.append(h2)
 
     return str(soup)

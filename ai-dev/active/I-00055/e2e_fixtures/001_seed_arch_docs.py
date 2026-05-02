@@ -21,8 +21,10 @@ if TYPE_CHECKING:
 _LEGACY_ARCH_MAP_CONTENT = (
     "# Architecture Map\n\n"
     "## Purpose\nIW AI Core is an orchestration platform.\n\n"
-    "## Components\n- **CLI**: command interface via `iw` bridge\n- **Daemon**: background polling and job orchestration\n- **Dashboard**: FastAPI web UI served at port 9900\n\n"
-    "## Data Flow\nThe daemon reads approved batches from PostgreSQL and launches\nagents in isolated git worktrees.\n\n"
+    "## Components\n- **CLI**: `iw` bridge command interface\n"
+    "- **Daemon**: background polling and job orchestration\n"
+    "- **Dashboard**: FastAPI web UI served at port 9900\n\n"
+    "## Data Flow\nReads approved batches from\nPostgreSQL, launches agents in git\nworktrees.\n\n"
     "## Architecture Diagram\n\n"
     "<!-- purpose: shows overall architecture -->\n\n"
     "```mermaid\n"
@@ -39,7 +41,11 @@ _LEGACY_ARCH_MAP_CONTENT = (
 
 # Clean diagram-architecture doc (no purpose comment, no YAML frontmatter in content).
 _CLEAN_ARCH_DIAGRAM_DSL = (
-    "---\nconfig:\n  layout: elk\n---\ngraph TD\n  CLI --> Daemon\n  Daemon --> DB[(PostgreSQL)]\n  Daemon --> Dashboard\n"
+    "---\nconfig:\n  layout: elk\n---\n"
+    "graph TD\n"
+    "  CLI --> Daemon\n"
+    "  Daemon --> DB[(PostgreSQL)]\n"
+    "  Daemon --> Dashboard\n"
 )
 
 
