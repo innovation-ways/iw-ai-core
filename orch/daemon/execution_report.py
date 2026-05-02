@@ -5,11 +5,16 @@ Pure functions: no DB writes in assemble/render, no caching.
 
 from __future__ import annotations
 
+import json
 import logging
-from dataclasses import dataclass
+from contextlib import suppress
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 from sqlalchemy import select
 
@@ -23,6 +28,14 @@ from orch.db.models import (
     WorkflowStep,
     WorkItem,
     WorkItemStatus,
+)
+from orch.self_assess import (
+    SelfAssessFinding,
+    SelfAssessmentData,
+    SelfAssessParseError,
+    findings_path_for,
+    is_self_assess_step,
+    parse_findings_json,
 )
 
 if TYPE_CHECKING:
@@ -121,6 +134,7 @@ class ExecutionReportData:
     steps: list[StepRow]
     hotspots: list[RetryHotspot]
     generated_at: datetime
+    self_assessment: SelfAssessmentData | None = field(default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +197,89 @@ def _compute_gantt_pcts(
         width = 100.0 - left
 
     return round(left, 2), round(width, 2)
+
+
+def _load_self_assessment(
+    session: Session,
+    steps: Sequence[WorkflowStep],
+    _project_id: str,
+    _work_item_id: str,
+) -> SelfAssessmentData | None:
+    """Load self-assessment findings for a work item, if available.
+
+    Finds the ``self_assess`` step type, then locates its latest StepRun with
+    a ``report_file``.  Uses ``findings_path_for`` to derive the JSON sidecar,
+    reads the narrative from the report file, and parses findings.
+
+    Returns None when:
+      - no self_assess step exists
+      - the step has not run or was skipped (no StepRun with a report_file, or
+        final status is pending/skipped)
+      - the findings JSON does not exist
+      - the narrative file does not exist
+    """
+    # Find the self_assess step
+    self_assess_steps = [s for s in steps if is_self_assess_step(s.step_type)]
+    if not self_assess_steps:
+        return None
+
+    step = self_assess_steps[-1]  # use the last one if multiple (should be one)
+
+    # Fetch latest StepRun for this step
+    latest_run = session.execute(
+        select(StepRun)
+        .where(StepRun.step_id == step.id)
+        .order_by(StepRun.run_number.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    if latest_run is None:
+        return None
+
+    # Only render if the step actually ran (completed or failed)
+    terminal_statuses = {RunStatus.completed, RunStatus.failed}
+    if latest_run.status not in terminal_statuses:
+        return None
+
+    # Guard: report_file must exist
+    if latest_run.report_file is None:
+        return None
+
+    report_path = Path(latest_run.report_file)
+
+    # Read narrative from report file (optional)
+    narrative_md: str | None = None
+    if report_path.exists():
+        with suppress(OSError):
+            narrative_md = report_path.read_text(encoding="utf-8")
+
+    # Derive findings JSON path
+    findings_path = findings_path_for(report_path)
+
+    if not findings_path.exists():
+        # No findings JSON — return with narrative only
+        return _build_self_assessment_data(narrative_md=narrative_md)
+
+    # Parse findings JSON
+    try:
+        text = findings_path.read_text(encoding="utf-8")
+        return parse_findings_json(text)
+    except (OSError, json.JSONDecodeError, SelfAssessParseError) as exc:
+        logger.warning("Could not parse self-assessment findings at %s: %s", findings_path, exc)
+        # Return with empty findings but narrative intact
+        return _build_self_assessment_data(narrative_md=narrative_md)
+
+
+def _build_self_assessment_data(
+    narrative_md: str | None = None,
+) -> SelfAssessmentData:
+    """Build a SelfAssessmentData with empty findings (parse-error sentinel)."""
+    return SelfAssessmentData(
+        narrative_md=narrative_md,
+        findings=[],
+        coverage_notes=None,
+        bottom_line=None,
+    )
 
 
 def assemble_execution_report(
@@ -413,6 +510,15 @@ def assemble_execution_report(
     # Sort hotspots: retry_count desc, then step_number asc
     hotspots.sort(key=lambda h: (-h.retry_count, h.step_id))
 
+    # ── Self-Assessment ─────────────────────────────────────────────────────
+    self_assessment: SelfAssessmentData | None = None
+    try:
+        self_assessment = _load_self_assessment(session, steps, project_id, work_item_id)
+    except Exception as exc:
+        logger.exception(
+            "Failed to load self-assessment data for %s/%s: %s", project_id, work_item_id, exc
+        )
+
     return ExecutionReportData(
         project_id=project_id,
         work_item_id=work_item_id,
@@ -427,6 +533,7 @@ def assemble_execution_report(
         steps=step_rows,
         hotspots=hotspots,
         generated_at=datetime.now(UTC),
+        self_assessment=self_assessment,
     )
 
 
@@ -524,6 +631,56 @@ def render_execution_report_markdown(data: ExecutionReportData) -> str:
                     lines.append(f"Fix report: {fc.fix_report}")
                 lines.append("")
             lines.append("")
+
+    # Section 5: Self-Assessment
+    if data.self_assessment is not None:
+        lines.append("## Self-Assessment")
+        sa = data.self_assessment
+        if sa.bottom_line:
+            lines.append(f"\n_{sa.bottom_line}_\n")
+        if sa.coverage_notes:
+            lines.append(f"_Coverage: {sa.coverage_notes}_\n")
+
+        # Group findings
+        core_findings = [f for f in sa.findings if f.target == "iw-ai-core"]
+        project_findings = [f for f in sa.findings if f.target == "project"]
+
+        # Sort by severity
+        sev_order = {"HIGH": 0, "MED": 1, "LOW": 2}
+
+        def sort_key(f: SelfAssessFinding) -> int:
+            return sev_order.get(f.severity, 3)
+
+        if core_findings:
+            lines.append("### Suggestions for iw-ai-core")
+            for f in sorted(core_findings, key=sort_key):
+                lines.append(f"- **[{f.severity}]** {f.title}")
+                lines.append(f"  - Recommendation: {f.recommendation}")
+                lines.append(f"  ```\n  {f.paste_prompt}\n  ```")
+            lines.append("")
+
+        if project_findings:
+            lines.append(f"### Suggestions for {data.project_id}")
+            for f in sorted(project_findings, key=sort_key):
+                lines.append(f"- **[{f.severity}]** {f.title}")
+                lines.append(f"  - Recommendation: {f.recommendation}")
+                lines.append(f"  ```\n  {f.paste_prompt}\n  ```")
+            lines.append("")
+
+        if sa.findings and not core_findings and not project_findings:
+            lines.append("Self-assessment ran but no findings were captured.")
+
+        if not sa.findings:
+            lines.append("Self-assessment ran but no findings were captured.")
+
+        # Narrative (if present)
+        if sa.narrative_md:
+            lines.append("\n### Full Narrative\n")
+            lines.append("```markdown")
+            lines.append(sa.narrative_md)
+            lines.append("```")
+
+        lines.append("")
 
     # Footer
     lines.append("---")

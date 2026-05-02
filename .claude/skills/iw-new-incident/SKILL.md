@@ -194,6 +194,35 @@ Use the template from `ai-dev/templates/Issue_Design_Template.md`. Fill in ALL s
 - **TDD Approach** — reproducing test, unit tests, integration tests
 - **Notes** — additional context, risks, or decisions (use "None" if truly empty)
 
+Also create the **Functional Design Document** at the same time (substep within this step):
+
+```
+ai-dev/active/{ID}/{ID}_Functional.md
+```
+
+Copy `ai-dev/templates/Functional_Design_Template.md` and fill in the four sections using:
+- **Why** — drafted from the user's intake conversation and the technical design's Description / Bug Description.
+- **What Changed (for the User)** — drafted from the Steps to Reproduce and Acceptance Criteria sections.
+- **How It Behaves** — drafted from the fix's expected behaviour and edge cases.
+- **Out of Scope** — drafted from the Regression Prevention or any explicitly out-of-scope items (omit if obvious).
+
+**Rules for the functional doc**:
+- Keep the body at most 500 words (the review skill blocks >500 as a blocking error).
+- Use plain English — no file paths, class names, SQL, or code fences.
+- Focus on observable behaviour, not implementation mechanics.
+- Do NOT use fenced code blocks (```) — they trigger a review warning.
+- Do NOT mention specific paths like `orch/`, `dashboard/`, `scripts/` — they trigger a review warning.
+
+Add the functional doc to the **File Manifest** table (add a row after Issue_Design.md):
+
+| File | Type | Purpose |
+|------|------|---------|
+| `{ID}_Issue_Design.md` | Design | This document |
+| `{ID}_Functional.md` | Design | Human-facing summary (Why / What Changed / How It Behaves / Out of Scope) |
+| `workflow-manifest.json` | Manifest | Step definitions |
+| `prompts/{ID}_S01_{Agent}_prompt.md` | Prompt | S01 fix implementation |
+| ... | ... | ... (one per step) |
+
 ### Test Semantic Correctness Requirement (LESSON FROM I003)
 
 **CRITICAL**: Tests must verify **semantic correctness**, not just **response shape**.
@@ -302,7 +331,7 @@ QV gates are **script-driven** — no QV prompt file needed for gate steps.
 {"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — verify fix end-to-end in isolated worktree stack", "prompt": "prompts/{ID}_S{N}_BrowserVerification_prompt.md"}
 ```
 
-To create the prompt file, **copy `ai-dev/templates/QVBrowser_Prompt_Template.md`** (synced from `templates/design/` by `iw init-project` / `iw skills sync`) and fill in ONLY the `{{ID}}`, `{{STEP}}`, `{{TITLE}}`, `{{TYPE}}`, input-files list, and V1..V(n) sections. The V(n) verifications must cover:
+To create the prompt file, **copy `ai-dev/templates/QVBrowser_Prompt_Template.md`** (synced from `templates/design/` by `iw init-project` / `iw sync-templates`) and fill in ONLY the `{{ID}}`, `{{STEP}}`, `{{TITLE}}`, `{{TYPE}}`, input-files list, and V1..V(n) sections. The V(n) verifications must cover:
 
 1. **The reproduction case** — navigate to the exact URL/interaction that triggered the bug and verify it now behaves correctly.
 2. **Adjacent flows (No Regressions)** — confirm the fix didn't break neighboring functionality, and no new console errors appeared.
@@ -311,19 +340,50 @@ Leave the Environment, Prerequisites, Pass Criteria, Report, and Result Contract
 
 **Hard rules for the QV Browser prompt:**
 - **NEVER** hardcode URLs, ports, or credentials. No `localhost:5173`, no `localhost:5174`, no literal passwords. The IW daemon spins up an isolated e2e stack built from the worktree's source and exports `$IW_BROWSER_BASE_URL`, `$IW_BROWSER_E2E_USER`, `$IW_BROWSER_E2E_PASSWORD`, `$IW_ITEM_ID`, and `$IW_STEP_ID` at runtime. Use those env vars (or the equivalent `{{IW_BROWSER_BASE_URL}}` placeholder, which the daemon substitutes at launch).
-- **NEVER** instruct the agent to run `make dev`, `make e2e-up`, `docker compose`, or any install command — the stack is already up and will be torn down afterwards.
+- **NEVER** instruct the agent to run `make dev`, `make e2e-up`, `docker compose up/down/restart/build`, or any install command — the stack is already up. `docker compose exec app` is allowed and required when re-running the seed after writing a fixture file.
 - Use `playwright-cli` exclusively (not `agent-browser`, not direct `chromium.launch()`).
 
 ## Step 5b: Generate Workflow Manifest (only after GO)
 
 Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions only — state lives in DB):
 
+### Sub-step: Check project self_assess flag
+
+Read the project's `projects.toml` entry to see if `self_assess = true`:
+
+```bash
+project_id=$(uv run iw current-project)
+self_assess=$(python3 -c "import tomllib, sys; data = tomllib.loads(open('projects.toml').read()); print(data.get('projects', {}).get('$project_id', {}).get('self_assess', False))")
+```
+
+If `self_assess` is `True`, you MUST inject the following step into `workflow-manifest.json` IMMEDIATELY BEFORE the first `qv-gate` step (and before any `qv-browser` step):
+
 ```json
 {
-  "id": "{ID}",
-  "type": "Issue",
-  "title": "{One-line summary of the bug}",
+  "step": "S{NN}",
+  "agent": "self-assess-impl",
+  "step_type": "self_assess",
+  "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+  "prompt": "prompts/{ID}_S{NN}_SelfAssess_prompt.md"
+}
+```
+
+The agent slug is `self-assess-impl` — registered in `skills/iw-workflow/SKILL.md`'s canonical agent table and in `executor/step_executor_lib.sh`. Do NOT use `self-assess` or `self_assess` as the agent slug — those will fail orchestrator validation.
+
+And generate the corresponding prompt file at `prompts/{ID}_S{NN}_SelfAssess_prompt.md` by copying `ai-dev/templates/SelfAssess_Prompt_Template.md` and substituting `{ID}` and `{NN}`.
+
+Renumber the QV gate steps that follow.
+
+---
+
+Then create the manifest:
   "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "path/to/file_the_fix_modifies.py",
+      "tests/integration/path/to/new_test_file.py"
+    ]
+  },
   "steps": [
     {
       "step": "S01",
@@ -334,6 +394,14 @@ Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions only — st
   ]
 }
 ```
+
+`scope.allowed_paths` declares the exact set of files the fix is permitted to touch, as globs. The executor's `worktree_commit.sh` Step 2.25 enforces this at merge time — any modified file outside the list (plus the implicit `ai-dev/active/{ID}/**` and `ai-dev/archive/{ID}/**`) blocks the merge. Derive the list from the Incident Design's **Files Changed** section. Patterns:
+
+- `"path/to/file.py"` — exact match
+- `"dir/**"` — the directory and everything below it
+- `"dir/*.py"` — single-level wildcard (fnmatch)
+
+If a QV fix-cycle legitimately needs to touch a new file (e.g. the fix can't avoid it), the operator amends this list and re-triggers the merge — don't silently expand.
 
 Agent slug mapping:
 - Database → `database-impl`
@@ -350,7 +418,14 @@ Agent slug mapping:
 - QV gates → `qv-gate` (with `"gate"` and `"command"` fields — no prompt needed)
 - QV browser → `qv-browser` (only when `browser_verification: true`, with `"prompt"` field)
 
-**QV gate steps**:
+**QV gate steps — IMPORTANT: Only include gates whose commands exist in the project.**
+
+Before writing the manifest, verify each command:
+- Run `grep -n "^<target>:" Makefile` to confirm a Makefile target exists.
+- Run `ls frontend/` to confirm a frontend directory exists before including `frontend-tsc` or `frontend-tests`.
+- **NEVER include a gate whose command will exit non-zero unconditionally** (missing dir, missing Makefile target). A phantom gate will exhaust all fix cycles and stall the item permanently.
+
+Full menu (select only applicable ones):
 ```json
 {"step": "S{N+1}", "agent": "qv-gate", "gate": "lint", "command": "make lint", "description": "QV: Linting"},
 {"step": "S{N+2}", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
@@ -375,6 +450,8 @@ iw register {ID} "{One-line summary of the bug}" \
 ```
 
 This records the item and all its workflow steps in the database. The item starts in `draft` status.
+
+**Note**: The `iw register` command auto-detects a sibling `<ID>_Functional.md` file next to the technical design doc and loads its content into the `functional_doc_content` column (S02's work). No extra `--functional-doc` flag is needed when the functional doc lives alongside the technical design doc.
 
 ## Step 7: Present Package for Review
 
@@ -431,3 +508,4 @@ Display a summary of everything created:
 - **NEVER** place files in `done/` — all new files go in `ai-dev/active/`
 - **NEVER** start implementation — this skill only creates the fix package
 - **NEVER** write tests that only check response shape — always verify semantic correctness
+- **MUST** inject the self_assess step iff the project's `projects.toml` has `self_assess = true`. Determinism is required (Invariant 6 in F-00078).

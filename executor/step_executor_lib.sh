@@ -127,6 +127,8 @@ get_step_type() {
             echo "browser" ;;
         qv-browser|qv_browser)
             echo "browser" ;;
+        self-assess-impl|self_assess_impl)
+            echo "implementation" ;;
         *)
             echo "implementation" ;;
     esac
@@ -150,6 +152,7 @@ get_agent_label() {
         quality-validation-impl)      echo "QualityValidation" ;;
         qv-gate)                      echo "QV_Gate" ;;
         qv-browser)                   echo "QV_Browser" ;;
+        self-assess-impl)            echo "SelfAssess" ;;
         *)                            echo "$agent" ;;
     esac
 }

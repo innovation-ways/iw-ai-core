@@ -90,6 +90,7 @@ _AGENT_STEP_TYPE_PATTERNS: list[tuple[str, StepType]] = [
     ("qv-fix", StepType.qv_fix),
     ("qv-browser", StepType.browser_verification),
     ("browser-verification", StepType.browser_verification),
+    ("self-assess", StepType.self_assess),  # matches self-assess-impl, self_assess
 ]
 
 
