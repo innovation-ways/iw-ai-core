@@ -309,7 +309,6 @@ def test_regenerate_map_upserts_project_doc(
     with (
         patch("orch.rag.mapgen.OllamaEmbedding") as mock_embed_cls,
         patch("orch.rag.mapgen.Ollama") as mock_llm_cls,
-        patch("orch.db.session.SessionLocal", test_session_factory),
     ):
         fixed_embed = [0.1] * 384
         mock_embed = MagicMock()
@@ -353,8 +352,20 @@ def test_regenerate_map_upserts_project_doc(
             f"Expected updated title, got {updated_doc.title}"
         )
         assert updated_doc.content is not None, "Content should not be None"
-        assert "graph TD" in updated_doc.content, "Expected mermaid content in updated doc"
+        # I-00055: the architecture-map markdown no longer embeds the mermaid
+        # block; the diagram lives in a separate `diagram-architecture` doc.
+        assert "## Architecture Diagram" not in updated_doc.content, (
+            "Architecture-map content should not embed the diagram section"
+        )
+        assert updated_doc.content != "stale content", "Expected content refresh"
         assert updated_doc.version > 1, f"Expected version increment, got {updated_doc.version}"
+
+        diagram_doc = verify_session.get(ProjectDoc, f"{project_id}:diagram-architecture")
+        assert diagram_doc is not None, "Expected separate diagram-architecture doc"
+        assert diagram_doc.content is not None
+        assert "graph TD" in diagram_doc.content, (
+            "Expected mermaid content in diagram-architecture doc"
+        )
 
         versions = (
             verify_session.query(ProjectDocVersion)

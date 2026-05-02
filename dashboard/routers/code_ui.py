@@ -20,6 +20,7 @@ from orch.db.models import CodeIndexJob, DocIndexJob, Project
 from orch.doc_service import DocService
 from orch.rag.config import build_code_config_from_project
 from orch.rag.job import JOB_REGISTRY, JobAlreadyRunningError, start_index_job
+from orch.rag.mapgen import strip_trailing_arch_diagram_section
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -81,7 +82,8 @@ def _preprocess_mermaid(text: str) -> str:
 def _render_architecture_html(arch_doc: Any) -> str | None:
     if arch_doc is None or not arch_doc.content:
         return None
-    processed = _preprocess_mermaid(arch_doc.content)
+    cleaned = strip_trailing_arch_diagram_section(arch_doc.content)
+    processed = _preprocess_mermaid(cleaned)
     return render_markdown(processed)
 
 
