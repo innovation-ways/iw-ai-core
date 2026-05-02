@@ -120,6 +120,13 @@ _ITEM_ACTION_LABELS: dict[str, tuple[str, str, str, bool]] = {
         "Restart Merge",
         False,
     ),
+    "restart-setup": (
+        "Restart setup?",
+        "This deletes the worktree and resets every step. "
+        "The daemon will re-run setup from scratch.",
+        "Restart Setup",
+        True,
+    ),
 }
 
 
@@ -1037,6 +1044,121 @@ def _delete_worktree(item_id: str, worktree_path: str, repo_root: str) -> None:
         _logger.info("Full-restart: removed worktree %s for %s", worktree_path, item_id)
     except Exception:
         _logger.warning("Full-restart: could not remove worktree %s for %s", worktree_path, item_id)
+
+
+# ---------------------------------------------------------------------------
+# Restart setup (setup-only failure recovery)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/item/{item_id}/restart-setup", response_class=Response)
+def restart_setup(
+    project_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Reset a setup-failed item so the daemon re-runs worktree setup.
+
+    Preconditions:
+    - BatchItem.status must be setup_failed or failed
+    - No WorkflowStep may have started (all must be pending)
+
+    This is a subset of full_restart_item scoped to setup-only failures.
+    """
+    batch_item = db.scalar(
+        select(BatchItem).where(
+            BatchItem.project_id == project_id,
+            BatchItem.work_item_id == item_id,
+        )
+    )
+    if batch_item is None:
+        raise HTTPException(status_code=404, detail=f"No batch item for {item_id}")
+
+    if batch_item.status not in (BatchItemStatus.setup_failed, BatchItemStatus.failed):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot restart setup: batch item status is '{batch_item.status.value}' (must be setup_failed or failed)",
+        )
+
+    # Check that no workflow step has started
+    steps = list(
+        db.scalars(
+            select(WorkflowStep).where(
+                WorkflowStep.project_id == project_id,
+                WorkflowStep.work_item_id == item_id,
+            )
+        ).all()
+    )
+    if any(s.status != StepStatus.pending for s in steps):
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot restart setup: one or more steps have already started",
+        )
+
+    worktree_path: str | None = None
+
+    # Collect step runs and log files
+    for step in steps:
+        runs = list(db.scalars(select(StepRun).where(StepRun.step_id == step.id)).all())
+        for run in runs:
+            if worktree_path is None and run.worktree_path:
+                worktree_path = run.worktree_path
+            if run.log_file:
+                with contextlib.suppress(FileNotFoundError, OSError):
+                    Path(run.log_file).unlink()
+            db.delete(run)
+
+    # Reset all workflow steps to pending
+    for step in steps:
+        step.status = StepStatus.pending
+        step.started_at = None
+        step.completed_at = None
+        step.report_file = None
+        step.report_content = None
+
+    # Reset item to approved
+    item = _get_item(db, project_id, item_id)
+    item.status = WorkItemStatus.approved
+    item.completed_at = None
+
+    # Reset batch item to pending
+    batch_item.status = BatchItemStatus.pending
+    batch_item.notes = None
+    batch_item.started_at = None
+
+    # Re-open batch if it was completed_with_errors
+    batch = db.scalar(
+        select(Batch).where(
+            Batch.project_id == project_id,
+            Batch.id == batch_item.batch_id,
+        )
+    )
+    if batch is not None and batch.status == BatchStatus.completed_with_errors:
+        batch.status = BatchStatus.approved
+        batch.completed_at = None
+
+    _emit(
+        db,
+        "setup_restarted",
+        project_id,
+        item_id,
+        "work_item",
+        f"Setup restarted for {item_id} by user",
+        {"worktree_path": worktree_path, "steps_reset": len(steps)},
+    )
+    db.commit()
+
+    # Delete worktree after commit (best-effort)
+    if worktree_path:
+        project_rec = db.scalar(select(Project).where(Project.id == project_id))
+        if project_rec:
+            _delete_worktree(item_id, worktree_path, project_rec.repo_root)
+
+    return _action_response(
+        f"Setup restarted for {item_id} — daemon will re-run from scratch.",
+        toast_type="success",
+        reload=True,
+    )
 
 
 @router.post("/item/{item_id}/full-restart", response_class=Response)
