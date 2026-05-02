@@ -212,7 +212,7 @@ def test_concurrent_job_limit(db_session: Session, tmp_path: Any) -> None:
 
 
 def test_stall_detection(db_session: Session) -> None:
-    """Job running >10 minutes is marked failed by poller."""
+    """Job running >15 minutes is marked failed by poller."""
     _make_project(db_session)
     _make_doc(db_session, content=None)
     svc = DocService(db_session)
@@ -222,7 +222,7 @@ def test_stall_detection(db_session: Session) -> None:
     svc.start_doc_job(job_id)
     db_session.flush()
 
-    job.started_at = datetime.now(UTC) - timedelta(minutes=11)
+    job.started_at = datetime.now(UTC) - timedelta(minutes=16)
     db_session.flush()
 
     with patch("subprocess.Popen"):
