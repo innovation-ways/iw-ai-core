@@ -56,7 +56,15 @@ _EXECUTOR_DIR = Path(__file__).resolve().parent.parent.parent / "executor"
 _DEFAULT_SETTING_UP_THRESHOLD_SECS = 600
 
 # H1: terminal statuses that block downstream execution groups (merged is success, not a failure)
-_BLOCKING_TERMINAL_STATUSES = TERMINAL_BATCH_ITEM_STATUSES - {BatchItemStatus.merged}
+# CR-00028: merge_failed, migration_invalid, and migration_rebase_failed are excluded because
+# they are operator-recoverable — the operator can retry via restart-merge or abandon via
+# abandon-merge. All other terminal statuses (e.g. failed, setup_failed, stalled) still cascade.
+_BLOCKING_TERMINAL_STATUSES = TERMINAL_BATCH_ITEM_STATUSES - {
+    BatchItemStatus.merged,
+    BatchItemStatus.merge_failed,
+    BatchItemStatus.migration_invalid,
+    BatchItemStatus.migration_rebase_failed,
+}
 
 
 class WorktreeSetupError(RuntimeError):
@@ -1367,6 +1375,9 @@ def _build_agent_env(cli_tool: str, item_id: str, worktree_path: str) -> dict[st
 
 def _current_execution_group(items: list[BatchItem]) -> int | None:
     """Return the lowest execution_group with non-terminal items, or None."""
+    # CR-00028: merge_failed, migration_invalid, and migration_rebase_failed are treated as
+    # non-terminal so a group containing one of these statuses keeps its execution_group open —
+    # dependents in later groups stay paused (not cascaded) until the operator retries or abandons.
     for item in sorted(items, key=lambda i: i.execution_group):
         if item.status in (
             BatchItemStatus.pending,
@@ -1374,6 +1385,9 @@ def _current_execution_group(items: list[BatchItem]) -> int | None:
             BatchItemStatus.executing,
             BatchItemStatus.completed,
             BatchItemStatus.merging,
+            BatchItemStatus.merge_failed,
+            BatchItemStatus.migration_invalid,
+            BatchItemStatus.migration_rebase_failed,
         ):
             return item.execution_group
     return None

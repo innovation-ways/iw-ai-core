@@ -47,6 +47,18 @@
   </button>
 {% endmacro %}
 
+{% macro abandon_merge_button(project_id, item_id) %}
+  <button
+    hx-get="/project/{{ project_id }}/api/confirm-item/abandon-merge/{{ item_id }}"
+    hx-target="#confirm-dialog"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    title="Abandon merge"
+    {{ write_button_attrs(request) }}>
+    ⚠ Abandon
+  </button>
+{% endmacro %}
+
 {% macro restart_setup_button(project_id, item_id) %}
   <button
     hx-get="/project/{{ project_id }}/api/confirm-item/restart-setup/{{ item_id }}"

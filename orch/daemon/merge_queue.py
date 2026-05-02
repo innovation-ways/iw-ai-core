@@ -134,6 +134,10 @@ def _merge_item(
     worktree_path = (batch_item.worktree_info or {}).get("path")
 
     if not worktree_path:
+        # CR-00028: intentionally produce `failed` here (not `merge_failed`).
+        # This branch indicates a data-integrity issue — no worktree was ever
+        # recorded for this batch item. Keeping it as `failed` ensures the
+        # cascade fires so the batch is correctly marked with a hard failure.
         batch_item.status = BatchItemStatus.failed
         batch_item.notes = "No worktree path recorded — cannot merge"
         db.commit()
@@ -295,7 +299,10 @@ def _merge_item(
                     )
 
     except (MergeError, subprocess.TimeoutExpired) as e:
-        batch_item.status = BatchItemStatus.failed
+        # CR-00028: use merge_failed so the cascade is NOT triggered.
+        # Dependents in later execution groups stay pending — the operator
+        # can retry via restart-merge or abandon via abandon-merge.
+        batch_item.status = BatchItemStatus.merge_failed
         batch_item.notes = f"Merge failed: {e}"
         # C4: revert WorkItem so it is not orphaned as completed
         _revert_work_item(db, project_id, item_id)

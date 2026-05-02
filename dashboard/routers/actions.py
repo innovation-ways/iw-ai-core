@@ -115,10 +115,18 @@ _ITEM_ACTION_LABELS: dict[str, tuple[str, str, str, bool]] = {
     ),
     "restart-merge": (
         "Restart merge?",
-        "Resets the merge failure so the daemon retries the squash-merge on the next poll. "
-        "Make sure any git conflicts in the worktree are resolved before restarting.",
+        "Resets the item so the daemon retries the squash-merge on the next poll. "
+        "Applies to merge_failed, migration_invalid, and migration_rebase_failed items. "
+        "Make sure any git conflicts or migration issues are resolved before restarting.",
         "Restart Merge",
         False,
+    ),
+    "abandon-merge": (
+        "Abandon merge?",
+        "Marks this item as failed and cascade-fails all dependent items in later groups. "
+        "This is irreversible without manual SQL. Use only if the merge cannot be recovered.",
+        "Abandon Merge",
+        True,
     ),
     "restart-setup": (
         "Restart setup?",
@@ -911,27 +919,50 @@ def restart_item(
 # ---------------------------------------------------------------------------
 
 
+# CR-00028: operator-recoverable merge statuses — restart-merge accepts all three.
+# The legacy `failed` + notes.startswith("Merge failed") path is preserved for
+# back-compat with historical rows created before the migration.
+_ALLOWED_RETRY_STATUSES = {
+    BatchItemStatus.merge_failed,
+    BatchItemStatus.migration_invalid,
+    BatchItemStatus.migration_rebase_failed,
+}
+
+
 @router.post("/item/{item_id}/restart-merge", response_class=Response)
 def restart_merge(
     project_id: str,
     item_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    # Try new enum values first (CR-00028)
     batch_item = db.scalar(
         select(BatchItem).where(
             BatchItem.project_id == project_id,
             BatchItem.work_item_id == item_id,
-            BatchItem.status == BatchItemStatus.failed,
+            BatchItem.status.in_(list(_ALLOWED_RETRY_STATUSES)),
         )
     )
+
+    # Back-compat: accept legacy `failed` rows that have merge-failure metadata
     if batch_item is None:
-        raise HTTPException(
-            status_code=422,
-            detail=f"No failed batch item found for {item_id}",
+        legacy = db.scalar(
+            select(BatchItem).where(
+                BatchItem.project_id == project_id,
+                BatchItem.work_item_id == item_id,
+                BatchItem.status == BatchItemStatus.failed,
+            )
         )
+        if legacy is not None and (legacy.notes or "").startswith("Merge failed"):
+            batch_item = legacy
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No merge-failed batch item found for {item_id}",
+            )
 
     notes = batch_item.notes or ""
-    if not notes.startswith("Merge failed"):
+    if batch_item.status == BatchItemStatus.failed and not notes.startswith("Merge failed"):
         raise HTTPException(
             status_code=422,
             detail=(
@@ -969,6 +1000,65 @@ def restart_merge(
     return _action_response(
         f"Merge queued for retry — daemon will pick up {item_id} on next poll.",
         toast_type="success",
+        reload=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Abandon merge (operator-recoverable → cascade-fail)
+# ---------------------------------------------------------------------------
+# CR-00028: flips merge_failed/migration_invalid/migration_rebase_failed → failed
+# so the existing cascade fires intentionally. Used when the operator gives up
+# on an item and wants dependents in later groups to fail too.
+
+
+@router.post("/item/{item_id}/abandon-merge", response_class=Response)
+def abandon_merge(
+    project_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    batch_item = db.scalar(
+        select(BatchItem).where(
+            BatchItem.project_id == project_id,
+            BatchItem.work_item_id == item_id,
+            BatchItem.status.in_([BatchItemStatus.merge_failed]),
+        )
+    )
+    if batch_item is None:
+        # Also accept migration_invalid and migration_rebase_failed
+        batch_item = db.scalar(
+            select(BatchItem).where(
+                BatchItem.project_id == project_id,
+                BatchItem.work_item_id == item_id,
+                BatchItem.status.in_(
+                    [BatchItemStatus.migration_invalid, BatchItemStatus.migration_rebase_failed]
+                ),
+            )
+        )
+    if batch_item is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No merge-failed item found for {item_id}",
+        )
+
+    prior_status = batch_item.status.value
+    batch_item.status = BatchItemStatus.failed
+    batch_item.notes = (batch_item.notes or "") + " [operator abandoned via abandon-merge]"
+
+    _emit(
+        db,
+        "merge_abandoned",
+        project_id,
+        item_id,
+        "work_item",
+        f"Merge abandoned for {item_id} (was {prior_status})",
+    )
+    db.commit()
+
+    return _action_response(
+        f"Merge abandoned for {item_id} — cascade-fail triggered.",
+        toast_type="warning",
         reload=True,
     )
 
@@ -1077,7 +1167,10 @@ def restart_setup(
     if batch_item.status not in (BatchItemStatus.setup_failed, BatchItemStatus.failed):
         raise HTTPException(
             status_code=422,
-            detail=f"Cannot restart setup: batch item status is '{batch_item.status.value}' (must be setup_failed or failed)",
+            detail=(
+                f"Cannot restart setup: batch item status is "
+                f"'{batch_item.status.value}' (must be setup_failed or failed)"
+            ),
         )
 
     # Check that no workflow step has started
