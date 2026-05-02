@@ -219,12 +219,16 @@ def merge_queue_retry(ctx: click.Context, item_id: str, json_output: bool) -> No
 
     try:
         with get_session() as session:
-            # Find the most recent failed BatchItem for this work item
+            # Find the most recent failed or migration_rebase_failed BatchItem
+            _retryable = (
+                BatchItemStatus.failed,
+                BatchItemStatus.migration_rebase_failed,
+            )
             batch_item = (
                 session.execute(
                     select(BatchItem)
                     .where(BatchItem.work_item_id == item_id)
-                    .where(BatchItem.status == BatchItemStatus.failed)
+                    .where(BatchItem.status.in_(_retryable))
                     .order_by(BatchItem.id.desc())
                 )
                 .scalars()
