@@ -131,7 +131,10 @@ def export_control(ctx: Context) -> list[Finding]:
                     "record `[export_control] standard_crypto_only = true` in .iw/oss-publish.toml. "
                     "If non-standard crypto is implemented, consult legal on BIS/NSA notification."
                 ),
-                evidence={"sample_hits": hits[:20]},
+                evidence=build_results_evidence(
+                    parse_rg_lines(hits, rule_id="OSS-EXP-01"),
+                    total=len(hits),
+                ),
                 source_research=["R-00062 #10"],
                 auto_apply_safe=False,
             )

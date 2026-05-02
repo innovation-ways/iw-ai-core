@@ -1,25 +1,47 @@
-"""CR-00022 AC4: every check_id has a catalog entry with non-empty mandatory fields."""
+"""CR-00022 AC4: every check_id has a catalog entry with non-empty mandatory fields.
+
+Many checks construct their finding's check_id dynamically — passed as a
+positional arg to a helper (`_result_to_finding`, `_probe`, `_gitleaks_scan`)
+or pulled from a dict driving a loop (`ci_cd.wf_files`). Inspecting only
+`Finding(id=...)` keyword args misses those, which is how OSS-REF-01..05,
+OSS-CI-06..09, OSS-SEC-01..02 and OSS-TM-02..05 silently shipped without
+catalog copy and produced empty modal bodies on the dashboard. The
+enumeration here walks every string literal in the check modules and keeps
+those matching the canonical ``OSS-XX-NN`` shape — robust against the
+constructor pattern variation.
+"""
 
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
 import yaml
 
 CATALOG_PATH = Path(__file__).parents[2] / "dashboard" / "services" / "oss_check_catalog.yaml"
+CHECKS_DIR = Path(__file__).parents[2] / "skills" / "iw-oss-publish" / "scripts" / "checks"
+
+# Canonical check_id shape: "OSS-" + alphabetic prefix + "-" + alphanumeric suffix.
+# Suffix is alphanumeric so "OSS-REF-ALL" and "OSS-GH-01" both match.
+_CHECK_ID_RE = re.compile(r"^OSS-[A-Z]+-[A-Z0-9]+$")
 
 
 def _ast_check_ids() -> set[str]:
-    """Extract all Finding() check_ids from the checks scripts."""
-    checks_dir = Path(__file__).parents[2] / "skills" / "iw-oss-publish" / "scripts" / "checks"
+    """Extract every ``OSS-XX-NN`` string literal from the check modules.
+
+    Walks each module's AST and keeps only ``ast.Constant`` string nodes that
+    match the canonical check_id shape. AST traversal (rather than a raw text
+    grep) ensures matches in comments are ignored — module docstrings still
+    count, which is fine because they normally document real IDs anyway.
+    """
     ids: set[str] = set()
 
-    if not checks_dir.exists():
-        pytest.skip(f"Checks directory not found: {checks_dir}")
+    if not CHECKS_DIR.exists():
+        pytest.skip(f"Checks directory not found: {CHECKS_DIR}")
 
-    for path in checks_dir.glob("*.py"):
+    for path in CHECKS_DIR.glob("*.py"):
         if path.name == "__init__.py":
             continue
         try:
@@ -27,10 +49,12 @@ def _ast_check_ids() -> set[str]:
         except SyntaxError:
             continue
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "Finding":
-                for kw in node.keywords:
-                    if kw.arg == "id" and isinstance(kw.value, ast.Constant):
-                        ids.add(kw.value.value)
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and _CHECK_ID_RE.match(node.value)
+            ):
+                ids.add(node.value)
     return ids
 
 

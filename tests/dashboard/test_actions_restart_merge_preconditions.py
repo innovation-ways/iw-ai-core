@@ -105,7 +105,6 @@ def make_batch_item(
     status: BatchItemStatus,
 ) -> BatchItem:
     item = BatchItem(
-        id=f"{project_id}_{work_item_id}",
         project_id=project_id,
         batch_id=batch_id,
         work_item_id=work_item_id,

@@ -1,11 +1,15 @@
 """LLM usage service — Claude Code and MiniMax consumption tracking.
 
 Claude:
-  - 5h block: reads ~/.claude/rate-limits-cache.json written by the statusline
-    hook after every Claude Code API response. The file contains server-
-    authoritative utilisation from the anthropic-ratelimit-unified-* headers.
-    Falls back to ccusage blocks --active if the cache is absent or stale.
-  - 7d (weekly): ccusage weekly → totalTokens / CLAUDE_WEEKLY_LIMIT
+  Both bars (5h and 7d) are read from ~/.claude/rate-limits-cache.json,
+  written by the statusline hook after every Claude Code API response.
+  The file contains server-authoritative utilisation from the
+  anthropic-ratelimit-unified-{5h,7d}-* response headers — there is no
+  public REST endpoint for this data, only headers.
+
+  When the cache is missing or stale (no Claude Code call has hit the
+  server since the last reset), both bars report 0% and the next request
+  the user makes through Claude Code will repopulate the file.
 
 MiniMax:
   - Live call to https://api.minimax.io/v1/api/openplatform/coding_plan/remains
@@ -15,9 +19,6 @@ MiniMax:
     reports block_pct=0 and the failure is logged.
     Optional IW_MINIMAX_GROUP_ID env var appends ?GroupId=<value> to the URL.
 
-Plan limits are configurable via env vars:
-  IW_CLAUDE_WEEKLY_LIMIT (default 2_730_000_000 tokens, used for 7d bar only)
-
 Results are cached in-process for 60 seconds.
 """
 
@@ -26,8 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -39,106 +39,87 @@ logger = logging.getLogger(__name__)
 _CACHE_TTL = 60  # seconds
 _RATE_LIMITS_FILE = Path.home() / ".claude/rate-limits-cache.json"
 
-# Claude Max 5x weekly token limit (empirically derived; override via env var).
-_CLAUDE_WEEKLY_LIMIT: int = int(os.environ.get("IW_CLAUDE_WEEKLY_LIMIT", "2730000000"))
-
 _cache: dict[str, Any] = {}
 _cache_lock = Lock()
 
 
 # ---------------------------------------------------------------------------
-# ccusage helper
+# Claude Code — server-authoritative rate limits from statusline cache
 # ---------------------------------------------------------------------------
 
 
-def _run_ccusage(*args: str) -> Any:
-    result = subprocess.run(  # noqa: S603
-        ["npx", "ccusage", *args, "-j", "--offline"],  # noqa: S607
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    lines = [line for line in result.stdout.split("\n") if not line.startswith("[ccusage]")]
-    return json.loads("\n".join(lines))
+def _format_resets_at(resets_at: float) -> str | None:
+    """Render a Unix timestamp as a wall-clock reset label in local time.
 
-
-# ---------------------------------------------------------------------------
-# Claude Code — server-authoritative rate limits + ccusage weekly
-# ---------------------------------------------------------------------------
-
-
-def _format_minutes(minutes: float) -> str | None:
-    if minutes <= 0:
+    Same shape as claude.ai's "Resets on Tuesday 09:00":
+      - <24h away → "HH:MM"      (e.g. "21:30")
+      - else      → "Day HH:MM"  (e.g. "Tue 09:00")
+    Returns None for past or zero timestamps.
+    """
+    if resets_at <= 0:
         return None
-    h = int(minutes // 60)
-    m = int(minutes % 60)
-    return f"{h}h {m}m" if h else f"{m}m"
+    now_ts = datetime.now(UTC).timestamp()
+    if resets_at <= now_ts:
+        return None
+    local = datetime.fromtimestamp(resets_at, tz=UTC).astimezone()
+    if resets_at - now_ts < 24 * 3600:
+        return local.strftime("%H:%M")
+    return local.strftime("%a %H:%M")
 
 
-def _read_rate_limits_cache() -> dict[str, Any] | None:
-    """Read ~/.claude/rate-limits-cache.json written by the statusline hook.
+def _read_rate_limits_cache(window: str) -> dict[str, Any] | None:
+    """Read ~/.claude/rate-limits-cache.json for `window`.
 
-    Returns the five_hour dict {used_percentage, resets_at} if the data is
-    from the current block (resets_at is in the future), else None.
+    `window` is "five_hour" or "seven_day" — the keys the Claude Code
+    statusline hook persists from the anthropic-ratelimit-unified-{5h,7d}-*
+    response headers.
+
+    Returns the window dict {used_percentage, resets_at} if its resets_at
+    is in the future (i.e. the data hasn't expired), else None.
     """
     try:
         data = json.loads(_RATE_LIMITS_FILE.read_text())
     except Exception as exc:
         logger.debug("rate-limits cache unreadable: %s", exc)
         return None
-    five_hour = data.get("five_hour")
-    if not five_hour:
+    bucket = data.get(window)
+    if not bucket:
         return None
-    resets_at = five_hour.get("resets_at")
+    resets_at = bucket.get("resets_at")
     if resets_at and resets_at > datetime.now(UTC).timestamp():
-        return dict(five_hour)
+        return dict(bucket)
     return None
 
 
 def _claude_usage() -> dict[str, Any]:
-    """Return block_pct, week_pct, block_reset for Claude Code.
+    """Return block_pct/week_pct/block_reset/week_reset from the rate-limits cache.
 
-    5h block: uses server-authoritative data from the statusline cache file
-    (anthropic-ratelimit-unified-* headers written after each API response).
-    Falls back to ccusage blocks --active if the cache is absent or stale.
+    Both bars are server-authoritative, sourced from the
+    anthropic-ratelimit-unified-{5h,7d}-* headers via
+    ~/.claude/rate-limits-cache.json. If the cache is missing or stale
+    for either window, that window reports 0% with no reset label.
     """
-    now = datetime.now(UTC)
-
-    # 5h block — prefer server-authoritative cache from statusline hook
-    five_hour = _read_rate_limits_cache()
+    five_hour = _read_rate_limits_cache("five_hour")
     if five_hour:
         block_pct = min(100, round(five_hour["used_percentage"]))
-        resets_at = five_hour.get("resets_at", 0)
-        remaining_s = resets_at - now.timestamp()
-        reset_str = _format_minutes(remaining_s / 60)
+        block_reset = _format_resets_at(five_hour.get("resets_at", 0))
     else:
-        # Fallback: ccusage blocks --active (JSONL-based, may lag slightly)
-        blocks_data = _run_ccusage("blocks", "--active")
-        active = next(
-            (b for b in blocks_data.get("blocks", []) if b.get("isActive")),
-            None,
-        )
-        if active:
-            limit = int(os.environ.get("IW_CLAUDE_5H_LIMIT", "110000000"))
-            block_pct = min(100, round(active["totalTokens"] / limit * 100))
-            reset_str = _format_minutes(active.get("projection", {}).get("remainingMinutes", 0))
-        else:
-            block_pct = 0
-            reset_str = None
+        block_pct = 0
+        block_reset = None
 
-    # Weekly (ccusage — server headers don't expose a weekly window via statusline)
-    weekly_data = _run_ccusage("weekly")
-    weeks: list[Any] = weekly_data.get("weekly", [])
-    days_since_sunday = (now.weekday() + 1) % 7
-    current_sunday = (now - timedelta(days=days_since_sunday)).strftime("%Y-%m-%d")
-    current_week = next((w for w in weeks if w.get("week") == current_sunday), None)
-    week_tokens = current_week["totalTokens"] if current_week else 0
-    week_pct = min(100, round(week_tokens / _CLAUDE_WEEKLY_LIMIT * 100))
+    seven_day = _read_rate_limits_cache("seven_day")
+    if seven_day:
+        week_pct = min(100, round(seven_day["used_percentage"]))
+        week_reset = _format_resets_at(seven_day.get("resets_at", 0))
+    else:
+        week_pct = 0
+        week_reset = None
 
     return {
         "block_pct": block_pct,
         "week_pct": week_pct,
-        "block_reset": reset_str,
+        "block_reset": block_reset,
+        "week_reset": week_reset,
     }
 
 
@@ -245,7 +226,7 @@ def get_llm_usage() -> dict[str, Any]:
         claude = _claude_usage()
     except Exception:
         logger.exception("Claude usage fetch failed")
-        claude = {"block_pct": 0, "week_pct": 0, "block_reset": None}
+        claude = {"block_pct": 0, "week_pct": 0, "block_reset": None, "week_reset": None}
 
     try:
         minimax = _minimax_usage()

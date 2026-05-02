@@ -340,6 +340,89 @@ OSS-CI-04:
     Add the patterns `*.tfstate`, `*.tfstate.backup`, and `terraform.tfvars` to `.gitignore` so
     they cannot be reintroduced. Run `git rm --cached` on any currently tracked files matching
     these patterns.
+OSS-CI-06:
+  what_it_checks: |
+    The repository ships a CodeQL workflow at `.github/workflows/codeql.yml`. CodeQL is GitHub's
+    static analysis engine; running it on every push and pull request surfaces injection, taint,
+    and other security-relevant defects before code lands on the default branch.
+  how_it_tests: |
+    The check probes for the file at `.github/workflows/codeql.yml` relative to the repository root.
+    It does not parse the workflow content — only file presence is verified. The finding is marked
+    auto_fix_available with auto_apply_safe=true so `uv run iw oss fix OSS-CI-06 --apply` will
+    scaffold the file from the iw-oss-publish workflow template.
+  risk_if_failing: |
+    Without CodeQL, security-relevant defects (SQL injection, path traversal, unsafe deserialization,
+    hard-coded credentials) can land on the default branch unnoticed. The OpenSSF Scorecard's
+    SAST signal will report 0 because no static analysis runs in CI, lowering the project's
+    overall security posture score and signalling weak controls to downstream consumers.
+  how_to_fix: |
+    Run `uv run iw oss fix OSS-CI-06 --apply` to scaffold `.github/workflows/codeql.yml` from the
+    iw-oss-publish template. Review the generated workflow to confirm the `languages` matrix matches
+    the repository's actual languages, then commit and push. CodeQL will run on the next push.
+  references:
+    - https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning-for-a-repository
+OSS-CI-07:
+  what_it_checks: |
+    The repository ships an OpenSSF Scorecard workflow at `.github/workflows/scorecard.yml`.
+    Scorecard publishes a daily compliance score (0–10) covering branch protection, signed releases,
+    pinned dependencies, and other open-source security practices, giving downstream consumers
+    a public posture signal.
+  how_it_tests: |
+    The check probes for the file at `.github/workflows/scorecard.yml` relative to the repository
+    root. Only file presence is verified; content is not parsed. The finding is marked
+    auto_fix_available=true and auto_apply_safe=true so the iw-oss-publish fix can scaffold the
+    workflow from a template.
+  risk_if_failing: |
+    Without Scorecard, downstream consumers cannot verify the project's security posture via the
+    OpenSSF API. The repository's OSS-Best-Practices badge stays empty, and supply-chain audits
+    that consult Scorecard data will treat the project as having no measured posture, often
+    resulting in lower trust scores or outright rejection by security-conscious adopters.
+  how_to_fix: |
+    Run `uv run iw oss fix OSS-CI-07 --apply` to scaffold `.github/workflows/scorecard.yml`. After
+    the workflow lands, enable repository read permissions for `id-token: write` and grant access
+    to the Scorecard public dashboard. The first scheduled run will publish a score within 24 hours.
+  references:
+    - https://github.com/ossf/scorecard
+    - https://securityscorecards.dev/
+OSS-CI-08:
+  what_it_checks: |
+    The repository ships a Dependabot configuration at `.github/dependabot.yml`. Dependabot
+    automates security and version updates for the package ecosystems used by the project,
+    opening pull requests when a vulnerable or out-of-date dependency is detected.
+  how_it_tests: |
+    The check probes for the file at `.github/dependabot.yml` relative to the repository root.
+    Only file presence is verified; ecosystem coverage and schedule are not validated.
+    The finding is marked auto_fix_available=true and auto_apply_safe=true.
+  risk_if_failing: |
+    Without Dependabot configured, vulnerable transitive dependencies linger in the repository
+    until they are noticed manually. Known CVEs accumulate, and time-to-patch grows. The
+    OpenSSF Scorecard's "dependency-update-tool" signal reports 0, lowering the project's
+    overall security score.
+  how_to_fix: |
+    Run `uv run iw oss fix OSS-CI-08 --apply` to scaffold `.github/dependabot.yml` covering
+    every ecosystem the iw-oss-publish detector found in the repository (pip, npm, cargo,
+    github-actions, etc.). Review the generated file to confirm the `interval` and reviewer
+    fields match team conventions, then commit.
+  references:
+    - https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+OSS-CI-09:
+  what_it_checks: |
+    The repository ships an iw-oss-publish compliance scan workflow at
+    `.github/workflows/compliance-scan.yml`. This workflow runs the same scanner the dashboard
+    uses on every push and pull request, blocking regressions before they merge.
+  how_it_tests: |
+    The check probes for the file at `.github/workflows/compliance-scan.yml` relative to the
+    repository root. Only file presence is verified. The finding is marked auto_fix_available=true
+    and auto_apply_safe=true so `uv run iw oss fix OSS-CI-09 --apply` scaffolds the workflow.
+  risk_if_failing: |
+    Compliance regressions land silently. A contributor adds a `.internal` hostname, a private
+    IP, or removes a required compliance file and nothing fails the merge. The dashboard view
+    is then stale until someone manually re-runs the scan, and the project drifts away from its
+    declared compliance baseline.
+  how_to_fix: |
+    Run `uv run iw oss fix OSS-CI-09 --apply` to scaffold `.github/workflows/compliance-scan.yml`.
+    The generated workflow runs `iw oss scan` on every push and PR, fails the job on MUST
+    regressions, and uploads the SARIF report as a build artifact for review.
 OSS-DEP-01:
   what_it_checks: |
     The check verifies that every dependency listed in the project's SPDX SBOM carries a license
@@ -1122,6 +1205,121 @@ OSS-PII-03:
     `ID+username@users.noreply.github.com`. For new commits, configure
     `git config user.email ID+username@users.noreply.github.com` before committing.
 
+OSS-REF-01:
+  what_it_checks: |
+    The repository contains no RFC 1918 private IP addresses (10.0.0.0/8, 172.16.0.0/12,
+    192.168.0.0/16) embedded in source code, configuration, or scripts. These addresses
+    only resolve inside private networks and leak internal infrastructure topology when they
+    appear in published source.
+  how_it_tests: |
+    A ripgrep regex search runs against the repository tree, excluding `docs/`, `tests/`,
+    `examples/`, `fixtures/`, vendor and lock files. The pattern matches the three RFC 1918
+    address blocks. Any hit lands as a FAIL finding with masked snippets in the modal's
+    Findings detail rows. With zero hits the check passes.
+  risk_if_failing: |
+    Published source reveals internal subnet structure to anyone who reads the repository.
+    Attackers gain reconnaissance value about the organisation's network layout, often enough
+    to seed targeted phishing or VPN-pivot attempts. Over time, internal addresses accumulate
+    in code that contributors copy and paste from real infrastructure, turning a routine open
+    source release into an inadvertent network disclosure.
+  how_to_fix: |
+    Replace each hit with `example.com` or a placeholder such as `10.0.0.1` only when the
+    address is illustrative and called out as such. If the address documents a real example,
+    move it under `docs/` so the check excludes it. Re-run `uv run iw oss scan` to confirm
+    the finding clears. For library code that needs a default, use the IETF's documentation
+    block `192.0.2.0/24` (TEST-NET-1) instead of an RFC 1918 block.
+OSS-REF-02:
+  what_it_checks: |
+    The repository contains no fully-qualified domain names with internal-only suffixes
+    (configurable, defaults to `.internal`, `.corp`, `.local`, `.lan`, `.intranet`). These
+    suffixes only resolve inside the company network and leak the organisation's internal
+    DNS structure when they appear in published source.
+  how_it_tests: |
+    A ripgrep regex search runs against the repository tree using the suffix list from the
+    project's `internal_fqdn_suffixes` configuration. The pattern matches any hostname token
+    ending in one of the configured suffixes. Excluded paths: `docs/`, `tests/`, `examples/`,
+    `fixtures/`, vendor and lock files. Any hit lands as a FAIL finding with masked snippets
+    in the modal's Findings detail rows.
+  risk_if_failing: |
+    Internal hostnames in public source give attackers a curated list of targets to enumerate,
+    often paired with services and ports already named in the same code. Over time, contributors
+    copy production-aware code into the OSS repository and forget to scrub the references,
+    so the leaked hostnames remain valid long after the commit lands and resolve on the
+    corporate VPN for anyone who later joins as an employee, contractor, or supply-chain partner.
+  how_to_fix: |
+    Replace each hit with `example.com`, a placeholder, or remove the reference outright.
+    If the hostname is illustrative, move the file under `docs/` so the check excludes it.
+    For test fixtures that need a non-routable host, use `example.test`, `example.invalid`,
+    or `localhost`. To customise which suffixes are flagged, edit `internal_fqdn_suffixes`
+    in `.iw/oss-publish.toml`.
+OSS-REF-03:
+  what_it_checks: |
+    The repository contains no absolute home-directory paths (`/home/<user>/`, `/Users/<user>/`).
+    Such paths leak the developer's local username, hint at the maintainer's operating system,
+    and make scripts non-portable across machines.
+  how_it_tests: |
+    A ripgrep regex search runs against the repository tree using the pattern
+    `/(?:home|Users)/[A-Za-z][\w.-]+`. Matches in `docs/`, `tests/`, `examples/`,
+    `fixtures/`, vendor and lock files are excluded. Any hit lands as a SHOULD finding with
+    masked snippets in the modal's Findings detail rows.
+  risk_if_failing: |
+    Hard-coded home paths break for anyone other than the original author and embed personal
+    information in published source. Contributors must edit the path before they can run the
+    code locally, raising friction for new contributors. The leaked username may also reveal
+    employee or contractor identities, contributing to social-engineering reconnaissance.
+  how_to_fix: |
+    Replace each hit with `~`, an environment variable such as `$HOME`, or a configurable
+    setting. For Python, prefer `pathlib.Path.home()`. For shell scripts, prefer `${HOME}`
+    or `~/`. If the path documents a real example, move it under `docs/` so the check
+    excludes it.
+OSS-REF-04:
+  what_it_checks: |
+    The repository contains no employee email addresses for the configured internal domains.
+    Internal email addresses leak personally identifiable information and become targets for
+    phishing, credential stuffing, and reconnaissance campaigns.
+  how_it_tests: |
+    A ripgrep regex search runs against the repository tree using the domain list from the
+    project's `internal_email_domains` configuration. The pattern matches any address ending
+    in one of the configured domains. Standard community files (SECURITY.md, CODE_OF_CONDUCT.md,
+    CONTRIBUTING.md, SUPPORT.md, TRADEMARK.md) are excluded so a security-contact mailbox can
+    legitimately appear there. Other excluded paths: `docs/`, `tests/`, `examples/`, vendor
+    and lock files. Hits land as a SHOULD finding.
+  risk_if_failing: |
+    Personal employee inboxes published in source code attract spam, phishing, and harassment.
+    Attackers correlate the email with LinkedIn or GitHub to build social-engineering profiles
+    of the engineering team. Once a published commit contains a personal address, removing it
+    requires history rewriting; replacing it with a group alias prevents the leak going forward
+    but cannot recall what is already public.
+  how_to_fix: |
+    Replace each hit with a group-alias inbox (`security@…`, `oss@…`, `support@…`) or remove
+    the address entirely. For commit metadata, configure
+    `git config user.email <id>+<username>@users.noreply.github.com` to keep your personal
+    address out of future commits. For existing history, consider `git filter-repo` to rewrite
+    author emails before going public. Adjust `internal_email_domains` in
+    `.iw/oss-publish.toml` to match the company domains the project must scrub.
+OSS-REF-05:
+  what_it_checks: |
+    The repository contains no internal Slack workspace URLs, Atlassian Jira tenant URLs, or
+    Linear team URLs. These links resolve only for users inside the company tenant and reveal
+    the internal tooling stack to readers of the published source.
+  how_it_tests: |
+    A ripgrep regex search runs against the repository tree using a pattern that matches
+    `<workspace>.slack.com`, `<tenant>.atlassian.net/browse/`, and `linear.app/<team>`.
+    Excluded paths: `docs/`, `tests/`, `examples/`, `fixtures/`, vendor and lock files.
+    Hits land as a MAY finding (informational) with masked snippets in the modal's
+    Findings detail rows.
+  risk_if_failing: |
+    Internal tooling links in public source disclose the company's collaboration stack and
+    the names of internal channels, projects, and tickets. Even when the linked content is
+    private, the existence of a specific Slack workspace, Jira tenant, or Linear team is
+    confirmation enough for a targeted attacker to map the organisation's internal structure
+    and bias social-engineering attempts.
+  how_to_fix: |
+    Remove the link or replace it with a generic reference (e.g., "see internal tracker"
+    instead of `https://acme.atlassian.net/browse/PROJ-123`). If the ticket reference must
+    persist, drop the tenant prefix and reference only the public ticket ID. For chat,
+    replace tenant Slack URLs with the public mailing list, GitHub Discussions thread, or
+    project Discord that the OSS audience can actually join.
 OSS-REF-ALL:
   what_it_checks: |
     The check verifies that ripgrep is available in the environment before running the internal-refs family of checks. When ripgrep is absent, the entire family (OSS-REF-01 through OSS-REF-05) skips, leaving five categories of sensitive data undetected in published source files: RFC 1918 private IP addresses, internal FQDN suffixes, absolute user home paths, employee email addresses, and internal chat/tracker URLs.
@@ -1246,6 +1444,64 @@ OSS-REL-05:
   references:
     - https://semver.org/
     - https://github.com/ghatimated/gh-action-release-please
+OSS-SEC-01:
+  what_it_checks: |
+    The current working tree of the repository contains no committed secrets — API tokens,
+    private keys, cloud credentials, or other sensitive values that match gitleaks rules. This
+    is the first line of defence: it inspects what is currently checked in, before any history
+    rewriting work would be required.
+  how_it_tests: |
+    The check runs `gitleaks detect --no-git --source <repo>` against the working tree and
+    parses the SARIF output. Each gitleaks rule (AWS keys, GitHub tokens, Slack tokens,
+    private keys, etc.) becomes a row in the modal's Findings detail table with masked
+    snippets. The check passes when SARIF reports zero findings; the per-finding row count is
+    capped at 500 to bound dashboard payload size — the SARIF on disk retains the full set.
+    If `gitleaks` is not installed, the finding lands as SKIP with an install hint.
+  risk_if_failing: |
+    Live credentials in published source are immediately scraped by automated harvesters and
+    used within minutes. Attackers exploit AWS keys to spin up cryptocurrency miners or
+    pivot into the cloud account; GitHub tokens are used to clone private repositories or
+    push malicious commits; Slack tokens enable lateral movement into chat workspaces. The
+    blast radius depends on the credential, but every leaked secret must be rotated, not
+    just removed from the repo, because the value is permanent in git history and any caches.
+  how_to_fix: |
+    For each finding, rotate the credential first — assume it is compromised. Then remove the
+    value from the file, replace it with an environment variable, secret manager lookup, or
+    placeholder, and commit the cleanup. To verify, re-run `uv run iw oss scan`. If the leak
+    is in deep history (caught by OSS-SEC-02), additionally rewrite history with
+    `git filter-repo` before going public. Install gitleaks via
+    `bash .claude/skills/iw-oss-publish/scripts/install_tools.sh` if the check skipped.
+  references:
+    - https://github.com/gitleaks/gitleaks
+OSS-SEC-02:
+  what_it_checks: |
+    The full git history of the repository contains no committed secrets. Even after the
+    working tree is clean (OSS-SEC-01 passes), past commits may still hold credentials that
+    git preserves indefinitely. This check is the gating signal for whether the repository is
+    safe to publish, or whether it requires history rewriting first.
+  how_it_tests: |
+    The check runs `gitleaks detect --source <repo> --log-opts=--all` which scans every commit
+    on every branch, plus tags, in the local clone. Findings are read from the SARIF report
+    and become rows in the modal's Findings detail table with masked snippets. The check
+    passes when zero findings are reported. As with OSS-SEC-01, the per-finding row count is
+    capped at 500. If `gitleaks` is unavailable, the finding lands as SKIP.
+  risk_if_failing: |
+    Once the repository is public, the entire git history is permanently visible. Anyone
+    can run `git log -p` and harvest secrets from old commits even after the working tree is
+    cleaned. Mirroring services and forks may also retain the leaked values indefinitely.
+    Rotating the credential remains mandatory, but the only way to remove the value from
+    history is to rewrite the affected commits — which invalidates every existing clone and
+    fork. Doing this *before* publication is far less disruptive than after.
+  how_to_fix: |
+    Rotate every leaked credential first. Then rewrite history using `git filter-repo` (or
+    BFG Repo-Cleaner) to remove the secret values from every commit; force-push the
+    rewritten history to the public remote. After rewriting, every existing collaborator
+    must re-clone. Re-run `uv run iw oss scan` to confirm both OSS-SEC-01 and OSS-SEC-02
+    are clear before flipping the repository to public. If gitleaks skipped, install it via
+    `bash .claude/skills/iw-oss-publish/scripts/install_tools.sh`.
+  references:
+    - https://github.com/gitleaks/gitleaks
+    - https://github.com/newren/git-filter-repo
 OSS-SEC-04:
   what_it_checks: |
     The repository root contains a `.gitleaks.toml` configuration file. Without an explicit
@@ -1299,6 +1555,102 @@ OSS-TM-01:
     provides a template that appends a Trademark section with placeholders for the project
     name, owner, and registration status. Fill in the placeholders with the legally
     declared name and any relevant registration numbers or pending applications.
+OSS-TM-02:
+  what_it_checks: |
+    Whether the configured `project_name` is already published as a package on PyPI. A
+    name collision with an existing package would create user confusion, prevent the project
+    from publishing under the chosen name, and may infringe on an existing maintainer's
+    trademark or namespace claim.
+  how_it_tests: |
+    The check issues an HTTP GET to `https://pypi.org/pypi/<name>/json` with an 8-second
+    timeout and inspects the response code. HTTP 404 means the name is free → PASS. HTTP 200
+    means a package with that name already exists → HUMAN_REQUIRED with a remediation hint
+    suggesting a scoped or alternate name. Network failures return SKIP. The probe is read-only
+    and consults only the public PyPI JSON API.
+  risk_if_failing: |
+    Publishing a package whose name is already taken on PyPI is impossible — pip will reject
+    the upload — but the conflict often only surfaces at release time, after marketing,
+    documentation, and downstream consumers have already adopted the name. Worse, an attacker
+    can squat the conflict-free variant of the name (typosquatting) and ship malware that
+    users install by accident.
+  how_to_fix: |
+    Choose a different `project_name` in `.iw/oss-publish.toml`, scope the package
+    (`@innovation-ways/<name>` style or a project prefix), or contact the existing PyPI
+    maintainer if you have a legitimate trademark claim. Verify availability by running
+    `uv run iw oss scan` again after the change. PyPI also supports namespaced names via
+    organisations — see the references.
+  references:
+    - https://pypi.org/help/#project-name
+OSS-TM-03:
+  what_it_checks: |
+    Whether the configured `project_name` is already published as a package on the npm
+    registry. A name collision blocks publication and creates downstream typo-squatting
+    risk for any project that shares the chosen name with an existing npm package.
+  how_it_tests: |
+    The check issues an HTTP GET to `https://registry.npmjs.org/<name>` with an 8-second
+    timeout. HTTP 404 → PASS (name available). HTTP 200 → HUMAN_REQUIRED (name taken).
+    Network failures return SKIP. The check is read-only and uses only the public registry
+    JSON API.
+  risk_if_failing: |
+    npm rejects publication of a name that already exists, so a release blocks if the
+    conflict is undetected until shipping time. Beyond the direct release block, a popular
+    npm package with the same name leads to user confusion: visitors searching for your
+    project may install the wrong package, and unscoped names cannot be reclaimed without
+    an npm administrator intervention.
+  how_to_fix: |
+    Either pick a unique `project_name` in `.iw/oss-publish.toml`, or publish under a scoped
+    name (`@your-org/<name>`) which sidesteps the global flat namespace. If the existing
+    package is abandoned and you have a legitimate trademark claim, npm has a
+    name-dispute process, but in practice using a scope is faster and safer.
+  references:
+    - https://docs.npmjs.com/about-package-version-numbers
+    - https://docs.npmjs.com/cli/v10/configuring-npm/package-json#name
+OSS-TM-04:
+  what_it_checks: |
+    Whether the configured `project_name` is already published as a crate on crates.io.
+    The Rust ecosystem has a single global namespace for crate names; a name collision
+    blocks publication and dilutes brand recognition.
+  how_it_tests: |
+    The check issues an HTTP GET to `https://crates.io/api/v1/crates/<name>` with an
+    8-second timeout. HTTP 404 → PASS. HTTP 200 → HUMAN_REQUIRED. Network failures return
+    SKIP. The probe is read-only and uses the public crates.io API.
+  risk_if_failing: |
+    crates.io enforces unique crate names globally; publishing under a taken name is
+    impossible. Even if the project does not currently ship a Rust crate, planning for a
+    future Rust port without first reserving the name leaves the project exposed to
+    name-squatting before the official release.
+  how_to_fix: |
+    Choose a different `project_name` in `.iw/oss-publish.toml`, or pre-register the name
+    on crates.io with a placeholder crate that references the project's primary repository.
+    crates.io does not support scoped names, so the only mitigations are renaming or
+    coordinating with the existing crate owner.
+  references:
+    - https://crates.io/policies
+OSS-TM-05:
+  what_it_checks: |
+    Whether the configured `project_name` already exists as a public GitHub repository
+    outside the project's own organisation. A heavily-starred existing repo with the same
+    name creates marketplace confusion and may dilute the project's brand even when the
+    legal trademark is uncontested.
+  how_it_tests: |
+    The check shells out to `gh search repos <name> --limit 5 --json fullName,stargazerCount`,
+    filters out any results owned by the configured `company_github_org` (default
+    `innovation-ways`), and inspects what remains. No collisions outside the org → PASS.
+    External match → HUMAN_REQUIRED with the top match's owner, name, and star count in the
+    summary so a human can decide whether the conflict matters. Skipped when `gh` is
+    unavailable, the user is unauthenticated, or the search errors. 10-second timeout.
+  risk_if_failing: |
+    A popular GitHub repo with the same name causes search collisions: developers looking
+    for your project find theirs first, and vice-versa. Even when the other repo is
+    abandoned or low-traffic, unverified visitors may mistake one for the other, which is
+    especially damaging for security-relevant projects where supply-chain confusion has
+    direct exploitation value.
+  how_to_fix: |
+    Review the conflicting repo manually using its star count and recent activity as
+    weighting factors. If it is truly inactive, a different name is the safest path. If the
+    other project is active, consider scoping the project under your organisation's GitHub
+    namespace (which the check already excludes) or selecting a more distinctive name.
+    Authenticate `gh` with `gh auth login` if the check skipped because of missing credentials.
 OSS-TM-06:
   what_it_checks: |
     Verifies that the project maintainer has manually searched the United States Patent and Trademark Office

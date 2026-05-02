@@ -12,7 +12,7 @@
 </div>
 
 <div class="hidden sm:flex items-center gap-1.5">
-  <span class="text-muted-foreground">7d</span>
+  <span class="text-muted-foreground">{{ claude_7d_reset or '7d' }}</span>
   <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
     <div class="h-full {{ claude_7d_color }} rounded-full transition-all duration-700" style="width: {{ claude_7d_pct }}%"></div>
   </div>

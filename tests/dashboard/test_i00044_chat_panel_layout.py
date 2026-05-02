@@ -89,78 +89,99 @@ class TestBug2GridRowConstraint:
 
 
 class TestBug1CollapseToggleAffordance:
-    """Bug 1: the collapsed state must show a meaningful label (not just a bare chevron)."""
+    """Bug 1: the collapsed state must show a meaningful label, not a bare chevron.
 
-    def test_toggle_tab_has_chat_label(self, jinja_env: Environment):
+    I-00057 superseded the original I-00044 fix: the floating slide-out tab
+    (#chat-toggle-tab) was replaced by a pair of in-panel affordances —
+    #chat-collapse-btn (header button shown when expanded) and #chat-expand-rail
+    (slim rail shown when collapsed). The original I-00044 *intent* — a labelled,
+    non-bare-chevron collapse/expand affordance with a "Chat" cue — is still
+    enforced below against the I-00057 successor markup.
+    """
+
+    def test_collapsed_rail_has_chat_label(self, jinja_env: Environment):
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
-        toggle_match = re.search(r'id="chat-toggle-tab"[^>]*>(.{0,500})', html, re.DOTALL)
-        assert toggle_match, (
-            'id="chat-toggle-tab" must be present in chat/panel.html (I-00044 bug 1)'
+        rail_match = re.search(r'id="chat-expand-rail"[^>]*>(.{0,600})', html, re.DOTALL)
+        assert rail_match, (
+            'id="chat-expand-rail" must be present in chat/panel.html — '
+            "the collapsed-state affordance that replaced the I-00044 toggle tab "
+            "(I-00057 successor to I-00044 bug 1)"
         )
-        toggle_content = toggle_match.group(0)
-        assert "Chat" in toggle_content, (
-            "The toggle tab must contain a 'Chat' label visible in the collapsed "
-            "state — not just a bare chevron (I-00044 bug 1)"
+        rail_content = rail_match.group(0)
+        assert "Chat" in rail_content, (
+            "The collapsed rail must contain a 'Chat' label — not just a bare "
+            "chevron (I-00044 bug 1 intent, enforced via I-00057 markup)"
         )
 
-    def test_toggle_tab_has_aria_label_with_chat(self, jinja_env: Environment):
+    def test_expand_and_collapse_controls_have_aria_labels_with_chat(self, jinja_env: Environment):
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
-        toggle_match = re.search(r'<button[^>]+id="chat-toggle-tab"[^>]*>', html)
-        assert toggle_match, (
-            'id="chat-toggle-tab" must be a <button> element in chat/panel.html (I-00044 bug 1)'
-        )
-        toggle_tag = toggle_match.group(0)
-        assert "aria-label" in toggle_tag, (
-            "The toggle tab must have an aria-label attribute (I-00044 bug 1)"
-        )
-        aria_label_match = re.search(r'aria-label="([^"]*)"', toggle_tag)
-        assert aria_label_match, "aria-label must be a non-empty string"
-        aria_label_value = aria_label_match.group(1)
-        assert aria_label_value.strip(), "aria-label must not be empty (I-00044 bug 1)"
-        assert "chat" in aria_label_value.lower() or "Chat" in aria_label_value, (
-            "aria-label must mention 'chat' (case-insensitive) to be accessible (I-00044 bug 1)"
-        )
+        for selector, kind in (
+            (r'<[a-z]+[^>]+id="chat-expand-rail"[^>]*>', "expand rail"),
+            (r'<button[^>]+id="chat-collapse-btn"[^>]*>', "collapse button"),
+        ):
+            match = re.search(selector, html)
+            assert match, f"{kind} must be present (I-00057 successor to I-00044 bug 1)"
+            tag = match.group(0)
+            aria_label_match = re.search(r'aria-label="([^"]*)"', tag)
+            assert aria_label_match, f"{kind} must have an aria-label attribute"
+            assert aria_label_match.group(1).strip(), f"{kind} aria-label must not be empty"
+            assert "chat" in aria_label_match.group(1).lower(), (
+                f"{kind} aria-label must mention 'chat' (case-insensitive) (I-00044 bug 1 intent)"
+            )
 
     def test_collapsed_state_is_not_bare_chevron_only(self, jinja_env: Environment):
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
-        toggle_match = re.search(r'<button[^>]+id="chat-toggle-tab"[^>]*>', html)
-        assert toggle_match, (
-            'id="chat-toggle-tab" must be present as a <button> — '
-            "pre-fix code had only #chat-collapse-btn, not this toggle tab "
-            "(I-00044 bug 1)"
+        rail_match = re.search(r'id="chat-expand-rail"[^>]*>', html)
+        assert rail_match, (
+            'id="chat-expand-rail" must be present — the I-00057 successor '
+            "to the I-00044 toggle tab"
         )
-        toggle_subtree_start = toggle_match.end()
-        toggle_subtree = html[toggle_subtree_start : toggle_subtree_start + 1000]
-        has_icon = "<svg" in toggle_subtree
-        has_chat_text = "Chat" in toggle_subtree
+        rail_subtree_start = rail_match.end()
+        rail_subtree = html[rail_subtree_start : rail_subtree_start + 1000]
+        has_icon = "<svg" in rail_subtree
+        has_chat_text = "Chat" in rail_subtree
         assert has_icon or has_chat_text, (
-            "The collapsed toggle must contain either an <svg> icon or the text "
+            "The collapsed rail must contain either an <svg> icon or the text "
             "'Chat' — the pre-fix bare chevron had neither (I-00044 bug 1)"
         )
 
 
 class TestBug1KeyboardAccessibility:
-    """Bug 1 accessibility: the toggle must be a semantic <button>."""
+    """Bug 1 accessibility: the collapse control must be a semantic <button>.
 
-    def test_toggle_tab_is_a_button(self, jinja_env: Environment):
+    I-00057 successor: the active toggle in the expanded state is
+    #chat-collapse-btn (a <button>). The collapsed-state #chat-expand-rail is
+    a div with role="button" so it is keyboard-reachable as well.
+    """
+
+    def test_collapse_button_is_a_button_element(self, jinja_env: Environment):
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
-        toggle_match = re.search(r'<button[^>]+id="chat-toggle-tab"[^>]*>', html)
-        assert toggle_match, (
-            'id="chat-toggle-tab" must be a <button> element — '
-            "not a <div> or <span> (I-00044 bug 1 keyboard accessibility)"
+        match = re.search(r'<button[^>]+id="chat-collapse-btn"[^>]*>', html)
+        assert match, (
+            'id="chat-collapse-btn" must be a <button> element — not a <div> '
+            "or <span> (I-00044 bug 1 keyboard accessibility, I-00057 markup)"
         )
 
-    def test_mobile_elements_unchanged(self, jinja_env: Environment):
+    def test_expand_rail_is_keyboard_role_button(self, jinja_env: Environment):
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
-        assert 'id="chat-close-btn"' in html, (
-            "id='chat-close-btn' must still be present for mobile drawer close "
-            "(I-00044 bug 1 regression guard)"
+        rail_match = re.search(r'<[a-z]+[^>]+id="chat-expand-rail"[^>]*>', html)
+        assert rail_match, "id='chat-expand-rail' must be present"
+        rail_tag = rail_match.group(0)
+        assert 'role="button"' in rail_tag, (
+            "Collapsed rail must declare role='button' so keyboard users can "
+            "expand the panel (I-00044 bug 1 keyboard accessibility)"
         )
+
+    def test_mobile_drawer_elements_unchanged(self, jinja_env: Environment):
+        tpl = jinja_env.get_template("chat/panel.html")
+        html = tpl.render()
+        # I-00057 removed #chat-close-btn; collapse is now handled by
+        # #chat-collapse-btn in both desktop and drawer modes.
         assert 'id="chat-drawer-open"' in html, (
             "id='chat-drawer-open' must still be present for mobile drawer open "
             "(I-00044 bug 1 regression guard)"
