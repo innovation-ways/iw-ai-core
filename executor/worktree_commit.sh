@@ -147,13 +147,21 @@ fi
 #
 # Legacy items (manifest without scope.allowed_paths) pass through unchecked —
 # scope_gate.py treats an empty list as "gate disabled".
+#
+# Per-project toggle: the daemon sets IW_SCOPE_GATE_ENABLED based on the
+# project's .iw-orch.json {"scope_gate_enabled": true}. Default is "false" —
+# the gate is opt-in. Projects without the config (or with it set to false)
+# skip the gate entirely. CR-00030 will replace this with a finer-grained
+# mechanism (per-step file-allowlist enforcement).
 
 MANIFEST_FILE="$WORKTREE_DIR/ai-dev/active/$ITEM_ID/workflow-manifest.json"
 if [[ ! -f "$MANIFEST_FILE" ]]; then
     MANIFEST_FILE="$WORKTREE_DIR/ai-dev/archive/$ITEM_ID/workflow-manifest.json"
 fi
 
-if [[ -f "$MANIFEST_FILE" ]]; then
+if [[ "${IW_SCOPE_GATE_ENABLED:-false}" != "true" ]]; then
+    echo "[worktree_commit] INFO: Scope gate disabled by project config — skipping" >&2
+elif [[ -f "$MANIFEST_FILE" ]]; then
     # Resolve executor dir (same directory as this script) for the helper.
     EXECUTOR_DIR="$(cd "$(dirname "$0")" && pwd)"
     MERGE_BASE=$(git merge-base HEAD main)
