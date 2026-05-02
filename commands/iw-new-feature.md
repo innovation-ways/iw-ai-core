@@ -180,7 +180,14 @@ Agent slug mapping:
 - QV gates → `qv-gate` (with `"gate"` and `"command"` fields — no prompt needed)
 - QV browser → `qv-browser` (only when `browser_verification: true`, with `"prompt"` field)
 
-**QV gate steps** (add after CodeReview_Final):
+**QV gate steps** (add after CodeReview_Final) — **IMPORTANT: Only include gates whose commands exist in the project.**
+
+Before writing the manifest, verify each command:
+- Run `grep -n "^<target>:" Makefile` to confirm a Makefile target exists.
+- Run `ls frontend/` to confirm a frontend directory exists before including `frontend-tsc` or `frontend-tests`.
+- **NEVER include a gate whose command will exit non-zero unconditionally** (missing dir, missing Makefile target). A phantom gate will exhaust all fix cycles and stall the item permanently.
+
+Full menu (select only applicable ones):
 ```json
 {"step": "S{N+1}", "agent": "qv-gate", "gate": "lint", "command": "make lint", "description": "QV: Linting"},
 {"step": "S{N+2}", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
