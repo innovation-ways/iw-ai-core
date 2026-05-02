@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import re
 import subprocess
+from typing import Any
 
 from lib.context import Context
 from lib.registry import register
+from lib.results import RESULT_CAP, build_results_evidence, parse_rg_lines
 from lib.types import Finding, Severity, Status
 
 DOMAIN = "internal_refs"
@@ -30,8 +32,6 @@ EXCLUDES = [
     "uv.lock",
 ]
 
-# Per-finding sample-text limits — avoid 1MB+ reports from multi-line matches.
-MAX_SAMPLES = 10
 MAX_SAMPLE_CHARS = 200
 MAX_DETAIL_CHARS = 8000
 
@@ -141,11 +141,15 @@ def internal_refs(ctx: Context) -> list[Finding]:
     return out
 
 
-def _rg_search(ctx: Context, pattern: str, extra_excludes: list[str] | None = None) -> dict:
-    """Run ripgrep and return dict with hit count + sample paths.
+def _rg_search(
+    ctx: Context, pattern: str, extra_excludes: list[str] | None = None
+) -> dict[str, Any]:
+    """Run ripgrep and return ``{count, lines, error?}``.
 
-    Long matches are truncated to avoid multi-MB reports when a regex catches
-    a single long line (e.g., minified JSON or a lock file).
+    ``lines`` are the raw ``path:line:text`` records (one per match), capped
+    at :data:`RESULT_CAP * 2` so a runaway scan can't pull megabytes of stdout
+    into memory; ``count`` is always the unbounded total. The caller turns
+    ``lines`` into structured records via ``parse_rg_lines``.
     """
     excludes = list(EXCLUDES) + (extra_excludes or [])
     args = [
@@ -164,13 +168,20 @@ def _rg_search(ctx: Context, pattern: str, extra_excludes: list[str] | None = No
     try:
         r = subprocess.run(args, capture_output=True, text=True, timeout=60, check=False)
     except (subprocess.SubprocessError, FileNotFoundError):
-        return {"count": 0, "samples": [], "error": "ripgrep invocation failed"}
-    lines = [ln[:MAX_SAMPLE_CHARS] for ln in r.stdout.splitlines() if ln.strip()]
-    return {"count": len(lines), "samples": lines[:MAX_SAMPLES]}
+        return {"count": 0, "lines": [], "error": "ripgrep invocation failed"}
+    raw_lines = [ln for ln in r.stdout.splitlines() if ln.strip()]
+    return {
+        "count": len(raw_lines),
+        "lines": [ln[:MAX_SAMPLE_CHARS] for ln in raw_lines[: RESULT_CAP * 2]],
+    }
 
 
 def _result_to_finding(
-    check_id: str, severity: Severity, label: str, result: dict, remediation_hit: str
+    check_id: str,
+    severity: Severity,
+    label: str,
+    result: dict[str, Any],
+    remediation_hit: str,
 ) -> Finding:
     if "error" in result:
         return Finding(
@@ -191,7 +202,8 @@ def _result_to_finding(
             summary=f"No {label.lower()} detected",
             auto_apply_safe=False,
         )
-    detail_body = "First matches:\n" + "\n".join(result["samples"])
+    records = parse_rg_lines(result["lines"], rule_id=check_id)
+    detail_body = "First matches:\n" + "\n".join(result["lines"][:10])
     if len(detail_body) > MAX_DETAIL_CHARS:
         detail_body = detail_body[:MAX_DETAIL_CHARS] + "\n… (truncated)"
     return Finding(
@@ -203,6 +215,6 @@ def _result_to_finding(
         detail=detail_body,
         remediation=remediation_hit
         + " Review and decide per hit; excluded paths: `docs/`, `tests/`, `examples/`.",
-        evidence={"hit_count": result["count"], "samples": result["samples"]},
+        evidence=build_results_evidence(records, total=result["count"]),
         auto_apply_safe=False,
     )

@@ -69,16 +69,23 @@ def client(db_session: Session) -> TestClient:
 # ---------------------------------------------------------------------------
 
 
+_DEFAULT_WORKTREE: object = object()
+
+
 def _fake_batch_item(
     status: BatchItemStatus,
     merged_at: datetime | None = None,
-    worktree_info: dict[str, Any] | None = None,
+    worktree_info: dict[str, Any] | None | object = _DEFAULT_WORKTREE,
 ) -> MagicMock:
-    """Build a minimal mock BatchItem for _merge_status testing."""
+    """Build a minimal mock BatchItem for _merge_status testing.
+
+    `worktree_info` defaults to a non-empty dict; pass ``None`` (or ``{}``) to
+    exercise the no-worktree branch of `_merge_status`.
+    """
     bi = MagicMock(spec=BatchItem)
     bi.status = status
     bi.merged_at = merged_at
-    bi.worktree_info = worktree_info or {"path": "/wt/test"}
+    bi.worktree_info = {"path": "/wt/test"} if worktree_info is _DEFAULT_WORKTREE else worktree_info
     return bi
 
 
@@ -163,6 +170,7 @@ class TestMergeStatusDBIntegration:
             blocks=[],
         )
         db_session.add(work_item)
+        db_session.flush()
 
         batch = Batch(
             id=batch_id,
@@ -173,9 +181,9 @@ class TestMergeStatusDBIntegration:
             auto_publish=False,
         )
         db_session.add(batch)
+        db_session.flush()
 
         batch_item = BatchItem(
-            id=f"{project_id}_{item_id}",
             project_id=project_id,
             batch_id=batch_id,
             work_item_id=item_id,

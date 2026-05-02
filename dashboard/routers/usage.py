@@ -32,6 +32,7 @@ def llm_usage_fragment(request: Request) -> Any:
             "claude_5h_pct": claude["block_pct"],
             "claude_7d_pct": claude["week_pct"],
             "claude_reset": claude.get("block_reset"),
+            "claude_7d_reset": claude.get("week_reset"),
             "minimax_5h_pct": minimax["block_pct"],
             "claude_5h_color": _bar_color(claude["block_pct"]),
             "claude_7d_color": _bar_color(claude["week_pct"]),

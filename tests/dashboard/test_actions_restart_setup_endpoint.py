@@ -321,7 +321,8 @@ class TestRestartSetupPreconditions:
 
         resp = client.post(f"/project/{test_project.id}/api/item/{item_id}/restart-setup")
         assert resp.status_code == 422
-        assert "no BatchItem" in resp.json()["detail"]
+        # BatchItem exists but is in `executing`, not setup_failed/failed.
+        assert "must be setup_failed or failed" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

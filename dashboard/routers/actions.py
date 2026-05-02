@@ -1162,7 +1162,12 @@ def restart_setup(
         )
     )
     if batch_item is None:
-        raise HTTPException(status_code=404, detail=f"No batch item for {item_id}")
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Cannot restart setup: no BatchItem in setup_failed/failed status for {item_id}"
+            ),
+        )
 
     if batch_item.status not in (BatchItemStatus.setup_failed, BatchItemStatus.failed):
         raise HTTPException(
@@ -1185,7 +1190,7 @@ def restart_setup(
     if any(s.status != StepStatus.pending for s in steps):
         raise HTTPException(
             status_code=422,
-            detail="Cannot restart setup: one or more steps have already started",
+            detail="Cannot restart setup: a step has progressed past pending",
         )
 
     worktree_path: str | None = None

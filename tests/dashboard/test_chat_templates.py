@@ -39,8 +39,11 @@ class TestChatPanelTemplate:
         assert 'role="region"' in chat_panel_html
         assert 'aria-label="Code module chat"' in chat_panel_html
 
-    def test_panel_data_collapsed_false(self, chat_panel_html):
-        assert 'data-collapsed="false"' in chat_panel_html
+    def test_panel_ships_collapsed(self, chat_panel_html):
+        # I-00057 changed the chat panel to ship collapsed (slim rail) by default
+        # so module navigation is not blocked by a wide open panel on first load.
+        assert 'data-collapsed="true"' in chat_panel_html
+        assert 'data-collapsed="false"' not in chat_panel_html
 
     def test_resize_handle_present(self, chat_panel_html):
         assert 'id="chat-resize-handle"' in chat_panel_html
@@ -53,14 +56,15 @@ class TestChatPanelTemplate:
         assert 'aria-relevant="additions"' in chat_panel_html
         assert 'aria-label="Conversation"' in chat_panel_html
 
-    def test_collapse_button_44px(self, chat_panel_html):
-        # I-00046 replaced the original #chat-collapse-btn header button with a
-        # vertical slide-out tab (#chat-toggle-tab) on the panel's left edge.
-        # The tab is 88px tall × 44px wide — both ≥44px so it still satisfies
-        # the WCAG hit-target requirement this test guards.
-        assert 'id="chat-toggle-tab"' in chat_panel_html
-        assert "min-h-[88px]" in chat_panel_html
-        assert "min-w-[44px]" in chat_panel_html
+    def test_collapse_and_expand_affordances_present(self, chat_panel_html):
+        # I-00057 superseded the I-00046 floating slide-out tab with a pair of
+        # in-panel affordances: #chat-collapse-btn (in the expanded header) and
+        # #chat-expand-rail (in the collapsed slim rail). Both must be labelled
+        # so the toggle is accessible in either state.
+        assert 'id="chat-collapse-btn"' in chat_panel_html
+        assert 'id="chat-expand-rail"' in chat_panel_html
+        assert 'aria-label="Collapse chat panel' in chat_panel_html
+        assert 'aria-label="Expand chat panel' in chat_panel_html
 
     def test_scroll_to_bottom_button(self, chat_panel_html):
         assert 'id="chat-scroll-to-bottom"' in chat_panel_html
@@ -73,8 +77,10 @@ class TestChatPanelTemplate:
     def test_drawer_has_translate_class(self, chat_panel_html):
         assert "translate-x-full" in chat_panel_html
 
-    def test_drawer_close_button(self, chat_panel_html):
-        assert 'id="chat-close-btn"' in chat_panel_html
+    # NOTE: the original mobile "drawer close" button (#chat-close-btn) was
+    # removed in I-00057 — collapse/expand are now handled by #chat-collapse-btn
+    # and #chat-expand-rail in both desktop and drawer modes, so the legacy test
+    # for the close button no longer applies.
 
 
 class TestChatComposerTemplate:

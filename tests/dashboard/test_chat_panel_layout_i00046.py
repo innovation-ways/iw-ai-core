@@ -104,21 +104,34 @@ class TestChatPanelToggleButton:
             "respects its CSS grid row size (I-00046 bug a/c)"
         )
 
-    def test_toggle_tab_button_is_present(self, jinja_env: Environment):
-        """#chat-toggle-tab button must exist in the rendered page.
+    def test_collapse_and_expand_controls_present(self, jinja_env: Environment):
+        """The chat panel's collapse/expand controls must exist in the rendered page.
 
-        Regression guard: ensure the toggle button was not accidentally removed
-        while fixing the duplicate ID issue.
+        Regression guard: ensure the toggle controls were not accidentally
+        removed while fixing the duplicate ID issue. I-00057 superseded the
+        original I-00046 floating slide-out toggle (#chat-toggle-tab at
+        left:-48px) with a pair of in-panel affordances — #chat-collapse-btn
+        in the expanded header and #chat-expand-rail in the collapsed slim rail.
+        The original I-00046 *intent* — that the panel always exposes a primary
+        collapse/expand control — is enforced below against the I-00057 markup.
         """
         html = _render_code_page(jinja_env)
-        assert 'id="chat-toggle-tab"' in html, (
-            "#chat-toggle-tab button must be present in the rendered page — "
-            "it is the primary collapse/expand control (I-00046 regression guard)"
+        assert 'id="chat-collapse-btn"' in html, (
+            "#chat-collapse-btn must be present in the rendered page — "
+            "the primary collapse control (I-00046 regression guard, I-00057 markup)"
         )
-        assert "left: -48px" in html or "left:-48px" in html, (
-            "Toggle button must retain style='left: -48px' so it visually "
-            "protrudes from the chat panel's left edge (I-00046 regression guard)"
+        assert 'id="chat-expand-rail"' in html, (
+            "#chat-expand-rail must be present in the rendered page — "
+            "the primary expand control (I-00046 regression guard, I-00057 markup)"
         )
+        # The pre-I-00057 floating toggle pattern must not return — its absolute
+        # `left: -48px` position is what caused the original clipping bug.
+        floating_msg = (
+            "Floating toggle button with style='left: -48px;' must not be present "
+            "(I-00057 superseded this pattern; it caused the I-00046 clipping bug)"
+        )
+        assert "left: -48px" not in html, floating_msg
+        assert "left:-48px" not in html, floating_msg
 
 
 class TestCodeContentRootContainment:

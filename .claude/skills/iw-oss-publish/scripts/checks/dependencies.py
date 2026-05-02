@@ -91,7 +91,19 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                     summary=f"{len(flagged)} dep(s) license-incompatible with {outbound}",
                     detail="\n".join(f"  - {name} ({lic})" for name, lic in flagged[:20]),
                     remediation="Replace incompatible deps, or change outbound license.",
-                    evidence={"incompatible": [{"name": n, "license": l} for n, l in flagged[:50]]},
+                    evidence=build_results_evidence(
+                        [
+                            {
+                                "file": name,
+                                "line": None,
+                                "rule": lic,
+                                "snippet_masked": f"license {lic} incompatible with {outbound}",
+                            }
+                            for name, lic in flagged
+                        ],
+                        total=len(flagged),
+                        extras={"outbound_license": outbound},
+                    ),
                     auto_apply_safe=False,
                 )
             )

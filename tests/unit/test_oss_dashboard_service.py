@@ -203,3 +203,83 @@ class TestEnqueueJobUnit:
 
         call_arg = mock_session.add.call_args[0][0]
         assert call_arg.kind == ProjectOssJobKind.install
+
+
+class TestLegacyEvidenceFallback:
+    """Pure-function tests for the modal's safety net.
+
+    Old scans persisted per-hit data into ``evidence_json`` under ad-hoc keys
+    (samples / sample_hits / violations / paths / large_objects /
+    incompatible / non_noreply_emails) instead of populating
+    ``oss_finding_detail``. ``_legacy_evidence_to_rows`` synthesizes detail
+    rows from those keys so the user sees *where* the issues are without
+    having to re-run the scan first.
+    """
+
+    def test_samples_parses_rg_lines(self) -> None:
+        from dashboard.services.oss_service import _legacy_evidence_to_rows
+
+        rows = _legacy_evidence_to_rows(
+            {"samples": ["src/foo.py:42:host: 10.0.0.1"]},
+            rule_fallback="OSS-REF-01",
+        )
+        assert rows == [
+            {
+                "file": "src/foo.py",
+                "line": 42,
+                "rule": "OSS-REF-01",
+                "snippet_masked": "host: 10.0.0.1",
+            }
+        ]
+
+    def test_violations_string_list(self) -> None:
+        from dashboard.services.oss_service import _legacy_evidence_to_rows
+
+        rows = _legacy_evidence_to_rows(
+            {"violations": [".env", "secrets.pem"]},
+            rule_fallback="OSS-HYG-02",
+        )
+        assert [r["file"] for r in rows] == [".env", "secrets.pem"]
+        assert all(r["line"] is None for r in rows)
+        assert all(r["rule"] == "OSS-HYG-02" for r in rows)
+
+    def test_large_objects(self) -> None:
+        from dashboard.services.oss_service import _legacy_evidence_to_rows
+
+        rows = _legacy_evidence_to_rows(
+            {"large_objects": [{"size_bytes": 75 * 1024 * 1024, "path": "video.mp4"}]},
+            rule_fallback="OSS-HYG-04",
+        )
+        assert rows[0]["file"] == "video.mp4"
+        assert "75 MB" in rows[0]["snippet_masked"]
+
+    def test_incompatible_deps(self) -> None:
+        from dashboard.services.oss_service import _legacy_evidence_to_rows
+
+        rows = _legacy_evidence_to_rows(
+            {"incompatible": [{"name": "gpl-lib", "license": "GPL-3.0-only"}]},
+            rule_fallback="OSS-DEP-01",
+        )
+        assert rows[0]["file"] == "gpl-lib"
+        assert rows[0]["rule"] == "GPL-3.0-only"
+        assert "GPL-3.0-only" in rows[0]["snippet_masked"]
+
+    def test_non_noreply_emails(self) -> None:
+        from dashboard.services.oss_service import _legacy_evidence_to_rows
+
+        rows = _legacy_evidence_to_rows(
+            {"non_noreply_emails": ["alice@corp.example", "bob@corp.example"]},
+            rule_fallback="OSS-HIST-03",
+        )
+        assert [r["file"] for r in rows] == ["alice@corp.example", "bob@corp.example"]
+
+    def test_unknown_evidence_returns_empty(self) -> None:
+        from dashboard.services.oss_service import _legacy_evidence_to_rows
+
+        assert (
+            _legacy_evidence_to_rows(
+                {"paths_checked": ["LICENSE"]},
+                rule_fallback="OSS-LIC-01",
+            )
+            == []
+        )

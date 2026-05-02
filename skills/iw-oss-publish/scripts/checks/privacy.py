@@ -65,7 +65,10 @@ def privacy(ctx: Context) -> list[Finding]:
                     summary=f"{len(flagged)} real-looking email(s) in fixtures",
                     detail="\n".join(flagged[:15]),
                     remediation="Replace with @example.com or @test.invalid; do not commit real PII.",
-                    evidence={"samples": flagged[:30]},
+                    evidence=build_results_evidence(
+                        parse_rg_lines(flagged, rule_id="OSS-PII-01"),
+                        total=len(flagged),
+                    ),
                     auto_apply_safe=False,
                 )
             )
@@ -94,6 +97,10 @@ def privacy(ctx: Context) -> list[Finding]:
                     summary=f"{len(ssn_hits)} SSN-shaped pattern(s) — human review required",
                     detail="\n".join(ssn_hits[:10]),
                     remediation="Verify test SSNs; replace with obviously fake values like 000-00-0000.",
+                    evidence=build_results_evidence(
+                        parse_rg_lines(ssn_hits, rule_id="OSS-PII-02"),
+                        total=len(ssn_hits),
+                    ),
                     auto_apply_safe=False,
                 )
             )
