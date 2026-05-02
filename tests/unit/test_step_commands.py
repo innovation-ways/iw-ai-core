@@ -47,15 +47,15 @@ class TestValidateStepRestartTransition:
 
 
 class TestValidateStepSkipTransition:
-    """step-skip is valid from failed only."""
+    """step-skip is valid from failed or pending."""
 
-    def test_valid(self) -> None:
-        assert validate_step_skip_transition(StepStatus.failed) is None
+    @pytest.mark.parametrize("status", [StepStatus.failed, StepStatus.pending])
+    def test_valid(self, status: StepStatus) -> None:
+        assert validate_step_skip_transition(status) is None
 
     @pytest.mark.parametrize(
         "status",
         [
-            StepStatus.pending,
             StepStatus.in_progress,
             StepStatus.completed,
             StepStatus.needs_fix,
