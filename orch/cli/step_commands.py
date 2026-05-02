@@ -278,8 +278,26 @@ def step_start(ctx: click.Context, item_id: str, step_id: str) -> None:
 @click.argument("item_id")
 @click.option("--step", "step_id", required=True, help="Step ID (e.g., S01)")
 @click.option("--report", "report_path", default=None, help="Relative path to the report file")
+@click.option(
+    "--analysis-json",
+    "analysis_json_path",
+    type=click.Path(exists=False, dir_okay=False),
+    default=None,
+    help=(
+        "Path to the structured findings JSON (self_assess steps only). "
+        "Convention: <report path stem>_findings.json. The dashboard auto-"
+        "discovers this sidecar from the report path; this flag is accepted "
+        "for explicit clarity but is not required."
+    ),
+)
 @click.pass_context
-def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str | None) -> None:
+def step_done(
+    ctx: click.Context,
+    item_id: str,
+    step_id: str,
+    report_path: str | None,
+    analysis_json_path: str | None,
+) -> None:
     """Mark a workflow step as completed (in_progress → completed)."""
     project_id = resolve_project(ctx)
     get_session = ctx.obj["get_session"]
@@ -307,6 +325,35 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
             evidence_error = validate_browser_evidence_present(step.step_type, item_id)
             if evidence_error:
                 output_error(ctx, evidence_error, 1)
+
+            # Validate --analysis-json if provided:
+            # - step_type must be self_assess
+            # - JSON path must share the same parent directory as --report
+            # - --report must also be provided (sidecar needs an anchor)
+            if analysis_json_path is not None:
+                from orch.self_assess import is_self_assess_step  # noqa: PLC0415
+
+                if not is_self_assess_step(step.step_type):
+                    raise click.UsageError(
+                        "--analysis-json is only valid for self_assess steps; "
+                        f"step {step_id} has step_type={step.step_type.value}"
+                    )
+                if report_path is None:
+                    raise click.UsageError(
+                        "--analysis-json requires --report to also be provided "
+                        "(the JSON sidecar needs the report path as its anchor)"
+                    )
+                json_abs = Path(analysis_json_path)
+                if not json_abs.is_absolute():
+                    json_abs = Path.cwd() / json_abs
+                report_abs = Path(report_path)
+                if not report_abs.is_absolute():
+                    report_abs = Path.cwd() / report_abs
+                if json_abs.parent != report_abs.parent:
+                    raise click.UsageError(
+                        f"--analysis-json path ({json_abs.parent}) must be in the same "
+                        f"directory as --report ({report_abs.parent})"
+                    )
 
             step.status = StepStatus.completed
             step.completed_at = datetime.now(UTC)
@@ -400,6 +447,16 @@ def step_done(ctx: click.Context, item_id: str, step_id: str, report_path: str |
         "steps so the fix-cycle agent sees the full V-table and root-cause section."
     ),
 )
+@click.option(
+    "--analysis-json",
+    "analysis_json_path",
+    type=click.Path(exists=False, dir_okay=False),
+    default=None,
+    help=(
+        "Path to the structured findings JSON (self_assess steps only). "
+        "Accepted for partial findings written before a failure."
+    ),
+)
 @click.pass_context
 def step_fail(
     ctx: click.Context,
@@ -407,6 +464,7 @@ def step_fail(
     step_id: str,
     reason: str,
     report_path: str | None,
+    analysis_json_path: str | None,
 ) -> None:
     """Mark a workflow step as failed (in_progress → failed)."""
     project_id = resolve_project(ctx)
@@ -428,6 +486,31 @@ def step_fail(
             error = validate_step_fail_transition(step.status)
             if error:
                 output_error(ctx, error, 1)
+
+            # Validate --analysis-json if provided (same rules as step-done).
+            # For step-fail this is informational — the agent may have written
+            # partial findings before the failure.
+            if analysis_json_path is not None:
+                from orch.self_assess import is_self_assess_step  # noqa: PLC0415
+
+                if not is_self_assess_step(step.step_type):
+                    raise click.UsageError(
+                        "--analysis-json is only valid for self_assess steps; "
+                        f"step {step_id} has step_type={step.step_type.value}"
+                    )
+                if report_path is None:
+                    raise click.UsageError("--analysis-json requires --report to also be provided")
+                json_abs = Path(analysis_json_path)
+                if not json_abs.is_absolute():
+                    json_abs = Path.cwd() / json_abs
+                report_abs = Path(report_path)
+                if not report_abs.is_absolute():
+                    report_abs = Path.cwd() / report_abs
+                if json_abs.parent != report_abs.parent:
+                    raise click.UsageError(
+                        f"--analysis-json path ({json_abs.parent}) must be in the same "
+                        f"directory as --report ({report_abs.parent})"
+                    )
 
             step.status = StepStatus.failed
             _step_type_val = step.step_type

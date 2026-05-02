@@ -186,6 +186,37 @@ Create all prompt files in `ai-dev/active/{ID}/prompts/`.
 
 Create `ai-dev/active/{ID}/workflow-manifest.json` (step definitions — state lives in DB):
 
+### Sub-step: Check project self_assess flag
+
+Read the project's `projects.toml` entry to see if `self_assess = true`:
+
+```bash
+project_id=$(uv run iw current-project)
+self_assess=$(python3 -c "import tomllib, sys; data = tomllib.loads(open('projects.toml').read()); print(data.get('projects', {}).get('$project_id', {}).get('self_assess', False))")
+```
+
+If `self_assess` is `True`, you MUST inject the following step into `workflow-manifest.json` IMMEDIATELY BEFORE the first `qv-gate` step (and before any `qv-browser` step):
+
+```json
+{
+  "step": "S{NN}",
+  "agent": "self-assess-impl",
+  "step_type": "self_assess",
+  "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+  "prompt": "prompts/{ID}_S{NN}_SelfAssess_prompt.md"
+}
+```
+
+The agent slug is `self-assess-impl` — registered in `skills/iw-workflow/SKILL.md`'s canonical agent table and in `executor/step_executor_lib.sh`. Do NOT use `self-assess` or `self_assess` as the agent slug — those will fail orchestrator validation.
+
+And generate the corresponding prompt file at `prompts/{ID}_S{NN}_SelfAssess_prompt.md` by copying `ai-dev/templates/SelfAssess_Prompt_Template.md` and substituting `{ID}` and `{NN}`.
+
+Renumber the QV gate steps that follow.
+
+---
+
+Then create the manifest:
+
 ```json
 {
   "id": "{ID}",
@@ -262,3 +293,4 @@ iw register {ID} "{One-line CR title}" \
 - **MUST** call `iw register` at the end to record in the database
 - **NEVER** implement code — this skill only creates documentation
 - **NEVER** skip CodeReview steps or QV gates
+- **MUST** inject the self_assess step iff the project's `projects.toml` has `self_assess = true`. Determinism is required (Invariant 6 in F-00078).
