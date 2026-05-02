@@ -60,6 +60,7 @@ class StepDetail:
     report_content: str | None = None
     is_synthetic: bool = False
     fix_cycle_count: int = 0
+    restartable: bool = False
 
 
 @dataclass
@@ -427,7 +428,7 @@ def _get_steps(
             last_run_map[row.step_id] = run
             run_count_map[row.step_id] = row.rc
 
-    result: list[StepDetail] = [_synthetic_setup_step(bi)]
+    result: list[StepDetail] = [_synthetic_setup_step(bi, [s.status.value for s in workflow_steps])]
     for step in workflow_steps:
         last_run = last_run_map.get(step.id)
         error_msg = last_run.error_message if last_run else None
@@ -559,7 +560,9 @@ def _merge_status(bi: BatchItem | None) -> str:
     return "pending"
 
 
-def _synthetic_setup_step(bi: BatchItem | None) -> StepDetail:
+def _synthetic_setup_step(
+    bi: BatchItem | None, step_statuses: list[str] | None = None
+) -> StepDetail:
     status = _setup_status(bi)
     dur: float | None = None
     if bi and bi.worktree_info and bi.started_at:
@@ -581,6 +584,16 @@ def _synthetic_setup_step(bi: BatchItem | None) -> StepDetail:
                     dur = None
             except ValueError:
                 pass
+
+    restartable = False
+    if (
+        step_statuses is not None
+        and bi is not None
+        and bi.status in (BatchItemStatus.setup_failed, BatchItemStatus.failed)
+        and (len(step_statuses) == 0 or all(s == "pending" for s in step_statuses))
+    ):
+        restartable = True
+
     return StepDetail(
         step_id="S00",
         agent_label="Worktree Setup",
@@ -592,6 +605,7 @@ def _synthetic_setup_step(bi: BatchItem | None) -> StepDetail:
         error_message=bi.notes if bi and status == "failed" else None,
         run_count=0,
         is_synthetic=True,
+        restartable=restartable,
     )
 
 
