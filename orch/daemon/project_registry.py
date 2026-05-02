@@ -50,6 +50,12 @@ class ProjectConfig:
     worktree_base: str
     config: dict[str, Any]  # full .iw-orch.json content
     dev_clone: str | None = None
+    # Opt-in scope-gate enforcement at merge time. Default is False because the
+    # gate's design (added after I-00034) blocks merges on legitimate cross-cutting
+    # changes (formatter sweeps, post-merge test fixups). Projects opt in via
+    # .iw-orch.json: {"scope_gate_enabled": true}. CR-00030 will replace this
+    # blanket toggle with a more discriminating mechanism.
+    scope_gate_enabled: bool = False
 
     @property
     def working_dir(self) -> str:
@@ -112,6 +118,8 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
     # skip the project; staleness config is optional and read on demand at compute time).
     _validate_staleness_config(project_id, entry)
 
+    scope_gate_enabled: bool = bool(iw_config.get("scope_gate_enabled", False))
+
     return ProjectConfig(
         id=project_id,
         display_name=display_name,
@@ -121,6 +129,7 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         worktree_base=worktree_base,
         config=iw_config,
         dev_clone=dev_clone,
+        scope_gate_enabled=scope_gate_enabled,
     )
 
 
