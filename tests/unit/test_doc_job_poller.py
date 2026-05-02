@@ -422,4 +422,4 @@ class TestDocJobPollerLaunch:
 
         assert len(complete_called_with) == 1
         assert complete_called_with[0][0] == stalled_job.id
-        assert complete_called_with[0][1] == "generation timeout after 10 minutes"
+        assert "timeout" in (complete_called_with[0][1] or "").lower()

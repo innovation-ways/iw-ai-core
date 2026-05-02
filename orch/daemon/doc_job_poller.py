@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _EXECUTOR_DIR = Path(__file__).resolve().parent.parent.parent / "executor"
+_STALL_TIMEOUT_MINUTES = 15
 
 
 class DocJobPoller:
@@ -54,10 +55,13 @@ class DocJobPoller:
         with self._session_factory() as db:
             svc = DocService(db)
 
-            stalled = svc.get_stalled_jobs(timeout_minutes=10)
+            stalled = svc.get_stalled_jobs(timeout_minutes=_STALL_TIMEOUT_MINUTES)
             for job in stalled:
                 try:
-                    svc.complete_doc_job(job.id, error="generation timeout after 10 minutes")
+                    svc.complete_doc_job(
+                        job.id,
+                        error=f"generation timeout after {_STALL_TIMEOUT_MINUTES} minutes",
+                    )
                     logger.info(
                         "Marked stalled job %s as failed (started at %s)",
                         job.id,
