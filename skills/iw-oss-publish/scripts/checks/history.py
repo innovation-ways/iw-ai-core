@@ -83,7 +83,18 @@ def history(ctx: Context) -> list[Finding]:
                     "(see history_rewrite.md). For future commits, configure "
                     "`git config user.email ID+username@users.noreply.github.com`."
                 ),
-                evidence={"non_noreply_emails": non_noreply},
+                evidence=build_results_evidence(
+                    [
+                        {
+                            "file": email,
+                            "line": None,
+                            "rule": "OSS-HIST-03",
+                            "snippet_masked": "non-noreply contributor email",
+                        }
+                        for email in non_noreply
+                    ],
+                    total=len(non_noreply),
+                ),
                 auto_apply_safe=False,
             )
         )

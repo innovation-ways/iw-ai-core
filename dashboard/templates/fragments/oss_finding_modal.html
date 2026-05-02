@@ -34,6 +34,9 @@
         <h4>Findings <span id="oss-modal-details-count" class="text-xs font-normal text-muted-foreground"></span></h4>
         <p id="oss-modal-details-status" class="text-xs text-muted-foreground" hidden></p>
         <p id="oss-modal-details-capped" class="text-xs text-amber-600" hidden></p>
+        <p id="oss-modal-details-legacy" class="text-xs text-muted-foreground italic" hidden>
+          Locations recovered from legacy evidence. Re-run the check for the canonical list.
+        </p>
         <div class="oss-modal-details-wrap overflow-auto max-h-72 border border-border rounded">
           <table class="w-full text-xs">
             <thead class="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground sticky top-0">
@@ -133,12 +136,14 @@
     const countSpan = document.getElementById('oss-modal-details-count');
     const statusEl = document.getElementById('oss-modal-details-status');
     const cappedEl = document.getElementById('oss-modal-details-capped');
+    const legacyEl = document.getElementById('oss-modal-details-legacy');
     if (!section || !tbody) return;
 
     tbody.innerHTML = '';
     countSpan.textContent = '';
     statusEl.hidden = true;
     cappedEl.hidden = true;
+    if (legacyEl) legacyEl.hidden = true;
 
     if (!findingId) {
       section.hidden = true;
@@ -181,6 +186,9 @@
         cappedEl.hidden = false;
         cappedEl.textContent =
           'Result list capped at the scanner limit. The SARIF on disk has the full set.';
+      }
+      if (legacyEl && body.source === 'legacy_evidence') {
+        legacyEl.hidden = false;
       }
       (body.results || []).forEach(function (row) {
         var tr = document.createElement('tr');

@@ -127,6 +127,212 @@ class TestLoadMinimaxKey:
             assert result is None
 
 
+class TestClaudeRateLimitsCache:
+    """Tests for the rate-limits cache reader and Claude usage builder."""
+
+    @staticmethod
+    def _write_cache(tmp_path: Path, payload: dict[str, Any]) -> Path:
+        cache_dir = tmp_path / ".claude"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache = cache_dir / "rate-limits-cache.json"
+        cache.write_text(json.dumps(payload))
+        return cache
+
+    def test_read_seven_day_returns_dict_when_in_future(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """seven_day with resets_at in the future → returns the bucket."""
+        from datetime import UTC, datetime
+
+        future = int(datetime.now(UTC).timestamp()) + 3600
+        self._write_cache(
+            tmp_path,
+            {"seven_day": {"used_percentage": 56.0, "resets_at": future}},
+        )
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            import importlib
+
+            import orch.llm_usage as llm_usage_mod
+
+            importlib.reload(llm_usage_mod)
+
+            result = llm_usage_mod._read_rate_limits_cache("seven_day")
+            assert result is not None
+            assert result["used_percentage"] == 56.0
+            assert result["resets_at"] == future
+
+    def test_read_returns_none_when_resets_at_in_past(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Stale entry (resets_at in the past) → None, no fallback."""
+        from datetime import UTC, datetime
+
+        past = int(datetime.now(UTC).timestamp()) - 3600
+        self._write_cache(
+            tmp_path,
+            {"five_hour": {"used_percentage": 10, "resets_at": past}},
+        )
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            import importlib
+
+            import orch.llm_usage as llm_usage_mod
+
+            importlib.reload(llm_usage_mod)
+
+            assert llm_usage_mod._read_rate_limits_cache("five_hour") is None
+
+    def test_read_returns_none_when_missing_window(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Cache exists but lacks the requested window → None."""
+        from datetime import UTC, datetime
+
+        future = int(datetime.now(UTC).timestamp()) + 3600
+        self._write_cache(
+            tmp_path,
+            {"five_hour": {"used_percentage": 70, "resets_at": future}},
+        )
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            import importlib
+
+            import orch.llm_usage as llm_usage_mod
+
+            importlib.reload(llm_usage_mod)
+
+            assert llm_usage_mod._read_rate_limits_cache("seven_day") is None
+
+    def test_read_returns_none_when_file_missing(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """No cache file at all → None, no exception."""
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            import importlib
+
+            import orch.llm_usage as llm_usage_mod
+
+            importlib.reload(llm_usage_mod)
+
+            assert llm_usage_mod._read_rate_limits_cache("seven_day") is None
+
+    def test_claude_usage_uses_seven_day_from_cache(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """_claude_usage() uses seven_day.used_percentage, not any local token count."""
+        from datetime import UTC, datetime
+
+        future = int(datetime.now(UTC).timestamp()) + 3600
+        self._write_cache(
+            tmp_path,
+            {
+                "five_hour": {"used_percentage": 70, "resets_at": future},
+                "seven_day": {"used_percentage": 56.00000000000001, "resets_at": future},
+            },
+        )
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            import importlib
+
+            import orch.llm_usage as llm_usage_mod
+
+            importlib.reload(llm_usage_mod)
+
+            result = llm_usage_mod._claude_usage()
+            assert result["block_pct"] == 70
+            assert result["week_pct"] == 56
+            assert result["block_reset"] is not None
+            assert result["week_reset"] is not None
+
+    def test_claude_usage_zero_when_cache_missing(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """No cache file → both bars 0%, both resets None (no fallback)."""
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            import importlib
+
+            import orch.llm_usage as llm_usage_mod
+
+            importlib.reload(llm_usage_mod)
+
+            result = llm_usage_mod._claude_usage()
+            assert result == {
+                "block_pct": 0,
+                "week_pct": 0,
+                "block_reset": None,
+                "week_reset": None,
+            }
+
+
+class TestFormatResetsAt:
+    """Tests for _format_resets_at() — wall-clock reset rendering."""
+
+    def test_past_returns_none(self) -> None:
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        past = datetime.now(UTC).timestamp() - 60
+        assert llm_usage._format_resets_at(past) is None
+
+    def test_zero_returns_none(self) -> None:
+        from orch import llm_usage
+
+        assert llm_usage._format_resets_at(0) is None
+
+    def test_within_24h_returns_hour_minute(self) -> None:
+        """Resets <24h away → 'HH:MM' (no day prefix)."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        ts = datetime.now(UTC).timestamp() + 2 * 3600
+        result = llm_usage._format_resets_at(ts)
+        assert result is not None
+        assert ":" in result
+        assert " " not in result
+
+    def test_beyond_24h_returns_day_and_time(self) -> None:
+        """Resets >24h away → 'Day HH:MM' (e.g. 'Tue 09:00')."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        ts = datetime.now(UTC).timestamp() + 3 * 24 * 3600
+        result = llm_usage._format_resets_at(ts)
+        assert result is not None
+        parts = result.split(" ")
+        assert len(parts) == 2
+        assert len(parts[0]) == 3  # %a → "Mon", "Tue", ...
+        assert ":" in parts[1]
+
+
+class TestNoCcusageRegressions:
+    """ccusage path was removed — symbols must be absent from the module."""
+
+    def test_no_run_ccusage(self) -> None:
+        import orch.llm_usage as m
+
+        assert not hasattr(m, "_run_ccusage")
+
+    def test_no_claude_weekly_limit_constant(self) -> None:
+        import orch.llm_usage as m
+
+        assert not hasattr(m, "_CLAUDE_WEEKLY_LIMIT")
+
+    def test_no_subprocess_import(self) -> None:
+        import orch.llm_usage as m
+
+        assert not hasattr(m, "subprocess")
+
+
 class TestFormatReset:
     """Tests for _format_reset()."""
 

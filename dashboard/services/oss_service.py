@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import signal
 import subprocess
 from datetime import UTC, datetime
@@ -702,6 +703,27 @@ def get_finding_details(
         .all()
     )
     capped = bool((finding.evidence_json or {}).get("capped"))
+
+    # Fallback for scans persisted before the canonical results-shape rollout:
+    # if we have zero detail rows but the evidence_json carries a list of
+    # file/path/email hits under a known legacy key, synthesize result rows so
+    # the user sees *where* the issues are without having to re-run the scan.
+    legacy_source = "legacy_evidence"
+    fallback_rows: list[dict[str, Any]] | None = None
+    if total == 0:
+        fallback_rows = _legacy_evidence_to_rows(
+            finding.evidence_json or {}, rule_fallback=finding.check_id
+        )
+    if fallback_rows:
+        sliced = fallback_rows[safe_offset : safe_offset + safe_limit]
+        return {
+            "total": len(fallback_rows),
+            "limit": safe_limit,
+            "offset": safe_offset,
+            "capped": capped,
+            "source": legacy_source,
+            "results": [{"ordinal": safe_offset + i, **row} for i, row in enumerate(sliced)],
+        }
     return {
         "total": total,
         "limit": safe_limit,
@@ -718,6 +740,103 @@ def get_finding_details(
             for d in rows
         ],
     }
+
+
+# Keys that older scans used to dump per-hit information into evidence_json
+# instead of populating the oss_finding_detail table. Order matters: the first
+# hit wins, so put the most specific keys first.
+_LEGACY_RG_LINE_RE = re.compile(r"^(?P<file>[^:]+):(?P<line>\d+):(?P<text>.*)$")
+
+
+def _legacy_evidence_to_rows(
+    evidence: dict[str, Any], *, rule_fallback: str
+) -> list[dict[str, Any]]:
+    """Best-effort conversion from a legacy evidence dict into result rows.
+
+    Returns an empty list when no recognised key carries per-hit data — the
+    caller falls back to the (empty) detail-table response in that case.
+    """
+
+    def _from_rg(values: list[Any]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for v in values:
+            if not isinstance(v, str):
+                continue
+            m = _LEGACY_RG_LINE_RE.match(v)
+            if m is None:
+                rows.append({"file": v, "line": None, "rule": rule_fallback, "snippet_masked": ""})
+                continue
+            try:
+                line_no: int | None = int(m.group("line"))
+            except ValueError:
+                line_no = None
+            rows.append(
+                {
+                    "file": m.group("file"),
+                    "line": line_no,
+                    "rule": rule_fallback,
+                    "snippet_masked": m.group("text").strip()[:200],
+                }
+            )
+        return rows
+
+    # ripgrep-style "path:line:text" lists.
+    for key in ("samples", "sample_hits"):
+        if isinstance(evidence.get(key), list) and evidence[key]:
+            return _from_rg(evidence[key])
+
+    # Plain string lists (file paths, contributor emails).
+    for key in ("violations", "paths", "non_noreply_emails"):
+        items = evidence.get(key)
+        if isinstance(items, list) and items:
+            return [
+                {"file": str(v), "line": None, "rule": rule_fallback, "snippet_masked": ""}
+                for v in items
+                if isinstance(v, (str, int, float))
+            ]
+
+    # OSS-HYG-04 large blobs: [{size_bytes, path}]
+    if isinstance(evidence.get("large_objects"), list):
+        rows: list[dict[str, Any]] = []
+        for obj in evidence["large_objects"]:
+            if not isinstance(obj, dict):
+                continue
+            size = obj.get("size_bytes")
+            try:
+                size_mb = int(size) // 1024 // 1024 if size is not None else None
+            except (TypeError, ValueError):
+                size_mb = None
+            rows.append(
+                {
+                    "file": str(obj.get("path") or ""),
+                    "line": None,
+                    "rule": rule_fallback,
+                    "snippet_masked": (
+                        f"{size_mb} MB blob in history" if size_mb is not None else ""
+                    ),
+                }
+            )
+        if rows:
+            return rows
+
+    # OSS-DEP-01 license-incompatible deps: [{name, license}]
+    if isinstance(evidence.get("incompatible"), list):
+        rows = []
+        for obj in evidence["incompatible"]:
+            if not isinstance(obj, dict):
+                continue
+            rows.append(
+                {
+                    "file": str(obj.get("name") or ""),
+                    "line": None,
+                    "rule": str(obj.get("license") or rule_fallback),
+                    "snippet_masked": f"license {obj.get('license') or '?'} incompatible",
+                }
+            )
+        if rows:
+            return rows
+
+    return []
 
 
 def _format_summary(summary: dict[str, Any]) -> str:

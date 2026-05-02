@@ -96,6 +96,28 @@ def _set_input_value(session: str, selector: str, value: str) -> None:
     _run(session, "eval", js)
 
 
+def _expand_chat_panel(session: str) -> None:
+    """Force the chat panel into the expanded state.
+
+    I-00057 changed the chat panel to ship with `data-collapsed="true"`. While
+    collapsed, the composer (and its slash menu) is hidden by CSS, so any
+    interaction that depends on the composer must first expand the panel.
+    """
+    js = (
+        "() => {"
+        "const panel = document.getElementById('chat-panel');"
+        "if (!panel) return false;"
+        "if (panel.dataset.collapsed === 'true') {"
+        "  const rail = document.getElementById('chat-expand-rail');"
+        "  if (rail) rail.click();"
+        "  else panel.dataset.collapsed = 'false';"
+        "}"
+        "return panel.dataset.collapsed !== 'true';"
+        "}"
+    )
+    _run(session, "eval", js)
+
+
 @pytest.mark.browser
 class TestChatPanelSmoke:
     def test_panel_visible_on_code_page(self, playwright_session, dashboard_server):
@@ -109,6 +131,10 @@ class TestChatPanelSmoke:
         """AC2 — Pressing Ctrl+\\ collapses the panel (data-collapsed=true)."""
         # Clear first so the slash-menu listener sees a real value transition
         # (prior test in this module-scoped session may have left input set).
+        # I-00057: the panel ships collapsed; expand it before exercising the
+        # composer's slash menu (which is hidden by CSS while collapsed).
+        _expand_chat_panel(playwright_session)
+        time.sleep(0.1)
         _set_input_value(playwright_session, "#chat-input", "")
         time.sleep(0.1)
         _set_input_value(playwright_session, "#chat-input", "/ex")
@@ -120,6 +146,8 @@ class TestChatPanelSmoke:
 
     def test_slash_command_menu_shows_explain(self, playwright_session):
         """AC12 — Typing /ex in composer shows slash command menu with /explain."""
+        _expand_chat_panel(playwright_session)
+        time.sleep(0.1)
         _set_input_value(playwright_session, "#chat-input", "")
         time.sleep(0.1)
         _set_input_value(playwright_session, "#chat-input", "/ex")

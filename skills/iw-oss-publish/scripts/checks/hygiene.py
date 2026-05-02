@@ -110,7 +110,18 @@ def hygiene(ctx: Context) -> list[Finding]:
             remediation="Remove from git history and add to .gitignore (see history_rewrite.md)."
             if violations
             else None,
-            evidence={"violations": violations[:50]},
+            evidence=build_results_evidence(
+                [
+                    {
+                        "file": v,
+                        "line": None,
+                        "rule": "OSS-HYG-02",
+                        "snippet_masked": "tracked sensitive file",
+                    }
+                    for v in violations
+                ],
+                total=len(violations),
+            ),
             auto_apply_safe=False,
         )
     )
@@ -154,9 +165,18 @@ def hygiene(ctx: Context) -> list[Finding]:
             remediation="Consider `git-filter-repo` or LFS migration; see history_rewrite.md."
             if large_objects
             else None,
-            evidence={
-                "large_objects": [{"size_bytes": s, "path": p} for s, p in large_objects[:20]]
-            },
+            evidence=build_results_evidence(
+                [
+                    {
+                        "file": p,
+                        "line": None,
+                        "rule": "OSS-HYG-04",
+                        "snippet_masked": f"{s // 1024 // 1024} MB blob in history",
+                    }
+                    for s, p in large_objects
+                ],
+                total=len(large_objects),
+            ),
             auto_apply_safe=False,
         )
     )
@@ -172,7 +192,18 @@ def hygiene(ctx: Context) -> list[Finding]:
             summary="No large files in working tree"
             if not large_wt
             else f"{len(large_wt)} large file(s) in working tree (>10MB)",
-            evidence={"paths": large_wt[:20]},
+            evidence=build_results_evidence(
+                [
+                    {
+                        "file": p,
+                        "line": None,
+                        "rule": "OSS-HYG-05",
+                        "snippet_masked": "large working-tree file (>10 MB)",
+                    }
+                    for p in large_wt
+                ],
+                total=len(large_wt),
+            ),
             auto_apply_safe=False,
         )
     )

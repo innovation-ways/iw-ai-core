@@ -3,7 +3,7 @@
 # ============================================================
 
 .PHONY: install lint lint-js format format-check typecheck type-check quality \
-         test-unit test-integration test test-parallel smoke check \
+         test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
          db-up db-down db-migrate db-revision \
          daemon-start daemon-stop dashboard-start css \
          allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
@@ -45,13 +45,29 @@ quality: lint format typecheck
 test-unit:
 	uv run pytest tests/unit/ -v
 
+# Integration gate — testcontainer-backed tests.
+# Includes tests/dashboard/ (FastAPI TestClient + db_session fixture) but
+# excludes tests/dashboard/browser/ since those need playwright-cli + a
+# live Uvicorn server, which the qv-gate environment doesn't provide.
+# Browser-level coverage runs separately via the qv-browser step.
 test-integration:
-	uv run pytest tests/integration/ -v
+	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser -v
+
+# Dashboard-only target for fast local iteration on routers/templates.
+# --no-cov: this slice naturally falls below the global coverage threshold;
+# the full gate (`test-integration` / `check`) is what enforces it.
+test-dashboard:
+	uv run pytest tests/dashboard/ --ignore=tests/dashboard/browser --no-cov -v
+
+# Browser smoke tests — require playwright-cli and spin up a local Uvicorn.
+# Not run by `make test`; invoke explicitly when validating browser flows.
+test-browser:
+	uv run pytest tests/dashboard/browser/ --no-cov -v
 
 test: test-unit test-integration
 
 test-parallel:
-	uv run pytest tests/unit tests/integration -v -n auto --dist=loadfile
+	uv run pytest tests/unit tests/integration tests/dashboard --ignore=tests/dashboard/browser -v -n auto --dist=loadfile
 
 smoke:
 	uv run pytest -m smoke --strict-markers -v
