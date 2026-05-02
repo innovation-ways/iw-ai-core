@@ -12,6 +12,7 @@ Migration pipeline integration (CR-00017):
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -226,7 +227,15 @@ def _merge_item(
             item_id,
             project_config.working_dir,
         ]  # noqa: S607
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # noqa: S603
+        # Pass scope-gate toggle via env. Default off — projects opt in via
+        # .iw-orch.json {"scope_gate_enabled": true}. See ProjectConfig.
+        merge_env = {
+            **os.environ,
+            "IW_SCOPE_GATE_ENABLED": "true" if project_config.scope_gate_enabled else "false",
+        }
+        result = subprocess.run(  # noqa: S603
+            cmd, capture_output=True, text=True, timeout=120, env=merge_env
+        )
         if result.returncode != 0:
             raise MergeError(result.stderr.strip() or f"exit code {result.returncode}")
 
