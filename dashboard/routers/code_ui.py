@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
-from dashboard.utils.markdown import render_markdown
+from dashboard.utils.markdown import render_markdown, wrap_h2_sections_collapsible
 from orch.config import load_config
 from orch.db.models import CodeIndexJob, DocIndexJob, Project
 from orch.doc_service import DocService
@@ -82,9 +82,10 @@ def _preprocess_mermaid(text: str) -> str:
 def _render_architecture_html(arch_doc: Any) -> str | None:
     if arch_doc is None or not arch_doc.content:
         return None
-    cleaned = strip_trailing_arch_diagram_section(arch_doc.content)
+    cleaned = strip_trailing_arch_diagram_section(arch_doc.content)  # from I-00055
     processed = _preprocess_mermaid(cleaned)
-    return render_markdown(processed)
+    html = render_markdown(processed)
+    return wrap_h2_sections_collapsible(html)
 
 
 @router.get("/code", response_class=HTMLResponse)

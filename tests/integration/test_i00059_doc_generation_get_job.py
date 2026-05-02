@@ -73,7 +73,10 @@ class TestI00059DocGenerationGetJobRawFields:
 
         assert row is not None, "get_job returned None for a valid doc_generation job"
         assert row.job_type == JobType.doc_generation
-        assert row.job_id == job.id
+        assert row.job_id == job.public_id, (
+            f"expected job_id={job.public_id!r} (public_id), got {row.job_id!r}; "
+            "after I-00058, get_job returns public_id (DOC-NNNNN), not UUID"
+        )
 
         # The key assertion: error, skill_used, duration_seconds, doc_id, trigger_reason
         # must be present and non-None in row.raw
@@ -279,7 +282,7 @@ class TestI00059DocGenerationGetJobRawFields:
 
         # Fetch via list_jobs (list path) and find the same job
         result = aggregator.list_jobs(project_id=project.id, types=[JobType.doc_generation])
-        row_list = next((r for r in result.rows if r.job_id == job.id), None)
+        row_list = next((r for r in result.rows if r.job_id == job.public_id), None)
 
         assert row_detail is not None, "get_job returned None"
         assert row_list is not None, "list_jobs did not return the job"
