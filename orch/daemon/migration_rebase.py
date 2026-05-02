@@ -111,12 +111,16 @@ def _parse_migration(path: str) -> tuple[str, str | None]:
     """
     content = Path(path).read_text(encoding="utf-8")
 
-    rev_match = re.search(r"^\s*revision\s*=\s*['\"]([^'\"]+)['\"]", content, re.MULTILINE)
+    rev_match = re.search(
+        r"^\s*revision(?:\s*:\s*[^=]+)?\s*=\s*['\"]([^'\"]+)['\"]", content, re.MULTILINE
+    )
     if not rev_match:
         raise MigrationParseError(f"Could not find 'revision' in {path}")
     revision = rev_match.group(1)
 
-    down_match = re.search(r"^\s*down_revision\s*=\s*([^\s#]+)", content, re.MULTILINE)
+    down_match = re.search(
+        r"^\s*down_revision(?:\s*:\s*[^=]+)?\s*=\s*([^\s#]+)", content, re.MULTILINE
+    )
     if down_match:
         raw = down_match.group(1)
         if raw == "None":
@@ -182,7 +186,7 @@ def _latest_main_revision(worktree_path: str, batch_files: list[str]) -> str | N
 def _rewrite_down_revision(path: str, new_value: str) -> None:
     """Regex-replace the down_revision line in a migration file, preserving style."""
     content = Path(path).read_text(encoding="utf-8")
-    pattern = re.compile(r"^(down_revision\s*=\s*).+$", re.MULTILINE)
+    pattern = re.compile(r"^(down_revision(?:\s*:\s*[^=]+)?\s*=\s*).+$", re.MULTILINE)
 
     def replacer(match: re.Match[str]) -> str:
         return f"{match.group(1)}{new_value}"
