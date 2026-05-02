@@ -67,8 +67,7 @@
       "step": "S07",
       "agent": "tests-impl",
       "description": "Unit tests for: _merge_item writes merge_failed (and still writes failed on no-worktree-path branch); _BLOCKING_TERMINAL_STATUSES membership; _current_execution_group treats merge_failed as non-terminal; restart-merge precondition; abandon-merge endpoint. Integration tests for: full 2-item-2-group cascade-not-triggered scenario; abandon-merge triggers cascade",
-      "prompt": "prompts/CR-00028_S07_Tests_prompt.md",
-      "timeout": 3600
+      "prompt": "prompts/CR-00028_S07_Tests_prompt.md"
     },
     {
       "step": "S08",

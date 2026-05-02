@@ -68,6 +68,7 @@ _TOAST_EVENTS = frozenset(
         "batch_completed_with_errors",
         "item_merged",
         "merge_conflict",
+        "merge_abandoned",  # CR-00028
         "poll_error",
         "batch_archiving",
         "batch_archived",
@@ -120,6 +121,7 @@ _TOAST_SEVERITY: dict[str, str] = {
     "batch_completed_with_errors": "warning",
     "item_merged": "info",
     "merge_conflict": "error",
+    "merge_abandoned": "warning",  # CR-00028
     "poll_error": "error",
     "batch_archiving": "info",
     "batch_archived": "success",

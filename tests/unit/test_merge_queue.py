@@ -175,7 +175,8 @@ class TestMergeItem:
         assert item.merged_at is not None
         assert item.merge_info is not None
 
-    def test_failed_merge_marks_item_failed(self):
+    def test_failed_merge_marks_item_merge_failed(self):
+        """CR-00028: merge failure sets merge_failed (not failed) so cascade is not triggered."""
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
@@ -183,10 +184,11 @@ class TestMergeItem:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict on main.py")
             _merge_item(db, item, "test-proj", make_project_config())
 
-        assert item.status == BatchItemStatus.failed
+        assert item.status == BatchItemStatus.merge_failed
         assert "conflict on main.py" in item.notes
 
-    def test_timeout_marks_item_failed(self):
+    def test_timeout_marks_item_merge_failed(self):
+        """CR-00028: merge timeout sets merge_failed (not failed) so cascade is not triggered."""
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
@@ -196,7 +198,7 @@ class TestMergeItem:
         ):
             _merge_item(db, item, "test-proj", make_project_config())
 
-        assert item.status == BatchItemStatus.failed
+        assert item.status == BatchItemStatus.merge_failed
         assert item.notes is not None
 
     def test_missing_worktree_path_marks_failed_without_running_script(self):
@@ -357,7 +359,8 @@ class TestMergeItemC4WorkItemRevert:
         return make_db_with_work_item(work_item)
 
     def test_merge_error_reverts_work_item_status(self):
-        """MergeError path: WorkItem.status reverted to failed, completed_at cleared."""
+        """MergeError path: WorkItem.status reverted to failed, completed_at cleared.
+        CR-00028: batch_item.status is now merge_failed (not failed)."""
         wi = make_work_item_mock(WorkItemStatus.completed)
         db = make_db_with_work_item(wi)
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
@@ -367,12 +370,13 @@ class TestMergeItemC4WorkItemRevert:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict")
             _merge_item(db, item, "test-proj", make_project_config())
 
-        assert item.status == BatchItemStatus.failed
+        assert item.status == BatchItemStatus.merge_failed
         assert wi.status == WorkItemStatus.failed
         assert wi.completed_at is None
 
     def test_timeout_reverts_work_item_status(self):
-        """TimeoutExpired path: WorkItem.status reverted to failed, completed_at cleared."""
+        """TimeoutExpired path: WorkItem.status reverted to failed, completed_at cleared.
+        CR-00028: batch_item.status is now merge_failed (not failed)."""
         wi = make_work_item_mock(WorkItemStatus.completed)
         db = make_db_with_work_item(wi)
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
@@ -384,12 +388,13 @@ class TestMergeItemC4WorkItemRevert:
         ):
             _merge_item(db, item, "test-proj", make_project_config())
 
-        assert item.status == BatchItemStatus.failed
+        assert item.status == BatchItemStatus.merge_failed
         assert wi.status == WorkItemStatus.failed
         assert wi.completed_at is None
 
     def test_merge_error_does_not_revert_if_work_item_not_completed(self):
-        """If WorkItem is already failed/other, do not touch it."""
+        """If WorkItem is already failed/other, do not touch it.
+        CR-00028: batch_item.status is now merge_failed (not failed)."""
         wi = make_work_item_mock(WorkItemStatus.failed)
         db = make_db_with_work_item(wi)
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
@@ -401,11 +406,13 @@ class TestMergeItemC4WorkItemRevert:
             _merge_item(db, item, "test-proj", make_project_config())
 
         # status was already failed; completed_at should not have been touched
+        assert item.status == BatchItemStatus.merge_failed
         assert wi.status == WorkItemStatus.failed
         assert wi.completed_at == original_completed_at
 
     def test_merge_error_handles_missing_work_item_gracefully(self):
-        """If WorkItem row not found, batch_item still marked failed, no crash."""
+        """If WorkItem row not found, batch_item still marked merge_failed, no crash.
+        CR-00028: changed from failed to merge_failed."""
         db = make_db_with_work_item(None)
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         item.project_id = "test-proj"
@@ -414,7 +421,7 @@ class TestMergeItemC4WorkItemRevert:
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict")
             _merge_item(db, item, "test-proj", make_project_config())
 
-        assert item.status == BatchItemStatus.failed
+        assert item.status == BatchItemStatus.merge_failed
 
     def test_rebase_failure_reverts_work_item_status(self):
         """migration_rebase_failed path: WorkItem.status reverted to failed."""

@@ -150,6 +150,7 @@ class BatchItemStatus(enum.Enum):
     failed = "failed"
     stalled = "stalled"
     skipped = "skipped"
+    merge_failed = "merge_failed"
     migration_invalid = "migration_invalid"
     migration_rolled_back = "migration_rolled_back"
     migration_rebase_failed = "migration_rebase_failed"
@@ -162,6 +163,7 @@ TERMINAL_BATCH_ITEM_STATUSES: frozenset[BatchItemStatus] = frozenset(
         BatchItemStatus.failed,
         BatchItemStatus.stalled,
         BatchItemStatus.skipped,
+        BatchItemStatus.merge_failed,
         BatchItemStatus.migration_invalid,
         BatchItemStatus.migration_rolled_back,
         BatchItemStatus.migration_rebase_failed,

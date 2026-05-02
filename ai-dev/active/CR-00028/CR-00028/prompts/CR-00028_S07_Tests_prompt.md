@@ -164,18 +164,6 @@ After writing all tests:
 2. `make test-integration` — all integration tests (new + existing) pass
 3. Do NOT report `tests_passed: true` unless both pass
 
-**Bash timeouts**: `make test-integration` runs ~4 minutes on this branch. Set
-your Bash tool `timeout` to **at least 600000 ms (10 min)** when invoking it —
-shorter timeouts SIGTERM the suite mid-run and you waste your step budget on
-a phantom failure. While iterating on a specific test you've just written,
-prefer targeted invocations:
-
-```bash
-uv run pytest tests/integration/test_merge_failure_does_not_cascade.py --no-cov -v
-```
-
-Only run the full `make test-integration` once at the end as a sanity check.
-
 ## Subagent Result Contract
 
 ```json
