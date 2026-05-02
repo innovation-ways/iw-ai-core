@@ -49,7 +49,7 @@ _WORK_ITEM_PHASE: dict[WorkItemPhase, frozenset[WorkItemPhase]] = {
 }
 
 _STEP_STATUS: dict[StepStatus, frozenset[StepStatus]] = {
-    StepStatus.pending: frozenset({StepStatus.in_progress}),
+    StepStatus.pending: frozenset({StepStatus.in_progress, StepStatus.skipped}),
     StepStatus.in_progress: frozenset(
         {StepStatus.completed, StepStatus.failed, StepStatus.needs_fix}
     ),

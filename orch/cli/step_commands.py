@@ -108,8 +108,11 @@ def validate_step_restart_transition(current_status: StepStatus) -> str | None:
 
 def validate_step_skip_transition(current_status: StepStatus) -> str | None:
     """Return an error message if step-skip is invalid, or None if OK."""
-    if current_status != StepStatus.failed:
-        return f"Cannot skip step: current status is '{current_status.value}' (must be failed)"
+    if current_status not in (StepStatus.failed, StepStatus.pending):
+        return (
+            f"Cannot skip step: current status is '{current_status.value}'"
+            " (must be failed or pending)"
+        )
     return None
 
 
