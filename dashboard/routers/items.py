@@ -557,6 +557,14 @@ def _merge_status(bi: BatchItem | None) -> str:
         return "in_progress"
     if bi.status == BatchItemStatus.failed:
         return "failed"
+    # Recoverable merge statuses (CR-00028): retry or abandon via UI
+    recoverable_merge_statuses = {
+        BatchItemStatus.merge_failed,
+        BatchItemStatus.migration_invalid,
+        BatchItemStatus.migration_rebase_failed,
+    }
+    if bi.status in recoverable_merge_statuses:
+        return "merge_failed"
     return "pending"
 
 

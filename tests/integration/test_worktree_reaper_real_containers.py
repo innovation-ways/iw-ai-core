@@ -42,6 +42,20 @@ def docker_available():
     return True
 
 
+@pytest.mark.skip(
+    reason=(
+        "Destructive: reap(db_session) scans the Docker daemon cluster-wide for "
+        "iwcore.role=worktree-db containers and classifies any container whose "
+        "batch_item_id is absent from the test's transactional db_session as "
+        "'orphan' — then kills it. On a dev machine with concurrently-running "
+        "per-worktree DB stacks (other CR/F/I worktrees), this test reaps THEIR "
+        "containers, breaking every other test that depends on dashboard.app's "
+        "lifespan SessionLocal (~457-error cascade across the integration "
+        "suite). Until scan() supports a project_id filter or the test mocks "
+        "docker, leave it skipped — it's the proximate cause of the cascade "
+        "investigated in CR-00028 S07."
+    )
+)
 @pytest.mark.integration
 @pytest.mark.timeout(240)
 def test_reaper_classifies_and_reaps_orphan(

@@ -169,6 +169,34 @@ class TestCurrentExecutionGroup:
     def test_empty_returns_none(self):
         assert _current_execution_group([]) is None
 
+    def test_merge_failed_item_keeps_group_active(self):
+        # CR-00028: merge_failed is non-terminal — group stays open
+        items = [
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merge_failed),
+            make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
+        ]
+        assert _current_execution_group(items) == 0
+
+    def test_migration_invalid_item_keeps_group_active(self):
+        # CR-00028: operator-recoverable — group stays open
+        items = [
+            make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.migration_invalid),
+            make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
+        ]
+        assert _current_execution_group(items) == 0
+
+    def test_migration_rebase_failed_item_keeps_group_active(self):
+        # CR-00028: operator-recoverable — group stays open
+        items = [
+            make_batch_item(
+                "F-00001",
+                execution_group=0,
+                status=BatchItemStatus.migration_rebase_failed,
+            ),
+            make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
+        ]
+        assert _current_execution_group(items) == 0
+
 
 # ---------------------------------------------------------------------------
 # Parallelism limit
@@ -724,20 +752,22 @@ class TestBlockingTerminalStatuses:
     def test_setup_failed_is_blocking(self):
         assert BatchItemStatus.setup_failed in _BLOCKING_TERMINAL_STATUSES
 
-    def test_migration_invalid_is_blocking(self):
-        assert BatchItemStatus.migration_invalid in _BLOCKING_TERMINAL_STATUSES
+    def test_migration_invalid_not_blocking(self):
+        # CR-00028: operator-recoverable merge failure — excluded from cascade
+        assert BatchItemStatus.migration_invalid not in _BLOCKING_TERMINAL_STATUSES
 
     def test_migration_rolled_back_is_blocking(self):
         assert BatchItemStatus.migration_rolled_back in _BLOCKING_TERMINAL_STATUSES
-
-    def test_migration_rebase_failed_is_blocking(self):
-        assert BatchItemStatus.migration_rebase_failed in _BLOCKING_TERMINAL_STATUSES
 
     def test_stalled_is_blocking(self):
         assert BatchItemStatus.stalled in _BLOCKING_TERMINAL_STATUSES
 
     def test_skipped_is_blocking(self):
         assert BatchItemStatus.skipped in _BLOCKING_TERMINAL_STATUSES
+
+    def test_merge_failed_not_blocking(self):
+        # CR-00028: operator-recoverable merge failure — excluded from cascade
+        assert BatchItemStatus.merge_failed not in _BLOCKING_TERMINAL_STATUSES
 
 
 class TestExecutionGroupDependencyCheck:
@@ -764,9 +794,9 @@ class TestExecutionGroupDependencyCheck:
         "blocking_status",
         [
             BatchItemStatus.setup_failed,
-            BatchItemStatus.migration_invalid,
+            # CR-00028: migration_invalid, migration_rebase_failed, merge_failed are
+            # operator-recoverable — excluded from cascade
             BatchItemStatus.migration_rolled_back,
-            BatchItemStatus.migration_rebase_failed,
             BatchItemStatus.stalled,
             BatchItemStatus.skipped,
         ],

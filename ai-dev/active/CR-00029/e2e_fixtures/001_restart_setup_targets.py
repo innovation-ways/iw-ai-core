@@ -57,14 +57,17 @@ def seed(db: Session) -> None:
         db.add(item_a)
         db.flush()  # ensure WorkItem exists before BatchItem FK
 
-    bi_a = db.execute(
-        BatchItem.__table__.select()
-        .where(
-            BatchItem.project_id == PROJECT_ID,
-            BatchItem.batch_id == BATCH_ID,
-            BatchItem.work_item_id == "CR29-A",
+    bi_a = (
+        db.execute(
+            BatchItem.__table__.select().where(
+                BatchItem.project_id == PROJECT_ID,
+                BatchItem.batch_id == BATCH_ID,
+                BatchItem.work_item_id == "CR29-A",
+            )
         )
-    ).mappings().fetchone()
+        .mappings()
+        .fetchone()
+    )
 
     if bi_a is None:
         bi_a = BatchItem(
@@ -77,14 +80,17 @@ def seed(db: Session) -> None:
         db.add(bi_a)
         db.flush()
         # Refresh to get PK
-        bi_a = db.execute(
-            BatchItem.__table__.select()
-            .where(
-                BatchItem.project_id == PROJECT_ID,
-                BatchItem.batch_id == BATCH_ID,
-                BatchItem.work_item_id == "CR29-A",
+        bi_a = (
+            db.execute(
+                BatchItem.__table__.select().where(
+                    BatchItem.project_id == PROJECT_ID,
+                    BatchItem.batch_id == BATCH_ID,
+                    BatchItem.work_item_id == "CR29-A",
+                )
             )
-        ).mappings().fetchone()
+            .mappings()
+            .fetchone()
+        )
     else:
         # Update status to failed
         db.execute(
@@ -94,22 +100,22 @@ def seed(db: Session) -> None:
         )
 
     # WorkflowSteps for CR29-A: 3 steps, all pending
-    existing_steps_a = db.execute(
-        WorkflowStep.__table__.select()
-        .where(
-            WorkflowStep.project_id == PROJECT_ID,
-            WorkflowStep.work_item_id == "CR29-A",
+    existing_steps_a = (
+        db.execute(
+            WorkflowStep.__table__.select().where(
+                WorkflowStep.project_id == PROJECT_ID,
+                WorkflowStep.work_item_id == "CR29-A",
+            )
         )
-    ).mappings().fetchall()
+        .mappings()
+        .fetchall()
+    )
 
     if len(existing_steps_a) < 3:
         # Clear any existing
         if existing_steps_a:
             for s in existing_steps_a:
-                db.execute(
-                    WorkflowStep.__table__.delete()
-                    .where(WorkflowStep.id == s["id"])
-                )
+                db.execute(WorkflowStep.__table__.delete().where(WorkflowStep.id == s["id"]))
         for i, (step_id, label) in enumerate(
             [("S01", "Implementation"), ("S02", "Code Review"), ("S03", "Frontend")], start=0
         ):
@@ -145,14 +151,17 @@ def seed(db: Session) -> None:
         db.add(item_b)
         db.flush()  # ensure WorkItem exists before BatchItem FK
 
-    bi_b = db.execute(
-        BatchItem.__table__.select()
-        .where(
-            BatchItem.project_id == PROJECT_ID,
-            BatchItem.batch_id == BATCH_ID,
-            BatchItem.work_item_id == "CR29-B",
+    bi_b = (
+        db.execute(
+            BatchItem.__table__.select().where(
+                BatchItem.project_id == PROJECT_ID,
+                BatchItem.batch_id == BATCH_ID,
+                BatchItem.work_item_id == "CR29-B",
+            )
         )
-    ).mappings().fetchone()
+        .mappings()
+        .fetchone()
+    )
 
     if bi_b is None:
         bi_b = BatchItem(
@@ -164,14 +173,17 @@ def seed(db: Session) -> None:
         )
         db.add(bi_b)
         db.flush()
-        bi_b = db.execute(
-            BatchItem.__table__.select()
-            .where(
-                BatchItem.project_id == PROJECT_ID,
-                BatchItem.batch_id == BATCH_ID,
-                BatchItem.work_item_id == "CR29-B",
+        bi_b = (
+            db.execute(
+                BatchItem.__table__.select().where(
+                    BatchItem.project_id == PROJECT_ID,
+                    BatchItem.batch_id == BATCH_ID,
+                    BatchItem.work_item_id == "CR29-B",
+                )
             )
-        ).mappings().fetchone()
+            .mappings()
+            .fetchone()
+        )
     else:
         db.execute(
             BatchItem.__table__.update()
@@ -180,21 +192,21 @@ def seed(db: Session) -> None:
         )
 
     # WorkflowSteps for CR29-B: 3 steps, S01 completed
-    existing_steps_b = db.execute(
-        WorkflowStep.__table__.select()
-        .where(
-            WorkflowStep.project_id == PROJECT_ID,
-            WorkflowStep.work_item_id == "CR29-B",
+    existing_steps_b = (
+        db.execute(
+            WorkflowStep.__table__.select().where(
+                WorkflowStep.project_id == PROJECT_ID,
+                WorkflowStep.work_item_id == "CR29-B",
+            )
         )
-    ).mappings().fetchall()
+        .mappings()
+        .fetchall()
+    )
 
     if len(existing_steps_b) < 3:
         if existing_steps_b:
             for s in existing_steps_b:
-                db.execute(
-                    WorkflowStep.__table__.delete()
-                    .where(WorkflowStep.id == s["id"])
-                )
+                db.execute(WorkflowStep.__table__.delete().where(WorkflowStep.id == s["id"]))
         now = datetime.now(UTC)
         steps_data = [
             ("S01", "Implementation", StepStatus.completed, now, now),
