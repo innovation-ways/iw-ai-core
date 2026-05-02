@@ -56,6 +56,11 @@ class ProjectConfig:
     # .iw-orch.json: {"scope_gate_enabled": true}. CR-00030 will replace this
     # blanket toggle with a more discriminating mechanism.
     scope_gate_enabled: bool = False
+    # Opt-in self-assessment step (iw-item-analyze) run before merge. When True,
+    # a self_assess step is injected into manifests and the daemon treats its
+    # failures as soft (item proceeds to merge regardless). Read from
+    # projects.toml: [projects.<id>] self_assess = true.
+    self_assess_enabled: bool = False
 
     @property
     def working_dir(self) -> str:
@@ -120,6 +125,18 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
 
     scope_gate_enabled: bool = bool(iw_config.get("scope_gate_enabled", False))
 
+    # self_assess flag — read from projects.toml entry, not .iw-orch.json
+    raw_self_assess = entry.get("self_assess", False)
+    if isinstance(raw_self_assess, bool):
+        self_assess_enabled = raw_self_assess
+    else:
+        logger.warning(
+            "Project %r has non-bool 'self_assess' value %r — defaulting to False",
+            project_id,
+            raw_self_assess,
+        )
+        self_assess_enabled = False
+
     return ProjectConfig(
         id=project_id,
         display_name=display_name,
@@ -130,6 +147,7 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         config=iw_config,
         dev_clone=dev_clone,
         scope_gate_enabled=scope_gate_enabled,
+        self_assess_enabled=self_assess_enabled,
     )
 
 

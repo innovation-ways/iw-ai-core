@@ -388,6 +388,23 @@ class BatchManager:
             if has_failed.status == StepStatus.needs_fix:
                 return
 
+            # Soft-step semantics: self_assess failures never block merge.
+            # The StepRun row records the actual failure for reporting, but
+            # the item proceeds to the next step (or merge) without any fix
+            # cycle, retry, or human-review signal.
+            from orch.self_assess import is_soft_step_failure  # noqa: PLC0415
+
+            if is_soft_step_failure(has_failed.step_type, has_failed.status):
+                # Treat as terminal-success for batch progression; row stays failed
+                logger.info(
+                    "[%s] self_assess step %s/%s failed (soft) — proceeding without fix cycle",
+                    self.project_id,
+                    batch_item.work_item_id,
+                    has_failed.step_id,
+                )
+                self._launch_next_step(db, batch_item.work_item_id, batch_item.worktree_info or {})
+                return
+
             # Step failed — attempt a fix cycle if the step type supports it
             from orch.daemon import fix_cycle  # noqa: PLC0415
 
@@ -1035,9 +1052,10 @@ class BatchManager:
             agent_env = {**agent_env, **bv_env}
         if worktree_info.get("worktree_compose_path") is not None:
             agent_env["IW_CORE_PER_WORKTREE_DB"] = "true"
-        # Always inject IW_STEP_ID so browser-verification agents can call
+        # Always inject IW_STEP_ID and IW_ITEM_ID so agents can call
         # `iw step-done "$IW_ITEM_ID" --step "$IW_STEP_ID"` without hardcoding.
         agent_env["IW_STEP_ID"] = step.step_id
+        agent_env["IW_ITEM_ID"] = step.work_item_id
 
         proc_env = agent_env
 

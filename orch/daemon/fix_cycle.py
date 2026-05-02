@@ -142,7 +142,14 @@ def should_attempt_fix(
     always runs within the max-cycles budget; the fix prompt tells the
     agent how to judge whether an earlier ENV_DATA_MISSING claim is real
     (write a fixture) or hiding a code defect (fix the defect).
+
+    self_assess steps are soft — failures never trigger fix cycles; the
+    item proceeds to merge regardless.
     """
+    from orch.self_assess import is_self_assess_step  # noqa: PLC0415
+
+    if is_self_assess_step(step.step_type):
+        return False
     if step.step_type not in _FIXABLE_STEP_TYPES:
         return False
 

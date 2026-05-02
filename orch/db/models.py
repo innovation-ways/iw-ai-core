@@ -89,6 +89,7 @@ class StepType(enum.Enum):
     quality_validation = "quality_validation"
     qv_fix = "qv_fix"
     browser_verification = "browser_verification"
+    self_assess = "self_assess"
 
 
 class StepStatus(enum.Enum):

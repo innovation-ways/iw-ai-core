@@ -78,12 +78,15 @@ Every work item folder contains a manifest file at `ai-dev/active/{ID}/workflow-
 | Tests | `tests-impl` |
 | Pipeline | `pipeline-impl` |
 | Template | `template-impl` |
+| SelfAssess | `self-assess-impl` |
 | CodeReview_{X} | `code-review-impl` |
 | CodeReview_Final | `code-review-final-impl` |
 | CodeReview_FIX_{X} | `code-review-fix-impl` |
 | CodeReview_FIX_Final | `code-review-fix-final-impl` |
 | QV gate | `qv-gate` (with `gate` + `command` fields) |
 | QV browser | `qv-browser` (with `prompt` field) |
+
+**`self-assess-impl` is a soft step.** Failures never block batch_item progression to `merging` — the daemon coerces a `failed` self_assess step to `completed` for batch progression while preserving the actual run status on the StepRun row. No fix cycles are launched for self_assess failures. The step is opt-in per project via `projects.toml`'s `self_assess = true` flag and is injected automatically by the design skills (`/iw-new-feature`, `/iw-new-cr`, `/iw-new-incident`).
 
 ## iw CLI State Reporting
 

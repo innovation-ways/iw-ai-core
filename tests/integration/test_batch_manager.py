@@ -302,6 +302,46 @@ class TestBatchLifecycleFull:
         db_session.refresh(batch)
         assert batch.status == BatchStatus.completed
 
+    def test_self_assess_failure_does_not_block_item_completion(
+        self, db_session: Session, manager: BatchManager, test_project
+    ):
+        """A self_assess step that fails is treated as soft — item still completes."""
+        work_item = make_work_item(db_session, "F-00001")
+        # All implementation steps complete, then self_assess fails
+        make_workflow_step(
+            db_session,
+            "F-00001",
+            1,
+            "S01",
+            step_type=StepType.implementation,
+            status=StepStatus.completed,
+        )
+        make_workflow_step(
+            db_session,
+            "F-00001",
+            2,
+            "S02",
+            step_type=StepType.self_assess,
+            status=StepStatus.failed,
+        )
+        make_batch(db_session, "B001", status=BatchStatus.executing)
+        batch_item = make_batch_item(
+            db_session,
+            "B001",
+            "F-00001",
+            status=BatchItemStatus.executing,
+        )
+        batch_item.worktree_info = {"path": "/wt/F-00001"}
+        db_session.flush()
+
+        manager.process_batches()
+
+        # Item should still complete (soft step failure doesn't block)
+        db_session.refresh(batch_item)
+        assert batch_item.status == BatchItemStatus.completed
+        db_session.refresh(work_item)
+        assert work_item.status == WorkItemStatus.completed
+
 
 class TestExecutionGroupAdvancement:
     @pytest.fixture(autouse=True)
