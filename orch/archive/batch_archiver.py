@@ -26,6 +26,7 @@ from orch.db.models import (
     BatchStatus,
     DaemonEvent,
     Project,
+    WorkItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,10 +118,19 @@ def _run_archive(project_id: str, batch_id: str, *, run_post_commands: bool = Tr
 
         archived: list[str] = []
         item_errors: list[str] = []
+        # Paths to stage in git: deleted item folders + new .tar.zst bundles.
+        # We collect them explicitly per item rather than relying on `git add -A`,
+        # which would drag any unrelated dirty state in the worktree into the
+        # archive commit and trip pre-commit hooks on files the archive never
+        # touched (the 2026-05-02 BATCH-00070/71/72 incident).
+        paths_to_stage: list[Path] = []
         for bi in batch_items:
             try:
                 archive_work_item(db, project_id, bi.work_item_id, archive_dir)
                 archived.append(bi.work_item_id)
+                paths_to_stage.extend(
+                    _archive_paths_for_item(db, project_id, bi.work_item_id, archive_dir)
+                )
             except Exception as exc:
                 item_errors.append(f"{bi.work_item_id}: {exc}")
                 logger.exception(
@@ -132,7 +142,9 @@ def _run_archive(project_id: str, batch_id: str, *, run_post_commands: bool = Tr
 
         # --- Step 2.5: Commit deleted work item folders to git ---
         if archived:
-            commit_error = _git_commit_archive(repo_root, batch_id, archived, project_id)
+            commit_error = _git_commit_archive(
+                repo_root, batch_id, archived, paths_to_stage, project_id
+            )
             if commit_error:
                 item_errors.append(commit_error)
 
@@ -181,36 +193,97 @@ def _run_archive(project_id: str, batch_id: str, *, run_post_commands: bool = Tr
     return archived
 
 
+def _archive_paths_for_item(
+    db: Any, project_id: str, item_id: str, archive_dir: Path
+) -> list[Path]:
+    """Return the absolute paths the archive operation touched for one item.
+
+    Includes the deleted active folder (so its deletion can be staged) and the
+    newly created .tar.zst bundle. Caller is responsible for filtering out
+    paths that fall outside the project's repo_root.
+    """
+    wi = db.get(WorkItem, (project_id, item_id))
+    if wi is None:
+        return []
+
+    project = db.get(Project, project_id)
+    repo_root = Path(project.repo_root) if project else None
+    paths: list[Path] = []
+
+    # The work item folder (now deleted from disk by archive_work_item, but git
+    # still tracks it — we need to stage the deletion).
+    if wi.design_doc_path and repo_root is not None:
+        paths.append((repo_root / wi.design_doc_path).parent)
+    elif repo_root is not None:
+        paths.append(repo_root / "ai-dev" / "active" / item_id)
+
+    # The newly created archive bundle. wi.archive_path is set by
+    # archive_work_item to "<project_id>/<item_id>.tar.zst" (relative to
+    # archive_dir). Skip if Tier 2 was disabled (archive_path is None).
+    if wi.archive_path:
+        paths.append(archive_dir / wi.archive_path)
+
+    return paths
+
+
 def _git_commit_archive(
-    repo_root: Path, batch_id: str, archived_items: list[str], project_id: str
+    repo_root: Path,
+    batch_id: str,
+    archived_items: list[str],
+    paths_to_stage: list[Path],
+    project_id: str,
 ) -> str | None:
-    """Stage deleted work item folders and commit to git. Returns error string or None."""
+    """Stage explicit archive paths and commit to git. Returns error string or None.
+
+    Restricts staging to paths under repo_root — archive bundles in a central
+    archive_dir outside the project repo are skipped (they live in the
+    iw-ai-core repo, not the project being archived).
+    """
     items_str = ", ".join(archived_items)
     commit_msg = f"Archive {batch_id}: remove {items_str}"
     logger.info("[%s] Committing archive deletions for batch %s", project_id, batch_id)
+
+    repo_root_resolved = repo_root.resolve()
+    rel_paths: list[str] = []
+    for p in paths_to_stage:
+        try:
+            rel = p.resolve().relative_to(repo_root_resolved)
+        except ValueError:
+            # Path is outside repo_root (e.g. central archive_dir). Skip.
+            continue
+        rel_paths.append(str(rel))
+
+    if not rel_paths:
+        logger.info(
+            "[%s] No archive paths under repo_root for batch %s — nothing to commit",
+            project_id,
+            batch_id,
+        )
+        return None
+
     try:
-        add_result = subprocess.run(  # noqa: S602
-            "git add -A",
-            shell=True,
+        add_result = subprocess.run(  # noqa: S603
+            ["git", "add", "--", *rel_paths],  # noqa: S607
             cwd=str(repo_root),
             capture_output=True,
             text=True,
             timeout=60,
         )
         if add_result.returncode != 0:
-            error = f"git add failed: {(add_result.stderr or add_result.stdout).strip()[:300]}"
+            output = (add_result.stderr or add_result.stdout).strip()
+            error = f"git add failed: {output}"
             logger.error("[%s] %s", project_id, error)
             return error
 
-        commit_result = subprocess.run(  # noqa: S602
-            ["git", "commit", "-m", commit_msg],
+        commit_result = subprocess.run(  # noqa: S603
+            ["git", "commit", "-m", commit_msg],  # noqa: S607
             cwd=str(repo_root),
             capture_output=True,
             text=True,
             timeout=60,
         )
         if commit_result.returncode != 0:
-            output = (commit_result.stderr or commit_result.stdout).strip()[:300]
+            output = (commit_result.stderr or commit_result.stdout).strip()
             # "nothing to commit" is not an error
             if "nothing to commit" in output:
                 logger.info("[%s] Nothing to commit for batch %s archive", project_id, batch_id)
