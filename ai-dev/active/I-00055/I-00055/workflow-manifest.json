@@ -9,9 +9,7 @@
       "orch/rag/mapgen.py",
       "dashboard/routers/code_ui.py",
       "tests/unit/rag/test_mapgen.py",
-      "tests/unit/rag/test_strip_arch_diagram_section.py",
       "tests/dashboard/test_code_page_arch_diagram.py",
-      "tests/integration/test_code_index_pipeline.py",
       "ai-dev/active/I-00055/**"
     ]
   },

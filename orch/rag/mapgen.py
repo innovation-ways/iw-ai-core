@@ -184,9 +184,13 @@ class MapGenerator:
 
         def store_arch_diagram(dsl: str, purpose: str) -> None:
             from orch.db.models import DocTier, DocType, EditorialCategory, Project
-            from orch.db.session import SessionLocal as DefaultSessionLocal
 
-            factory = db_session_factory or DefaultSessionLocal
+            if db_session_factory is None:
+                from orch.db.session import SessionLocal as DefaultSessionLocal
+
+                factory = DefaultSessionLocal
+            else:
+                factory = db_session_factory
             content = f"<!-- purpose: {purpose} -->\n{dsl}"
             with factory() as session:
                 project = session.get(Project, project_id)
@@ -226,9 +230,13 @@ class MapGenerator:
 
         def do_upsert() -> ProjectDoc:
             from orch.db.models import DocTier, DocType, EditorialCategory
-            from orch.db.session import SessionLocal as DefaultSessionLocal
 
-            factory = db_session_factory or DefaultSessionLocal
+            if db_session_factory is None:
+                from orch.db.session import SessionLocal as DefaultSessionLocal
+
+                factory = DefaultSessionLocal
+            else:
+                factory = db_session_factory
             with factory() as session:
                 project = session.get(Project, project_id)
                 if project is None:
@@ -339,7 +347,12 @@ class MapGenerator:
         mermaid_dsl = _inject_elk_frontmatter(mermaid_dsl)
         return mermaid_dsl, purpose
 
-    def _assemble_markdown(self, answers: dict[str, str], mermaid: str, purpose: str) -> str:
+    def _assemble_markdown(
+        self,
+        answers: dict[str, str],
+        mermaid: str,  # noqa: ARG002
+        purpose: str,  # noqa: ARG002
+    ) -> str:
         lines = ["# Architecture Map", ""]
         for key, _question, _retrieval in self.QUESTIONS:
             value = answers.get(key, "").strip()
@@ -347,11 +360,40 @@ class MapGenerator:
             lines.append(f"## {label}")
             lines.append(value if value else "_(no answer)_")
             lines.append("")
-        lines.append("## Architecture Diagram")
-        lines.append("")
-        lines.append(f"<!-- purpose: {purpose} -->")
-        lines.append("")
-        lines.append("```mermaid")
-        lines.append(mermaid)
-        lines.append("```")
         return "\n".join(lines)
+
+
+def strip_trailing_arch_diagram_section(content: str) -> str:
+    """Remove a trailing '## Architecture Diagram' section from a stored
+    architecture-map markdown, including everything from that H2 to the end
+    of the document. Idempotent (no-op if the section is absent).
+
+    Conservative on purpose:
+    - Only matches an H2 (exactly two '#') named 'Architecture Diagram'.
+    - Only strips when the section is the LAST H2 in the document.
+    - Returns the input unchanged if the regex does not match.
+    """
+    # Find all H2 sections by splitting on '\n## ' boundaries.
+    # Check whether the last H2 before end-of-content is 'Architecture Diagram'.
+    # Only strip if it is the last section.
+    marker = "\n## "
+    last_marker_pos = content.rfind(marker)
+
+    if last_marker_pos == -1:
+        # No H2 markers at all — return unchanged
+        return content.rstrip()
+
+    # Extract the title of the last H2 section (up to the next \n or end)
+    after_last_marker = content[last_marker_pos + len(marker) :]
+    end_of_last_title = after_last_marker.find("\n")
+    if end_of_last_title == -1:
+        last_h2_title = after_last_marker.strip()
+    else:
+        last_h2_title = after_last_marker[:end_of_last_title].strip()
+
+    if last_h2_title != "Architecture Diagram":
+        # The last H2 is not 'Architecture Diagram' — leave content unchanged
+        return content.rstrip()
+
+    # The last H2 IS 'Architecture Diagram' — strip from the marker to the end
+    return content[:last_marker_pos].rstrip()
