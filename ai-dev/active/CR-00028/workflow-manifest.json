@@ -1,0 +1,127 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00028",
+  "type": "ChangeRequest",
+  "title": "Don't cascade merge-time failures to dependent items",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**.py",
+      "orch/daemon/merge_queue.py",
+      "orch/daemon/batch_manager.py",
+      "dashboard/routers/actions.py",
+      "dashboard/routers/items.py",
+      "dashboard/routers/sse.py",
+      "dashboard/templates/components/**.html",
+      "dashboard/templates/fragments/**.html",
+      "dashboard/templates/pages/**.html",
+      "tests/unit/test_merge_queue_merge_failed_status.py",
+      "tests/unit/test_batch_manager_blocking_terminal_set.py",
+      "tests/unit/test_batch_manager_current_execution_group.py",
+      "tests/unit/test_actions_restart_merge_preconditions.py",
+      "tests/unit/test_actions_abandon_merge.py",
+      "tests/unit/test_merge_status_recoverable_display.py",
+      "tests/integration/test_merge_failure_does_not_cascade.py",
+      "tests/integration/test_abandon_merge_triggers_cascade.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Add merge_failed value to BatchItemStatus enum; add Alembic migration with no-op downgrade; update TERMINAL_BATCH_ITEM_STATUSES to include merge_failed",
+      "prompt": "prompts/CR-00028_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 enum addition + migration: reversibility note, naming, terminal-set membership",
+      "prompt": "prompts/CR-00028_S02_CodeReview_Database_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "merge_queue.py:289 → BatchItemStatus.merge_failed (line 136 stays failed); batch_manager.py:59 _BLOCKING_TERMINAL_STATUSES excludes {merged, merge_failed, migration_invalid, migration_rebase_failed}; batch_manager.py:1368 _current_execution_group treats those three as non-terminal; actions.py restart-merge accepts the three statuses; new abandon-merge endpoint flips merge_failed/migration_invalid/migration_rebase_failed → failed and emits merge_abandoned event",
+      "prompt": "prompts/CR-00028_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: invariant 'setup runs only after previous merge is 100% complete' is preserved; cascade still fires on legacy failed; restart-merge / abandon-merge preconditions are correct",
+      "prompt": "prompts/CR-00028_S04_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "frontend-impl",
+      "description": "Add merge_failed badge variant (distinct from failed); render Retry-merge and Abandon buttons on rows whose status is in {merge_failed, migration_invalid, migration_rebase_failed} on batch detail and item overview templates; htmx POST targets the existing/new endpoints",
+      "prompt": "prompts/CR-00028_S05_Frontend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05: badge accessibility (color contrast, aria-label), no-regression on existing badge variants, htmx POST target correctness",
+      "prompt": "prompts/CR-00028_S06_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "tests-impl",
+      "description": "Unit tests for: _merge_item writes merge_failed (and still writes failed on no-worktree-path branch); _BLOCKING_TERMINAL_STATUSES membership; _current_execution_group treats merge_failed as non-terminal; restart-merge precondition; abandon-merge endpoint. Integration tests for: full 2-item-2-group cascade-not-triggered scenario; abandon-merge triggers cascade",
+      "prompt": "prompts/CR-00028_S07_Tests_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Review S07 tests for coverage of all 7 acceptance criteria and isolation",
+      "prompt": "prompts/CR-00028_S08_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-final-impl",
+      "description": "Cross-step global review: enum → daemon → actions → templates → tests chain holds end-to-end; no orphan code paths still using old failed transition for recoverable merge errors",
+      "prompt": "prompts/CR-00028_S09_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S15",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — merge_failed badge renders, Retry/Abandon buttons present and wired, no console errors, no regression on existing batch detail UI",
+      "prompt": "prompts/CR-00028_S15_BrowserVerification_prompt.md"
+    }
+  ]
+}
