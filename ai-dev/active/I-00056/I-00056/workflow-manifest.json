@@ -16,12 +16,7 @@
       "tests/unit/dashboard/test_collapsible_h2.py",
       "tests/dashboard/test_code_module_chips.py",
       "tests/unit/rag/test_mapgen_prompt.py",
-      "ai-dev/active/I-00056/**",
-      "ai-dev/active/I-00055/e2e_fixtures/001_seed_arch_docs.py",
-      "ai-dev/active/I-00058/e2e_fixtures/001_doc_generation_job.py",
-      "ai-dev/active/I-00059/e2e_fixtures/001_i00059_doc_job.py",
-      "tests/integration/test_i00059_doc_generation_get_job.py",
-      "tests/integration/test_jobs_api.py"
+      "ai-dev/active/I-00056/**"
     ]
   },
   "steps": [

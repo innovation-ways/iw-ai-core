@@ -116,22 +116,22 @@ def _seed_all_sources(db_session: Session, project_id: str) -> dict[str, str]:
     )
     db_session.flush()
 
-    dgj_id = "dgj-test-001"
-    db_session.add(
-        DocGenerationJob(
-            id=dgj_id,
-            project_id=project_id,
-            doc_id=doc_id_for_dgj,
-            status=JobStatus.completed,
-            requested_at=now - timedelta(hours=3),
-            started_at=now - timedelta(hours=2),
-            completed_at=now - timedelta(hours=1),
-            skill_used="skill:iw-doc-generator",
-            trigger_reason="manual",
-            duration_seconds=3600,
-            created_at=now - timedelta(hours=3),
-        )
+    dgj = DocGenerationJob(
+        id="dgj-test-001",
+        project_id=project_id,
+        doc_id=doc_id_for_dgj,
+        status=JobStatus.completed,
+        requested_at=now - timedelta(hours=3),
+        started_at=now - timedelta(hours=2),
+        completed_at=now - timedelta(hours=1),
+        skill_used="skill:iw-doc-generator",
+        trigger_reason="manual",
+        duration_seconds=3600,
+        created_at=now - timedelta(hours=3),
     )
+    db_session.add(dgj)
+    db_session.flush()  # triggers before_insert → allocates public_id
+    dgj_id = dgj.public_id or dgj.id
 
     batch_id = "B-TEST-001"
     db_session.add(

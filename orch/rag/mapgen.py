@@ -60,7 +60,7 @@ _GROUNDING_TEMPLATE = PromptTemplate(
     "- Do NOT describe the prompt or the questions being asked. Do NOT mention "
     "'context', 'excerpt', 'provided text', 'RAG', or 'MapGenerator'. Describe "
     "the system itself.\n"
-    "- Write 2–5 concise sentences (or a short bulleted list where natural).\n"
+    "- Write 1-3 concise sentences (or a short bulleted list where natural).\n"
     "- If the excerpts are genuinely insufficient, answer with the strongest "
     "observations you can make from what IS present — never refuse.\n\n"
     "Answer:"
