@@ -1,0 +1,114 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00062",
+  "type": "Issue",
+  "title": "Agent subprocess inherits orch DB env vars, allowing migrations to leak to port 5433",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**",
+      "orch/daemon/batch_manager.py",
+      "orch/daemon/worktree_compose.py",
+      "orch/config.py",
+      "tests/unit/daemon/**",
+      "tests/integration/daemon/**",
+      "tests/unit/orch_config/**",
+      "ai-dev/active/I-00062/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Add worktree_db_host/name/user/password columns to batch_items; ORM model update; alembic migration file (do not apply)",
+      "prompt": "prompts/I-00062_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01 (Database)",
+      "prompt": "prompts/I-00062_S02_CodeReview_Database_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Populate persisted DB credentials at compose-up; inject all per-worktree IW_CORE_DB_* in _launch_step; strip orch DB vars in _agent_subprocess_env; fail-fast guard in orch/config.py",
+      "prompt": "prompts/I-00062_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S03 (Backend)",
+      "prompt": "prompts/I-00062_S04_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Reproduction test + regression tests: env injection, env stripping, fail-fast guard",
+      "prompt": "prompts/I-00062_S05_Tests_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S05 (Tests) — semantic correctness gate",
+      "prompt": "prompts/I-00062_S06_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "Cross-agent global review covering AC1–AC6",
+      "prompt": "prompts/I-00062_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    }
+  ]
+}
