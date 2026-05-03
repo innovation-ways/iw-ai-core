@@ -27,6 +27,7 @@ from orch.db.models import (
     RunStatus,
     StepRun,
     WorkflowStep,
+    WorkItem,
 )
 from orch.db.session import SessionLocal
 
@@ -318,6 +319,8 @@ class WorktreeRow:
     last_heartbeat_age_secs: int | None = None
     pid_alive: bool | None = None
     warned_50pct_at: datetime | None = None
+    # F-00076: in-flight item's impacted_paths, joined from BatchItem → WorkItem.
+    impacted_paths: list[str] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -420,8 +423,20 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
             )
         )
 
-    stmt = select(BatchItem).where(BatchItem.status.in_(list(_ACTIVE_STATUSES)))
-    for bi in db.execute(stmt).scalars().all():
+    stmt = (
+        select(BatchItem, WorkItem.impacted_paths)
+        .join(
+            WorkItem,
+            (WorkItem.project_id == BatchItem.project_id) & (WorkItem.id == BatchItem.work_item_id),
+        )
+        .where(BatchItem.status.in_(list(_ACTIVE_STATUSES)))
+    )
+    bi_rows = db.execute(stmt).all()
+    bi_impacted_paths: dict[int, list[str]] = {bi.id: list(paths or []) for bi, paths in bi_rows}
+
+    for bi in db.scalars(
+        select(BatchItem).where(BatchItem.status.in_(list(_ACTIVE_STATUSES)))
+    ).all():
         wt = bi.worktree_info or {}
         wt_path: str | None = wt.get("path")
         branch: str = wt.get("branch", "—")
@@ -473,6 +488,7 @@ def _collect_worktrees(db: Session) -> list[WorktreeRow]:
                 last_heartbeat_age_secs=last_hb_age,
                 pid_alive=hb_alive,
                 warned_50pct_at=hb_warned,
+                impacted_paths=bi_impacted_paths.get(bi.id),
             )
         )
 

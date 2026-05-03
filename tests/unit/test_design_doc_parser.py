@@ -11,6 +11,7 @@ import pytest
 from orch.design_doc_parser import (
     Dependencies,
     parse_dependencies,
+    parse_impacted_paths,
     strip_excluded_sections,
 )
 
@@ -177,3 +178,157 @@ def test_strip_excluded_sections_path_in_description_is_preserved() -> None:
     result = strip_excluded_sections(content)
     assert "orch/foo.py" in result
     assert "dashboard/bar.py" not in result
+
+
+# --- parse_impacted_paths ---
+
+
+class TestParseImpactedPathsBulletList:
+    """Bullet-list happy path."""
+
+    def test_parses_bullet_list(self) -> None:
+        content = (
+            "## Impacted Paths\n\n"
+            "- orch/foo.py\n"
+            "- orch/bar/**\n"
+            "- dashboard/templates/components/**\n"
+        )
+        result = parse_impacted_paths(content)
+        assert result.found is True
+        assert result.paths == ["orch/foo.py", "orch/bar/**", "dashboard/templates/components/**"]
+
+    def test_parses_asterisk_bullets(self) -> None:
+        content = "## Impacted Paths\n\n* orch/foo.py\n* orch/bar/**\n"
+        result = parse_impacted_paths(content)
+        assert result.found is True
+        assert result.paths == ["orch/foo.py", "orch/bar/**"]
+
+    def test_deduplicates_preserving_order(self) -> None:
+        content = (
+            "## Impacted Paths\n\n- orch/foo.py\n- orch/bar/**\n- orch/foo.py\n- orch/foo.py\n"
+        )
+        result = parse_impacted_paths(content)
+        assert result.paths == ["orch/foo.py", "orch/bar/**"]
+
+
+class TestParseImpactedPathsCodeBlock:
+    """Fenced code block happy path."""
+
+    def test_parses_fenced_code_block(self) -> None:
+        content = "## Impacted Paths\n\n```\norch/foo.py\norch/bar/**\n```\n"
+        result = parse_impacted_paths(content)
+        assert result.found is True
+        assert result.paths == ["orch/foo.py", "orch/bar/**"]
+
+    def test_parses_fenced_code_block_with_language(self) -> None:
+        content = "## Impacted Paths\n\n```text\norch/foo.py\n```\n"
+        result = parse_impacted_paths(content)
+        assert result.found is True
+        assert result.paths == ["orch/foo.py"]
+
+
+class TestParseImpactedPathsAbsentOrEmpty:
+    """Section absent / present but empty."""
+
+    def test_section_absent(self) -> None:
+        content = "## Description\n\nNo paths section here.\n"
+        result = parse_impacted_paths(content)
+        assert result.found is False
+        assert result.paths == []
+
+    def test_section_present_but_empty(self) -> None:
+        content = "## Impacted Paths\n\n"
+        result = parse_impacted_paths(content)
+        assert result.found is True
+        assert result.paths == []
+
+    def test_section_present_empty_code_block(self) -> None:
+        content = "## Impacted Paths\n\n```\n```\n"
+        result = parse_impacted_paths(content)
+        assert result.found is True
+        assert result.paths == []
+
+    def test_handles_none_input(self) -> None:
+        result = parse_impacted_paths(None)
+        assert result.found is False
+        assert result.paths == []
+
+
+class TestParseImpactedPathsValidationErrors:
+    """Each violation raises ValueError with a precise message."""
+
+    def test_absolute_path_raises(self) -> None:
+        content = "## Impacted Paths\n\n- /etc/passwd\n"
+        with pytest.raises(ValueError, match="absolute paths are not allowed"):
+            parse_impacted_paths(content)
+
+    def test_absolute_path_in_code_block_raises(self) -> None:
+        content = "## Impacted Paths\n\n```\n/etc/passwd\n```\n"
+        with pytest.raises(ValueError, match="absolute paths are not allowed"):
+            parse_impacted_paths(content)
+
+    def test_double_dot_segment_raises(self) -> None:
+        content = "## Impacted Paths\n\n- orch/../etc/passwd\n"
+        with pytest.raises(ValueError, match="'..' path segments are not allowed"):
+            parse_impacted_paths(content)
+
+    def test_double_dot_in_code_block_raises(self) -> None:
+        content = "## Impacted Paths\n\n```\norch/../etc/passwd\n```\n"
+        with pytest.raises(ValueError, match="'..' path segments are not allowed"):
+            parse_impacted_paths(content)
+
+    def test_empty_string_raises(self) -> None:
+        content = "## Impacted Paths\n\n- \n"
+        with pytest.raises(ValueError, match="empty glob"):
+            parse_impacted_paths(content)
+
+    def test_whitespace_only_raises(self) -> None:
+        content = "## Impacted Paths\n\n-    \n"
+        with pytest.raises(ValueError, match="empty glob"):
+            parse_impacted_paths(content)
+
+    def test_whitespace_inside_glob_raises(self) -> None:
+        content = "## Impacted Paths\n\n- orch/foo bar.py\n"
+        with pytest.raises(ValueError, match="whitespace"):
+            parse_impacted_paths(content)
+
+
+class TestParseImpactedPathsSpecialChars:
+    """Globs with special characters."""
+
+    def test_glob_double_star(self) -> None:
+        content = "## Impacted Paths\n\n- **/*.py\n- orch/**\n"
+        result = parse_impacted_paths(content)
+        assert "**/*.py" in result.paths
+        assert "orch/**" in result.paths
+
+    def test_glob_square_brackets(self) -> None:
+        content = "## Impacted Paths\n\n- orch/foo[abc].py\n"
+        result = parse_impacted_paths(content)
+        assert "orch/foo[abc].py" in result.paths
+
+    def test_glob_question_mark(self) -> None:
+        content = "## Impacted Paths\n\n- orch/foo?.py\n"
+        result = parse_impacted_paths(content)
+        assert "orch/foo?.py" in result.paths
+
+    def test_glob_dot_prefix_allowed(self) -> None:
+        content = "## Impacted Paths\n\n- .env\n- .gitignore\n"
+        result = parse_impacted_paths(content)
+        assert ".env" in result.paths
+        assert ".gitignore" in result.paths
+
+
+class TestParseImpactedPathsStopsAtNextSection:
+    """Lines after the next ## heading are not parsed."""
+
+    def test_stops_at_next_section(self) -> None:
+        content = "## Impacted Paths\n\n- orch/foo.py\n\n## Other Section\n\n- /etc/passwd\n"
+        result = parse_impacted_paths(content)
+        assert result.found is True
+        assert result.paths == ["orch/foo.py"]
+
+    def test_mixed_bullets_and_code_block(self) -> None:
+        content = "## Impacted Paths\n\n- orch/foo.py\n```\norch/bar.py\n```\n"
+        result = parse_impacted_paths(content)
+        assert result.paths == ["orch/foo.py", "orch/bar.py"]

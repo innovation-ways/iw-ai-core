@@ -165,6 +165,7 @@ def _generate_batch_plan(
                 "title": item.title,
                 "type": item.type.value,
                 "depends_on": list(item.depends_on or []),
+                "impacted_paths": list(item.impacted_paths or []),
                 "design_doc_content": item.design_doc_content,
                 "steps": [
                     {"agent_label": s.agent_label, "step_type": s.step_type.value} for s in steps
@@ -197,11 +198,12 @@ def _generate_batch_plan(
         from orch.db.models import WorkItem as _WorkItem
 
         wi = session.get(_WorkItem, (project_id, abi.work_item_id))
-        if wi and wi.design_doc_content:
+        if wi:
             active_items_data.append(
                 {
                     "id": abi.work_item_id,
                     "batch_id": abi.batch_id,
+                    "impacted_paths": list(wi.impacted_paths or []),
                     "design_doc_content": wi.design_doc_content,
                 }
             )

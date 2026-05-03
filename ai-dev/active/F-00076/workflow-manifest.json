@@ -122,13 +122,27 @@
       "description": "QV: Type checking"
     },
     {
-      "step": "S15",
+      "step": "S16",
       "agent": "qv-gate",
-      "gate": "frontend-tsc",
-      "command": "cd frontend && npx tsc --noEmit",
-      "description": "QV: Frontend types"
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
     },
     {
+      "step": "S17",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S18",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+{
       "step": "S16",
       "agent": "qv-gate",
       "gate": "arch-check",
@@ -152,9 +166,10 @@
     {
       "step": "S19",
       "agent": "qv-gate",
-      "gate": "frontend-tests",
-      "command": "make test-frontend",
-      "description": "QV: Frontend tests"
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
     },
     {
       "step": "S20",

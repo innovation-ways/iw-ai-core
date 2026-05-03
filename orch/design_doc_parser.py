@@ -12,8 +12,104 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Impacted Paths
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ImpactedPathsResult:
+    """Result of parsing a design document's ## Impacted Paths section."""
+
+    paths: list[str]  # validated, deduped, original order preserved
+    found: bool  # True if the section existed (even if empty)
+
+
+def parse_impacted_paths(content: str | None) -> ImpactedPathsResult:
+    """Extract glob patterns from the '## Impacted Paths' section.
+
+    Accepts BOTH markdown bullet lists (`- glob`, `* glob`) AND fenced code
+    blocks. Validates each glob (raises ValueError on absolute paths, '..',
+    whitespace inside the glob, or empty strings). Returns ImpactedPathsResult
+    with `found=False` and `paths=[]` when the section is absent.
+    """
+    if not content:
+        return ImpactedPathsResult(paths=[], found=False)
+
+    # Find the ## Impacted Paths section
+    section_ranges = _iter_section_ranges(content)
+    impacted_paths_range: tuple[int, int] | None = None
+    for start, end, title_lower in section_ranges:
+        if title_lower == "impacted paths":
+            impacted_paths_range = (start, end)
+            break
+
+    if impacted_paths_range is None:
+        return ImpactedPathsResult(paths=[], found=False)
+
+    section_start, section_end = impacted_paths_range
+    lines = content.splitlines()
+    # Skip the heading line itself; process from the line after
+    section_lines = lines[section_start + 1 : section_end]
+
+    # Collect globs from bullet lines and code blocks
+    globs: list[str] = []
+    seen: set[str] = set()
+    in_code_block = False
+
+    for raw_line in section_lines:
+        stripped = raw_line.strip()
+
+        # Fence detection: opening/closing ``` fence lines
+        if stripped.startswith("```"):
+            # Toggle in_code_block state
+            in_code_block = not in_code_block
+            continue
+
+        if in_code_block:
+            glob = stripped
+            _validate_glob(glob)  # raises ValueError on invalid
+            if glob not in seen:
+                seen.add(glob)
+                globs.append(glob)
+            continue
+
+        # Bullet lines: preserve indentation when extracting glob.
+        # raw_line e.g. "  - foo.py" or "- foo.py" or "   * bar.py"
+        lstripped = raw_line.lstrip()
+        if lstripped.startswith(("- ", "* ")):
+            indent = len(raw_line) - len(lstripped)
+            glob = raw_line[indent + 2 :].strip()  # skip marker "- " or "* "
+            _validate_glob(glob)  # raises ValueError on invalid
+            if glob not in seen:
+                seen.add(glob)
+                globs.append(glob)
+
+    return ImpactedPathsResult(paths=globs, found=True)
+
+
+def _validate_glob(glob: str) -> bool:
+    """Validate a single glob. Raises ValueError on invalid input."""
+    stripped = glob.strip()
+    if not stripped:
+        raise ValueError("empty glob")
+
+    if " " in stripped or "\t" in stripped:
+        raise ValueError("whitespace inside glob is not allowed")
+
+    if stripped.startswith("/"):
+        raise ValueError("absolute paths are not allowed")
+
+    parts = PurePosixPath(stripped).parts
+    if ".." in parts:
+        raise ValueError("'..' path segments are not allowed")
+
+    return True
+
 
 # ---------------------------------------------------------------------------
 # ID pattern
