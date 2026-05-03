@@ -156,11 +156,13 @@ def analyze_dependencies(
 
     items_data is a list of dicts with keys:
         id, title, type, depends_on (list[str]),
-        design_doc_content (str|None), steps (list of step dicts)
+        impacted_paths (list[str]|None) — if present, used in place of regex;
+        design_doc_content (str|None) — fallback when impacted_paths absent;
+        steps (list of step dicts)
 
     active_items_data is an optional list of items currently executing in other
     batches, used for cross-batch file overlap detection. Each dict needs:
-        id, batch_id, design_doc_content (str|None)
+        id, batch_id, impacted_paths (list[str]|None), design_doc_content (str|None)
 
     Returns a dict mapping item_id to its ItemAnalysis.
     """
@@ -169,7 +171,14 @@ def analyze_dependencies(
 
     # Phase 1: Build initial analysis from DB data
     for d in items_data:
-        affected = extract_affected_files(d.get("design_doc_content"))
+        # F-00076: prefer impacted_paths column; fall back to regex for items
+        # registered before the backfill ran.
+        impacted = d.get("impacted_paths")
+        if impacted:
+            affected = [p for p in impacted if not _is_test_path(p)]
+        else:
+            # Defensive fallback for items registered before F-00076 backfill ran.
+            affected = extract_affected_files(d.get("design_doc_content"))
         db_step = has_database_step(d.get("steps", []))
         # Filter depends_on to only items within this batch
         deps = [dep for dep in (d.get("depends_on") or []) if dep in selected_ids]
@@ -206,7 +215,13 @@ def analyze_dependencies(
     # Phase 3b: Cross-batch file overlap detection (warning only — no sequencing possible)
     if active_items_data:
         for active in active_items_data:
-            active_files = set(extract_affected_files(active.get("design_doc_content")))
+            # Prefer impacted_paths column; fall back to regex for items
+            # registered before the F-00076 backfill ran.
+            active_impacted = active.get("impacted_paths")
+            if active_impacted:
+                active_files = {p for p in active_impacted if not _is_test_path(p)}
+            else:
+                active_files = set(extract_affected_files(active.get("design_doc_content")))
             if not active_files:
                 continue
             active_batch_id = active.get("batch_id", "?")

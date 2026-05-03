@@ -440,6 +440,19 @@ class WorkItem(Base):
         server_default=text("'{}'"),
         comment="Array of work item IDs this item blocks",
     )
+    impacted_paths: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'"),
+        comment=(
+            "Globs declaring files this work item is expected to touch. "
+            "Source of truth for the cross-batch launch-time conflict gate "
+            "(F-00076) and the workflow-manifest.json:scope.allowed_paths "
+            "merge gate. Populated by orch/cli/item_commands.py:register() "
+            "from the design doc's 'Impacted Paths' section, with a regex "
+            "fallback over design_doc_content when the section is absent."
+        ),
+    )
     design_doc_path: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,

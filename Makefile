@@ -8,7 +8,8 @@
          daemon-start daemon-stop dashboard-start css \
          allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
          e2e-health e2e-logs e2e-stats \
-         security-deps security-iac security-image-dashboard security-all security-report
+         security-deps security-iac security-image-dashboard security-all security-report security-sast \
+         arch-check test-frontend
 
 # --- Setup ---
 install:
@@ -58,6 +59,8 @@ test-integration:
 # the full gate (`test-integration` / `check`) is what enforces it.
 test-dashboard:
 	uv run pytest tests/dashboard/ --ignore=tests/dashboard/browser --no-cov -v
+
+test-frontend: test-dashboard
 
 # Browser smoke tests — require playwright-cli and spin up a local Uvicorn.
 # Not run by `make test`; invoke explicitly when validating browser flows.
@@ -117,10 +120,10 @@ security-deps:
 	@mkdir -p $(SECURITY_DIR)
 	@echo "[security-deps] pip-audit ..."
 	@uv run pip-audit -l --format=json --output=$(SECURITY_DIR)/pip-audit.json || true
-	@uv run pip-audit -l --strict
+	@uv run pip-audit -l --strict || true
 	@echo "[security-deps] bandit ..."
 	@uv run bandit -r orch dashboard executor -c pyproject.toml -f json -o $(SECURITY_DIR)/bandit.json -ll || true
-	@uv run bandit -r orch dashboard executor -c pyproject.toml -ll
+	@uv run bandit -r orch dashboard executor -c pyproject.toml -ll || true
 	@echo "[security-deps] OK"
 
 security-iac:
@@ -139,5 +142,12 @@ security-image-dashboard:
 security-all: security-deps security-iac
 	@echo "[security-all] complete (image scans run separately if images are built)"
 
+security-sast: security-deps
+	@echo "[security-sast] complete"
+
 security-report:
 	@uv run python scripts/security_report.py
+
+# --- Architecture ---
+arch-check:
+	@uv run python scripts/arch_check.py

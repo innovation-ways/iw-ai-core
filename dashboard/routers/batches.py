@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field
+from datetime import (  # noqa: N811  UTC used at runtime in _get_held_reasons; datetime class used at runtime (datetime.now) and in type annotations via PEP 563
+    UTC,
+    datetime,
+)
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -23,8 +27,6 @@ from orch.db.models import (
 )
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from fastapi.templating import Jinja2Templates
     from sqlalchemy.orm import Session
 
@@ -65,6 +67,27 @@ class BatchItemRow:
     started_at: datetime | None = None
     started_at_ts: float | None = None
     ended_at_ts: float | None = None
+    # F-00076: held-reason for pending items with a recent item_held_for_scope event.
+    held_reason: str | None = None
+
+
+@dataclass
+class HeldReason:
+    """F-00076: why a pending batch item is held (cross-batch conflict)."""
+
+    blocking_item_id: str
+    conflicting_globs: list[str]
+
+    @property
+    def glob_summary(self) -> str:
+        """First 2 globs joined by comma, +N if more."""
+        if not self.conflicting_globs:
+            return ""
+        if len(self.conflicting_globs) == 1:
+            return self.conflicting_globs[0]
+        first_two = ", ".join(self.conflicting_globs[:2])
+        extra = len(self.conflicting_globs) - 2
+        return f"{first_two}+{extra}" if extra > 0 else first_two
 
 
 @dataclass
@@ -83,6 +106,68 @@ class BatchRow:
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
+
+
+def _get_held_reasons(
+    project_id: str,
+    item_ids: list[str],
+    db: Session,
+    window_secs: int = 300,
+) -> dict[str, str]:
+    """F-00076: for each given work_item_id in project, return the most recent
+    item_held_for_scope DaemonEvent (within window_secs) as a human-readable
+    "Held: overlaps with I-NNNNN on <glob_summary>" string.
+
+    Returns a dict {work_item_id: reason_str} for items that are pending with
+    a recent hold event. Items with no hold event are absent from the dict.
+    """
+    from datetime import timedelta
+
+    from orch.db.models import DaemonEvent
+
+    if not item_ids:
+        return {}
+
+    cutoff = datetime.now(UTC) - timedelta(seconds=window_secs)
+    rows = (
+        db.execute(
+            select(DaemonEvent)
+            .where(
+                DaemonEvent.project_id == project_id,
+                DaemonEvent.event_type == "item_held_for_scope",
+                DaemonEvent.entity_id.in_(item_ids),
+                DaemonEvent.entity_type == "work_item",
+                DaemonEvent.created_at >= cutoff,
+            )
+            .order_by(DaemonEvent.entity_id, DaemonEvent.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+
+    # Keep only the most recent per entity_id
+    result: dict[str, str] = {}
+    seen: set[str] = set()
+    for ev in rows:
+        entity_id = ev.entity_id
+        if entity_id is None or entity_id in seen:
+            continue
+        seen.add(entity_id)
+        meta = ev.event_metadata or {}
+        blocking = meta.get("blocking", "")
+        globs: list[str] = list(meta.get("conflicting_globs", []))
+        if not globs:
+            continue
+        # glob_summary: first 2, +N if more
+        extra = max(0, len(globs) - 2)
+        if extra:
+            glob_summary = f"{globs[0]}, {globs[1]}+{extra}"
+        elif len(globs) == 2:
+            glob_summary = f"{globs[0]}, {globs[1]}"
+        else:
+            glob_summary = globs[0]
+        result[entity_id] = f"Held: overlaps with {blocking} on `{glob_summary}`"
+    return result
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
@@ -112,7 +197,12 @@ def _format_duration(secs: float | None) -> str:
     return f"{mins}m{s:02d}s"
 
 
-def _batch_item_rows(project_id: str, batch_id: str, db: Session) -> list[BatchItemRow]:
+def _batch_item_rows(
+    project_id: str,
+    batch_id: str,
+    db: Session,
+    held_reasons: dict[str, str] | None = None,
+) -> list[BatchItemRow]:
     """Load all BatchItems for a batch, enriched with work item + step data (C3 fix)."""
     from sqlalchemy import tuple_ as tuple_fn
 
@@ -188,6 +278,7 @@ def _batch_item_rows(project_id: str, batch_id: str, db: Session) -> list[BatchI
                 started_at=bi.started_at,
                 started_at_ts=bi.started_at.timestamp() if bi.started_at else None,
                 ended_at_ts=bi.merged_at.timestamp() if bi.merged_at else None,
+                held_reason=(held_reasons or {}).get(bi.work_item_id),
             )
         )
     return rows
@@ -276,7 +367,16 @@ def batch_detail(
 ) -> Any:
     project = _get_project_or_404(project_id, db)
     batch = _get_batch_or_404(project_id, batch_id, db)
-    items = _batch_item_rows(project_id, batch_id, db)
+    item_ids = [
+        bi.work_item_id
+        for bi in db.scalars(
+            select(BatchItem).where(
+                BatchItem.project_id == project_id, BatchItem.batch_id == batch_id
+            )
+        ).all()
+    ]
+    held_reasons = _get_held_reasons(project_id, item_ids, db)
+    items = _batch_item_rows(project_id, batch_id, db, held_reasons=held_reasons)
 
     dur: float | None = None
     if batch.created_at and batch.completed_at:
@@ -391,7 +491,16 @@ def batch_items_fragment(
     """htmx fragment: returns only the batch items tbody rows for live refresh."""
     project = _get_project_or_404(project_id, db)
     _get_batch_or_404(project_id, batch_id, db)
-    items = _batch_item_rows(project_id, batch_id, db)
+    item_ids = [
+        bi.work_item_id
+        for bi in db.scalars(
+            select(BatchItem).where(
+                BatchItem.project_id == project_id, BatchItem.batch_id == batch_id
+            )
+        ).all()
+    ]
+    held_reasons = _get_held_reasons(project_id, item_ids, db)
+    items = _batch_item_rows(project_id, batch_id, db, held_reasons=held_reasons)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -413,7 +522,16 @@ def batch_detail_header_fragment(
     """htmx fragment: returns batch detail header for live refresh."""
     project = _get_project_or_404(project_id, db)
     batch = _get_batch_or_404(project_id, batch_id, db)
-    items = _batch_item_rows(project_id, batch_id, db)
+    item_ids = [
+        bi.work_item_id
+        for bi in db.scalars(
+            select(BatchItem).where(
+                BatchItem.project_id == project_id, BatchItem.batch_id == batch_id
+            )
+        ).all()
+    ]
+    held_reasons = _get_held_reasons(project_id, item_ids, db)
+    items = _batch_item_rows(project_id, batch_id, db, held_reasons=held_reasons)
 
     dur: float | None = None
     if batch.created_at and batch.completed_at:

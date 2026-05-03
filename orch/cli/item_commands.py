@@ -356,6 +356,39 @@ def register(
                     err=True,
                 )
 
+            # F-00076: populate impacted_paths from declared section, fallback to regex.
+            from datetime import UTC, datetime
+
+            from orch.batch_planner import extract_affected_files
+            from orch.design_doc_parser import parse_impacted_paths
+
+            try:
+                scope_result = parse_impacted_paths(design_doc_content)
+            except ValueError as ve:
+                output_error(
+                    ctx,
+                    f"Design doc validation error in ## Impacted Paths: {ve}",
+                    1,
+                )
+
+            if scope_result.found:
+                impacted_paths = scope_result.paths
+                scope_extraction: dict[str, object] = {"source": "declared"}
+            else:
+                impacted_paths = extract_affected_files(design_doc_content)
+                if impacted_paths:
+                    scope_extraction = {
+                        "source": "regex_fallback",
+                        "warned_at": datetime.now(UTC).isoformat(),
+                    }
+                    click.echo(
+                        f"Warning: {item_id}: scope auto-extracted, please verify — "
+                        "no '## Impacted Paths' section in design doc",
+                        err=True,
+                    )
+                else:
+                    scope_extraction = {"source": "none"}
+
             # Insert work item
             work_item = WorkItem(
                 project_id=project_id,
@@ -368,7 +401,8 @@ def register(
                 functional_doc_content=functional_doc_content,
                 status=WorkItemStatus.draft,
                 phase=WorkItemPhase.active,
-                config={},
+                impacted_paths=impacted_paths,
+                config={"scope_extraction": scope_extraction},
                 depends_on=filtered_depends_on,
                 blocks=deps.blocks,
             )
