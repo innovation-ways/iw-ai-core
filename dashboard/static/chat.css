@@ -1,7 +1,5 @@
 :root { --chat-width: 400px; }
 
-#chat-messages > article[data-role="assistant"]:last-child { min-height: 50dvh; }
-
 :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 
 .tap { min-height: 44px; min-width: 44px; }

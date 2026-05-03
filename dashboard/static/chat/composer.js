@@ -286,6 +286,12 @@
 
         var assistantBubble = appendAssistantBubble();
 
+        // Pin the user's just-typed message in view; without this, an overflowing
+        // chat leaves the new bubble below the fold (I-00060).
+        scrollToBottom();
+
+        var isAtBottom = true;
+
         var contextChips_data = Array.from((contextChips && contextChips.querySelectorAll('[data-chip-value]')) || [])
           .map(function (chip) { return chip.dataset.chipValue; })
           .filter(Boolean);
@@ -311,8 +317,13 @@
           window.iwChat.streamAnswer({
             projectId: projectId || (window.location.pathname.split('/')[2]),
             body: body,
-            onToken: renderer ? renderer.onToken : function (text) {
-              assistantBubble.textContent += text;
+            onToken: function (text) {
+              if (renderer && renderer.onToken) {
+                renderer.onToken(text);
+              } else {
+                assistantBubble.textContent += text;
+              }
+              if (isAtBottom) scrollToBottom();
             },
             onCitation: renderer ? renderer.onCitation : function () {},
             onWorkItemCitation: renderer ? renderer.onWorkItemCitation : function () {},
@@ -324,6 +335,7 @@
               if (renderer && renderer.onPhase) {
                 renderer.onPhase(data);
               }
+              if (isAtBottom) scrollToBottom();
             },
             onDone: function (result) {
               if (renderer && renderer.onDone) {
@@ -334,6 +346,7 @@
                 var tone = lastPhaseName === 'composing' ? 'technical' : 'functional';
                 window.iwChat.injectToneSwitchChip(assistantArticle, renderId, tone);
               }
+              if (isAtBottom) scrollToBottom();
             },
             onImage: renderer ? renderer.onImage : function () {},
             onError: renderer ? renderer.onError : function (err) {
@@ -388,9 +401,9 @@
     }
 
     function scrollToBottom() {
-      var anchor = document.getElementById('chat-scroll-anchor');
-      if (anchor) {
-        anchor.scrollIntoView({ behavior: 'instant', block: 'end' });
+      var messages = document.getElementById('chat-messages');
+      if (messages) {
+        messages.scrollTop = messages.scrollHeight;
       }
     }
 
@@ -407,6 +420,7 @@
       if (btn) {
         btn.classList.toggle('hidden', entries[0].isIntersecting);
       }
+      isAtBottom = entries[0].isIntersecting;
     }, { threshold: 0.1 });
     var anchor = document.getElementById('chat-scroll-anchor');
     if (anchor) observer.observe(anchor);
