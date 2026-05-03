@@ -11,9 +11,12 @@ Migration pipeline integration (CR-00017):
 
 from __future__ import annotations
 
+import json as _json
 import logging
 import os
+import re
 import subprocess
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -41,6 +44,13 @@ _EXECUTOR_DIR = Path(__file__).resolve().parent.parent.parent / "executor"
 
 # Maximum bytes kept in merge_info["stdout"] for audit log
 _MERGE_INFO_STDOUT_LIMIT = 8000
+
+# F-00076: capture conflict file list emitted by worktree_commit.sh after
+# auto-resolving rebase conflicts.
+_CONFLICT_MARKER_RE = re.compile(
+    r"^\[worktree_commit\] CONFLICT_FILES (\[.*\])$",
+    re.MULTILINE,
+)
 
 
 class MergeError(RuntimeError):
@@ -224,6 +234,8 @@ def _merge_item(
             )
             return
 
+    result: subprocess.CompletedProcess[str] | None = None
+    conflict_files: list[str] = []  # defined before try so except block can reference
     try:
         cmd = [
             "bash",
@@ -247,9 +259,15 @@ def _merge_item(
         batch_item.merged_at = datetime.now(UTC)
         # M2: keep up to 8000 chars; flag when output was truncated
         stdout = result.stdout
+        # F-00076: parse CONFLICT_FILES marker from worktree_commit.sh output
+        m = _CONFLICT_MARKER_RE.search(stdout)
+        if m:
+            with suppress(_json.JSONDecodeError):
+                conflict_files = _json.loads(m.group(1))
         batch_item.merge_info = {
             "stdout": stdout[:_MERGE_INFO_STDOUT_LIMIT],
             "stdout_truncated": len(stdout) > _MERGE_INFO_STDOUT_LIMIT,
+            "conflict_files": conflict_files,
         }
         db.commit()
         _emit_event(
@@ -306,6 +324,17 @@ def _merge_item(
         batch_item.notes = f"Merge failed: {e}"
         # C4: revert WorkItem so it is not orphaned as completed
         _revert_work_item(db, project_id, item_id)
+        # F-00076: parse CONFLICT_FILES marker even on failure (it may have
+        # been emitted before the failure, e.g. from a partial --continue).
+        if result is not None:
+            output = result.stdout + result.stderr
+            m = _CONFLICT_MARKER_RE.search(output)
+            if m:
+                with suppress(_json.JSONDecodeError):
+                    conflict_files = _json.loads(m.group(1))
+        batch_item.merge_info = {
+            "conflict_files": conflict_files,
+        }
         db.commit()
         worktree_compose.down(
             str(batch_item.id),

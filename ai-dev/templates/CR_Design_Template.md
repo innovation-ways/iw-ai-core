@@ -185,6 +185,27 @@ Then {expected result}
 - **Depends on**: {F/I/CR numbers or "None"}
 - **Blocks**: {F/I/CR numbers or "None"}
 
+## Impacted Paths
+
+Globs declared here populate `WorkItem.impacted_paths` and are mirrored to `workflow-manifest.json:scope.allowed_paths`. The cross-batch launch-time gate uses this list to detect overlap with in-flight items in the same project (F-00076). The merge-time scope gate uses the manifest mirror to enforce the allow-list when files are actually committed.
+
+Parser rules:
+- One glob per bullet line, OR globs inside a fenced code block.
+- gitignore-style globs: `dir/**`, `*.py`, `path/to/file.py`.
+- No absolute paths (must NOT start with `/`).
+- No `..` segments.
+- No whitespace in the glob itself.
+- Test paths (`**/tests/**`, `**/__tests__/**`, `**/conftest*`, `*.test.*`, `*.spec.*`) are stored but ignored by the cross-batch gate — do NOT omit them.
+
+Example:
+
+- `orch/foo.py`
+- `orch/bar/**`
+- `dashboard/templates/components/**`
+- `tests/integration/test_foo.py`
+
+If you omit this section, `iw register` falls back to a regex sweep over the prose and stamps `WorkItem.config["scope_extraction"]["source"]="regex_fallback"`.
+
 ## TDD Approach
 
 - Unit tests: {What to test}

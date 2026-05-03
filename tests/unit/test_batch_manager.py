@@ -32,6 +32,7 @@ from orch.db.models import (
     RunStatus,
     StepType,
     WorkflowStep,
+    WorkItem,
     WorkItemStatus,
 )
 
@@ -246,7 +247,13 @@ class TestParallelismLimit:
         step_q.filter.return_value.first.return_value = None  # no active/failed steps
         # No pending steps → _check_executing_item → _complete_item (not _launch_step)
         step_q.filter.return_value.order_by.return_value.first.return_value = None
-        db.query.side_effect = lambda model: q if model is BatchItem else step_q
+        work_item_q = MagicMock()
+        work_item_q.join.return_value.filter.return_value.all.return_value = []
+        db.query.side_effect = lambda model, *_args, **_kwargs: {
+            BatchItem: q,
+            WorkflowStep: step_q,
+            WorkItem: work_item_q,
+        }.get(model, MagicMock())
 
         manager._process_batch(db, batch)
 
@@ -280,7 +287,13 @@ class TestParallelismLimit:
         step_q.filter.return_value.first.return_value = None
         # No pending steps → _check_executing_item → _complete_item (not _launch_step)
         step_q.filter.return_value.order_by.return_value.first.return_value = None
-        db.query.side_effect = lambda model: q if model is BatchItem else step_q
+        work_item_q = MagicMock()
+        work_item_q.join.return_value.filter.return_value.all.return_value = []
+        db.query.side_effect = lambda model, *_args, **_kwargs: {
+            BatchItem: q,
+            WorkflowStep: step_q,
+            WorkItem: work_item_q,
+        }.get(model, MagicMock())
 
         manager._process_batch(db, batch)
 
@@ -780,7 +793,13 @@ class TestExecutionGroupDependencyCheck:
         step_q = MagicMock()
         step_q.filter.return_value.first.return_value = None
         step_q.filter.return_value.order_by.return_value.first.return_value = None
-        db.query.side_effect = lambda model: q if model is BatchItem else step_q
+        work_item_q = MagicMock()
+        work_item_q.join.return_value.filter.return_value.all.return_value = []
+        db.query.side_effect = lambda model, *_args, **_kwargs: {
+            BatchItem: q,
+            WorkflowStep: step_q,
+            WorkItem: work_item_q,
+        }.get(model, MagicMock())
         return db
 
     def _make_batch(self) -> MagicMock:

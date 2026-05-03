@@ -283,6 +283,26 @@ else
         fi
 
         # All conflicts auto-resolved — continue the rebase.
+        # F-00076: emit conflict file list as JSON for merge_queue to capture.
+        if [[ -n "$conflicting" ]]; then
+            if command -v jq >/dev/null 2>&1; then
+                _conflict_json=$(printf '%s\n' "$conflicting" | jq -R . | jq -s -c .)
+            else
+                # Fallback JSON encoder without jq
+                _json_items=""
+                while IFS= read -r _cf; do
+                    [[ -z "$_cf" ]] && continue
+                    _escaped=$(printf '%s' "$_cf" | sed 's/\\/\\\\/g; s/"/\\"/g')
+                    if [[ -z "$_json_items" ]]; then
+                        _json_items="\"$_escaped\""
+                    else
+                        _json_items="$_json_items, \"$_escaped\""
+                    fi
+                done <<< "$conflicting"
+                _conflict_json="[${_json_items}]"
+            fi
+            echo "[worktree_commit] CONFLICT_FILES $_conflict_json"
+        fi
         if GIT_EDITOR=true git rebase --continue 2>&1; then
             NEW_BRANCH_SHA=$(git rev-parse HEAD)
             echo "[worktree_commit] OK: Rebased $BRANCH_NAME (auto-resolved conflicts): $BRANCH_SHA → $NEW_BRANCH_SHA" >&2

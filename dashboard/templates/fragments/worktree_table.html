@@ -25,6 +25,7 @@
             <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
             <th class="px-4 py-2 text-left font-medium text-muted-foreground">Project</th>
             <th class="px-4 py-2 text-left font-medium text-muted-foreground">Item</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground text-xs">In-flight Scope</th>
             <th class="px-4 py-2 text-left font-medium text-muted-foreground">Branch</th>
             <th class="px-4 py-2 text-left font-medium text-muted-foreground">Batch</th>
             <th class="px-4 py-2 text-right font-medium text-muted-foreground">Ahead</th>
@@ -41,7 +42,7 @@
           {% for wt in worktrees %}
             {% if not loop.first and wt.batch_status != 'main' and loop.previtem.batch_status == 'main' %}
             <tr class="border-t-2 border-border/60">
-              <td colspan="13" class="px-4 py-0.5 text-xs text-muted-foreground bg-muted/20">Agent worktrees</td>
+              <td colspan="14" class="px-4 py-0.5 text-xs text-muted-foreground bg-muted/20">Agent worktrees</td>
             </tr>
             {% endif %}
 
@@ -115,6 +116,25 @@
                   </a>
                 {% else %}
                   <span class="text-xs text-muted-foreground">{{ wt.item_id }}</span>
+                {% endif %}
+              </td>
+
+              <!-- In-flight scope (F-00076) -->
+              <td class="px-4 py-2.5">
+                {% if wt.impacted_paths %}
+                  {% set paths = wt.impacted_paths[:5] %}
+                  {% set extra = (wt.impacted_paths | length) - 5 %}
+                  <span class="font-mono text-xs text-muted-foreground"
+                        title="{{ wt.impacted_paths | join('\n') }}">
+                    {%- for p in paths -%}
+                      <code class="text-foreground">{{ p }}</code>{% if not loop.last %}, {% endif %}
+                    {%- endfor -%}
+                    {% if extra > 0 %}
+                      <span class="text-muted-foreground">+{{ extra }} more</span>
+                    {% endif %}
+                  </span>
+                {% else %}
+                  <span class="text-xs text-muted-foreground">—</span>
                 {% endif %}
               </td>
 
@@ -250,7 +270,7 @@
             <!-- Logs panel (hidden, populated by htmx) -->
             {% if wt.batch_item_pk %}
             <tr id="wt-logs-{{ wt.batch_item_pk }}" class="wt-logs-panel" style="display: none;">
-              <td colspan="13" class="px-4 py-2 bg-muted/50 border-b border-border">
+              <td colspan="14" class="px-4 py-2 bg-muted/50 border-b border-border">
                 <div class="text-xs text-muted-foreground font-mono max-h-48 overflow-auto bg-black/5 rounded p-2">
                   <!-- SSE logs stream here -->
                 </div>

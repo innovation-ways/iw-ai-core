@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from orch.daemon import worktree_compose
+from orch.daemon import scope_overlap, worktree_compose
 from orch.db.alembic_guard import check_db_at_head, remediation_message
 from orch.db.models import (
     TERMINAL_BATCH_ITEM_STATUSES,
@@ -34,6 +34,7 @@ from orch.db.models import (
     WorkflowStep,
     WorkItem,
     WorkItemStatus,
+    WorkItemType,
 )
 
 if TYPE_CHECKING:
@@ -284,6 +285,33 @@ class BatchManager:
     # Batch processing
     # ------------------------------------------------------------------
 
+    def _collect_in_flight_scopes(self, db: Session) -> list[tuple[str, list[str]]]:
+        """Gather all non-Research, in-flight items across the project.
+
+        Returns list[tuple[work_item_id, impacted_paths]] for items whose
+        BatchItem status is setting_up, executing, or merging.
+
+        Used by the cross-batch conflict gate in _process_batch.
+        Excludes Research items per F-00076 design (scope conflicts there
+        are low-risk; parallelism is more important).
+        """
+        in_flight_statuses = (
+            BatchItemStatus.setting_up,
+            BatchItemStatus.executing,
+            BatchItemStatus.merging,
+        )
+        rows = (
+            db.query(WorkItem.id, WorkItem.impacted_paths)
+            .join(BatchItem, BatchItem.work_item_id == WorkItem.id)
+            .filter(
+                BatchItem.project_id == self.project_id,
+                BatchItem.status.in_(in_flight_statuses),
+                WorkItem.type != WorkItemType.Research,
+            )
+            .all()
+        )
+        return [(work_item_id, list(impacted_paths or [])) for work_item_id, impacted_paths in rows]
+
     def _process_batch(self, db: Session, batch: Batch) -> None:
         """Advance all items in a batch: detect completions, launch pending."""
         items = (
@@ -305,6 +333,10 @@ class BatchManager:
         executing_count = sum(
             1 for i in items if i.status in (BatchItemStatus.setting_up, BatchItemStatus.executing)
         )
+
+        # F-00076: gather in-flight items across the project (any batch) for the
+        # cross-batch conflict gate. Excludes Research items per design.
+        in_flight_scopes = self._collect_in_flight_scopes(db)
 
         current_group = _current_execution_group(items)
         if current_group is None:
@@ -354,13 +386,56 @@ class BatchManager:
                 continue
             if item.status != BatchItemStatus.pending:
                 continue
+
+            # F-00076: scope overlap gate — hold items that conflict with
+            # in-flight work from any batch in the same project.
+            work_item = db.get(WorkItem, (self.project_id, item.work_item_id))
+            if work_item is None:
+                continue
+            if work_item.type != WorkItemType.Research:
+                candidate_paths = list(work_item.impacted_paths or [])
+                blocked_by = scope_overlap.find_blocking_items(
+                    candidate_paths,
+                    in_flight_scopes,
+                )
+                if blocked_by:
+                    for blocking_id, conflicting_globs in blocked_by:
+                        _emit_event(
+                            db,
+                            self.project_id,
+                            "item_held_for_scope",
+                            item.work_item_id,
+                            "work_item",
+                            f"Held: {item.work_item_id} overlaps with {blocking_id} on "
+                            f"{', '.join(conflicting_globs[:3])}",
+                            {
+                                "candidate_item_id": item.work_item_id,
+                                "blocking_item_id": blocking_id,
+                                "conflicting_globs": conflicting_globs,
+                            },
+                        )
+                    db.commit()
+                    continue  # leave status=pending; do not consume slot
+
             if executing_count >= batch.max_parallel:
                 break
             self._launch_item(db, item)
             executing_count += 1
+            # F-00076: append this item's scope so subsequent items in the same
+            # poll cycle see it (prevents same-group items from both launching
+            # when their globs overlap and neither is in flight at cycle start).
+            work_item = db.get(WorkItem, (self.project_id, item.work_item_id))
+            if work_item is not None:
+                in_flight_scopes.append((item.work_item_id, list(work_item.impacted_paths or [])))
 
     def _check_executing_item(self, db: Session, batch_item: BatchItem) -> None:
         """Detect whether the agent finished a step and advance if so."""
+        # setting_up items are mid-launch (worktree setup or compose up in progress).
+        # _launch_item owns the transition setting_up → executing; _check_executing_item
+        # must not interfere with that window by treating them as completed.
+        if batch_item.status == BatchItemStatus.setting_up:
+            return
+
         has_active = (
             db.query(WorkflowStep)
             .filter(
