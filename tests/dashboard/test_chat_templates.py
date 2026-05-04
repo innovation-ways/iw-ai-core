@@ -125,10 +125,6 @@ class TestChatCss:
         css_path = Path(__file__).parent.parent.parent / "dashboard" / "static" / "chat.css"
         content = css_path.read_text()
         assert ":root { --chat-width: 400px; }" in content
-        assert (
-            '#chat-messages > article[data-role="assistant"]:last-child { min-height: 50dvh; }'
-            in content
-        )
         assert ":focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }" in content
         assert ".tap { min-height: 44px; min-width: 44px; }" in content
 

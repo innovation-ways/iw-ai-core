@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from fastapi import Request
 
 from orch.db.session import SessionLocal
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator
 
+    from fastapi import Request
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
     from sqlalchemy.orm import Session
 
@@ -20,6 +23,21 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def get_session_id(request: Request) -> str:
+    """Read the session_id from request.state set by the session cookie middleware.
+
+    Raises RuntimeError if middleware hasn't set it (should never happen
+    if the middleware is registered).
+    """
+    session_id = getattr(request.state, "session_id", None)
+    if session_id is None:
+        raise RuntimeError(
+            "session_id not found on request.state. "
+            "Ensure SessionCookieMiddleware is registered in app.py."
+        )
+    return cast("str", session_id)
 
 
 async def _build_async_engine() -> async_sessionmaker[AsyncSession]:

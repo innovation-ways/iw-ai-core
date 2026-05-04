@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.orm import Session, sessionmaker
 
 from orch.daemon.batch_manager import BatchManager
+from orch.daemon.chat_summarization_poller import poll_chat_summarization_jobs
 from orch.daemon.doc_index_poller import DocIndexPoller, recover_orphaned_doc_index_jobs
 from orch.daemon.doc_job_poller import DocJobPoller
 from orch.daemon.keep_alive_poller import KeepAlivePoller
@@ -49,6 +50,7 @@ from orch.db.models import (
     WorkflowStep,
 )
 from orch.db.session import safe_create_engine
+from orch.rag.config import TIER_DEFAULTS, IndexTier
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -215,6 +217,8 @@ class Daemon:
         self.doc_index_poller: DocIndexPoller | None = None
         self._keep_alive_poller: KeepAlivePoller | None = None
         self._last_keep_alive_poll_count: int = 0
+        # Shared Ollama LLM for chat summarization — instantiated once, reused
+        self._chat_llm = _make_chat_llm()
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -566,7 +570,14 @@ class Daemon:
             except Exception:
                 logger.exception("Error in doc index poller — continuing")
 
-        # Phase 5: Emit poll heartbeat so daemon status can report activity
+        # Phase 5: Chat summarization job polling (rolling summary compaction)
+        try:
+            with self._session_factory() as db:
+                poll_chat_summarization_jobs(db, llm=self._chat_llm)
+        except Exception:
+            logger.exception("chat_summarization poll failed")
+
+        # Phase 6: Emit poll heartbeat so daemon status can report activity
         try:
             with self._session_factory() as db:
                 emit_event(
@@ -693,3 +704,17 @@ def _is_pid_alive(pid: int | None) -> bool:
         return True
     except (ProcessLookupError, PermissionError):
         return False
+
+
+def _make_chat_llm() -> Any:
+    """Construct a shared Ollama LLM for chat summarization.
+
+    Uses the same model tier defaults (IndexTier.BALANCED → gemma4:26b) and
+    the default ollama_url from CodeUnderstandingConfig, consistent with the
+    QA, classifier, and module_gen paths. Project-level overrides would require
+    a per-project LLM; the chat summarization poller uses the global default.
+    """
+    from llama_index.llms.ollama import Ollama
+
+    model = TIER_DEFAULTS[IndexTier.BALANCED]["llm_model"]
+    return Ollama(model=model, base_url="http://localhost:11434")

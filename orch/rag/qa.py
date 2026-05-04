@@ -21,7 +21,19 @@ if TYPE_CHECKING:
 
     from orch.rag.config import CodeUnderstandingConfig
 
+from orch.rag.chat_repo import truncate_messages_to_budget as _truncate_messages_to_budget
+from orch.rag.condense import condense_query as _condense_query
 from orch.rag.evidence import EvidenceBundle
+
+# Memory / token-budget constants
+HISTORY_SOFT_BUDGET_TOKENS: int = 3000
+HISTORY_HARD_BUDGET_TOKENS: int = 6000
+
+SYSTEM_PROMPT_HARDENING: str = (
+    "On contradictions in the user's statements, trust the most recent one. "
+    "Do not claim to remember anything not present in the provided "
+    "conversation history."
+)
 
 RENDER_CACHE_MAX: int = 64
 RENDER_CACHE_TTL: timedelta = timedelta(minutes=10)
@@ -56,7 +68,6 @@ class QAEngine:
     """
 
     TOP_K: int = 8
-    MAX_HISTORY_TURNS: int = 5
 
     WORKITEM_RELEVANCE_FILTER = (
         "## Work Item Context\n\n"
@@ -85,25 +96,59 @@ class QAEngine:
         context_chips: list[str] | None = None,
         symbol_hint: str | None = None,  # noqa: ARG002
         workitem_section: str = "",
+        conversation_id: str | None = None,
     ) -> AsyncGenerator[str, None]:
         """
         Stream answer tokens for the given question using RAG retrieval.
 
-        1. Embed question via Ollama embedding model
-        2. Retrieve top-k chunks from LanceDB (filtered by module_path if context_level == "module")
-        3. Load context_doc content from DB if context_doc_id provided
-        4. Build system prompt with context doc + retrieved chunks
-        5. Truncate conversation history to MAX_HISTORY_TURNS
-        6. Stream response tokens via Ollama LLM
+        1. Condense the question using conversation history (if len >= 2 turns)
+           — only used for embedding/retrieval; original question used in answer turn.
+        2. Embed condensed query via Ollama embedding model
+        3. Retrieve top-k chunks from LanceDB (filtered by module_path if context_level == "module")
+        4. Load context_doc content from DB if context_doc_id provided
+        5. Build system prompt with context doc + retrieved chunks + hardening lines
+        6. Load conversation history from DB (if conversation_id) using token-budget truncation
+        7. Prepend rolling_summary as synthetic system note if present
+        8. Stream response tokens via Ollama LLM
+
+        When conversation_id is provided, history is loaded from DB and the
+        conversation_history argument is ignored (server is source of truth).
+        When conversation_id is None, falls back to conversation_history for
+        backwards compatibility with existing tests.
         """
         embed_model = self.config.resolved_embed_model()
         ollama_url = self.config.ollama_url
+
+        # Determine history for condense step
+        if conversation_id is not None:
+            from orch.rag import chat_repo
+
+            history_for_condense, rolling_summary = chat_repo.list_messages_for_context(
+                session,
+                conversation_id=conversation_id,
+                soft_budget_tokens=HISTORY_SOFT_BUDGET_TOKENS,
+            )
+        else:
+            history_for_condense = conversation_history  # type: ignore[assignment]
+            rolling_summary = None
+
+        # Condense query before embedding (only used for retrieval; original question
+        # goes to the LLM in the final user turn)
+        condensed_question = _condense_query(
+            history_for_condense,  # type: ignore[arg-type]
+            question,
+            self._make_llm(ollama_url),
+            db_session=session,
+            conversation_id=conversation_id,
+        )
 
         embedding_instance = OllamaEmbedding(
             model_name=embed_model,
             base_url=ollama_url,
         )
-        embedding_vector = await asyncio.to_thread(embedding_instance.get_query_embedding, question)
+        embedding_vector = await asyncio.to_thread(
+            embedding_instance.get_query_embedding, condensed_question
+        )
 
         db_path = f"{self.config.index_path}/{self.project_id}/vectors/"
         table_name = f"code_{self.project_id.replace('-', '_')}"
@@ -164,13 +209,25 @@ class QAEngine:
             workitem_section,
         )
 
-        truncated_history = self._truncate_history(conversation_history)
-
+        # Build message stack: system prompt + optional rolling_summary
+        # note + truncated history + original question
         messages = [ChatMessage(role="system", content=system_prompt)]
-        for msg in truncated_history:
+
+        # Prepend rolling_summary as synthetic system note if present
+        if rolling_summary:
+            messages.append(
+                ChatMessage(
+                    role="system",
+                    content=f"Earlier in this conversation:\n{rolling_summary}",
+                )
+            )
+
+        # history_for_condense is already token-budget truncated
+        for msg in history_for_condense:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             messages.append(ChatMessage(role=role, content=content))
+
         messages.append(ChatMessage(role="user", content=question))
 
         llm = Ollama(
@@ -303,19 +360,24 @@ cover the module directly, say so explicitly in your answer.
             f"{self.RENDERING_CAPABILITIES_BLOCK}"
             f"{diagram_block}"
             "Answer the user's question based on the above context. "
-            "If the context does not contain enough information, say so clearly."
+            "If the context does not contain enough information, say so clearly.\n\n"
+            f"{SYSTEM_PROMPT_HARDENING}"
         )
 
     def _truncate_history(self, history: list[dict[str, str]]) -> list[dict[str, str]]:
-        """
-        Return the last MAX_HISTORY_TURNS * 2 messages from history.
+        """Token-budget truncation — drops oldest messages until within HISTORY_SOFT_BUDGET_TOKENS.
 
-        If len(history) <= MAX_HISTORY_TURNS * 2, return all items unchanged.
+        Always preserves the last 2 messages (correctness over budget).
+        Kept for backwards compatibility with call sites that pass dict messages.
+        For DB-backed path, use chat_repo.list_messages_for_context() directly.
         """
-        max_messages = self.MAX_HISTORY_TURNS * 2
-        if len(history) <= max_messages:
-            return list(history)
-        return list(history[-max_messages:])
+        return _truncate_messages_to_budget(history, HISTORY_SOFT_BUDGET_TOKENS)  # type: ignore[arg-type,return-value]
+
+    def _make_llm(self, ollama_url: str) -> Ollama:
+        return Ollama(
+            model=self.config.resolved_llm_model(),
+            base_url=ollama_url,
+        )
 
     def _cache_get(self, render_id: str) -> object | None:
         with self._render_cache_lock:
@@ -529,6 +591,7 @@ cover the module directly, say so explicitly in your answer.
         module_name: str | None = None,
         context_chips: list[str] | None = None,
         symbol_hint: str | None = None,
+        conversation_id: str | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
         from orch.rag.citation_allowlist import extract_citations, filter_citations
         from orch.rag.classifier import classify_query
@@ -546,6 +609,7 @@ cover the module directly, say so explicitly in your answer.
                 module_name=module_name,
                 context_chips=context_chips,
                 symbol_hint=symbol_hint,
+                conversation_id=conversation_id,
             ):
                 yield {"kind": "token", "text": token}
             return
@@ -612,6 +676,7 @@ cover the module directly, say so explicitly in your answer.
             context_chips=context_chips,
             symbol_hint=symbol_hint,
             workitem_section=workitem_section,
+            conversation_id=conversation_id,
         ):
             accumulated_text += token
             yield {"kind": "token", "text": token}
