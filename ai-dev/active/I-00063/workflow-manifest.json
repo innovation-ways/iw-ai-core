@@ -1,7 +1,7 @@
 {
   "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
-  "work_item": "I-00063",
-  "type": "incident",
+  "id": "I-00063",
+  "type": "Issue",
   "title": "Daemon Phase 2 migration apply self-deadlocks against its own idle-in-transaction session",
   "browser_verification": false,
   "scope": {

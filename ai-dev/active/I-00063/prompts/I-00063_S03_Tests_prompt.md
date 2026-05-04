@@ -162,7 +162,31 @@ In the same file:
   matching the expected pattern.
 - Same for `lock_timeout`-induced failure.
 
-### 6. Test placement and naming
+### 6. Rollback-fires-after-apply-failure test (AC1 end-to-end)
+
+AC1 promises that on a Phase 2 failure the daemon "fails fast (within
+~30s) with a clear error that triggers Phase 3 rollback rather than a
+silent hang." Add one integration test that exercises this transition
+end-to-end through `_merge_item` (or the closest entry point that
+composes apply + rollback):
+
+- Drive the merge path to the point of `run_post_merge_apply` with a
+  setup that forces apply to fail (e.g. `lock_timeout` triggered by a
+  separate-process synthetic blocker, or a monkeypatched
+  `safe_migrate.apply` that returns `ApplyResult(success=False, ...)`).
+- Assert `run_rollback` is invoked (spy/monkeypatch) with the correct
+  `batch_id`.
+- Assert a `migration_pipeline` `DaemonEvent` row is written via a
+  fresh session (regression on the lifecycle fix — proves S01 didn't
+  reuse the closed `db`).
+- Assert the daemon does not hang and continues past `_merge_item`.
+
+The point is to catch a regression where S01's session-discipline fix
+breaks the post-apply bookkeeping — `db` is closed, then the failure
+branch tries to use it without reopening, and silently throws or
+loses the `migration_pipeline` event.
+
+### 7. Test placement and naming
 
 - Integration tests with testcontainer: `tests/integration/...`
 - Unit tests (no testcontainer): `tests/unit/...`
@@ -207,6 +231,43 @@ Read `tests/CLAUDE.md`:
 - **MUST** run `FTS_FUNCTION_SQL` + `FTS_TRIGGER_SQL` after
   `Base.metadata.create_all()` if your test needs FTS.
 - `DaemonEvent.metadata` is `event_metadata` in Python.
+
+### Rule 4a exception (alembic in test code)
+
+`tests/CLAUDE.md` rule 4a says "NEVER invoke alembic directly from
+test code outside of dedicated migration round-trip tests." This
+reproduction test IS a dedicated migration test — it specifically
+exercises the apply path through `safe_migrate.apply` against a
+testcontainer. That qualifies as the rule's exception.
+
+Constraints that still apply:
+
+- Do NOT modify the real migration chain in `orch/db/migrations/versions/`.
+  If you need a synthetic DDL that ALTERs `batch_items`, put it in a
+  test-only `versions/` directory and point alembic at it via a
+  test-only `alembic.ini` or a programmatic `Config` (see how
+  `orch/db/safe_migrate._build_alembic_config` constructs config).
+- If you downgrade in any test, downgrade to a **specific revision ID**,
+  never `-1` (that breaks when new migrations land).
+- Use the existing `pg_container` / `db_engine` fixtures in
+  `tests/integration/conftest.py` rather than spinning up a new
+  testcontainer per test.
+
+Note: the design doc's `Test to Reproduce` snippet uses fixture names
+(`pg_container_url`, `alembic_at_head_minus_one`, `seeded_batch_item`)
+that don't exist in the repo. Treat those as illustrative; build on
+the real fixtures.
+
+### Existing fixtures you can reuse
+
+- `pg_container` (session scope) — the testcontainer itself.
+- `db_engine` (session scope) — engine bound to the testcontainer with
+  schema + FTS triggers already applied.
+- `db_session` (function scope) — transactional session that rolls
+  back on teardown.
+- `db_session_factory` — sessionmaker on the same connection so
+  background services see test writes.
+- `test_project` — pre-seeded `Project` row.
 
 Match the test style in adjacent files (`tests/integration/daemon/`
 for daemon tests, `tests/integration/db/` for DB-layer tests).
