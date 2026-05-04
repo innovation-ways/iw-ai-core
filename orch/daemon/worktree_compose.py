@@ -69,6 +69,35 @@ COMPOSE_DOWN_TIMEOUT_SEC = 120
 SEED_STDERR_TAIL_BYTES = 16 * 1024
 
 
+def _read_db_credentials_from_toml(env_toml_path: Path) -> dict[str, str]:
+    """Read per-worktree DB credentials from worktree-env.toml.
+
+    Returns a dict mapping env-var names to their string values for the five
+    IW_CORE_DB_* vars (HOST, PORT, NAME, USER, PASSWORD). PORT is intentionally
+    excluded — it is discovered at runtime via ``discover_ports`` and written
+    into the .env by ``rewrite_env``. The caller (batch_manager._launch_step)
+    assembles the full connection info from worktree_info which carries both
+    the discovered port and these credentials.
+
+    If the toml file is absent or the [env_overrides] section is empty,
+    returns an empty dict — never raises.
+    """
+    if not env_toml_path.is_file():
+        return {}
+    try:
+        with env_toml_path.open("rb") as f:
+            toml_data = tomllib.load(f)
+    except Exception:
+        return {}
+    overrides = toml_data.get("env_overrides", {})
+    creds = {}
+    for key in ("IW_CORE_DB_HOST", "IW_CORE_DB_NAME", "IW_CORE_DB_USER", "IW_CORE_DB_PASSWORD"):
+        val = overrides.get(key)
+        if val:
+            creds[key] = val
+    return creds
+
+
 @dataclass(frozen=True)
 class WorktreeStackConfig:
     batch_item_id: str
@@ -86,6 +115,7 @@ class UpResult:
     success: bool
     rendered_compose_path: Path | None
     discovered_ports: dict[str, int]
+    discovered_db_credentials: dict[str, str]
     error_message: str | None
     seed_stderr_tail: str | None
 
@@ -657,6 +687,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
             success=False,
             rendered_compose_path=None,
             discovered_ports={},
+            discovered_db_credentials={},
             error_message=str(exc),
             seed_stderr_tail=None,
         )
@@ -680,6 +711,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
             success=False,
             rendered_compose_path=None,
             discovered_ports={},
+            discovered_db_credentials={},
             error_message=str(exc),
             seed_stderr_tail=None,
         )
@@ -720,6 +752,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
                 success=False,
                 rendered_compose_path=compose_path,
                 discovered_ports={},
+                discovered_db_credentials={},
                 error_message=err,
                 seed_stderr_tail=None,
             )
@@ -742,6 +775,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
             success=False,
             rendered_compose_path=compose_path,
             discovered_ports={},
+            discovered_db_credentials={},
             error_message=err,
             seed_stderr_tail=None,
         )
@@ -771,6 +805,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
             success=False,
             rendered_compose_path=compose_path,
             discovered_ports=discovered_ports,
+            discovered_db_credentials={},
             error_message="seed failed",
             seed_stderr_tail=seed_stderr,
         )
@@ -791,6 +826,7 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
         success=True,
         rendered_compose_path=compose_path,
         discovered_ports=discovered_ports,
+        discovered_db_credentials=_read_db_credentials_from_toml(cfg.env_toml_path),
         error_message=None,
         seed_stderr_tail=None,
     )

@@ -111,7 +111,9 @@ class TestAgentSubprocessEnvIsolation:
         env = _agent_subprocess_env()
         assert env.get("PATH") == "/usr/bin"
         assert env.get("HOME") == "/home/test"
-        assert env.get("IW_CORE_DB_HOST") == "db.example.com"
+        # I-00062: IW_CORE_DB_* vars are stripped to prevent orch DB credential
+        # leak. Use IW_CORE_ORCH_DB_* to access the operator's orch DB values.
+        assert "IW_CORE_DB_HOST" not in env
         assert "IW_CORE_DAEMON_CONTEXT" not in env
 
 

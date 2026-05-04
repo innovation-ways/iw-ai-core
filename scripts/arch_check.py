@@ -108,13 +108,13 @@ def main() -> int:
             errors.extend(violations)
 
     if errors:
-        print("arch-check FAILED")
-        print()
+        print("arch-check FAILED")  # noqa: T201
+        print()  # noqa: T201
         for e in errors:
-            print(e)
+            print(e)  # noqa: T201
         return 1
 
-    print("arch-check PASSED")
+    print("arch-check PASSED")  # noqa: T201
     return 0
 
 
