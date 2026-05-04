@@ -15,8 +15,12 @@ Exit codes:
 from __future__ import annotations
 
 import ast
+import logging
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
 
 PACKAGES = ["orch", "dashboard", "executor"]
 
@@ -45,20 +49,21 @@ def _collect_imports(package_dir: Path) -> dict[str, set[str]]:
         try:
             content = py_file.read_text(encoding="utf-8")
         except Exception:
+            logger.debug("Failed to read %s", py_file)
             continue
 
         try:
             tree = ast.parse(content, filename=str(py_file))
         except Exception:
+            logger.debug("Failed to parse %s", py_file)
             continue
 
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     imports[rel].add(alias.name.split(".")[0])
-            elif isinstance(node, ast.ImportFrom):
-                if node.level == 0 and node.module:
-                    imports[rel].add(node.module.split(".")[0])
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imports[rel].add(node.module.split(".")[0])
 
     return imports
 

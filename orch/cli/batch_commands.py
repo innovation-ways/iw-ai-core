@@ -24,6 +24,7 @@ from orch.db.models import (
     WorkItemStatus,
     WorkItemType,
 )
+from orch.qv_gate_validator import auto_skip_phantom_qv_gates
 
 # ---------------------------------------------------------------------------
 # Active batch statuses (same set as in item_commands)
@@ -398,15 +399,40 @@ def batch_approve(ctx: click.Context, batch_id: str) -> None:
             )
             session.flush()
 
+            # Safety-net: auto-skip phantom QV gates on every item in the batch
+            batch_items = (
+                session.query(BatchItem)
+                .filter(
+                    BatchItem.project_id == project_id,
+                    BatchItem.batch_id == batch_id,
+                )
+                .all()
+            )
+            all_skipped: list[tuple[str, str, str]] = []
+            for bi in batch_items:
+                skipped = auto_skip_phantom_qv_gates(
+                    session, project_id, bi.work_item_id, trigger="batch_approve"
+                )
+                all_skipped.extend(skipped)
+
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 1)
 
     if ctx.obj.get("json"):
-        click.echo(
-            json.dumps({"project_id": project_id, "batch_id": batch_id, "status": "approved"})
-        )
+        result: dict[str, Any] = {
+            "project_id": project_id,
+            "batch_id": batch_id,
+            "status": "approved",
+        }
+        if all_skipped:
+            result["auto_skipped_steps"] = [
+                {"step_id": s, "gate": g, "reason": r} for s, g, r in all_skipped
+            ]
+        click.echo(json.dumps(result))
     else:
         click.echo(f"Approved {batch_id}")
+        for step_id, gate, reason in all_skipped:
+            click.echo(f"  Auto-skipped phantom gate {step_id} ({gate}): {reason}")
 
 
 @click.command("batch-status")
