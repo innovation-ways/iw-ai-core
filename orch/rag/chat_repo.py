@@ -208,8 +208,12 @@ def list_messages_for_context(
         )
 
     all_rows = db.execute(stmt).scalars().all()
+    # Filter out messages with message_metadata.error=True (partial/interrupted messages
+    # must not be fed to the LLM as conversation context — Invariant 1 from F-00077).
     messages: list[dict[str, str | int]] = [
-        {"role": r.role, "content": r.content, "token_count": r.token_count} for r in all_rows
+        {"role": r.role, "content": r.content, "token_count": r.token_count}
+        for r in all_rows
+        if not (r.message_metadata or {}).get("error")
     ]
 
     # Token-budget truncation: keep within budget, always preserve last 2
