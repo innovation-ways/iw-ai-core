@@ -107,6 +107,16 @@ def get_db_max_overflow() -> int:
     return int(os.environ.get("IW_CORE_DB_MAX_OVERFLOW", "20"))
 
 
+def get_migration_lock_timeout_secs() -> int:
+    """Return the migration lock timeout in seconds (default 30).
+
+    Used by safe_migrate.apply() to set lock_timeout on the alembic apply
+    connection, bounding the maximum silent-hang duration when a self-deadlock
+    or other lock contention occurs. Set to 0 to disable (not recommended).
+    """
+    return int(os.environ.get("IW_CORE_MIGRATION_LOCK_TIMEOUT_SECS", "30"))
+
+
 @dataclass(frozen=True)
 class DaemonConfig:
     """Immutable snapshot of the platform configuration."""

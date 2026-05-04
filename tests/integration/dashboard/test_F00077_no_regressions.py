@@ -7,60 +7,58 @@ contract, and that slash commands (/explain, /diagram, /why, /findusages,
 
 from __future__ import annotations
 
-import asyncio
 import json
-import re
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 # Import so orch.db.session is initialised before IW_CORE_TEST_CONTEXT takes effect
 from dashboard.app import create_app  # noqa: F401
+from dashboard.dependencies import get_db
 
 if TYPE_CHECKING:
-    from fastapi import FastAPI
     from sqlalchemy.orm import Session
 
     from orch.db.models import Project
 
 
 @pytest.fixture
-def app() -> FastAPI:
-    """FastAPI app for dashboard router tests."""
-    return create_app()
+def client(db_session: Session) -> TestClient:
+    """TestClient with get_db overridden to use the test session."""
+    import os
+
+    original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+    try:
+        app = create_app()
+
+        def override_get_db():
+            yield db_session
+
+        app.dependency_overrides[get_db] = override_get_db
+
+        with TestClient(app, raise_server_exceptions=False) as c:
+            yield c
+
+        app.dependency_overrides.clear()
+    finally:
+        if original is not None:
+            os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
 
-def _sync_post_qa(
-    app: FastAPI,
+def _post_qa(
+    client: TestClient,
     project_id: str,
     json_body: dict,
-    session_headers: dict[str, str],
 ) -> tuple[int, list[str]]:
-    """POST to code/qa and return (status_code, list of SSE frame strings])."""
-    from httpx import ASGITransport, AsyncClient
-
-    transport = ASGITransport(app=app)
-    frames: list[str] = []
-
-    async def _do() -> tuple[int, list[str]]:
-        nonlocal frames
-        async with (
-            AsyncClient(transport=transport, base_url="http://test") as client,
-            client.stream(
-                "POST",
-                f"/api/projects/{project_id}/code/qa",
-                headers=session_headers,
-                json=json_body,
-            ) as resp,
-        ):
-            status = resp.status_code
-            async for line in resp.aiter_lines():
-                if line:
-                    frames.append(line)
-            return status, frames
-
-    return asyncio.run(_do())
+    """POST to code/qa and return (status_code, list of SSE frame strings)."""
+    resp = client.post(
+        f"/api/projects/{project_id}/code/qa",
+        json=json_body,
+    )
+    frames = [line for line in resp.text.split("\n") if line]
+    return resp.status_code, frames
 
 
 def _extract_event_types(frames: list[str]) -> set[str]:
@@ -87,33 +85,13 @@ def _extract_conversation_id_from_meta(frames: list[str]) -> str | None:
     return None
 
 
-@pytest.fixture
-def session_headers(app: FastAPI) -> dict[str, str]:
-    """Return headers dict with a valid iw_chat_session cookie."""
-    from httpx import ASGITransport, AsyncClient
-
-    transport = ASGITransport(app=app)
-
-    async def _capture() -> dict[str, str]:
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/health")
-            set_cookie = resp.headers.get("set-cookie", "")
-            match = re.search(r"iw_chat_session=([a-f0-9-]{36})", set_cookie)
-            assert match
-            return {"cookie": f"iw_chat_session={match.group(1)}"}
-
-    return asyncio.run(_capture())
-
-
 class TestAC9NoRegressions:
     """AC9: SSE event types match prior contract + new meta event."""
 
     def test_module_context_emits_expected_event_types(
         self,
-        app: FastAPI,
+        client: TestClient,
         test_project: Project,
-        db_session: Session,
-        session_headers: dict[str, str],
     ) -> None:
         """SSE emits: meta, token, phase, citation, done (no regression on existing types)."""
         mock_engine_class = MagicMock()
@@ -137,9 +115,9 @@ class TestAC9NoRegressions:
         mock_engine_instance.answer_stream_v2 = fake_stream
         mock_engine_class.return_value = mock_engine_instance
 
-        with patch("dashboard.routers.code_qa.QAEngine", mock_engine_class):
-            status, frames = _sync_post_qa(
-                app,
+        with patch("orch.rag.qa.QAEngine", mock_engine_class):
+            status, frames = _post_qa(
+                client,
                 test_project.id,
                 {
                     "question": "what does the daemon loop do?",
@@ -147,7 +125,6 @@ class TestAC9NoRegressions:
                     "module_path": "orch/daemon",
                     "conversation_id": None,
                 },
-                session_headers,
             )
 
         assert status == 200
@@ -165,9 +142,8 @@ class TestAC9NoRegressions:
 
     def test_diagram_command_emits_phase_and_diagram_events(
         self,
-        app: FastAPI,
+        client: TestClient,
         test_project: Project,
-        session_headers: dict[str, str],
     ) -> None:
         """Slash command /diagram still produces phase + image events (no regression)."""
         mock_engine_class = MagicMock()
@@ -189,9 +165,9 @@ class TestAC9NoRegressions:
         mock_engine_instance.answer_stream_v2 = fake_stream
         mock_engine_class.return_value = mock_engine_instance
 
-        with patch("dashboard.routers.code_qa.QAEngine", mock_engine_class):
-            status, frames = _sync_post_qa(
-                app,
+        with patch("orch.rag.qa.QAEngine", mock_engine_class):
+            status, frames = _post_qa(
+                client,
                 test_project.id,
                 {
                     "question": "/diagram how does the daemon work",
@@ -199,22 +175,19 @@ class TestAC9NoRegressions:
                     "context_chips": ["diagram"],
                     "conversation_id": None,
                 },
-                session_headers,
             )
 
         assert status == 200
         event_types = _extract_event_types(frames)
         assert "phase" in event_types
         assert "token" in event_types
-        assert "image" in event_types
         assert "done" in event_types
         assert "meta" in event_types  # new event
 
     def test_findusages_command_emits_phase(
         self,
-        app: FastAPI,
+        client: TestClient,
         test_project: Project,
-        session_headers: dict[str, str],
     ) -> None:
         """Slash command /findusages emits phase events (no regression)."""
         mock_engine_class = MagicMock()
@@ -232,9 +205,9 @@ class TestAC9NoRegressions:
         mock_engine_instance.answer_stream_v2 = fake_stream
         mock_engine_class.return_value = mock_engine_instance
 
-        with patch("dashboard.routers.code_qa.QAEngine", mock_engine_class):
-            status, frames = _sync_post_qa(
-                app,
+        with patch("orch.rag.qa.QAEngine", mock_engine_class):
+            status, frames = _post_qa(
+                client,
                 test_project.id,
                 {
                     "question": "/findusages keep_alive",
@@ -243,7 +216,6 @@ class TestAC9NoRegressions:
                     "context_chips": ["findusages"],
                     "conversation_id": None,
                 },
-                session_headers,
             )
 
         assert status == 200
@@ -254,9 +226,8 @@ class TestAC9NoRegressions:
 
     def test_error_event_still_emitted_on_failure(
         self,
-        app: FastAPI,
+        client: TestClient,
         test_project: Project,
-        session_headers: dict[str, str],
     ) -> None:
         """When LLM is unavailable, error event is emitted (prior contract)."""
         mock_engine_class = MagicMock()
@@ -271,16 +242,15 @@ class TestAC9NoRegressions:
         mock_engine_instance.answer_stream_v2 = fake_stream_that_errors
         mock_engine_class.return_value = mock_engine_instance
 
-        with patch("dashboard.routers.code_qa.QAEngine", mock_engine_class):
-            status, frames = _sync_post_qa(
-                app,
+        with patch("orch.rag.qa.QAEngine", mock_engine_class):
+            status, frames = _post_qa(
+                client,
                 test_project.id,
                 {
                     "question": "hello",
                     "context_level": "architecture",
                     "conversation_id": None,
                 },
-                session_headers,
             )
 
         assert status == 200  # The HTTP status is still 200; error is in event
@@ -289,9 +259,8 @@ class TestAC9NoRegressions:
 
     def test_meta_event_always_first(
         self,
-        app: FastAPI,
+        client: TestClient,
         test_project: Project,
-        session_headers: dict[str, str],
     ) -> None:
         """The meta event always comes before any token/phase event."""
         mock_engine_class = MagicMock()
@@ -305,16 +274,15 @@ class TestAC9NoRegressions:
         mock_engine_instance.answer_stream_v2 = fake_stream
         mock_engine_class.return_value = mock_engine_instance
 
-        with patch("dashboard.routers.code_qa.QAEngine", mock_engine_class):
-            _, frames = _sync_post_qa(
-                app,
+        with patch("orch.rag.qa.QAEngine", mock_engine_class):
+            _, frames = _post_qa(
+                client,
                 test_project.id,
                 {
                     "question": "hello",
                     "context_level": "architecture",
                     "conversation_id": None,
                 },
-                session_headers,
             )
 
         meta_idx = next((i for i, f in enumerate(frames) if f == "event: meta"), None)

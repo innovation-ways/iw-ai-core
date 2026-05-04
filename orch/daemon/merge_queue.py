@@ -285,16 +285,35 @@ def _merge_item(
         if project is not None:
             trigger_doc_regeneration_on_merge(db, batch_item, project)
 
+        # I-00063: Commit the orchestration session before Phase 2 to release
+        # AccessShareLocks acquired by the reads above. Phase 2's ALTER TABLE
+        # requires AccessExclusiveLock and would self-deadlock against our own
+        # idle-in-transaction session.
+        #
+        # We commit but do NOT close: the caller (process_merge_queue → batch
+        # manager) owns the session lifecycle via its own context manager, and
+        # downstream tests pass in a long-lived fixture session that they
+        # continue to use after _merge_item returns.
+        #
+        # We also capture batch_item.batch_id into a local primitive BEFORE
+        # the commit. After commit the ORM object's attributes are expired
+        # (default expire_on_commit=True), so accessing batch_item.batch_id
+        # would trigger a refresh — opening a new transaction and re-acquiring
+        # the share lock we just released. The whole point of the commit is
+        # to NOT hold any locks during run_post_merge_apply().
+        batch_id_for_apply = batch_item.batch_id
+        db.commit()
+
         # Phase 2: apply migrations to live DB
-        if batch_item.batch_id is not None:
-            apply_result = run_post_merge_apply(batch_item.batch_id)
+        if batch_id_for_apply is not None:
+            apply_result = run_post_merge_apply(batch_id_for_apply)
             if not apply_result.success:
                 logger.warning(
                     "[%s] Phase 2 apply failed for batch %s — running rollback",
                     project_id,
-                    batch_item.batch_id,
+                    batch_id_for_apply,
                 )
-                rollback_result = run_rollback(batch_item.batch_id)
+                rollback_result = run_rollback(batch_id_for_apply)
                 _emit_event(
                     db,
                     project_id,
@@ -305,15 +324,16 @@ def _merge_item(
                     {
                         "phase": "rollback",
                         "success": rollback_result.success,
-                        "batch_id": batch_item.batch_id,
+                        "batch_id": batch_id_for_apply,
                         "frozen": rollback_result.frozen,
                     },
                 )
+                db.commit()
                 if rollback_result.frozen:
                     logger.error(
                         "[%s] Merge queue FROZEN after rollback failure for batch %s",
                         project_id,
-                        batch_item.batch_id,
+                        batch_id_for_apply,
                     )
 
     except (MergeError, subprocess.TimeoutExpired) as e:
