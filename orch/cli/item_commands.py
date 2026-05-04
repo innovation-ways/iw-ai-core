@@ -33,6 +33,7 @@ from orch.db.models import (
 )
 from orch.design_doc_parser import parse_dependencies
 from orch.evidences import EvidenceTooLargeError, ingest_phase_from_disk
+from orch.qv_gate_validator import auto_skip_phantom_qv_gates
 
 # ---------------------------------------------------------------------------
 # Pure validation helpers (used by unit tests without DB)
@@ -571,13 +572,22 @@ def approve(ctx: click.Context, item_id: str) -> None:
 
             session.flush()
 
+            skipped = auto_skip_phantom_qv_gates(session, project_id, item_id, trigger="approve")
+
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 1)
 
     if ctx.obj.get("json"):
-        click.echo(json.dumps({"project_id": project_id, "id": item_id, "status": "approved"}))
+        result: dict[str, Any] = {"project_id": project_id, "id": item_id, "status": "approved"}
+        if skipped:
+            result["auto_skipped_steps"] = [
+                {"step_id": s, "gate": g, "reason": r} for s, g, r in skipped
+            ]
+        click.echo(json.dumps(result))
     else:
         click.echo(f"Approved {item_id}")
+        for step_id, gate, reason in skipped:
+            click.echo(f"  Auto-skipped phantom gate {step_id} ({gate}): {reason}")
 
 
 @click.command("unapprove")
