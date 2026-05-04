@@ -29,6 +29,22 @@ DB rows its browser verification needs. The mechanism solves the recurring
 QvBrowser failure where verifications expect data the fresh E2E DB does
 not contain.
 
+### Insert-order gotcha for fixture authors
+
+If your fixture adds a parent row and a child row that references it via
+foreign key, SQLAlchemy's unit-of-work will sort the INSERTs **only when
+the ORM has a ``relationship()`` between the two mappers** — a bare
+``ForeignKeyConstraint`` in ``__table_args__`` is not enough. Without that
+relationship, the child INSERT can race ahead of the parent and you get a
+``ForeignKeyViolation`` at flush time. ``BatchItem``→``WorkItem`` and
+``BatchItem``→``Batch`` are wired this way in ``orch/db/models.py``;
+when you add a new model, either declare the matching ``relationship()``
+on the child mapper or insert an explicit ``db.flush()`` between the
+parent ``add()`` and the child ``add()`` in your fixture.
+
+``tests/integration/test_e2e_seed.py`` runs this script end-to-end
+against a fresh schema and is the regression net for fixture authoring.
+
 Run with:  uv run python scripts/e2e_seed.py
 """
 

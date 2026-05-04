@@ -588,6 +588,135 @@ class TestAC6:
 
 
 # ---------------------------------------------------------------------------
+# Legacy fallback uses step.report_content (BATCH-00075 root cause)
+# ---------------------------------------------------------------------------
+
+
+class TestLegacyFindingsUseReportContent:
+    """Regression: when a gate has no parser (e.g. ``integration-tests``), the
+    legacy path must surface the qv-gate report content — which holds the actual
+    FAILED test list — instead of only the one-line ``step-fail --reason``.
+
+    Background: BATCH-00075 (I-00061 / I-00062) burned five fix cycles each on
+    ``make test-integration`` because the daemon's ``StepRun.log_file`` only
+    captured the agent chatter (``Failed I-00061 step S10: integration-tests
+    failed: exit=2``). The pytest output lived in ``step.report_content`` but
+    ``_qv_findings_legacy`` ignored it.
+    """
+
+    def test_report_content_is_included_when_gate_has_no_parser(
+        self,
+        db_session: Session,
+        test_project: Project,
+        fake_worktree: tuple[Path, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        worktree, item_id = fake_worktree
+        step_id = f"{item_id}-S14"
+
+        _, step = _create_item_and_step(
+            db_session,
+            test_project.id,
+            item_id,
+            step_id,
+            "integration-tests",
+            step_number=14,
+        )
+
+        # The qv-gate agent writes the report (incl. FAILED test names) and calls
+        # `iw step-fail --reason ... --report ...`, which copies the report into
+        # step.report_content.
+        step.report_content = (
+            "# I-XXXXX S14 QvGate Report\n\n"
+            "## Output (tail)\n\n"
+            "FAILED tests/integration/test_widget.py::test_alpha - AssertionError\n"
+            "FAILED tests/integration/test_widget.py::test_beta - RuntimeError\n"
+        )
+
+        run = StepRun(
+            step_id=step.id,
+            run_number=1,
+            status=RunStatus.failed,
+            error_message="integration-tests failed: exit=2",
+            # log_file points at the daemon's per-run log, which only got the
+            # one-line failure echo — the same content as error_message.
+            log_file=None,
+            log_content="Failed I-XXXXX step S14: integration-tests failed: exit=2",
+        )
+        db_session.add(run)
+        db_session.commit()
+
+        monkeypatch.setenv("IW_CORE_BASELINE_QV", "true")
+        with patch(
+            "orch.daemon.fix_cycle._resolve_worktree_base_sha",
+            return_value="abc123",
+        ):
+            findings = _get_qv_findings(
+                db_session, step, str(worktree), MagicMock(baseline_qv_enabled=True)
+            )
+
+        assert "test_alpha" in findings, (
+            "fix-cycle prompt must surface FAILED test names from the gate "
+            f"report; got:\n{findings!r}"
+        )
+        assert "test_beta" in findings
+        assert "**Gate report**" in findings
+
+    def test_report_content_preferred_over_redundant_log_file(
+        self,
+        db_session: Session,
+        test_project: Project,
+        fake_worktree: tuple[Path, str],
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Don't double-print the one-line reason: when log_file content equals
+        error_message we must skip the empty Command output block."""
+        worktree, item_id = fake_worktree
+        step_id = f"{item_id}-S14"
+
+        _, step = _create_item_and_step(
+            db_session,
+            test_project.id,
+            item_id,
+            step_id,
+            "integration-tests",
+            step_number=14,
+        )
+        step.report_content = "FAILED tests/integration/test_alpha.py::test_x"
+
+        log_file = tmp_path / "run1.log"
+        # Mirror the production observation: log_file ends up holding only the
+        # one-line failure echo, identical to the StepRun.error_message.
+        log_file.write_text("Failed XYZ step S14: integration-tests failed: exit=2\n")
+
+        run = StepRun(
+            step_id=step.id,
+            run_number=1,
+            status=RunStatus.failed,
+            error_message="integration-tests failed: exit=2",
+            log_file=str(log_file),
+        )
+        db_session.add(run)
+        db_session.commit()
+
+        monkeypatch.setenv("IW_CORE_BASELINE_QV", "true")
+        with patch(
+            "orch.daemon.fix_cycle._resolve_worktree_base_sha",
+            return_value="abc123",
+        ):
+            findings = _get_qv_findings(
+                db_session, step, str(worktree), MagicMock(baseline_qv_enabled=True)
+            )
+
+        assert "test_x" in findings
+        # Command output block should be suppressed when it duplicates error_message.
+        assert "**Command output**" not in findings, (
+            f"redundant Command output block leaked through:\n{findings!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Boundary Behaviour
 # ---------------------------------------------------------------------------
 
