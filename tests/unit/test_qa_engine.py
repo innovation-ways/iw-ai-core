@@ -81,7 +81,7 @@ class TestBuildSystemPrompt:
         retrieval content.
         """
         from orch.rag.config import CodeUnderstandingConfig
-        from orch.rag.qa import QAEngine
+        from orch.rag.qa import SYSTEM_PROMPT_HARDENING, QAEngine
 
         config = MagicMock(spec=CodeUnderstandingConfig)
         engine = QAEngine(project_id="test-project", config=config)
@@ -104,7 +104,8 @@ class TestBuildSystemPrompt:
             "---\nchunk-b\n\n\n"
             f"{QAEngine.RENDERING_CAPABILITIES_BLOCK}"
             "Answer the user's question based on the above context. "
-            "If the context does not contain enough information, say so clearly."
+            "If the context does not contain enough information, say so clearly.\n\n"
+            f"{SYSTEM_PROMPT_HARDENING}"
         )
         assert result == expected
 
@@ -367,10 +368,10 @@ class TestTruncateHistory:
         assert len(result) == 10
 
     def test_truncate_history_exceeds_limit(self) -> None:
-        """Given: history with 12 messages (6 turns)
-        When: engine._truncate_history(history) is called
-        Then: only the last 10 messages are returned
-        And: len(result) == 10
+        """Given: history with 12 messages with high token counts
+        When: engine._truncate_history(history) is called with token-budget
+        Then: oldest messages are dropped until within soft budget
+        And: last 2 messages are always preserved
         """
         from orch.rag.config import CodeUnderstandingConfig
         from orch.rag.qa import QAEngine
@@ -378,16 +379,23 @@ class TestTruncateHistory:
         config = MagicMock(spec=CodeUnderstandingConfig)
         engine = QAEngine(project_id="test-project", config=config)
 
+        # Each message has 1000 tokens, budget is 3000 -> keep last 3 (3000 tokens)
+        # but last 2 are always preserved
         history = [
-            {"role": "user", "content": f"Old message {i}"}
-            if i % 2 == 0
-            else {"role": "assistant", "content": f"Old response {i}"}
+            {
+                "role": "user" if i % 2 == 0 else "assistant",
+                "content": f"msg{i}",
+                "token_count": 1000,
+            }
             for i in range(12)
         ]
 
         result = engine._truncate_history(history)
-        assert len(result) == 10
-        assert result == history[-10:]
+        # With budget=3000 and each msg=1000 tokens, we keep 3 messages
+        # But since last 2 must be preserved, we keep last 2 + 1 older = 3
+        assert len(result) <= 3
+        assert result[-1] == history[-1]  # last preserved
+        assert result[-2] == history[-2]  # second-to-last preserved
 
     def test_truncate_history_empty(self) -> None:
         """Given: history = []
@@ -995,4 +1003,5 @@ class TestQAEngineConstants:
 
         config = MagicMock(spec=CodeUnderstandingConfig)
         engine = QAEngine(project_id="test-project", config=config)
-        assert engine.MAX_HISTORY_TURNS == 5
+        # MAX_HISTORY_TURNS was removed in F-00077; the class no longer has this attribute
+        assert not hasattr(engine, "MAX_HISTORY_TURNS")
