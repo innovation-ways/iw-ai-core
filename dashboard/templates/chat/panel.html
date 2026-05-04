@@ -20,7 +20,16 @@
     <!-- Expanded header: title + collapse button -->
     <header class="flex items-center justify-between px-3 py-2 border-b border-border">
       <h2 id="chat-context-label" class="text-sm font-medium truncate" title="Chat — Architecture">Chat — Architecture</h2>
-      <button id="chat-collapse-btn"
+      <div class="flex items-center gap-1">
+        <button id="chat-new-btn"
+                class="tap inline-flex items-center justify-center text-xs px-2 py-1 rounded border border-border hover:bg-muted"
+                aria-label="Start a new chat (clears history)">
+          <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          New
+        </button>
+        <button id="chat-collapse-btn"
               class="tap inline-flex items-center justify-center"
               aria-label="Collapse chat panel (Cmd+\)">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

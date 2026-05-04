@@ -61,8 +61,8 @@ class TestTokenEventShape:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)
@@ -106,8 +106,8 @@ class TestTokenEventShape:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)
@@ -145,8 +145,8 @@ class TestTokenEventShape:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)
@@ -187,8 +187,8 @@ class TestTokenEventShape:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)
@@ -241,8 +241,8 @@ class TestTokenEventNewlineAndEncoding:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)
@@ -284,8 +284,8 @@ class TestTokenEventNewlineAndEncoding:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)
@@ -328,8 +328,8 @@ class TestDoneAndErrorEvents:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)
@@ -368,8 +368,8 @@ class TestDoneAndErrorEvents:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)
@@ -417,8 +417,8 @@ class TestCumulativeCitations:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)

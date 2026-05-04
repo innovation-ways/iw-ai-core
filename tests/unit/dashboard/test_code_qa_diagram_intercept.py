@@ -96,6 +96,9 @@ class TestSseGeneratorDiagramEmission:
 
         rendered_svg = "<svg>test</svg>"
 
+        def fake_session_factory() -> object:
+            return None
+
         with (
             patch(
                 "dashboard.routers.code_qa.render_mermaid",
@@ -112,8 +115,8 @@ class TestSseGeneratorDiagramEmission:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=fake_session_factory,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)
@@ -177,8 +180,8 @@ class TestSseGeneratorDiagramEmission:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)
@@ -223,8 +226,8 @@ class TestSseGeneratorDiagramEmission:
                 context_doc_id=None,
                 module_path=None,
                 module_name=None,
-                conversation_history=[],
-                db_session=None,
+                conversation_id="test-conv-id",
+                session_factory=lambda: None,
                 config=CodeUnderstandingConfig(),
             ):
                 frames.append(frame)

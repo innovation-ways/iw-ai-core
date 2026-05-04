@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
-
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from starlette.requests import Request  # noqa: TC002
+    from starlette.responses import Response  # noqa: TC002
+
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -25,6 +28,7 @@ from dashboard.routers import (
     code_qa,
     code_ui,
     containers,
+    conversations,
     coverage,
     daemon_control,
     docs,
@@ -109,6 +113,31 @@ def create_app() -> FastAPI:
 
     # Register alembic guard middleware (R3 — throttle re-checks at most once per 10s)
     app.add_middleware(AlembicGuardMiddleware)
+
+    # Session cookie middleware — sets iw_chat_session if absent.
+    # HttpOnly=False so JS can read it for localStorage scoping.
+    @app.middleware("http")
+    async def _session_cookie_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        cookie_name = "iw_chat_session"
+        cookie_value = request.cookies.get(cookie_name)
+
+        if cookie_value is None:
+            cookie_value = str(uuid.uuid4())
+            request.state.session_id = cookie_value
+            response: Response = await call_next(request)
+            secure = os.environ.get("IW_CORE_SECURE_COOKIE", "false").lower() == "true"
+            secure_flag = "; Secure" if secure else ""
+            response.headers["Set-Cookie"] = (
+                f"{cookie_name}={cookie_value}; "
+                f"Max-Age=7776000; Path=/; SameSite=Lax; HttpOnly=false{secure_flag}"
+            )
+            return response
+
+        request.state.session_id = cookie_value
+        return await call_next(request)
 
     # Initial alembic guard check at app construction (R3).
     # Suppress failures: if the DB is unreachable at boot, the middleware
@@ -205,6 +234,7 @@ def create_app() -> FastAPI:
     app.include_router(code.router)
     app.include_router(code_ui.router)
     app.include_router(code_qa.router)
+    app.include_router(conversations.router)
     app.include_router(research.router)
     app.include_router(staleness.router)
     app.include_router(coverage.router)

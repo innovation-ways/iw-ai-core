@@ -278,7 +278,9 @@
           return;
         }
 
-        var conversationHistory = [];
+        var cachedConvId = window.iwChatState && window.iwChatState.getCachedConversation
+          ? window.iwChatState.getCachedConversation(projectId, modulePath)
+          : null;
 
         appendUserBubble(question);
         input.value = '';
@@ -302,7 +304,7 @@
           context_doc_id: contextDocId,
           module_path: modulePath,
           module_name: moduleName,
-          conversation_history: conversationHistory,
+          conversation_id: cachedConvId,
           context_chips: contextChips_data,
         };
 
@@ -347,6 +349,15 @@
                 window.iwChat.injectToneSwitchChip(assistantArticle, renderId, tone);
               }
               if (isAtBottom) scrollToBottom();
+              // Refresh TTL on successful completion
+              if (window.iwChatState && window.iwChatState.setCachedConversation && cachedConvId) {
+                window.iwChatState.setCachedConversation(projectId, modulePath, cachedConvId);
+              }
+            },
+            onMeta: function (data) {
+              if (data && data.conversation_id) {
+                window.iwChatState.setCachedConversation(projectId, modulePath, data.conversation_id);
+              }
             },
             onImage: renderer ? renderer.onImage : function () {},
             onError: renderer ? renderer.onError : function (err) {
