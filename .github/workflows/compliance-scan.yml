@@ -114,14 +114,14 @@ jobs:
       # resume automatically once the repo is published.
       - name: Upload gitleaks SARIF (tree)
         if: always() && !github.event.repository.private && hashFiles('.iw/gitleaks-tree.sarif') != ''
-        uses: github/codeql-action/upload-sarif@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
         with:
           sarif_file: .iw/gitleaks-tree.sarif
           category: gitleaks-tree
 
       - name: Upload gitleaks SARIF (history)
         if: always() && !github.event.repository.private && hashFiles('.iw/gitleaks-history.sarif') != ''
-        uses: github/codeql-action/upload-sarif@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4.35.3
         with:
           sarif_file: .iw/gitleaks-history.sarif
           category: gitleaks-history
