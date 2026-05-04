@@ -125,46 +125,17 @@ Rules for interacting with the page:
 The E2E stack's PostgreSQL is seeded from the production orchestration DB
 via `pg_dump` (run by `ai-dev/iw-config/worktree-seed.sh`).
 
-The Claude usage label is rendered server-side from
-`/app/.claude/rate-limits-cache.json` **inside the dashboard container**
-(NOT from the host's `~/.claude/`, which is intentionally not mounted —
-it belongs to the developer's running Claude Code session and must never
-be touched by tests). The dir is created by `scripts/e2e_dashboard_entrypoint.sh`
-on every container start; the file itself is absent by default, which is
-the V4 ("5h" placeholder) branch.
+The Claude usage label is rendered server-side from `~/.claude/rate-limits-cache.json` on the host that runs the dashboard process — NOT from the database. The verification therefore depends on the existence and freshness of that cache file in the worktree's runtime environment, not on DB seed data.
 
-To control V1/V2/V3, find the dashboard container name and inject the
-cache via `docker exec`:
+If the cache file is missing or stale, the dashboard will render the static `5h` placeholder for the Claude column. That is the **AC5** branch and you may verify it as one of the cases (V3). The other cases (V1, V2) require the cache to be present with a future `resets_at` — see the directions in V1 and V2 below for how to synthesise this.
 
-```bash
-DASH=$(docker ps --filter "label=com.docker.compose.service=e2e-dashboard" \
-  --filter "name=^/${COMPOSE_PROJECT_NAME:-iw-ai-core-e2e-cr00030}-" \
-  --format '{{.Names}}' | head -n1)
-
-# Compute Unix timestamps on the host (the container clock is irrelevant —
-# the dashboard compares resets_at against `datetime.now(UTC).timestamp()`).
-NOW=$(date -u +%s)
-FIVE_H_RESETS=$((NOW + 4*3600 + 32*60))   # 4h 32m from now
-SEVEN_D_RESETS=$((NOW + 3*86400))         # 3 days from now
-
-JSON=$(printf '{"five_hour":{"resets_at":%d,"used_percentage":8},"seven_day":{"resets_at":%d,"used_percentage":15}}' \
-  "$FIVE_H_RESETS" "$SEVEN_D_RESETS")
-
-docker exec -i "$DASH" sh -c 'cat > /app/.claude/rate-limits-cache.json' <<<"$JSON"
-```
-
-The in-process `_cache` TTL is 60s — wait or trigger a fresh htmx poll
-(reload the page) to see the new label.
-
-The host's `/home/sergiog/.claude/` is **off-limits** — never read it,
-write it, or mount it into a container. Cache-control must happen via
-`docker exec` against the container only.
+If you cannot satisfy V1 or V2 because the cache file cannot be controlled in the E2E stack, classify the failure as `ENV_DATA_MISSING` per the standard QV Browser contract.
 
 ## Verification Steps
 
 ### V1: Claude 5h slot label is in the new "Xh Ym" form
 
-1. Inject the controlled cache **into the dashboard container** (see the `docker exec` recipe above) with `five_hour.resets_at = now + 4h 32m` and `five_hour.used_percentage = 8`, plus `seven_day.resets_at = now + 3 days` and `seven_day.used_percentage = 15`. Never write to the host's `~/.claude/`. Key shape: see `orch/llm_usage.py` lines 70-91.
+1. From a shell, write a controlled `~/.claude/rate-limits-cache.json` whose `five_hour.resets_at` is exactly `now + 4h 32m` (Unix epoch seconds, UTC) and `five_hour.used_percentage` is `8`. Likewise set `seven_day.resets_at` to `now + 3 days` and `seven_day.used_percentage` to `15`. Use the same key names already produced by the Claude Code statusline hook (see `orch/llm_usage.py` lines 70-91 for the exact shape).
 2. Navigate to `$IW_BROWSER_BASE_URL/`.
 3. Wait for the footer to refresh (htmx polls `/api/usage/llm/fragment` every 60s; you can also force an immediate refresh by reloading the page — the in-process `_cache` TTL is 60s, so reloading more than 60s after writing the cache is the most reliable path).
 4. **Verify:** The footer's Claude column contains text matching the regex `^\d+h \d+m$` (e.g. `4h 32m`) immediately to the LEFT of the 5h progress bar. The percentage immediately to the RIGHT of the bar still reads `8%`.
@@ -180,17 +151,18 @@ write it, or mount it into a container. Cache-control must happen via
 
 ### V3: Sub-hour Claude 5h label uses minutes only
 
-1. Re-inject the in-container cache (same `docker exec` recipe as V1) with `five_hour.resets_at = now + 25 minutes` and any non-zero `used_percentage`. Leave `seven_day` as in V1.
+1. Rewrite `~/.claude/rate-limits-cache.json` with `five_hour.resets_at = now + 25 minutes` (and any non-zero `used_percentage`). Leave `seven_day` as in V1.
 2. Wait > 60s OR clear the in-process `_cache` (a dashboard restart is NOT in scope — instead, simply wait for the next htmx poll, which is at most 60s).
 3. **Verify:** The Claude 5h label matches `^\d+m$` (e.g. `25m`) and does NOT contain `h ` (no hour component).
 4. **Screenshot:** `ai-dev/active/CR-00030/evidences/post/CR-00030_v3_5h_minutes_only.png`.
 
 ### V4: Missing cache → static "5h" placeholder
 
-1. Remove the in-container cache file: `docker exec "$DASH" rm -f /app/.claude/rate-limits-cache.json`.
+1. Move or delete `~/.claude/rate-limits-cache.json` (rename to `rate-limits-cache.json.bak` so it can be restored).
 2. Wait > 60s for the next htmx poll OR reload the page.
 3. **Verify:** The Claude 5h label reads exactly `5h` (the template's `or '5h'` fallback) and the percentage reads `0%`.
-4. **Screenshot:** `ai-dev/active/CR-00030/evidences/post/CR-00030_v4_5h_placeholder.png`.
+4. Restore the cache file (move the `.bak` back) so the system continues to work normally for the rest of verification.
+5. **Screenshot:** `ai-dev/active/CR-00030/evidences/post/CR-00030_v4_5h_placeholder.png`.
 
 ### V5: No Regressions
 

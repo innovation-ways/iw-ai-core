@@ -13,7 +13,6 @@ catch regressions in the wiring that would restore per-tab EventSource.
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -41,6 +40,7 @@ def _template_dir() -> Path:
 def client(db_session: Session) -> TestClient:
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
+
         def override_get_db() -> Session:
             return db_session
 
