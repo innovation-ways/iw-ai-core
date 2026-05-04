@@ -1019,6 +1019,19 @@ class BatchItem(Base):
         "NULL in legacy mode. Used by the reaper and daemon-restart re-attach logic.",
     )
 
+    # Forward-only relationships to teach the SQLAlchemy unit-of-work that
+    # BatchItem inserts must follow Batch and WorkItem inserts. Without these,
+    # a session that adds parent + child rows in the same flush emits
+    # batch_items INSERTs before work_items / batches INSERTs and raises
+    # ForeignKeyViolation — table-level ForeignKeyConstraint alone does not
+    # drive ORM mapper-level dependency sorting. Kept forward-only (no
+    # back_populates) so Batch / WorkItem instances do not gain a collection
+    # attribute that would change query behaviour elsewhere.
+    # ``overlaps`` acknowledges that both composite FKs share project_id —
+    # silencing the SAWarning is intentional, not a bug to suppress.
+    batch: Mapped[Batch] = relationship("Batch", overlaps="work_item")
+    work_item: Mapped[WorkItem] = relationship("WorkItem", overlaps="batch")
+
     __table_args__ = (
         ForeignKeyConstraint(
             ["project_id", "batch_id"],
