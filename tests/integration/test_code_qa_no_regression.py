@@ -200,7 +200,12 @@ def test_code_only_token_and_done_only(
     project_with_index: Project,
     tmp_path: Path,
 ) -> None:
-    """AC9: Code-only SSE contains only token and done events."""
+    """AC9: Code-only SSE shape: meta event first, then tokens, then done. No phase events.
+
+    Post-F-00077 the dashboard always emits a leading meta event carrying
+    conversation_id. Code-only paths must NOT emit phase events; the allowed
+    set is {meta, token, done}.
+    """
     project_index_path = tmp_path / "code-index" / project_with_index.id / "vectors"
     project_index_path.mkdir(parents=True, exist_ok=True)
 
@@ -228,13 +233,17 @@ def test_code_only_token_and_done_only(
 
     event_types = {e["event"] for e in events if e["event"] is not None}
 
-    assert event_types <= {"token", "done"}, (
-        f"AC9: Code-only SSE must contain only token and done events. Got events: {event_types}"
+    # Post-F-00077: meta event is always emitted first; phase IS still forbidden
+    assert event_types <= {"meta", "token", "done"}, (
+        f"AC9: Code-only SSE must contain only meta, token, and done events "
+        f"(no phase events). Got events: {event_types}"
     )
 
+    meta_events = [e for e in events if e["event"] == "meta"]
     token_events = [e for e in events if e["event"] == "token"]
     done_events = [e for e in events if e["event"] == "done"]
 
+    assert len(meta_events) == 1, "Code-only query must emit exactly one meta event"
     assert len(token_events) > 0, "Code-only query must emit token events"
     assert len(done_events) == 1, "Code-only query must emit exactly one done event"
 
@@ -393,9 +402,10 @@ def test_code_only_preserves_existing_sse_shape(
     project_with_index: Project,
     tmp_path: Path,
 ) -> None:
-    """AC9/Invariant 3: Code-only SSE preserves bit-for-bit shape from pre-F-00055.
+    """AC9/Invariant 3: Code-only SSE shape: meta first, then tokens, then done.
 
-    The SSE format for code-only must be identical to what existed before F-00055:
+    Post-F-00077 contract (supersedes the pre-F-00055 bit-for-bit shape):
+    - event: meta with conversation_id (new — always emitted first)
     - event: token with base64-encoded text
     - event: done with {"ok": true}
     - No phase events
@@ -429,11 +439,18 @@ def test_code_only_preserves_existing_sse_shape(
     events = _parse_sse(resp.text)
 
     all_event_types = [e["event"] for e in events if e["event"] is not None]
-    assert set(all_event_types) <= {"token", "done"}, (
-        f"Code-only SSE must only contain token/done events. Got: {set(all_event_types)}"
+    # Post-F-00077: meta is always emitted first; phase is still forbidden
+    assert set(all_event_types) <= {"meta", "token", "done"}, (
+        f"Code-only SSE must only contain meta/token/done events (no phase). "
+        f"Got: {set(all_event_types)}"
     )
 
     for event in events:
+        if event["event"] == "meta":
+            data = event["data"]
+            assert isinstance(data, dict), "Meta data must be a dict"
+            assert "conversation_id" in data, "Meta data must have 'conversation_id' field"
+
         if event["event"] == "token":
             data = event["data"]
             assert isinstance(data, dict), "Token data must be a dict"

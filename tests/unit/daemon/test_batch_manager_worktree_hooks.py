@@ -228,12 +228,14 @@ class TestTerminalTransitionComposeDown:
             patch("orch.daemon.merge_queue._cleanup_worktree"),
             patch("orch.daemon.merge_queue.run_pre_merge_rebase") as mock_rebase,
             patch("orch.daemon.merge_queue.run_pre_merge_dry_run") as mock_dry_run,
+            patch("orch.daemon.merge_queue.run_post_merge_apply") as mock_apply,
             patch("orch.daemon.merge_queue.run_rollback") as mock_rollback,
         ):
             mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             mock_rebase.return_value = MagicMock(success=True)
             mock_dry_run.return_value = MagicMock(success=True)
-            mock_rollback.return_value = MagicMock(success=True)
+            mock_apply.return_value = MagicMock(success=True)
+            mock_rollback.return_value = MagicMock(success=True, frozen=False, message="ok")
             _merge_item(db, item, "test-proj", project_cfg)
 
         assert item.status == BatchItemStatus.merged

@@ -20,20 +20,23 @@ import os
 import re
 import time
 import warnings
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from alembic import command
 from alembic.config import Config as AlembicConfig
 from alembic.script import ScriptDirectory
-from sqlalchemy import text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from orch.config import get_db_url
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
+
+from orch.config import get_db_url, get_migration_lock_timeout_secs
 from orch.db.live_db_guard import assert_engine_url_allowed
 from orch.db.models import PendingMigrationLog
 
@@ -41,6 +44,7 @@ __all__ = [
     "AgentContextForbiddenError",
     "MultipleHeadsError",
     "MigrationLockHeldError",
+    "SelfBlockerError",
     "Revision",
     "DryRunResult",
     "ApplyResult",
@@ -56,6 +60,8 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 MIGRATIONS_SCRIPT_LOCATION = str(Path(__file__).parent / "migrations")
+
+_RELEVANT_TABLES = ("batch_items", "batches", "projects", "work_items", "daemon_events")
 
 
 def _is_test_context_active() -> bool:
@@ -119,6 +125,15 @@ class MultipleHeadsError(RuntimeError):
 
 class MigrationLockHeldError(RuntimeError):
     """Raised when the migration lock is held by another item (stale agent)."""
+
+
+class SelfBlockerError(RuntimeError):
+    """Raised when safe_migrate.apply() detects it would deadlock against its own session.
+
+    This happens when the caller (e.g. _merge_item) holds AccessShareLock on a table
+    the pending migration will alter, and then calls apply() from the same process.
+    See I-00063 for context.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +443,72 @@ def _release_migration_lock(item: str = "daemon") -> None:
         engine.dispose()
 
 
+def _assert_no_self_blockers(apply_engine: Engine) -> None:
+    """Raise SelfBlockerError if the current process already holds a conflicting lock.
+
+    Uses pg_blocking_pids() to detect whether the apply connection's backend PID
+    is blocked by any session that originates from the same process (same parent PID
+    and local connection). This catches the I-00063 self-deadlock where the daemon's
+    outer session holds AccessShareLock on a table the migration will alter.
+
+    The check runs against the apply engine's own connection, which has a known
+    backend PID we can use to query for blockers.
+    """
+    try:
+        with apply_engine.connect() as apply_conn:
+            apply_pid = apply_conn.execute(text("SELECT pg_backend_pid()")).scalar()
+
+            tables_to_check: set[str] = set()
+            pending_revisions: list[Revision] = []
+            with suppress(Exception):
+                pending_revisions = list_pending_revisions(
+                    apply_engine.url.render_as_string(hide_password=False)
+                )
+            if pending_revisions:
+                for rev in pending_revisions:
+                    doc = rev.description or ""
+                    for table in _RELEVANT_TABLES:
+                        if table in doc.lower():
+                            tables_to_check.add(table)
+
+            if not tables_to_check:
+                tables_to_check = set(_RELEVANT_TABLES)
+
+            for table in tables_to_check:
+                result = apply_conn.execute(
+                    text(
+                        """
+                        SELECT l.pid, l.mode, l.relation::regclass
+                        FROM pg_locks l
+                        JOIN pg_stat_activity a ON l.pid = a.pid
+                        WHERE l.relation::regclass::text = :table
+                          AND l.granted
+                          AND l.mode = 'AccessShareLock'
+                          AND a.state = 'idle in transaction'
+                          AND a.pid != :apply_pid
+                        LIMIT 1
+                        """
+                    ),
+                    {"table": table, "apply_pid": apply_pid},
+                )
+                row = result.fetchone()
+                if row is not None:
+                    blocker_pid, mode, relname = row
+                    raise SelfBlockerError(
+                        f"Phase 2 apply would self-deadlock: daemon's own session "
+                        f"(backend PID {blocker_pid}, application_name="
+                        f"iw-ai-core-daemon-main) holds AccessShareLock on "
+                        f"{relname}. Caller must commit and close its session "
+                        f"before invoking apply(). See I-00063 for context."
+                    )
+    except SelfBlockerError:
+        raise
+    except Exception as exc:
+        if "alembic_version" in str(exc):
+            return
+        logger.exception("Self-blocker detection check failed, continuing anyway")
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -527,20 +608,109 @@ def apply(live_db_url: str, batch_id: str | int | None = None) -> ApplyResult:
     IW_CORE_PER_WORKTREE_DB='true' AND live_db_url points at the per-worktree
     DB (port != 5433). The live orch DB on port 5433 is always protected.
     Records log entry with phase='apply'.
+
+    Sets lock_timeout on the apply connection (default 30s, configurable via
+    IW_CORE_MIGRATION_LOCK_TIMEOUT_SECS) to bound the maximum silent-hang
+    duration on lock contention.
+
+    Runs a pre-flight self-blocker check (via _assert_no_self_blockers) that
+    raises SelfBlockerError before invoking command.upgrade() if the current
+    process already holds a conflicting lock.
     """
     _assert_not_agent_context(live_db_url)
 
     _acquire_migration_lock(item="daemon")
     try:
         started_at = time.perf_counter()
-        cfg = _build_alembic_config(live_db_url)
 
-        revisions_applied, stdout_tail, stderr_tail, error_message = _run_alembic_upgrade(cfg)
-        duration_ms = int((time.perf_counter() - started_at) * 1000)
-        success = error_message is None
+        # Build our own engine with lock_timeout so alembic uses it.
+        # We pass the connection to alembic's EnvironmentContext so the
+        # lock_timeout is set on the same connection alembic uses for DDL.
+        lock_timeout_secs = get_migration_lock_timeout_secs()
+        apply_engine = create_engine(live_db_url)
 
-        revision_str = revisions_applied[-1] if revisions_applied else "head"
+        if lock_timeout_secs > 0:
 
+            @event.listens_for(apply_engine, "connect")
+            def set_lock_timeout(dbapi_connection: Any, _connection_record: Any) -> None:
+                with dbapi_connection.cursor() as cur:
+                    cur.execute(f"SET lock_timeout = '{lock_timeout_secs}s'")
+
+        apply_conn = apply_engine.connect()
+        transaction = apply_conn.begin()
+
+        error_message: str | None = None
+
+        try:
+            _assert_no_self_blockers(apply_engine)
+        except SelfBlockerError as exc:
+            error_message = str(exc)
+            _write_migration_log(
+                revision="head",
+                direction="upgrade",
+                phase="apply",
+                batch_id=batch_id,
+                success=False,
+                stdout_tail="",
+                stderr_tail="",
+                error_message=error_message,
+            )
+            transaction.close()
+            apply_conn.close()
+            apply_engine.dispose()
+            return ApplyResult(
+                revisions_applied=[],
+                success=False,
+                duration_ms=0,
+                stdout_tail="",
+                stderr_tail="",
+                error_message=error_message,
+            )
+
+        try:
+            cfg = _build_alembic_config(live_db_url)
+
+            # Pass our already-connected connection to alembic so it uses the
+            # lock_timeout set on the same connection rather than opening a new one.
+            # alembic checks cfg.attributes.get('connection') in EnvironmentContext.configure().
+            cfg.attributes["connection"] = apply_conn
+
+            revisions_applied, stdout_tail, stderr_tail, error_message = _run_alembic_upgrade(cfg)
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
+            success = error_message is None
+
+            revision_str = revisions_applied[-1] if revisions_applied else "head"
+
+            _write_migration_log(
+                revision=revision_str,
+                direction="upgrade",
+                phase="apply",
+                batch_id=batch_id,
+                success=success,
+                stdout_tail=stdout_tail,
+                stderr_tail=stderr_tail,
+                error_message=error_message,
+            )
+
+            return ApplyResult(
+                revisions_applied=revisions_applied,
+                success=success,
+                duration_ms=duration_ms,
+                stdout_tail=stdout_tail,
+                stderr_tail=stderr_tail,
+                error_message=error_message,
+            )
+        finally:
+            transaction.close()
+            apply_conn.close()
+            apply_engine.dispose()
+    except SelfBlockerError as exc:
+        success = False
+        error_message = str(exc)
+        stdout_tail = ""
+        stderr_tail = ""
+        revision_str = "head"
+        duration_ms = 0
         _write_migration_log(
             revision=revision_str,
             direction="upgrade",
@@ -551,9 +721,8 @@ def apply(live_db_url: str, batch_id: str | int | None = None) -> ApplyResult:
             stderr_tail=stderr_tail,
             error_message=error_message,
         )
-
         return ApplyResult(
-            revisions_applied=revisions_applied,
+            revisions_applied=[],
             success=success,
             duration_ms=duration_ms,
             stdout_tail=stdout_tail,

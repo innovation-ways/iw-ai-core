@@ -151,9 +151,29 @@ class TestMigrationLogWrittenOnAlembicFailure:
     def test_apply_logs_when_alembic_raises(self) -> None:
         from orch.db.safe_migrate import apply
 
+        mock_engine = MagicMock()
+        mock_conn = MagicMock()
+        mock_txn = MagicMock()
+        mock_conn.begin.return_value = mock_txn
+        mock_engine.connect.return_value = mock_conn
+        mock_engine.dispose.return_value = None
+        mock_txn.close.return_value = None
+        mock_conn.close.return_value = None
+
         with (
             patch("orch.db.safe_migrate._assert_not_agent_context"),
             patch("orch.db.safe_migrate._acquire_migration_lock"),
+            patch(
+                "orch.db.safe_migrate.create_engine",
+                return_value=mock_engine,
+            ),
+            patch(
+                "orch.db.safe_migrate.get_migration_lock_timeout_secs",
+                return_value=0,
+            ),
+            patch(
+                "orch.db.safe_migrate._assert_no_self_blockers",
+            ),
             patch(
                 "orch.db.safe_migrate._run_alembic_upgrade",
                 side_effect=RuntimeError("alembic炸了"),
