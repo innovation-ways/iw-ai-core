@@ -46,8 +46,9 @@ Verify the new `TestFormatRemainingFromTs` class has, at minimum:
 | `resets_at` in past → `None` | yes |
 | `<1 minute` → `"0m"` | yes |
 | `<1 hour, >0 minutes` → `"<M>m"` | yes |
-| `>=1 hour` (clean) → `"<H>h <M>m"` | yes |
+| `>=1 hour` (just over boundary, with cushion) → `"<H>h <M>m"` | yes |
 | `>=1 hour` with seconds (drops them) | yes |
+| Multi-hour with non-boundary minutes (with cushion) | yes |
 
 A missing branch is HIGH (test coverage gap).
 
@@ -72,7 +73,7 @@ S03 should have modified ONLY `tests/unit/test_llm_usage.py`. Any other file tou
 - No use of `importlib.reload(orch.config)` (project hard rule). CRITICAL if present.
 - No live-DB connection — these tests are pure-function tests; no `pg_engine` / `db_session` fixture should appear.
 - Tests don't share mutable global state — each test is self-contained.
-- No flaky `datetime.now()` boundaries — assertions on `"25m"` should be safe at any wall-clock instant; if a test uses `60 * 60` exactly the second-rounding may flip between `"59m"` and `"1h 0m"`. Flag as MEDIUM_FIXABLE if the test cushion is < 5s.
+- No flaky `datetime.now()` boundaries — every offset constructed as `datetime.now(UTC).timestamp() + N` must keep `int(N - ε)` (for any plausible test-setup `ε` up to ~1 second) in the **same** formatting bucket. Specifically: any test that asserts `"<H>h 0m"` must use an offset of `H * 3600 + 5` or larger (NOT `H * 3600` exactly); any test that asserts `"<H>h <M>m"` for non-zero `M` must use an offset of `H*3600 + M*60 + 5` or larger (NOT exactly on the minute boundary). Flag as MEDIUM_FIXABLE if any cushion is `< 5s`. The `<1m → "0m"` and pure-minute `<1h` tests are safe with smaller cushions because the floor-divide stays in the same bucket.
 
 ### 5. Did NOT touch
 

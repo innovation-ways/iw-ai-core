@@ -41,14 +41,14 @@ Required cases:
 
 - `test_zero_returns_none` — `_format_remaining_from_ts(0)` → `None`.
 - `test_past_returns_none` — `_format_remaining_from_ts(now - 60)` → `None`.
-- `test_under_one_minute_returns_zero_m` — for a `resets_at` 30 seconds in the future → `"0m"`.
-- `test_under_one_hour_returns_minutes_only` — `resets_at` 25 minutes in the future → `"25m"`.
-- `test_under_one_hour_at_boundary` — `resets_at` 59 minutes 59 seconds in the future → `"59m"`.
-- `test_exactly_one_hour` — `resets_at` 3600 seconds in the future → `"1h 0m"`.
-- `test_multiple_hours` — `resets_at` 4h 32m in the future (16320 seconds) → `"4h 32m"`.
-- `test_multiple_hours_with_seconds` — `resets_at` 2h 43m 49s in the future → `"2h 43m"` (seconds dropped).
+- `test_under_one_minute_returns_zero_m` — `resets_at = now + 30` → `"0m"`.
+- `test_under_one_hour_returns_minutes_only` — `resets_at = now + (25 * 60 + 5)` → `"25m"`.
+- `test_under_one_hour_at_boundary` — `resets_at = now + (59 * 60 + 50)` → `"59m"` (well below the 3600s boundary so no flake risk).
+- `test_just_over_one_hour` — `resets_at = now + (3600 + 5)` → `"1h 0m"` (5-second cushion above 3600 so the helper's `int()` truncation cannot tip the test back into the `<3600` branch).
+- `test_multiple_hours` — `resets_at = now + (4 * 3600 + 32 * 60 + 5)` → `"4h 32m"` (5-second cushion past the 32-minute boundary).
+- `test_multiple_hours_with_seconds` — `resets_at = now + (2 * 3600 + 43 * 60 + 49)` → `"2h 43m"` (seconds dropped; not on a boundary).
 
-Use `datetime.now(UTC).timestamp() + offset` to construct test inputs. Do not freeze time globally — small race-condition cushions of ±1 second are acceptable, but prefer constructing inputs that won't tip over a minute boundary mid-test (e.g. use 25 * 60 + 5 seconds, then assert `"25m"`).
+Use `datetime.now(UTC).timestamp() + offset` to construct test inputs. Do **not** use a clean boundary value like `+3600` or `+ (4 * 3600 + 32 * 60)` — by the time the helper computes `int(resets_at - datetime.now(UTC).timestamp())`, the elapsed wall-clock cost of test setup will tip `remaining_s` from N down to N-1, flipping the formatted result one minute backward (e.g. a `+3600` test would assert `"1h 0m"` but the helper would return `"59m"`). The 5-second cushions above eliminate the race. Do not freeze time globally — these tests are pure-function tests and the cushions are sufficient.
 
 ### 2. Tighten `TestClaudeRateLimitsCache::test_claude_usage_uses_seven_day_from_cache`
 

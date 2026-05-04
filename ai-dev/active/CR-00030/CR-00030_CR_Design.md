@@ -199,13 +199,14 @@ Then make lint, make format, make typecheck, make test-unit, and make allure-int
 ## TDD Approach
 
 - **Unit tests** (S03):
-  - `_format_remaining_from_ts(future_ts)` → `"4h 32m"` for a timestamp ~4h 32m ahead (use `monkeypatch` on `datetime.now`).
-  - `_format_remaining_from_ts(future_ts_under_1h)` → `"25m"`.
-  - `_format_remaining_from_ts(future_ts_under_1m)` → `"0m"`.
-  - `_format_remaining_from_ts(now_ts)` → `None`.
-  - `_format_remaining_from_ts(past_ts)` → `None`.
+  - `_format_remaining_from_ts(now + 4h 32m + 5s)` → `"4h 32m"` (5-second cushion past the boundary so `int()` truncation cannot tip the result one minute backward).
+  - `_format_remaining_from_ts(now + 3600 + 5)` → `"1h 0m"`.
+  - `_format_remaining_from_ts(now + 25m + 5s)` → `"25m"`.
+  - `_format_remaining_from_ts(now + 30s)` → `"0m"`.
+  - `_format_remaining_from_ts(now - 60)` → `None`.
   - `_format_remaining_from_ts(0)` → `None`.
   - End-to-end via `_claude_usage()`: with `five_hour.resets_at` set to a known offset, assert `block_reset` matches `^\d+h \d+m$` or `^\d+m$`, never `^\d{1,2}:\d{2}$`.
+  - Boundary discipline: never construct an offset on an exact 60- or 3600-second boundary; always add a 5-second cushion past whichever boundary you are testing (otherwise the helper's `int(resets_at - now)` truncation will tip the assertion off by one minute). See the S03 prompt for the explicit cushioned values.
 - **Integration tests**: None required — no DB, daemon, or HTTP path is changed. Existing `make allure-integration` must still pass as a regression net.
 - **Updated tests**:
   - `tests/unit/test_llm_usage.py::TestClaudeRateLimitsCache::test_claude_usage_uses_seven_day_from_cache` — strengthen the `block_reset` assertion to require the new 5h shape (still allow `week_reset` to be a wall-clock string).
