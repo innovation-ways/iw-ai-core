@@ -1,0 +1,86 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "work_item": "I-00063",
+  "type": "incident",
+  "title": "Daemon Phase 2 migration apply self-deadlocks against its own idle-in-transaction session",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/merge_queue.py",
+      "orch/daemon/migration_pipeline.py",
+      "orch/db/safe_migrate.py",
+      "orch/config.py",
+      "tests/integration/daemon/test_phase2_apply_no_self_deadlock.py",
+      "tests/integration/db/test_safe_migrate_self_blocker.py",
+      "tests/unit/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Fix _merge_item to commit-and-close the orchestration session before invoking run_post_merge_apply(); set lock_timeout on the alembic apply connection in safe_migrate.apply() (default 30s, override via IW_CORE_MIGRATION_LOCK_TIMEOUT_SECS); add SelfBlockerError detection that aborts before invoking command.upgrade()",
+      "prompt": "prompts/I-00063_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 backend changes for correctness, AC1/AC3/AC4/AC5 coverage, lock_timeout wiring, and self-blocker detection robustness",
+      "prompt": "prompts/I-00063_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Reproduction integration test for the self-deadlock + regression tests for session lifecycle, lock_timeout setter, self-blocker detection, and pending_migration_log audit",
+      "prompt": "prompts/I-00063_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 tests for semantic correctness, AC coverage map, isolation, and TDD red-green verification",
+      "prompt": "prompts/I-00063_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-cutting review of S01-S04 — symbol consistency, integration correctness, functional design alignment, full test suite",
+      "prompt": "prompts/I-00063_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting (ruff check)"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting (ruff format --check)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking (mypy)"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests (testcontainer-backed)",
+      "timeout": 900
+    }
+  ]
+}
