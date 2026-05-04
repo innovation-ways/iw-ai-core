@@ -62,10 +62,17 @@ def _format_remaining_from_ts(resets_at: float) -> str | None:
 ```
 
 Implementation notes:
-- Compute `remaining_s = int(resets_at - datetime.now(UTC).timestamp())`. If `resets_at <= 0` or `remaining_s < 0`, return `None`.
-- For `remaining_s == 0`, return `"0m"` (not `None`) — the slot is technically not yet reset; the next poll will catch the past-deadline case and return `None` then.
-  - Boundary clarification: a `resets_at` strictly less than `datetime.now(UTC).timestamp()` returns `None`. A `resets_at` equal to or greater than `now` (with non-negative `remaining_s`) returns the formatted string.
-- For `remaining_s < 3600`, return `f"{remaining_s // 60}m"`.
+- If `resets_at <= 0`, return `None`.
+- Compute the float delta first, THEN truncate to int — the order matters at sub-second boundaries:
+  ```python
+  delta = resets_at - datetime.now(UTC).timestamp()
+  if delta < 0:
+      return None
+  remaining_s = int(delta)
+  ```
+  Doing `int()` first is wrong: `int(-0.5) == 0` in Python (truncation toward zero), so a `resets_at` half a second in the past would slip past a `remaining_s < 0` check and erroneously render as `"0m"` instead of `None`.
+- Boundary clarification: any `resets_at` strictly less than `datetime.now(UTC).timestamp()` returns `None`. A `resets_at` equal to or greater than `now` returns the formatted string. For `remaining_s == 0` (i.e. resets within the next second but not yet past), return `"0m"` — the slot is technically not yet reset; the next 60s poll will catch the past-deadline case and return `None` then.
+- For `0 <= remaining_s < 3600`, return `f"{remaining_s // 60}m"`.
 - For `remaining_s >= 3600`, return `f"{hours}h {minutes}m"` where `hours = remaining_s // 3600`, `minutes = (remaining_s % 3600) // 60`.
 - Do NOT introduce a new datetime/time module — use the existing `from datetime import UTC, datetime` import.
 - Do NOT couple the implementation to milliseconds — the existing `_format_reset(remains_ms)` works in milliseconds and is for MiniMax. The new helper takes a Unix-timestamp `float`, just like `_format_resets_at`.
