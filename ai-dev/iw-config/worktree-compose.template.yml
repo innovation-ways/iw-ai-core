@@ -27,18 +27,19 @@ services:
     working_dir: /workspace
     volumes:
       - "{{ worktree_path }}:/workspace"
+      - "{{ host_home }}/.claude:/app/.claude"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command:
       - bash
       - -lc
       - |
-        export HOME=/tmp PATH="/tmp/.local/bin:$$PATH" UV_PROJECT_ENVIRONMENT=/tmp/.venv
+        export HOME=/app PATH="/tmp/.local/bin:$$PATH" UV_PROJECT_ENVIRONMENT=/tmp/.venv
         pip install --user --no-warn-script-location -q uv
         uv sync --frozen
         uv run uvicorn dashboard.app:create_app --factory --host 0.0.0.0 --port 9900 --reload
     environment:
-      HOME: /tmp
+      HOME: /app
       IW_CORE_DB_HOST: db
       IW_CORE_DB_PORT: 5432
       IW_CORE_DB_NAME: iw_orch

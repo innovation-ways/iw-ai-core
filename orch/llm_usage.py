@@ -11,6 +11,9 @@ Claude:
   server since the last reset), both bars report 0% and the next request
   the user makes through Claude Code will repopulate the file.
 
+  The 5h label shows time remaining until reset (e.g. "4h 32m", "25m");
+  the 7d label shows a wall-clock reset time (e.g. "15:00" or "Tue 09:00").
+
 MiniMax:
   - Live call to https://api.minimax.io/v1/api/openplatform/coding_plan/remains
     (MiniMax-M* row only). Counts requests, not tokens.
@@ -37,7 +40,20 @@ import httpx
 logger = logging.getLogger(__name__)
 
 _CACHE_TTL = 60  # seconds
-_RATE_LIMITS_FILE = Path.home() / ".claude/rate-limits-cache.json"
+_RATELIMITS_CACHE_DIR_ENVVAR = "CLAUDE_CACHE_DIR"
+
+
+def _resolve_rate_limits_file() -> Path:
+    """Return the path to the rate-limits cache file.
+
+    Respects ``CLAUDE_CACHE_DIR`` env var when set (E2E/test scenarios
+    that need a non-default location). Falls back to
+    ``~/.claude/rate-limits-cache.json`` when unset.
+    """
+    override = os.environ.get(_RATELIMITS_CACHE_DIR_ENVVAR)
+    if override:
+        return Path(override) / ".claude/rate-limits-cache.json"
+    return Path.home() / ".claude/rate-limits-cache.json"
 
 _cache: dict[str, Any] = {}
 _cache_lock = Lock()
@@ -67,6 +83,26 @@ def _format_resets_at(resets_at: float) -> str | None:
     return local.strftime("%a %H:%M")
 
 
+def _format_remaining_from_ts(resets_at: float) -> str | None:
+    """Render a Unix timestamp as a remaining-time label (MiniMax-style).
+
+    - >=1h ahead → 'Hh Mm'   (e.g. '4h 32m', '1h 0m')
+    - <1h ahead  → 'Mm'      (e.g. '25m', '0m' for under one minute)
+    - past or zero → None
+    """
+    if resets_at <= 0:
+        return None
+    delta = resets_at - datetime.now(UTC).timestamp()
+    if delta < 0:
+        return None
+    remaining_s = int(delta)
+    if remaining_s >= 3600:
+        hours = remaining_s // 3600
+        minutes = (remaining_s % 3600) // 60
+        return f"{hours}h {minutes}m"
+    return f"{remaining_s // 60}m"
+
+
 def _read_rate_limits_cache(window: str) -> dict[str, Any] | None:
     """Read ~/.claude/rate-limits-cache.json for `window`.
 
@@ -78,7 +114,7 @@ def _read_rate_limits_cache(window: str) -> dict[str, Any] | None:
     is in the future (i.e. the data hasn't expired), else None.
     """
     try:
-        data = json.loads(_RATE_LIMITS_FILE.read_text())
+        data = json.loads(_resolve_rate_limits_file().read_text())
     except Exception as exc:
         logger.debug("rate-limits cache unreadable: %s", exc)
         return None
@@ -102,7 +138,7 @@ def _claude_usage() -> dict[str, Any]:
     five_hour = _read_rate_limits_cache("five_hour")
     if five_hour:
         block_pct = min(100, round(five_hour["used_percentage"]))
-        block_reset = _format_resets_at(five_hour.get("resets_at", 0))
+        block_reset = _format_remaining_from_ts(five_hour.get("resets_at", 0))
     else:
         block_pct = 0
         block_reset = None

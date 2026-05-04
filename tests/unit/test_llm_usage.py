@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -250,6 +251,13 @@ class TestClaudeRateLimitsCache:
             assert result["block_reset"] is not None
             assert result["week_reset"] is not None
 
+            # 5h: must be remaining-time format ("Xh Ym" or "Xm"), NEVER wall-clock "HH:MM"
+            assert re.fullmatch(r"\d+h \d+m|\d+m", result["block_reset"]), result["block_reset"]
+            assert ":" not in result["block_reset"]
+
+            # 7d: still wall-clock — must contain a colon
+            assert ":" in result["week_reset"]
+
     def test_claude_usage_zero_when_cache_missing(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -312,6 +320,85 @@ class TestFormatResetsAt:
         assert len(parts) == 2
         assert len(parts[0]) == 3  # %a → "Mon", "Tue", ...
         assert ":" in parts[1]
+
+
+class TestFormatRemainingFromTs:
+    """Tests for _format_remaining_from_ts() — remaining-time rendering (MiniMax-style)."""
+
+    def test_zero_returns_none(self) -> None:
+        """_format_remaining_from_ts(0) → None."""
+        from orch import llm_usage
+
+        assert llm_usage._format_remaining_from_ts(0) is None
+
+    def test_past_returns_none(self) -> None:
+        """Timestamp in the past → None."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        past = datetime.now(UTC).timestamp() - 60
+        assert llm_usage._format_remaining_from_ts(past) is None
+
+    def test_under_one_minute_returns_zero_m(self) -> None:
+        """30 seconds → '0m'."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        now = datetime.now(UTC).timestamp()
+        result = llm_usage._format_remaining_from_ts(now + 30)
+        assert result == "0m"
+
+    def test_under_one_hour_returns_minutes_only(self) -> None:
+        """25 minutes 5 seconds → '25m' (5s cushion past any boundary)."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        now = datetime.now(UTC).timestamp()
+        result = llm_usage._format_remaining_from_ts(now + (25 * 60 + 5))
+        assert result == "25m"
+
+    def test_under_one_hour_at_boundary(self) -> None:
+        """59 minutes 50 seconds → '59m' (well below 3600s so no flake risk)."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        now = datetime.now(UTC).timestamp()
+        result = llm_usage._format_remaining_from_ts(now + (59 * 60 + 50))
+        assert result == "59m"
+
+    def test_just_over_one_hour(self) -> None:
+        """3600 + 5 seconds → '1h 0m' (5s cushion above the hour boundary)."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        now = datetime.now(UTC).timestamp()
+        result = llm_usage._format_remaining_from_ts(now + (3600 + 5))
+        assert result == "1h 0m"
+
+    def test_multiple_hours(self) -> None:
+        """4h 32m 5s → '4h 32m' (5s cushion past the 32-minute boundary)."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        now = datetime.now(UTC).timestamp()
+        result = llm_usage._format_remaining_from_ts(now + (4 * 3600 + 32 * 60 + 5))
+        assert result == "4h 32m"
+
+    def test_multiple_hours_with_seconds(self) -> None:
+        """2h 43m 49s → '2h 43m' (seconds dropped; not on a boundary)."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        now = datetime.now(UTC).timestamp()
+        result = llm_usage._format_remaining_from_ts(now + (2 * 3600 + 43 * 60 + 49))
+        assert result == "2h 43m"
 
 
 class TestNoCcusageRegressions:

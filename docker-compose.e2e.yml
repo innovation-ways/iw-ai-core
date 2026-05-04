@@ -85,6 +85,13 @@ services:
       # agent during S11) are visible to scripts/e2e_seed.py at entrypoint
       # time. Read-only: the container only consumes fixtures, never writes.
       - ./ai-dev:/app/ai-dev:ro
+      # NOTE: do NOT bind-mount the host's ~/.claude/ here. The host's
+      # rate-limits cache is owned by the developer's running Claude Code
+      # session and the e2e stack must never write to it (`:ro` would
+      # prevent qv-browser from controlling V1/V2/V3 anyway). The dashboard
+      # reads `/app/.claude/rate-limits-cache.json` from the container's
+      # writable layer (HOME=/app, see entrypoint mkdir). qv-browser
+      # injects test cache via `docker exec` — see the prompt template.
     environment:
       # Unset IW_CORE_EXPECTED_INSTANCE_ID so the dashboard runs in bootstrap
       # mode against the fresh e2e DB (which has no iw_core_instance row).

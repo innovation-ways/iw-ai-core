@@ -232,6 +232,7 @@ def render_compose(cfg: WorktreeStackConfig) -> Path:
         compose_project_name=cfg.compose_project_name,
         host_uid=os.getuid(),
         host_gid=os.getgid(),
+        host_home=str(Path.home()),
     )
 
     cfg.rendered_compose_path.write_text(rendered)
