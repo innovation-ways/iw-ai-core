@@ -102,13 +102,31 @@ Map each AC to at least one test:
 
 | AC | Tested by |
 |----|-----------|
-| AC1: no self-deadlock end-to-end | `test_phase2_apply_no_self_deadlock`, plus session-lifecycle test |
+| AC1: no self-deadlock end-to-end | `test_phase2_apply_no_self_deadlock`, plus session-lifecycle test, plus the rollback-fires-after-failure test (S03 §6) |
 | AC2: regression test exists | The reproduction test itself |
 | AC3: `lock_timeout` set | `test_lock_timeout_*` tests |
 | AC4: self-blocker detection | `test_self_blocker_*` tests |
 | AC5: `pending_migration_log` audit | `test_pending_migration_log_*` tests |
 
 **HIGH** finding for any unmapped AC.
+
+### 4a. Rollback-after-failure coverage (AC1 end-to-end)
+
+S03 §6 requires a test that exercises the apply-fails → rollback-fires
+transition through `_merge_item` (or its closest entry point). Confirm:
+
+- A test exists that forces apply to fail (via synthetic blocker or
+  monkeypatched `safe_migrate.apply` returning `success=False`).
+- The test asserts `run_rollback` was invoked with the correct
+  `batch_id` (spy/monkeypatch).
+- The test asserts the post-apply `_emit_event(... "migration_pipeline" ...)`
+  call uses a **fresh session** — proving S01's session-discipline fix
+  did not silently break the failure path's bookkeeping.
+- The test asserts the daemon does not hang.
+
+**HIGH** finding if the rollback transition is not tested at all.
+**MEDIUM_FIXABLE** if it's tested but doesn't verify the fresh-session
+property (that's the regression most likely to ship undetected).
 
 ### 5. Test quality
 
