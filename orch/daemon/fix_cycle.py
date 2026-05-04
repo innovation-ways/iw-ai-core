@@ -846,8 +846,22 @@ def _recompute_baseline_for_gate(
         return None
 
 
-def _qv_findings_legacy(db: Session, step: WorkflowStep, _worktree_path: str) -> str:
-    """Legacy QV findings extraction without baseline subtraction."""
+def _qv_findings_legacy(db: Session, step: WorkflowStep, worktree_path: str) -> str:
+    """Legacy QV findings extraction without baseline subtraction.
+
+    The qv-gate agent runs the gate command via its own Bash tool and writes
+    the actual stdout (FAILED test names, ruff lines, etc.) into the report
+    markdown — *not* into the daemon-managed StepRun.log_file, which only
+    captures the agent's high-level chatter and ends up containing just the
+    one-line `step-fail --reason` echo. So when picking findings to feed to
+    the fix-cycle agent we prefer, in order:
+
+    1. ``step.report_content`` (and ``step.report_file`` on disk) — the
+       qv-gate report's "Output (tail)" section is the highest-fidelity
+       record of what the gate actually produced.
+    2. ``step_run.error_message`` — the human-readable failure reason.
+    3. ``step_run.log_file`` / ``log_content`` as a last resort.
+    """
     latest_run = db.execute(
         select(StepRun)
         .where(
@@ -863,21 +877,76 @@ def _qv_findings_legacy(db: Session, step: WorkflowStep, _worktree_path: str) ->
     if latest_run and latest_run.error_message:
         parts.append(f"**Error**: {latest_run.error_message}")
 
+    report_text = _read_step_report(step, worktree_path)
+    if report_text:
+        parts.append(f"**Gate report**:\n```\n{_tail_text(report_text, 3000)}\n```")
+        # The report already carries the gate's stdout (FAILED test list, lint
+        # lines, etc.). The daemon-managed log_file/log_content for QV steps is
+        # almost always just a one-line `step-fail --reason` echo, so adding it
+        # would only create a misleading second "Command output" block.
+        return "\n\n".join(parts)
+
     if latest_run and latest_run.log_file:
         log_path = Path(latest_run.log_file)
         if log_path.exists():
             log_content = log_path.read_text()
-            if len(log_content) > 3000:
-                log_content = "...(truncated)...\n" + log_content[-3000:]
-            parts.append(f"**Command output**:\n```\n{log_content}\n```")
+            if log_content.strip() and not _is_reason_echo(log_content, latest_run.error_message):
+                parts.append(f"**Command output**:\n```\n{_tail_text(log_content, 3000)}\n```")
 
-    if latest_run and latest_run.log_content and not parts:
-        parts.append(f"**Log content**:\n```\n{latest_run.log_content[-3000:]}\n```")
+    if (
+        latest_run
+        and latest_run.log_content
+        and not any(p.startswith(("**Command output**", "**Gate report**")) for p in parts)
+        and not _is_reason_echo(latest_run.log_content, latest_run.error_message)
+    ):
+        parts.append(f"**Log content**:\n```\n{_tail_text(latest_run.log_content, 3000)}\n```")
 
     if parts:
         return "\n\n".join(parts)
 
     return "Quality validation failed — check the command output for errors."
+
+
+def _is_reason_echo(text: str, reason: str | None) -> bool:
+    """True if ``text`` is just the ``step-fail --reason`` one-liner.
+
+    The daemon log file for a QV step usually ends up with a single line like
+    ``Failed I-00061 step S10: integration-tests failed: exit=2`` — that's the
+    qv-gate agent's terminal output, not the gate's stdout. When the only
+    thing in the log is that echo, treating it as "Command output" is
+    misleading; we'd rather report nothing than nudge the fix agent toward
+    fixing the echo.
+    """
+    if not reason:
+        return False
+    stripped = text.strip()
+    if not stripped:
+        return True
+    if len(stripped) > 200:
+        return False
+    return reason.strip() in stripped
+
+
+def _tail_text(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return "...(truncated)...\n" + text[-limit:]
+
+
+def _read_step_report(step: WorkflowStep, worktree_path: str) -> str | None:
+    """Return the QV gate report content (DB column or file on disk), or None."""
+    if step.report_content:
+        return step.report_content
+    if step.report_file:
+        report_path = Path(step.report_file)
+        if not report_path.is_absolute():
+            report_path = Path(worktree_path) / step.report_file
+        if report_path.exists():
+            try:
+                return report_path.read_text(encoding="utf-8")
+            except OSError:
+                return None
+    return None
 
 
 def _format_qv_findings_from_delta(delta: Fingerprint, latest_run: StepRun | None) -> str:
