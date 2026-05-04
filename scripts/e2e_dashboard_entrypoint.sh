@@ -14,6 +14,14 @@
 
 set -euo pipefail
 
+# Ensure the Claude rate-limits cache directory exists in the container's
+# writable layer. orch.llm_usage._resolve_rate_limits_file() reads
+# ${HOME}/.claude/rate-limits-cache.json by default — HOME=/app here, so
+# the dashboard expects /app/.claude/. Without the file the dashboard
+# renders the static "5h" placeholder (V4 fallback). qv-browser injects
+# controlled cache contents via `docker exec` for V1/V2/V3.
+mkdir -p /app/.claude
+
 echo "[e2e] waiting for DB at ${IW_CORE_DB_HOST}:${IW_CORE_DB_PORT}..."
 for _ in $(seq 1 60); do
     if uv run python -c "
