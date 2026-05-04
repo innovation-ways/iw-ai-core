@@ -1000,11 +1000,32 @@ class BatchItem(Base):
         server_default=text("'{}'"),
         comment="Merge metadata: commit_hash, conflict_files, merged_by",
     )
+    worktree_db_host: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Hostname or IP of the per-worktree Postgres container; "
+        "NULL in legacy mode or when the compose stack has not yet been started.",
+    )
     worktree_db_port: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True,
         comment="Discovered host port for the per-worktree Postgres container; "
         "NULL when the project runs in legacy mode (no iw-config/)",
+    )
+    worktree_db_name: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Database name of the per-worktree Postgres; NULL in legacy mode.",
+    )
+    worktree_db_user: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Username for the per-worktree Postgres; NULL in legacy mode.",
+    )
+    worktree_db_password: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Password for the per-worktree Postgres; NULL in legacy mode.",
     )
     worktree_app_port: Mapped[int | None] = mapped_column(
         Integer,

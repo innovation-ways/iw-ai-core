@@ -578,6 +578,11 @@ class BatchManager:
             batch_item.worktree_db_port = None
             batch_item.worktree_app_port = None
             batch_item.worktree_compose_path = None
+            # I-00062: no compose stack → no per-worktree DB credentials
+            batch_item.worktree_db_host = None
+            batch_item.worktree_db_name = None
+            batch_item.worktree_db_user = None
+            batch_item.worktree_db_password = None
         else:
             try:
                 cfg = worktree_compose.load_config(
@@ -596,12 +601,23 @@ class BatchManager:
                     batch_item.worktree_app_port = (
                         int(up_app_port) if up_app_port is not None else None
                     )
+                    # I-00062: persist per-worktree DB credentials from compose-up
+                    creds = up_result.discovered_db_credentials or {}
+                    batch_item.worktree_db_host = creds.get("IW_CORE_DB_HOST")
+                    batch_item.worktree_db_name = creds.get("IW_CORE_DB_NAME")
+                    batch_item.worktree_db_user = creds.get("IW_CORE_DB_USER")
+                    batch_item.worktree_db_password = creds.get("IW_CORE_DB_PASSWORD")
                 else:
                     batch_item.status = BatchItemStatus.setup_failed
                     batch_item.notes = f"Compose up failed: {up_result.error_message}"
                     batch_item.worktree_db_port = None
                     batch_item.worktree_app_port = None
                     batch_item.worktree_compose_path = None
+                    # I-00062: no successful compose-up → no credentials
+                    batch_item.worktree_db_host = None
+                    batch_item.worktree_db_name = None
+                    batch_item.worktree_db_user = None
+                    batch_item.worktree_db_password = None
                     work_item = (
                         db.query(WorkItem).filter_by(project_id=self.project_id, id=item_id).one()
                     )
@@ -628,6 +644,11 @@ class BatchManager:
                 batch_item.worktree_db_port = None
                 batch_item.worktree_app_port = None
                 batch_item.worktree_compose_path = None
+                # I-00062: no successful compose-up → no credentials
+                batch_item.worktree_db_host = None
+                batch_item.worktree_db_name = None
+                batch_item.worktree_db_user = None
+                batch_item.worktree_db_password = None
                 work_item = (
                     db.query(WorkItem).filter_by(project_id=self.project_id, id=item_id).one()
                 )
@@ -666,6 +687,11 @@ class BatchManager:
             worktree_info["worktree_compose_path"] = batch_item.worktree_compose_path
             worktree_info["worktree_db_port"] = str(batch_item.worktree_db_port)
             worktree_info["worktree_app_port"] = str(batch_item.worktree_app_port)
+            # I-00062: pass per-worktree DB credentials for explicit env injection
+            worktree_info["worktree_db_host"] = batch_item.worktree_db_host or ""
+            worktree_info["worktree_db_name"] = batch_item.worktree_db_name or ""
+            worktree_info["worktree_db_user"] = batch_item.worktree_db_user or ""
+            worktree_info["worktree_db_password"] = batch_item.worktree_db_password or ""
             worktree_info["batch_item_id"] = str(batch_item.id)
             worktree_info["project_name"] = batch_item.project_id
 
@@ -1127,6 +1153,31 @@ class BatchManager:
             agent_env = {**agent_env, **bv_env}
         if worktree_info.get("worktree_compose_path") is not None:
             agent_env["IW_CORE_PER_WORKTREE_DB"] = "true"
+            # I-00062: inject per-worktree DB credentials from worktree_info
+            # (populated at compose-up from UpResult.discovered_db_credentials).
+            db_port = worktree_info.get("worktree_db_port")
+            db_host = worktree_info.get("worktree_db_host") or ""
+            db_name = worktree_info.get("worktree_db_name") or ""
+            db_user = worktree_info.get("worktree_db_user") or ""
+            db_password = worktree_info.get("worktree_db_password") or ""
+            if db_port and db_host and db_name and db_user and db_password:
+                agent_env["IW_CORE_DB_HOST"] = db_host
+                agent_env["IW_CORE_DB_PORT"] = str(db_port)
+                agent_env["IW_CORE_DB_NAME"] = db_name
+                agent_env["IW_CORE_DB_USER"] = db_user
+                agent_env["IW_CORE_DB_PASSWORD"] = db_password
+            else:
+                # Defensive: refuse to launch with incomplete per-worktree DB
+                # credentials. Crash loudly rather than fall back to inherited
+                # daemon env (which the strip in _agent_subprocess_env already
+                # cleaned, but this is belt-and-suspenders).
+                raise RuntimeError(
+                    f"I-00062: per-worktree DB compose stack is up for "
+                    f"{worktree_info.get('batch_item_id')} but credentials are "
+                    f"incomplete (host={bool(db_host)}, port={bool(db_port)}, "
+                    f"name={bool(db_name)}, user={bool(db_user)}, "
+                    f"password={bool(db_password)}). Refusing to launch."
+                )
         # Always inject IW_STEP_ID and IW_ITEM_ID so agents can call
         # `iw step-done "$IW_ITEM_ID" --step "$IW_STEP_ID"` without hardcoding.
         agent_env["IW_STEP_ID"] = step.step_id
@@ -1449,6 +1500,42 @@ def _agent_subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]
     # daemon's VIRTUAL_ENV (pointing at the main repo's .venv) causes uv to
     # emit a mismatch warning on every invocation.
     env.pop("VIRTUAL_ENV", None)
+
+    # I-00062: BEFORE stripping IW_CORE_DB_*, snapshot the daemon's orch DB
+    # values into IW_CORE_ORCH_DB_*. This generalises the snapshot that
+    # orch.daemon.browser_env._build_env already does for browser-
+    # verification steps to ALL agent launches, so the fail-fast guard in
+    # orch/config.py (Layer 3) always has a known orch reference to compare
+    # IW_CORE_DB_PORT against — including for legacy (no-compose-stack)
+    # worktrees whose .env still carries IW_CORE_DB_PORT=5433.
+    for src, dst in (
+        ("IW_CORE_DB_HOST", "IW_CORE_ORCH_DB_HOST"),
+        ("IW_CORE_DB_PORT", "IW_CORE_ORCH_DB_PORT"),
+        ("IW_CORE_DB_NAME", "IW_CORE_ORCH_DB_NAME"),
+        ("IW_CORE_DB_USER", "IW_CORE_ORCH_DB_USER"),
+        ("IW_CORE_DB_PASSWORD", "IW_CORE_ORCH_DB_PASSWORD"),
+    ):
+        val = env.get(src)
+        # setdefault: if a caller (or browser_env) has already injected
+        # IW_CORE_ORCH_DB_*, do NOT overwrite it.
+        if val:
+            env.setdefault(dst, val)
+
+    # I-00062: strip IW_CORE_DB_* so agents cannot inherit credentials for
+    # the daemon's source-of-truth DB. Per-worktree DB env is injected
+    # explicitly in _launch_step when the worktree has a compose stack;
+    # otherwise the agent sources values from its worktree's .env via
+    # load_dotenv (and the Layer 3 guard catches a legacy mirror of
+    # IW_CORE_DB_PORT=5433 because of the snapshot above).
+    for key in (
+        "IW_CORE_DB_HOST",
+        "IW_CORE_DB_PORT",
+        "IW_CORE_DB_NAME",
+        "IW_CORE_DB_USER",
+        "IW_CORE_DB_PASSWORD",
+    ):
+        env.pop(key, None)
+
     # Arm refused-context for the child.
     env["IW_CORE_AGENT_CONTEXT"] = "true"
     if extra:

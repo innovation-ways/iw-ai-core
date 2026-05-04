@@ -624,6 +624,7 @@ class TestUpResult:
             success=True,
             rendered_compose_path=Path("/tmp/compose.yml"),
             discovered_ports={"IW_CORE_DB_PORT": 34567},
+            discovered_db_credentials={},
             error_message=None,
             seed_stderr_tail=None,
         )

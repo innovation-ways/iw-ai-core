@@ -44,10 +44,33 @@ def _require(name: str) -> str:
     return value
 
 
+_AGENT_LEAK_RUNBOOK = (
+    "I-00062: agent subprocess resolved IW_CORE_DB_PORT to the "
+    "operator's orch DB port. This indicates the agent inherited "
+    "the daemon's orch DB credentials. See "
+    "ai-dev/done/I-00062/I-00062_Issue_Design.md for the runbook."
+)
+
+
+def _check_agent_context_does_not_resolve_to_orch_port(port: str) -> None:
+    """Refuse to return a DB URL when an agent process resolves to
+    the operator's orch port — indicates env-leak from the daemon."""
+    import os  # noqa: PLC0415
+
+    if os.environ.get("IW_CORE_AGENT_CONTEXT", "").lower() != "true":
+        return
+    operator_orch_port = os.environ.get("IW_CORE_ORCH_DB_PORT")
+    if operator_orch_port is None:
+        return
+    if str(port) == str(operator_orch_port):
+        raise RuntimeError(_AGENT_LEAK_RUNBOOK)
+
+
 def get_db_url() -> str:
     """Build the SQLAlchemy database URL from individual env vars."""
     host = _require("IW_CORE_DB_HOST")
     port = _require("IW_CORE_DB_PORT")
+    _check_agent_context_does_not_resolve_to_orch_port(port)
     name = _require("IW_CORE_DB_NAME")
     user = _require("IW_CORE_DB_USER")
     password = _require("IW_CORE_DB_PASSWORD")
