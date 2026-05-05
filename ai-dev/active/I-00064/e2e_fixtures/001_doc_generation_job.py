@@ -25,9 +25,9 @@ JOB_PUBLIC_ID = "DOC-00001"
 
 
 def seed(db: Session) -> None:
-    from datetime import UTC, datetime
-    from orch.db.models import DocGenerationJob, ProjectDoc
     from sqlalchemy import select
+
+    from orch.db.models import DocGenerationJob, ProjectDoc
 
     existing_doc = db.get(ProjectDoc, DOC_PK)
     if existing_doc is None:

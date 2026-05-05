@@ -1,0 +1,36 @@
+{
+  "item_id": "I-00065",
+  "bottom_line": "Scope lint commands to changed files in code-review prompts to eliminate ruff/Jinja2 false positives that pollute every review step; S03's one self-corrected test failure is a minor one-off.",
+  "coverage_notes": "Read S01-S04 logs in full. S05 log is 128KB; read tail (last 200 lines after step-done) and grepped for Error/failed patterns. DB telemetry: full (DB:UP).",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Ruff false-positives on Jinja2 templates pollute `make lint` in every code-review step",
+      "recommendation": "In code-review prompt templates (S02, S04, S05), instruct agents to scope lint/format to only the item's allowed-path files, using `uv run ruff check <file1> <file2>` rather than `make lint` which runs ruff across all worktrees and produces false-positive Jinja2 parser errors.",
+      "evidence": [
+        "I-00065_S02_run1.log:69 — 'invalid-syntax: Simple statements must be separated by newlines or semicolons' on panel.html:61",
+        "I-00065_S04_run1.log:50 — same false positive pattern",
+        "I-00065_S05_run1.log:69-200 — ~100 lines of ruff invalid-syntax errors on panel.html"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Scope lint commands to item-allowed-path files in code-review prompts to eliminate ruff/Jinja2 false positives; analyzed in I-00065 (see ai-dev/active/I-00065/reports/I-00065_self_assess_report.md). Target file: templates/design/CodeReview_prompt_template.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S03 test-impl wrote a multiline-CSS regex that failed on first run; self-corrected",
+      "recommendation": "Add an example of string-containment CSS selector checking to the tests-impl prompt template, and advise agents to use `id_ in style_block` rather than multiline regex for CSS checks. Also add `--no-cov` to the pytest invocation in the prompt so coverage thresholds don't add noise for small test-file additions.",
+      "evidence": [
+        "I-00065_S03_run1.log:214 — test_i00065_all_expanded_header_elements_hidden_when_collapsed FAILED",
+        "I-00065_S03_run1.log:253 — assertion error: all 6 IDs 'missing' from regex matches",
+        "I-00065_S03_run1.log:438 — 'The secondary regression test has a regex issue — the selectors span multiple lines'",
+        "I-00065_S03_run1.log:456-483 — agent rewrites test using string containment instead of multiline regex"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add CSS multiline-string-check example to tests-impl prompt template to prevent regex-based test failures on multiline CSS selectors; analyzed in I-00065 (see ai-dev/active/I-00065/reports/I-00065_self_assess_report.md). Target file: templates/design/Tests_prompt_template.md. Effort: S."
+    }
+  ]
+}
