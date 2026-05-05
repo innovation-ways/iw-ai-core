@@ -10,6 +10,7 @@ enabled = true
 display_name = "IW AI Core Platform"
 repo_root = "/home/sergiog/dev/iw-doc-plan/main/iw-ai-core"
 enabled = true
+self_assess = true
 
 [[projects.iw-ai-core.services]]
 name = "daemon"
