@@ -34,7 +34,7 @@
             {% endif %}
           </div>
           {% if not info.installed and info.install_cmd %}
-            <button onclick="navigator.clipboard.writeText('{{ info.install_cmd }}')"
+            <button onclick="window.iwClipboard.copy('{{ info.install_cmd }}', this).catch(function(){})"
                     class="text-xs text-primary hover:underline"
                     title="Copy install command">📋 copy</button>
           {% elif info.installed %}

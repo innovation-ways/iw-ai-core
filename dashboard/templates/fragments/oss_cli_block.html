@@ -12,7 +12,7 @@
     {% endif %}
     <div class="relative">
       <pre class="bg-muted rounded p-2 pr-8 text-xs font-mono text-foreground overflow-x-auto"><code>{{ command }}</code></pre>
-      <button onclick="navigator.clipboard.writeText(this.closest('.relative').querySelector('code').textContent)"
+      <button onclick="window.iwClipboard.copy(this.closest('.relative').querySelector('code').textContent, this).catch(function(){})"
               class="absolute right-2 top-2 text-muted-foreground hover:text-foreground text-xs"
               title="Copy command">
         📋
