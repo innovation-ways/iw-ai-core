@@ -1,0 +1,110 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00066",
+  "type": "Issue",
+  "title": "OSS finding modal too narrow and footer buttons unclear",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/static/tailwind.src.css",
+      "dashboard/static/styles.css",
+      "dashboard/templates/fragments/oss_finding_modal.html",
+      "tests/dashboard/test_i00066_oss_modal_styling.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "frontend-impl",
+      "description": "Widen .oss-modal-inner to 80vw, restyle footer buttons (.modal-apply/.modal-rerun/.modal-accept/.modal-preview), add new .modal-footer-close peer-button class, update template to apply it to the footer Close button, rebuild compiled CSS via make css",
+      "prompt": "prompts/I-00066_S01_Frontend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent code review of S01 (Frontend)",
+      "prompt": "prompts/I-00066_S02_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Reproduction + regression tests verifying SEMANTIC values (max-width: 80vw in source AND compiled CSS, footer Close uses .modal-footer-close class, .modal-footer-close has border + padding)",
+      "prompt": "prompts/I-00066_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Per-agent code review of S03 (Tests)",
+      "prompt": "prompts/I-00066_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review across S01..S04",
+      "prompt": "prompts/I-00066_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00066_S06_SelfAssess_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S14",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — verify modal width and footer buttons end-to-end in isolated worktree stack",
+      "prompt": "prompts/I-00066_S14_BrowserVerification_prompt.md"
+    }
+  ]
+}
