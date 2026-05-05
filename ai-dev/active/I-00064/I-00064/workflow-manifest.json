@@ -1,0 +1,110 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00064",
+  "type": "Issue",
+  "title": "Job detail \"View document\" link 404s with double project_id prefix",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/jobs/aggregator.py",
+      "tests/integration/test_i00064_doc_generation_view_document_url.py",
+      "ai-dev/active/I-00064/**",
+      "ai-dev/archive/I-00064/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Fix orch/jobs/aggregator.py: substitute the composite FK in raw['doc_id'] with the inner ProjectDoc.doc_id for doc_generation rows (list + detail), reusing the doc lookup already loaded for titles. Falls back to None when the doc is missing.",
+      "prompt": "prompts/I-00064_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: correctness of inner-id mapping; orphan handling returns None; no extra DB queries; convention comment present; template contract preserved; no other consumers of raw['doc_id'] regressed.",
+      "prompt": "prompts/I-00064_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Write tests/integration/test_i00064_doc_generation_view_document_url.py with three tests: reproduction (raw['doc_id'] equals inner doc_id, no ':'), end-to-end TestClient hitting /project/{pid}/docs/{raw.doc_id} → 200, orphan case returns None.",
+      "prompt": "prompts/I-00064_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: tests assert specific values (semantic, not shape); reproduction is falsifiable on main; FastAPI TestClient set up uses dashboard fixture correctly; no flakiness or testcontainer leakage.",
+      "prompt": "prompts/I-00064_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global review across S01 + S03: fix and tests integrate end-to-end, the regression test really exercises the broken path, no other call sites of raw['doc_id'] regressed. Run full unit + integration suite.",
+      "prompt": "prompts/I-00064_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00064_S06_SelfAssess_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S14",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — confirm the View document link resolves end-to-end in the isolated worktree stack",
+      "prompt": "prompts/I-00064_S14_BrowserVerification_prompt.md"
+    }
+  ]
+}
