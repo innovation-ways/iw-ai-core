@@ -118,7 +118,17 @@
                     {{ event.entity_id }}
                   </a>
                 {% endif %}
-                <span class="text-xs text-foreground">{{ event.message or event.event_type }}</span>
+                {% if event.message %}
+                  {% if event.message|length <= 100 %}
+                    <span class="text-xs text-foreground">{{ event.message }}</span>
+                  {% else %}
+                    <span class="activity-message-truncated text-xs text-foreground"
+                          data-full-text="{{ event.message }}"
+                          title="Click to expand">{{ event.message[:100] }}...</span>
+                  {% endif %}
+                {% else %}
+                  <span class="text-xs text-foreground">{{ event.event_type }}</span>
+                {% endif %}
               </div>
             </div>
           {% endfor %}
@@ -173,4 +183,5 @@
   </div>
 
 </div>
+{% include "fragments/activity_text_modal.html" %}
 {% endblock %}

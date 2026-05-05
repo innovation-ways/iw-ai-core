@@ -1,0 +1,90 @@
+<div id="activity-text-modal-overlay" class="activity-modal-backdrop" aria-hidden="true"></div>
+<div id="activity-text-modal" class="activity-modal" role="dialog" aria-modal="true" aria-labelledby="activity-modal-title" aria-hidden="true" tabindex="-1">
+  <div class="activity-modal-inner">
+    <header class="activity-modal-header">
+      <h3 id="activity-modal-title" class="activity-modal-title">Activity Message</h3>
+      <button type="button" class="modal-close" aria-label="Close modal">×</button>
+    </header>
+    <div class="activity-modal-body">
+      <pre id="activity-text-modal-body" class="whitespace-pre-wrap text-sm text-foreground"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('activity-text-modal-overlay');
+  var modal = document.getElementById('activity-text-modal');
+  if (!overlay || !modal) return;
+
+  var lastFocusedElement = null;
+  var modalBody = document.getElementById('activity-text-modal-body');
+
+  function trapFocus(el) {
+    var focusable = el.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    var first = focusable[0];
+    var last = focusable[focusable.length - 1];
+    if (!first) return;
+    first.focus();
+    function handleTab(e) {
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
+    el.addEventListener('keydown', handleTab);
+    return function () { el.removeEventListener('keydown', handleTab); };
+  }
+
+  function openModal(fullText) {
+    lastFocusedElement = document.activeElement;
+    modalBody.textContent = fullText;
+    modal.removeAttribute('aria-hidden');
+    overlay.removeAttribute('aria-hidden');
+    document.body.style.overflow = 'hidden';
+    var releaseTrap = trapFocus(modal);
+    modal._releaseTrap = releaseTrap;
+    modal._onClose = function () {
+      if (releaseTrap) releaseTrap();
+      modal.setAttribute('aria-hidden', 'true');
+      overlay.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      if (lastFocusedElement) lastFocusedElement.focus();
+    };
+  }
+
+  function closeModal() {
+    if (modal._onClose) modal._onClose();
+  }
+
+  modal.addEventListener('click', function (ev) {
+    if (ev.target.classList.contains('modal-close')) {
+      ev.stopPropagation();
+      closeModal();
+      return;
+    }
+    if (ev.target === modal) {
+      closeModal();
+    }
+  });
+
+  overlay.addEventListener('click', function () { closeModal(); });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && modal.getAttribute('aria-hidden') !== 'true') {
+      closeModal();
+    }
+  });
+
+  document.addEventListener('click', function (ev) {
+    var trigger = ev.target.closest('.activity-message-truncated');
+    if (!trigger) return;
+    var fullText = trigger.getAttribute('data-full-text');
+    if (!fullText) return;
+    openModal(fullText);
+  });
+})();
+</script>

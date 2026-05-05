@@ -444,4 +444,69 @@
     background-color: rgba(74, 222, 128, 0.16);
     color: #bbf7d0;
   }
+
+  /* Activity text modal — structurally mirrors oss-modal pattern */
+  .activity-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 50;
+  }
+
+  .activity-modal {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 51;
+    padding: 1rem;
+  }
+
+  .activity-modal-backdrop[aria-hidden="true"],
+  .activity-modal[aria-hidden="true"] {
+    display: none !important;
+  }
+
+  .activity-modal-inner {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) + 2px);
+    width: 100%;
+    max-width: 36rem;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+
+  .activity-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .activity-modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--foreground);
+    margin: 0;
+  }
+
+  .activity-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.25rem;
+  }
+
+  .activity-message-truncated {
+    cursor: pointer;
+  }
+
+  .activity-message-truncated:hover {
+    color: var(--primary);
+  }
 }
