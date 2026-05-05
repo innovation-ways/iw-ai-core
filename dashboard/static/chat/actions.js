@@ -37,7 +37,7 @@
       if (action === 'copy') {
         btn.addEventListener('click', function () {
           var source = getMessageSource(messageEl);
-          navigator.clipboard.writeText(source).then(function () {
+          window.iwClipboard.copy(source, null).then(function () {
             var span = btn.querySelector('span');
             var orig = span ? span.textContent : btn.textContent.trim();
             if (span) span.textContent = 'Copied!';

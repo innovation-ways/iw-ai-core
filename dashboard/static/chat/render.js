@@ -132,7 +132,7 @@
         if (!btn) return;
         btn.addEventListener('click', function () {
           var csv = tableToCSV(tbl);
-          navigator.clipboard.writeText(csv).then(function () {
+          window.iwClipboard.copy(csv, null).then(function () {
             var span = btn.querySelector('span') || btn;
             var original = span.textContent;
             span.textContent = 'Copied!';
@@ -173,7 +173,7 @@
     if (!btn) return;
     btn.addEventListener('click', function () {
       var payload = btn.getAttribute('data-copy-payload') || preEl.querySelector('code')?.textContent || '';
-      navigator.clipboard.writeText(payload).then(function () {
+      window.iwClipboard.copy(payload, null).then(function () {
         var span = btn.querySelector('span');
         var original = span ? span.textContent : btn.textContent;
         if (span) span.textContent = 'Copied!';
