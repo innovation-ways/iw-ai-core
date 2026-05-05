@@ -1,0 +1,36 @@
+{
+  "item_id": "I-00064",
+  "bottom_line": "S05's spurious fix cycle signals a daemon PID-watchdog false alarm; pre-existing lint errors are noted redundantly in every step report. Both are one-off or low-severity — no critical process breakdowns detected.",
+  "coverage_notes": "Read S01–S05 reports in full. No raw run logs available (worktree logs at .worktrees/I-00064/ai-dev/ absent — worktree was likely reaped after S05 completed). Fix-cycle prompt at ai-dev/active/I-00064/fix-cycles/I-00064_S05_FIX_cycle1_prompt.md shows a spurious PID-death signal with no actual agent work needed. DB telemetry: full (DB:UP confirmed).",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "S05 fix cycle was spurious — daemon PID-watchdog false alarm",
+      "recommendation": "Investigate whether the daemon's PID-exit detection fires on normal agent exit vs actual crash. If it fires on clean exit, the fix-cycle trigger is a false-positive engine wasting review cycles.",
+      "evidence": [
+        "ai-dev/active/I-00064/fix-cycles/I-00064_S05_FIX_cycle1_prompt.md:16 — \"Process exited without reporting (PID dead)\"",
+        "ai-dev/active/I-00064/reports/I-00064_S05_CodeReview_Final_report.md — PASS with 0 mandatory fixes confirms nothing was broken"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Investigate and fix the daemon PID-watchdog false alarm that triggers fix cycles on clean agent exits; analyzed in I-00064 (see ai-dev/active/I-00064/reports/I-00064_self_assess_report.md). Target: orch/daemon/. Effort: M."
+    },
+    {
+      "severity": "LOW",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "Pre-existing TC004 lint error redundantly noted by every implementation step",
+      "recommendation": "CLAUDE.md addendum: pre-existing lint violations should be labeled `skipped:pre-existing:{file}:{error-code}` in preflight rather than prose-noted in every report.",
+      "evidence": [
+        "ai-dev/active/I-00064/reports/I-00064_S01_Backend_report.md:31 — \"make lint ... Pre-existing error in orch/daemon/worktree_compose.py\"",
+        "ai-dev/active/I-00064/reports/I-00064_S02_CodeReview_Backend_report.md:16 — \"1 pre-existing violation in orch/daemon/worktree_compose.py:47\"",
+        "ai-dev/active/I-00064/reports/I-00064_S03_Tests_report.md:46 — \"make lint ... Pre-existing error\"",
+        "ai-dev/active/I-00064/reports/I-00064_S04_CodeReview_Tests_report.md:18 — \"1 pre-existing error (TC004)\"",
+        "ai-dev/active/I-00064/reports/I-00064_S05_CodeReview_Final_report.md:14 — \"1 error | TC004 pre-existing\""
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add CLAUDE.md addendum standardizing `skipped:pre-existing:{file}:{error-code}` preflight label for pre-existing lint violations; analyzed in I-00064 (see ai-dev/active/I-00064/reports/I-00064_self_assess_report.md). Target: CLAUDE.md. Effort: S."
+    }
+  ]
+}

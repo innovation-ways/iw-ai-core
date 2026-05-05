@@ -263,6 +263,10 @@ class JobsAggregator:
                 "chunks_created": job.chunks_created,
                 "languages_detected": job.languages_detected,
                 "errors": job.errors,
+                # NOTE: This is the composite FK to project_docs.id, used here as a
+                # presence flag only (the View link goes to /project/{id}/code, not
+                # /docs/{id}). Do NOT use this value to build a /docs/{id} URL — see
+                # I-00064 and _build_doc_generation_raw for the correct convention.
                 "doc_id": job.doc_id,
                 "triggered_at": job.triggered_at,
                 "completed_at": job.completed_at,
@@ -361,9 +365,11 @@ class JobsAggregator:
 
         doc_ids = [job.doc_id for job in jobs if job.doc_id]
         doc_titles: dict[str, str] = {}
+        doc_inner_ids: dict[str, str] = {}
         if doc_ids:
             docs = self._session.scalars(select(ProjectDoc).where(ProjectDoc.id.in_(doc_ids))).all()
             doc_titles = {doc.id: doc.title for doc in docs}
+            doc_inner_ids = {doc.id: doc.doc_id for doc in docs}
 
         results = []
         for job in jobs:
@@ -375,7 +381,10 @@ class JobsAggregator:
             status_norm = _normalise_job_status(job.status)
             started = job.started_at or job.requested_at or job.created_at
             triggered_by = job.skill_used or job.trigger_reason
-            raw = self._build_doc_generation_raw(job)
+            raw = self._build_doc_generation_raw(
+                job,
+                inner_doc_id=doc_inner_ids.get(job.doc_id) if job.doc_id else None,
+            )
             results.append(
                 (
                     JobRow(
@@ -394,18 +403,26 @@ class JobsAggregator:
             )
         return results
 
-    def _build_doc_generation_raw(self, job: DocGenerationJob) -> dict[str, object]:
+    def _build_doc_generation_raw(
+        self, job: DocGenerationJob, inner_doc_id: str | None = None
+    ) -> dict[str, object]:
         """Build the raw dict for a DocGenerationJob.
 
         Used by both _fetch_doc_generation (list view) and _get_doc_generation
         (detail page) to ensure the same field set is always returned,
         preventing missing fields on the detail page.
+
+        raw["doc_id"] MUST be the inner ProjectDoc.doc_id (the user-defined
+        identifier within the project), NOT the composite FK. The job detail
+        template builds /project/{pid}/docs/{raw.doc_id}, and the docs route
+        re-prefixes that with project_id when looking up the row. Passing the
+        composite causes a double-prefix 404. See I-00064.
         """
         return {
             "id": job.id,
             "public_id": job.public_id,
             "project_id": job.project_id,
-            "doc_id": job.doc_id,
+            "doc_id": inner_doc_id,
             "status": job.status.value,
             "requested_at": job.requested_at,
             "started_at": job.started_at,
@@ -551,6 +568,10 @@ class JobsAggregator:
             "chunks_created": job.chunks_created,
             "languages_detected": job.languages_detected,
             "errors": job.errors,
+            # NOTE: This is the composite FK to project_docs.id, used here as a
+            # presence flag only (the View link goes to /project/{id}/code, not
+            # /docs/{id}). Do NOT use this value to build a /docs/{id} URL — see
+            # I-00064 and _build_doc_generation_raw for the correct convention.
             "doc_id": job.doc_id,
             "triggered_at": job.triggered_at,
             "completed_at": job.completed_at,
@@ -613,10 +634,12 @@ class JobsAggregator:
         if job is None or job.project_id != project_id:
             return None
         doc_title = None
+        inner_doc_id: str | None = None
         if job.doc_id:
             doc = self._session.get(ProjectDoc, job.doc_id)
             if doc:
                 doc_title = doc.title
+                inner_doc_id = doc.doc_id
         title = doc_title or "Doc generation (orphan)"
         return JobRow(
             job_type=JobType.doc_generation,
@@ -627,7 +650,7 @@ class JobsAggregator:
             started_at=job.started_at or job.requested_at or job.created_at,
             finished_at=job.completed_at,
             triggered_by=job.skill_used or job.trigger_reason,
-            raw=self._build_doc_generation_raw(job),
+            raw=self._build_doc_generation_raw(job, inner_doc_id=inner_doc_id),
         )
 
     def _get_batch_execution(self, project_id: str, job_id: str) -> JobRow | None:
