@@ -1,0 +1,2 @@
+[   29397ms] TypeError: Cannot read properties of undefined (reading 'writeText')
+    at HTMLButtonElement.onclick (http://iw-dev-01:9900/project/iw-ai-core/item/I-00067:1:21)
