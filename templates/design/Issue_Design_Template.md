@@ -89,6 +89,8 @@ Reports are created during execution in `ai-dev/work/{ID}/reports/`.
 
 Write a failing test that demonstrates the bug before fixing it.
 
+**Test-file location** — Regression tests live under one of three directories: `tests/dashboard/`, `tests/unit/`, or `tests/integration/`. Tests that drive a FastAPI route or render a Jinja2 template via the dashboard `client` fixture **must** be placed under `tests/dashboard/` because the `client` fixture is registered only in `tests/dashboard/conftest.py`; a test placed in `tests/unit/` or `tests/integration/` will fail with `fixture 'client' not found` (I-00067). Pure Python helpers with no FastAPI or template dependency go under `tests/unit/`. Tests that require the testcontainer database go under `tests/integration/`.
+
 ```python
 def test_{issue_id}_reproduces_bug():
     """This test should FAIL before the fix and PASS after."""
@@ -155,6 +157,8 @@ If you omit this section, `iw register` falls back to a regex sweep over the pro
 - Reproducing test: {Test that fails before fix}
 - Unit tests: {What to test}
 - Integration tests: {What to test}
+
+**Assertion scoping for CSS class names** — When a regression test asserts that a CSS class name is present in rendered HTML, the bare-substring form `assert "my-class" in html` can false-positive because the same token may appear inside an inline `<script>` tag's JSON, a `data-*` attribute value, an HTML comment, or a CSS source map comment — even when the production element carrying that class is absent. Use the attribute-scoped form instead, e.g. `assert 'class="my-class"' in html` or a regex that anchors on `class\s*=\s*"[^"]*my-class[^"]*"` (I-00067).
 
 ## Notes
 

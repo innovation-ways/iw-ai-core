@@ -1,0 +1,6 @@
+{
+  "item_id": "CR-00032",
+  "bottom_line": "CR-00032 ran cleanly. No actionable process improvements detected. Two minor fix cycles (S04, S10) self-corrected pre-existing QV gate issues unrelated to this CR's scoped template changes.",
+  "coverage_notes": "S01-S03 reports read in full. S04 report and fix-cycle prompt read in full. S05-S09 reports read in full. S10 report read (tail + grep; 26 KB output). S10 fix-cycle prompt read in full. Raw run logs not present in worktree. DB telemetry used for step metadata.",
+  "findings": []
+}

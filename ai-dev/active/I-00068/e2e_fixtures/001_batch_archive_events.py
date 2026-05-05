@@ -13,6 +13,10 @@ from orch.db.models import Batch, BatchStatus, DaemonEvent
 
 
 def seed(db) -> None:
+    existing = db.get(Batch, ("iw-ai-core", "BATCH-99999"))
+    if existing is not None:
+        return
+
     now = datetime.now(UTC)
 
     # Batch row — needed so the batch detail page returns 200 when the link is clicked.
