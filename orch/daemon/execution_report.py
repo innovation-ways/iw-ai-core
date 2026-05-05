@@ -263,11 +263,23 @@ def _load_self_assessment(
     # Parse findings JSON
     try:
         text = findings_path.read_text(encoding="utf-8")
-        return parse_findings_json(text)
+        parsed = parse_findings_json(text)
     except (OSError, json.JSONDecodeError, SelfAssessParseError) as exc:
         logger.warning("Could not parse self-assessment findings at %s: %s", findings_path, exc)
         # Return with empty findings but narrative intact
         return _build_self_assessment_data(narrative_md=narrative_md)
+
+    # The findings JSON written by iw-item-analyze typically omits narrative_md
+    # (the narrative lives in the sibling .md file). Prefer the disk narrative
+    # if the JSON didn't carry one.
+    if parsed.narrative_md is None and narrative_md is not None:
+        parsed = SelfAssessmentData(
+            narrative_md=narrative_md,
+            findings=parsed.findings,
+            coverage_notes=parsed.coverage_notes,
+            bottom_line=parsed.bottom_line,
+        )
+    return parsed
 
 
 def _build_self_assessment_data(

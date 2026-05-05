@@ -235,6 +235,35 @@ def test_step_done_rejects_non_in_progress(
     assert result.exit_code == 1
 
 
+def test_step_done_with_report_propagates_path_to_step_run(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    """step-done --report mirrors path onto the running StepRun (parity with step-fail).
+
+    Without this, the execution-report view's self-assessment loader cannot
+    locate the report (and its findings sidecar) because it reads
+    StepRun.report_file, not WorkflowStep.report_file.
+    """
+    make_item(db_session)
+    step = make_step(db_session, status=StepStatus.in_progress)
+    step_run = make_step_run(db_session, step, status=RunStatus.running)
+
+    runner = CliRunner()
+    result = invoke(
+        runner,
+        ["step-done", "I-00001", "--step", "S01", "--report", "reports/S01-backend.md"],
+        cli_get_session,
+    )
+    assert result.exit_code == 0, result.output
+
+    db_session.refresh(step)
+    db_session.refresh(step_run)
+    assert step.report_file == "reports/S01-backend.md"
+    assert step_run.report_file == "reports/S01-backend.md"
+
+
 # ---------------------------------------------------------------------------
 # step-fail
 # ---------------------------------------------------------------------------
