@@ -106,3 +106,14 @@ Plus `GET /health` registered directly on the app in `app.py:142` — used by br
 - Tailwind CSS is prebuilt via `make css` — avoid dynamic class construction that breaks JIT purging
 - `dependencies.py:get_db()` uses `SessionLocal` from `orch.db.session` — same sync ORM as daemon
 - On app startup (`app.py:_lifespan`): `mark_orphaned_runs()` flips running TestRuns left behind by a crash to status=error, then `verify_instance_identity()` refuses to boot on a DB-identity mismatch
+
+## Clipboard buttons
+
+Use the shared `window.iwClipboard.copy(text, button)` helper from
+`dashboard/static/clipboard.js` for every "copy to clipboard" button.
+NEVER call `navigator.clipboard.writeText(...)` directly from a template or
+static JS file — `navigator.clipboard` is undefined outside secure contexts
+(plain HTTP on a non-localhost hostname like `iw-dev-01`), and direct calls
+silently throw a `TypeError`. The helper falls back to a textarea +
+`document.execCommand('copy')` and surfaces success / failure via the button
+label ("Copied" / "Copy failed").
