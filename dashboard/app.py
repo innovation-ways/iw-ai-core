@@ -55,6 +55,7 @@ from dashboard.routers import (
 from dashboard.utils.timing import TimingMiddleware
 from orch.db.alembic_guard import check_db_at_head
 from orch.db.identity import verify_instance_identity
+from orch.db.live_db_guard import LiveDbConnectionRefusedError
 from orch.db.session import SessionLocal, engine
 from orch.test_runner import mark_orphaned_runs
 
@@ -145,6 +146,19 @@ def create_app() -> FastAPI:
     # stays hidden. Mirrors the middleware's contextlib.suppress pattern.
     try:
         app.state.alembic_guard_status = check_db_at_head()
+    except LiveDbConnectionRefusedError as exc:
+        # Guard refused — expected in test context (R0 guard doing its job).
+        if os.environ.get("IW_CORE_TEST_CONTEXT") == "true":
+            logger.debug(
+                "alembic guard skipped: %s: live DB connection refused under "
+                "IW_CORE_TEST_CONTEXT=true",
+                type(exc).__name__,
+            )
+        else:
+            logger.warning(
+                "alembic guard skipped: %s: live DB connection refused: %s", type(exc).__name__, exc
+            )
+        app.state.alembic_guard_status = None
     except Exception:  # noqa: BLE001
         logger.exception("alembic guard check failed at startup; continuing")
         app.state.alembic_guard_status = None
