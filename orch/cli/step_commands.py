@@ -383,6 +383,8 @@ def step_done(
                     step_run.duration_secs = (
                         step_run.completed_at - step_run.started_at
                     ).total_seconds()
+                if report_path is not None:
+                    step_run.report_file = report_path
                 capture_log_content(step_run)
                 _worktree_path = step_run.worktree_path or ""
             _step_type_val = step.step_type
