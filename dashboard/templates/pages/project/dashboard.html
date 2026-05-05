@@ -112,6 +112,11 @@
                      class="font-mono text-xs font-semibold text-primary hover:underline mr-1">
                     {{ event.entity_id }}
                   </a>
+                {% elif event.entity_id and event.entity_id.startswith('BATCH-') %}
+                  <a href="/project/{{ current_project.id }}/batch/{{ event.entity_id }}"
+                     class="font-mono text-xs font-semibold text-primary hover:underline mr-1">
+                    {{ event.entity_id }}
+                  </a>
                 {% elif event.entity_id %}
                   <a href="/project/{{ current_project.id }}/item/{{ event.entity_id }}"
                      class="font-mono text-xs font-semibold text-primary hover:underline mr-1">
