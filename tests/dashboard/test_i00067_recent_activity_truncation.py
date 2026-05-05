@@ -12,6 +12,7 @@ The template logic is exercised through the HTTP layer.
 
 from __future__ import annotations
 
+import html
 import os
 from typing import TYPE_CHECKING
 
@@ -85,14 +86,16 @@ def test_long_message_truncated_and_full_text_in_dom(
     db_session.commit()
 
     response = client.get(f"/project/{test_project.id}/")
-    html = response.text
+    body = response.text
 
     # Visible truncation: first 100 chars followed by literal "..."
-    assert truncated in html, f"Expected truncated text {truncated!r} in HTML"
+    assert truncated in body, f"Expected truncated text {truncated!r} in HTML"
     # The trigger class must be present
-    assert "activity-message-truncated" in html
+    assert "activity-message-truncated" in body
     # The full text must be available as the modal payload (data-full-text attribute)
-    assert f'data-full-text="{long_msg}"' in html, "Full text should be in data-full-text attribute"
+    assert f'data-full-text="{html.escape(long_msg, quote=True)}"' in body, (
+        "Full text should be in data-full-text attribute"
+    )
 
 
 def test_short_message_not_truncated_no_affordance(
@@ -231,11 +234,11 @@ def test_101_char_message_is_truncated(
     db_session.commit()
 
     response = client.get(f"/project/{test_project.id}/")
-    html = response.text
+    body = response.text
 
     # Should show 100 chars + "..."
-    assert "X" * 100 + "..." in html
+    assert "X" * 100 + "..." in body
     # Trigger affordance must be present
-    assert "activity-message-truncated" in html
+    assert "activity-message-truncated" in body
     # Full text must be in data-full-text
-    assert f'data-full-text="{msg}"' in html
+    assert f'data-full-text="{html.escape(msg, quote=True)}"' in body
