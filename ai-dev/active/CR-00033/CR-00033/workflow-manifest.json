@@ -1,0 +1,91 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00033",
+  "type": "ChangeRequest",
+  "title": "Document Tailwind CLI fallback strategy in IW AI Core Tech Stack docs",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "docs/IW_AI_Core_Tech_Stack.md",
+      "ai-dev/active/CR-00033/**",
+      "ai-dev/archive/CR-00033/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Add 'Tailwind CLI fallback strategy' subsection under §2.4 Dashboard of docs/IW_AI_Core_Tech_Stack.md, update the 'Why Tailwind CSS via CDN' prose so it stops implying CLI compilation is reliable, and update §10 Decisions Log to reference the fallback. Documentation-only edit. Cite I-00067 by ID, do NOT cite worktree log paths.",
+      "prompt": "prompts/CR-00033_S01_BackendImpl_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01: factual accuracy vs. Makefile + dashboard/static/* layout; AC1–AC5 satisfied; exactly one source file changed (docs/IW_AI_Core_Tech_Stack.md); no Markdown breakage; tone matches surrounding doc.",
+      "prompt": "prompts/CR-00033_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review across S01: diff completeness vs. design and functional docs; internal consistency between §2.4 Dashboard, §6 Makefile, and §10 Decisions Log; full unit + integration suite passes (no non-doc edits leaked).",
+      "prompt": "prompts/CR-00033_S03_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00033_S11_SelfAssess_prompt.md"
+    }
+  ]
+}
