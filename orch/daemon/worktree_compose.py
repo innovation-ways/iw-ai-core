@@ -34,7 +34,8 @@ import os
 import subprocess
 import tomllib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
 import jinja2
 from sqlalchemy.orm import Session, sessionmaker
@@ -42,9 +43,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from orch.config import get_db_url
 from orch.db.models import DaemonEvent
 from orch.db.session import safe_create_engine
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 __all__ = [
     "WorktreeStackConfig",
