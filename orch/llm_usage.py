@@ -55,6 +55,7 @@ def _resolve_rate_limits_file() -> Path:
         return Path(override) / ".claude/rate-limits-cache.json"
     return Path.home() / ".claude/rate-limits-cache.json"
 
+
 _cache: dict[str, Any] = {}
 _cache_lock = Lock()
 
