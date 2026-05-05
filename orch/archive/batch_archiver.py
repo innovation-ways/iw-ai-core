@@ -64,7 +64,12 @@ def archive_batch(project_id: str, batch_id: str, *, run_post_commands: bool = T
         try:
             with get_session() as db:
                 _emit(
-                    db, "batch_archive_failed", project_id, batch_id, "Archive failed (fatal error)"
+                    db,
+                    "batch_archive_failed",
+                    project_id,
+                    batch_id,
+                    "Archive failed (fatal error)",
+                    entity_type="batch",
                 )
                 db.commit()
         except Exception:
@@ -164,6 +169,7 @@ def _run_archive(project_id: str, batch_id: str, *, run_post_commands: bool = Tr
                 batch_id,
                 f"Batch {batch_id} archived with errors: {error_summary}",
                 {"archived_items": archived, "errors": all_errors},
+                entity_type="batch",
             )
             logger.warning(
                 "[%s] Batch %s archived with %d error(s): %s",
@@ -180,6 +186,7 @@ def _run_archive(project_id: str, batch_id: str, *, run_post_commands: bool = Tr
                 batch_id,
                 f"Batch {batch_id} archived successfully ({len(archived)} item(s))",
                 {"archived_items": archived},
+                entity_type="batch",
             )
             logger.info(
                 "[%s] Batch %s archived successfully (%d item(s))",
@@ -345,6 +352,7 @@ def _emit(
     batch_id: str,
     message: str,
     metadata: dict[str, Any] | None = None,
+    entity_type: str | None = None,
 ) -> None:
     """Insert a DaemonEvent (caller commits)."""
     event = DaemonEvent(
@@ -353,5 +361,6 @@ def _emit(
         entity_id=batch_id,
         message=message,
         event_metadata=metadata or {},
+        entity_type=entity_type,
     )
     db.add(event)
