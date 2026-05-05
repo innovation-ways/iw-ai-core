@@ -175,6 +175,10 @@
   function showEmptyState() {
     var messages = document.getElementById('chat-messages');
     if (!messages) return;
+    // Remove any pre-existing empty-state block so clicking "+ New"
+    // multiple times never stacks duplicate greetings.
+    var existingEmpty = document.getElementById('chat-empty-state');
+    if (existingEmpty) existingEmpty.remove();
     // Remove all article bubbles but keep the scroll anchor
     var articles = messages.querySelectorAll('article');
     articles.forEach(function (a) { a.remove(); });
