@@ -1,0 +1,75 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00034",
+  "type": "ChangeRequest",
+  "title": "Robust data-full-text test assertions using html.escape",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "tests/dashboard/test_i00067_recent_activity_truncation.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "tests-impl",
+      "description": "Add `import html`; rewrite the two `data-full-text` assertions (lines 95 and 241) in tests/dashboard/test_i00067_recent_activity_truncation.py to wrap the fixture in html.escape(..., quote=True) so the assertion matches Jinja2's auto-escaped output regardless of fixture content",
+      "prompt": "prompts/CR-00034_S01_Tests_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01 — verify only the two flagged assertions changed, the new `import html` is placed correctly, and existing tests still pass",
+      "prompt": "prompts/CR-00034_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-step review — confirm CR scope was honored (test-file only), no production code touched, and assertion semantics correctly mirror Jinja2 attribute escaping",
+      "prompt": "prompts/CR-00034_S03_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S09",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00034_S09_SelfAssess_prompt.md"
+    }
+  ]
+}
