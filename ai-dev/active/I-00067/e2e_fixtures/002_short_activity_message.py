@@ -17,10 +17,12 @@ from orch.db.models import DaemonEvent
 def seed(db: Session) -> None:
     # Check if we already have a short event
     existing = db.execute(
-        db.query(DaemonEvent).filter(
+        db.query(DaemonEvent)
+        .filter(
             DaemonEvent.project_id == "iw-ai-core",
             DaemonEvent.entity_id == "I-00067-short",
-        ).statement
+        )
+        .statement
     ).first()
     if existing is not None:
         return
