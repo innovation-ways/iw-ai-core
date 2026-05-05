@@ -1,6 +1,6 @@
 ---
 name: iw-new-incident
-version: "2.1.0"
+version: "2.2.0"
 description: Creates a new Incident (bug fix) design document with all fix prompts following the IW development workflow. Use when reporting a bug, creating incident reports, planning bug fixes, or user says "new incident", "new bug", "create incident", "report bug", "fix bug", "/iw-new-incident".
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 argument-hint: <brief description of the bug or issue>
@@ -356,7 +356,7 @@ project_id=$(uv run iw current-project)
 self_assess=$(python3 -c "import tomllib, sys; data = tomllib.loads(open('projects.toml').read()); print(data.get('projects', {}).get('$project_id', {}).get('self_assess', False))")
 ```
 
-If `self_assess` is `True`, you MUST inject the following step into `workflow-manifest.json` IMMEDIATELY BEFORE the first `qv-gate` step (and before any `qv-browser` step):
+If `self_assess` is `True`, you MUST inject the following step into `workflow-manifest.json` as the **LAST step** — after the final `qv-gate` step AND after any `qv-browser` step:
 
 ```json
 {
@@ -368,11 +368,13 @@ If `self_assess` is `True`, you MUST inject the following step into `workflow-ma
 }
 ```
 
+Why last: self_assess analyzes the item's full execution history (retries, fix cycles, agent thrash). If it runs before qv-gate / qv-browser, every retry caused by lint, format, type-check, security-sast, unit-tests, integration-tests, or browser verification is invisible to it — producing misleading "ran cleanly" reports for items that actually had multiple gate failures.
+
 The agent slug is `self-assess-impl` — registered in `skills/iw-workflow/SKILL.md`'s canonical agent table and in `executor/step_executor_lib.sh`. Do NOT use `self-assess` or `self_assess` as the agent slug — those will fail orchestrator validation.
 
 And generate the corresponding prompt file at `prompts/{ID}_S{NN}_SelfAssess_prompt.md` by copying `ai-dev/templates/SelfAssess_Prompt_Template.md` and substituting `{ID}` and `{NN}`.
 
-Renumber the QV gate steps that follow.
+No renumbering is needed when self_assess is the final step.
 
 ---
 

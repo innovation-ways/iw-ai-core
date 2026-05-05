@@ -255,6 +255,43 @@ class TestLoadSelfAssessment:
         assert result.narrative_md == "# Narrative"
         assert result.findings == []
 
+    def test_disk_narrative_used_when_findings_json_omits_narrative_md(
+        self, tmp_path: Path
+    ) -> None:
+        """The iw-item-analyze skill writes the narrative to the .md file and omits
+        narrative_md from the JSON. The loader must still surface the disk narrative.
+        """
+        report_file = tmp_path / "I-00066_self_assess_report.md"
+        report_file.write_text("# Item Analysis: I-00066\n\nClean run.", encoding="utf-8")
+        findings_file = tmp_path / "I-00066_self_assess_findings.json"
+        findings_file.write_text(
+            json.dumps(
+                {
+                    "item_id": "I-00066",
+                    "bottom_line": "Item ran cleanly.",
+                    "coverage_notes": "DB UP.",
+                    "findings": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        steps = [make_mock_workflow_step(step_type=StepType.self_assess)]
+        mock_run = make_mock_step_run(
+            step_db_id=1,
+            status=RunStatus.completed,
+            report_file=str(report_file),
+        )
+        mock_session = MagicMock()
+        mock_session.execute.return_value.scalar_one_or_none.return_value = mock_run
+
+        result = _load_self_assessment(mock_session, steps, "test-proj", "I-00066")
+
+        assert result is not None
+        assert result.bottom_line == "Item ran cleanly."
+        assert result.findings == []
+        assert result.narrative_md == "# Item Analysis: I-00066\n\nClean run."
+
     def test_report_file_not_on_disk_still_parses_findings(self, tmp_path: Path) -> None:
         """When the report file is missing but findings JSON exists, findings are still parsed."""
         # Create the findings file at the path that findings_path_for derives
