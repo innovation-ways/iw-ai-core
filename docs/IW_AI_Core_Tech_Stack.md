@@ -92,11 +92,19 @@ do not use for the long-lived orchestration DB.
 
 **Why FastAPI**: Async routing for SSE streams, automatic OpenAPI docs (useful for the action endpoints), dependency injection, proven in InnoForge. Note: the daemon is sync, but the dashboard is async (it serves HTTP requests concurrently).
 
-**Why Tailwind CSS via CDN**: No build step. The Play CDN (`<script src="https://cdn.tailwindcss.com">`) works for development and internal tools. For production-feel without npm, a standalone Tailwind CLI binary can generate a static CSS file. Clean utility classes, consistent styling, responsive out of the box.
+**Why Tailwind CSS via CDN**: No build step. The Play CDN (`<script src="https://cdn.tailwindcss.com">`) works for development and internal tools. A standalone Tailwind CLI binary exists for compiling a static stylesheet, but it is not reliable inside agent worktrees today — see "Tailwind CLI fallback strategy" below. Clean utility classes, consistent styling, responsive out of the box.
 
 **Why Chart.js via CDN**: Lightweight, no npm, good enough for analytics charts. Loaded only on analytics pages.
 
 **Why not the current custom CSS from InnoForge dashboard**: Starting fresh with Tailwind gives a cleaner foundation. The current dashboard CSS evolved organically — Tailwind provides consistency from day one.
+
+### Tailwind CLI fallback strategy
+
+Agent worktrees sometimes have incomplete `node_modules`, which causes the Tailwind CLI to fail with missing modules — notably `postcss-selector-parser`, as seen in I-00067. The `make css` target is declared in `.PHONY` in the Makefile with no rule body, so it exits with `Nothing to be done for 'css'` without attempting compilation.
+
+When new styling is required and the Tailwind CLI cannot run, append plain CSS rules directly to `dashboard/static/styles.css`. The dashboard serves this file as-is, so plain CSS rules take effect without any compilation step. The Tailwind utility classes already on the page continue to come from the CDN.
+
+Do not use this fallback when the Tailwind CLI is known-good in your environment and `make css` actually produces output. Today, neither is guaranteed in agent worktrees. A future change may give the `css` target a real rule body or remove it from `.PHONY`; until then, this subsection is the authoritative guidance.
 
 ### 2.4. Compression
 
@@ -834,6 +842,7 @@ Central registry in the iw-ai-core repo root. Read by the daemon on startup and 
 | D1 | ORM mode | Sync SQLAlchemy | Async SQLAlchemy | Daemon is single-threaded polling. Async adds complexity for no benefit. |
 | D2 | CLI framework | Click | argparse, Typer | Click is mature, well-documented, supports command groups natively. Typer adds a dependency on Click anyway. |
 | D3 | CSS framework | Tailwind (CDN) | Custom CSS, Bootstrap | Clean utilities, no build step via CDN, consistent from day one. |
+| D3a | Tailwind CLI fallback | Append plain CSS to `dashboard/static/styles.css` | Tailwind CLI, `make css` | CLI unreliable in agent worktrees due to incomplete `node_modules`; plain CSS is served as-is without compilation. |
 | D4 | PostgreSQL driver | psycopg v3 | psycopg2 | Better typing, pure Python fallback, built-in pool. |
 | D5 | Compression | zstandard | gzip, lz4 | Best balance of speed and ratio. 3-5x faster decompression than gzip. |
 | D6 | Test containers | testcontainers | docker-compose.test.yml, SQLite | testcontainers provides complete isolation with random ports. SQLite doesn't support FOR UPDATE. docker-compose.test.yml requires port coordination. |
