@@ -68,9 +68,15 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
-    count = mark_orphaned_runs()
-    if count:
-        logger.warning("Marked %d orphaned test run(s) as error on startup", count)
+    try:
+        count = mark_orphaned_runs()
+        if count:
+            logger.warning("Marked %d orphaned test run(s) as error on startup", count)
+    except Exception as exc:
+        if os.environ.get("IW_CORE_TEST_CONTEXT") == "true":
+            logger.debug("mark_orphaned_runs skipped in test context: %s", exc)
+        else:
+            logger.warning("mark_orphaned_runs failed: %s", exc)
 
     session = SessionLocal()
     try:
@@ -83,8 +89,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
                 identity_status.message,
             )
     except Exception as exc:
-        logger.error("Dashboard: %s", exc)
-        raise
+        if os.environ.get("IW_CORE_TEST_CONTEXT") == "true" or os.environ.get(
+            "IW_CORE_OPERATOR_APPLY"
+        ) == "true":
+            logger.warning("Dashboard: %s — continuing anyway", exc)
+        else:
+            logger.error("Dashboard: %s", exc)
+            raise
     finally:
         session.close()
 

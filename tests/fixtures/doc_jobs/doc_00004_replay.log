@@ -1,0 +1,12 @@
+> build · MiniMax-M2.7
+→ Skill "iw-execute"
+$ uv run iw item-status 727a12bd-cae3-443b-b033-924ea767b0e8 --json
+  Error: Work item 727a12bd-cae3-443b-b033-924ea767b0e8 not found in project iw-ai-core
+$ ls -d ai-dev/active/727a12bd-cae3-443b-b033-924ea767b0e8
+  NOT_FOUND
+$ uv run iw search 727a12bd
+  No results
+"Please verify the work item ID, or create a new design with /iw-new-feature..."
+> Build failed
+$ uv run iw doc-job-done 727a12bd-cae3-443b-b033-924ea767b0e8
+Error: job not found

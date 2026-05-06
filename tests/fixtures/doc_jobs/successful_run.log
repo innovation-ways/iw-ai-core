@@ -1,0 +1,7 @@
+[0m> build · MiniMax-M2.7
+[0m→ Skill "iw-doc-generator"
+$ uv run iw doc-update iw-ai-core code-index --content-file - --generated-by skill:iw-doc-generator --trigger-reason job:abc-123
+ok
+$ uv run iw doc-job-done abc-123
+ok
+[0m

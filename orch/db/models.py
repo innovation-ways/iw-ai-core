@@ -1408,6 +1408,15 @@ class DocGenerationJob(Base):
         nullable=True,
         comment="List of lint warning objects {rule, message, section}",
     )
+    report: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment=(
+            "Structured post-mortem of the job: outcome, duration_seconds, "
+            "skill_used, cli_tool, command_issued, log_size_bytes, log_line_count, "
+            "tool_calls, doc_update_invocations, lint_warning_count, diagnosis."
+        ),
+    )
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     section_guides_snapshot: Mapped[dict[str, str] | None] = mapped_column(
         JSONB,

@@ -116,3 +116,28 @@ Present to the user:
 - **NEVER** modify source code — this skill only generates documentation
 - **NEVER** generate documentation for modules that don't exist
 - If a module has no tests, note this as a gap but still generate the documentation
+
+## Job lifecycle (when invoked via `/doc-job <job-id>`)
+
+When this skill is invoked by the platform's `DocJobPoller` (i.e. the slash command `/doc-job <job-id>` is issued), you are running inside a queued documentation generation job. Your responsibilities:
+
+1. **Read the job context.** Run `uv run iw doc-job-status <job-id> --json`. The JSON output gives you `editorial_category`, `doc_id`, `project_id`, `doc_title`, `section_guides_snapshot`, and `guide_snapshot` — everything you need to produce the right content. If this command exits non-zero, do NOT proceed — close the job immediately with `iw doc-job-done <job-id> --error 'job context not found'`.
+
+2. **Generate the document content** following the editorial guide rules described in the rest of this skill.
+
+3. **Persist content via `iw doc-update`:**
+   ```
+   uv run iw doc-update <doc-id> \
+     --content-file - \
+     --generated-by skill:<this-skill-name> \
+     --trigger-reason job:<job-id>
+   ```
+   `<doc-id>` is the inner `ProjectDoc.doc_id` slug (e.g. `code-index`) returned by `iw doc-job-status`, NOT the UUID. Project is auto-resolved from the worktree's `.iw-orch.json` — do not pass project as a positional arg (the CLI accepts only `<doc-id>` and will reject extra positionals). Pipe markdown via stdin. Run this exactly once for the job's target doc. Do NOT call `iw doc-update` for any unrelated doc.
+
+4. **Close the job** by calling EXACTLY ONE of:
+   - `uv run iw doc-job-done <job-id>` — on success
+   - `uv run iw doc-job-done <job-id> --error '<one-line message>'` — on failure
+
+   Failing to close the job leaves it in `running` until the daemon's PID-liveness probe (within ~60s if your process exits) or the 15-minute wall-clock stall guard kicks in. Always close.
+
+5. **Do NOT call `iw item-status`, `iw step-start`, `iw step-done`, or any work-item-oriented CLI commands.** Doc jobs are not work items. Mistakenly calling these will succeed-but-do-nothing for the job's outcome.
