@@ -316,6 +316,57 @@ class TestLoadSelfAssessment:
         # Findings should still be parsed since findings JSON exists
         assert len(result.findings) == 3
 
+    def test_canonical_sidecar_used_when_framework_path_differs(self, tmp_path: Path) -> None:
+        """Real-world I-00067 case: report_file follows the framework's per-step
+        naming (``<ID>_S<NN>_<AgentName>_report.md``), but iw-item-analyze writes
+        its findings to the canonical ``<ID>_self_assess_findings.json``. The
+        loader must locate the canonical sidecar even though
+        ``findings_path_for(report_file)`` derives a different path that does
+        not exist.
+        """
+        # Framework per-step report (what StepRun.report_file actually points to)
+        framework_report = tmp_path / "I-00067_S06_SelfAssess_report.md"
+        framework_report.write_text("# Framework agent report", encoding="utf-8")
+        # findings_path_for would derive I-00067_S06_SelfAssess_findings.json — DOESN'T exist.
+
+        # Canonical iw-item-analyze outputs (sibling files in the same dir).
+        # Real iw-item-analyze omits narrative_md from the JSON — it lives
+        # in the sibling .md file. Use the same shape here.
+        canonical_narrative = tmp_path / "I-00067_self_assess_report.md"
+        canonical_narrative.write_text(
+            "### Item Analysis: I-00067\n\nBottom line: real narrative here.",
+            encoding="utf-8",
+        )
+        canonical_findings = tmp_path / "I-00067_self_assess_findings.json"
+        canonical_findings.write_text(
+            json.dumps(
+                {
+                    "bottom_line": "real narrative here.",
+                    "findings": json.loads(SAMPLE_FINDINGS_JSON)["findings"],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        steps = [make_mock_workflow_step(step_type=StepType.self_assess)]
+        mock_run = make_mock_step_run(
+            step_db_id=1,
+            status=RunStatus.completed,
+            report_file=str(framework_report),
+        )
+        mock_session = MagicMock()
+        mock_session.execute.return_value.scalar_one_or_none.return_value = mock_run
+
+        result = _load_self_assessment(mock_session, steps, "test-proj", "I-00067")
+
+        assert result is not None
+        # Findings come from the canonical sidecar
+        assert len(result.findings) == 3
+        # Narrative comes from the canonical narrative file (preferred over framework report)
+        assert result.narrative_md is not None
+        assert "real narrative here" in result.narrative_md
+        assert "Framework agent report" not in result.narrative_md
+
 
 class TestAssembleExecutionReportWithSelfAssessment:
     """Integration of self_assessment into assemble_execution_report via RED-GREEN cycle."""
