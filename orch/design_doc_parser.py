@@ -71,7 +71,7 @@ def parse_impacted_paths(content: str | None) -> ImpactedPathsResult:
             continue
 
         if in_code_block:
-            glob = stripped
+            glob = _strip_code_span(stripped)
             _validate_glob(glob)  # raises ValueError on invalid
             if glob not in seen:
                 seen.add(glob)
@@ -83,13 +83,38 @@ def parse_impacted_paths(content: str | None) -> ImpactedPathsResult:
         lstripped = raw_line.lstrip()
         if lstripped.startswith(("- ", "* ")):
             indent = len(raw_line) - len(lstripped)
-            glob = raw_line[indent + 2 :].strip()  # skip marker "- " or "* "
+            glob = _strip_code_span(
+                raw_line[indent + 2 :].strip()
+            )  # strip markdown code-span — I-00071
             _validate_glob(glob)  # raises ValueError on invalid
             if glob not in seen:
                 seen.add(glob)
                 globs.append(glob)
 
     return ImpactedPathsResult(paths=globs, found=True)
+
+
+def _strip_code_span(s: str) -> str:
+    """Remove surrounding markdown code-span backticks from `s`.
+
+    Handles single-backtick fences: `` `foo/bar.py` `` → `` foo/bar.py ``.
+    Also handles double-backtick fences (content with embedded backticks):
+    `` `` `foo` `` `` → `` `foo` ``.
+    Returns the original string if it has no matching fence.
+    """
+    stripped = s.strip()
+    # Double-backtick outer fence: `` `...` ``
+    if stripped.startswith("``") and stripped.endswith("``") and len(stripped) >= 4:
+        inner = stripped[2:-2].strip()
+        # Recurse to strip inner single-backtick fence if present
+        return _strip_code_span(inner)
+    # Single-backtick fence
+    if stripped.startswith("`") and stripped.endswith("`") and len(stripped) >= 2:
+        inner = stripped[1:-1]
+        # Inner content must not contain whitespace or backticks
+        if " " not in inner and "\t" not in inner and "`" not in inner:
+            return inner
+    return s
 
 
 def _validate_glob(glob: str) -> bool:

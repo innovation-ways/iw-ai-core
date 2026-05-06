@@ -27,8 +27,11 @@ def is_test_path(glob: str) -> bool:
     """Return True when the glob targets test files only.
 
     Mirror orch/batch_planner.py:_is_test_path semantics.
-    Also recognises common '**/tests/**' and '**/__tests__/**' shorthand.
+    Also recognises relative test directories (tests/, test/, __tests__/)
+    as the first path segment.
     """
+    if glob.startswith(("tests/", "test/", "__tests__/")):
+        return True
     return any(marker in glob for marker in _TEST_PATH_MARKERS)
 
 
@@ -146,7 +149,12 @@ def find_blocking_items(
 
     result: list[tuple[str, list[str]]] = []
 
+    candidate_paths = _strip_test_globs(candidate_paths)
+    if not candidate_paths:
+        return []
+
     for item_id, in_flight_paths in in_flight:
+        in_flight_paths = _strip_test_globs(in_flight_paths)
         intersecting = globs_intersect(candidate_paths, in_flight_paths)
         if not intersecting:
             # Sibling check: if any candidate path shares a parent dir with
