@@ -332,3 +332,55 @@ class TestParseImpactedPathsStopsAtNextSection:
         content = "## Impacted Paths\n\n- orch/foo.py\n```\norch/bar.py\n```\n"
         result = parse_impacted_paths(content)
         assert result.paths == ["orch/foo.py", "orch/bar.py"]
+
+
+class TestImpactedPathsBacktickStripping:
+    """I-00071 regression: markdown code-span backticks must be stripped."""
+
+    def test_strips_surrounding_code_span_backticks_in_bullet_lines(self) -> None:
+        """I-00071 RED: bullet items wrapped in markdown backticks must be stored bare."""
+        content = """## Impacted Paths
+
+- `dashboard/CLAUDE.md`
+- `dashboard/static/clipboard.js`
+- `tests/dashboard/test_i00071.py`
+"""
+        result = parse_impacted_paths(content)
+        assert result.found is True
+        assert result.paths == [
+            "dashboard/CLAUDE.md",
+            "dashboard/static/clipboard.js",
+            "tests/dashboard/test_i00071.py",
+        ]
+
+    def test_strips_surrounding_code_span_backticks_in_fenced_code_block(self) -> None:
+        """I-00071: backticks inside a fenced code block also get stripped."""
+        content = """## Impacted Paths
+
+```
+`orch/foo.py`
+`orch/bar/**`
+```
+"""
+        result = parse_impacted_paths(content)
+        assert result.paths == ["orch/foo.py", "orch/bar/**"]
+
+    def test_bare_paths_without_backticks_still_parse_unchanged(self) -> None:
+        """I-00071 regression: backtick stripping must NOT corrupt bare paths."""
+        content = """## Impacted Paths
+
+- orch/foo.py
+- orch/bar/**
+"""
+        result = parse_impacted_paths(content)
+        assert result.paths == ["orch/foo.py", "orch/bar/**"]
+
+    def test_mixed_wrapped_and_bare_paths(self) -> None:
+        """I-00071: a mix of wrapped and bare paths in the same section."""
+        content = """## Impacted Paths
+
+- `orch/foo.py`
+- orch/bar/baz.py
+"""
+        result = parse_impacted_paths(content)
+        assert result.paths == ["orch/foo.py", "orch/bar/baz.py"]

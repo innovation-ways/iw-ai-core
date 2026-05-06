@@ -25,6 +25,17 @@ class TestIsTestPath:
             ("src/tests/foo.py", True),
             ("src/test/foo.py", True),
             ("src/__tests__/foo.py", True),
+            # I-00071: relative test-path prefixes (no leading slash)
+            ("tests/dashboard/test_x.py", True),
+            ("test/foo.py", True),
+            ("__tests__/bar.py", True),
+            ("tests/conftest.py", True),
+            # I-00071: wider regression coverage
+            ("pytest/conftest.py", True),
+            ("nested/path/__tests__/file.py", True),
+            ("tests/integration/test_x.py", True),
+            ("__tests__/integration/foo.py", True),
+            ("helpers/test_utils.py", False),  # not a test file — utility module
             # Test file markers
             ("conftest.py", True),
             ("src/conftest.py", True),
@@ -216,3 +227,57 @@ class TestFindBlockingItems:
         in_flight = [("F-00001", ["src/app/main.py"])]
         result = find_blocking_items([], in_flight)
         assert result == []
+
+
+class TestI00071RegressionBatch00078:
+    """I-00071 regression — BATCH-00078 reproduction.
+
+    The sibling-directory check in find_blocking_items must not fire when
+    both the candidate and in-flight item declare ONLY test files under
+    tests/dashboard/. The sibling check uses _strip_test_globs on both sides
+    before comparing, so test paths are excluded from parent-directory
+    comparison.
+    """
+
+    def test_two_items_both_only_test_files_under_same_dir_do_not_block(self) -> None:
+        """Both items declare only test files under tests/dashboard/ — no sibling block."""
+        # Both candidate and in-flight have ONLY test paths under tests/dashboard/.
+        # After _strip_test_globs, both sides become empty → no sibling overlap possible.
+        candidate_paths = ["tests/dashboard/test_i00067_recent_activity_truncation.py"]
+        in_flight = [
+            ("I-00069", ["tests/dashboard/test_live_db_guard_log_level.py"]),
+        ]
+        result = find_blocking_items(candidate_paths, in_flight)
+        assert result == [], (
+            "Two items declaring only test files under tests/dashboard/ must not "
+            f"block each other via sibling-directory check. Was: {result!r}"
+        )
+
+    def test_mixed_test_and_prod_paths_test_only_candidate_still_not_blocked(self) -> None:
+        """Candidate has only test paths; in-flight has both test and prod paths.
+
+        The test path in the in-flight item must be stripped before sibling
+        comparison, so the remaining prod path (dashboard/app.py) does NOT share
+        a parent with the candidate's test path (tests/dashboard/test_x.py).
+        """
+        candidate_paths = ["tests/dashboard/test_i00067_recent_activity_truncation.py"]
+        in_flight = [
+            ("I-00069", ["dashboard/app.py", "tests/dashboard/test_live_db_guard_log_level.py"]),
+        ]
+        result = find_blocking_items(candidate_paths, in_flight)
+        # dashboard/app.py (prod, stripped nothing) vs tests/dashboard/test_x.py
+        # -> different parents, no sibling overlap
+        assert result == [], (
+            "Test-path candidate with mixed in-flight must not be blocked when "
+            f"prod paths don't share a parent with the test path. Was: {result!r}"
+        )
+
+    def test_non_test_sibling_still_blocks(self) -> None:
+        """Sanity: production-code sibling overlap is still detected."""
+        candidate_paths = ["dashboard/CLAUDE.md"]
+        in_flight = [("I-00069", ["dashboard/app.py"])]
+        result = find_blocking_items(candidate_paths, in_flight)
+        # Both paths share parent dir `dashboard/`, neither is a test path,
+        # so sibling-overlap fires.
+        assert len(result) == 1
+        assert result[0][0] == "I-00069"

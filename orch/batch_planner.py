@@ -110,6 +110,8 @@ _TEST_PATH_MARKERS = ("/tests/", "/test/", "/__tests__/", "conftest", ".test.", 
 
 
 def _is_test_path(path: str) -> bool:
+    if path.startswith(("tests/", "test/", "__tests__/")):
+        return True
     return any(marker in path for marker in _TEST_PATH_MARKERS)
 
 
