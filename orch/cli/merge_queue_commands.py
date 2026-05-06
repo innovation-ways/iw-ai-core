@@ -19,6 +19,7 @@ from sqlalchemy.orm import sessionmaker
 
 from orch.cli.utils import output_error
 from orch.config import get_db_url
+from orch.daemon.merge_queue import OPERATOR_RECOVERABLE_MERGE_STATUSES
 from orch.daemon.migration_pipeline import (
     is_merge_queue_frozen,
     set_merge_queue_frozen,
@@ -219,29 +220,57 @@ def merge_queue_retry(ctx: click.Context, item_id: str, json_output: bool) -> No
 
     try:
         with get_session() as session:
-            # Find the most recent failed or migration_rebase_failed BatchItem
-            _retryable = (
-                BatchItemStatus.failed,
-                BatchItemStatus.migration_rebase_failed,
-            )
+            # Find the most recent operator-recoverable merge BatchItem
             batch_item = (
                 session.execute(
                     select(BatchItem)
                     .where(BatchItem.work_item_id == item_id)
-                    .where(BatchItem.status.in_(_retryable))
+                    .where(BatchItem.status.in_(list(OPERATOR_RECOVERABLE_MERGE_STATUSES)))
                     .order_by(BatchItem.id.desc())
                 )
                 .scalars()
                 .first()
             )
 
+            # Back-compat: accept legacy `failed` rows that have merge-failure metadata
             if batch_item is None:
-                msg = f"No failed batch item found for {item_id}"
-                if json_output:
-                    click.echo(json.dumps({"error": msg}))
+                legacy = (
+                    session.execute(
+                        select(BatchItem)
+                        .where(BatchItem.work_item_id == item_id)
+                        .where(BatchItem.status == BatchItemStatus.failed)
+                        .order_by(BatchItem.id.desc())
+                    )
+                    .scalars()
+                    .first()
+                )
+                if legacy is not None and (legacy.notes or "").startswith("Merge failed"):
+                    batch_item = legacy
+                elif legacy is not None:
+                    # Found a failed item, but it failed during setup or execution, not merge
+                    msg = (
+                        f"Batch item {item_id} failed during setup or execution "
+                        f"(notes: {(legacy.notes or '')!r}). "
+                        "Use 'iw item restart' instead of 'iw merge-queue retry-merge'."
+                    )
+                    if json_output:
+                        click.echo(json.dumps({"error": msg}))
+                    else:
+                        click.echo(f"Error: {msg}", err=True)
+                    sys.exit(EXIT_UNKNOWN)
                 else:
-                    click.echo(f"Error: {msg}", err=True)
-                sys.exit(EXIT_UNKNOWN)
+                    recoverable = ", ".join(
+                        sorted(s.name for s in OPERATOR_RECOVERABLE_MERGE_STATUSES)
+                    )
+                    msg = (
+                        f"No retryable batch item found for {item_id} "
+                        f"(status must be one of {recoverable} or legacy failed-with-merge-notes)"
+                    )
+                    if json_output:
+                        click.echo(json.dumps({"error": msg}))
+                    else:
+                        click.echo(f"Error: {msg}", err=True)
+                    sys.exit(EXIT_UNKNOWN)
 
             # Verify worktree still exists
             worktree_path = (batch_item.worktree_info or {}).get("path")

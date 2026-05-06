@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "4cc043748e92"  # I-00062 migration — ALTER TABLE batch_items ADD COLUMN …
+_HEAD_REVISION = "c35d5b257eab"  # head — add report column to doc_generation_jobs
 _PREV_REVISION = "e53ce8e86a3c"  # F-00077 — chat conversations memory (before I-00062)
 
 
