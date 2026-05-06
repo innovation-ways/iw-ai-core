@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 from orch.config import DaemonConfig
 from orch.daemon.doc_job_poller import DocJobPoller
 from orch.db.models import (
-    DocGenerationJob,
     EditorialCategory,
     JobStatus,
     Project,
@@ -84,15 +83,16 @@ def make_job(
     status: JobStatus = JobStatus.queued,
     started_at: datetime | None = None,
     requested_at: datetime | None = None,
+    agent_pid: int | None = None,
 ) -> MagicMock:
-    job = MagicMock(spec=DocGenerationJob)
+    job = MagicMock()
     job.id = str(uuid.uuid4())
     job.project_id = project_id
     job.doc_id = f"{project_id}:{doc_id}"
     job.status = status
     job.started_at = started_at
     job.requested_at = requested_at or datetime.now(UTC)
-    job.agent_pid = None
+    job.agent_pid = agent_pid
     job.skill_used = None
     job.duration_seconds = None
     job.error = None
@@ -316,7 +316,7 @@ class TestDocJobPollerLaunch:
         def get_stalled_jobs(timeout_minutes=10):
             return []
 
-        def complete_doc_job(job_id, error=None):
+        def complete_doc_job(job_id, error=None, *, worktree_path=None):
             pass
 
         def start_doc_job(job_id, pid=None, skill_used=None):
@@ -350,6 +350,7 @@ class TestDocJobPollerLaunch:
         with (
             patch("orch.doc_service.DocService", side_effect=doc_service_constructor),
             patch("subprocess.Popen") as mock_popen,
+            patch.object(DocJobPoller, "_detect_dead_subprocess_jobs", return_value=[]),
         ):
             mock_proc = MagicMock()
             mock_proc.pid = 12345
@@ -383,7 +384,10 @@ class TestDocJobPollerLaunch:
         mock_session_factory.return_value.__enter__ = MagicMock(return_value=mock_db)
         mock_session_factory.return_value.__exit__ = MagicMock(return_value=False)
 
-        with patch("orch.doc_service.DocService", side_effect=doc_service_constructor):
+        with (
+            patch("orch.doc_service.DocService", side_effect=doc_service_constructor),
+            patch.object(DocJobPoller, "_detect_dead_subprocess_jobs", return_value=[]),
+        ):
             poller = DocJobPoller(mock_session_factory, config)
             poller.poll()
 

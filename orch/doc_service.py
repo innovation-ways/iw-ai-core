@@ -11,7 +11,7 @@ import subprocess
 import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal  # noqa: F401
 
 import httpx
 import yaml
@@ -37,6 +37,10 @@ from orch.db.models import (
     ProjectDocVersion,
 )
 from orch.doc_sections import extract_sections, split_by_sections  # noqa: F401
+
+# Type alias defined after all imports so ruff's E402 guard (on the import block
+# above) does not incorrectly suppress F401 on this line.
+JobOutcome = Literal["completed", "failed_timeout", "failed_process_exited", "failed_agent_error"]
 
 
 def _slugify(title: str) -> str:
@@ -501,6 +505,8 @@ class DocService:
         self,
         job_id: str,
         error: str | None = None,
+        *,
+        worktree_path: str | Path | None = None,
     ) -> DocGenerationJob:
         job = self._session.get(DocGenerationJob, job_id)
         if job is None:
@@ -526,6 +532,58 @@ class DocService:
                 warnings = self.lint_doc_content(doc.content, doc.editorial_category, forbidden)
                 if warnings:
                     job.lint_warnings = warnings
+
+        # ── Observability: agent_output + report ─────────────────────
+        project_for_worktree = self._session.get(Project, job.project_id)
+        if worktree_path is None and project_for_worktree is not None:
+            worktree_path = project_for_worktree.repo_root
+
+        log_path: Path | None = None
+        if worktree_path is not None:
+            log_path = Path(worktree_path) / "ai-dev" / "logs" / f"doc_job_{job.id}.log"
+
+        log_text = ""
+        log_size_bytes = 0
+        log_line_count = 0
+        if log_path is not None:
+            from orch.doc_report import read_log_tail
+
+            log_text, log_size_bytes, log_line_count = read_log_tail(log_path)
+
+        job.agent_output = log_text
+
+        outcome: JobOutcome
+        if error is None:
+            outcome = "completed"
+        elif "timeout" in error.lower():
+            outcome = "failed_timeout"
+        elif "agent process exited" in error.lower():
+            outcome = "failed_process_exited"
+        else:
+            outcome = "failed_agent_error"
+
+        cli_tool = "opencode"
+        command_issued: str | None = None
+        if project_for_worktree is not None and project_for_worktree.config:
+            cli_tool = project_for_worktree.config.get("cli_tool", "opencode")
+
+        if cli_tool == "opencode":
+            command_issued = f'opencode run "/doc-job {job.id}" --dangerously-skip-permissions'
+        elif cli_tool == "claude":
+            command_issued = f'claude -p "/doc-job {job.id}" --permission-mode bypassPermissions'
+
+        from orch.doc_report import build_execution_report
+
+        job.report = build_execution_report(
+            job=job,
+            project=project_for_worktree,
+            log_text=log_text,
+            log_size_bytes=log_size_bytes,
+            log_line_count=log_line_count,
+            outcome=outcome,
+            command_issued=command_issued,
+            cli_tool=cli_tool,
+        )
 
         self._session.flush()
         return job
