@@ -197,6 +197,7 @@ class TestDocJobStatusCli:
             if model == ProjectDoc and pk == doc.id:
                 return doc
             return None
+
         mock_session.get.side_effect = get_side_effect
 
         runner = CliRunner()

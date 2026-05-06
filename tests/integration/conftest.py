@@ -13,7 +13,9 @@ Fixture scopes:
 
 from __future__ import annotations
 
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -33,8 +35,6 @@ from orch.db.models import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
-
     from sqlalchemy import Engine
     from sqlalchemy.orm import Session
 
@@ -70,6 +70,29 @@ BEGIN
 END$$;
 """
 
+BATCH_ITEM_STATUS_SQL = """\
+DO $$
+BEGIN
+    DROP TYPE IF EXISTS batch_item_status CASCADE;
+    CREATE TYPE batch_item_status AS ENUM (
+        'pending',
+        'setting_up',
+        'executing',
+        'completed',
+        'merging',
+        'merged',
+        'failed',
+        'stalled',
+        'skipped',
+        'merge_failed',
+        'migration_invalid',
+        'migration_rolled_back',
+        'migration_rebase_failed',
+        'setup_failed'
+    );
+END$$;
+"""
+
 
 @pytest.fixture(scope="session")
 def pg_container() -> Generator[PostgresContainer, None, None]:
@@ -101,6 +124,7 @@ def db_engine(pg_container: PostgresContainer) -> Engine:
     # collisions if a previous session left stale types behind.
     with engine.connect() as conn:
         conn.execute(text(OSS_ENUMS_SQL))
+        conn.execute(text(BATCH_ITEM_STATUS_SQL))
         conn.commit()
 
     # create_all() is idempotent for existing ENUM types (checkfirst=True by default),
@@ -190,3 +214,17 @@ def cli_get_session(db_session: Session) -> Callable[[], contextmanager]:  # typ
         yield db_session
 
     return _get_session  # type: ignore[return-value]
+
+
+@pytest.fixture
+def sample_worktree_path(tmp_path) -> Path:
+    """Create a real directory that Path.exists() can confirm.
+
+    Used by CLI retry-merge tests to verify the worktree existence check.
+    """
+
+    wt = tmp_path / "worktrees" / "F-99999"
+    wt.mkdir(parents=True, exist_ok=True)
+    # Create a minimal git worktree marker so the path looks real
+    (wt / ".git").write_text("gitdir: /real/repo/.git/worktrees/F-99999\n")
+    return wt

@@ -21,6 +21,7 @@ from dashboard.dependencies import get_db
 from dashboard.middlewares.alembic_guard import require_db_at_head
 from orch.active_files import ensure_active_files_committed
 from orch.archive.batch_archiver import archive_batch
+from orch.daemon.merge_queue import OPERATOR_RECOVERABLE_MERGE_STATUSES
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -922,11 +923,6 @@ def restart_item(
 # CR-00028: operator-recoverable merge statuses — restart-merge accepts all three.
 # The legacy `failed` + notes.startswith("Merge failed") path is preserved for
 # back-compat with historical rows created before the migration.
-_ALLOWED_RETRY_STATUSES = {
-    BatchItemStatus.merge_failed,
-    BatchItemStatus.migration_invalid,
-    BatchItemStatus.migration_rebase_failed,
-}
 
 
 @router.post("/item/{item_id}/restart-merge", response_class=Response)
@@ -940,7 +936,7 @@ def restart_merge(
         select(BatchItem).where(
             BatchItem.project_id == project_id,
             BatchItem.work_item_id == item_id,
-            BatchItem.status.in_(list(_ALLOWED_RETRY_STATUSES)),
+            BatchItem.status.in_(list(OPERATOR_RECOVERABLE_MERGE_STATUSES)),
         )
     )
 

@@ -64,9 +64,13 @@ def test_fixture_seeds_18_workflow_steps_for_f00055(seeded_db: Session) -> None:
         .scalars()
         .all()
     )
-    assert len(steps) == 19, f"Expected 19 steps (18 workflow + S19 self_assess from I-00070), got {len(steps)}"
+    assert len(steps) == 19, (
+        f"Expected 19 steps (18 workflow + S19 self_assess from I-00070), got {len(steps)}"
+    )
     assert steps[0].step_id == "S01"
-    assert steps[-1].step_id == "S19", f"Last step should be S19 (self_assess from I-00070), got {steps[-1].step_id}"
+    assert steps[-1].step_id == "S19", (
+        f"Last step should be S19 (self_assess from I-00070), got {steps[-1].step_id}"
+    )
 
 
 def test_fixture_encodes_correct_retry_counts(seeded_db: Session) -> None:
