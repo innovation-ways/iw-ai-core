@@ -437,6 +437,7 @@ class JobsAggregator:
             "section_guides_snapshot": job.section_guides_snapshot,
             "guide_snapshot": job.guide_snapshot,
             "created_at": job.created_at,
+            "report": job.report,
         }
 
     def _fetch_batch_execution(

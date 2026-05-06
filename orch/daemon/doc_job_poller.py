@@ -7,7 +7,9 @@ Runs as part of the main daemon poll loop.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -34,6 +36,23 @@ logger = logging.getLogger(__name__)
 
 _EXECUTOR_DIR = Path(__file__).resolve().parent.parent.parent / "executor"
 _STALL_TIMEOUT_MINUTES = 15
+_PID_RACE_PROTECTION_SECONDS = 10
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Return True if the kernel knows about this PID.
+
+    ``PermissionError`` means the process exists but we can't signal it — alive.
+    ``ProcessLookupError`` means the process is gone — dead.
+    Anything else bubbles up.
+    """
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:  # noqa: F821 — subclass of OSError in Python 3
+        return False
+    except PermissionError:
+        return True
 
 
 class DocJobPoller:
@@ -48,13 +67,38 @@ class DocJobPoller:
     def poll(self) -> None:
         """Single poll cycle:
         1. Detect and mark stalled jobs (timeout)
-        2. For each project: if running_count < MAX_CONCURRENT, dequeue and launch next job
+        2. Detect dead subprocesses and mark them failed (~60s detection)
+        3. For each project: if running_count < MAX_CONCURRENT, dequeue and launch next job
         """
         from orch.doc_service import DocService
 
+        # Phase 1: stall / dead-subprocess detection
         with self._session_factory() as db:
             svc = DocService(db)
 
+            # PID liveness probe — runs BEFORE the wall-clock stall sweep
+            dead_jobs = self._detect_dead_subprocess_jobs(db)
+            for job in dead_jobs:
+                try:
+                    worktree_path = None
+                    project = db.get(Project, job.project_id)
+                    if project is not None:
+                        worktree_path = project.repo_root
+                    svc.complete_doc_job(
+                        job.id,
+                        error="agent process exited without calling iw doc-job-done",
+                        worktree_path=worktree_path,
+                    )
+                    logger.info(
+                        "Marked dead-subprocess job %s as failed (PID %s, started at %s)",
+                        job.id,
+                        job.agent_pid,
+                        job.started_at,
+                    )
+                except Exception:
+                    logger.exception("Failed to mark dead-subprocess job %s as failed", job.id)
+
+            # Wall-clock stall sweep
             stalled = svc.get_stalled_jobs(timeout_minutes=_STALL_TIMEOUT_MINUTES)
             for job in stalled:
                 try:
@@ -77,6 +121,40 @@ class DocJobPoller:
 
             for project in projects:
                 self._process_project(project.id)
+
+    def _detect_dead_subprocess_jobs(self, db: Session) -> list[DocGenerationJob]:
+        """Return running jobs whose agent_pid no longer points at a live process.
+
+        Skips jobs started within the last 10 seconds to avoid racing the kernel's
+        fork-to-PID assignment on freshly-launched subprocesses.
+        """
+        from orch.db.models import JobStatus
+
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(seconds=_PID_RACE_PROTECTION_SECONDS)
+
+        jobs = (
+            db.query(DocGenerationJob)
+            .filter(
+                DocGenerationJob.status == JobStatus.running,
+                DocGenerationJob.agent_pid.isnot(None),
+            )
+            .all()
+        )
+
+        dead = []
+        for job in jobs:
+            pid: int | None = job.agent_pid
+            if pid is None:
+                continue
+            started_at = job.started_at
+            # Skip jobs that are too young — kernel may not have registered the fork yet
+            if started_at is not None and started_at > cutoff:
+                continue
+            if not _is_pid_alive(pid):
+                dead.append(job)
+
+        return dead
 
     def _process_project(self, project_id: str) -> None:
         """Process queued jobs for a single project."""
@@ -228,7 +306,7 @@ class DocJobPoller:
         if cli_tool == "opencode":
             # opencode run does not support --on-complete/--on-error;
             # the skill is responsible for calling `iw doc-job-done` on completion.
-            cmd = f'opencode run "/execute {job.id}" --dangerously-skip-permissions'
+            cmd = f'opencode run "/doc-job {job.id}" --dangerously-skip-permissions'
         else:
             cmd = (
                 f'claude -p "/execute {job.id}" '

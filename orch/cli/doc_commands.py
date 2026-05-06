@@ -10,16 +10,19 @@ from pathlib import Path
 from typing import Any
 
 import click
+from sqlalchemy import select
 
 from orch.cli.utils import output_error, resolve_project
 from orch.daemon.state_machine import validate_work_item_status
 from orch.db.models import (  # noqa: F401
+    DocGenerationJob,
     DocStatus,
     DocTier,
     DocType,
     EditorialCategory,
     JobStatus,
     Project,
+    ProjectDoc,
     WorkItem,
     WorkItemPhase,
     WorkItemStatus,
@@ -496,3 +499,96 @@ def docs_export(
 
     except Exception as exc:
         output_error(ctx, f"Database error: {exc}", 3)
+
+
+# ---------------------------------------------------------------------------
+# doc-job-status: read-only job context for an agent
+# ---------------------------------------------------------------------------
+
+
+@click.command("doc-job-status")
+@click.argument("job_id")
+@click.option("--json", "-j", "json_output", is_flag=True, help="Machine-readable JSON output")
+@click.pass_context
+def doc_job_status(ctx: click.Context, job_id: str, json_output: bool) -> None:
+    """Show the full context of a DocGenerationJob (read-only).
+
+    Returns job status, joined ProjectDoc metadata (title, editorial_category),
+    and the snapshot fields so an agent can produce the right content.
+    """
+    if json_output:
+        ctx.obj["json"] = True
+    project_id = resolve_project(ctx)
+    get_session = ctx.obj["get_session"]
+
+    result: dict[str, Any] = {}
+
+    try:
+        with get_session() as session:
+            # Try public_id first (DOC-NNNNN), then UUID PK
+            job = session.scalar(
+                select(DocGenerationJob).where(DocGenerationJob.public_id == job_id)
+            )
+            if job is None:
+                job = session.get(DocGenerationJob, job_id)
+            if job is None or job.project_id != project_id:
+                output_error(
+                    ctx,
+                    f"doc-generation job '{job_id}' not found",
+                    1,
+                )
+
+            doc_title: str | None = None
+            editorial_category: str | None = None
+            if job.doc_id:
+                doc = session.get(ProjectDoc, job.doc_id)
+                if doc:
+                    doc_title = doc.title
+                    editorial_category = (
+                        doc.editorial_category.value
+                        if hasattr(doc.editorial_category, "value")
+                        else str(doc.editorial_category)
+                    )
+
+            result = {
+                "id": job.id,
+                "public_id": job.public_id,
+                "project_id": job.project_id,
+                "doc_id": job.doc_id,
+                "doc_title": doc_title,
+                "editorial_category": editorial_category,
+                "status": job.status.value if job.status else None,
+                "skill_used": job.skill_used,
+                "trigger_reason": job.trigger_reason,
+                "agent_pid": job.agent_pid,
+                "started_at": job.started_at.isoformat() if job.started_at else None,
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "requested_at": job.requested_at.isoformat() if job.requested_at else None,
+                "created_at": job.created_at.isoformat() if job.created_at else None,
+                "section_guides_snapshot": job.section_guides_snapshot,
+                "guide_snapshot": job.guide_snapshot,
+            }
+
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 1)
+
+    if ctx.obj.get("json"):
+        click.echo(json.dumps(result))
+    else:
+        click.echo(f"Job: {result['id']}")
+        click.echo(f"  Public ID:    {result['public_id'] or '—'}")
+        click.echo(f"  Project:      {result['project_id']}")
+        click.echo(f"  Doc ID:       {result['doc_id'] or '—'}")
+        click.echo(f"  Doc title:    {result['doc_title'] or '—'}")
+        click.echo(f"  Editorial:    {result['editorial_category'] or '—'}")
+        click.echo(f"  Status:       {result['status']}")
+        click.echo(f"  Skill:        {result['skill_used'] or '—'}")
+        click.echo(f"  Trigger:      {result['trigger_reason'] or '—'}")
+        click.echo(f"  Agent PID:    {result['agent_pid'] or '—'}")
+        click.echo(f"  Started:      {result['started_at'] or '—'}")
+        click.echo(f"  Completed:    {result['completed_at'] or '—'}")
+        click.echo(f"  Requested:    {result['requested_at'] or '—'}")
+        click.echo(f"  Created:      {result['created_at'] or '—'}")
+        if result["section_guides_snapshot"]:
+            click.echo(f"  Section guides: {len(result['section_guides_snapshot'])} section(s)")
+        click.echo(f"  Guide snapshot: {'present' if result['guide_snapshot'] else 'none'}")

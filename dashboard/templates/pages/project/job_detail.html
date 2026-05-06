@@ -131,6 +131,111 @@
   {% endif %}
 </div>
 
+{# Live Log card — only while the job is running #}
+{% if job.status == 'running' %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-sm font-medium text-foreground">Live Log</h2>
+    <span class="text-xs text-muted-foreground">streaming…</span>
+  </div>
+  <pre id="doc-job-log"
+       class="font-mono text-xs whitespace-pre-wrap break-words bg-muted/50 rounded p-3 overflow-auto"
+       style="max-height: 32rem;"
+       aria-live="polite"
+       aria-label="Live agent log"></pre>
+  <script>
+    (function () {
+      var log = document.getElementById('doc-job-log');
+      if (!log) return;
+      var src = new EventSource('/project/{{ current_project.id }}/jobs/doc_generation/{{ raw.id }}/log/stream');
+      src.onmessage = function (e) {
+        log.textContent += e.data + '\n';
+        log.scrollTop = log.scrollHeight;
+      };
+      src.addEventListener('status', function (e) {
+        if (e.data === 'terminal') src.close();
+      });
+      src.onerror = function () { src.close(); };
+    })();
+  </script>
+</div>
+{% endif %}
+
+{# Persisted-output fallback — terminal state with captured stdout #}
+{% if job.status != 'running' and raw.get('agent_output') %}
+<details class="bg-card border border-border rounded-lg p-4 mb-6">
+  <summary class="text-sm font-medium text-foreground cursor-pointer">Captured log ({{ raw.get('agent_output')|length }} chars)</summary>
+  <pre class="font-mono text-xs whitespace-pre-wrap break-words bg-muted/50 rounded p-3 mt-3 overflow-auto" style="max-height: 32rem;">{{ raw.get('agent_output') }}</pre>
+</details>
+{% endif %}
+
+{# Execution Report card — shown whenever raw.report is populated #}
+{% if raw.get('report') %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <h2 class="text-sm font-medium text-foreground mb-3">Execution Report</h2>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    <div>
+      <dt class="text-xs text-muted-foreground">Outcome</dt>
+      <dd>{{ status_badge(raw.get('report').get('outcome')) }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Duration</dt>
+      <dd class="font-medium">{{ raw.get('report').get('duration_seconds') }}s</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Skill</dt>
+      <dd class="font-medium">{{ raw.get('report').get('skill_used') or '—' }}</dd>
+    </div>
+    <div class="col-span-full">
+      <dt class="text-xs text-muted-foreground">Command issued</dt>
+      <dd><code class="text-xs">{{ raw.get('report').get('command_issued') or '—' }}</code></dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Log size</dt>
+      <dd>{{ raw.get('report').get('log_size_bytes') }} bytes / {{ raw.get('report').get('log_line_count') }} lines</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">doc-update calls</dt>
+      <dd class="font-medium">{{ raw.get('report').get('doc_update_invocations') }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Lint warnings</dt>
+      <dd class="font-medium">{{ raw.get('report').get('lint_warning_count') }}</dd>
+    </div>
+  </dl>
+
+  {% if raw.get('report').get('tool_calls') %}
+  <div class="mt-4 pt-4 border-t border-border">
+    <dt class="text-xs text-muted-foreground mb-2">Tool calls</dt>
+    <table class="text-xs w-full">
+      <thead><tr class="text-muted-foreground"><th class="text-left">Tool</th><th class="text-left">Exit</th></tr></thead>
+      <tbody>
+        {% for tc in raw.get('report').get('tool_calls', []) %}
+        <tr><td><code>{{ tc.get('tool') }}</code></td><td>{{ tc.get('exit_code') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if raw.get('report').get('diagnosis') %}
+  <div class="mt-4 pt-4 border-t border-border">
+    <dt class="text-xs text-muted-foreground mb-1">Diagnosis</dt>
+    <dd class="text-sm">{{ raw.get('report').get('diagnosis') }}</dd>
+  </div>
+  {% endif %}
+
+  {% if log_file_exists %}
+  <div class="mt-4 pt-4 border-t border-border">
+    <a href="/project/{{ current_project.id }}/jobs/doc_generation/{{ raw.id }}/log/raw"
+       class="text-sm text-primary hover:underline">
+      → Download raw log
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 {% elif job.job_type.value == 'batch_execution' %}
 <div class="bg-card border border-border rounded-lg p-4 mb-6">
   <h2 class="text-sm font-medium text-foreground mb-3">Parameters</h2>
