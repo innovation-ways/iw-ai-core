@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
+from orch.batch_planner import _is_test_path as planner_is_test_path
 from orch.batch_planner import analyze_dependencies, extract_affected_files
+from orch.daemon.scope_overlap import is_test_path as overlap_is_test_path
 
 
 def _item(
@@ -107,3 +111,22 @@ def test_pre_existing_empty_depends_on_still_works() -> None:
     assert analysis["F-A"].group == 0
     assert analysis["F-B"].group == 0
     assert analysis["F-C"].group == 0
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("tests/dashboard/test_x.py", True),  # I-00071: relative tests/
+        ("test/foo.py", True),  # I-00071: relative test/
+        ("__tests__/bar.py", True),  # I-00071: relative __tests__/
+        ("src/tests/foo.py", True),  # existing: nested
+        ("conftest.py", True),  # existing: conftest
+        ("foo.test.ts", True),  # existing: .test.
+        ("test_data.json", False),  # existing: non-test
+        ("src/test_utils.py", False),  # existing: non-test
+    ],
+)
+def test_batch_planner_is_test_path_matches_scope_overlap(path: str, expected: bool) -> None:
+    """I-00071: the two helpers must stay in lock-step."""
+    assert planner_is_test_path(path) is expected
+    assert overlap_is_test_path(path) is expected

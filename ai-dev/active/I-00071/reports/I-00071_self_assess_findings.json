@@ -1,0 +1,22 @@
+{
+  "item_id": "I-00071",
+  "bottom_line": "S01's implementation prompt should explicitly require _strip_test_globs filtering before the sibling-directory check, not just in is_test_path — the bug was self-corrected in the S05 fix cycle but the miss indicates a prompt gap.",
+  "coverage_notes": "No raw run logs available (worktree was cleaned up or never created). All analysis based on: (1) item-status JSON output (13 steps, 12 completed, 1 in-progress); (2) 12 self-assess report files read in full; (3) fix-cycles/I-00071_S05_FIX_cycle1_prompt.md read; (4) workflow-manifest.json read. DB telemetry: available (DB:UP confirmed). No raw run logs or fix-cycle result logs to sample — evidence is secondary (agent self-reports).",
+  "findings": [
+    {
+      "severity": "LOW",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "S01 sibling-check logic bug caught by S03 regression tests and fixed in S05 fix cycle",
+      "recommendation": "Add a guidance bullet in the implementation prompt template (and design-doc generator) for bug-fix items: 'When a function filters a list with _strip_test_globs or equivalent, ensure ALL downstream consumers of that list (including sibling-directory checks) use the filtered version, not the raw list.'",
+      "evidence": [
+        "ai-dev/active/I-00071/reports/I-00071_S03_Tests_report.md:75-76 — 'S01 production code has a logic bug in find_blocking_items... sibling check applies _same_parent to raw (unfiltered) paths, bypassing _strip_test_globs'",
+        "ai-dev/active/I-00071/reports/I-00071_S04_CodeReview_report.md:169-175 — 'Sibling-directory check in find_blocking_items applies _same_parent to raw (unfiltered) paths... This is a production bug in S01, NOT a test bug in S03.'",
+        "ai-dev/active/I-00071/fix-cycles/I-00071_S05_FIX_cycle1_prompt.md:16 — Diagnostic hypothesis explicitly identifies the raw-paths bug and its fix",
+        "ai-dev/active/I-00071/reports/I-00071_S05_CodeReview_Final_report.md:62-64 — All 3 BATCH-00078 tests PASS after S05 fix cycle"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Add sibling-check path-filtering guidance to the Issue_Design_Template.md; analyzed in I-00071 self-assess (ai-dev/active/I-00071/reports/I-00071_self_assess_report.md). Target: templates/design/Issue_Design_Template.md. Effort: S."
+    }
+  ]
+}
