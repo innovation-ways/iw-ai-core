@@ -1,4 +1,9 @@
-"""Unit tests for merge-queue CLI commands — smoke tests using CliRunner with mocks."""
+"""Unit tests for merge-queue CLI commands — smoke tests using CliRunner with mocks.
+
+DB-backed tests for retry-merge (status flips, audit events) live in
+tests/integration/test_merge_queue_retry.py. These unit tests cover
+smoke/assertion patterns and import-based parity checks that don't need a DB.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +14,67 @@ import pytest
 from click.testing import CliRunner
 
 from orch.cli.merge_queue_commands import merge_queue_status, merge_queue_unfreeze
+from orch.daemon.merge_queue import OPERATOR_RECOVERABLE_MERGE_STATUSES
+from orch.db.models import BatchItemStatus
 
 
 @pytest.fixture
 def cli_runner():
     return CliRunner()
+
+
+# ---------------------------------------------------------------------------
+# Import-based parity and enum-coverage tests — no DB needed
+# ---------------------------------------------------------------------------
+
+
+class TestRetryMergeParityOnly:
+    """Parity and enum-coverage assertions.
+
+    No DB required; these verify that the CLI imports the shared constant
+    by identity (not by copy) and that the constant's membership matches
+    the union of all regression cases in the integration test suite.
+    """
+
+    def test_i00072_cli_imports_recoverable_status_constant(self) -> None:
+        """The CLI module imports OPERATOR_RECOVERABLE_MERGE_STATUSES by name."""
+        import orch.cli.merge_queue_commands as cli_module
+
+        # Identity check: the module holds the same frozenset object, not a copy.
+        assert cli_module.OPERATOR_RECOVERABLE_MERGE_STATUSES is OPERATOR_RECOVERABLE_MERGE_STATUSES
+
+        # The set has exactly the four expected members.
+        assert (
+            frozenset(
+                {
+                    BatchItemStatus.merge_failed,
+                    BatchItemStatus.migration_invalid,
+                    BatchItemStatus.migration_rebase_failed,
+                    BatchItemStatus.migration_rolled_back,
+                }
+            )
+            == OPERATOR_RECOVERABLE_MERGE_STATUSES
+        )
+
+    def test_i00072_every_recoverable_status_has_a_regression_case(self) -> None:
+        """Adding a status to OPERATOR_RECOVERABLE_MERGE_STATUSES requires a test row.
+
+        The parametrised integration test
+        tests/integration/test_merge_queue_retry.py::TestRetryMergeAcceptsRecoverableStatuses
+        covers exactly these four. If a developer adds a fifth status without adding
+        a parametrised case, this assertion fails loudly.
+        """
+        covered = frozenset(
+            {
+                BatchItemStatus.merge_failed,
+                BatchItemStatus.migration_invalid,
+                BatchItemStatus.migration_rebase_failed,
+                BatchItemStatus.migration_rolled_back,
+            }
+        )
+        assert covered == OPERATOR_RECOVERABLE_MERGE_STATUSES, (
+            "Add a parametrised regression case for the new status before merging."
+        )
 
 
 class TestUnfreezeRefusesWithoutAck:

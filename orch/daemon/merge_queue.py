@@ -52,6 +52,17 @@ _CONFLICT_MARKER_RE = re.compile(
     re.MULTILINE,
 )
 
+# Statuses an operator can recover from via retry-merge / restart-merge.
+# Cascade is NOT triggered for these — see CR-00028.
+OPERATOR_RECOVERABLE_MERGE_STATUSES: frozenset[BatchItemStatus] = frozenset(
+    {
+        BatchItemStatus.merge_failed,
+        BatchItemStatus.migration_invalid,
+        BatchItemStatus.migration_rebase_failed,
+        BatchItemStatus.migration_rolled_back,
+    }
+)
+
 
 class MergeError(RuntimeError):
     """Raised when worktree_commit.sh exits non-zero."""

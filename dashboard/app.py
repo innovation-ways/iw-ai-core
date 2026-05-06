@@ -89,9 +89,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
                 identity_status.message,
             )
     except Exception as exc:
-        if os.environ.get("IW_CORE_TEST_CONTEXT") == "true" or os.environ.get(
-            "IW_CORE_OPERATOR_APPLY"
-        ) == "true":
+        if (
+            os.environ.get("IW_CORE_TEST_CONTEXT") == "true"
+            or os.environ.get("IW_CORE_OPERATOR_APPLY") == "true"
+        ):
             logger.warning("Dashboard: %s — continuing anyway", exc)
         else:
             logger.error("Dashboard: %s", exc)

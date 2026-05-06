@@ -1,0 +1,59 @@
+{
+  "item_id": "I-00072",
+  "bottom_line": "Increase S12 integration-test gate timeout from 900s to 1800s; the full suite (1858 tests) cannot complete within 900s regardless of code changes.",
+  "coverage_notes": "Sampled tail (last 200 lines) of S12_fix1.log (95KB); read S01, S02, S06_fix1 logs in full. S03_run2.log was sampled (107KB). S12 had 5 fix cycles; read cycles 1-2 fully, cycles 3-5 were structurally identical (same timeout hypothesis, same approach). DB telemetry: full (DB:UP).",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Integration-test gate timeout (900s) too short for 1858-test suite",
+      "recommendation": "Increase the S12 gate timeout from 900s to 1800s in the workflow manifest or quality gate config. Alternatively, add pytest -k filtering for items that only touch orch/ and dashboard/ to run a targeted subset. The agent cannot fix a gate timeout via code changes.",
+      "evidence": [
+        "ai-dev/logs/I-00072_S12_fix1.log:16 — 'Timeout after 900s (limit: 900s)'",
+        "ai-dev/active/I-00072/fix-cycles/I-00072_S12_FIX_cycle1_prompt.md:16 — 'Error: Timeout after 900s (limit: 900s)'",
+        "ai-dev/logs/I-00072_S12_fix1.log:161 — 'collected 1858 items' for make test-integration"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Increase S12 integration gate timeout from 900s to 1800s; analyzed in ai-dev/active/I-00072/reports/I-00072_self_assess_report.md. Target file: workflow manifest or QualityValidation_Template.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "Pre-existing E501 lint errors in test_f00055_workflow_fixture.py gate every QV run",
+      "recommendation": "Fix the two long lines (67, 69) in tests/integration/test_f00055_workflow_fixture.py by wrapping the assertion message in parentheses, as the S06 fix cycle demonstrated. Alternatively add the file to ruff's per-file-ignores in pyproject.toml.",
+      "evidence": [
+        "ai-dev/logs/I-00072_S06_fix1.log:9-29 — E501 errors in test_f00055_workflow_fixture.py:67,69",
+        "ai-dev/logs/I-00072_S06_fix1.log:52 — 'These lint errors are pre-existing in files not touched by I-00072. Let me fix them:'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Fix pre-existing E501 long-line violations in tests/integration/test_f00055_workflow_fixture.py (lines 67, 69) to stop polluting every item's S06 QV gate; analyzed in ai-dev/active/I-00072/reports/I-00072_self_assess_report.md. Target file: tests/integration/test_f00055_workflow_fixture.py. Effort: S."
+    },
+    {
+      "severity": "LOW",
+      "class": "design",
+      "target": "iw-ai-core",
+      "title": "Forward-coverage decision for migration_rolled_back was undocumented in design template",
+      "recommendation": "Add a 'forward coverage' checkbox or note field to the Implementation_Prompt_Template.md so agents explicitly record when an enum value is added without a wired producer. This makes the audit trail visible for future reviewers.",
+      "evidence": [
+        "ai-dev/active/I-00072/reports/I-00072_S01_Backend_report.md:14 — 'migration_rolled_back (I-00042 — proactive coverage)'",
+        "ai-dev/active/I-00072/reports/I-00072_S01_Backend_report.md:54 — 'Added proactively even though no daemon producer exists yet — cost is zero, benefit is avoiding a future ticket'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add forward-coverage note field to Implementation_Prompt_Template.md so agents explicitly record when adding enum values without wired producers; analyzed in ai-dev/active/I-00072/reports/I-00072_self_assess_report.md. Target file: templates/design/Implementation_Prompt_Template.md. Effort: S."
+    },
+    {
+      "severity": "LOW",
+      "class": "environment",
+      "target": "project",
+      "title": "S03 required 2 runs — possible test collection non-determinism",
+      "recommendation": "Investigate tests/unit/test_merge_queue_cli.py for non-deterministic test ordering or fixture scope issues that caused S03 run1 to need a retry.",
+      "evidence": [
+        "ai-dev/logs/I-00072_S03_run2.log exists (107KB) indicating a second run"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Investigate test collection non-determinism in tests/unit/test_merge_queue_cli.py causing S03 retries; analyzed in ai-dev/active/I-00072/reports/I-00072_self_assess_report.md. Target file: tests/unit/test_merge_queue_cli.py. Effort: M."
+    }
+  ]
+}
