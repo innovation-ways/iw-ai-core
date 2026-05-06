@@ -310,6 +310,70 @@
 {% endif %}
 
 {# ── Self-Assessment ─────────────────────────────────────────────────────── #}
+{%- macro render_finding_card(f) -%}
+  {%- set sev_classes = {
+        'HIGH': 'bg-destructive/20 text-destructive border border-destructive/30',
+        'MED':  'bg-warning/20 text-warning border border-warning/30',
+        'LOW':  'bg-muted text-muted-foreground border border-border',
+      } -%}
+  <div class="border border-border rounded-lg p-3">
+    <div class="flex items-start gap-2 mb-1 flex-wrap">
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold {{ sev_classes.get(f.severity, sev_classes['LOW']) }}">
+        {{ f.severity }}
+      </span>
+      <span class="text-sm font-medium text-foreground">{{ f.title }}</span>
+      {%- if f.effort %}
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-muted text-muted-foreground border border-border ml-auto" title="Estimated effort">
+          effort: {{ f.effort }}
+        </span>
+      {%- endif %}
+    </div>
+    {%- if f.clazz %}
+      <p class="text-xs text-muted-foreground mb-1"><span class="font-mono">{{ f.clazz }}</span></p>
+    {%- endif %}
+    <p class="text-sm text-foreground mb-2"><span class="font-semibold text-xs uppercase tracking-wide text-muted-foreground">Recommendation:</span> {{ f.recommendation }}</p>
+    {%- if f.evidence %}
+      <details class="mb-2">
+        <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+          Evidence ({{ f.evidence|length }})
+        </summary>
+        <ul class="mt-1 ml-4 list-disc space-y-0.5 text-xs text-muted-foreground font-mono break-all">
+          {%- for e in f.evidence %}
+            <li>{{ e }}</li>
+          {%- endfor %}
+        </ul>
+      </details>
+    {%- endif %}
+    <div class="mt-2">
+      <p class="text-xs uppercase tracking-wide text-muted-foreground font-semibold mb-1">Create a fix item</p>
+      <div class="flex items-center gap-2">
+        <code class="flex-1 text-xs bg-muted/50 border border-border rounded px-2 py-1 font-mono whitespace-pre-wrap break-all">{{ f.paste_prompt }}</code>
+        <button type="button"
+                class="text-xs px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 flex-shrink-0"
+                data-paste-prompt="{{ f.paste_prompt }}"
+                onclick="navigator.clipboard.writeText(this.dataset.pastePrompt).then(() => { this.textContent = 'Copied'; setTimeout(() => this.textContent = 'Copy paste prompt', 1500); })">
+          Copy paste prompt
+        </button>
+      </div>
+    </div>
+  </div>
+{%- endmacro -%}
+
+{%- macro render_findings_group(label, findings) -%}
+  {%- set sev_rank = {'HIGH': 0, 'MED': 1, 'LOW': 2} -%}
+  {%- set sorted_findings = findings | sort(attribute='severity', reverse=false) -%}
+  <div class="mb-4">
+    <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Suggestions for {{ label }}</h4>
+    <div class="space-y-3">
+      {%- for sev in ['HIGH', 'MED', 'LOW'] %}
+        {%- for f in findings if f.severity == sev %}
+          {{ render_finding_card(f) }}
+        {%- endfor %}
+      {%- endfor %}
+    </div>
+  </div>
+{%- endmacro -%}
+
 {% if execution_report.self_assessment %}
   {% set sa = execution_report.self_assessment %}
   {# Determine if the self_assess step itself failed (for the header badge) #}
@@ -327,6 +391,11 @@
           self_assess failed
         </span>
       {% endif %}
+      {% if sa.findings %}
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+          {{ sa.findings|length }} finding{{ '' if sa.findings|length == 1 else 's' }}
+        </span>
+      {% endif %}
     </div>
 
     {# Bottom line callout #}
@@ -339,157 +408,18 @@
       <p class="text-xs italic text-muted-foreground mb-3">Coverage: {{ sa.coverage_notes }}</p>
     {% endif %}
 
-    {# Group findings by target #}
-    {% set core_findings = [] %}
-    {% set project_findings = [] %}
-    {% for f in sa.findings %}
-      {% if f.target == 'iw-ai-core' %}
-        {% set _ = core_findings.append(f) %}
-      {% else %}
-        {% set _ = project_findings.append(f) %}
-      {% endif %}
-    {% endfor %}
-
     {# Empty findings state #}
     {% if not sa.findings %}
       <p class="text-sm italic text-muted-foreground">Self-assessment ran but no findings were captured.</p>
     {% else %}
-      {# iw-ai-core findings — HIGH, MED, LOW #}
-      {% if core_findings %}
-        <div class="mb-4">
-          <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Suggestions for iw-ai-core</h4>
-          <div class="space-y-3">
-            {# HIGH #}
-            {% for f in core_findings %}
-              {% if f.severity == 'HIGH' %}
-              <div class="border border-border rounded-lg p-3">
-                <div class="flex items-start gap-2 mb-1">
-                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-destructive/20 text-destructive border border-destructive/30">
-                    {{ f.severity }}
-                  </span>
-                  <span class="text-sm font-medium text-foreground">{{ f.title }}</span>
-                </div>
-                <p class="text-xs text-muted-foreground mb-2">{{ f.clazz }} — {{ f.recommendation }}</p>
-                <button type="button"
-                        class="text-xs px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30"
-                        data-paste-prompt="{{ f.paste_prompt }}"
-                        onclick="window.iwClipboard.copy(this.dataset.pastePrompt, this).catch(function(){})">
-                  Copy paste prompt
-                </button>
-              </div>
-              {% endif %}
-            {% endfor %}
-            {# MED #}
-            {% for f in core_findings %}
-              {% if f.severity == 'MED' %}
-              <div class="border border-border rounded-lg p-3">
-                <div class="flex items-start gap-2 mb-1">
-                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-warning/20 text-warning border border-warning/30">
-                    {{ f.severity }}
-                  </span>
-                  <span class="text-sm font-medium text-foreground">{{ f.title }}</span>
-                </div>
-                <p class="text-xs text-muted-foreground mb-2">{{ f.clazz }} — {{ f.recommendation }}</p>
-                <button type="button"
-                        class="text-xs px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30"
-                        data-paste-prompt="{{ f.paste_prompt }}"
-                        onclick="window.iwClipboard.copy(this.dataset.pastePrompt, this).catch(function(){})">
-                  Copy paste prompt
-                </button>
-              </div>
-              {% endif %}
-            {% endfor %}
-            {# LOW #}
-            {% for f in core_findings %}
-              {% if f.severity == 'LOW' %}
-              <div class="border border-border rounded-lg p-3">
-                <div class="flex items-start gap-2 mb-1">
-                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-muted text-muted-foreground border border-border">
-                    {{ f.severity }}
-                  </span>
-                  <span class="text-sm font-medium text-foreground">{{ f.title }}</span>
-                </div>
-                <p class="text-xs text-muted-foreground mb-2">{{ f.clazz }} — {{ f.recommendation }}</p>
-                <button type="button"
-                        class="text-xs px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30"
-                        data-paste-prompt="{{ f.paste_prompt }}"
-                        onclick="window.iwClipboard.copy(this.dataset.pastePrompt, this).catch(function(){})">
-                  Copy paste prompt
-                </button>
-              </div>
-              {% endif %}
-            {% endfor %}
-          </div>
-        </div>
-      {% endif %}
+      {% set core_findings = sa.findings | selectattr('target', 'equalto', 'iw-ai-core') | list %}
+      {% set project_findings = sa.findings | rejectattr('target', 'equalto', 'iw-ai-core') | list %}
 
-      {# Project findings — HIGH, MED, LOW #}
+      {% if core_findings %}
+        {{ render_findings_group('iw-ai-core', core_findings) }}
+      {% endif %}
       {% if project_findings %}
-        <div class="mb-4">
-          <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Suggestions for {{ execution_report.project_id }}</h4>
-          <div class="space-y-3">
-            {# HIGH #}
-            {% for f in project_findings %}
-              {% if f.severity == 'HIGH' %}
-              <div class="border border-border rounded-lg p-3">
-                <div class="flex items-start gap-2 mb-1">
-                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-destructive/20 text-destructive border border-destructive/30">
-                    {{ f.severity }}
-                  </span>
-                  <span class="text-sm font-medium text-foreground">{{ f.title }}</span>
-                </div>
-                <p class="text-xs text-muted-foreground mb-2">{{ f.clazz }} — {{ f.recommendation }}</p>
-                <button type="button"
-                        class="text-xs px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30"
-                        data-paste-prompt="{{ f.paste_prompt }}"
-                        onclick="window.iwClipboard.copy(this.dataset.pastePrompt, this).catch(function(){})">
-                  Copy paste prompt
-                </button>
-              </div>
-              {% endif %}
-            {% endfor %}
-            {# MED #}
-            {% for f in project_findings %}
-              {% if f.severity == 'MED' %}
-              <div class="border border-border rounded-lg p-3">
-                <div class="flex items-start gap-2 mb-1">
-                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-warning/20 text-warning border border-warning/30">
-                    {{ f.severity }}
-                  </span>
-                  <span class="text-sm font-medium text-foreground">{{ f.title }}</span>
-                </div>
-                <p class="text-xs text-muted-foreground mb-2">{{ f.clazz }} — {{ f.recommendation }}</p>
-                <button type="button"
-                        class="text-xs px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30"
-                        data-paste-prompt="{{ f.paste_prompt }}"
-                        onclick="window.iwClipboard.copy(this.dataset.pastePrompt, this).catch(function(){})">
-                  Copy paste prompt
-                </button>
-              </div>
-              {% endif %}
-            {% endfor %}
-            {# LOW #}
-            {% for f in project_findings %}
-              {% if f.severity == 'LOW' %}
-              <div class="border border-border rounded-lg p-3">
-                <div class="flex items-start gap-2 mb-1">
-                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-muted text-muted-foreground border border-border">
-                    {{ f.severity }}
-                  </span>
-                  <span class="text-sm font-medium text-foreground">{{ f.title }}</span>
-                </div>
-                <p class="text-xs text-muted-foreground mb-2">{{ f.clazz }} — {{ f.recommendation }}</p>
-                <button type="button"
-                        class="text-xs px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30"
-                        data-paste-prompt="{{ f.paste_prompt }}"
-                        onclick="window.iwClipboard.copy(this.dataset.pastePrompt, this).catch(function(){})">
-                  Copy paste prompt
-                </button>
-              </div>
-              {% endif %}
-            {% endfor %}
-          </div>
-        </div>
+        {{ render_findings_group(execution_report.project_id, project_findings) }}
       {% endif %}
     {% endif %}
 

@@ -203,20 +203,27 @@ def _load_self_assessment(
     session: Session,
     steps: Sequence[WorkflowStep],
     _project_id: str,
-    _work_item_id: str,
+    work_item_id: str,
 ) -> SelfAssessmentData | None:
     """Load self-assessment findings for a work item, if available.
 
-    Finds the ``self_assess`` step type, then locates its latest StepRun with
-    a ``report_file``.  Uses ``findings_path_for`` to derive the JSON sidecar,
-    reads the narrative from the report file, and parses findings.
+    The self_assess StepRun's ``report_file`` points to the workflow framework's
+    per-step report (e.g. ``<ID>_S06_SelfAssess_report.md``). The iw-item-analyze
+    skill, however, writes its narrative and structured findings to a pair of
+    canonical filenames in the same ``reports/`` directory:
+
+        <ID>_self_assess_report.md
+        <ID>_self_assess_findings.json
+
+    These canonical paths take precedence; the framework-derived sidecar
+    (``findings_path_for(report_file)``) is consulted only as a fallback so the
+    loader keeps working for self_assess flows that don't use iw-item-analyze.
 
     Returns None when:
       - no self_assess step exists
       - the step has not run or was skipped (no StepRun with a report_file, or
         final status is pending/skipped)
-      - the findings JSON does not exist
-      - the narrative file does not exist
+      - neither a findings JSON nor a narrative file can be located
     """
     # Find the self_assess step
     self_assess_steps = [s for s in steps if is_self_assess_step(s.step_type)]
@@ -246,15 +253,29 @@ def _load_self_assessment(
         return None
 
     report_path = Path(latest_run.report_file)
+    reports_dir = report_path.parent
 
-    # Read narrative from report file (optional)
+    # Canonical iw-item-analyze output paths (see skills/iw-item-analyze/SKILL.md).
+    canonical_findings = reports_dir / f"{work_item_id}_self_assess_findings.json"
+    canonical_narrative = reports_dir / f"{work_item_id}_self_assess_report.md"
+
+    # Framework-derived sidecar (kept as a fallback for non-skill flows).
+    derived_findings = findings_path_for(report_path)
+
+    findings_path = canonical_findings if canonical_findings.exists() else derived_findings
+
+    # Prefer the iw-item-analyze narrative when present; otherwise fall back to
+    # the framework's per-step report file.
+    narrative_source: Path | None = None
+    if canonical_narrative.exists():
+        narrative_source = canonical_narrative
+    elif report_path.exists():
+        narrative_source = report_path
+
     narrative_md: str | None = None
-    if report_path.exists():
+    if narrative_source is not None:
         with suppress(OSError):
-            narrative_md = report_path.read_text(encoding="utf-8")
-
-    # Derive findings JSON path
-    findings_path = findings_path_for(report_path)
+            narrative_md = narrative_source.read_text(encoding="utf-8")
 
     if not findings_path.exists():
         # No findings JSON — return with narrative only
@@ -663,20 +684,30 @@ def render_execution_report_markdown(data: ExecutionReportData) -> str:
         def sort_key(f: SelfAssessFinding) -> int:
             return sev_order.get(f.severity, 3)
 
+        def _emit_finding(f: SelfAssessFinding) -> None:
+            lines.append(f"- **[{f.severity}]** {f.title}")
+            if f.clazz:
+                effort_suffix = f" · effort: {f.effort}" if f.effort else ""
+                lines.append(f"  - Class: {f.clazz}{effort_suffix}")
+            elif f.effort:
+                lines.append(f"  - Effort: {f.effort}")
+            lines.append(f"  - Recommendation: {f.recommendation}")
+            if f.evidence:
+                lines.append("  - Evidence:")
+                for e in f.evidence:
+                    lines.append(f"    - {e}")
+            lines.append(f"  ```\n  {f.paste_prompt}\n  ```")
+
         if core_findings:
             lines.append("### Suggestions for iw-ai-core")
             for f in sorted(core_findings, key=sort_key):
-                lines.append(f"- **[{f.severity}]** {f.title}")
-                lines.append(f"  - Recommendation: {f.recommendation}")
-                lines.append(f"  ```\n  {f.paste_prompt}\n  ```")
+                _emit_finding(f)
             lines.append("")
 
         if project_findings:
             lines.append(f"### Suggestions for {data.project_id}")
             for f in sorted(project_findings, key=sort_key):
-                lines.append(f"- **[{f.severity}]** {f.title}")
-                lines.append(f"  - Recommendation: {f.recommendation}")
-                lines.append(f"  ```\n  {f.paste_prompt}\n  ```")
+                _emit_finding(f)
             lines.append("")
 
         if sa.findings and not core_findings and not project_findings:
