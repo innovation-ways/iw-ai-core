@@ -9,7 +9,6 @@ button in the Execution Report tab.
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -112,7 +111,7 @@ def seed(db: Session) -> None:
 
     # Create the work directory and files
     # /app is read-only in the container, use /tmp for the work dir
-    work_dir = Path("/tmp/ai-dev-work") / item.id
+    work_dir = Path("/tmp/ai-dev-work") / item.id  # noqa: S108
     reports_dir = work_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
