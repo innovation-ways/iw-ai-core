@@ -1,6 +1,0 @@
-{
-  "item_id": "CR-00033",
-  "bottom_line": "No actionable patterns detected. Workflow ran cleanly across all steps with zero fix-cycles and zero retries.",
-  "coverage_notes": "DB telemetry fully available (iw db-identity check → UP). Step reports S01-S10 read in full from ai-dev/active/CR-00033/reports/. Raw run logs not present in .worktrees/CR-00033/ai-dev/logs/; step reports served as primary evidence, supplemented by DB status via iw item-status --json.",
-  "findings": []
-}
