@@ -39,10 +39,12 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 You MUST NOT run the following alembic commands against the live
 orchestration DB (port 5433) from an agent context:
 
-  alembic upgrade head
-  alembic upgrade <revision>
-  alembic downgrade <anything>
-  alembic stamp <anything>
+```
+alembic upgrade head
+alembic upgrade <revision>
+alembic downgrade <anything>
+alembic stamp <anything>
+```
 
 Your job in a Database step is to WRITE the migration FILE. The daemon
 will apply it as part of the merge pipeline (pre-merge dry-run against

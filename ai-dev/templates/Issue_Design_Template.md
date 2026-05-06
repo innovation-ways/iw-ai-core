@@ -10,66 +10,11 @@
 
 ## ⛔ Docker is off-limits
 
-You MUST NOT execute ANY of the following commands or any command that
-changes Docker container/volume/network state:
-
-  docker kill | docker stop | docker rm | docker restart
-  docker compose up | docker compose down | docker compose restart
-  docker-compose up | docker-compose down | docker-compose restart
-  docker volume rm | docker volume prune
-  docker system prune | docker container prune | docker image prune
-
-The orchestration database, daemon, dashboard, and any long-lived
-infrastructure containers are outside your scope. Touching them can
-cause multi-hour outages and data loss (see the 2026-04-22 incident in
-docs/IW_AI_Core_DB_Setup.md).
-
-Allowed exceptions:
-
-  1. Testcontainers spun up by pytest fixtures (they self-label and
-     self-destruct via Ryuk).
-  2. Read-only introspection: `docker ps`, `docker inspect`, `docker logs`.
-  3. Invoking `./ai-core.sh` or `make` targets — those know which
-     commands are safe.
-
-If your task seems to require a prohibited command, STOP and raise a
-blocker. Do not work around this rule.
-
-Full policy: docs/IW_AI_Core_Agent_Constraints.md
+(Standard policy. Testcontainer fixtures in tests are exempt.)
 
 ## ⛔ Migrations: agents generate, daemon applies
 
-You MUST NOT run the following alembic commands against the live
-orchestration DB (port 5433) from an agent context:
-
-  alembic upgrade head
-  alembic upgrade <revision>
-  alembic downgrade <anything>
-  alembic stamp <anything>
-
-Your job in a Database step is to WRITE the migration FILE. The daemon
-will apply it as part of the merge pipeline (pre-merge dry-run against
-a testcontainer, post-merge apply to live DB). If the migration is
-broken, the daemon will refuse to merge the batch.
-
-Allowed for agents:
-  - alembic revision --autogenerate -m "..."   (writes a file only)
-  - alembic history / current / show           (read-only)
-  - Running migrations inside testcontainer fixtures
-    (tests/conftest.py does this — agents don't call it directly)
-
-Allowed for OPERATORS only (not agents):
-  - uv run iw migrations list-pending          (read-only, safe for anyone)
-  - uv run iw migrations dry-run               (testcontainer, safe)
-  - uv run iw migrations apply --i-am-operator (refuses if IW_CORE_AGENT_CONTEXT=true)
-  - Direct invocation via ./ai-core.sh or make db-migrate (operator entry points)
-
-If your task seems to require applying a migration to the live DB,
-STOP and raise a blocker. Do not work around this rule.
-
-Full policy: docs/IW_AI_Core_Agent_Constraints.md
-
----
+(Standard policy. State whether this item adds, modifies, or leaves migrations unchanged.)
 
 ## Description
 
@@ -144,6 +89,8 @@ Reports are created during execution in `ai-dev/work/{ID}/reports/`.
 
 Write a failing test that demonstrates the bug before fixing it.
 
+**Test-file location** — Regression tests live under one of three directories: `tests/dashboard/`, `tests/unit/`, or `tests/integration/`. Tests that drive a FastAPI route or render a Jinja2 template via the dashboard `client` fixture **must** be placed under `tests/dashboard/` because the `client` fixture is registered only in `tests/dashboard/conftest.py`; a test placed in `tests/unit/` or `tests/integration/` will fail with `fixture 'client' not found` (I-00067). Pure Python helpers with no FastAPI or template dependency go under `tests/unit/`. Tests that require the testcontainer database go under `tests/integration/`.
+
 ```python
 def test_{issue_id}_reproduces_bug():
     """This test should FAIL before the fix and PASS after."""
@@ -210,6 +157,8 @@ If you omit this section, `iw register` falls back to a regex sweep over the pro
 - Reproducing test: {Test that fails before fix}
 - Unit tests: {What to test}
 - Integration tests: {What to test}
+
+**Assertion scoping for CSS class names** — When a regression test asserts that a CSS class name is present in rendered HTML, the bare-substring form `assert "my-class" in html` can false-positive because the same token may appear inside an inline `<script>` tag's JSON, a `data-*` attribute value, an HTML comment, or a CSS source map comment — even when the production element carrying that class is absent. Use the attribute-scoped form instead, e.g. `assert 'class="my-class"' in html` or a regex that anchors on `class\s*=\s*"[^"]*my-class[^"]*"` (I-00067).
 
 ## Notes
 
