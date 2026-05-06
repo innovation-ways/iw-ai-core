@@ -467,6 +467,152 @@ class TestSelfAssessmentMalformedJSON:
         assert "agent-re-read" not in html.lower()
 
 
+class TestSelfAssessmentEvidenceAndEffort:
+    """I-00067 follow-up: each finding card must surface evidence, effort, and
+    the paste prompt so the user can act on it."""
+
+    def test_evidence_effort_and_paste_prompt_rendered(
+        self,
+        client: TestClient,
+        db_session: Session,
+        test_project: Project,
+        tmp_path: Path,
+    ) -> None:
+        rich_findings = json.dumps(
+            {
+                "findings": [
+                    {
+                        "severity": "HIGH",
+                        "class": "convention",
+                        "target": "iw-ai-core",
+                        "title": "Tailwind CLI broke silently",
+                        "recommendation": "Append CSS directly to styles.css",
+                        "paste_prompt": "/iw-new-cr Add CLAUDE.md rule for Tailwind fallback",
+                        "evidence": [
+                            "I-00067_S01_run1.log:392 — make: Nothing to be done for 'css'",
+                            "I-00067_S05_fix1.log:28 — MODULE_NOT_FOUND postcss-selector-parser",
+                        ],
+                        "effort": "S",
+                    },
+                ],
+            }
+        )
+        item = _create_item_with_self_assess(
+            db_session, test_project, tmp_path, findings_json=rich_findings
+        )
+
+        resp = client.get(f"/project/{test_project.id}/item/{item.id}/tab/execution-report")
+        assert resp.status_code == 200
+        html = resp.text
+
+        # The full /iw-new-cr command appears in the page so users can copy it
+        assert "/iw-new-cr Add CLAUDE.md rule for Tailwind fallback" in html
+        # The evidence summary is rendered (collapsible details element)
+        assert "Evidence (2)" in html
+        # Individual evidence lines appear
+        assert "make: Nothing to be done for &#39;css&#39;" in html or (
+            "make: Nothing to be done" in html
+        )
+        assert "MODULE_NOT_FOUND postcss-selector-parser" in html
+        # Effort badge appears
+        assert "effort: S" in html
+
+    def test_loader_falls_back_to_canonical_findings_when_framework_path_differs(
+        self,
+        client: TestClient,
+        db_session: Session,
+        test_project: Project,
+        tmp_path: Path,
+    ) -> None:
+        """Reproduces I-00067: StepRun.report_file points at the framework's
+        per-step file (I-00067_S06_SelfAssess_report.md), but iw-item-analyze
+        writes findings to the canonical I-00067_self_assess_findings.json.
+        The loader must still surface the findings.
+        """
+        item = WorkItem(
+            project_id=test_project.id,
+            id="I-00067",
+            title="Framework Path Mismatch Repro",
+            type=WorkItemType.Feature,
+            status=WorkItemStatus.completed,
+            phase=WorkItemPhase.active,
+            design_doc_search="",
+        )
+        db_session.add(item)
+
+        step = WorkflowStep(
+            project_id=test_project.id,
+            work_item_id=item.id,
+            step_id="S06",
+            step_number=6,
+            step_type=StepType.self_assess,
+            agent_label="SelfAssess",
+            opencode_agent="self-assess-impl",
+            status=StepStatus.completed,
+        )
+        db_session.add(step)
+        db_session.flush()
+
+        reports_dir = tmp_path / "ai-dev" / "active" / item.id / "reports"
+        reports_dir.mkdir(parents=True, exist_ok=True)
+
+        framework_report = reports_dir / f"{item.id}_S06_SelfAssess_report.md"
+        framework_report.write_text("# Framework agent report", encoding="utf-8")
+
+        # Canonical iw-item-analyze outputs (different filename)
+        canonical_narrative = reports_dir / f"{item.id}_self_assess_report.md"
+        canonical_narrative.write_text(
+            "### Item Analysis: I-00067\n\nBottom line: 5 findings worth fixing.",
+            encoding="utf-8",
+        )
+        canonical_findings = reports_dir / f"{item.id}_self_assess_findings.json"
+        canonical_findings.write_text(
+            json.dumps(
+                {
+                    "bottom_line": "5 findings worth fixing.",
+                    "findings": [
+                        {
+                            "severity": "HIGH",
+                            "class": "convention",
+                            "target": "iw-ai-core",
+                            "title": "Real finding from canonical sidecar",
+                            "recommendation": "Apply the fix",
+                            "paste_prompt": "/iw-new-cr Apply fix from I-00067",
+                            "evidence": ["log:42 — actual evidence"],
+                            "effort": "M",
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        step_run = StepRun(
+            step_id=step.id,
+            run_number=1,
+            status=RunStatus.completed,
+            started_at=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),
+            completed_at=datetime(2025, 1, 1, 10, 1, 0, tzinfo=UTC),
+            duration_secs=60.0,
+            report_file=str(framework_report),
+        )
+        db_session.add(step_run)
+        db_session.commit()
+
+        resp = client.get(f"/project/{test_project.id}/item/{item.id}/tab/execution-report")
+        assert resp.status_code == 200
+        html = resp.text
+
+        # The canonical findings ARE surfaced (no "no findings were captured")
+        assert "no findings were captured" not in html
+        assert "Real finding from canonical sidecar" in html
+        assert "/iw-new-cr Apply fix from I-00067" in html
+        assert "5 findings worth fixing" in html
+        # The narrative comes from the canonical iw-item-analyze .md file,
+        # not the framework's per-step report.
+        assert "Item Analysis: I-00067" in html
+
+
 class TestSelfAssessmentInvariant2:
     """Invariant 2: zero DOM nodes when section is absent (no hidden placeholder)."""
 
