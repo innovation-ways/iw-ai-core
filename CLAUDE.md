@@ -53,6 +53,7 @@ The **`iw` CLI** is the agent-to-DB bridge — agents call `iw step-done` to rec
 - **NEVER** use `agent-browser` for browser automation — use `playwright-cli` exclusively
 - **NEVER** run `npx playwright install` or modify `.playwright/cli.config.json`
 - **NEVER** run `docker compose up` (with or without `-d db`) against the orchestration DB from any directory — the default compose file is empty and the bootstrap file requires an explicit `-f` flag. Use `./ai-core.sh db start` instead. See `docs/IW_AI_Core_DB_Setup.md`.
+- **MUST** append plain CSS rules directly to `dashboard/static/styles.css` when `make css` reports "Nothing to be done" or the Tailwind CLI fails (e.g., missing `postcss-selector-parser`) — plain CSS is served as-is, so no Tailwind recompile is required. Temporary mitigation until the Tailwind toolchain is repaired in worktrees (see I-00067).
 
 ## Configuration
 
