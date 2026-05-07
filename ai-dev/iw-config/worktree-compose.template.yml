@@ -30,14 +30,48 @@ services:
       - "{{ host_home }}/.claude:/app/.claude"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Install uv into /tmp/.local (writable by the host_uid:host_gid runtime
+    # user). Previously this used `pip install --user` with HOME=/app, which
+    # crashed in F-00080 because /app is auto-created by Docker as root-owned
+    # (the /app/.claude bind-mount creates /app first), so the runtime user
+    # couldn't write /app/.local and the container exited 127. Using
+    # `pip install --prefix=/tmp/.local --no-cache-dir` puts the uv binary at
+    # /tmp/.local/bin/uv with no $HOME writes anywhere.
+    #
+    # Then wait for the daemon's seed (pg_dump | psql) to finish before
+    # `alembic upgrade head` — without this barrier, alembic would race the
+    # pg_dump --clean which DROPs every table. The seed signals completion
+    # by touching /workspace/.iw-seed-done. Finally exec uvicorn so signals
+    # propagate to the right PID.
     command:
       - bash
       - -lc
       - |
-        export HOME=/app PATH="/tmp/.local/bin:$$PATH" UV_PROJECT_ENVIRONMENT=/tmp/.venv
-        pip install --user --no-warn-script-location -q uv
+        set -euo pipefail
+        export PATH="/tmp/.local/bin:$$PATH"
+        export PYTHONPATH="/tmp/.local/lib/python3.12/site-packages"
+        export UV_PROJECT_ENVIRONMENT=/tmp/.venv
+        export PIP_CACHE_DIR=/tmp/.pip-cache
+        mkdir -p /tmp/.local /tmp/.pip-cache
+        if ! command -v uv >/dev/null 2>&1; then
+          pip install --prefix=/tmp/.local --no-warn-script-location -q uv
+        fi
+        cd /workspace
+        rm -f .iw-seed-done
         uv sync --frozen
-        uv run uvicorn dashboard.app:create_app --factory --host 0.0.0.0 --port 9900 --reload
+        echo "[app] waiting for seed (.iw-seed-done) ..."
+        for _ in $$(seq 1 240); do
+          [ -f /workspace/.iw-seed-done ] && break
+          sleep 1
+        done
+        if [ ! -f /workspace/.iw-seed-done ]; then
+          echo "[app] seed sentinel never appeared after 240s; aborting" >&2
+          exit 1
+        fi
+        echo "[app] seed complete; applying worktree migrations ..."
+        uv run alembic upgrade head
+        echo "[app] migrations applied; starting uvicorn ..."
+        exec uv run uvicorn dashboard.app:create_app --factory --host 0.0.0.0 --port 9900 --reload
     environment:
       HOME: /app
       IW_CORE_DB_HOST: db
@@ -50,6 +84,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:9900/health', timeout=2).read() else sys.exit(1)\" 2>/dev/null"
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
     labels:
       iwcore.role: worktree-app
       iwcore.batch_item: "{{ batch_item_id }}"

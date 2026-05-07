@@ -407,6 +407,69 @@ class TestRunSeed:
         assert "IW_CORE_DB_HOST" in call_kwargs["env"]
         assert call_kwargs["env"]["IW_CORE_DB_HOST"] == "per-worktree-db"
 
+    def test_multi_assignment_export_does_not_trigger_false_positive(self, tmp_path: Path) -> None:
+        """Regression: ``export A=1 B=2 C=3`` lines must not flag B/C as unset.
+
+        F-00079 added ``export HOME=/app PATH=... UV_PROJECT_ENVIRONMENT=/tmp/.venv``
+        to worktree-seed.sh. The pre-flight regex previously only matched the
+        first assignment per line, causing UV_PROJECT_ENVIRONMENT to be reported
+        as an unbound external reference even though it is set inline.
+        """
+        worktree = tmp_path / "worktree"
+        worktree.mkdir()
+        iw_config = worktree / "ai-dev" / "iw-config"
+        iw_config.mkdir(parents=True)
+
+        template = iw_config / "worktree-compose.template.yml"
+        template.write_text("services:\n  db:\n    image: postgres")
+        seed_script = iw_config / "worktree-seed.sh"
+        seed_script.write_text(
+            "#!/bin/bash\n"
+            "set -euo pipefail\n"
+            'export HOME=/app PATH="/tmp/.local/bin:$PATH" UV_PROJECT_ENVIRONMENT=/tmp/.venv\n'
+            'echo "venv at ${UV_PROJECT_ENVIRONMENT}"\n'
+        )
+        seed_script.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
+
+        cfg = load_config("F-00062", "iw-ai-core", worktree)
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            ok, err = run_seed(cfg)
+
+        assert ok is True, f"pre-flight rejected multi-assignment line: {err}"
+        assert err is None
+
+    def test_genuinely_unset_var_still_caught_by_preflight(self, tmp_path: Path) -> None:
+        """Pre-flight must still catch real undefined references.
+
+        Guards against the regex fix over-matching to the point of disabling
+        the missing-var check entirely.
+        """
+        worktree = tmp_path / "worktree"
+        worktree.mkdir()
+        iw_config = worktree / "ai-dev" / "iw-config"
+        iw_config.mkdir(parents=True)
+
+        template = iw_config / "worktree-compose.template.yml"
+        template.write_text("services:\n  db:\n    image: postgres")
+        seed_script = iw_config / "worktree-seed.sh"
+        seed_script.write_text(
+            '#!/bin/bash\nset -euo pipefail\necho "${SOME_REQUIRED_BUT_UNSET_VAR}"\n'
+        )
+        seed_script.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
+
+        cfg = load_config("F-00062", "iw-ai-core", worktree)
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            ok, err = run_seed(cfg)
+            mock_run.assert_not_called()
+
+        assert ok is False
+        assert err is not None
+        assert "SOME_REQUIRED_BUT_UNSET_VAR" in err
+
 
 class TestUp:
     def test_refuses_when_env_not_gitignored(self, tmp_path: Path) -> None:

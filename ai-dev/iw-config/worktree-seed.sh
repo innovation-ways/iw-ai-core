@@ -19,7 +19,6 @@ set -euo pipefail
 
 ORCH_CONTAINER="${IW_CORE_ORCH_DB_CONTAINER:-postgres}"
 WORKTREE_DB_CONTAINER="${IW_CORE_COMPOSE_PROJECT_NAME}-db-1"
-WORKTREE_APP_CONTAINER="${IW_CORE_COMPOSE_PROJECT_NAME}-app-1"
 
 echo "[seed] dump from ${ORCH_CONTAINER} -> restore into ${WORKTREE_DB_CONTAINER}" >&2
 
@@ -36,25 +35,23 @@ docker exec \
     -U "${IW_CORE_DB_USER}" \
     -d "${IW_CORE_DB_NAME}"
 
-# After pg_dump restores production schema, apply any worktree-local migrations
-# so the per-worktree DB matches the worktree's models.py. This closes the gap
-# observed in F-00079 where S19 hit `column work_items.diff_text does not exist`
-# because S01's new migration was on disk but never applied to the E2E DB.
-echo "[seed] applying worktree migrations via ${WORKTREE_APP_CONTAINER}..." >&2
-docker exec "${WORKTREE_APP_CONTAINER}" bash -lc '
-  set -euo pipefail
-  export HOME=/app PATH="/tmp/.local/bin:$PATH" UV_PROJECT_ENVIRONMENT=/tmp/.venv
-  cd /workspace
-  # Wait until the app container has finished its initial `uv sync` so
-  # `uv run alembic` resolves. The compose command runs uv sync before
-  # uvicorn, so this loop is bounded in practice.
-  for _ in $(seq 1 60); do
-    if uv --version >/dev/null 2>&1 && [ -d "${UV_PROJECT_ENVIRONMENT}" ]; then
-      break
-    fi
-    sleep 2
-  done
-  uv run alembic upgrade head
-'
+# Signal the app container that the DB is restored and ready for migrations.
+# The app container's bootstrap command waits for /workspace/.iw-seed-done
+# before running `alembic upgrade head`, which avoids the race where alembic
+# would run against a pg_dumped schema that `--clean --if-exists` then drops.
+#
+# The previous design did `docker exec ${APP_CONTAINER} ... uv run alembic`
+# from this script. It broke F-00080 (iwcore-164) because the app container
+# exited early — `pip install --user` couldn't write /app/.local since /app
+# is auto-created root-owned by the /app/.claude bind-mount, leaving the
+# runtime user with no writable HOME — and `docker exec` hit a dead
+# container with the cryptic "container is not running" error. The seed's
+# wait-loop only checked `uv --version`, never `docker inspect Running`.
+#
+# `cwd` here is the worktree path (the daemon sets subprocess.cwd), which
+# is mounted into the app container as /workspace, so the file written here
+# is the same one the app container polls.
+echo "[seed] writing .iw-seed-done sentinel for the app container ..." >&2
+touch .iw-seed-done
 
 echo "[seed] done" >&2
