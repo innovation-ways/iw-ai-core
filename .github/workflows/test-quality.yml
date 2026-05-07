@@ -26,6 +26,18 @@ jobs:
   unit:
     name: Unit tests + coverage
     runs-on: ubuntu-latest
+    # CI has no .env file. tests/conftest.py's `_arm_live_db_guard` fixture
+    # sets these to a blocked address, but pytest *collection* (which imports
+    # test modules — some transitively pull in `dashboard.routers.*` which
+    # eagerly resolves `SessionLocal` and therefore `IW_CORE_DB_HOST`) runs
+    # *before* fixtures. Set the same blocked values at the job level so
+    # imports succeed; the fixture still hijacks any leakage at runtime.
+    env:
+      IW_CORE_DB_HOST: "127.0.0.1"
+      IW_CORE_DB_PORT: "1"
+      IW_CORE_DB_NAME: "iw_orch_test_blocked"
+      IW_CORE_DB_USER: "blocked"
+      IW_CORE_DB_PASSWORD: "blocked"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -63,11 +75,20 @@ jobs:
       IW_CORE_DB_NAME: iw_ai_core
       IW_CORE_DB_USER: iw
       IW_CORE_DB_PASSWORD: iw
+      IW_CORE_DASHBOARD_HOST: localhost
+      IW_CORE_DASHBOARD_PORT: "9900"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      # Several integration tests (migration_rebase_conflict, parallel_migrations,
+      # batch_archiver, etc.) shell out to `git commit`, which requires a global
+      # identity. CI runners ship without one — set a placeholder.
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.email "ci@iw-ai-core.local"
+          git config --global user.name "iw-ai-core CI"
       - run: uv sync --frozen
       - run: make test-integration
 
@@ -94,10 +115,16 @@ jobs:
       IW_CORE_DB_NAME: iw_ai_core
       IW_CORE_DB_USER: iw
       IW_CORE_DB_PASSWORD: iw
+      IW_CORE_DASHBOARD_HOST: localhost
+      IW_CORE_DASHBOARD_PORT: "9900"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.email "ci@iw-ai-core.local"
+          git config --global user.name "iw-ai-core CI"
       - run: uv sync --frozen
       - run: make smoke
