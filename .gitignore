@@ -70,6 +70,8 @@ execution_brief.json
 .claude/scheduled_tasks.lock
 
 .iw/
+# Per-worktree seed completion sentinel (host writes, app container polls)
+.iw-seed-done
 
 # iw-oss-publish: secret hygiene
 *.pem
