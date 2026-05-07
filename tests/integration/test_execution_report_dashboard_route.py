@@ -203,7 +203,7 @@ def test_existing_tabs_byte_identical(
     item = make_item(db_session, project_id=test_project.id, item_id="I-00003")
     make_step(db_session, project_id=test_project.id, item_id=item.id)
 
-    tabs = ["overview", "design-doc", "reports", "artifacts", "evidences", "logs", "fix-cycles"]
+    tabs = ["overview", "design-doc", "reports", "files", "evidences", "logs", "fix-cycles"]
     snapshots: dict[str, int] = {}
     for tab in tabs:
         resp = client.get(f"/project/{test_project.id}/item/{item.id}/tab/{tab}")

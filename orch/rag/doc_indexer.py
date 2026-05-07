@@ -133,7 +133,7 @@ class DocIndexer:
             ]
 
     def _table_exists(self) -> bool:
-        import lancedb  # type: ignore[import-untyped]
+        import lancedb
 
         uri = self._uri()
         try:
@@ -192,7 +192,7 @@ class DocIndexer:
 
         db = lancedb.connect(uri)
 
-        import pyarrow as pa  # type: ignore[import-untyped]
+        import pyarrow as pa
 
         schema = pa.schema(
             [

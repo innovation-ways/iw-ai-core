@@ -235,6 +235,41 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "iw-ai-core-dashboard"}
 
+    # Schema-mismatch guard. When the live DB is missing a column that the
+    # ORM model declares (e.g. a per-worktree DB seeded from production whose
+    # schema is behind the worktree's own migration), every SELECT 500s with
+    # an UndefinedColumn buried inside a SQLAlchemy ProgrammingError. Surface
+    # a single clear 503 so qv-browser/operators see "DB schema is behind
+    # models — run alembic upgrade head" instead of generic Internal Server
+    # Errors and downstream JS confusion (F-00079 / S19 root cause).
+    from fastapi.responses import JSONResponse  # noqa: PLC0415
+    from sqlalchemy.exc import ProgrammingError  # noqa: PLC0415
+
+    @app.exception_handler(ProgrammingError)
+    async def _undefined_column_handler(request: Request, exc: ProgrammingError) -> JSONResponse:
+        cause = getattr(exc, "orig", None) or getattr(exc, "__cause__", None)
+        cause_name = type(cause).__name__ if cause is not None else ""
+        if cause_name == "UndefinedColumn":
+            logger.error(
+                "DB schema is behind models for %s — UndefinedColumn: %s",
+                request.url.path,
+                cause,
+            )
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": (
+                        "DB schema is behind models — run 'alembic upgrade head' "
+                        f"against the active DB. Missing column reported by "
+                        f"PostgreSQL: {cause}"
+                    ),
+                    "remediation": "alembic upgrade head",
+                    "kind": "schema_behind_head",
+                },
+                headers={"Retry-After": "30"},
+            )
+        raise exc
+
     # Register routers
     app.include_router(healthz.router)
     app.include_router(projects.router)

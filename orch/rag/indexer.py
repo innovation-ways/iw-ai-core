@@ -142,7 +142,7 @@ class CodeIndexer:
         embed: OllamaEmbedding,
     ) -> None:
         try:
-            import lancedb  # type: ignore[import-untyped]
+            import lancedb
 
             db = lancedb.connect(str(store_path))
             if table_name in db.table_names():

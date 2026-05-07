@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
-import lancedb  # type: ignore[import-untyped]
+import lancedb
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
 from sqlalchemy import select

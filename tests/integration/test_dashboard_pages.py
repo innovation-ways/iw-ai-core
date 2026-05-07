@@ -482,14 +482,14 @@ def test_item_reports_tab_no_reports(client: TestClient, db_session: Any) -> Non
     assert "No reports available" in resp.text
 
 
-def test_item_artifacts_tab_no_artifacts(client: TestClient, db_session: Any) -> None:
+def test_item_files_tab_no_files(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
     item = make_item(db_session)
 
-    resp = client.get(f"/project/test-proj/item/{item.id}/tab/artifacts")
+    resp = client.get(f"/project/test-proj/item/{item.id}/tab/files")
     assert resp.status_code == 200
     assert "<html" not in resp.text
-    assert "No artifacts available" in resp.text
+    assert "No changes yet" in resp.text
 
 
 # ---------------------------------------------------------------------------

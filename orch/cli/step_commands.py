@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,8 +23,11 @@ from orch.db.models import (
     WorkItem,
     WorkItemStatus,
 )
+from orch.diff_service import _capture_step_diff, parse_diff_summary
 from orch.evidences import EvidenceTooLargeError, ingest_phase_from_disk
 from orch.utils.log_capture import capture_log_content
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pure validation helpers (used by unit tests without DB)
@@ -387,6 +391,22 @@ def step_done(
                     step_run.report_file = report_path
                 capture_log_content(step_run)
                 _worktree_path = step_run.worktree_path or ""
+
+            # Best-effort per-step diff capture (AC7 / Invariant 4)
+            if step_run is not None and step_run.worktree_path:
+                try:
+                    diff_text = _capture_step_diff(step_run.worktree_path)
+                    if diff_text:
+                        step_run.diff_text = diff_text
+                        step_run.diff_summary = parse_diff_summary(diff_text)
+                except Exception:
+                    logger.warning(
+                        "step-done: diff capture failed for %s / %s",
+                        item_id,
+                        step_id,
+                        exc_info=True,
+                    )
+
             _step_type_val = step.step_type
 
             if step.step_type == StepType.browser_verification:

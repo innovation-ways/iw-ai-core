@@ -93,6 +93,16 @@ db-migrate:
 db-revision:
 	uv run alembic revision --autogenerate -m "$(MSG)"
 
+# Round-trip migration validation: spin a fresh testcontainer Postgres, run
+# `alembic upgrade head` from base, compare the resulting schema to
+# `Base.metadata.create_all()`, then `downgrade base` and `upgrade head`
+# again. Catches missing/broken migrations and model↔migration drift.
+# Faster than the full integration suite — use as a dedicated qv-gate
+# right after Database steps to short-circuit bad migrations before
+# downstream agents inherit them.
+migration-check:
+	uv run pytest tests/integration/test_migrations_round_trip.py -v --no-cov
+
 # --- Services ---
 daemon-start:
 	uv run python -m orch.daemon &

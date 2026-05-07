@@ -517,6 +517,25 @@ class WorkItem(Base):
         nullable=True,
         comment="When the item was archived (Tier 1 + Tier 2 stored, active files deleted)",
     )
+    # Files view — aggregate diff (captured at squash merge)
+    diff_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Raw unified diff of the squash commit captured at merge time",
+    )
+    diff_summary: Mapped[Any | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment=(
+            "Parsed file metadata: list of objects with keys path, status "
+            "(A/M/D/R), added, removed, is_generated, is_binary, old_path"
+        ),
+    )
+    merge_commit_sha: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="SHA of the squash commit on main; enables lazy git diff for completed items",
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
@@ -715,6 +734,20 @@ class StepRun(Base):
         comment="Captured log content (ANSI-stripped, truncated) for fast DB access",
     )
     report_file: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Files view — per-step diff (captured at step-done)
+    diff_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Raw unified diff captured at iw step-done from the worktree",
+    )
+    diff_summary: Mapped[Any | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment=(
+            "Parsed file metadata for this step: list of objects with keys path, "
+            "status (A/M/D/R), added, removed, is_generated, is_binary, old_path"
+        ),
+    )
     # Timestamps
     started_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)

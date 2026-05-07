@@ -1,0 +1,75 @@
+{
+  "item_id": "F-00079",
+  "bottom_line": "The highest-impact fix is correcting the Diff2HtmlUI initialization API in the S06 Frontend prompt — `new Diff2HtmlUI(...)` not `Diff2HtmlUI.create(...)` — which would have prevented 3 consecutive browser-verification fix cycles.",
+  "coverage_notes": "Sampled tail (last 200 lines) of S19_run1.log (906KB) and S19_fix2.log (217KB); read S19_fix1, S19_fix3, S14_fix1, S17_fix1, S18_fix1 in full. Read full S01_run1/S01_run2/S01_run3 logs. DB telemetry: full via `iw item-status --json`. S05_run1 (176KB), S09_run1 (150KB) not read in full — no errors detected in early log sections.",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "design",
+      "target": "iw-ai-core",
+      "title": "Wrong Diff2HtmlUI initialization API in S06 prompt caused 3 browser-verification fix cycles",
+      "recommendation": "In F-00079_S06_Frontend_prompt.md, replace `Diff2HtmlUI.create(diffText, {...})` with `new Diff2HtmlUI(diffText, {...})`. Add a note that the agent must verify the library API against the actual vendored file (dashboard/static/vendor/diff2html/) before using it.",
+      "evidence": [
+        ".worktrees/F-00079/ai-dev/logs/F-00079_S19_run1.log:133 — 'Diff2HtmlUI.create(diffText, {...})' called but method does not exist in vendored bundle",
+        ".worktrees/F-00079/ai-dev/logs/F-00079_S19_fix1.log:22 — Same error persisted after first fix attempt",
+        ".worktrees/F-00079/ai-dev/logs/F-00079_S19_fix2.log — Still failing after second fix; fix3 corrected to `new Diff2HtmlUI(...)`"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Fix Diff2HtmlUI initialization in F-00079_S06_Frontend_prompt.md: replace `Diff2HtmlUI.create(diffText, {...})` with `new Diff2HtmlUI(diffText, {...})` and add note to verify vendored library API. See ai-dev/active/F-00079/reports/F-00079_self_assess_report.md Finding 1. Target: ai-dev/active/F-00079/prompts/F-00079_S06_Frontend_prompt.md. Effort: S."
+    },
+    {
+      "severity": "HIGH",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Integration tests hardcoded stale migration head revision — broke S18 integration gate",
+      "recommendation": "In F-00079_S09_Tests_prompt.md, add pre-flight: grep for `_HEAD_REVISION` in daemon/integration tests and update to current alembic head after migration applied. In F-00079_S10_CodeReview_Tests_prompt.md, add: verify _HEAD_REVISION constants are current with alembic head.",
+      "evidence": [
+        "tests/integration/daemon/test_phase2_apply_no_self_deadlock.py:36 — `_HEAD_REVISION = '7f1a75bb5c2d'` (pre-F-00079); F-00079 migration is `1713bc13a11d`",
+        ".worktrees/F-00079/ai-dev/logs/F-00079_S18_fix1.log:132 — 'AssertionError' on stale head revision in test"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add _HEAD_REVISION pre-flight check to S09/S10 test prompts: require agent to grep for stale head revision constants in daemon integration tests and update to current alembic head. Analyzed in ai-dev/active/F-00079/reports/F-00079_self_assess_report.md Finding 2. Target: ai-dev/active/F-00079/prompts/F-00079_S09_Tests_prompt.md, F-00079_S10_CodeReview_Tests_prompt.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Tests referenced deleted item_artifacts.html template — blocked S17 frontend gate",
+      "recommendation": "In F-00079_S09_Tests_prompt.md, add pre-flight: grep test files for references to removed templates (item_artifacts.html) and update or skip those tests. The design doc invariants (Invariant 9) were not cross-checked against existing test suite in S09.",
+      "evidence": [
+        "tests/dashboard/test_chat_security.py:40,72,85 — 3 tests referencing removed `fragments/item_artifacts.html`",
+        ".worktrees/F-00079/ai-dev/logs/F-00079_S17_fix1.log — TemplateNotFound: 'fragments/item_artifacts.html' not found; required import pytest fix"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add deleted-template cross-check to S09 Tests prompt: require agent to grep test files for references to removed templates (item_artifacts.html) and update or skip those tests. Analyzed in ai-dev/active/F-00079/reports/F-00079_self_assess_report.md Finding 3. Target: ai-dev/active/F-00079/prompts/F-00079_S09_Tests_prompt.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S01 Database required 3 runs — possible prompt gap or migration procedure issue",
+      "recommendation": "Investigate whether S01's 3-run issue was due to migration user-input prompt, partial failure requiring retry, or agent confusion. If migration procedure gap: add explicit `alembic upgrade head` dry-run instruction to S01 prompt. If agent confusion: add stronger DB migration procedure guidance.",
+      "evidence": [
+        ".worktrees/F-00079/ai-dev/logs/F-00079_S01_run1.log (75KB) → run2 (69KB) → run3 (10KB) — 3 runs for a single DB step",
+        "All other steps S02–S11: 1 run each; S12–S18: 1–2 runs each"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Investigate S01 Database 3-run issue in F-00079: determine root cause (migration procedure gap vs agent confusion) and fix S01 prompt to prevent recurrence. Analyzed in ai-dev/active/F-00079/reports/F-00079_self_assess_report.md Finding 4. Target: ai-dev/active/F-00079/prompts/F-00079_S01_Database_prompt.md. Effort: M."
+    },
+    {
+      "severity": "MED",
+      "class": "environment",
+      "target": "project",
+      "title": "Pre-existing 'type: ignore[import-untyped]' in RAG code broke S14 typecheck gate",
+      "recommendation": "Add `ignore_missing_imports = true` or equivalent for `site-packages` in pyproject.toml mypy section to suppress import-untyped warnings for third-party packages that now have stubs. This would prevent 9 pre-existing typecheck errors from blocking every future feature's QV gate.",
+      "evidence": [
+        "orch/rag/symbol_gen.py:9 — `from tree_sitter_languages import get_language  # type: ignore[import-untyped]`",
+        "orch/rag/doc_indexer.py:136,195 — lancedb and pyarrow same pattern",
+        "orch/rag/module_gen.py:11, orch/rag/indexer.py:145, orch/rag/qa.py:160 — same pattern",
+        ".worktrees/F-00079/ai-dev/logs/F-00079_S14_fix1.log:9-17 — 9 identical 'Unused type: ignore' errors"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Remove pre-existing type: ignore[import-untyped] noise in RAG files: add mypy config to ignore import-untyped for site-packages in pyproject.toml, then remove stale ignores from orch/rag/*.py. Analyzed in ai-dev/active/F-00079/reports/F-00079_self_assess_report.md Finding 5. Target: pyproject.toml (mypy section). Effort: S."
+    }
+  ]
+}

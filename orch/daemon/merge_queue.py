@@ -315,6 +315,48 @@ def _merge_item(
         batch_id_for_apply = batch_item.batch_id
         db.commit()
 
+        # F-00079: Capture aggregate diff from the squash commit (AC8).
+        # Done after the main commit releases locks; re-queried WorkItem is fresh.
+        # Must NOT roll back the merge if capture fails (Invariant 5).
+        try:
+            from orch.db.models import WorkItem
+            from orch.diff_service import (
+                _git_diff_merge_commit,
+                _git_rev_parse_head,
+                parse_diff_summary,
+            )
+
+            work_item = (
+                db.query(WorkItem).filter_by(project_id=project_id, id=item_id).one_or_none()
+            )
+            if work_item is not None and project is not None:
+                head_sha = _git_rev_parse_head(project.repo_root)
+                diff_text = (
+                    _git_diff_merge_commit(project.repo_root, head_sha) if head_sha else None
+                )
+                if diff_text:
+                    work_item.diff_text = diff_text
+                    work_item.diff_summary = parse_diff_summary(diff_text)
+                    work_item.merge_commit_sha = head_sha
+                    db.commit()
+        except Exception:
+            logger.warning(
+                "[%s] merge_queue: aggregate diff capture failed for %s",
+                project_id,
+                item_id,
+                exc_info=True,
+            )
+            _emit_event(
+                db,
+                project_id,
+                "diff_capture_failed",
+                item_id,
+                "work_item",
+                f"Aggregate diff capture failed for {item_id}",
+                {"item_id": item_id},
+            )
+            db.commit()
+
         # Phase 2: apply migrations to live DB
         if batch_id_for_apply is not None:
             apply_result = run_post_merge_apply(batch_id_for_apply)

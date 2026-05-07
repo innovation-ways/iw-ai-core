@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import mimetypes
-from dataclasses import dataclass, field
-from datetime import UTC
+import subprocess
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
+from markupsafe import Markup
+from pygments import highlight
+from pygments.formatters.html import HtmlFormatter
+from pygments.lexers.diff import DiffLexer
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
@@ -21,6 +27,7 @@ from orch.db.models import (
     EvidencePhase,
     FixCycle,
     Project,
+    RunStatus,
     StepRun,
     WorkflowStep,
     WorkItem,
@@ -28,8 +35,6 @@ from orch.db.models import (
 )
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from fastapi.templating import Jinja2Templates
     from sqlalchemy.orm import Session
 
@@ -99,19 +104,6 @@ class LogSection:
     static_content: str | None = None
 
 
-@dataclass
-class ArtifactNode:
-    """One node in the artifact file tree."""
-
-    name: str  # filename or directory name
-    abs_path: str  # absolute path on disk (for reading)
-    rel_path: str  # path relative to artifact root (used in /artifact-raw URL param)
-    is_dir: bool
-    size_bytes: int  # 0 for directories
-    file_type: str  # "markdown" | "image" | "text" | "binary" | "directory"
-    children: list[ArtifactNode] = field(default_factory=list)
-
-
 def _detect_file_type(name: str) -> str:
     """Map a filename to a viewer content type."""
     name_lower = name.lower()
@@ -165,58 +157,6 @@ def _resolve_artifact_root(
     return None
 
 
-def _build_artifact_tree(directory: Path, root: Path) -> list[ArtifactNode]:
-    """Recursively build the artifact tree starting at *directory*.
-
-    *root* is used to compute rel_path for each node.
-    Sort order: directories first (alphabetical), then files (alphabetical).
-    """
-    nodes: list[ArtifactNode] = []
-    try:
-        entries = list(directory.iterdir())
-    except OSError:
-        return nodes
-    dirs = sorted([e for e in entries if e.is_dir()], key=lambda e: e.name.lower())
-    files = sorted([e for e in entries if e.is_file()], key=lambda e: e.name.lower())
-    for entry in dirs + files:
-        rel = str(entry.relative_to(root))
-        if entry.is_dir():
-            children = _build_artifact_tree(entry, root)
-            nodes.append(
-                ArtifactNode(
-                    name=entry.name,
-                    abs_path=str(entry),
-                    rel_path=rel,
-                    is_dir=True,
-                    size_bytes=0,
-                    file_type="directory",
-                    children=children,
-                )
-            )
-        else:
-            nodes.append(
-                ArtifactNode(
-                    name=entry.name,
-                    abs_path=str(entry),
-                    rel_path=rel,
-                    is_dir=False,
-                    size_bytes=entry.stat().st_size,
-                    file_type=_detect_file_type(entry.name),
-                )
-            )
-    return nodes
-
-
-def _list_artifact_tree(
-    _project_id: str, item: WorkItem, project: Project, worktree_path: str | None = None
-) -> list[ArtifactNode]:
-    """Build the artifact tree for *item*, preferring worktree paths."""
-    root = _resolve_artifact_root(item, project, worktree_path)
-    if root is None:
-        return []
-    return _build_artifact_tree(root, root)
-
-
 @dataclass
 class EvidenceFile:
     """A single screenshot/snapshot in the evidences browser."""
@@ -256,6 +196,11 @@ class FixCycleDetail:
     log_content: str | None
     log_modified: str | None
     is_running: bool
+
+
+def _now_iso() -> str:
+    """Return current UTC time as ISO string for PDF generation timestamps."""
+    return datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
 # ---------------------------------------------------------------------------
@@ -1091,29 +1036,354 @@ def item_tab_reports(
     )
 
 
-@router.get("/item/{item_id}/tab/artifacts", response_class=HTMLResponse)
-def item_tab_artifacts(
+# ---------------------------------------------------------------------------
+# Files view helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_diff_text_and_summary(
+    item: WorkItem,
+    project: Project,
+    step_run: StepRun | None,
+    worktree_path: str | None,
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Resolve diff_text and summary for a files view scope.
+
+    Returns (diff_text, summary). Summary is derived from stored diff_summary
+    when available, otherwise parsed from diff_text via parse_diff_summary.
+    """
+    from orch.diff_service import parse_diff_summary, resolve_diff
+
+    diff_text = resolve_diff(
+        item=item, step_run=step_run, project=project, worktree_path=worktree_path
+    )
+
+    # Prefer stored summary over re-parsing
+    stored_summary: list[dict[str, Any]] | None = None
+    if step_run is not None:
+        stored_summary = step_run.diff_summary
+    elif item.diff_summary and item.archived_at:
+        stored_summary = item.diff_summary
+
+    if stored_summary is not None:
+        return diff_text, stored_summary
+
+    if diff_text:
+        return diff_text, parse_diff_summary(diff_text)
+    return None, []
+
+
+def _step_options_from_item(item: WorkItem, db: Session) -> list[dict[str, Any]]:
+    """Build step_options list from completed step_runs."""
+    step_runs = db.scalars(
+        select(StepRun)
+        .where(
+            StepRun.step_id.in_(
+                select(WorkflowStep.id).where(
+                    WorkflowStep.project_id == item.project_id,
+                    WorkflowStep.work_item_id == item.id,
+                )
+            )
+        )
+        .where(StepRun.status.in_([RunStatus.completed, RunStatus.failed]))
+    ).all()
+    # Group by step
+    seen: set[int] = set()
+    options: list[dict[str, Any]] = []
+    for sr in sorted(step_runs, key=lambda r: r.run_number):
+        if sr.step_id in seen:
+            continue
+        seen.add(sr.step_id)
+        ws = db.scalar(select(WorkflowStep).where(WorkflowStep.id == sr.step_id))
+        step_label = ws.step_label if ws else sr.step_id
+        options.append(
+            {
+                "step_id": str(sr.step_id),
+                "step_name": step_label,
+                "has_diff": bool(sr.diff_text),
+            }
+        )
+    return options
+
+
+def _render_diff_hunks(diff_text: str, summary: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Render hunks_html for each file in summary (up to PDF cap of 100)."""
+    import unidiff
+
+    results: list[dict[str, Any]] = []
+    patch_set = unidiff.PatchSet(diff_text)
+    path_to_entry = {entry["path"]: entry for entry in summary}
+
+    formatter = HtmlFormatter(full=True, cssclass="highlight", nowrap=False)
+    cap = 100
+    for idx, patched_file in enumerate(patch_set):
+        path = patched_file.target_file.lstrip("b/") or patched_file.source_file.lstrip("a/")
+        entry = path_to_entry.get(path, {})
+        if idx >= cap or entry.get("is_binary"):
+            results.append({**entry, "hunks_html": None})
+            continue
+
+        # Count total lines to detect large files
+        total_lines = sum(hunk.added + hunk.removed for hunk in patched_file)
+        if total_lines >= 5000:
+            results.append({**entry, "hunks_html": None})
+            continue
+
+        hunks_html_parts: list[str] = []
+        for hunk in patched_file:
+            hunks_html_parts.append(highlight(str(hunk), DiffLexer(), formatter))
+        results.append({**entry, "hunks_html": Markup().join(hunks_html_parts)})
+
+    # Add truncated files (past cap, not already in results)
+    capped_paths = {r["path"] for r in results}
+    for entry in summary:
+        if entry["path"] in capped_paths:
+            continue
+        if len(results) >= cap:
+            results.append({**entry, "hunks_html": None})
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Files view routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/item/{item_id}/tab/files", response_class=HTMLResponse)
+def item_tab_files(
     project_id: str,
     item_id: str,
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the Files tab shell as an htmx fragment."""
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
     bi = _get_batch_item(project_id, item_id, db)
     worktree_path = bi.worktree_info.get("path") if bi and bi.worktree_info else None
-    artifact_tree = _list_artifact_tree(project_id, item, project, worktree_path)
+    worktree_alive = worktree_path is not None and Path(worktree_path).exists()
+    is_archived = item.archived_at is not None
+
+    diff_text, summary = _get_diff_text_and_summary(
+        item=item, project=project, step_run=None, worktree_path=worktree_path
+    )
+
+    aggregate_added = sum(f["added"] for f in summary)
+    aggregate_removed = sum(f["removed"] for f in summary)
+    aggregate_file_count = len(summary)
+    default_expand_all = len(summary) <= 10
+
+    step_options = _step_options_from_item(item, db)
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
-        "fragments/item_artifacts.html",
+        "fragments/item_files.html",
         {
             "item": item,
-            "artifact_tree": artifact_tree,
-            "is_archived": item.archived_at is not None,
-            "archive_size_bytes": item.archive_size_bytes,
+            "project_id": project_id,
+            "summary": summary,
+            "step_options": step_options,
+            "worktree_alive": worktree_alive,
+            "is_archived": is_archived,
+            "aggregate_added": aggregate_added,
+            "aggregate_removed": aggregate_removed,
+            "aggregate_file_count": aggregate_file_count,
+            "default_expand_all": default_expand_all,
         },
+    )
+
+
+@router.get("/item/{item_id}/files/diff")
+def item_files_diff(
+    project_id: str,
+    item_id: str,
+    step: str = Query("all"),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Return raw unified diff text for the requested scope."""
+    _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+
+    step_run: StepRun | None = None
+    if step != "all":
+        try:
+            step_db_id = int(step)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=f"Invalid step id: {step!r}") from err
+        step_run = db.scalar(
+            select(StepRun).where(
+                StepRun.id == step_db_id,
+                StepRun.step_id.in_(
+                    select(WorkflowStep.id).where(
+                        WorkflowStep.project_id == project_id,
+                        WorkflowStep.work_item_id == item_id,
+                    )
+                ),
+            )
+        )
+        if step_run is None:
+            raise HTTPException(status_code=404, detail="Step run not found")
+
+    project = _get_project_or_404(project_id, db)
+    bi = _get_batch_item(project_id, item_id, db)
+    worktree_path = bi.worktree_info.get("path") if bi and bi.worktree_info else None
+
+    diff_text, _ = _get_diff_text_and_summary(
+        item=item, project=project, step_run=step_run, worktree_path=worktree_path
+    )
+
+    if diff_text is None:
+        return Response(content="", media_type="text/plain", headers={"X-Diff-Empty": "1"})
+    return Response(content=diff_text, media_type="text/plain")
+
+
+@router.get("/item/{item_id}/files/untracked")
+def item_files_untracked(
+    project_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Return JSON list of untracked worktree files."""
+    _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+    bi = _get_batch_item(project_id, item_id, db)
+    worktree_path = (bi.worktree_info or {}).get("path") if bi else None
+
+    if item.archived_at is not None or not worktree_path or not Path(worktree_path).exists():
+        return Response(
+            content='{"files": []}',
+            media_type="application/json",
+            headers={"X-Untracked-Disabled": "archived" if item.archived_at else "no-worktree"},
+        )
+
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "-uall"],  # noqa: S603,S607
+            capture_output=True,
+            text=True,
+            cwd=worktree_path,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return Response(content='{"files": []}', media_type="application/json")
+    except Exception:
+        return Response(content='{"files": []}', media_type="application/json")
+
+    exclude_prefixes = (
+        "ai-dev/active/",
+        "ai-dev/archive/",
+        "ai-dev/design/",
+    )
+    files: list[dict[str, Any]] = []
+    for line in result.stdout.splitlines():
+        if not line.startswith("?? "):
+            continue
+        rel_path = line[3:].strip('"').lstrip("/")
+        if any(rel_path.startswith(p) for p in exclude_prefixes):
+            continue
+        full_path = Path(worktree_path) / rel_path
+        if not full_path.is_file():
+            continue
+        files.append(
+            {
+                "path": rel_path,
+                "size_bytes": full_path.stat().st_size,
+                "file_type": _detect_file_type(rel_path),
+            }
+        )
+
+    return Response(content=json.dumps({"files": files}), media_type="application/json")
+
+
+@router.get("/item/{item_id}/files/export.pdf")
+def item_files_export_pdf(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    step: str = Query("all"),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Render WeasyPrint PDF of the diff for the requested scope."""
+    project = _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+
+    step_run: StepRun | None = None
+    if step != "all":
+        try:
+            step_db_id = int(step)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail=f"Invalid step id: {step!r}") from err
+        step_run = db.scalar(
+            select(StepRun).where(
+                StepRun.id == step_db_id,
+                StepRun.step_id.in_(
+                    select(WorkflowStep.id).where(
+                        WorkflowStep.project_id == project_id,
+                        WorkflowStep.work_item_id == item_id,
+                    )
+                ),
+            )
+        )
+        if step_run is None:
+            raise HTTPException(status_code=404, detail="Step run not found")
+
+    bi = _get_batch_item(project_id, item_id, db)
+    worktree_path = (bi.worktree_info or {}).get("path") if bi else None
+
+    diff_text, summary = _get_diff_text_and_summary(
+        item=item, project=project, step_run=step_run, worktree_path=worktree_path
+    )
+
+    aggregate_added = sum(f["added"] for f in summary)
+    aggregate_removed = sum(f["removed"] for f in summary)
+    aggregate_file_count = len(summary)
+
+    step_label = "All steps" if step == "all" else f"Step {step}"
+    if step != "all" and step_run:
+        ws = db.scalar(select(WorkflowStep).where(WorkflowStep.id == step_run.step_id))
+        if ws and ws.step_label:
+            step_label = ws.step_label
+
+    hunks_files = _render_diff_hunks(diff_text or "", summary)
+    summary_files = hunks_files[:100]
+    truncated_files = hunks_files[100:]
+
+    templates: Jinja2Templates = request.app.state.templates
+    try:
+        pdf_template = templates.get_template("exports/diff_pdf.html")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Template error: {exc}") from exc
+    try:
+        html_content = pdf_template.render(
+            item=item,
+            project_id=project_id,
+            step_label=step_label,
+            aggregate_added=aggregate_added,
+            aggregate_removed=aggregate_removed,
+            aggregate_file_count=aggregate_file_count,
+            summary_files=summary_files,
+            truncated_files=truncated_files,
+            generated_at=_now_iso(),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Template render error: {exc}") from exc
+
+    try:
+        from weasyprint import HTML as WeasyHTML  # noqa: N811
+
+        pdf_bytes = WeasyHTML(string=html_content).write_pdf()
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="WeasyPrint not installed") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {exc}") from exc
+
+    filename = f"{item_id}_files_{step}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
