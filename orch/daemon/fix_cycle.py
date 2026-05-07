@@ -824,9 +824,9 @@ def _recompute_baseline_for_gate(
     from orch.daemon.batch_manager import _agent_subprocess_env
 
     try:
-        result = subprocess.run(  # noqa: S602
+        result = subprocess.run(  # noqa: S602  # nosec B602
             command,
-            shell=True,
+            shell=True,  # nosec B602
             cwd=worktree_path,
             capture_output=True,
             text=True,
@@ -1485,9 +1485,9 @@ def _launch_fix_agent(
     else:
         shell_command = f"timeout {timeout} {command}"
 
-    proc = subprocess.Popen(  # noqa: S602
+    proc = subprocess.Popen(  # noqa: S602  # nosec B602
         shell_command,
-        shell=True,
+        shell=True,  # nosec B602
         cwd=worktree_path,
         stdin=subprocess.DEVNULL,
         stdout=Path(log_file).open("w"),  # noqa: SIM115
