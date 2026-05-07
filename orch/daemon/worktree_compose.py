@@ -471,9 +471,17 @@ def rewrite_env(
 _SEED_VAR_PATTERN = __import__("re").compile(
     r"\$\{([A-Z_][A-Z0-9_]*)\}|\$([A-Z_][A-Z0-9_]*)(?![A-Z0-9_])"
 )
-# Matches `FOO=...` and `FOO="..."` and `export FOO=...` at start of a (logical) line.
+# Matches `FOO=...`, `FOO="..."`, `export FOO=...`, AND additional assignments
+# on the same logical line (`export A=1 B=2 C=3`). Bash accepts multiple
+# NAME=VALUE pairs after `export`/`local`/`readonly`/`declare`, so we match
+# any `WORD=` token that is either at start-of-line (after an optional
+# assignment-prefix keyword) or preceded by whitespace. Over-matching is
+# safe here: extra entries in `locally_assigned` only suppress a false
+# positive in the missing-var check; bash itself surfaces real undefined
+# refs at runtime via `set -u`.
 _SEED_ASSIGN_PATTERN = __import__("re").compile(
-    r"^\s*(?:export\s+|local\s+|readonly\s+|declare\s+(?:-[a-zA-Z]+\s+)?)?([A-Z_][A-Z0-9_]*)\s*=",
+    r"(?:^\s*(?:export\s+|local\s+|readonly\s+|declare\s+(?:-[a-zA-Z]+\s+)?)?|\s+)"
+    r"([A-Z_][A-Z0-9_]*)\s*=",
     __import__("re").MULTILINE,
 )
 # Bash builtins / shell vars that may legitimately appear in a seed script and
