@@ -230,19 +230,31 @@ When you reference selectors like `[data-tour='queue-table']` in tour steps, S05
 
 ### 8. Update `dashboard/templates/base.html`
 
-- Add **two new blocks** in the page-header location (find the `{% block content %}` start — but the `?` button must be visible at the **top of the page**; you may need a wrapper around `{% block content %}` or, if the existing layout puts the title inside `{% block content %}`, define a small inline JS hook that re-positions the help button next to the first `<h1>` in the content area on `DOMContentLoaded`):
-  - `{% block page_help_slug %}{% endblock %}`
-  - The macro is auto-rendered if and only if the slug block is non-empty:
-    ```jinja
-    {% set _help_slug = self.page_help_slug() %}
-    {% if _help_slug %}
-      {% from "macros/help_button.html" import help_button %}
-      <div class="page-help-mount">{{ help_button(_help_slug) }}</div>
-    {% endif %}
-    ```
-  - Place this `<div class="page-help-mount">` such that the JS in help.js can position it next to the first `<h1>` of `{% block content %}`. The cleanest way is to put it inside the content wrapper but with `position: relative` so JS can move it.
-- Add `<script src="/static/help/tours.js" defer></script>` and `<script src="/static/help/help.js" defer></script>` near the existing htmx script tags. **Do not load `driver.js.iife.js` eagerly** — help.js lazy-loads it on first tour start.
-- Do **not** preload `driver.css`; help.js lazy-injects a `<link>` on first tour mount.
+The `?` button is rendered **server-side** in a fixed slot inside the existing global header bar (the `<div>` at `base.html:164` that already contains the hamburger + search input). NO JavaScript-driven DOM repositioning. The button sits flush right of the search bar via the existing `gap-3` flex layout — same place on every page.
+
+Steps:
+
+1. Add `{% block page_help_slug %}{% endblock %}` near the top of `base.html` (after the `{% block title %}` line is fine).
+
+2. Inside the global header bar (the `<div class="flex-shrink-0 border-b border-border bg-card px-3 sm:px-6 py-2 relative flex items-center gap-3">` block), append the help-button mount **after** the `<div id="global-search-results">` line, still inside the same flex container:
+
+   ```jinja
+   {% set _help_slug = self.page_help_slug() %}
+   {% if _help_slug %}
+     {% from "macros/help_button.html" import help_button %}
+     <div class="ml-auto flex-shrink-0">{{ help_button(_help_slug) }}</div>
+   {% endif %}
+   ```
+
+   - `ml-auto` pushes it to the right of the bar.
+   - The macro is rendered if-and-only-if the page declared `{% block page_help_slug %}<slug>{% endblock %}`. Pages with no slug get nothing — the bar layout is unchanged on those pages.
+   - The macro emits both the `?` button and the empty `[data-help-popover]` mount; help.js attaches behaviour via event delegation on `document`, so the button works regardless of where the macro lives in the DOM.
+
+3. Add `<script src="/static/help/tours.js" defer></script>` and `<script src="/static/help/help.js" defer></script>` near the existing vendored htmx script tags (lines 28–30). **Do not load `driver.js.iife.js` eagerly** — help.js lazy-loads it on first tour start.
+
+4. Do **not** preload `driver.css`; help.js lazy-injects a `<link>` on first tour mount.
+
+**No `page-help-mount` class, no JS-driven repositioning, no `position: relative` hack.** If someone later wants the button next to a specific page's `<h1>`, that is a per-page decision, not a base-layout one.
 
 ### 9. RED tests for help.js (light)
 

@@ -1,4 +1,5 @@
 {
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
   "id": "F-00080",
   "type": "Feature",
   "title": "First-Time User Onboarding & Contextual Help (Dashboard OSS-readiness)",
@@ -24,6 +25,8 @@
       "tests/dashboard/test_help_router.py",
       "tests/dashboard/test_help_fragments_present.py",
       "tests/dashboard/test_empty_states.py",
+      "tests/dashboard/test_help_js_smoke.py",
+      "tests/dashboard/test_help_license.py",
       "tests/integration/test_help_smoke.py",
       "ai-dev/active/F-00080/**",
       "ai-dev/archive/F-00080/**"
@@ -84,14 +87,63 @@
       "description": "Global cross-agent review (consistency, integration points, accessibility, license attribution, no-orphan invariant, no auto-launch invariant)",
       "prompt": "prompts/F-00080_S09_CodeReview_Final_prompt.md"
     },
-    {"step": "S10", "agent": "qv-gate", "gate": "lint", "command": "make lint", "description": "QV: Linting"},
-    {"step": "S11", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
-    {"step": "S12", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
-    {"step": "S13", "agent": "qv-gate", "gate": "arch-check", "command": "make arch-check", "description": "QV: Architecture"},
-    {"step": "S14", "agent": "qv-gate", "gate": "security-sast", "command": "make security-sast", "description": "QV: Security SAST"},
-    {"step": "S15", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
-    {"step": "S16", "agent": "qv-gate", "gate": "integration-tests", "command": "make test-integration", "description": "QV: Integration tests", "timeout": 900},
-    {"step": "S17", "agent": "qv-gate", "gate": "frontend-tests", "command": "make test-frontend", "description": "QV: Frontend tests"},
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S16",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S17",
+      "agent": "qv-gate",
+      "gate": "frontend-tests",
+      "command": "make test-frontend",
+      "description": "QV: Frontend tests"
+    },
     {
       "step": "S18",
       "agent": "qv-browser",
