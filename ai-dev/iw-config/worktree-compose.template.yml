@@ -51,8 +51,10 @@ services:
         export PATH="/tmp/.local/bin:$$PATH"
         export PYTHONPATH="/tmp/.local/lib/python3.12/site-packages"
         export UV_PROJECT_ENVIRONMENT=/tmp/.venv
+        export UV_CACHE_DIR=/tmp/.uv-cache
         export PIP_CACHE_DIR=/tmp/.pip-cache
-        mkdir -p /tmp/.local /tmp/.pip-cache
+        export XDG_CACHE_HOME=/tmp/.cache
+        mkdir -p /tmp/.local /tmp/.pip-cache /tmp/.uv-cache /tmp/.cache
         if ! command -v uv >/dev/null 2>&1; then
           pip install --prefix=/tmp/.local --no-warn-script-location -q uv
         fi
