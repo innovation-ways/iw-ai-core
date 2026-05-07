@@ -1,5 +1,5 @@
 ---
-version: "1.0.0"
+version: "1.1.0"
 name: iw-doc-generator
 description: Generate or update documentation for InnoForge modules, architecture areas, release notes, error catalog, or webhook reference. Use when asked to "generate docs", "update documentation", "document module", "document architecture", "generate release notes", "update error catalog", "/iw-doc-generator".
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git:*), Bash(wc:*), Bash(python3:*)
@@ -21,7 +21,9 @@ Generate or update documentation for: **$ARGUMENTS**
 
 ## Step 1: Parse Target
 
-Extract the target type and name from `$ARGUMENTS`. If ambiguous, ask the user to clarify.
+**If `$ARGUMENTS` starts with `doc-job`** (e.g. `doc-job 4914211f-...`): skip directly to the **[Job lifecycle](#job-lifecycle-when-invoked-via-iw-doc-generator-doc-job-job-id)** section at the bottom of this skill. Do not execute Steps 2–6.
+
+Otherwise, extract the target type and name from `$ARGUMENTS`. If ambiguous, ask the user to clarify.
 
 ## Step 2: Read Context
 
@@ -117,9 +119,9 @@ Present to the user:
 - **NEVER** generate documentation for modules that don't exist
 - If a module has no tests, note this as a gap but still generate the documentation
 
-## Job lifecycle (when invoked via `/doc-job <job-id>`)
+## Job lifecycle (when invoked via `/iw-doc-generator doc-job <job-id>`)
 
-When this skill is invoked by the platform's `DocJobPoller` (i.e. the slash command `/doc-job <job-id>` is issued), you are running inside a queued documentation generation job. Your responsibilities:
+When this skill is invoked by the platform's `DocJobPoller` (i.e. the slash command `/iw-doc-generator doc-job <job-id>` is issued), you are running inside a queued documentation generation job. Your responsibilities:
 
 1. **Read the job context.** Run `uv run iw doc-job-status <job-id> --json`. The JSON output gives you `editorial_category`, `doc_id`, `project_id`, `doc_title`, `section_guides_snapshot`, and `guide_snapshot` — everything you need to produce the right content. If this command exits non-zero, do NOT proceed — close the job immediately with `iw doc-job-done <job-id> --error 'job context not found'`.
 

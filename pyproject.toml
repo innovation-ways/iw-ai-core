@@ -26,6 +26,7 @@ dependencies = [
     "markdown>=3.10.2",
     "markupsafe>=3.0.3",
     "types-markdown>=3.10.2.20260408",
+    "weasyprint>=63.0",
     "llama-index-core>=0.14.20",
     "llama-index-llms-ollama>=0.10.1",
     "llama-index-embeddings-ollama>=0.9.0",
@@ -124,11 +125,12 @@ plugins = ["sqlalchemy.ext.mypy.plugin"]
 testpaths = ["tests"]
 # xdist is opt-in only via `make test-parallel` which passes `-n auto --dist=loadfile`.
 # Do NOT add xdist defaults here — that would change `make test-unit` / `make test-integration` semantics.
-addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json"
+addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser'"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
     "smoke: fast critical-path tests; ~10 covering core flows; run via `make smoke`",
     "slow: marks tests as slow (deselected by default unless -m slow is passed)",
+    "browser: marks tests that drive a real Chromium via playwright-cli; deselected by default — run with `-m browser` against a live dashboard the test data is visible to (e.g. iw-ai-core's existing data or an E2E stack)",
 ]
 env = ["IW_CORE_AGENT_CONTEXT="]
 

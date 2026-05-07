@@ -25,20 +25,22 @@ This skill handles the **content generation** step. The rendering pipeline
 
 Before generating ANY document, you MUST read these files in order:
 
-1. **System instructions**: `doc-system/CLAUDE.md`
+1. **System instructions**: `doc-system/CLAUDE.md` (if it exists)
 2. **Brand configuration**: `doc-system/brand/brand.json`
 3. **Global editorial guidelines**: `doc-system/editorial/_default.md`
-4. **Category editorial guidelines**: `doc-system/editorial/{category}.md` (e.g., `technical.md`)
-5. **Document catalog**: `doc-system/catalog/index.json` — find the target document entry
-6. **Generation manifest**: `doc-system/catalog/generation-manifest.json` — find source files
+4. **Category editorial guidelines**: `doc-system/editorial/{category}.md` — if this file does not exist, `_default.md` already covers the required guidelines; proceed without it
+5. **Document catalog**: `doc-system/catalog/index.json` — find the target document entry (skip if the doc is not listed; use `doc_title` and `editorial_category` from the job context instead)
+6. **Generation manifest**: `doc-system/catalog/generation-manifest.json` — find source files for this document (skip if not listed; read `CLAUDE.md` and relevant `docs/` files instead)
 7. **Source files**: Read ALL files listed in the manifest's `sources` array for this document
 
-Do NOT skip any of these steps. The editorial guidelines contain critical instructions
-that affect content, tone, and structure.
+The editorial guidelines contain critical instructions that affect content, tone, and structure.
+Do NOT skip steps 2–4. Steps 1, 5, 6, 7 may be skipped if the files don't exist or the document isn't listed.
 
 ## Workflow
 
 ### Step 1: Identify the Document
+
+**If `$ARGUMENTS` starts with `doc-job`** (e.g. `doc-job 4914211f-...`): skip directly to the **[Job lifecycle](#job-lifecycle-when-invoked-via-iw-doc-system-doc-job-job-id)** section at the bottom of this skill. Do not execute Steps 2–6.
 
 The user specifies a document by ID (e.g., `TECH-001`) or by description.
 
@@ -167,3 +169,28 @@ documentation/{category}/{DOC_ID}-{slug}/
 - **NEVER** copy-paste large sections from source files — synthesize and restructure for the target audience
 - Accuracy over completeness — only document what's verifiable in source files
 - Every claim must be traceable to a source file
+
+## Job lifecycle (when invoked via `/iw-doc-system doc-job <job-id>`)
+
+When this skill is invoked by the platform's `DocJobPoller` (i.e. the slash command `/iw-doc-system doc-job <job-id>` is issued), you are running inside a queued documentation generation job. Your responsibilities:
+
+1. **Read the job context.** Run `uv run iw doc-job-status <job-id> --json`. The JSON output gives you `editorial_category`, `doc_id`, `project_id`, `doc_title`, `section_guides_snapshot`, and `guide_snapshot` — everything you need to produce the right content. If this command exits non-zero, do NOT proceed — close the job immediately with `iw doc-job-done <job-id> --error 'job context not found'`.
+
+2. **Generate the document content** following the editorial guide rules described in the rest of this skill.
+
+3. **Persist content via `iw doc-update`:**
+   ```
+   uv run iw doc-update <doc-id> \
+     --content-file - \
+     --generated-by skill:<this-skill-name> \
+     --trigger-reason job:<job-id>
+   ```
+   `<doc-id>` is the inner `ProjectDoc.doc_id` slug (e.g. `code-index`) returned by `iw doc-job-status`, NOT the UUID. Project is auto-resolved from the worktree's `.iw-orch.json` — do not pass project as a positional arg (the CLI accepts only `<doc-id>` and will reject extra positionals). Pipe markdown via stdin. Run this exactly once for the job's target doc. Do NOT call `iw doc-update` for any unrelated doc.
+
+4. **Close the job** by calling EXACTLY ONE of:
+   - `uv run iw doc-job-done <job-id>` — on success
+   - `uv run iw doc-job-done <job-id> --error '<one-line message>'` — on failure
+
+   Failing to close the job leaves it in `running` until the daemon's PID-liveness probe (within ~60s if your process exits) or the 15-minute wall-clock stall guard kicks in. Always close.
+
+5. **Do NOT call `iw item-status`, `iw step-start`, `iw step-done`, or any work-item-oriented CLI commands.** Doc jobs are not work items. Mistakenly calling these will succeed-but-do-nothing for the job's outcome.

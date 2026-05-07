@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
+import tarfile
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -26,45 +29,36 @@ _MASK_KEEP = 4  # chars retained at each end when masking a long secret
 def secrets(ctx: Context) -> list[Finding]:
     out: list[Finding] = []
 
-    # OSS-SEC-01: working-tree scan
-    out.append(
-        _gitleaks_scan(
-            ctx,
-            check_id="OSS-SEC-01",
-            scope="tree",
-            args=[
-                "detect",
-                "--no-git",
-                "--source",
-                str(ctx.target),
-                "--report-format",
-                "sarif",
-                "--report-path",
-                str(ctx.iw_dir / "gitleaks-tree.sarif"),
-                "--exit-code",
-                "0",
-            ],  # we read output; don't fail the process
-        )
-    )
+    # OSS-SEC-01: tracked-files scan (git archive HEAD → temp dir).
+    # Uses git archive so only committed, non-gitignored files are scanned.
+    # Gitignored files (e.g. .env.dev with real credentials) are never touched.
+    out.append(_gitleaks_scan_tracked(ctx))
 
-    # OSS-SEC-02: full history scan
+    # OSS-SEC-02: full history scan.
+    # Pass --config explicitly: gitleaks resolves config relative to --source,
+    # which is correct here (project root), but being explicit avoids any
+    # ambiguity with CWD vs source directory resolution across gitleaks versions.
+    _history_args: list[str] = [
+        "detect",
+        "--source",
+        str(ctx.target),
+        "--log-opts=--all",
+        "--report-format",
+        "sarif",
+        "--report-path",
+        str(ctx.iw_dir / "gitleaks-history.sarif"),
+        "--exit-code",
+        "0",
+    ]
+    _gl_config = ctx.path(".gitleaks.toml")
+    if _gl_config.exists():
+        _history_args += ["--config", str(_gl_config)]
     out.append(
         _gitleaks_scan(
             ctx,
             check_id="OSS-SEC-02",
             scope="history",
-            args=[
-                "detect",
-                "--source",
-                str(ctx.target),
-                "--log-opts=--all",
-                "--report-format",
-                "sarif",
-                "--report-path",
-                str(ctx.iw_dir / "gitleaks-history.sarif"),
-                "--exit-code",
-                "0",
-            ],
+            args=_history_args,
         )
     )
 
@@ -108,7 +102,110 @@ def secrets(ctx: Context) -> list[Finding]:
     return out
 
 
-def _gitleaks_scan(ctx: Context, check_id: str, scope: str, args: list[str]) -> Finding:
+def _gitleaks_scan_tracked(ctx: Context) -> Finding:
+    """OSS-SEC-01: scan only git-tracked files at HEAD via git archive.
+
+    Exports the committed tree to a temp directory so gitignored files
+    (e.g. .env.dev with live credentials) are never passed to gitleaks.
+    The project's .gitleaks.toml is picked up automatically because gitleaks
+    is run with cwd=ctx.target.
+    """
+    if not ctx.has_tool("gitleaks"):
+        return Finding(
+            id="OSS-SEC-01",
+            severity=Severity.MUST,
+            status=Status.SKIP,
+            domain=DOMAIN,
+            summary="gitleaks unavailable — tracked-files secrets scan skipped",
+            remediation="Install gitleaks: bash .claude/skills/iw-oss-publish/scripts/install_tools.sh",
+            tool="gitleaks",
+        )
+
+    head = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=ctx.target,
+        capture_output=True,
+        text=True,
+    )
+    if head.returncode != 0:
+        return Finding(
+            id="OSS-SEC-01",
+            severity=Severity.MUST,
+            status=Status.SKIP,
+            domain=DOMAIN,
+            summary="No HEAD commit — tracked-files scan skipped",
+            tool="gitleaks",
+        )
+
+    sarif_path = str(ctx.iw_dir / "gitleaks-tree.sarif")
+
+    try:
+        archive = subprocess.run(
+            ["git", "archive", "HEAD"],
+            cwd=ctx.target,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+    except (subprocess.SubprocessError, FileNotFoundError) as exc:
+        return Finding(
+            id="OSS-SEC-01",
+            severity=Severity.MUST,
+            status=Status.SKIP,
+            domain=DOMAIN,
+            summary="git archive failed — tracked-files scan skipped",
+            detail=str(exc),
+            tool="gitleaks",
+        )
+
+    if archive.returncode != 0:
+        return Finding(
+            id="OSS-SEC-01",
+            severity=Severity.MUST,
+            status=Status.SKIP,
+            domain=DOMAIN,
+            summary="git archive error — tracked-files scan skipped",
+            tool="gitleaks",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="iw-oss-sec01-") as tmpdir:
+        with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
+            tar.extractall(tmpdir)
+
+        # gitleaks resolves config relative to --source, not CWD, so we must
+        # pass --config explicitly; otherwise the project's .gitleaks.toml is ignored.
+        args: list[str] = [
+            "detect",
+            "--no-git",
+            "--source",
+            tmpdir,
+            "--report-format",
+            "sarif",
+            "--report-path",
+            sarif_path,
+            "--exit-code",
+            "0",
+        ]
+        gl_config = ctx.path(".gitleaks.toml")
+        if gl_config.exists():
+            args += ["--config", str(gl_config)]
+
+        return _gitleaks_scan(
+            ctx,
+            check_id="OSS-SEC-01",
+            scope="tracked files (HEAD)",
+            args=args,
+            normalise_against=tmpdir,
+        )
+
+
+def _gitleaks_scan(
+    ctx: Context,
+    check_id: str,
+    scope: str,
+    args: list[str],
+    normalise_against: str | Path | None = None,
+) -> Finding:
     if not ctx.has_tool("gitleaks"):
         return Finding(
             id=check_id,
@@ -141,7 +238,7 @@ def _gitleaks_scan(ctx: Context, check_id: str, scope: str, args: list[str]) -> 
         )
 
     sarif_path = args[args.index("--report-path") + 1] if "--report-path" in args else None
-    evidence = _build_evidence_from_sarif(sarif_path, target=ctx.target)
+    evidence = _build_evidence_from_sarif(sarif_path, target=normalise_against or ctx.target)
     leaks = evidence["finding_count"]
 
     if leaks == 0:
