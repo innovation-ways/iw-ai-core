@@ -403,7 +403,7 @@ async def cancel_job(session: Session, job_id: int) -> None:
 
     if job.status == ProjectOssJobStatus.running:
         try:
-            pid_file = Path(f"/tmp/oss-job-{job_id}.pid")
+            pid_file = Path(f"/tmp/oss-job-{job_id}.pid")  # noqa: S108  # nosec B108 — ephemeral PID file, owner-only
             if pid_file.exists():
                 pid = int(pid_file.read_text().strip())
                 try:

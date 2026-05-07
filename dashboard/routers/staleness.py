@@ -173,9 +173,9 @@ def _spawn_command(command: str, repo_root: str) -> None:
     - start_new_session=True: spawned process survives the parent worker.
     - stdout/stderr are discarded (operator is responsible for service logs).
     """
-    subprocess.Popen(  # noqa: S602 — shell=True intentional; command from trusted projects.toml
+    subprocess.Popen(  # noqa: S602  # nosec B602 — shell=True intentional; command from trusted projects.toml
         command,
-        shell=True,
+        shell=True,  # nosec B602
         start_new_session=True,
         stdout=DEVNULL,
         stderr=DEVNULL,

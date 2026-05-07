@@ -243,9 +243,9 @@ class DocJobPoller:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_file = log_dir / f"doc_job_{job.id}.log"
 
-        proc = subprocess.Popen(  # noqa: S602
+        proc = subprocess.Popen(  # noqa: S602  # nosec B602
             cmd,
-            shell=True,
+            shell=True,  # nosec B602
             cwd=worktree_path,
             stdout=log_file.open("w"),
             stderr=subprocess.STDOUT,

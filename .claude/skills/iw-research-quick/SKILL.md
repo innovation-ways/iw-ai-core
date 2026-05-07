@@ -3,9 +3,13 @@ name: iw-research-quick
 version: "1.0.0"
 description: >
   Fast inline research using web search and fetch — answers directly in the conversation
-  without saving a document or allocating an ID. Use when asked a quick research question,
-  "what is X", "is Y still maintained", "compare A vs B briefly", or "/iw-research-quick".
-  For research that should be filed as a project document, use /iw-research instead.
+  without saving a document or allocating an ID. Only use this skill when the user
+  EXPLICITLY writes "quick research", "/iw-research-quick", or a single trivial one-liner
+  fact-check they have explicitly said should not be filed (e.g., "is Y still maintained?").
+  Bare phrases like "do a research", "research X", "investigate Y", "deep research",
+  "online research", or "evaluate options" must route to /iw-research, NOT this skill —
+  the user expects every real research request to be filed as a Research document in the
+  IW AI Core database. When in doubt, choose /iw-research.
 allowed-tools: WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__query-docs
 argument-hint: <question or topic>
 ---

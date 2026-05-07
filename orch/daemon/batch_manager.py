@@ -857,9 +857,9 @@ class BatchManager:
         before draining pipes, preventing the FD-inheritance deadlock that
         blocks the daemon thread indefinitely.
         """
-        with subprocess.Popen(  # noqa: S602
+        with subprocess.Popen(  # noqa: S602  # nosec B602
             command,
-            shell=True,
+            shell=True,  # nosec B602
             cwd=worktree_path,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -1186,9 +1186,9 @@ class BatchManager:
         proc_env = agent_env
 
         with log_file.open("w") as log_fh:
-            proc = subprocess.Popen(  # noqa: S602
+            proc = subprocess.Popen(  # noqa: S602  # nosec B602
                 command,
-                shell=True,
+                shell=True,  # nosec B602
                 cwd=worktree_path,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,

@@ -320,9 +320,9 @@ def _run_command(cmd: str, cwd: Path, project_id: str) -> str | None:
     """Run a shell command. Returns an error string on failure, None on success."""
     logger.info("[%s] Running post-archive command: %s", project_id, cmd)
     try:
-        result = subprocess.run(  # noqa: S602
+        result = subprocess.run(  # noqa: S602  # nosec B602
             cmd,
-            shell=True,
+            shell=True,  # nosec B602
             cwd=str(cwd),
             capture_output=True,
             text=True,
