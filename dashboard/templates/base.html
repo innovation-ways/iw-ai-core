@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="light dark" />
   <title>{% block title %}IW AI Core{% endblock %} — IW AI Core</title>
+  {% block page_help_slug %}{% endblock %}
 
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
 
@@ -28,6 +29,10 @@
   <script src="/static/vendor/htmx/htmx.min.js" defer></script>
   <!-- htmx json-enc extension — serialises forms as JSON instead of url-encoded -->
   <script src="/static/vendor/htmx/json-enc.js" defer></script>
+
+  <!-- Help system (tours + popover) — driver.js is lazy-loaded on first tour start -->
+  <script src="/static/help/tours.js" defer></script>
+  <script src="/static/help/help.js" defer></script>
 
   <!-- Highlight.js, DOMPurify, Mermaid, streaming-markdown loaded lazily per-page via per-page includes.
        See templates/components/libs/*.html for the include snippets. -->
@@ -181,6 +186,11 @@
                     text-foreground placeholder:text-muted-foreground
                     focus:outline-none focus:ring-2 focus:ring-ring" />
       <div id="global-search-results" class="absolute left-3 sm:left-6 top-full z-50 w-full max-w-md"></div>
+      {% set _help_slug = self.page_help_slug() %}
+      {% if _help_slug %}
+        {% from "macros/help_button.html" import help_button %}
+        <div class="ml-auto flex-shrink-0">{{ help_button(_help_slug) }}</div>
+      {% endif %}
     </div>
 
     <!-- Page content area -->

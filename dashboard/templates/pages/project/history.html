@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% from "components/status_badge.html" import status_badge %}
+{% from "macros/empty_state.html" import empty_state %}
 
 {% block title %}History — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}history{% endblock %}
 
 {% block content %}
 <div class="mb-6">
@@ -129,11 +131,15 @@
           </td>
         </tr>
       {% else %}
-        <tr class="empty-row">
-          <td colspan="6" class="px-4 py-8 text-center text-muted-foreground text-sm">
-            No history found{% if type_filter or status_filter %} for the selected filters{% endif %}.
-          </td>
-        </tr>
+        {{ empty_state(
+             slug="history",
+             heading="No completed items yet",
+             body="Once items merge to main, they show up here with a link to their final commit.",
+             primary_label="How execution works →",
+             primary_href="/docs/IW_AI_Core_Architecture.md",
+             secondary_label="",
+             secondary_href=""
+           ) }}
       {% endfor %}
     </tbody>
   </table>

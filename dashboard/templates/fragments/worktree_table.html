@@ -7,7 +7,7 @@
   {% for err in prune_errors %}<p class="font-mono">{{ err }}</p>{% endfor %}
 </div>
 {% endif %}
-<div id="worktree-table"
+<div id="worktree-table" data-tour="worktrees-table"
      hx-get="/system/worktrees/table"
      hx-trigger="every 30s, worktree-committed from:body"
      hx-swap="outerHTML">

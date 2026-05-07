@@ -1,0 +1,27 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Configuration</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>Configuration shows all runtime environment variables and feature flags loaded by the IW AI Core platform — both the global orch config and per-project overrides.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Inspect the current environment and its effective values</li>
+    <li>Understand which values come from .env vs. project TOML vs. defaults</li>
+    <li>Validate that critical settings (DB host, polling interval, stall threshold) are as expected</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Daemon</dt><dd>The background orchestration process — reads config from .env and projects.toml.</dd>
+    <dt>Worktree</dt><dd>Per-run git worktree; each gets its own per-worktree DB when the project has ai-dev/iw-config/.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="/docs/IW_AI_Core_Tech_Stack.md">Open full docs →</a>
+  </footer>
+</section>

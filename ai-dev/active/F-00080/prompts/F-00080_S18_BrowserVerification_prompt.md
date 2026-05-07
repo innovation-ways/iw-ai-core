@@ -100,14 +100,14 @@ The stack's PostgreSQL is seeded from the production orchestration DB via `pg_du
 
 ### V5: `✓ tour seen` indicator appears after a completed/dismissed tour
 
-1. Reload the queue page.
+1. Reload the queue page with `playwright-cli reload` (NOT `playwright-cli open`). `open` launches a fresh Chromium with an in-memory user-data-dir and wipes localStorage — `iw.tour.queue.completedAt` would silently disappear and the V would falsely fail. `reload` reuses the existing browser session.
 2. Run `playwright-cli snapshot`.
 3. **Verify:** the `?` button now carries `data-tour-seen="true"` (you can read element attributes from the snapshot output) and the `✓` glyph is visible next to or inside the button.
 4. **Screenshot:** `ai-dev/active/F-00080/evidences/post/F-00080_v5_tour_seen_indicator.png`.
 
 ### V6: Empty list view shows the new empty-state markup
 
-1. Navigate to a list page that is currently empty in the seeded DB. Pick the most-likely-empty page from this list (try in order until you find one that renders empty): `/project/<id>/jobs` (jobs is often empty), then `/project/<id>/tests`, then `/project/<id>/quality`, then `/project/<id>/research`. If all are populated, fail with `ENV_DATA_MISSING:` and propose adding an `e2e_fixtures/001_emptiness.py` file that deletes all rows for the chosen list.
+1. Navigate to `/project/iw-ai-core/jobs` — the `e2e_fixtures/001_emptiness.py` fixture empties this page in the E2E DB. (Use `playwright-cli goto`, NOT `playwright-cli open`, so the V5 localStorage flag is preserved for V9.) If the page is unexpectedly populated, fail with `ENV_DATA_MISSING:` — it means the fixture was added after the stack was provisioned and the daemon needs to re-provision.
 2. Run `playwright-cli snapshot`.
 3. **Verify:** the rendered HTML contains `data-empty-state="<slug>"`, an `<h3>` heading, a `<p>` body, and an `<a class="empty-state__cta-primary">` link.
 4. **Screenshot:** `ai-dev/active/F-00080/evidences/post/F-00080_v6_empty_state.png`.
@@ -126,7 +126,7 @@ The stack's PostgreSQL is seeded from the production orchestration DB via `pg_du
 
 ### V9: No regressions on adjacent flows
 
-1. Navigate to `/project/<id>/dashboard` (the project home, OUT of scope for this feature) and verify it still renders correctly with NO `?` button (out of scope confirms the slug-block mechanism is opt-in).
+1. Navigate to `/project/<id>/` (the project home, OUT of scope for this feature). NOTE: the project home is mounted at `/project/<id>/`, NOT `/project/<id>/dashboard` — the latter route does not exist and will 404. Use `playwright-cli goto`, not `playwright-cli open`, so the localStorage flag set in V5 is preserved. Verify the page still renders correctly with NO `?` button (out of scope confirms the slug-block mechanism is opt-in).
 2. Click an existing primary action on the queue page (e.g. select an item, click a primary CTA). Verify it still works.
 3. Verify no new console errors appear on any page visited during V1..V8.
 4. **Screenshot:** `ai-dev/active/F-00080/evidences/post/F-00080_v9_no_regressions.png`.

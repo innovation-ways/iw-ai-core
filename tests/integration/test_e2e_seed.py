@@ -98,12 +98,18 @@ def test_e2e_seed_runs_against_fresh_db(
         proj = s.get(Project, "iw-ai-core")
         assert proj is not None, "seed() must create the iw-ai-core project"
 
-        # At least one fixture must have produced batch_item rows — the only
+        # At least one fixture must have produced StepRun rows — the only
         # way to exercise the FK ordering path is to actually run a fixture
-        # that touches BatchItem.
-        bi_count = s.execute(select(BatchItem).where(BatchItem.project_id == "iw-ai-core")).all()
-        assert bi_count, (
-            "no BatchItem rows after seed() — either every fixture has been "
+        # that inserts child rows (StepRun -> WorkflowStep -> WorkItem).
+        from orch.db.models import StepRun, WorkflowStep
+
+        step_run_count = s.execute(
+            select(StepRun).where(StepRun.step_id.in_(
+                select(WorkflowStep.id).where(WorkflowStep.project_id == "iw-ai-core")
+            ))
+        ).all()
+        assert step_run_count, (
+            "no StepRun rows after seed() — either every fixture has been "
             "archived (this regression net is then defunct) or fixtures are "
             "silently skipping their inserts"
         )
