@@ -236,7 +236,7 @@ class DocJobPoller:
 
         skill = self._select_skill(doc.editorial_category)
 
-        cmd = self._build_agent_command(job, doc, project, skill)
+        cmd = self._build_agent_command(job, project, skill)
         worktree_path = project.repo_root
 
         log_dir = Path(worktree_path) / "ai-dev" / "logs"
@@ -289,32 +289,16 @@ class DocJobPoller:
     def _build_agent_command(
         self,
         job: DocGenerationJob,
-        doc: ProjectDoc,
         project: Project,
         skill: str,
     ) -> list[str]:
         """Build the agent launch command following the project's executor pattern."""
-        doc_update_cmd = (
-            f"iw doc-update {project.id} {doc.doc_id} "
-            f"--content-file - --generated-by skill:{skill} --trigger-reason job:{job.id}"
-        )
-        on_complete_cmd = f"iw doc-job-done {job.id}"
-        on_error_cmd = f"iw doc-job-done {job.id} --error '{{error}}'"
-
         cli_tool = project.config.get("cli_tool", "opencode") if project.config else "opencode"
 
         if cli_tool == "opencode":
-            # opencode run does not support --on-complete/--on-error;
-            # the skill is responsible for calling `iw doc-job-done` on completion.
-            cmd = f'opencode run "/doc-job {job.id}" --dangerously-skip-permissions'
+            cmd = f'opencode run "/{skill} doc-job {job.id}" --dangerously-skip-permissions'
         else:
-            cmd = (
-                f'claude -p "/execute {job.id}" '
-                f"--permission-mode bypassPermissions "
-                f'--output-command "{doc_update_cmd}" '
-                f'--on-complete "{on_complete_cmd}" '
-                f'--on-error "{on_error_cmd}"'
-            )
+            cmd = f'claude -p "/{skill} doc-job {job.id}" --permission-mode bypassPermissions'
 
         return [cmd]
 

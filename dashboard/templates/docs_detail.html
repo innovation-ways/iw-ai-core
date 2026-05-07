@@ -81,19 +81,6 @@
       {% endif %}
     </div>
 
-    {# IDE #}
-    <button id="ide-tab-btn"
-            hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/ide"
-            hx-target="#ide-panel"
-            hx-swap="innerHTML"
-            hx-trigger="click once"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border bg-card text-foreground rounded-md text-xs font-medium hover:bg-muted transition-colors">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
-      </svg>
-      IDE
-    </button>
-
     {# Version History #}
     <button hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/versions"
             hx-target="#meta-drawer"
@@ -170,14 +157,16 @@
       </svg>
       PDF
     </button>
-    <button id="ide-tab-btn"
+    <button role="tab" aria-selected="false" aria-controls="view-ide"
+            id="tab-ide" onclick="switchDocTab('ide')"
             hx-get="/project/{{ current_project.id }}/api/docs/{{ doc.doc_id }}/ide"
-            hx-target="#ide-panel"
+            hx-target="#view-ide"
             hx-swap="innerHTML"
             hx-trigger="click once"
-            role="tab"
-            aria-selected="false"
             class="doc-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+      </svg>
       IDE
     </button>
   </div>
@@ -253,7 +242,7 @@
     </div>
 
     {# IDE tab content panel (lazy-loaded via htmx) #}
-    <div id="ide-panel" class="hidden px-4 py-6"></div>
+    <div id="view-ide" class="hidden px-4 py-6"></div>
 
   {% else %}
 
@@ -279,12 +268,9 @@
 
 </div>
 
-{# ── IDE Panel (lazy-loaded via htmx) ── #}
-<div id="ide-panel" class="mt-4"></div>
-
 <script>
 function switchDocTab(mode) {
-  ['markdown','html','pdf'].forEach(function(v) {
+  ['markdown','html','pdf','ide'].forEach(function(v) {
     var panel = document.getElementById('view-' + v);
     var tab   = document.getElementById('tab-' + v);
     if (!panel || !tab) return;

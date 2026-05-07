@@ -286,18 +286,18 @@ class TestLogStream:
             doc_job.status = JobStatus.completed
             db_session.commit()
 
-            resp = client.get(
+            with client.stream(
+                "GET",
                 f"/project/{test_project.id}/jobs/doc_generation/{doc_job.id}/log/stream",
-                stream=True,
-            )
-            assert resp.status_code == 200
-            assert "text/event-stream" in resp.headers["content-type"]
+            ) as resp:
+                assert resp.status_code == 200
+                assert "text/event-stream" in resp.headers["content-type"]
 
-            lines = []
-            for chunk in resp.iter_text():
-                for event in chunk.split("\n"):
-                    if event.startswith("data:"):
-                        lines.append(event[5:].strip())
+                lines = []
+                for chunk in resp.iter_text():
+                    for event in chunk.split("\n"):
+                        if event.startswith("data:"):
+                            lines.append(event[5:].strip())
 
             assert "line one" in lines or len(lines) >= 1
 
@@ -326,20 +326,20 @@ class TestLogStream:
             doc_job.status = JobStatus.running
             db_session.commit()
 
-            resp = client.get(
+            with client.stream(
+                "GET",
                 f"/project/{test_project.id}/jobs/doc_generation/{doc_job.id}/log/stream",
-                stream=True,
-            )
-            assert resp.status_code == 200
+            ) as resp:
+                assert resp.status_code == 200
 
-            # Read for a few seconds looking for ping events
-            start = time.time()
-            for chunk in resp.iter_text():
-                if time.time() - start > 5:
-                    break
-                if "event:ping" in chunk or "ping" in chunk:
-                    break
-            # Note: smoke test for heartbeat - may not always catch within 5s
+                # Read for a few seconds looking for ping events
+                start = time.time()
+                for chunk in resp.iter_text():
+                    if time.time() - start > 5:
+                        break
+                    if "event:ping" in chunk or "ping" in chunk:
+                        break
+                # Note: smoke test for heartbeat - may not always catch within 5s
 
     def test_log_stream_uses_uuid_not_public_id(
         self,

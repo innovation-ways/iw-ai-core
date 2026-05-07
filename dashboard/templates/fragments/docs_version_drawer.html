@@ -1,20 +1,10 @@
-<div class="bg-card border border-border rounded-lg overflow-hidden transition-all duration-200"
-     x-data="{ open: true, selected: [] }"
-     x-show="open"
-     x-transition:enter="transition ease-out duration-200"
-     x-transition:enter-start="opacity-0 -translate-y-2"
-     x-transition:enter-end="opacity-100 translate-y-0"
-     x-transition:leave="transition ease-in duration-150"
-     x-transition:leave-start="opacity-100 translate-y-0"
-     x-transition:leave-end="opacity-0 -translate-y-2">
+<div id="version-drawer-inner" class="bg-card border border-border rounded-lg overflow-hidden">
   <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
     <h3 class="text-sm font-semibold text-foreground">Version History</h3>
-    <button hx-get="/project/{{ project_id }}/api/docs/{{ doc_id }}/versions"
-            hx-target="#version-drawer"
-            hx-swap="innerHTML"
-            onclick="document.getElementById('version-drawer').innerHTML = ''"
-            class="p-1 text-muted-foreground hover:text-foreground rounded transition-colors">
+    <button onclick="document.getElementById('meta-drawer').innerHTML = ''"
+            class="p-1 text-muted-foreground hover:text-foreground rounded transition-colors"
+            aria-label="Close">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
       </svg>
@@ -24,18 +14,16 @@
   <!-- Version List -->
   <div class="max-h-80 overflow-y-auto">
     {% if versions %}
-      <ul class="divide-y divide-border">
+      <ul class="divide-y divide-border" id="version-list">
         {% for version in versions %}
-          <li class="px-4 py-3 hover:bg-muted/20 transition-colors"
-              :class="{ 'bg-primary/5': selected.includes({{ version.version }}) }">
+          <li class="px-4 py-3 hover:bg-muted/20 transition-colors" id="vrow-{{ version.version }}">
             <div class="flex items-start justify-between gap-2 mb-1">
               <div class="flex items-center gap-2">
                 <input type="checkbox"
                        id="v-select-{{ version.version }}"
                        value="{{ version.version }}"
-                       @change="selected = selected.includes({{ version.version }}) ? selected.filter(v => v !== {{ version.version }}) : [...selected, {{ version.version }}].sort((a,b) => a - b)"
+                       onchange="versionSelectionChanged()"
                        class="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                       :disabled="selected.length >= 2 && !selected.includes({{ version.version }})"
                        aria-label="Select version {{ version.version }}">
                 <label for="v-select-{{ version.version }}" class="cursor-pointer">
                   <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-primary/10 text-primary font-mono cursor-pointer">
@@ -62,11 +50,9 @@
           </li>
         {% endfor %}
       </ul>
-      <!-- Compare Button -->
-      <div class="px-4 py-3 border-t border-border bg-muted/20"
-           x-show="selected.length === 2"
-           x-transition>
-        <button @click="const [v1, v2] = selected; htmx.ajax('GET', '/api/project/{{ project_id }}/docs/{{ doc_id }}/diff?v1=' + v1 + '&v2=' + v2, {target: '#diff-viewer', swap: 'innerHTML'})"
+      <!-- Compare Button (hidden until 2 selected) -->
+      <div id="compare-bar" class="px-4 py-3 border-t border-border bg-muted/20 hidden">
+        <button onclick="triggerVersionCompare()"
                 class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
@@ -74,7 +60,7 @@
           Compare Selected Versions
         </button>
         <p class="text-xs text-muted-foreground text-center mt-1">
-          Comparing v<span x-text="selected[0]"></span> → v<span x-text="selected[1]"></span>
+          Comparing v<span id="cmp-v1"></span> → v<span id="cmp-v2"></span>
         </p>
       </div>
     {% else %}
@@ -89,10 +75,36 @@
 </div>
 
 <script>
-function resetVersionSelection() {
-  const checkboxes = document.querySelectorAll('#version-drawer input[type="checkbox"]');
-  checkboxes.forEach(cb => cb.checked = false);
-  const diffViewer = document.getElementById('diff-viewer');
-  if (diffViewer) diffViewer.innerHTML = '';
-}
+(function() {
+  var projectId = {{ project_id | tojson }};
+  var docId = {{ doc_id | tojson }};
+
+  function getSelected() {
+    var checked = document.querySelectorAll('#version-list input[type="checkbox"]:checked');
+    return Array.from(checked).map(function(cb) { return parseInt(cb.value, 10); }).sort(function(a,b){return a-b;});
+  }
+
+  window.versionSelectionChanged = function() {
+    var selected = getSelected();
+    var all = document.querySelectorAll('#version-list input[type="checkbox"]');
+    all.forEach(function(cb) {
+      cb.disabled = selected.length >= 2 && !cb.checked;
+    });
+    var bar = document.getElementById('compare-bar');
+    if (selected.length === 2) {
+      document.getElementById('cmp-v1').textContent = selected[0];
+      document.getElementById('cmp-v2').textContent = selected[1];
+      bar.classList.remove('hidden');
+    } else {
+      bar.classList.add('hidden');
+    }
+  };
+
+  window.triggerVersionCompare = function() {
+    var selected = getSelected();
+    if (selected.length !== 2) return;
+    var url = '/project/' + projectId + '/api/docs/' + docId + '/diff?v1=' + selected[0] + '&v2=' + selected[1];
+    htmx.ajax('GET', url, {target: '#diff-viewer', swap: 'innerHTML'});
+  };
+})();
 </script>

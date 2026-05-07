@@ -351,7 +351,7 @@
         <button type="button"
                 class="text-xs px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 flex-shrink-0"
                 data-paste-prompt="{{ f.paste_prompt }}"
-                onclick="navigator.clipboard.writeText(this.dataset.pastePrompt).then(() => { this.textContent = 'Copied'; setTimeout(() => this.textContent = 'Copy paste prompt', 1500); })">
+                onclick="window.iwClipboard.copy(this.dataset.pastePrompt, this).catch(function(){})">
           Copy paste prompt
         </button>
       </div>

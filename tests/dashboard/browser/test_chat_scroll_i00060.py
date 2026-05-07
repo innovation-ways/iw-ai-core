@@ -80,6 +80,22 @@ def _eval(session: str, code: str) -> str:
     return value
 
 
+def _eval_int(session: str, code: str, default: int = 0) -> int:
+    """Evaluate JS that returns a numeric value and coerce to int.
+
+    DOM measurements such as `getBoundingClientRect()` and (in some browsers)
+    `scrollTop` return subpixel floats. `int("475.921875")` raises ValueError,
+    so go through `float()` first.
+    """
+    raw = _eval(session, code)
+    if raw in ("", "TIMEOUT", "undefined", "null"):
+        return default
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        return default
+
+
 def _run(session: str, *args: str) -> subprocess.CompletedProcess:
     """Run playwright-cli with the given session and arguments."""
     cmd = ["playwright-cli", f"-s={session}"] + list(args)
@@ -163,42 +179,32 @@ class TestAC1SubmitScrollsUserBubbleIntoView:
         # Scroll to top so the anchor is out of view.
         _eval(session, "document.getElementById('chat-messages').scrollTop = 0")
 
-        scroll_top_before = int(
-            _eval(session, "document.getElementById('chat-messages').scrollTop") or 0
-        )
+        scroll_top_before = _eval_int(session, "document.getElementById('chat-messages').scrollTop")
 
         # Send the question we care about.
         _fill_and_submit(session, "the question that must be in view")
 
         # IMMEDIATELY after submit the container must have scrolled so the
         # user bubble is inside the viewport.
-        container_bottom = int(
-            _eval(
-                session,
-                "document.getElementById('chat-messages').getBoundingClientRect().bottom",
-            )
+        container_bottom = _eval_int(
+            session,
+            "document.getElementById('chat-messages').getBoundingClientRect().bottom",
         )
-        user_bubble_bottom = int(
-            _eval(
-                session,
-                "const bs = document.querySelectorAll('article[data-role=\"user\"]'); "
-                "if (!bs.length) return -1; "
-                "return bs[bs.length - 1].getBoundingClientRect().bottom;",
-            )
+        user_bubble_bottom = _eval_int(
+            session,
+            "const bs = document.querySelectorAll('article[data-role=\"user\"]'); "
+            "if (!bs.length) return -1; "
+            "return bs[bs.length - 1].getBoundingClientRect().bottom;",
         )
-        user_bubble_top = int(
-            _eval(
-                session,
-                "const bs = document.querySelectorAll('article[data-role=\"user\"]'); "
-                "if (!bs.length) return -1; "
-                "return bs[bs.length - 1].getBoundingClientRect().top;",
-            )
+        user_bubble_top = _eval_int(
+            session,
+            "const bs = document.querySelectorAll('article[data-role=\"user\"]'); "
+            "if (!bs.length) return -1; "
+            "return bs[bs.length - 1].getBoundingClientRect().top;",
         )
-        container_top = int(
-            _eval(
-                session,
-                "document.getElementById('chat-messages').getBoundingClientRect().top",
-            )
+        container_top = _eval_int(
+            session,
+            "document.getElementById('chat-messages').getBoundingClientRect().top",
         )
 
         assert user_bubble_bottom > 0, (
@@ -240,31 +246,29 @@ class TestAC2EmptyAssistantBubbleCompact:
         # Poll for the assistant bubble height before the first token arrives.
         height_px = None
         for _ in range(20):  # up to 1 second
-            h = int(
-                _eval(
+            h = _eval_int(
+                session,
+                "const bs = document.querySelectorAll("
+                "  'article[data-role=\"assistant\"]'"
+                "); "
+                "if (!bs.length) return -1; "
+                "const last = bs[bs.length - 1]; "
+                "const body = last.querySelector('.chat-message-body'); "
+                "const isEmpty = !body || body.textContent.trim() === ''; "
+                "if (isEmpty) return last.getBoundingClientRect().height; "
+                "return -2;",
+                default=-1,
+            )
+            if h == -2:
+                # Token already arrived. Verify the bubble is NOT forced to 50vh.
+                h = _eval_int(
                     session,
                     "const bs = document.querySelectorAll("
                     "  'article[data-role=\"assistant\"]'"
                     "); "
                     "if (!bs.length) return -1; "
-                    "const last = bs[bs.length - 1]; "
-                    "const body = last.querySelector('.chat-message-body'); "
-                    "const isEmpty = !body || body.textContent.trim() === ''; "
-                    "if (isEmpty) return last.getBoundingClientRect().height; "
-                    "return -2;",
-                )
-            )
-            if h == -2:
-                # Token already arrived. Verify the bubble is NOT forced to 50vh.
-                h = int(
-                    _eval(
-                        session,
-                        "const bs = document.querySelectorAll("
-                        "  'article[data-role=\"assistant\"]'"
-                        "); "
-                        "if (!bs.length) return -1; "
-                        "return bs[bs.length - 1].getBoundingClientRect().height;",
-                    )
+                    "return bs[bs.length - 1].getBoundingClientRect().height;",
+                    default=-1,
                 )
                 assert h < 300, (
                     f"I-00060 AC2 bug: assistant bubble is {h}px after token arrived — "
@@ -319,7 +323,7 @@ class TestAC3ConditionalFollowScroll:
         time.sleep(0.5)
 
         # The container must still be scrolled to top.
-        scroll_top = int(_eval(session, "document.getElementById('chat-messages').scrollTop") or 0)
+        scroll_top = _eval_int(session, "document.getElementById('chat-messages').scrollTop")
         assert scroll_top == 0, (
             f"I-00060 AC3 regression: user scrolled away but container auto-scrolled "
             f"back (scrollTop={scroll_top}, expected 0). "
@@ -416,23 +420,20 @@ class TestPhaseStripBubbleGrowth:
         # Wait long enough for a phase event to arrive (~1-2s into stream).
         time.sleep(2)
 
-        assistant_count = int(
-            _eval(
-                session,
-                "document.querySelectorAll('article[data-role=\"assistant\"]').length",
-            )
+        assistant_count = _eval_int(
+            session,
+            "document.querySelectorAll('article[data-role=\"assistant\"]').length",
         )
         assert assistant_count > 0, "No assistant bubble found after submit"
 
-        bubble_height = int(
-            _eval(
-                session,
-                "const bs = document.querySelectorAll("
-                "  'article[data-role=\"assistant\"]'"
-                "); "
-                "if (!bs.length) return -1; "
-                "return bs[bs.length - 1].getBoundingClientRect().height;",
-            )
+        bubble_height = _eval_int(
+            session,
+            "const bs = document.querySelectorAll("
+            "  'article[data-role=\"assistant\"]'"
+            "); "
+            "if (!bs.length) return -1; "
+            "return bs[bs.length - 1].getBoundingClientRect().height;",
+            default=-1,
         )
 
         # After phase text, height may legitimately exceed 48px.

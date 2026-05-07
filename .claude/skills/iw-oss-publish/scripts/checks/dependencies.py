@@ -8,6 +8,7 @@ from pathlib import Path
 
 from lib.context import Context
 from lib.registry import register
+from lib.results import RESULT_CAP, build_results_evidence
 from lib.types import Finding, Severity, Status
 
 DOMAIN = "dependencies"
@@ -121,10 +122,17 @@ def dependency_checks(ctx: Context) -> list[Finding]:
 
     # OSS-DEP-03, OSS-DEP-04: vulnerabilities via grype
     if spdx_path.exists() and ctx.has_tool("grype"):
-        counts = _grype_scan(ctx, spdx_path)
-        if counts:
+        counts, vuln_records = _grype_scan(ctx, spdx_path)
+        if counts is not None:
             critical = counts.get("Critical", 0)
             high = counts.get("High", 0)
+            critical_records = [r for r in vuln_records if r["_severity"] == "Critical"]
+            high_records = [r for r in vuln_records if r["_severity"] == "High"]
+
+            # Strip internal _severity key before passing to evidence
+            def _strip(records: list[dict]) -> list[dict]:
+                return [{k: v for k, v in r.items() if k != "_severity"} for r in records]
+
             out.append(
                 Finding(
                     id="OSS-DEP-03",
@@ -132,7 +140,17 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                     status=Status.PASS if critical == 0 else Status.FAIL,
                     domain=DOMAIN,
                     summary=f"Critical vulnerabilities: {critical}",
-                    detail=json.dumps(counts, indent=2) if critical else "",
+                    detail=_format_vuln_detail(critical_records) if critical else "",
+                    evidence=build_results_evidence(_strip(critical_records), total=critical)
+                    if critical
+                    else {},
+                    remediation=(
+                        "Upgrade the affected package(s) to the fix version shown above, "
+                        "or replace with a functionally equivalent alternative. "
+                        "Regenerate the SBOM and re-run the check to confirm the count reaches zero."
+                    )
+                    if critical
+                    else None,
                     tool="grype",
                     auto_apply_safe=False,
                 )
@@ -144,7 +162,16 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                     status=Status.PASS if high == 0 else Status.FAIL,
                     domain=DOMAIN,
                     summary=f"High vulnerabilities: {high}",
-                    detail=json.dumps(counts, indent=2) if high else "",
+                    detail=_format_vuln_detail(high_records) if high else "",
+                    evidence=build_results_evidence(_strip(high_records), total=high)
+                    if high
+                    else {},
+                    remediation=(
+                        "Upgrade the affected package(s) to the fix version shown above, "
+                        "or replace with a functionally equivalent alternative."
+                    )
+                    if high
+                    else None,
                     tool="grype",
                     auto_apply_safe=False,
                 )
@@ -183,11 +210,28 @@ def dependency_checks(ctx: Context) -> list[Finding]:
     return out
 
 
+_SBOM_EXCLUDES = [
+    # Dev-only dirs that are never shipped as part of the OSS release.
+    # .venv contains bundled binaries (e.g. Playwright's node runtime) that
+    # trigger false-positive vulnerability hits unrelated to the project code.
+    ".venv",
+    "venv",
+    ".tox",
+    ".nox",
+    "__pycache__",
+    ".worktrees",
+    ".iw",
+]
+
+
 def _generate_sbom(ctx: Context) -> list[Path]:
     if not ctx.has_tool("syft"):
         return []
     spdx = ctx.iw_dir / "sbom.spdx.json"
     cyclonedx = ctx.iw_dir / "sbom.cyclonedx.json"
+    exclude_flags: list[str] = []
+    for name in _SBOM_EXCLUDES:
+        exclude_flags += ["--exclude", f"./{name}"]
     try:
         r = subprocess.run(
             [
@@ -199,6 +243,7 @@ def _generate_sbom(ctx: Context) -> list[Path]:
                 "-o",
                 f"cyclonedx-json={cyclonedx}",
                 "-q",
+                *exclude_flags,
             ],
             capture_output=True,
             text=True,
@@ -216,6 +261,7 @@ def _generate_sbom(ctx: Context) -> list[Path]:
                     "-o",
                     f"cyclonedx-json={cyclonedx}",
                     "-q",
+                    *exclude_flags,
                 ],
                 capture_output=True,
                 text=True,
@@ -255,7 +301,7 @@ def _scan_sbom_licenses(spdx_path: Path, deny: set[str]) -> list[tuple[str, str]
     return flagged
 
 
-def _grype_scan(ctx: Context, spdx_path: Path) -> dict[str, int]:
+def _grype_scan(ctx: Context, spdx_path: Path) -> tuple[dict[str, int] | None, list[dict]]:
     try:
         r = subprocess.run(
             ["grype", f"sbom:{spdx_path}", "-o", "json"],
@@ -266,11 +312,44 @@ def _grype_scan(ctx: Context, spdx_path: Path) -> dict[str, int]:
         )
         data = json.loads(r.stdout) if r.stdout else {}
         counts: dict[str, int] = {}
-        for match in data.get("matches", []):
+        records: list[dict] = []
+        for match in data.get("matches", [])[:RESULT_CAP]:
+            vuln = match.get("vulnerability", {})
+            art = match.get("artifact", {})
+            sev = vuln.get("severity", "Unknown")
+            counts[sev] = counts.get(sev, 0) + 1
+            pkg = art.get("name", "?")
+            ver = art.get("version", "?")
+            cve = vuln.get("id", "?")
+            fix_versions = vuln.get("fix", {}).get("versions") or []
+            fix_str = ", ".join(fix_versions) if fix_versions else "none"
+            desc = (vuln.get("description") or "")[:120]
+            records.append(
+                {
+                    "file": f"{pkg}@{ver}",
+                    "line": None,
+                    "rule": cve,
+                    "snippet_masked": f"fix: {fix_str}" + (f" — {desc}" if desc else ""),
+                    "_severity": sev,
+                }
+            )
+        # Count remaining matches beyond the cap
+        all_matches = data.get("matches", [])
+        for match in all_matches[RESULT_CAP:]:
             sev = match.get("vulnerability", {}).get("severity", "Unknown")
             counts[sev] = counts.get(sev, 0) + 1
         # Persist for downstream tools / report
         (ctx.iw_dir / "grype-vulnerabilities.json").write_text(r.stdout or "{}", encoding="utf-8")
-        return counts
+        return counts, records
     except (subprocess.SubprocessError, FileNotFoundError, json.JSONDecodeError):
-        return {}
+        return None, []
+
+
+def _format_vuln_detail(records: list[dict]) -> str:
+    lines = []
+    for r in records:
+        pkg = r.get("file", "?")
+        cve = r.get("rule", "?")
+        snippet = r.get("snippet_masked", "")
+        lines.append(f"  {pkg}  {cve}  {snippet}")
+    return "\n".join(lines)
