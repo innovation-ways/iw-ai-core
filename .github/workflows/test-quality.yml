@@ -41,6 +41,12 @@ jobs:
       IW_CORE_DASHBOARD_HOST: "127.0.0.1"
       IW_CORE_DASHBOARD_PORT: "9900"
       IW_CORE_POLL_INTERVAL: "60"
+      IW_CORE_STALL_THRESHOLD: "300"
+      IW_CORE_PID_FILE: "/tmp/iw-orch-daemon.pid"
+      IW_CORE_ARCHIVE_DIR: "/tmp/iw-archive"
+      IW_CORE_ARCHIVE_TTL: "30"
+      IW_CORE_LOG_LEVEL: "INFO"
+      IW_CORE_LOG_FILE: "/tmp/iw-ai-core.log"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -87,6 +93,12 @@ jobs:
       IW_CORE_DASHBOARD_HOST: localhost
       IW_CORE_DASHBOARD_PORT: "9900"
       IW_CORE_POLL_INTERVAL: "60"
+      IW_CORE_STALL_THRESHOLD: "300"
+      IW_CORE_PID_FILE: "/tmp/iw-orch-daemon.pid"
+      IW_CORE_ARCHIVE_DIR: "/tmp/iw-archive"
+      IW_CORE_ARCHIVE_TTL: "30"
+      IW_CORE_LOG_LEVEL: "INFO"
+      IW_CORE_LOG_FILE: "/tmp/iw-ai-core.log"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -135,6 +147,12 @@ jobs:
       IW_CORE_DASHBOARD_HOST: localhost
       IW_CORE_DASHBOARD_PORT: "9900"
       IW_CORE_POLL_INTERVAL: "60"
+      IW_CORE_STALL_THRESHOLD: "300"
+      IW_CORE_PID_FILE: "/tmp/iw-orch-daemon.pid"
+      IW_CORE_ARCHIVE_DIR: "/tmp/iw-archive"
+      IW_CORE_ARCHIVE_TTL: "30"
+      IW_CORE_LOG_LEVEL: "INFO"
+      IW_CORE_LOG_FILE: "/tmp/iw-ai-core.log"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
