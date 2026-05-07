@@ -8,7 +8,9 @@ POST /code/qa with archived conversation_id creates a new conversation.
 from __future__ import annotations
 
 import asyncio
+import os
 import re
+import socket
 import uuid
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -18,6 +20,25 @@ from httpx import ASGITransport, AsyncClient
 
 # Import so orch.db.session is initialised before IW_CORE_TEST_CONTEXT takes effect
 from dashboard.app import create_app  # noqa: F401
+
+
+def _ollama_reachable() -> bool:
+    """Probe OLLAMA_HOST (default 127.0.0.1:11434). Cached via module-load."""
+    host_env = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434")
+    host, _, port_s = host_env.rpartition(":")
+    host = host or "127.0.0.1"
+    try:
+        port = int(port_s) if port_s else 11434
+    except ValueError:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+_OLLAMA_AVAILABLE = _ollama_reachable()
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -258,6 +279,10 @@ class TestArchiveEndpoint:
             f"Archive should be idempotent — first={archived_at_1}, second={archived_at_2}"
         )
 
+    @pytest.mark.skipif(
+        not _OLLAMA_AVAILABLE,
+        reason="POST /code/qa requires a code index built via Ollama embeddings",
+    )
     def test_post_qa_with_archived_creates_new_conversation(
         self,
         app: FastAPI,
