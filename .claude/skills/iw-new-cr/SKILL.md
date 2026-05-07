@@ -247,6 +247,16 @@ Then create the manifest:
 
 Add QV gate steps after CodeReview_Final (same as iw-new-incident pattern).
 
+### Migration validation (when the CR touches database schema)
+
+If the CR involves a new alembic migration (any change under `orch/db/migrations/versions/**`), insert a `migration-check` qv-gate step **immediately after the Database step** so a broken migration is caught before downstream agents inherit the wrong schema:
+
+```json
+{"step": "S{N}", "agent": "qv-gate", "gate": "migration-check", "command": "make migration-check", "description": "QV: Alembic migration round-trip + drift check"}
+```
+
+This runs `tests/integration/test_migrations_round_trip.py` against a fresh testcontainer: upgrade-from-base, schema parity vs `Base.metadata.create_all()`, and downgrade-then-upgrade round-trip. Missing this gate means model↔migration drift is only caught at `make test-integration` or at the merge-queue dry-run.
+
 When `browser_verification: true`, add a QV Browser step after all QV gates:
 ```json
 {"step": "S{N}", "agent": "qv-browser", "description": "QV: Browser verification — verify change end-to-end in isolated worktree stack", "prompt": "prompts/{ID}_S{N}_BrowserVerification_prompt.md"}

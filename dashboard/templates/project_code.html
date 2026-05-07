@@ -2,6 +2,7 @@
 {% from "macros/db_guard.html" import write_button_attrs %}
 
 {% block title %}Code — {{ current_project.display_name }}{% endblock %}
+{% block page_help_slug %}code{% endblock %}
 
 {% block head %}
 {{ super() }}
@@ -93,7 +94,7 @@
 </div>
 
 <!-- Job status panel (live updates) -->
-<div id="code-status-panel" class="mb-4">
+<div id="code-status-panel" data-tour="code-index" class="mb-4">
   {% if running_job %}
     {% include "fragments/code_job_status.html" %}
   {% elif last_completed_job and last_completed_recent %}
@@ -102,10 +103,11 @@
 </div>
 
 <!-- Reading surface (full width on mobile, 1fr on desktop) -->
-  <div id="page-body"
+<div id="page-body" data-tour="code-arch"
        class="grid gap-0 lg:gap-4 grid-cols-1 lg:grid-cols-[1fr_var(--chat-width)]
-              lg:h-[calc(100vh-12rem)] lg:grid-rows-[1fr]">
+               lg:h-[calc(100vh-12rem)] lg:grid-rows-[1fr]">
     <div id="code-content-root"
+         data-tour="code-modules"
          class="lg:min-h-0"
          data-context-level="architecture"
          data-context-doc-id="{{ index_status.level1_doc_id | default('') }}"
@@ -121,7 +123,7 @@
   </div>
 
   <!-- Chat panel slot: docks panel on desktop; panel renders as off-canvas drawer on mobile (via fixed positioning) -->
-  <aside id="chat-panel-slot"
+  <aside id="chat-panel-slot" data-tour="code-qa"
          class="lg:border-l lg:border-border flex flex-col lg:min-h-0"
          aria-label="Code module chat">
     {% include "chat/panel.html" %}

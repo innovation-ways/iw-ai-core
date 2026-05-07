@@ -440,6 +440,16 @@ Full menu (select only applicable ones):
 {"step": "S{N+9}", "agent": "qv-gate", "gate": "integration-tests", "command": "make allure-integration", "description": "QV: Integration tests", "timeout": 900}
 ```
 
+### Migration validation (when the incident touches database schema)
+
+If the fix involves a new alembic migration (any change under `orch/db/migrations/versions/**`), insert a `migration-check` qv-gate step **immediately after the Database step** so a broken migration is caught before downstream agents inherit the wrong schema:
+
+```json
+{"step": "S{N}", "agent": "qv-gate", "gate": "migration-check", "command": "make migration-check", "description": "QV: Alembic migration round-trip + drift check"}
+```
+
+This runs `tests/integration/test_migrations_round_trip.py` against a fresh testcontainer and asserts: upgrade-from-base succeeds, alembic schema == `Base.metadata.create_all()` schema, and downgrade-then-upgrade round-trips. Missing this gate means model↔migration drift is only caught at `make test-integration` or at the merge-queue dry-run.
+
 ## Step 6: Register in Platform
 
 After all files are created, register the item in the database:

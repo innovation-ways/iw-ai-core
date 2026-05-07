@@ -1,0 +1,28 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Quality</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>Quality runs static analysis gates (lint, type check, formatter, security scans) against the project repo and surfaces pass/fail with clear error locations.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Launch a quality gate run for any supported tool (ruff, mypy, etc.)</li>
+    <li>Stream live output as the run progresses</li>
+    <li>Inspect individual failures with file:line citations</li>
+    <li>Launch fix mode to auto-correct fixable errors</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Work item</dt><dd>A Feature, Incident, or CR — may carry a quality gate as part of definition.</dd>
+    <dt>Fix cycle</dt><dd>Auto-triggered re-run to correct quality failures.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="/docs/IW_AI_Core_Tech_Stack.md">Open full docs →</a>
+  </footer>
+</section>

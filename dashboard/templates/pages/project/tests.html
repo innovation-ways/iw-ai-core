@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% from "components/status_badge.html" import status_badge %}
+{% from "macros/empty_state.html" import empty_state %}
 
 {% block title %}Tests — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}tests{% endblock %}
 
 {% block content %}
 <!-- Confirm dialog container -->
@@ -73,6 +75,9 @@
     {% endif %}
   </div>
 {% endif %}
+
+<!-- Log modal container — outside #tab-content so SSE reloads don't destroy an open modal -->
+<div id="log-modal"></div>
 {% endblock %}
 
 {% block scripts %}

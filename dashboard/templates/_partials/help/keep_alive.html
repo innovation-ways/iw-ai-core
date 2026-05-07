@@ -1,0 +1,27 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Keep-Alive</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>Keep-alive monitors the daemon's last-seen heartbeat and alerts if the polling loop has stalled — a guard against silent daemon crashes or network partitions.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Check the daemon's last heartbeat timestamp</li>
+    <li>Configure alert thresholds</li>
+    <li>Trigger a manual daemon restart if the process appears stuck</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Daemon</dt><dd>The background process that polls every 60 s and drives all agent execution.</dd>
+    <dt>Job</dt><dd>Any background operation tracked by the platform.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="/docs/IW_AI_Core_Daemon_Design.md">Open full docs →</a>
+  </footer>
+</section>

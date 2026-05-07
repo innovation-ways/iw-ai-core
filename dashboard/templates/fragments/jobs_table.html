@@ -2,6 +2,7 @@
 {# Does NOT extend base.html #}
 
 {% from "components/status_badge.html" import status_badge %}
+{% from "macros/empty_state.html" import empty_state %}
 
 {% macro fmt_duration(start, end) -%}
   {%- if start and end -%}
@@ -18,8 +19,22 @@
   {%- endif -%}
 {%- endmacro %}
 
+{% set _has_filters = type_filter or status_filter or date_from or date_to %}
+{% if not rows and not _has_filters %}
+  {# Empty list with no active filters → render the standard empty-state macro
+     (F-00080: V6 expects data-empty-state, h3, p, a.empty-state__cta-primary). #}
+  {{ empty_state(
+       "no-jobs",
+       "No background jobs yet",
+       "Background jobs include code-index builds, doc generation, batch runs, and research drafts. Launch a job from one of the project pages to see it here.",
+       "Open the Code page",
+       "/project/" ~ current_project.id ~ "/code",
+       "Browse all projects",
+       "/projects"
+  ) }}
+{% else %}
 <div class="bg-card border border-border rounded-lg overflow-x-auto mb-4">
-  <table id="jobs-table" class="w-full text-sm min-w-[650px]">
+  <table id="jobs-table" data-tour="jobs-table" class="w-full text-sm min-w-[650px]">
     <thead>
       <tr class="border-b border-border bg-muted/30">
         {% set cols = [
@@ -91,6 +106,7 @@
     </tbody>
   </table>
 </div>
+{% endif %}
 
 {# Pagination #}
 {% macro page_url(target_page) -%}

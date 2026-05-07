@@ -1,8 +1,10 @@
 {% extends "base.html" %}
 {% from "components/status_badge.html" import status_badge %}
 {% from "macros/db_guard.html" import write_button_attrs %}
+{% from "macros/empty_state.html" import empty_state %}
 
 {% block title %}Queue — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}queue{% endblock %}
 
 {% block content %}
 <div class="mb-6">
@@ -24,7 +26,7 @@
         hx-swap="none">
     <div class="bg-card border border-border rounded-lg overflow-x-auto mb-4">
       {% if approved_items %}
-        <table class="w-full text-sm min-w-[500px]">
+        <table data-tour="queue-table" class="w-full text-sm min-w-[500px]">
           <thead>
             <tr class="border-b border-border bg-muted/30">
               <th class="px-4 py-2 w-8">
@@ -87,14 +89,20 @@
           </tbody>
         </table>
       {% else %}
-        <div class="px-4 py-8 text-center text-muted-foreground text-sm">
-          No approved items. Items approved via <code class="font-mono">iw approve</code> will appear here.
-        </div>
+        {{ empty_state(
+             slug="queue",
+             heading="No work items yet",
+             body="Items you design appear here. Create a feature, incident, or change request to get started.",
+             primary_label="How to design an item →",
+             primary_href="/docs/IW_AI_Core_CLI_Spec.md",
+             secondary_label="",
+             secondary_href=""
+           ) }}
       {% endif %}
     </div>
 
     {% if approved_items %}
-      <button type="submit" id="create-batch-btn" disabled
+      <button type="submit" id="create-batch-btn" data-tour="queue-create" disabled
               class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium
                      hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
               {{ write_button_attrs(request) }}>
@@ -115,7 +123,7 @@
 
   <div class="bg-card border border-border rounded-lg overflow-x-auto">
     {% if draft_items %}
-      <table class="w-full text-sm min-w-[450px]">
+      <table data-tour="queue-drafts" class="w-full text-sm min-w-[450px]">
         <thead>
           <tr class="border-b border-border bg-muted/30">
             <th class="px-4 py-2 text-left font-medium text-muted-foreground">ID</th>
@@ -172,9 +180,15 @@
         </tbody>
       </table>
     {% else %}
-      <div class="px-4 py-8 text-center text-muted-foreground text-sm">
-        No draft items.
-      </div>
+      {{ empty_state(
+           slug="queue",
+           heading="No work items yet",
+           body="Items you design appear here. Create a feature, incident, or change request to get started.",
+           primary_label="How to design an item →",
+           primary_href="/docs/IW_AI_Core_CLI_Spec.md",
+           secondary_label="",
+           secondary_href=""
+         ) }}
     {% endif %}
   </div>
 </div>
