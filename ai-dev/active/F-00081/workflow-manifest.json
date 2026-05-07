@@ -1,0 +1,144 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "F-00081",
+  "type": "Feature",
+  "title": "Per-Item / Per-Step Agent + Model Override",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**",
+      "orch/agent_runtime/**",
+      "orch/daemon/project_registry.py",
+      "orch/daemon/batch_manager.py",
+      "orch/daemon/fix_cycle.py",
+      "dashboard/routers/runtime_overrides.py",
+      "dashboard/app.py",
+      "dashboard/templates/components/step_pipeline.html",
+      "dashboard/templates/components/runtime_dropdown.html",
+      "dashboard/templates/fragments/batch_items_rows.html",
+      "dashboard/templates/fragments/item_overview.html",
+      "dashboard/static/styles.css",
+      "projects.toml",
+      "tests/unit/**",
+      "tests/integration/**",
+      "tests/dashboard/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Database — agent_runtime_options table, seed rows, partial unique index, three FK columns",
+      "prompt": "prompts/F-00081_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "backend-impl",
+      "description": "Backend — resolver + project_registry extension + launch-site refactor + DaemonEvent emission",
+      "prompt": "prompts/F-00081_S02_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Code review of S02 (backend)",
+      "prompt": "prompts/F-00081_S03_CodeReview_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "api-impl",
+      "description": "API — PATCH endpoints (single + bulk) and GET catalogue endpoint",
+      "prompt": "prompts/F-00081_S04_API_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "frontend-impl",
+      "description": "Frontend — compressed step strip, CLI/Model columns and dropdowns",
+      "prompt": "prompts/F-00081_S05_Frontend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "tests-impl",
+      "description": "Tests — additional integration coverage for cascade, boundaries, invariants, and audit",
+      "prompt": "prompts/F-00081_S06_Tests_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Final cross-agent review of S01..S06",
+      "prompt": "prompts/F-00081_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "frontend-tests",
+      "command": "make test-frontend",
+      "description": "QV: Frontend tests"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S16",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — verify feature end-to-end in isolated worktree stack",
+      "prompt": "prompts/F-00081_S16_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S17",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/F-00081_S17_SelfAssess_prompt.md"
+    }
+  ]
+}
