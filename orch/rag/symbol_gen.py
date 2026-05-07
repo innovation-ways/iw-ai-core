@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
-from tree_sitter_languages import get_language  # type: ignore[import-untyped]
+from tree_sitter_languages import get_language
 
 from orch.db.models import Project
 

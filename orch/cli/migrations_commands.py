@@ -95,7 +95,7 @@ def dry_run(ctx: click.Context, json_output: bool) -> None:
 
     This command is safe: it never touches the live database.
     """
-    from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
+    from testcontainers.postgres import PostgresContainer
 
     try:
         click.echo("Starting testcontainer Postgres for dry-run...")

@@ -1,0 +1,108 @@
+{% comment %}
+  Untracked files sub-panel — htmx partial, NOT wrapped in base.html.
+  Shown inside the Files tab when worktree is alive and item is not archived.
+  Left pane: list of untracked files (from /files/untracked JSON endpoint).
+  Right pane: preview via /artifact-raw?path=...
+{% endcomment %}
+
+{# ── Split-pane: tree + preview ── #}
+<div class="bg-card border border-border rounded-lg overflow-hidden flex" style="height: 400px;">
+
+  {# ── Left pane: untracked file tree ── #}
+  <div class="w-72 flex-shrink-0 border-r border-border overflow-y-auto bg-muted/10">
+
+    <div class="px-3 py-2 border-b border-border bg-muted/30">
+      <h3 class="text-sm font-semibold text-foreground">Other worktree files</h3>
+    </div>
+
+    <div id="untracked-file-list" class="py-1">
+      {# Populated by files.js on panel expand #}
+    </div>
+  </div>
+
+  {# ── Right pane: preview ── #}
+  <div id="untracked-viewer" class="flex-1 overflow-auto p-4 flex items-center justify-center">
+    <p class="text-muted-foreground text-sm">Select a file to preview</p>
+  </div>
+
+</div>
+
+{# ── Markdown viewer scoped styles (same as removed item_artifacts.html) ── #}
+<style>
+  #untracked-viewer h1 { font-size:1.25rem; font-weight:700; margin:0.75rem 0 0.5rem; }
+  #untracked-viewer h2 { font-size:1.1rem; font-weight:600; margin:0.75rem 0 0.4rem; }
+  #untracked-viewer h3 { font-size:1rem; font-weight:600; margin:0.5rem 0 0.3rem; }
+  #untracked-viewer h4 { font-size:0.9rem; font-weight:600; margin:0.5rem 0 0.25rem; }
+  #untracked-viewer p  { margin-bottom:0.5rem; line-height:1.6; }
+  #untracked-viewer code { background:rgba(0,0,0,0.08); padding:0.1em 0.3em; border-radius:3px; font-size:0.85em; }
+  #untracked-viewer pre { background:rgba(0,0,0,0.06); padding:0.75rem; border-radius:6px; overflow-x:auto; margin-bottom:0.75rem; }
+  #untracked-viewer pre code { background:none; padding:0; }
+  #untracked-viewer ul { list-style:disc; margin-left:1.25rem; margin-bottom:0.5rem; }
+  #untracked-viewer ol { list-style:decimal; margin-left:1.25rem; margin-bottom:0.5rem; }
+  #untracked-viewer a  { color:#3b82f6; }
+  #untracked-viewer a:hover { text-decoration:underline; }
+  #untracked-viewer table { border-collapse:collapse; width:100%; margin-bottom:0.75rem; }
+  #untracked-viewer th, #untracked-viewer td { border:1px solid #e5e7eb; padding:0.25rem 0.5rem; font-size:0.8rem; }
+  #untracked-viewer th { background:rgba(0,0,0,0.04); font-weight:600; }
+  #untracked-viewer blockquote { border-left:3px solid #d1d5db; padding-left:0.75rem; color:#6b7280; margin-bottom:0.5rem; }
+  #untracked-viewer hr { border:none; border-top:1px solid #e5e7eb; margin:1rem 0; }
+</style>
+
+<script>
+  (function() {
+    var projectId = {{ project_id | tojson }};
+    var itemId = {{ item_id | tojson }};
+
+    window.loadUntrackedFile = async function(relPath, fileType) {
+      var viewer = document.getElementById('untracked-viewer');
+      if (!viewer) return;
+
+      document.querySelectorAll('.untracked-file-row').forEach(function(el) {
+        el.classList.remove('bg-primary/10');
+      });
+      if (event && event.currentTarget) {
+        event.currentTarget.classList.add('bg-primary/10');
+      }
+
+      var url = '/project/' + projectId + '/item/' + itemId + '/artifact-raw?path=' + encodeURIComponent(relPath);
+
+      if (fileType === 'image') {
+        viewer.innerHTML = '<div class="flex justify-center"><img src="' + url + '" class="max-w-full rounded shadow" alt="' + relPath + '"></div>';
+        return;
+      }
+
+      if (fileType === 'binary') {
+        viewer.innerHTML = '<p class="text-muted-foreground text-sm">Binary file — cannot preview.</p>';
+        return;
+      }
+
+      viewer.innerHTML = '<p class="text-muted-foreground text-sm animate-pulse">Loading\u2026</p>';
+      try {
+        var resp = await fetch(url);
+        if (!resp.ok) {
+          viewer.innerHTML = '<p class="text-destructive text-sm">Could not load file (HTTP ' + resp.status + ').</p>';
+          return;
+        }
+        var text = await resp.text();
+        if (fileType === 'markdown') {
+          if (window.iwChat && window.iwChat.renderMarkdownStatic) {
+            var frag = window.iwChat.renderMarkdownStatic(text);
+            viewer.replaceChildren(frag);
+          } else {
+            var p = document.createElement('p');
+            p.textContent = text;
+            viewer.replaceChildren(p);
+          }
+        } else {
+          var pre = document.createElement('pre');
+          pre.className = 'text-xs font-mono whitespace-pre-wrap text-foreground overflow-auto';
+          pre.textContent = text;
+          viewer.innerHTML = '';
+          viewer.appendChild(pre);
+        }
+      } catch (err) {
+        viewer.innerHTML = '<p class="text-destructive text-sm">Error loading file.</p>';
+      }
+    };
+  })();
+</script>

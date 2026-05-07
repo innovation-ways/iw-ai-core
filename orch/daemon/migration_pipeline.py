@@ -63,7 +63,7 @@ def run_pre_merge_dry_run(
     (backward-compat for operator entry points; do NOT use this path in the
     merge queue — merge_queue.py always passes worktree_path).
     """
-    from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
+    from testcontainers.postgres import PostgresContainer
 
     logger.info("[pipeline] Phase 1 dry-run starting for batch %s", batch_id)
 

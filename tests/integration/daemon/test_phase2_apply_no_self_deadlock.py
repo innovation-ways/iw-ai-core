@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "7f1a75bb5c2d"  # head — sync schema with model comments and indexes
+_HEAD_REVISION = "1713bc13a11d"  # head — files view diff columns (F-00079)
 _PREV_REVISION = "e53ce8e86a3c"  # F-00077 — chat conversations memory (before I-00062)
 
 
