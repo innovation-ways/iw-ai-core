@@ -33,12 +33,13 @@ Implement frontend and UI scope as defined in the provided implementation prompt
 1. **Read the implementation prompt** — understand exactly what UI elements, pages, or interactions are required.
 2. **Read CLAUDE.md** — located at the project root. This file defines the frontend technology stack, component patterns, styling approach, and UI conventions. Follow them exactly.
 3. **Identify existing patterns** — examine existing UI code. Match component structure, template organization, CSS methodology, naming conventions, and interaction patterns already in use.
-4. **Apply TDD where applicable**:
+4. **Verify vendored / third-party library APIs before drafting calls** — when you need to call into a vendored or third-party JS/CSS asset (files under `static/vendor/**`, libraries loaded via the project's libs-include pipeline, or any `node_modules/**` export), do NOT assume a method, factory, or constructor exists from the library's name alone. Before writing initialization or call code, grep the bundled JS file (e.g., `static/vendor/<lib>/**/*.js`) for the actual exported symbols, read its `.d.ts` if present, or confirm in DevTools / a REPL. The slim and full builds of the same library may export different surfaces — a method documented upstream may be absent from the slim bundle the project actually ships. **Why this rule exists:** F-00079 self-assess Finding 1 traced ~45 min of wasted agent time across 3 browser-verification fix cycles to assuming a non-existent `Diff2HtmlUI.create(...)` factory in the vendored `diff2html-ui-slim.min.js`, which only exposes the constructor `new Diff2HtmlUI(...)`.
+5. **Apply TDD where applicable**:
    - For testable frontend logic (hooks, state, utilities): RED, GREEN, REFACTOR.
    - For templates and markup: verify rendering by running any existing template tests or build checks.
    - For styling: follow the project's CSS methodology (utility classes, CSS modules, etc.).
-5. **Run checks** — execute tests, linting, type checks, and build commands as specified in CLAUDE.md or the Makefile.
-6. **Return the result report** — see Output Format below.
+6. **Run checks** — execute tests, linting, type checks, and build commands as specified in CLAUDE.md or the Makefile.
+7. **Return the result report** — see Output Format below.
 
 ## Project Context
 
