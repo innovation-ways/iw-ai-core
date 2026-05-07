@@ -3,6 +3,7 @@
 {% from "components/step_pipeline.html" import step_pipeline %}
 
 {% block title %}{{ item.id }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}item_detail{% endblock %}
 
 {% block head %}
 {{ super() }}
@@ -13,7 +14,7 @@
 <!-- Confirm dialog container (htmx swaps fragment here) -->
 <div id="confirm-dialog"></div>
 
-<div id="item-header-container">
+<div id="item-header-container" data-tour="item-header">
   {% include "fragments/item_header.html" %}
 </div>
 
@@ -26,7 +27,7 @@
 </div>
 
 <!-- Tab navigation -->
-<div id="tab-nav" class="flex border-b border-border mb-4 overflow-x-auto">
+<div id="tab-nav" data-tour="item-tabs" class="flex border-b border-border mb-4 overflow-x-auto">
   <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/overview"
           hx-target="#tab-content"
           hx-swap="innerHTML"
@@ -76,7 +77,7 @@
           class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
     Logs
   </button>
-  <button id="tab-fix-cycles-btn"
+  <button id="tab-fix-cycles-btn" data-tour="item-fix-cycles"
           hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/fix-cycles"
           hx-target="#tab-content"
           hx-swap="innerHTML"

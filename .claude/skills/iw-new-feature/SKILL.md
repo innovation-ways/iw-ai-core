@@ -307,6 +307,21 @@ Full menu (select only applicable ones):
 {"step": "S{N+9}", "agent": "qv-gate", "gate": "integration-tests", "command": "make allure-integration", "description": "QV: Integration tests", "timeout": 900}
 ```
 
+### Migration validation (when the feature has a Database step)
+
+If the feature changes database schema (a `Database` agent step writing to `orch/db/migrations/versions/**`), insert a `migration-check` qv-gate step **immediately after the Database step (and after any `CodeReview_Database` step)** so a broken migration is caught before downstream agents inherit the wrong schema.
+
+```json
+{"step": "S{N}", "agent": "qv-gate", "gate": "migration-check", "command": "make migration-check", "description": "QV: Alembic migration round-trip + drift check"}
+```
+
+This runs `tests/integration/test_migrations_round_trip.py` against a fresh testcontainer and asserts:
+- `alembic upgrade head` from base succeeds (catches missing revision ids, broken `down_revision`, runtime DDL errors).
+- The alembic-built schema matches `Base.metadata.create_all()` (catches model↔migration drift — the F-00079 / S19 root cause).
+- `downgrade base` then `upgrade head` succeeds (catches broken `downgrade()` bodies that would freeze the merge queue on Phase-3 rollback).
+
+Putting this gate early shortens the feedback loop by ≈90% of the work item's compute — without it, drift is only caught at S18 (`make test-integration`) or, worse, at the merge-queue dry-run.
+
 ## Step 8: Register in Platform
 
 After all files are created, register the item in the database:

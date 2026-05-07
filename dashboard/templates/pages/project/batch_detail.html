@@ -3,6 +3,7 @@
 {% from "components/step_pipeline.html" import step_pipeline %}
 
 {% block title %}{{ batch.id }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}batch_detail{% endblock %}
 
 {% block content %}
 <!-- Confirm dialog container (htmx swaps fragment here) -->

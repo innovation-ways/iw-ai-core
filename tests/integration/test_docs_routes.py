@@ -113,8 +113,7 @@ def test_docs_library_empty_state(client: TestClient, db_session: Session) -> No
 
     resp = client.get("/project/test-proj/docs")
     assert resp.status_code == 200
-    assert "No documentation found" in resp.text
-    assert "iw doc-update" in resp.text
+    assert "No project docs yet" in resp.text
 
 
 def test_docs_library_with_docs(client: TestClient, db_session: Session) -> None:

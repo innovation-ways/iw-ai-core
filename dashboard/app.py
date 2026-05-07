@@ -52,6 +52,9 @@ from dashboard.routers import (
     usage,
     worktrees,
 )
+from dashboard.routers import (
+    help as help_router,
+)
 from dashboard.utils.timing import TimingMiddleware
 from orch.db.alembic_guard import check_db_at_head
 from orch.db.identity import verify_instance_identity
@@ -272,6 +275,7 @@ def create_app() -> FastAPI:
 
     # Register routers
     app.include_router(healthz.router)
+    app.include_router(help_router.router)
     app.include_router(projects.router)
     app.include_router(running.router)
     app.include_router(actions.router)

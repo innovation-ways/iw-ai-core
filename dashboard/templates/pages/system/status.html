@@ -2,6 +2,7 @@
 {% from "components/status_badge.html" import status_badge %}
 
 {% block title %}System Status{% endblock %}
+{% block page_help_slug %}status{% endblock %}
 
 {% block content %}
 <div class="mb-6">
@@ -13,7 +14,7 @@
 
   <!-- Daemon Panel -->
   <div>
-    <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Daemon</h2>
+    <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3" data-tour="status-daemon">Daemon</h2>
     {% include "fragments/daemon_panel.html" %}
   </div>
 

@@ -1,0 +1,29 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Batches</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>The batches list shows every batch in this project — running, pending, held, and archived — updated in real time via SSE.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>View live status of all active batches</li>
+    <li>Pause, resume, or cancel a running batch</li>
+    <li>Archive a completed or cancelled batch to declutter the view</li>
+    <li>Create a new batch from the queue selection</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Batch</dt><dd>A named, executable group of work items — the daemon's atomic scheduling unit.</dd>
+    <dt>Step</dt><dd>One atomic unit of work inside a work item.</dd>
+    <dt>Fix cycle</dt><dd>Auto-triggered retry when a step fails; the daemon re-runs the agent to attempt correction.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="/docs/IW_AI_Core_Daemon_Design.md#batches">Open full docs →</a>
+  </footer>
+</section>

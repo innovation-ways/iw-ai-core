@@ -2,6 +2,7 @@
 {% from "components/status_badge.html" import status_badge %}
 
 {% block title %}Quality — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}quality{% endblock %}
 
 {% block content %}
 <!-- Confirm dialog container -->

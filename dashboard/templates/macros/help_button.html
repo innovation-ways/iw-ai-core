@@ -1,0 +1,13 @@
+{# help_button.html — Help trigger button + popover mount point #}
+{% macro help_button(slug) %}
+<button type="button"
+        class="help-trigger"
+        aria-label="Help for this page"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        data-help-slug="{{ slug }}">
+  <span class="help-trigger__mark" aria-hidden="true">?</span>
+  <span class="help-trigger__seen" aria-hidden="true" data-tour-seen-marker>✓</span>
+</button>
+<div class="help-popover" role="dialog" aria-modal="true" aria-label="Page help" data-help-popover hidden></div>
+{% endmacro %}

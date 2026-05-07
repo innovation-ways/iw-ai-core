@@ -7,6 +7,7 @@ This directory contains third-party libraries used for rich-content rendering in
 | streaming-markdown | 11.x | MIT | MIT | https://github.com/thetarnav/streaming-markdown |
 | dompurify | 3.4.0 | Apache-2.0 | Apache License 2.0 | https://github.com/cure53/DOMPurify |
 | diff2html | 3.4.48 | MIT | MIT License | https://github.com/rtfpessoa/diff2html |
+| driver.js | 1.4.0 | MIT | MIT License | https://github.com/kamranahmedse/driver.js |
 | Highlight.js | 11.x | BSD-3-Clause | BSD 3-Clause License | https://github.com/highlightjs/highlight.js |
 | mermaid | 11.14.0 | MIT | MIT License | https://github.com/mermaid-js/mermaid |
 | mermaid-elk | 0.9.3 | EPL-2.0 | Eclipse Public License 2.0 | https://github.com/kieler/elkjs |
@@ -118,3 +119,20 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 SPDX-License-Identifier: 0BSD
 Source: https://github.com/bigskysoftware/htmx
+
+---
+
+## driver.js
+
+**MIT License**
+
+Copyright (c) Kamran Ahmed
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+SPDX-License-Identifier: MIT
+Source: https://github.com/kamranahmedse/driver.js

@@ -2,6 +2,7 @@
 {% from "components/status_badge.html" import status_badge %}
 
 {% block title %}Search — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}search{% endblock %}
 
 {% block content %}
 <div class="mb-6">

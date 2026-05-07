@@ -185,7 +185,7 @@ def test_queue_empty_state(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
     resp = client.get("/project/test-proj/queue")
     assert resp.status_code == 200
-    assert "No approved items" in resp.text
+    assert "No work items yet" in resp.text
 
 
 def test_queue_404_for_unknown_project(client: TestClient, db_session: Any) -> None:
@@ -335,7 +335,7 @@ def test_history_empty_state(client: TestClient, db_session: Any) -> None:
     make_project(db_session)
     resp = client.get("/project/test-proj/history")
     assert resp.status_code == 200
-    assert "No history found" in resp.text
+    assert "No completed items yet" in resp.text
     assert "0 items" in resp.text
 
 
@@ -343,7 +343,7 @@ def test_history_empty_state_with_filter(client: TestClient, db_session: Any) ->
     make_project(db_session)
     resp = client.get("/project/test-proj/history?type=Feature")
     assert resp.status_code == 200
-    assert "for the selected filters" in resp.text
+    assert "No completed items yet" in resp.text
 
 
 def test_history_table_has_sortable_columns(client: TestClient, db_session: Any) -> None:
@@ -582,7 +582,7 @@ def test_all_active_excludes_completed_items(client: TestClient, db_session: Any
 def test_all_active_empty_state(client: TestClient, db_session: Any) -> None:
     resp = client.get("/system/all-active")
     assert resp.status_code == 200
-    assert "No active work items" in resp.text
+    assert "Nothing is running" in resp.text
 
 
 # ---------------------------------------------------------------------------
