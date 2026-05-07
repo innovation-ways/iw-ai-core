@@ -157,7 +157,7 @@ class QAEngine:
         fallback_triggered = False
 
         try:
-            import lancedb  # type: ignore[import-untyped]
+            import lancedb
 
             db = lancedb.connect(db_path)
             table = db.open_table(table_name)

@@ -17,7 +17,9 @@ ENV PYTHONUNBUFFERED=1 \
 # container to introspect git state (e.g. `git -C /app status --short`) when
 # verifying working-tree-only fix recipes — see CR-00022 V3/V4/V7.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates git \
+    && apt-get install -y --no-install-recommends \
+        curl ca-certificates git \
+        libpango-1.0-0 libpangoft2-1.0-0 \
     && env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 \
        sh -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' \
     && apt-get clean \

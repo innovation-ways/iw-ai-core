@@ -166,7 +166,7 @@ def docs_pdf_view(
     )
 
     try:
-        from weasyprint import HTML  # type: ignore
+        from weasyprint import HTML
 
         pdf_bytes = HTML(string=html_content).write_pdf()
     except ImportError as exc:

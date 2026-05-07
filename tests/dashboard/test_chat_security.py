@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 
@@ -37,13 +38,9 @@ class TestChatTemplatesNoMarkedReferences:
         )
         assert "marked.parse" not in html
 
+    @pytest.mark.skip(reason="item_artifacts.html removed per F-00079 design (Invariant 9)")
     def test_no_marked_parse_in_item_artifacts(self):
-        env = Environment(loader=FileSystemLoader(_template_dir()), autoescape=select_autoescape())
-        html = env.get_template("fragments/item_artifacts.html").render(
-            project_id=1, item={"id": 1}, artifact_tree=None, is_archived=False
-        )
-        assert "marked.parse" not in html
-        assert "marked.min.js" not in html
+        pass
 
     def test_no_marked_cdn_in_base_html(self):
         base_path = Path(__file__).parent.parent.parent / "dashboard" / "templates" / "base.html"
@@ -73,35 +70,13 @@ class TestChatTemplatesNoMarkedReferences:
 
 
 class TestItemArtifactsRenderStatic:
+    @pytest.mark.skip(reason="item_artifacts.html removed per F-00079 design (Invariant 9)")
     def test_loadartifact_calls_render_markdown_static(self):
-        env = Environment(loader=FileSystemLoader(_template_dir()), autoescape=select_autoescape())
-        node = {
-            "name": "test.py",
-            "is_dir": False,
-            "rel_path": "test.py",
-            "file_type": "markdown",
-            "size_bytes": 100,
-            "children": [],
-        }
-        html = env.get_template("fragments/item_artifacts.html").render(
-            project_id=1, item={"id": 1}, artifact_tree=[node], is_archived=False
-        )
-        assert "iwChat.renderMarkdownStatic" in html
+        pass
 
+    @pytest.mark.skip(reason="item_artifacts.html removed per F-00079 design (Invariant 9)")
     def test_no_innerhtml_for_markdown_in_item_artifacts(self):
-        env = Environment(loader=FileSystemLoader(_template_dir()), autoescape=select_autoescape())
-        node = {
-            "name": "test.py",
-            "is_dir": False,
-            "rel_path": "test.py",
-            "file_type": "markdown",
-            "size_bytes": 100,
-            "children": [],
-        }
-        html = env.get_template("fragments/item_artifacts.html").render(
-            project_id=1, item={"id": 1}, artifact_tree=[node], is_archived=False
-        )
-        assert "viewer.innerHTML = marked.parse" not in html
+        pass
 
 
 class TestCodeBlockTemplate:

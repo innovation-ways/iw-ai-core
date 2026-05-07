@@ -1,0 +1,102 @@
+{# Files tab shell — htmx partial, NOT wrapped in base.html.
+   Context variables (injected by item_tab_files route):
+     item, project_id, summary, step_options,
+     worktree_alive, is_archived,
+     aggregate_added, aggregate_removed, aggregate_file_count,
+     default_expand_all
+#}
+
+{% include "components/libs/diff2html.html" %}
+
+{# ── Toolbar ── #}
+<div class="flex flex-wrap items-center gap-3 mb-4">
+  {# Step selector — files.js handles the re-fetch + Diff2HtmlUI re-render on change #}
+  <div class="flex items-center gap-1.5">
+    <label for="step-select" class="text-xs text-muted-foreground font-medium">Step:</label>
+    <select
+      id="step-select"
+      name="step"
+      class="text-sm border border-border rounded px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+    ></select>
+  </div>
+
+  {# Filter input #}
+  <div class="flex-1 min-w-48">
+    <input
+      id="diff-filter-input"
+      type="text"
+      placeholder="Filter files…"
+      class="w-full text-sm border border-border rounded px-3 py-1 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+    >
+  </div>
+
+  {# Aggregate counts #}
+  <div class="flex items-center gap-2 text-xs font-medium">
+    <span class="text-green-600 dark:text-green-400">+{{ aggregate_added }}</span>
+    <span class="text-red-600 dark:text-red-400">−{{ aggregate_removed }}</span>
+    <span class="text-muted-foreground">{{ aggregate_file_count }} file{{ "s" if aggregate_file_count != 1 else "" }}</span>
+  </div>
+
+  {# Export PDF #}
+  <a
+    href="/project/{{ project_id }}/item/{{ item.id }}/files/export.pdf?step=all"
+    download
+    class="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-border rounded hover:bg-muted/50 transition-colors text-foreground"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+    Export PDF
+  </a>
+</div>
+
+{# ── Diff render root (populated client-side by Diff2HtmlUI) ── #}
+<div id="diff-render-root" class="diff-render-root"></div>
+
+{# ── Empty / error states (shown server-side before JS loads) ── #}
+{% if not summary %}
+  <div class="bg-card border border-border rounded-lg p-8 text-center">
+    <p class="text-muted-foreground text-sm">No changes yet</p>
+    {% if is_archived %}
+      <p class="text-xs text-muted-foreground mt-2">Archived items load diff from stored snapshot.</p>
+    {% endif %}
+  </div>
+{% endif %}
+
+{# ── Untracked files sub-panel (only when worktree alive and item not archived) ── #}
+{% if worktree_alive and not is_archived %}
+  <details id="untracked-panel" class="mt-6 group">
+    <summary class="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors list-none">
+      <span class="selection:[] text-xs">▶</span>
+      <span class="font-medium">Other worktree files</span>
+      <span id="untracked-count" class="text-xs text-muted-foreground"></span>
+    </summary>
+    <div id="untracked-content" class="mt-2">
+      {# Populated by files.js on details expand #}
+      <p class="text-xs text-muted-foreground animate-pulse">Loading…</p>
+    </div>
+  </details>
+{% endif %}
+
+{# ── Canonical generated-file globs (Invariant 8 — must match orch/diff_service.py) ── #}
+<script>
+  window.__IW_GENERATED_GLOBS = [
+    "uv.lock",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "poetry.lock",
+    "*.min.js",
+    "*.snap",
+  ];
+</script>
+
+{# ── files.js module — initialised with context from the page ── #}
+<script>
+  window.__IW_FILES_CTX = {
+    projectId: {{ project_id | tojson }},
+    itemId: {{ item.id | tojson }},
+    stepOptions: {{ step_options | tojson }},
+    summary: {{ summary | tojson }},
+    defaultExpandAll: {{ default_expand_all | tojson }},
+  };
+</script>
+<script src="/static/files.js"></script>
