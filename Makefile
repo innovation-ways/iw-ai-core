@@ -73,7 +73,7 @@ test-parallel:
 	uv run pytest tests/unit tests/integration tests/dashboard --ignore=tests/dashboard/browser -v -n auto --dist=loadfile
 
 smoke:
-	uv run pytest -m smoke --strict-markers -v
+	uv run pytest -m smoke --strict-markers --no-cov -v
 
 # --- All checks (run before commit) ---
 check: quality test
