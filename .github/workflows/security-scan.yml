@@ -64,6 +64,11 @@ jobs:
         with:
           scan-type: config
           severity: HIGH,CRITICAL
+          # Without this the action emits SARIF for ALL severities (UNKNOWN→CRITICAL)
+          # and `exit-code: '1'` then fails on LOW/MEDIUM findings, contradicting
+          # the `severity: HIGH,CRITICAL` gate. Honour the documented policy:
+          # MEDIUM/LOW go to Code Scanning but do not fail the workflow.
+          limit-severities-for-sarif: 'true'
           exit-code: '1'
           format: sarif
           output: trivy-iac.sarif

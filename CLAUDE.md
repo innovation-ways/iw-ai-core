@@ -54,6 +54,18 @@ The **`iw` CLI** is the agent-to-DB bridge — agents call `iw step-done` to rec
 - **NEVER** run `npx playwright install` or modify `.playwright/cli.config.json`
 - **NEVER** run `docker compose up` (with or without `-d db`) against the orchestration DB from any directory — the default compose file is empty and the bootstrap file requires an explicit `-f` flag. Use `./ai-core.sh db start` instead. See `docs/IW_AI_Core_DB_Setup.md`.
 - **MUST** append plain CSS rules directly to `dashboard/static/styles.css` when `make css` reports "Nothing to be done" or the Tailwind CLI fails (e.g., missing `postcss-selector-parser`) — plain CSS is served as-is, so no Tailwind recompile is required. Temporary mitigation until the Tailwind toolchain is repaired in worktrees (see I-00067).
+- **MUST** invoke the `/iw-research` skill whenever the user asks for "a research", "online research", "deep research", "investigate X", "research X", or any equivalent phrasing — even when the agent believes it could answer inline. The user's expectation is that a research artifact is **filed in the IW AI Core database** so they can review it on the dashboard. **NEVER** silently perform inline web research as a substitute for `/iw-research`. The only acceptable exception is `/iw-research-quick`, and it may only be used when the user **explicitly** writes "quick research" / `/iw-research-quick` or asks a single trivial fact lookup that they have explicitly said should not be filed. When in doubt, default to `/iw-research`.
+
+## Research Requests
+
+Two skills exist; pick correctly:
+
+| User phrasing | Skill |
+|---------------|-------|
+| "do a research", "research X", "deep research", "investigate", "evaluate options", "/iw-research" | `/iw-research` (files a Research doc, allocates `R-NNNNN`, registers in DB) |
+| "quick research", "/iw-research-quick", a single explicit one-liner the user said should NOT be filed | `/iw-research-quick` (inline answer, no file, no ID) |
+
+The default for this project is `/iw-research`. Do not downgrade to `/iw-research-quick` because the topic seems small — only the user can authorize that downgrade by using "quick" or `/iw-research-quick` explicitly.
 
 ## Configuration
 
