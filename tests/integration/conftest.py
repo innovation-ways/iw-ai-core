@@ -13,8 +13,11 @@ Fixture scopes:
 
 from __future__ import annotations
 
+import os
+import socket
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,6 +40,66 @@ from orch.db.models import (
 if TYPE_CHECKING:
     from sqlalchemy import Engine
     from sqlalchemy.orm import Session
+
+
+# ---------------------------------------------------------------------------
+# Ollama reachability — skip RAG/code-QA tests when no local Ollama listener.
+#
+# Several integration tests under tests/integration/{rag,dashboard}/test_F00077*
+# and tests/integration/test_code_{index,qa,module}_*.py go through the live
+# code-understanding pipeline (LanceDB + Ollama embeddings/LLM). They mock the
+# vector store but not the Ollama transport, so they require a real Ollama
+# listener on $OLLAMA_HOST (default 127.0.0.1:11434). Local dev has it; CI
+# does not. Without this hook every push fails on ~50 tests with
+# "Failed to connect to Ollama". The skip is conditional, so the tests still
+# run on a developer machine that has Ollama up.
+# ---------------------------------------------------------------------------
+
+_OLLAMA_FILENAME_PATTERNS = (
+    "test_code_index_pipeline.py",
+    "test_code_module_routes.py",
+    "test_code_qa_eval_set.py",
+    "test_code_qa_findusages.py",
+    "test_code_qa_no_regression.py",
+    "test_code_qa_routes.py",
+    "test_code_qa_routing.py",
+    "test_code_qa_with_conversation.py",
+    "test_code_qa_workitem_flow.py",
+    "test_F00077_no_regressions.py",
+    "test_F00077_stream_disconnect.py",
+    "test_F00077_multi_turn_e2e.py",
+    "test_reindex_docs_endpoint.py",
+    "test_code_qa_sse_wire.py",
+)
+
+
+@lru_cache(maxsize=1)
+def _ollama_reachable() -> bool:
+    host_env = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434")
+    host, _, port_s = host_env.rpartition(":")
+    host = host or "127.0.0.1"
+    try:
+        port = int(port_s) if port_s else 11434
+    except ValueError:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config,  # noqa: ARG001
+    items: list[pytest.Item],
+) -> None:
+    if _ollama_reachable():
+        return
+    skip_marker = pytest.mark.skip(reason="Ollama not reachable; RAG/code-QA test skipped")
+    for item in items:
+        path = str(item.fspath)
+        if any(p in path for p in _OLLAMA_FILENAME_PATTERNS):
+            item.add_marker(skip_marker)
 
 
 OSS_ENUMS_SQL = """\
