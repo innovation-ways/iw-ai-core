@@ -27,7 +27,6 @@ from orch.db.models import (
     PROJECT_DOCS_FTS_FUNCTION_SQL,
     PROJECT_DOCS_FTS_TRIGGER_SQL,
     Base,
-    BatchItem,
     Project,
 )
 
@@ -104,9 +103,11 @@ def test_e2e_seed_runs_against_fresh_db(
         from orch.db.models import StepRun, WorkflowStep
 
         step_run_count = s.execute(
-            select(StepRun).where(StepRun.step_id.in_(
-                select(WorkflowStep.id).where(WorkflowStep.project_id == "iw-ai-core")
-            ))
+            select(StepRun).where(
+                StepRun.step_id.in_(
+                    select(WorkflowStep.id).where(WorkflowStep.project_id == "iw-ai-core")
+                )
+            )
         ).all()
         assert step_run_count, (
             "no StepRun rows after seed() — either every fixture has been "
