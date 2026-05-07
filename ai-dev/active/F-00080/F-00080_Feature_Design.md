@@ -99,7 +99,7 @@ Read the project's `CLAUDE.md` (root + `dashboard/CLAUDE.md`) for architecture, 
 - **New fragments**: 22 files under `templates/_partials/help/`
 - **New static assets**: `static/help/help.js`, `static/help/tours.js`, `static/vendor/driver/{driver.js.iife.js,driver.css,LICENSE}`
 - **Modified pages**: 22 page templates (one new line each: `{% block page_help_slug %}<slug>{% endblock %}`); 10 list views (refactor empty branch to `{{ empty_state(...) }}`)
-- **Modified base**: `templates/base.html` adds page-header `?` slot, loads `help.js` deferred, loads `driver.css` lazily on first popover render
+- **Modified base**: `templates/base.html` adds a `{% block page_help_slug %}` and renders the `?` button **server-side** at the right end of the existing global header bar (same `<div>` that holds the hamburger + search input) via the `help_button` macro — no JS-driven repositioning. Loads `help.js` and `tours.js` deferred. `driver.js`/`driver.css` are NOT loaded eagerly; help.js lazy-injects them on first tour mount.
 
 ## File Manifest
 
@@ -253,6 +253,8 @@ And the file static/vendor/driver/LICENSE contains the upstream MIT text
 - `tests/dashboard/test_help_router.py`
 - `tests/dashboard/test_help_fragments_present.py`
 - `tests/dashboard/test_empty_states.py`
+- `tests/dashboard/test_help_js_smoke.py`
+- `tests/dashboard/test_help_license.py`
 - `tests/integration/test_help_smoke.py`
 - `ai-dev/active/F-00080/**`
 
