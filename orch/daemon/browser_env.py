@@ -416,9 +416,9 @@ def run_env_up_hook(
     )
     try:
         with log_path.open("w") as log_fh:
-            result = subprocess.run(  # noqa: S602
+            result = subprocess.run(  # noqa: S602  # nosec B602
                 env_up_cmd,
-                shell=True,
+                shell=True,  # nosec B602
                 cwd=worktree_path,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,
@@ -518,7 +518,7 @@ def run_env_down_hook(
         log_path = _log_path(worktree_path, item_id, step_id, "browser_env_down")
     except Exception:
         # If we can't even create the log path, still try to run the command
-        log_path = Path(f"/tmp/{item_id}_{step_id}_browser_env_down.log")  # noqa: S108
+        log_path = Path(f"/tmp/{item_id}_{step_id}_browser_env_down.log")  # noqa: S108  # nosec B108
 
     logger.info(
         "[%s/%s] Running browser env_down: %s (log: %s)",
@@ -529,9 +529,9 @@ def run_env_down_hook(
     )
     try:
         with log_path.open("w") as log_fh:
-            result = subprocess.run(  # noqa: S602
+            result = subprocess.run(  # noqa: S602  # nosec B602
                 env_down_cmd,
-                shell=True,
+                shell=True,  # nosec B602
                 cwd=worktree_path,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,

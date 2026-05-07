@@ -110,9 +110,9 @@ def launch_test_run(run_id: int) -> None:
         test_timeout = _resolve_test_timeout(run, db)
         try:
             with Path(log_path).open("w") as log_file:
-                proc = subprocess.Popen(
+                proc = subprocess.Popen(  # nosec B602
                     command,
-                    shell=True,
+                    shell=True,  # nosec B602
                     cwd=execution_dir,
                     stdout=log_file,
                     stderr=subprocess.STDOUT,
@@ -333,9 +333,9 @@ repeating until it passes or you exhaust the maximum iterations.
         start_time = time.monotonic()
         try:
             with Path(log_path).open("w") as log_file:
-                proc = subprocess.Popen(
+                proc = subprocess.Popen(  # nosec B602
                     agent_command,
-                    shell=True,
+                    shell=True,  # nosec B602
                     cwd=execution_dir,
                     stdout=log_file,
                     stderr=subprocess.STDOUT,
@@ -391,9 +391,9 @@ repeating until it passes or you exhaust the maximum iterations.
         try:
             with Path(log_path).open("a") as log_file:
                 log_file.write(f"\n\n{'=' * 60}\nFINAL VERIFICATION RUN\n{'=' * 60}\n")
-                verify_proc = subprocess.run(
+                verify_proc = subprocess.run(  # nosec B602
                     command,
-                    shell=True,
+                    shell=True,  # nosec B602
                     cwd=execution_dir,
                     stdout=log_file,
                     stderr=subprocess.STDOUT,
@@ -638,9 +638,9 @@ def _run_cleanup_command(command: str, cwd: str) -> None:
     Used to tear down stale E2E docker stacks left by crashed or killed runs.
     """
     with contextlib.suppress(Exception):
-        subprocess.run(
+        subprocess.run(  # nosec B602
             command,
-            shell=True,
+            shell=True,  # nosec B602
             cwd=cwd,
             capture_output=True,
             timeout=60,

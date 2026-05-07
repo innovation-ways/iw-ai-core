@@ -35,7 +35,7 @@ def get_pid_file_path() -> Path:
     pid_file = os.environ.get("IW_CORE_PID_FILE")
     if pid_file:
         return Path(pid_file)
-    return Path("/tmp/iw-orch-daemon.pid")  # noqa: S108
+    return Path("/tmp/iw-orch-daemon.pid")  # noqa: S108  # nosec B108
 
 
 def read_pid(pid_file: Path) -> int | None:
