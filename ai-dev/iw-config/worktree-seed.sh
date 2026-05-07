@@ -40,7 +40,7 @@ docker exec \
 # before running `alembic upgrade head`, which avoids the race where alembic
 # would run against a pg_dumped schema that `--clean --if-exists` then drops.
 #
-# The previous design did `docker exec ${APP_CONTAINER} ... uv run alembic`
+# The previous design did `docker exec <app-container> ... uv run alembic`
 # from this script. It broke F-00080 (iwcore-164) because the app container
 # exited early — `pip install --user` couldn't write /app/.local since /app
 # is auto-created root-owned by the /app/.claude bind-mount, leaving the
