@@ -43,13 +43,57 @@ The step prompt you receive (typically `prompts/<ITEM>_S<NN>_BrowserVerification
 7. **Wipe `evidences/post/` and stale `.playwright-cli/page-*.png` files BEFORE the first verification.** This prevents accidentally reusing a screenshot from a prior run when the current verification fails to capture one. See the screenshot-capture idiom below.
 8. **Capture at least one screenshot per verification to `ai-dev/active/$IW_ITEM_ID/evidences/post/`** with descriptive filenames (e.g. `<ITEM>_v1_<description>.png`). An empty `evidences/post/` folder is a failure. The screenshot's modification time MUST be newer than the verification it backs.
 9. **Never fabricate verifications.** Every V(n) in your report must correspond to a real navigation + screenshot you actually performed in this run. Reusing screenshots from a prior run, or claiming a verification you skipped, is a hard violation. The orchestrator can detect stale screenshots by mtime — a verification whose screenshot pre-dates the step start is treated as fabricated.
-10. **Distinguish CODE DEFECTS from ENV_DATA_MISSING** (see the step prompt's "Distinguishing" section). Code defects → normal `--reason`. Missing seed data → prefix reason with `ENV_DATA_MISSING:`. Do not flip-flop between the two diagnoses across fix cycles for the same V — if you classified it as `ENV_DATA_MISSING:` once, the next failure on the same V is also `ENV_DATA_MISSING:` unless the seed actually changed.
+10. **Distinguish CODE DEFECTS, ENV_DATA_MISSING, and SPEC_MISMATCH.** Three failure classes exist:
+    - **CODE_DEFECT** — the page returned a 5xx, threw a console exception, or rendered broken/missing UI that the design says should be present. Fix-cycle agent patches code. Use a normal `--reason`.
+    - **ENV_DATA_MISSING** — the page rendered cleanly (HTTP 200) but showed an empty-state because the E2E DB lacks seed rows. Fix-cycle agent adds a fixture, not code. Prefix with `ENV_DATA_MISSING:`.
+    - **SPEC_MISMATCH** — the page rendered cleanly, the element is correctly absent per the design doc, but the V step asks for it anyway. The verification spec is wrong, not the implementation. Prefix with `SPEC_MISMATCH: V{N} expects <X> on <route> but the design doc at <file:line> says <X> only renders when <condition> — verification spec is wrong, not the implementation.` The fix-cycle agent MUST NOT attempt code patches for SPEC_MISMATCH findings; only the verification spec needs correction.
+    - Do not flip-flop diagnoses across fix cycles for the same V unless the underlying state actually changed.
+
+    | Failure shape | Class | Action |
+    |---|---|---|
+    | Page returned 5xx or threw console exception | CODE_DEFECT | normal `--reason` |
+    | Page rendered cleanly but element/data missing because seed lacks it | ENV_DATA_MISSING | `--reason "ENV_DATA_MISSING: ..."` + add fixture |
+    | Page rendered cleanly, element correctly absent per design doc, V step asks for it anyway | SPEC_MISMATCH | `--reason "SPEC_MISMATCH: V{N} ..."` |
+    | Page rendered cleanly, design says element should be present, it isn't | CODE_DEFECT | normal `--reason` |
+
 11. **Never substitute a different check.** If the prompt asks for browser verification, you MUST drive a browser. If you cannot (tool missing, stack not up, etc.), call `iw step-fail` with a specific reason — do NOT pivot to running a lint or format check instead.
+12. **No cascading `n/a` — seed on demand.** If a verification's preconditions are not met (e.g., V5 needs a BatchItem in `awaiting_merge_approval` and one does not exist), you MUST attempt to create one before reporting `n/a`. Accepted creation methods, in order:
+    1. Call the relevant CLI or dashboard route the implementation provides (e.g., create a batch with `auto_merge=false` via the dashboard or `iw batch-create --no-auto-merge`).
+    2. Add or extend the per-CR fixture file `ai-dev/active/$IW_ITEM_ID/e2e_fixtures/NNN_<name>.py` and re-run the seed inside the app container: `docker compose -p "$COMPOSE_PROJECT_NAME" exec app uv run python scripts/e2e_seed.py`.
+    3. Write the row directly via the per-worktree DB connection if the design supplies the SQL.
+
+    Only if methods (1)..(3) all fail or are explicitly out of scope (the V can only be satisfied by code that's broken upstream) may you report the V as `n/a` — and you MUST add a `notes` field explaining what was attempted. **A run with one `fail` and four `n/a` is never acceptable** when those `n/a`s could have been satisfied by a fixture you didn't write. After unblocking a precondition within the same run, immediately retry every downstream V that depended on it — do not wait for the next fix cycle. Every fix cycle must surface the full set of code defects, not just the first one.
 
 ## Workflow
 
 1. Read the full browser-verification prompt passed in. Identify every `V1..V(n)` verification and its expected outcome.
 2. Check if the step requires an E2E fixture (e.g. `ai-dev/active/<ITEM>/e2e_fixtures/001_*.py`). If the prompt says to add one, add it before running verifications. If the stack was already provisioned before you added the fixture, call `iw step-fail` with `ENV_DATA_MISSING:` — the daemon will re-provision.
+2a. **Run V0: Pre-flight page sanity sweep** (mandatory, not skippable — runs before V1).
+    For every distinct page route mentioned in V1..V(n) (de-duplicated):
+    ```bash
+    # Inspect rendered HTML for dangling fragment references
+    curl -s "$IW_BROWSER_BASE_URL/<route>" \
+      | grep -oE 'hx-target="#[^"]+"|hx-include="#[^"]+"|aria-controls="[^"]+"|aria-labelledby="[^"]+"|href="#[^"]+"|for="[^"]+"' \
+      > /tmp/v0_refs_<route_slug>.txt
+
+    curl -s "$IW_BROWSER_BASE_URL/<route>" \
+      | grep -oE 'id="[^"]+"' \
+      > /tmp/v0_ids_<route_slug>.txt
+    ```
+    Compare the two: any fragment reference `#X` where `id="X"` does not appear in the same HTML is a **dangling DOM reference**.
+
+    Additionally, after loading each page via the browser (`playwright-cli goto`), check `.playwright-cli/console-*.log` for any unhandled JS errors or HTMX error responses:
+    ```bash
+    # Console logs are written per-page-load after playwright-cli goto/open.
+    # Read the most recent log after each navigation:
+    LATEST_LOG="$(ls -t .playwright-cli/console-*.log 2>/dev/null | head -1)"
+    [ -n "$LATEST_LOG" ] && cat "$LATEST_LOG"
+    ```
+
+    - Treat any unresolved fragment reference OR any unhandled console error at load time as a **V0 FAIL** with reason `Page <route> has dangling DOM reference(s): <list>` or `Page <route> has console error at load: <message>`.
+    - V0 PASSES only when every page in scope has zero dangling references and zero unhandled console errors at load time.
+    - **If V0 fails, V1..V(n) MUST still be attempted** (so the fix cycle gets the full defect surface). V0 failure does NOT skip later verifications. The report's `overall_status` is `fail` and the V0 finding appears first in the `--reason`.
+    - Record V0 as the first row in the verifications table with `id: "V0"` and `name: "Pre-flight page sanity"`.
 3. **Wipe stale evidence and start the browser ONCE:**
    ```bash
    # Wipe stale screenshots so we cannot accidentally reuse them
@@ -115,10 +159,11 @@ Always include `--report` on both success and failure so the fix-cycle agent see
 
 ## Verifications
 
-| ID | Name | Status | Screenshot | Notes |
-|----|------|--------|------------|-------|
-| V1 | <from prompt> | pass/fail/n/a | evidences/post/<file>.png | |
-| V2 | ... | ... | ... | |
+| ID | Name | Status | Failure Class | Screenshot | Notes |
+|----|------|--------|---------------|------------|-------|
+| V0 | Pre-flight page sanity | pass/fail | code_defect/null | evidences/post/<file>.png | |
+| V1 | <from prompt> | pass/fail/n/a | code_defect/env_data_missing/spec_mismatch/null | evidences/post/<file>.png | |
+| V2 | ... | ... | ... | ... | |
 
 ## Console / Network Errors
 <list, or "None observed">
@@ -144,9 +189,11 @@ End your response with:
   "agent": "qv-browser",
   "work_item": "<ITEM_ID>",
   "overall_status": "pass|fail",
+  "overall_failure_class": "code_defect|env_data_missing|spec_mismatch|null",
   "base_url_used": "",
   "verifications": [
-    {"id": "V1", "name": "", "status": "pass|fail|n/a", "screenshot": "", "notes": ""}
+    {"id": "V0", "name": "Pre-flight page sanity", "status": "pass|fail", "failure_class": "code_defect|null", "screenshot": "", "notes": ""},
+    {"id": "V1", "name": "", "status": "pass|fail|n/a", "failure_class": "code_defect|env_data_missing|spec_mismatch|null", "screenshot": "", "notes": ""}
   ],
   "console_errors_observed": [],
   "screenshots": [],
@@ -154,4 +201,6 @@ End your response with:
 }
 ```
 
-`overall_status` is `pass` only if every V is `pass` or `n/a`.
+- `overall_status` is `pass` only if every V is `pass` or `n/a`.
+- `overall_failure_class`: the most severe failure class observed across all Vs. Severity order for routing purposes: `spec_mismatch` > `env_data_missing` > `code_defect`. Set to `null` when `overall_status` is `pass`.
+- `failure_class` per verification: set to `null` when status is `pass` or `n/a`.

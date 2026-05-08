@@ -180,6 +180,19 @@ Replace the V1..V(n) below with concrete, per-acceptance-criterion verifications
 3. **What to verify** -- exact text, element visibility, URL change, or the absence of console errors.
 4. **Capture an evidence screenshot:** `playwright-cli screenshot` (no path argument — saves to `.playwright-cli/page-<ts>.png`), then `cp .playwright-cli/page-*.png ai-dev/active/{{ID}}/evidences/post/{{ID}}_v{N}_{{short_name}}.png`. Passing a path to `playwright-cli screenshot` is invalid — the tool treats it as a page element ref and errors.
 
+### V0: Pre-flight page sanity (built-in — do NOT modify or remove this step)
+
+> This verification is automatically prepended by the qv-browser agent before any work-item-specific V steps. Work item authors do NOT need to write V0 — it runs unconditionally. It is documented here so design reviewers understand what the agent will check.
+
+The agent will visit every distinct page route referenced in V1..V(n) and:
+
+- Extract all fragment references (`hx-target="#X"`, `hx-include="#X"`, `aria-controls="X"`, `aria-labelledby="X"`, `href="#X"`, `for="X"`) from the rendered HTML via `curl`.
+- Verify each referenced `id="X"` is present in the same HTML response.
+- Read `.playwright-cli/console-*.log` after each page load to detect unhandled JS or HTMX errors.
+- Flag any dangling reference or unhandled load-time error as a V0 FAIL.
+
+**If V0 fails, V1..V(n) still run** — V0 failure does not skip the remaining verifications. The `overall_status` is `fail` and the V0 finding appears first in the `--reason`.
+
 ### V1: {{one-line description of the primary user-visible feature}}
 
 1. Navigate to `{{IW_BROWSER_BASE_URL}}/{{specific_route}}`.
@@ -206,11 +219,18 @@ Replace the V1..V(n) below with concrete, per-acceptance-criterion verifications
 
 All V1..V(n) must pass. Any failure -- including a partial or ambiguous result -- requires calling `iw step-fail` with a reason. There is no "mostly passed"; if an expected element cannot be found, snapshot the page, attach the screenshot, and fail the step.
 
-### Distinguishing code defects from environment gaps
+### Distinguishing code defects from environment gaps and spec mismatches
 
-Before failing the step, classify the failure:
+Before failing the step, classify the failure using one of three classes:
 
-- **CODE DEFECT** -- the page returned an HTTP error, threw a console exception, rendered the wrong element, or showed broken UI. The fix-cycle agent can patch this. Use a normal `--reason`.
+| Failure shape | Class | Action |
+|---|---|---|
+| Page returned 5xx or threw console exception | CODE_DEFECT | normal `--reason` |
+| Page rendered cleanly but element/data missing because seed lacks it | ENV_DATA_MISSING | `--reason "ENV_DATA_MISSING: ..."` + add fixture |
+| Page rendered cleanly, element correctly absent per design doc, V step asks for it anyway | SPEC_MISMATCH | `--reason "SPEC_MISMATCH: V{N} ..."` |
+| Page rendered cleanly, design says element should be present, it isn't | CODE_DEFECT | normal `--reason` |
+
+- **CODE_DEFECT** -- the page returned an HTTP error, threw a console exception, rendered the wrong element, or showed broken UI that the design says should be present. The fix-cycle agent can patch this. Use a normal `--reason`.
 - **ENV_DATA_MISSING** -- the page rendered cleanly with HTTP 200 but showed an empty-state message ("No items yet", "No retries — clean run", "0 results") because the E2E DB lacks the historical rows the verification expects. The fix-cycle agent **cannot** fix this by editing code; it needs an `e2e_fixtures` file. Prefix the reason with `ENV_DATA_MISSING:` so the daemon recognises the class:
 
   ```bash
@@ -220,6 +240,26 @@ Before failing the step, classify the failure:
   ```
 
   The reason is for the human reviewer; the fix path is to add a fixture, not to retry.
+
+- **SPEC_MISMATCH** -- the page rendered cleanly, the element is correctly absent according to the design document, but the V step asks the agent to assert the element is present. The verification spec is wrong; the implementation is correct. Prefix with `SPEC_MISMATCH:` and cite the design doc location:
+
+  ```bash
+  uv run iw step-fail "$IW_ITEM_ID" --step "$IW_STEP_ID" \
+    --reason "SPEC_MISMATCH: V4 expects Plan tab on executing batch but design doc at ai-dev/active/{{ID}}/{{ID}}_Feature_Design.md:§Plan-tab says Plan tab only renders when status in (planning|approved|paused) — verification spec is wrong, not the implementation." \
+    --report ai-dev/active/{{ID}}/reports/{{ID}}_{{STEP}}_BrowserVerification_Report.md
+  ```
+
+  The fix-cycle agent MUST NOT attempt code patches for SPEC_MISMATCH findings. The verification step itself needs to be corrected.
+
+### No cascading `n/a` — seed on demand
+
+Work item authors MUST NOT write "blocked by V2 — n/a" chains in verification specs. The agent is responsible for creating missing preconditions itself. The accepted methods (in order) are:
+
+1. Use a CLI command or dashboard route that the implementation provides (e.g., `iw batch-create --no-auto-merge`).
+2. Add or extend `ai-dev/active/{{ID}}/e2e_fixtures/NNN_<name>.py` and re-run the seed inside the app container.
+3. Write the row directly via the per-worktree DB if the design supplies the SQL.
+
+Only document a V as potentially `n/a` when it can only be satisfied by code that is itself known to be broken in an upstream dependency — and even then the agent will attempt methods (1)..(3) first. A run with one `fail` and four `n/a` is a workflow defect, not a valid report.
 
 ## Report
 
@@ -254,9 +294,11 @@ Always include the `--report` path on both success and failure so the orchestrat
   "agent": "qv-browser",
   "work_item": "{{ID}}",
   "overall_status": "pass|fail",
+  "overall_failure_class": "code_defect|env_data_missing|spec_mismatch|null",
   "base_url_used": "{{IW_BROWSER_BASE_URL}}",
   "verifications": [
-    {"id": "V1", "name": "", "status": "pass|fail", "screenshot": "", "notes": ""}
+    {"id": "V0", "name": "Pre-flight page sanity", "status": "pass|fail", "failure_class": "code_defect|null", "screenshot": "", "notes": ""},
+    {"id": "V1", "name": "", "status": "pass|fail|n/a", "failure_class": "code_defect|env_data_missing|spec_mismatch|null", "screenshot": "", "notes": ""}
   ],
   "console_errors_observed": [],
   "screenshots": [],
@@ -264,6 +306,8 @@ Always include the `--report` path on both success and failure so the orchestrat
 }
 ```
 
-- `overall_status`: `pass` only if every V(n) passed. `fail` on any failure.
+- `overall_status`: `pass` only if every V(n) passed or was legitimately `n/a`. `fail` on any failure.
+- `overall_failure_class`: the most severe failure class observed across all Vs. Severity order for human routing: `spec_mismatch` > `env_data_missing` > `code_defect`. Set to `null` when `overall_status` is `pass`.
+- `failure_class` per verification: set to `null` when status is `pass` or `n/a`.
 - `base_url_used`: The concrete URL the agent actually hit -- used by reviewers to confirm the worktree stack (not the dev server) was tested.
 - `console_errors_observed`: Any console errors seen during any V(n), even if the verification otherwise passed. A non-empty list on a passing run should be flagged in the report.

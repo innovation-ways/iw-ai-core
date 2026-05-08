@@ -71,6 +71,33 @@ You will receive:
 - Check for warnings or deprecations in test output
 - Verify test execution time is reasonable
 
+## Mandatory Checks
+
+### Mandatory: every new branch in a classification / early-return function must have a direct unit test
+
+When backend implementation adds a new branch to a classifier, status-mapper, dispatcher, or any function with early returns, the test suite MUST include a unit test that calls the function directly with the input shape that's supposed to take the new branch. Template-rendering tests, end-to-end tests, and HTTP-route tests do NOT count as coverage for the branch — they pre-populate the function's inputs through fixtures that may bypass the upstream guards that gate the new branch, so the function can be returning the wrong value while the higher-level test still passes by accident.
+
+Concretely:
+
+1. For every new return-branch added in the implementation step (read the implementation step's report or diff to enumerate them — e.g., `_merge_status` gains a new `awaiting_approval` branch), find a unit test that:
+   - Imports the function directly (not via a route, template, or service wrapper).
+   - Constructs the minimal input object exercising the new branch's predicate.
+   - Asserts the function returns the expected new value.
+2. The test MUST construct the input shape literally — do not lean on a generic fixture that defaults other fields. Pay particular attention to fields that gate the function's prior guards (e.g., `worktree_info`, `merged_at`, `started_at`, `is_active`). The input shape should include at least one combination where those gating fields are at their "edge" values (empty dict, empty list, `None`, `0`).
+3. If the only coverage for the new branch is a template-render test or an HTTP-route test, that's insufficient. Those tests detect "the rendered output differs"; they cannot detect "the function returns the wrong label and the template happens to also be wrong in a compensating way".
+
+If a new branch lacks a direct unit test, raise a **CRITICAL** finding:
+
+```
+CRITICAL: new return-branch lacks a direct unit test
+File: <impl path>:<line>
+Branch: <new code>
+Defect: only template/route tests cover this branch. They pre-populate other fields and may bypass the upstream guards that gate the branch — the branch can be unreachable in production while the higher-level tests pass.
+Fix: add tests/unit/test_<module>.py::test_<func>_returns_<new_value>_when_<predicate> that calls the function directly with the minimal input shape, including edge values (empty dict, empty list, None) for any field that gates a preceding guard.
+```
+
+Past defect this rule catches: CR-00036's `_merge_status` got a new `awaiting_approval` branch, but the only coverage was through `tests/dashboard/test_item_overview_awaiting_merge.py` (template rendering). The function was actually returning `"pending"` instead of `"awaiting_approval"` for `worktree_info={}` because of a preceding guard, and the template tests passed because their fixtures set `worktree_info` to a non-empty value. The bug surfaced in S17 BrowserVerification.
+
 ## Severity Levels
 
 - **CRITICAL**: Tests that pass but don't actually verify anything, tests hitting live services

@@ -1,0 +1,40 @@
+# Maps file globs to the code-review agent (or per-layer review specialisation)
+# whose review step should be re-run when a fix cycle modifies matching files.
+#
+# Used by orch/daemon/fix_cycle.py — Change 2.
+# Missing file = no-op (Change 2 disabled for this project).
+#
+# Agent names here must match the keyword extracted from the review step's
+# prompt filename.  The extraction convention is:
+#   <item>_<step>_CodeReview_{Layer}_prompt.md  →  "{layer}-review"
+# e.g. CR-00036_S04_CodeReview_Backend_prompt.md  →  "backend-review"
+
+[[mapping]]
+review_agent = "database-review"
+glob = ["orch/db/models.py", "orch/db/migrations/**"]
+
+[[mapping]]
+review_agent = "backend-review"
+glob = [
+  "orch/daemon/**",
+  "orch/cli/**",
+  "orch/services/**",
+  "orch/*.py",
+  "dashboard/routers/items.py",  # _merge_status etc. — backend-style logic in a router file
+]
+
+[[mapping]]
+review_agent = "api-review"
+glob = ["dashboard/routers/actions.py", "dashboard/routers/api/**"]
+
+[[mapping]]
+review_agent = "frontend-review"
+glob = [
+  "dashboard/templates/**",
+  "dashboard/static/**",
+  "dashboard/routers/project_pages.py",
+]
+
+[[mapping]]
+review_agent = "tests-review"
+glob = ["tests/**"]
