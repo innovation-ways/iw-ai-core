@@ -68,6 +68,55 @@ You will receive:
 - CORS configuration appropriate
 - No mass assignment vulnerabilities
 
+## Mandatory Checks
+
+### Mandatory: HTML form checkbox / select-multi field-absent branch
+
+Any route handler or service function that consumes an HTML `<form>` POST body MUST handle the "field absent from submission" case explicitly for every:
+
+- `<input type="checkbox">`
+- `<input type="radio">` (radios in an unselected group are also omitted)
+- `<select multiple>` (no selections → field absent)
+
+When a browser submits an HTML form, **unchecked checkboxes and unselected radios/multi-selects are NOT included in the request body at all**. `form.get("foo")` returns `None`, NOT the string `"off"` or `"false"`. Therefore, code of this shape is a defect:
+
+```python
+raw = form.get("auto_merge")
+if raw is not None:
+    value = raw.lower() in ("on", "true", "1")
+else:
+    value = config.default  # ← BUG: "user unchecked the box" is indistinguishable from "field default"
+```
+
+Correct shapes (any of these):
+
+```python
+# Variant A — explicit "absent means False"
+value = form.get("auto_merge", "").lower() in ("on", "true", "1")
+
+# Variant B — pair the checkbox with a hidden "_present" sentinel field that's always submitted
+# (and use it to distinguish "form was submitted" from "field defaulted")
+if "auto_merge_present" in form:
+    value = form.get("auto_merge", "").lower() in ("on", "true", "1")
+else:
+    value = config.default  # Only when the form *itself* wasn't submitted
+```
+
+Reviewers MUST:
+1. For every changed route or service that parses form data, identify each checkbox / radio / multi-select field. List them explicitly.
+2. Confirm the handler treats field-absent as "user explicitly off" (NOT as "use default") OR confirm a hidden sentinel field disambiguates the two cases.
+3. Confirm a test exercises the field-absent path (a request with the field literally not in the body, NOT a request with the field set to `"off"` or `"false"`).
+
+If any of (1)..(3) is missing, raise a **CRITICAL** finding:
+
+```
+CRITICAL: HTML form checkbox missing field-absent branch
+File: <path>:<line>
+Field: <name>
+Defect: handler treats `form.get("<name>") is None` as "use default" — but browsers omit unchecked checkboxes from submission, so the user's "off" choice is unreachable. S17 BrowserVerification will fail when the user unchecks the box.
+Fix: treat absent as `False` (unless a hidden `<name>_present` sentinel field is also submitted), and add a test that POSTs the form WITHOUT the field in the body.
+```
+
 ## Severity Levels
 
 - **CRITICAL**: Auth bypass, data exposure, injection vulnerability, broken endpoint

@@ -153,6 +153,24 @@ After implementation:
 3. Do **NOT** report `tests_passed: true` unless ALL unit tests pass with zero failures
 4. If tests fail, fix them before reporting completion
 
+## Migration Verification (Database steps only — NON-NEGOTIABLE)
+
+If your step generated or modified an alembic migration under
+`orch/db/migrations/versions/**`, you MUST run **`make migration-check`**
+before reporting completion. This spins a fresh testcontainer Postgres,
+runs `alembic upgrade head` from base, asserts the resulting schema matches
+`Base.metadata.create_all()` (catches model↔migration drift), and
+round-trips through `downgrade base → upgrade head` (catches broken
+`downgrade()` bodies).
+
+If `make migration-check` fails, fix the migration file (or the model) so
+both halves agree, and re-run until green. Do not report
+`tests_passed: true` while this gate is red — downstream agents will inherit
+a wrong schema and waste fix-cycles diagnosing the symptom (see F-00079
+post-mortem for the cost case: four S19 attempts spent debugging a JS
+"e.map is not a function" that traced back to a missing column in a stack
+that hadn't applied the new migration).
+
 ## Subagent Result Contract
 
 When your work is complete, report results in this JSON structure:

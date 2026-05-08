@@ -108,6 +108,64 @@ def _max_cycles_for(step_type: StepType, project_config: ProjectConfig) -> int:
 
 
 _ENV_DATA_MISSING_PREFIX = "ENV_DATA_MISSING:"
+_SPEC_MISMATCH_PREFIX = "SPEC_MISMATCH:"
+
+
+def is_spec_mismatch_failure(reason: str | None) -> bool:
+    """Return True when a failure reason is prefixed with ``SPEC_MISMATCH:``.
+
+    The check is case-insensitive and ignores leading whitespace so that minor
+    agent output variations don't prevent detection.  A SPEC_MISMATCH failure
+    means the V step verifies behaviour that the design doc explicitly excludes;
+    no code fix can satisfy it — the step must be left failed for human review.
+    """
+    if not reason:
+        return False
+    return reason.lstrip().upper().startswith(_SPEC_MISMATCH_PREFIX.upper())
+
+
+def handle_spec_mismatch_escalation(
+    db: Session,
+    step: WorkflowStep,
+    project_id: str,
+    failure_reason: str | None,
+) -> None:
+    """Record a spec-mismatch escalation event and leave the step in ``failed``.
+
+    Called by batch_manager when a browser_verification step reports
+    ``SPEC_MISMATCH:``.  The step status is NOT changed (it stays ``failed``
+    so the human reviewer sees it as a blocking issue).  No FixCycle is
+    created — there is nothing a code-fix agent can do.
+
+    A ``DaemonEvent`` of type ``spec_mismatch_escalation`` is emitted so the
+    human reviewer can identify and act on it from the dashboard or the events
+    table.
+    """
+    _emit_event(
+        db,
+        project_id,
+        "spec_mismatch_escalation",
+        step.work_item_id,
+        "work_item",
+        (
+            f"Step {step.step_id} failed with SPEC_MISMATCH — "
+            "verification asks for something the design doc explicitly excludes. "
+            "Human review required; no fix cycle will be attempted."
+        ),
+        {
+            "step_id": step.step_id,
+            "failure_reason": failure_reason or "",
+        },
+    )
+    db.commit()
+
+    logger.warning(
+        "[%s] SPEC_MISMATCH escalation for %s/%s: %s",
+        project_id,
+        step.work_item_id,
+        step.step_id,
+        failure_reason or "(no reason)",
+    )
 
 
 def _latest_failure_reason(db: Session, step: WorkflowStep) -> str | None:
@@ -143,6 +201,11 @@ def should_attempt_fix(
     agent how to judge whether an earlier ENV_DATA_MISSING claim is real
     (write a fixture) or hiding a code defect (fix the defect).
 
+    ``SPEC_MISMATCH:`` failures are a different category: the V step asks for
+    something the design doc explicitly excludes.  No code fix can satisfy it,
+    so the fix cycle is skipped entirely and a ``spec_mismatch_escalation``
+    event is emitted (by ``handle_spec_mismatch_escalation`` in batch_manager).
+
     self_assess steps are soft — failures never trigger fix cycles; the
     item proceeds to merge regardless.
     """
@@ -151,6 +214,11 @@ def should_attempt_fix(
     if is_self_assess_step(step.step_type):
         return False
     if step.step_type not in _FIXABLE_STEP_TYPES:
+        return False
+
+    # SPEC_MISMATCH: the verification asks for something the design doc
+    # excludes.  No fix agent can resolve this — escalate to human review.
+    if is_spec_mismatch_failure(_latest_failure_reason(db, step)):
         return False
 
     max_cycles = _max_cycles_for(step.step_type, project_config)
@@ -359,6 +427,29 @@ def attempt_fix_cycle(
         cycle_number,
     )
 
+    # Capture the worktree HEAD SHA before the fix agent runs.
+    # Used by Change 2 (_files_changed_by_fix_cycle) to diff the patch
+    # against HEAD after the agent exits.  Defensive: failure is non-fatal.
+    start_sha: str | None = None
+    try:
+        sha_result = subprocess.run(  # noqa: S603
+            ["git", "rev-parse", "HEAD"],  # noqa: S607
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if sha_result.returncode == 0:
+            start_sha = sha_result.stdout.strip() or None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[%s] Could not capture start_sha for fix cycle %d/%d: %s",
+            project_id,
+            cycle_number,
+            max_cycles,
+            exc,
+        )
+
     now = datetime.now(UTC)
     fix_cycle.status = FixStatus.in_progress
     fix_cycle.started_at = now
@@ -367,6 +458,7 @@ def attempt_fix_cycle(
         "log_file": str(log_file),
         "timeout_secs": timeout,
         "worktree_path": worktree_path,
+        "start_sha": start_sha,
     }
 
     db.commit()
@@ -460,6 +552,51 @@ def _check_fix_cycle_health(
     _complete_fix_cycle(db, cycle, project_id, now)
 
 
+def _cascade_reset_upstream_qv_gates(
+    db: Session,
+    cycle: FixCycle,  # noqa: ARG001 — kept for hook-point symmetry / future use
+    failing_step: WorkflowStep,
+    project_id: str,  # noqa: ARG001 — kept for hook-point symmetry / future use
+) -> list[str]:
+    """Reset every previously-completed QV gate that runs upstream of
+    ``failing_step`` in the same work item, so the daemon re-runs them
+    against the patched code.
+
+    Returns the list of reset step_ids for daemon-event payload.
+
+    No-op when the failing step is not itself a QV gate (quality_validation or
+    browser_verification) — non-QV review fixes don't invalidate upstream QV
+    results because no QV gate has run yet at that point in the canonical
+    pipeline.
+    """
+    if failing_step.step_type not in {StepType.quality_validation, StepType.browser_verification}:
+        return []
+
+    upstream_gates = (
+        db.query(WorkflowStep)
+        .filter(
+            WorkflowStep.work_item_id == failing_step.work_item_id,
+            WorkflowStep.project_id == failing_step.project_id,
+            WorkflowStep.step_type.in_(
+                [StepType.quality_validation, StepType.browser_verification]
+            ),
+            WorkflowStep.step_id < failing_step.step_id,
+            WorkflowStep.status == StepStatus.completed,
+            WorkflowStep.id != failing_step.id,
+        )
+        .all()
+    )
+
+    reset_ids: list[str] = []
+    for gate in upstream_gates:
+        gate.status = StepStatus.pending
+        gate.started_at = None
+        gate.completed_at = None
+        reset_ids.append(gate.step_id)
+
+    return reset_ids
+
+
 def _complete_fix_cycle(
     db: Session,
     cycle: FixCycle,
@@ -483,6 +620,62 @@ def _complete_fix_cycle(
         step.status = StepStatus.pending
         step.started_at = None
         step.completed_at = None
+
+        # Change 1: cascade-reset upstream QV gates so the daemon re-runs
+        # them against the patched code.
+        reset_step_ids = _cascade_reset_upstream_qv_gates(db, cycle, step, project_id)
+        if reset_step_ids:
+            _emit_event(
+                db,
+                project_id,
+                "cascaded_replay_after_fix",
+                step.work_item_id,
+                "work_item",
+                (
+                    f"Fix cycle {cycle.cycle_number} on {step.step_id} → "
+                    f"re-running upstream QV gates: {', '.join(reset_step_ids)}"
+                ),
+                {
+                    "cycle_id": cycle.id,
+                    "trigger_step_id": step.step_id,
+                    "reset_step_ids": reset_step_ids,
+                    "reason": "code_changed_by_fix_cycle",
+                },
+            )
+
+        # Change 2: re-run layer-specific code reviews for files touched by the fix.
+        worktree_path = (cycle.fix_metadata or {}).get("worktree_path", "")
+        if worktree_path:
+            from pathlib import Path  # noqa: PLC0415
+
+            from orch.daemon import review_mapping  # noqa: PLC0415
+
+            changed_files = _files_changed_by_fix_cycle(cycle, worktree_path)
+            if changed_files:
+                mapping = review_mapping.load_review_mapping(Path(worktree_path))
+                target_agents = review_mapping.review_agents_for(changed_files, mapping)
+                review_reset_ids = _reset_review_steps_for_agents(
+                    db, step, target_agents, project_id
+                )
+                if review_reset_ids:
+                    _emit_event(
+                        db,
+                        project_id,
+                        "review_replay_after_fix",
+                        step.work_item_id,
+                        "work_item",
+                        (
+                            f"Fix touched {len(changed_files)} file(s) — "
+                            f"re-running reviews: {', '.join(review_reset_ids)}"
+                        ),
+                        {
+                            "cycle_id": cycle.id,
+                            "trigger_step_id": step.step_id,
+                            "changed_files": changed_files,
+                            "reset_step_ids": review_reset_ids,
+                            "reason": "code_changed_by_fix_cycle_in_layer",
+                        },
+                    )
 
     _emit_event(
         db,
@@ -1525,6 +1718,100 @@ def _kill_pid(pid: int | None) -> None:
     from orch.daemon.step_monitor import kill_process_group  # noqa: PLC0415
 
     kill_process_group(pid)
+
+
+def _files_changed_by_fix_cycle(cycle: FixCycle, worktree_path: str) -> list[str]:
+    """Return list of file paths the fix cycle modified.
+
+    Diffs cycle.fix_metadata['start_sha'] vs current HEAD.
+    Returns [] when start_sha is missing, the diff command fails,
+    or no files were changed.
+    """
+    meta = cycle.fix_metadata or {}
+    start_sha = meta.get("start_sha")
+    if not start_sha:
+        return []
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["git", "diff", "--name-only", f"{start_sha}..HEAD"],  # noqa: S607
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            logger.warning(
+                "_files_changed_by_fix_cycle: git diff failed (exit %d): %s",
+                result.returncode,
+                result.stderr.strip(),
+            )
+            return []
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("_files_changed_by_fix_cycle: git diff error: %s", exc)
+        return []
+
+
+def _reset_review_steps_for_agents(
+    db: Session,
+    failing_step: WorkflowStep,
+    agent_names: set[str],
+    project_id: str,
+) -> list[str]:
+    """Reset every WorkflowStep whose layer matches agent_names AND step_type == code_review
+    AND same work_item AND step_id < failing_step.step_id AND status == completed.
+
+    Layer detection uses the prompt_file column: the filename convention is
+    ``<item>_<step>_CodeReview_{Layer}_prompt.md``.  The layer keyword extracted
+    from the filename (e.g. "Backend") is lower-cased and appended with "-review"
+    to form a canonical agent name (e.g. "backend-review") for lookup in agent_names.
+
+    Returns list of reset step_ids.
+    """
+    if not agent_names:
+        return []
+
+    candidates = (
+        db.query(WorkflowStep)
+        .filter(
+            WorkflowStep.work_item_id == failing_step.work_item_id,
+            WorkflowStep.project_id == project_id,
+            WorkflowStep.step_type == StepType.code_review,
+            WorkflowStep.step_id < failing_step.step_id,
+            WorkflowStep.status == StepStatus.completed,
+        )
+        .all()
+    )
+
+    reset_ids: list[str] = []
+    for step in candidates:
+        layer = _extract_review_layer(step)
+        if layer and layer in agent_names:
+            step.status = StepStatus.pending
+            step.started_at = None
+            step.completed_at = None
+            reset_ids.append(step.step_id)
+
+    return reset_ids
+
+
+def _extract_review_layer(step: WorkflowStep) -> str | None:
+    """Extract the normalised layer name from a code_review WorkflowStep.
+
+    The prompt filename convention is ``<item>_<step>_CodeReview_{Layer}_prompt.md``.
+    Returns e.g. ``"backend-review"`` for a file named
+    ``CR-00036_S04_CodeReview_Backend_prompt.md``, or ``None`` when the
+    prompt_file column is absent or the pattern doesn't match.
+    """
+    if not step.prompt_file:
+        return None
+    # Match the last component (basename) — prompt_file may be a relative path.
+    basename = step.prompt_file.rsplit("/", 1)[-1]
+    m = re.search(r"_CodeReview_([A-Za-z]+)_prompt\.md$", basename, re.IGNORECASE)
+    if not m:
+        return None
+    layer_word = m.group(1).lower()  # e.g. "backend", "frontend", "api"
+    return f"{layer_word}-review"
 
 
 def _emit_event(

@@ -10,10 +10,13 @@ from orch.daemon.fix_cycle import (
     _get_browser_findings,
     attempt_fix_cycle,
     check_active_fix_cycles,
+    handle_spec_mismatch_escalation,  # noqa: F401 used in SPEC_MISMATCH tests below
+    is_spec_mismatch_failure,  # noqa: F401 used in SPEC_MISMATCH tests below
     should_attempt_fix,
 )
 from orch.daemon.project_registry import ProjectConfig
 from orch.db.models import (
+    DaemonEvent,
     FixCycle,
     FixStatus,
     FixTrigger,
@@ -494,7 +497,6 @@ def test_attempt_fix_cycle_records_failed_cycle_on_prompt_error(
     Without this guard the daemon would see status=failed + 0 FixCycle rows and
     call attempt_fix_cycle again every poll cycle → infinite loop.
     """
-    from orch.db.models import DaemonEvent
 
     mock_generate.side_effect = OSError("disk full")
     # _launch_fix_agent should never be called if prompt generation fails

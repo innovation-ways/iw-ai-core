@@ -483,6 +483,19 @@ class BatchManager:
             # Step failed — attempt a fix cycle if the step type supports it
             from orch.daemon import fix_cycle  # noqa: PLC0415
 
+            # SPEC_MISMATCH: the V step asks for something the design doc
+            # explicitly excludes.  No code fix can satisfy it — escalate to
+            # human review immediately without creating a FixCycle.
+            failure_reason = fix_cycle._latest_failure_reason(db, has_failed)  # noqa: SLF001
+            if fix_cycle.is_spec_mismatch_failure(failure_reason):
+                fix_cycle.handle_spec_mismatch_escalation(
+                    db,
+                    has_failed,
+                    self.project_id,
+                    failure_reason,
+                )
+                return
+
             if fix_cycle.should_attempt_fix(db, has_failed, self.project_config):
                 worktree_info = batch_item.worktree_info or {}
                 fix_cycle.attempt_fix_cycle(
@@ -1078,6 +1091,78 @@ class BatchManager:
                             exc_info=True,
                         )
                     return
+
+                # Apply per-item fixtures AFTER env_up so the browser agent
+                # always sees deterministic seed data — on initial provision AND
+                # every fix-cycle re-provision.  Runs inside the e2e-dashboard
+                # container via docker compose exec.  Silent no-op when the
+                # fixtures directory does not exist (most work items).
+                compose_project_name = bv_env.get("COMPOSE_PROJECT_NAME", "")
+                if compose_project_name:
+                    try:
+                        browser_env._apply_per_item_fixtures(  # noqa: SLF001
+                            step.work_item_id,
+                            compose_project_name,
+                            worktree_path,
+                        )
+                    except Exception as fixture_exc:
+                        now = datetime.now(UTC)
+                        run_number = _next_run_number(db, step)
+                        run = StepRun(
+                            step_id=step.id,
+                            run_number=run_number,
+                            status=RunStatus.failed,
+                            error_message=f"per-item fixture apply failed: {fixture_exc}",
+                            worktree_path=worktree_path,
+                            cli_tool=cli_tool,
+                            started_at=now,
+                            completed_at=now,
+                            timeout_secs=get_timeout(
+                                self.project_config, step.step_type.value, step=step
+                            ),
+                        )
+                        db.add(run)
+                        step.status = StepStatus.failed
+                        step.started_at = now
+                        step.completed_at = now
+                        db.commit()
+                        _emit_event(
+                            db,
+                            self.project_id,
+                            "step_failed",
+                            step.work_item_id,
+                            "work_item",
+                            f"Step {step.step_id} failed: per-item fixture apply failed",
+                            {
+                                "reason": "per_item_fixture_failed",
+                                "item_id": step.work_item_id,
+                                "step_id": step.step_id,
+                                "error": str(fixture_exc),
+                            },
+                        )
+                        db.commit()
+                        logger.warning(
+                            "[%s] per-item fixture apply failed for %s/%s — tearing down stack",
+                            self.project_id,
+                            step.work_item_id,
+                            step.step_id,
+                        )
+                        try:
+                            browser_env.run_env_down_hook(
+                                self.project_config,
+                                worktree_path,
+                                bv_env,
+                                step.work_item_id,
+                                step.step_id,
+                            )
+                        except Exception:
+                            logger.warning(
+                                "[%s] browser env_down after fixture failure raised (non-fatal)",
+                                self.project_id,
+                                exc_info=True,
+                            )
+                        return
+
                 agent_env = bv_env
 
         # Quality validation gates run as plain bash subprocesses — no LLM. The

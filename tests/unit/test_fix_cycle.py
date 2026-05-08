@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from orch.daemon.fix_cycle import (
     _FIXABLE_STEP_TYPES,
+    _SPEC_MISMATCH_PREFIX,
     _build_browser_fix_prompt_content,
     _build_design_doc_block,
     _build_fix_prompt_content,
@@ -15,6 +16,7 @@ from orch.daemon.fix_cycle import (
     _extract_step_section,
     _find_design_doc,
     _get_browser_findings,
+    is_spec_mismatch_failure,
 )
 from orch.db.models import RunStatus, StepType
 
@@ -577,3 +579,49 @@ def test_build_browser_fix_prompt_escalation_prefers_honest_escalation() -> None
     )
     assert "PREFER honest escalation" in prompt
     assert "Hail-Mary" in prompt
+
+
+# ---------------------------------------------------------------------------
+# SPEC_MISMATCH prefix detection (unit-level, no DB)
+# ---------------------------------------------------------------------------
+
+
+def test_spec_mismatch_prefix_constant_is_correct() -> None:
+    """The prefix constant must match the literal string the qv-browser agent emits."""
+    assert _SPEC_MISMATCH_PREFIX == "SPEC_MISMATCH:"
+
+
+def test_is_spec_mismatch_failure_returns_true_for_exact_prefix() -> None:
+    reason = (
+        "SPEC_MISMATCH: V4 expects disabled toggle on Plan tab but "
+        "design doc scopes that to non-executing states"
+    )
+    assert is_spec_mismatch_failure(reason) is True
+
+
+def test_is_spec_mismatch_failure_returns_true_with_leading_whitespace() -> None:
+    reason = "  SPEC_MISMATCH: V3 verifies a feature the design doc says is out of scope"
+    assert is_spec_mismatch_failure(reason) is True
+
+
+def test_is_spec_mismatch_failure_returns_false_for_env_data_missing() -> None:
+    reason = "ENV_DATA_MISSING: V1 expects F-00055 step_runs"
+    assert is_spec_mismatch_failure(reason) is False
+
+
+def test_is_spec_mismatch_failure_returns_false_for_code_defect() -> None:
+    reason = "V1 returned 500 on /tab/execution-report"
+    assert is_spec_mismatch_failure(reason) is False
+
+
+def test_is_spec_mismatch_failure_returns_false_for_none() -> None:
+    assert is_spec_mismatch_failure(None) is False
+
+
+def test_is_spec_mismatch_failure_returns_false_for_empty_string() -> None:
+    assert is_spec_mismatch_failure("") is False
+
+
+def test_is_spec_mismatch_failure_case_insensitive() -> None:
+    """The prefix check is case-insensitive to tolerate agent variation."""
+    assert is_spec_mismatch_failure("spec_mismatch: lowercase variant") is True

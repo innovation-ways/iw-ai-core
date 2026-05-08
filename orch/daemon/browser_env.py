@@ -487,6 +487,122 @@ def _capture_crashed_container_logs(compose_log: str, tail: int = 50) -> str:
 
 
 # ---------------------------------------------------------------------------
+# _apply_per_item_fixtures — internal
+# ---------------------------------------------------------------------------
+
+#: Timeout for running the per-item fixture script inside the container.
+_FIXTURE_APPLY_TIMEOUT_SEC = 120
+
+#: Service name in docker-compose.e2e.yml that has the scripts/ tree.
+_E2E_DASHBOARD_SERVICE = "e2e-dashboard"
+
+
+def _apply_per_item_fixtures(
+    item_id: str,
+    compose_project_name: str,
+    worktree_path: str,
+) -> None:
+    """Run ``scripts/e2e_apply_item_fixtures.py <item_id>`` inside the E2E container.
+
+    This is called by ``batch_manager._launch_step`` after ``run_env_up_hook``
+    succeeds so that every browser_verification run starts with a deterministic
+    DB state — regardless of whether this is the initial provision or a
+    fix-cycle re-provision.
+
+    Behaviour:
+    - If ``ai-dev/active/<item_id>/e2e_fixtures/`` does not exist in the
+      worktree, the in-container script exits 0 silently (no-op).
+    - If the directory exists, each ``seed(db)`` in the fixture files is
+      called in lexical order against the E2E DB (``IW_CORE_DB_*`` env vars
+      inside the container point at the per-stack Postgres, NOT orch:5433).
+    - If the script exits non-zero, this function raises ``RuntimeError``
+      with the captured stderr so the caller can tear down and emit a
+      DaemonEvent.
+
+    Args:
+        item_id: Work item identifier, e.g. ``CR-00036``.
+        compose_project_name: The ``COMPOSE_PROJECT_NAME`` value used when
+            bringing up the E2E stack (e.g. ``iw-ai-core-e2e-cr00036``).
+        worktree_path: Absolute path to the worktree root; used as CWD for
+            ``docker compose exec`` so relative bind-mount paths resolve
+            correctly.
+
+    Raises:
+        RuntimeError: When the fixture script exits non-zero or times out.
+            The caller is responsible for tearing down the stack and emitting
+            a DaemonEvent.
+    """
+    # Fast path: if there is no fixtures directory for this item, skip the
+    # docker exec entirely to avoid any overhead on the common case.
+    fixtures_dir = Path(worktree_path) / "ai-dev" / "active" / item_id / "e2e_fixtures"
+    if not fixtures_dir.exists():
+        logger.debug(
+            "[%s] no e2e_fixtures directory — skipping per-item fixture apply",
+            item_id,
+        )
+        return
+
+    # Check whether there are any non-private fixture files before shelling out.
+    fixture_files = [f for f in fixtures_dir.glob("*.py") if not f.name.startswith("_")]
+    if not fixture_files:
+        logger.debug(
+            "[%s] e2e_fixtures directory exists but has no fixture files — skipping",
+            item_id,
+        )
+        return
+
+    logger.info(
+        "[%s] applying %d per-item fixture(s) via docker compose exec",
+        item_id,
+        len(fixture_files),
+    )
+
+    cmd = [
+        "docker",
+        "compose",
+        "-p",
+        compose_project_name,
+        "exec",
+        "-T",  # disable pseudo-TTY — stdout/stderr are captured by subprocess
+        _E2E_DASHBOARD_SERVICE,
+        "uv",
+        "run",
+        "python",
+        "scripts/e2e_apply_item_fixtures.py",
+        item_id,
+    ]
+
+    try:
+        result = subprocess.run(  # noqa: S603, S607
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_FIXTURE_APPLY_TIMEOUT_SEC,
+            cwd=worktree_path,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"per-item fixture apply timed out after {_FIXTURE_APPLY_TIMEOUT_SEC}s for {item_id}"
+        ) from exc
+
+    if result.stdout.strip():
+        for line in result.stdout.strip().splitlines():
+            logger.info("[%s] fixture: %s", item_id, line)
+    if result.stderr.strip():
+        for line in result.stderr.strip().splitlines():
+            logger.warning("[%s] fixture stderr: %s", item_id, line)
+
+    if result.returncode != 0:
+        stderr_tail = result.stderr[-2000:] if result.stderr else "(no stderr)"
+        raise RuntimeError(
+            f"per-item fixture apply failed for {item_id} (exit {result.returncode}): {stderr_tail}"
+        )
+
+    logger.info("[%s] per-item fixtures applied successfully", item_id)
+
+
+# ---------------------------------------------------------------------------
 # run_env_down_hook — public
 # ---------------------------------------------------------------------------
 
