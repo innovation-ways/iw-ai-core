@@ -10,6 +10,7 @@ from typing import Any
 
 import click
 from sqlalchemy import select
+from sqlalchemy.orm import load_only
 
 from orch.cli.utils import output_error, resolve_project
 from orch.db.models import (
@@ -28,6 +29,94 @@ from orch.evidences import EvidenceTooLargeError, ingest_phase_from_disk
 from orch.utils.log_capture import capture_log_content
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Agent-facing CLI column pinning — see R2b in docs/IW_AI_Core_Agent_Constraints.md
+#
+# These tuples enumerate every column that the agent-facing CLI actually reads
+# or writes for each model.  Using load_only(*_COLUMNS) on SELECT prevents the
+# ORM from expanding to "SELECT *" against a live DB that hasn't migrated the
+# worktree's in-flight feature columns yet (e.g. diff_text/diff_summary on
+# step_runs, gate on workflow_steps — F-00079 additions).  The daemon is exempt
+# because it always runs from main where ORM and DB are in sync.
+# ---------------------------------------------------------------------------
+
+_STEP_RUN_CLI_COLUMNS = (
+    StepRun.id,
+    StepRun.step_id,
+    StepRun.run_number,
+    StepRun.status,
+    StepRun.pid,
+    StepRun.pid_alive,
+    StepRun.command,
+    StepRun.worktree_path,
+    StepRun.cli_tool,
+    StepRun.last_heartbeat,
+    StepRun.timeout_secs,
+    StepRun.error_message,
+    StepRun.exit_code,
+    StepRun.log_file,
+    StepRun.log_content,
+    # NOTE: diff_text and diff_summary are intentionally excluded — they are
+    # feature-gate columns (F-00079) that the live DB may not have yet.
+    StepRun.started_at,
+    StepRun.completed_at,
+    StepRun.duration_secs,
+    StepRun.warned_50pct_at,
+)
+
+_WORK_ITEM_CLI_COLUMNS = (
+    WorkItem.project_id,
+    WorkItem.id,
+    WorkItem.type,
+    WorkItem.title,
+    WorkItem.status,
+    WorkItem.phase,
+    WorkItem.config,
+    WorkItem.depends_on,
+    WorkItem.blocks,
+    WorkItem.impacted_paths,
+    WorkItem.design_doc_path,
+    WorkItem.design_doc_content,
+    WorkItem.functional_doc_path,
+    WorkItem.functional_doc_content,
+    WorkItem.summary,
+    WorkItem.archive_path,
+    WorkItem.archive_size_bytes,
+    WorkItem.created_at,
+    WorkItem.updated_at,
+    WorkItem.completed_at,
+    WorkItem.archived_at,
+    # NOTE: diff_text, diff_summary, merge_commit_sha are intentionally
+    # excluded — they are feature-gate columns (F-00079) that the live
+    # orch DB may not have yet (migration un-applied). The CLI SELECT must
+    # not mention them so it does not crash against a drifted schema.
+)
+
+_WORKFLOW_STEP_CLI_COLUMNS = (
+    WorkflowStep.id,
+    WorkflowStep.project_id,
+    WorkflowStep.work_item_id,
+    WorkflowStep.step_number,
+    WorkflowStep.step_id,
+    WorkflowStep.agent_label,
+    WorkflowStep.opencode_agent,
+    WorkflowStep.step_type,
+    WorkflowStep.step_label,
+    WorkflowStep.description,
+    WorkflowStep.command,
+    WorkflowStep.gate,
+    # NOTE: gate is included in the pinned set — it was added by F-00079
+    # (merged), so it is present in both the in-process ORM and the live DB.
+    # Excluding it would break step commands for items that use qv-gate steps.
+    WorkflowStep.timeout_secs,
+    WorkflowStep.status,
+    WorkflowStep.prompt_file,
+    WorkflowStep.report_file,
+    WorkflowStep.report_content,
+    WorkflowStep.started_at,
+    WorkflowStep.completed_at,
+)
 
 # ---------------------------------------------------------------------------
 # Pure validation helpers (used by unit tests without DB)
@@ -142,7 +231,9 @@ def _find_step(
     step_id: str,
 ) -> WorkflowStep | None:
     return session.execute(  # type: ignore[no-any-return]
-        select(WorkflowStep).where(
+        select(WorkflowStep)
+        .options(load_only(*_WORKFLOW_STEP_CLI_COLUMNS))
+        .where(
             WorkflowStep.project_id == project_id,
             WorkflowStep.work_item_id == item_id,
             WorkflowStep.step_id == step_id,
@@ -248,7 +339,9 @@ def step_start(ctx: click.Context, item_id: str, step_id: str) -> None:
 
                 # Transition work item approved → in_progress on first step start
                 work_item = session.scalar(
-                    select(WorkItem).where(
+                    select(WorkItem)
+                    .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                    .where(
                         WorkItem.project_id == project_id,
                         WorkItem.id == item_id,
                     )
@@ -373,6 +466,7 @@ def step_done(
             # Capture log content into DB before the worktree is cleaned up
             step_run = session.execute(
                 select(StepRun)
+                .options(load_only(*_STEP_RUN_CLI_COLUMNS))
                 .where(
                     StepRun.step_id == step.id,
                     StepRun.status == RunStatus.running,
@@ -549,6 +643,7 @@ def step_fail(
             # Store reason in the current running step_run (if daemon created one)
             step_run = session.execute(
                 select(StepRun)
+                .options(load_only(*_STEP_RUN_CLI_COLUMNS))
                 .where(
                     StepRun.step_id == step.id,
                     StepRun.status == RunStatus.running,
@@ -640,6 +735,7 @@ def step_restart(ctx: click.Context, item_id: str, step_id: str) -> None:
             )
             advanced = session.execute(
                 select(WorkflowStep)
+                .options(load_only(*_WORKFLOW_STEP_CLI_COLUMNS))
                 .where(
                     WorkflowStep.project_id == project_id,
                     WorkflowStep.work_item_id == item_id,
@@ -676,7 +772,9 @@ def step_restart(ctx: click.Context, item_id: str, step_id: str) -> None:
 
             # If the work item itself is failed, reset it to in_progress
             work_item = session.execute(
-                select(WorkItem).where(
+                select(WorkItem)
+                .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                .where(
                     WorkItem.project_id == project_id,
                     WorkItem.id == item_id,
                 )
@@ -748,6 +846,7 @@ def step_restart_from(ctx: click.Context, item_id: str, step_id: str) -> None:
             all_steps = (
                 session.execute(
                     select(WorkflowStep)
+                    .options(load_only(*_WORKFLOW_STEP_CLI_COLUMNS))
                     .where(
                         WorkflowStep.project_id == project_id,
                         WorkflowStep.work_item_id == item_id,
@@ -774,7 +873,9 @@ def step_restart_from(ctx: click.Context, item_id: str, step_id: str) -> None:
 
             # If the work item is failed or completed, reset to in_progress
             work_item = session.execute(
-                select(WorkItem).where(
+                select(WorkItem)
+                .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                .where(
                     WorkItem.project_id == project_id,
                     WorkItem.id == item_id,
                 )
@@ -843,6 +944,11 @@ def step_skip(ctx: click.Context, item_id: str, step_id: str, reason: str | None
             if reason:
                 last_run = session.execute(
                     select(StepRun)
+                    .options(
+                        load_only(
+                            StepRun.id, StepRun.step_id, StepRun.run_number, StepRun.error_message
+                        )
+                    )
                     .where(StepRun.step_id == step.id)
                     .order_by(StepRun.run_number.desc())
                     .limit(1)
@@ -908,6 +1014,16 @@ def step_kill(ctx: click.Context, item_id: str, step_id: str, reason: str) -> No
             # Find the active run
             active_run = session.execute(
                 select(StepRun)
+                .options(
+                    load_only(
+                        StepRun.id,
+                        StepRun.step_id,
+                        StepRun.run_number,
+                        StepRun.status,
+                        StepRun.pid,
+                        StepRun.worktree_path,
+                    )
+                )
                 .where(
                     StepRun.step_id == step.id,
                     StepRun.status.in_([RunStatus.running, RunStatus.stalled]),

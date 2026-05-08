@@ -81,6 +81,36 @@ STOP and raise a blocker. Do not work around this rule.
 
 Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
+### R2b. CLI resilience to in-flight schema drift
+
+Agent constraint **R2** (agents write migrations; daemon applies) implies a
+structural drift window: when an in-worktree feature adds columns to an
+orchestration table, the *in-worktree* ORM declares those columns but the
+migration is un-applied, so the *live* orchestration DB on port 5433 does not
+have them yet.  Any full-column ``select(Model)`` or ``session.get(Model, key)``
+call made from the agent-facing CLI (``orch/cli/step_commands.py``,
+``orch/cli/item_commands.py``) will expand into a ``SELECT`` that enumerates
+every ``Mapped[]`` attribute on the *in-worktree* class — causing
+``psycopg.errors.UndefinedColumn`` against the live DB.
+
+**Rule**: all agent-facing CLI reads of ``StepRun``, ``WorkItem``, and
+``WorkflowStep`` must use column-projected ``SELECT`` via SQLAlchemy's
+``load_only()`` with a pinned per-model column set.  This keeps the SELECT
+shape stable regardless of what columns a worktree feature has added.  The
+daemon side is exempt: it always runs from ``main`` where the ORM and DB are
+in sync.
+
+Two query shapes are equally affected and both must be converted:
+
+- ``select(Model).where(...)`` → ``select(Model).options(load_only(...)).where(...)``
+- ``session.get(Model, (pk1, pk2))`` → ``session.execute(select(Model).options(load_only(...)).where(Model.pk1 == k1, Model.pk2 == k2)).scalar_one_or_none()``
+
+Reference: ``I-00073`` (iw step-done/step-fail crash with UndefinedColumn).  See
+``orch/cli/step_commands.py`` and ``orch/cli/item_commands.py`` for the concrete
+column sets (``_STEP_RUN_CLI_COLUMNS``, ``_WORK_ITEM_CLI_COLUMNS``,
+``_WORKFLOW_STEP_CLI_COLUMNS``).  Regression tests live in
+``tests/integration/cli/test_step_commands_drift.py``.
+
 ### R3. (reserved for future rules)
 
 ---
