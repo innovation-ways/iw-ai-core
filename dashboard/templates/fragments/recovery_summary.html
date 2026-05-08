@@ -1,0 +1,20 @@
+<!-- C.3: Recovery summary banner. Rendered inline in item_overview.html.
+     Only shown when cascade_history.cascade_event_count > 0. -->
+{% if cascade_history and cascade_history.cascade_event_count > 0 %}
+<div class="recovery-summary mb-4 flex items-center gap-2 px-3 py-2 rounded-md
+            border border-warning/40 bg-warning/10 text-sm text-foreground"
+     role="status"
+     aria-label="Recovery summary: {{ cascade_history.cascade_event_count }} cascade round{{ 's' if cascade_history.cascade_event_count != 1 else '' }}">
+  <span aria-hidden="true" class="text-warning-foreground font-semibold">&#x1f501;</span>
+  <span>
+    <strong class="font-semibold">Recovery summary:</strong>
+    {{ cascade_history.cascade_event_count }} cascade round{{ 's' if cascade_history.cascade_event_count != 1 else '' }}
+    &middot;
+    {{ cascade_history.fix_cycle_count }} fix cycle{{ 's' if cascade_history.fix_cycle_count != 1 else '' }}
+    {% if cascade_history.replay_wall_clock_minutes is not none %}
+      &middot;
+      {{ cascade_history.replay_wall_clock_minutes }} min replay wall-clock
+    {% endif %}
+  </span>
+</div>
+{% endif %}

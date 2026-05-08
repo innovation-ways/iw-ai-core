@@ -81,11 +81,21 @@ _DEFAULT_FIX_CYCLE_MAX = 5
 _MAX_FIX_SUMMARY_LEN = 20000
 # Browser fix cycles rebuild the full E2E docker-compose stack on every
 # re-run, which is expensive; cap them separately from the generic limit.
-# Bumped to 3 from 2 after 4/6 recent browser_verification completions
-# (CR-00019, F-00058, F-00056, F-00055) used both cycles — two stuck items
-# (I-00038 S11, F-00060 S14) ran out on the first wrong-hypothesis step and
-# never recovered. Three cycles gives agents room for one bad guess.
-_DEFAULT_BROWSER_FIX_CYCLE_MAX = 3
+# Bumped to 5 from 3 after CR-00036 validation showed that 3 cycles was
+# insufficient for realistic browser fix loops.
+_DEFAULT_BROWSER_FIX_CYCLE_MAX = 5
+
+# Per-gate-type budgets for quality_validation steps.
+# QV fix cycles vary significantly in cost/complexity — lint/format agents
+# are fast and mechanical (3 cycles is plenty), integration tests are slow
+# and may require deeper analysis (7 cycles allows convergence).
+_DEFAULT_QV_GATE_BUDGETS: dict[str, int] = {
+    "lint": 3,
+    "format": 3,
+    "typecheck": 3,
+    "unit-tests": 5,
+    "integration-tests": 7,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -93,12 +103,36 @@ _DEFAULT_BROWSER_FIX_CYCLE_MAX = 3
 # ---------------------------------------------------------------------------
 
 
-def _max_cycles_for(step_type: StepType, project_config: ProjectConfig) -> int:
-    """Resolve max fix cycles for a step type (browser has a stricter default)."""
+def _max_cycles_for(
+    step_type: StepType,
+    project_config: ProjectConfig,
+    step: WorkflowStep | None = None,
+) -> int:
+    """Resolve max fix cycles for a step type.
+
+    For ``qv_gate`` steps, a finer-grained per-gate budget is applied:
+    lint/format/typecheck → 3, unit-tests → 5, integration-tests → 7.
+    Per-project overrides can be set in projects.toml via
+    ``qv_fix_cycle_max = { lint = 3, "unit-tests" = 5 }``
+    (merged into the project's config dict by _build_project_config).
+
+    For ``browser_verification`` steps, ``browser_fix_cycle_max`` applies
+    (default 5).  All other step types use ``fix_cycle_max`` (default 5).
+    """
     if step_type is StepType.browser_verification:
         return int(
             project_config.config.get("browser_fix_cycle_max", _DEFAULT_BROWSER_FIX_CYCLE_MAX)
         )
+
+    if step is not None and step_type is StepType.quality_validation and step.gate is not None:
+        # Per-project override dict takes precedence over built-in defaults.
+        per_project: dict[str, int] = project_config.qv_fix_cycle_max
+        gate = step.gate
+        if gate in per_project:
+            return per_project[gate]
+        if gate in _DEFAULT_QV_GATE_BUDGETS:
+            return _DEFAULT_QV_GATE_BUDGETS[gate]
+
     return int(project_config.config.get("fix_cycle_max", _DEFAULT_FIX_CYCLE_MAX))
 
 
@@ -221,7 +255,7 @@ def should_attempt_fix(
     if is_spec_mismatch_failure(_latest_failure_reason(db, step)):
         return False
 
-    max_cycles = _max_cycles_for(step.step_type, project_config)
+    max_cycles = _max_cycles_for(step.step_type, project_config, step=step)
     existing = db.query(FixCycle).filter(FixCycle.step_id == step.id).count()
 
     if existing >= max_cycles:
@@ -231,6 +265,46 @@ def should_attempt_fix(
             step.id,
             step.work_item_id,
             step.step_id,
+        )
+        return False
+
+    # B.3: Aggregate per-work-item budget — backstop independent of per-step caps.
+    # Prevents pathological cascades from burning unbounded total cycles even when
+    # no single step exhausts its own budget.
+    aggregate_max = project_config.aggregate_fix_cycle_max
+    aggregate_used = (
+        db.query(FixCycle)
+        .join(WorkflowStep, FixCycle.step_id == WorkflowStep.id)
+        .filter(WorkflowStep.work_item_id == step.work_item_id)
+        .filter(WorkflowStep.project_id == step.project_id)
+        .count()
+    )
+    if aggregate_used >= aggregate_max:
+        logger.warning(
+            "Aggregate fix-cycle budget exhausted (%d/%d) for work item %s/%s — "
+            "halting recovery on step %s",
+            aggregate_used,
+            aggregate_max,
+            step.project_id,
+            step.work_item_id,
+            step.step_id,
+        )
+        _emit_event(
+            db,
+            step.project_id,
+            "aggregate_budget_exhausted",
+            step.work_item_id,
+            "work_item",
+            (
+                f"Work item exhausted aggregate fix-cycle budget "
+                f"({aggregate_used}/{aggregate_max}); halting recovery on step {step.step_id}."
+            ),
+            {
+                "aggregate_used": aggregate_used,
+                "aggregate_max": aggregate_max,
+                "step_id": step.step_id,
+                "step_type": step.step_type.value if step.step_type else None,
+            },
         )
         return False
 
@@ -329,7 +403,7 @@ def attempt_fix_cycle(
         )
         return
 
-    max_cycles = _max_cycles_for(step.step_type, project_config)
+    max_cycles = _max_cycles_for(step.step_type, project_config, step=step)
     existing_count = db.query(FixCycle).filter(FixCycle.step_id == step.id).count()
     cycle_number = existing_count + 1
     trigger = _TRIGGER_MAP[step.step_type]
@@ -597,13 +671,119 @@ def _cascade_reset_upstream_qv_gates(
     return reset_ids
 
 
+def _peek_cascade_reset_ids(
+    db: Session,
+    failing_step: WorkflowStep,
+    project_id: str,
+) -> list[str]:
+    """Return the step_ids that WOULD be cascade-reset for failing_step,
+    without mutating any WorkflowStep objects.
+
+    Used by the thrashing detector to preview the reset-set so that
+    _detect_thrashing can include the current (in-flight) cascade in
+    its similarity window — without touching DB state.
+    """
+    if failing_step.step_type not in {StepType.quality_validation, StepType.browser_verification}:
+        return []
+
+    upstream_gates = (
+        db.query(WorkflowStep)
+        .filter(
+            WorkflowStep.work_item_id == failing_step.work_item_id,
+            WorkflowStep.project_id == project_id,
+            WorkflowStep.step_type.in_(
+                [StepType.quality_validation, StepType.browser_verification]
+            ),
+            WorkflowStep.step_id < failing_step.step_id,
+            WorkflowStep.status == StepStatus.completed,
+            WorkflowStep.id != failing_step.id,
+        )
+        .all()
+    )
+    return [gate.step_id for gate in upstream_gates]
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    """Jaccard similarity between two sets. Returns 0.0 when both are empty."""
+    if not a and not b:
+        return 0.0
+    union = a | b
+    if not union:
+        return 0.0
+    return len(a & b) / len(union)
+
+
+def _detect_thrashing(
+    db: Session,
+    work_item_id: str,
+    current_trigger_step_id: str,
+    current_reset_set: set[str],
+    *,
+    threshold: int = 3,
+    jaccard_min: float = 0.5,
+) -> bool:
+    """Return True if the current cascade event indicates thrashing.
+
+    Thrashing pattern: the same trigger_step has fired >=``threshold`` cascades
+    within this work item, AND each consecutive cascade's reset_set has
+    Jaccard similarity >=``jaccard_min`` with the previous.
+
+    Reads DaemonEvents of type 'cascaded_replay_after_fix' for this work item,
+    filters to those with trigger_step_id == current_trigger_step_id, and
+    inspects reset_step_ids in event_metadata. Compares consecutive pairs
+    including the current (in-flight) cascade that has not yet been persisted.
+
+    The check includes the *current* cascade by prepending current_reset_set
+    to the historical list, so a threshold of 3 fires when the historical
+    list has >=2 previous cascades (total = 2 + current = 3).
+    """
+    past_events = (
+        db.query(DaemonEvent)
+        .filter(
+            DaemonEvent.entity_id == work_item_id,
+            DaemonEvent.entity_type == "work_item",
+            DaemonEvent.event_type == "cascaded_replay_after_fix",
+        )
+        .order_by(DaemonEvent.created_at)
+        .all()
+    )
+
+    # Collect reset_sets for the same trigger step (historical only).
+    historical_sets: list[set[str]] = []
+    for event in past_events:
+        meta = event.event_metadata or {}
+        if meta.get("trigger_step_id") != current_trigger_step_id:
+            continue
+        raw_ids = meta.get("reset_step_ids", [])
+        historical_sets.append(set(raw_ids) if isinstance(raw_ids, list) else set())
+
+    # Build the full sequence: historical + current cascade
+    all_sets = historical_sets + [current_reset_set]
+    cascade_count = len(all_sets)
+
+    if cascade_count < threshold:
+        return False
+
+    # Check that every consecutive pair in the window ending at the current
+    # cascade has sufficient Jaccard overlap.
+    # We only need to verify the last ``threshold`` entries (inclusive of current).
+    window = all_sets[-(threshold):]
+    return all(_jaccard(window[i], window[i + 1]) >= jaccard_min for i in range(len(window) - 1))
+
+
 def _complete_fix_cycle(
     db: Session,
     cycle: FixCycle,
     project_id: str,
     now: datetime,
+    project_config: ProjectConfig | None = None,
 ) -> None:
-    """Mark fix cycle as completed and reset the review step to pending."""
+    """Mark fix cycle as completed and reset the review step to pending.
+
+    ``project_config`` is optional for backwards compatibility with callers
+    that pre-date the thrashing detector (B.2). When None the thrashing check
+    is skipped (safe default — never raises).
+    """
     cycle.status = FixStatus.completed
     cycle.completed_at = now
 
@@ -621,61 +801,115 @@ def _complete_fix_cycle(
         step.started_at = None
         step.completed_at = None
 
-        # Change 1: cascade-reset upstream QV gates so the daemon re-runs
-        # them against the patched code.
-        reset_step_ids = _cascade_reset_upstream_qv_gates(db, cycle, step, project_id)
-        if reset_step_ids:
+        # B.2 — thrashing detection: probe what the cascade reset-set would be
+        # WITHOUT yet mutating any upstream step.  When thrashing is detected,
+        # the upstream gates are left in their current state (no cascade reset),
+        # Change 2 review-replay is also suppressed, and we emit a dedicated
+        # event that tells the operator to intervene.
+        potential_reset_ids = _peek_cascade_reset_ids(db, step, project_id)
+        thrashing = False
+        if potential_reset_ids and project_config is not None:
+            thrashing = _detect_thrashing(
+                db,
+                step.work_item_id,
+                step.step_id,
+                set(potential_reset_ids),
+                threshold=project_config.cascade_thrashing_threshold,
+                jaccard_min=project_config.cascade_thrashing_jaccard_min,
+            )
+
+        if thrashing:
+            # Count how many past cascades the same trigger has fired.
+            past_cascade_count = (
+                db.query(DaemonEvent)
+                .filter(
+                    DaemonEvent.entity_id == step.work_item_id,
+                    DaemonEvent.entity_type == "work_item",
+                    DaemonEvent.event_type == "cascaded_replay_after_fix",
+                )
+                .count()
+            )
             _emit_event(
                 db,
                 project_id,
-                "cascaded_replay_after_fix",
+                "cascade_thrashing_detected",
                 step.work_item_id,
                 "work_item",
                 (
-                    f"Fix cycle {cycle.cycle_number} on {step.step_id} → "
-                    f"re-running upstream QV gates: {', '.join(reset_step_ids)}"
+                    f"Thrashing detected: {step.step_id} has triggered {past_cascade_count + 1} "
+                    f"cascades with overlapping reset-sets {potential_reset_ids}. "
+                    "Automatic recovery halted — manual review needed."
                 ),
                 {
-                    "cycle_id": cycle.id,
                     "trigger_step_id": step.step_id,
-                    "reset_step_ids": reset_step_ids,
-                    "reason": "code_changed_by_fix_cycle",
+                    "cascade_count": past_cascade_count + 1,
+                    "reset_set": potential_reset_ids,
+                    "recommendation": "halt automatic recovery; manual review needed",
                 },
             )
-
-        # Change 2: re-run layer-specific code reviews for files touched by the fix.
-        worktree_path = (cycle.fix_metadata or {}).get("worktree_path", "")
-        if worktree_path:
-            from pathlib import Path  # noqa: PLC0415
-
-            from orch.daemon import review_mapping  # noqa: PLC0415
-
-            changed_files = _files_changed_by_fix_cycle(cycle, worktree_path)
-            if changed_files:
-                mapping = review_mapping.load_review_mapping(Path(worktree_path))
-                target_agents = review_mapping.review_agents_for(changed_files, mapping)
-                review_reset_ids = _reset_review_steps_for_agents(
-                    db, step, target_agents, project_id
+            logger.warning(
+                "[%s] Cascade thrashing detected for %s/%s after %d cascades — halting recovery",
+                project_id,
+                step.work_item_id,
+                step.step_id,
+                past_cascade_count + 1,
+            )
+        else:
+            # Change 1: cascade-reset upstream QV gates so the daemon re-runs
+            # them against the patched code.
+            reset_step_ids = _cascade_reset_upstream_qv_gates(db, cycle, step, project_id)
+            if reset_step_ids:
+                _emit_event(
+                    db,
+                    project_id,
+                    "cascaded_replay_after_fix",
+                    step.work_item_id,
+                    "work_item",
+                    (
+                        f"Fix cycle {cycle.cycle_number} on {step.step_id} → "
+                        f"re-running upstream QV gates: {', '.join(reset_step_ids)}"
+                    ),
+                    {
+                        "cycle_id": cycle.id,
+                        "trigger_step_id": step.step_id,
+                        "reset_step_ids": reset_step_ids,
+                        "reason": "code_changed_by_fix_cycle",
+                    },
                 )
-                if review_reset_ids:
-                    _emit_event(
-                        db,
-                        project_id,
-                        "review_replay_after_fix",
-                        step.work_item_id,
-                        "work_item",
-                        (
-                            f"Fix touched {len(changed_files)} file(s) — "
-                            f"re-running reviews: {', '.join(review_reset_ids)}"
-                        ),
-                        {
-                            "cycle_id": cycle.id,
-                            "trigger_step_id": step.step_id,
-                            "changed_files": changed_files,
-                            "reset_step_ids": review_reset_ids,
-                            "reason": "code_changed_by_fix_cycle_in_layer",
-                        },
+
+            # Change 2: re-run layer-specific code reviews for files touched by the fix.
+            worktree_path = (cycle.fix_metadata or {}).get("worktree_path", "")
+            if worktree_path:
+                from pathlib import Path  # noqa: PLC0415
+
+                from orch.daemon import review_mapping  # noqa: PLC0415
+
+                changed_files = _files_changed_by_fix_cycle(cycle, worktree_path)
+                if changed_files:
+                    mapping = review_mapping.load_review_mapping(Path(worktree_path))
+                    target_agents = review_mapping.review_agents_for(changed_files, mapping)
+                    review_reset_ids = _reset_review_steps_for_agents(
+                        db, step, target_agents, project_id
                     )
+                    if review_reset_ids:
+                        _emit_event(
+                            db,
+                            project_id,
+                            "review_replay_after_fix",
+                            step.work_item_id,
+                            "work_item",
+                            (
+                                f"Fix touched {len(changed_files)} file(s) — "
+                                f"re-running reviews: {', '.join(review_reset_ids)}"
+                            ),
+                            {
+                                "cycle_id": cycle.id,
+                                "trigger_step_id": step.step_id,
+                                "changed_files": changed_files,
+                                "reset_step_ids": review_reset_ids,
+                                "reason": "code_changed_by_fix_cycle_in_layer",
+                            },
+                        )
 
     _emit_event(
         db,
@@ -1723,7 +1957,13 @@ def _kill_pid(pid: int | None) -> None:
 def _files_changed_by_fix_cycle(cycle: FixCycle, worktree_path: str) -> list[str]:
     """Return list of file paths the fix cycle modified.
 
-    Diffs cycle.fix_metadata['start_sha'] vs current HEAD.
+    Diffs cycle.fix_metadata['start_sha'] against the working tree
+    (both committed AND uncommitted changes). Fix-cycle agents in this
+    codebase leave files modified in the worktree without committing —
+    so ``git diff <SHA>`` (no second arg) is used rather than
+    ``git diff <SHA>..HEAD`` which would silently return empty when
+    the agent left changes staged/unstaged but not committed.
+
     Returns [] when start_sha is missing, the diff command fails,
     or no files were changed.
     """
@@ -1733,7 +1973,7 @@ def _files_changed_by_fix_cycle(cycle: FixCycle, worktree_path: str) -> list[str
         return []
     try:
         result = subprocess.run(  # noqa: S603
-            ["git", "diff", "--name-only", f"{start_sha}..HEAD"],  # noqa: S607
+            ["git", "diff", "--name-only", start_sha],  # noqa: S607
             cwd=worktree_path,
             capture_output=True,
             text=True,

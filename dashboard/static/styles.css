@@ -302,3 +302,48 @@
     color: #f5f5f5;
   }
 }
+
+/* ── Cascade replay visualization (CR-00036) ── */
+
+/* C.1: run-count badge — subtle inline button next to step ID */
+.step-run-badge {
+  font-size: 0.7rem;
+  line-height: 1;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+.step-run-badge:hover,
+.step-run-badge:focus-visible {
+  opacity: 1;
+}
+.step-run-badge[aria-expanded="true"] {
+  opacity: 1;
+  background-color: var(--accent);
+}
+
+/* C.1: run list expansion container */
+.step-runs-container {
+  margin-top: 0.25rem;
+}
+.step-run-list {
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+/* C.2: cascade causality tree spacing */
+.cascade-history-section > summary {
+  padding: 0.25rem 0;
+}
+.cascade-node {
+  line-height: 1.6;
+}
+
+/* C.3: recovery summary banner */
+.recovery-summary {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

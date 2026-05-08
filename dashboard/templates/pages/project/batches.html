@@ -61,6 +61,7 @@
           ("progress", "Progress"),
           ("created", "Created"),
           ("duration", "Duration"),
+          ("cascades", ""),
         ] %}
         {% for key, label in cols %}
           <th class="px-4 py-2 text-left font-medium text-muted-foreground cursor-pointer
@@ -112,6 +113,17 @@
               {{ "%dm%02ds"|format(mins, secs) }}
             {% else %}
               —
+            {% endif %}
+          </td>
+          <!-- C.4: cascade indicator -->
+          <td class="px-4 py-2 text-center">
+            {% if batch.cascade_item_count > 0 %}
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium
+                           bg-warning/20 text-warning-foreground border border-warning/30"
+                    title="{{ batch.cascade_item_count }} work item{{ 's' if batch.cascade_item_count != 1 else '' }} had cascade rounds"
+                    aria-label="{{ batch.cascade_item_count }} work item{{ 's' if batch.cascade_item_count != 1 else '' }} had cascade rounds">
+                &#x1f501; {{ batch.cascade_item_count }}
+              </span>
             {% endif %}
           </td>
         </tr>
