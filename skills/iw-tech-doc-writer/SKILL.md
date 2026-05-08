@@ -24,7 +24,7 @@ Before writing, load these dependencies:
 2. **Tone of voice**: Read `templates/brand/tone-of-voice.md` — use the "Documentation Voice" section
 3. **Document structure reference**: Read `skills/iw-tech-doc-writer/references/doc-structure-{type}.md` for the selected document type
 4. **Diagram guidelines**: Read `skills/iw-tech-doc-writer/references/diagram-guidelines.md` for diagram requirements per document type
-5. **Research guide**: For detailed best practices, consult `poc/guide-technical-documentation.md`
+5. **Research guide**: For detailed best practices, consult `docs/research/R-00065-tech-doc-visual-design.md`
 
 ## Instructions
 
@@ -80,12 +80,32 @@ Before writing, create an outline with:
 
 For each planned diagram:
 
-1. Write Mermaid source to `poc/diagrams/{system}-{diagram-name}.mmd`
-   - Include the brand theme init string from `brand.json` `diagrams.mermaidInit`
+1. Write Mermaid source to `docs/diagrams/{system}-{diagram-name}.mmd`
+   - Begin every `.mmd` file with the ELK layout frontmatter (`---\nconfig:\n  layout: elk\n---`)
+   - Include the brand theme init string from `brand.json` `diagrams.mermaidInit` below the layout block
    - Follow the `iw-diagram-generator` skill guidelines for complexity and naming
    - Use C4 diagram syntax for context/container/component diagrams
-2. Render to SVG: `mmdc -i {file}.mmd -o {file}.svg -b white`
-3. Verify the SVG was created and is non-empty
+   - Every diagram must be preceded by a "Why paragraph" in the document (1–2 sentences: what question does this answer? when should a reader use it?)
+
+2. Render to SVG using mmdc with playwright Chromium:
+   ```bash
+   cat > /tmp/puppeteer-config.json << 'EOF'
+   {"args": ["--no-sandbox", "--disable-setuid-sandbox"]}
+   EOF
+
+   PUPPETEER_EXECUTABLE_PATH="$HOME/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome" \
+     npx @mermaid-js/mermaid-cli \
+     -i {file}.mmd -o {file}.svg -b white \
+     --puppeteerConfigFile /tmp/puppeteer-config.json
+   ```
+
+   If mmdc fails, fall back to Kroki.io:
+   ```bash
+   curl -X POST https://kroki.io/mermaid/svg \
+     -H "Content-Type: text/plain" -d @{file}.mmd -o {file}.svg
+   ```
+
+3. Verify the SVG was created and is non-empty (>2KB). If under 2KB, the Mermaid is invalid — fix and re-render.
 
 **Diagram requirements by document type**:
 
@@ -96,6 +116,13 @@ For each planned diagram:
 | api | Request flow sequence, authentication flow, error handling flowchart |
 | user-guide | User workflow flowchart, system interaction sequence |
 | functional | Business process flow, user journey, data model (ER) |
+
+**Minimum diagrams by type (enforce in Quality Checklist)**:
+- architecture: 5–8 (C4 context, C4 container, ≥1 component, ≥1 sequence, deployment)
+- infrastructure: 3–5
+- api: 2–4
+- user-guide: 2–4
+- functional: 3–5
 
 ### 6. Write the Document
 
@@ -127,20 +154,20 @@ Follow the structure from the reference file for the selected type. Apply these 
 
 Build the HTML file manually (no template file — construct from scratch using `templates/docs/tech-doc-style.css`):
 
-1. Use the same HTML structure as `poc/output/podforger-architecture.html` (from Phase 1) as reference
+1. Use the same HTML structure as `docs/{system}-{type}.html` (any existing doc in `docs/`) as reference
 2. Include: doc-header with title/version/audience, table of contents, all sections with embedded SVGs
 3. Reference `templates/docs/tech-doc-style.css` for styling
 4. Use CSS classes: `.doc-header`, `.toc`, `.diagram-container`, `.caption`, `.callout`, `.two-col`, `.kv-grid`
 5. For `--brand none`: replace "Innovation Ways" with author name in header and footer
 
-Save to: `poc/output/{system}-{type}.html`
+Save to: `docs/{system}-{type}.html`
 
 ### 8. Generate PDF Output
 
 Convert HTML to PDF using Puppeteer:
 
 ```bash
-NODE_PATH=$(npm root -g) node tools/scripts/html-to-pdf.js poc/output/{file}.html poc/output/{file}.pdf
+NODE_PATH=$(npm root -g) node tools/scripts/html-to-pdf.js docs/{file}.html docs/{file}.pdf
 ```
 
 Verify the PDF was created and is non-empty.
@@ -164,6 +191,9 @@ Before finalizing, verify:
 - [ ] Version header with date, status, and audience tag
 - [ ] Table of contents with all H2 sections
 - [ ] Minimum diagram count met for the document type
+- [ ] Every diagram has a "Why paragraph" before it (what question it answers, when to use it)
+- [ ] All diagrams use ELK layout (`layout: elk` in frontmatter)
+- [ ] All SVG files verified non-empty (>2KB) before embedding
 - [ ] Every diagram has a caption and text explanation
 - [ ] All code examples have language specified
 - [ ] Active voice used 80%+ of the time
@@ -196,5 +226,4 @@ Do NOT:
 - `skills/iw-tech-doc-writer/references/diagram-guidelines.md` — Diagram requirements per doc type
 - `skills/iw-diagram-generator/SKILL.md` — Diagram generation rules
 - `tools/scripts/html-to-pdf.js` — Puppeteer PDF converter
-- `poc/guide-technical-documentation.md` — Full research reference
-- `poc/guide-functional-documentation.md` — Functional doc research reference
+- `docs/research/R-00065-tech-doc-visual-design.md` — Tech doc visual design research reference

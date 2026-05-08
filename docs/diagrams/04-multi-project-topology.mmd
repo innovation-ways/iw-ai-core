@@ -1,0 +1,48 @@
+---
+config:
+  layout: elk
+---
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#D4E4F7', 'primaryTextColor': '#1A1A2E', 'primaryBorderColor': '#2E86AB', 'lineColor': '#6B7280', 'secondaryColor': '#E0F0F8', 'tertiaryColor': '#F5F7FA', 'background': '#FFFFFF', 'mainBkg': '#D4E4F7', 'nodeBorder': '#2E86AB', 'clusterBkg': '#F0F4F8', 'clusterBorder': '#2E86AB', 'titleColor': '#1B2A4A', 'fontFamily': 'Inter', 'fontSize': '14px'}}}%%
+graph TD
+    subgraph CORE["iw-ai-core — Single Instance"]
+        PG[(PostgreSQL\nport 5433\nproject_id isolation)]:::data
+        DASH[Dashboard\nport 9900\nproject selector]:::ui
+        DAEMON[Daemon\nsingle process\npolls all projects]:::core
+    end
+
+    subgraph IWF["InnoForge  project_id=innoforge"]
+        IWF_REPO[main clone\n/dev/iw-doc-plan/main]:::external
+        IWF_WT[.worktrees/I001/\nI002/ ...agent branches]:::worker
+        IWF_SK[.claude/skills/\nsynced base + overrides]:::worker
+        IWF_AD[ai-dev/design/active/\nin-flight items only]:::external
+    end
+
+    subgraph PJB["Project B  project_id=project-b"]
+        PJB_REPO[repo root\n/dev/project-b]:::external
+        PJB_WT[.worktrees/\nagent branches]:::worker
+        PJB_SK[.claude/skills/\nsynced base + overrides]:::worker
+        PJB_AD[ai-dev/design/active/\nin-flight items only]:::external
+    end
+
+    subgraph PJC["Project C  project_id=project-c"]
+        PJC_REPO[repo root\n/dev/project-c]:::external
+        PJC_WT[.worktrees/\nagent branches]:::worker
+        PJC_SK[.claude/skills/\nsynced base + overrides]:::worker
+        PJC_AD[ai-dev/design/active/\nin-flight items only]:::external
+    end
+
+    DASH -->|"queries filtered by project_id"| PG
+    DAEMON -->|"reads / writes filtered by project_id"| PG
+    DAEMON -->|"creates worktrees"| IWF_WT
+    DAEMON -->|"creates worktrees"| PJB_WT
+    DAEMON -->|"creates worktrees"| PJC_WT
+    IWF_WT -->|"reads design files from"| IWF_AD
+    PJB_WT -->|"reads design files from"| PJB_AD
+    PJC_WT -->|"reads design files from"| PJC_AD
+
+    classDef api fill:#DBEAFE,stroke:#3B82F6,color:#1E3A5F
+    classDef data fill:#D1FAE5,stroke:#10B981,color:#065F46
+    classDef worker fill:#FEF3C7,stroke:#F59E0B,color:#78350F
+    classDef external fill:#F3F4F6,stroke:#9CA3AF,color:#374151
+    classDef ui fill:#EDE9FE,stroke:#8B5CF6,color:#3B0764
+    classDef core fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D

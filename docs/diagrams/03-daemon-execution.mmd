@@ -1,0 +1,59 @@
+---
+config:
+  layout: elk
+---
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#D4E4F7', 'primaryTextColor': '#1A1A2E', 'primaryBorderColor': '#2E86AB', 'lineColor': '#6B7280', 'secondaryColor': '#E0F0F8', 'tertiaryColor': '#F5F7FA', 'background': '#FFFFFF', 'mainBkg': '#D4E4F7', 'nodeBorder': '#2E86AB', 'clusterBkg': '#F0F4F8', 'clusterBorder': '#2E86AB', 'titleColor': '#1B2A4A', 'fontFamily': 'Inter', 'fontSize': '14px'}}}%%
+flowchart TD
+    START([Daemon Poll Cycle\nevery 60s]):::worker
+    QUERY[Query approved batches\nacross all projects]:::data
+    NONE{Any batches\nfound?}:::worker
+    SLEEP[Sleep 60s]:::worker
+    ITEM[Pick next batch item\nfrom execution group]:::worker
+    SETUP[worktree_setup.sh\ncreate worktree + install deps]:::worker
+    LAUNCH[Launch LLM Agent\nopencode or claude-code]:::worker
+    MONITOR{Monitor loop\nkill -0 PID}:::worker
+    ALIVE{PID alive?}:::worker
+    TIMEOUT{Elapsed >\ntimeout_secs?}:::worker
+    STALL{No heartbeat\nfor 10 min?}:::worker
+    KILL[SIGTERM agent\nmark status=timeout]:::core
+    STALLED[Mark status=stalled\nemit event]:::core
+    DONE{All steps\ncompleted?}:::data
+    NEXT[Launch next step\nin sequence]:::worker
+    MERGE[worktree_commit.sh\nsquash-merge to main]:::worker
+    DBMERGE[UPDATE batch_items\nstatus=merged]:::data
+    CLEANUP[Remove worktree]:::worker
+    BATCH_DONE{All items\nmerged?}:::data
+    COMPLETE[UPDATE batch\nstatus=completed]:::data
+
+    START --> QUERY
+    QUERY --> NONE
+    NONE -- No --> SLEEP
+    SLEEP --> START
+    NONE -- Yes --> ITEM
+    ITEM --> SETUP
+    SETUP --> LAUNCH
+    LAUNCH --> MONITOR
+    MONITOR --> ALIVE
+    ALIVE -- No --> STALLED
+    ALIVE -- Yes --> TIMEOUT
+    TIMEOUT -- Yes --> KILL
+    TIMEOUT -- No --> STALL
+    STALL -- Yes --> STALLED
+    STALL -- No --> DONE
+    DONE -- No --> NEXT
+    NEXT --> MONITOR
+    DONE -- Yes --> MERGE
+    KILL --> NEXT
+    MERGE --> DBMERGE
+    DBMERGE --> CLEANUP
+    CLEANUP --> BATCH_DONE
+    BATCH_DONE -- No --> ITEM
+    BATCH_DONE -- Yes --> COMPLETE
+    COMPLETE --> SLEEP
+
+    classDef api fill:#DBEAFE,stroke:#3B82F6,color:#1E3A5F
+    classDef data fill:#D1FAE5,stroke:#10B981,color:#065F46
+    classDef worker fill:#FEF3C7,stroke:#F59E0B,color:#78350F
+    classDef external fill:#F3F4F6,stroke:#9CA3AF,color:#374151
+    classDef ui fill:#EDE9FE,stroke:#8B5CF6,color:#3B0764
+    classDef core fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D
