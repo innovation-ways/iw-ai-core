@@ -1,0 +1,102 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00038",
+  "type": "ChangeRequest",
+  "title": "Docs View — Filter Bar Redesign + Running-Jobs Strip + Spinner Fix",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/templates/docs_library.html",
+      "dashboard/templates/fragments/docs_card.html",
+      "dashboard/templates/fragments/docs_running_jobs.html",
+      "dashboard/templates/fragments/docs_generate_running.html",
+      "dashboard/routers/docs.py",
+      "dashboard/static/styles.css",
+      "tests/dashboard/test_docs.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "frontend-impl",
+      "description": "Filter bar redesign (pill buttons → compact selects + search on one line); new GET /api/docs/running-jobs endpoint + docs_running_jobs.html fragment; fix docs_generate POST to return disabled button + HX-Trigger runningJobsReload; delete docs_generate_running.html",
+      "prompt": "prompts/CR-00038_S01_Frontend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Code review of S01 (filter bar, running-jobs strip, generate response fix)",
+      "prompt": "prompts/CR-00038_S02_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Dashboard integration tests for GET /api/docs/running-jobs; update assertions for old pill markup",
+      "prompt": "prompts/CR-00038_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Code review of S03 (tests)",
+      "prompt": "prompts/CR-00038_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Final cross-agent review of S01 + S03",
+      "prompt": "prompts/CR-00038_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — filter bar, running-jobs strip, generate button disable, card auto-refresh",
+      "prompt": "prompts/CR-00038_S11_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00038_S12_SelfAssess_prompt.md"
+    }
+  ]
+}
