@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import mimetypes
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
@@ -24,6 +24,7 @@ from orch.daemon.execution_report import assemble_execution_report
 from orch.db.models import (
     BatchItem,
     BatchItemStatus,
+    DaemonEvent,
     EvidencePhase,
     FixCycle,
     Project,
@@ -196,6 +197,40 @@ class FixCycleDetail:
     log_content: str | None
     log_modified: str | None
     is_running: bool
+
+
+@dataclass
+class CascadeNode:
+    """A single cascade/replay event in the causality tree."""
+
+    timestamp: datetime
+    trigger_step_id: str
+    cycle_id: int | None
+    reset_step_ids: list[str]
+    event_type: str  # 'cascaded_replay_after_fix' or 'review_replay_after_fix'
+    changed_files: list[str] = field(default_factory=list)  # review events only
+    review_reset_step_ids: list[str] = field(default_factory=list)  # review events only
+    children: list[CascadeNode] = field(default_factory=list)
+
+
+@dataclass
+class ThrashingAlert:
+    """Details from a cascade_thrashing_detected event."""
+
+    trigger_step_id: str
+    cascade_count: int
+    recommendation: str
+    created_at: datetime
+
+
+class CascadeHistory(NamedTuple):
+    """Cascade-related daemon events for a work item, structured for template rendering."""
+
+    cascade_event_count: int
+    fix_cycle_count: int
+    replay_wall_clock_minutes: float | None
+    tree: list[CascadeNode]  # top-level cascade events
+    thrashing: ThrashingAlert | None
 
 
 def _now_iso() -> str:
@@ -849,6 +884,150 @@ def _get_fix_cycles(project_id: str, item_id: str, db: Session) -> list[FixCycle
 
 
 # ---------------------------------------------------------------------------
+# Cascade history helpers (C.1, C.2, C.3)
+# ---------------------------------------------------------------------------
+
+_REPLAY_EVENT_TYPES = frozenset(
+    {
+        "cascaded_replay_after_fix",
+        "review_replay_after_fix",
+    }
+)
+
+
+def _get_cascade_history(db: Session, project_id: str, item_id: str) -> CascadeHistory:
+    """Read cascade-related daemon events and step_runs; return a structured
+    summary plus a tree of cascade events suitable for template rendering.
+
+    One query per call — joins daemon_events filtered to the item and builds
+    the causality tree in Python. No N+1 queries.
+    """
+    from sqlalchemy import func
+
+    # 1. Fetch all cascade-related events for this item in chronological order.
+    cascade_event_types = list(_REPLAY_EVENT_TYPES) + [
+        "fix_cycle_started",
+        "cascade_thrashing_detected",
+    ]
+    rows = list(
+        db.scalars(
+            select(DaemonEvent)
+            .where(
+                DaemonEvent.entity_id == item_id,
+                DaemonEvent.event_type.in_(cascade_event_types),
+            )
+            .order_by(DaemonEvent.created_at)
+        ).all()
+    )
+
+    # Separate by type
+    replay_events: list[DaemonEvent] = []
+    fix_cycle_events: list[DaemonEvent] = []
+    thrashing_events: list[DaemonEvent] = []
+    for ev in rows:
+        if ev.event_type in _REPLAY_EVENT_TYPES:
+            replay_events.append(ev)
+        elif ev.event_type == "fix_cycle_started":
+            fix_cycle_events.append(ev)
+        elif ev.event_type == "cascade_thrashing_detected":
+            thrashing_events.append(ev)
+
+    cascade_event_count = len(replay_events)
+    fix_cycle_count = len(fix_cycle_events)
+
+    # 2. Build the thrashing alert (most recent event wins).
+    thrashing: ThrashingAlert | None = None
+    if thrashing_events:
+        ev = thrashing_events[-1]
+        meta = ev.event_metadata or {}
+        thrashing = ThrashingAlert(
+            trigger_step_id=meta.get("trigger_step_id", "?"),
+            cascade_count=meta.get("cascade_count", 0),
+            recommendation=meta.get("recommendation", "Manual review recommended."),
+            created_at=ev.created_at,
+        )
+
+    if not replay_events:
+        return CascadeHistory(
+            cascade_event_count=0,
+            fix_cycle_count=fix_cycle_count,
+            replay_wall_clock_minutes=None,
+            tree=[],
+            thrashing=thrashing,
+        )
+
+    # 3. Compute replay wall-clock.
+    # Simplification: (latest step_run completed_at across all step_runs) minus
+    # (first cascade event timestamp). This approximates "how long did the replay
+    # phase last". Documented simplification: we don't chase individual step
+    # spans, we use the outer envelope.
+    first_cascade_ts = replay_events[0].created_at
+
+    workflow_step_db_ids = list(
+        db.scalars(
+            select(WorkflowStep.id).where(
+                WorkflowStep.project_id == project_id,
+                WorkflowStep.work_item_id == item_id,
+            )
+        ).all()
+    )
+
+    replay_wall_clock_minutes: float | None = None
+    if workflow_step_db_ids:
+        latest_completed = db.scalar(
+            select(func.max(StepRun.completed_at)).where(
+                StepRun.step_id.in_(workflow_step_db_ids),
+                StepRun.started_at >= first_cascade_ts,
+            )
+        )
+        if latest_completed is not None:
+            delta = (latest_completed - first_cascade_ts).total_seconds()
+            replay_wall_clock_minutes = round(delta / 60, 1)
+
+    # 4. Build causality tree.
+    # Rule: cascade event E is a child of the most recent preceding cascade event
+    # E' such that E.trigger_step_id is in E'.reset_step_ids.
+    nodes: list[CascadeNode] = []
+    for ev in replay_events:
+        meta = ev.event_metadata or {}
+        reset_ids: list[str] = list(meta.get("reset_step_ids", []))
+        node = CascadeNode(
+            timestamp=ev.created_at,
+            trigger_step_id=meta.get("trigger_step_id", "?"),
+            cycle_id=meta.get("cycle_id"),
+            reset_step_ids=reset_ids,
+            event_type=ev.event_type,
+            changed_files=list(meta.get("changed_files", [])),
+            review_reset_step_ids=list(meta.get("review_reset_step_ids", [])),
+        )
+        nodes.append(node)
+
+    # Assign parent-child relationships
+    top_level: list[CascadeNode] = []
+    for i, node in enumerate(nodes):
+        parent: CascadeNode | None = None
+        # Search backwards for the most recent preceding event whose reset_step_ids
+        # contains this node's trigger_step_id.
+        for j in range(i - 1, -1, -1):
+            candidate = nodes[j]
+            if node.trigger_step_id in candidate.reset_step_ids:
+                parent = candidate
+                break
+        if parent is not None:
+            parent.children.append(node)
+        else:
+            top_level.append(node)
+
+    return CascadeHistory(
+        cascade_event_count=cascade_event_count,
+        fix_cycle_count=fix_cycle_count,
+        replay_wall_clock_minutes=replay_wall_clock_minutes,
+        tree=top_level,
+        thrashing=thrashing,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -926,6 +1105,9 @@ def item_tab_overview(
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
     steps = _get_steps(project_id, item_id, db)
+    cascade_history = _get_cascade_history(db, project_id, item_id)
+    # C.1: run-count per step (step_id string → run count)
+    step_run_counts: dict[str, int] = {s.step_id: s.run_count for s in steps if not s.is_synthetic}
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -935,6 +1117,63 @@ def item_tab_overview(
             "current_project": project,
             "item": item,
             "steps": steps,
+            "cascade_history": cascade_history,
+            "step_run_counts": step_run_counts,
+        },
+    )
+
+
+@router.get("/item/{item_id}/step-runs/{step_id}", response_class=HTMLResponse)
+def item_step_runs(
+    project_id: str,
+    item_id: str,
+    step_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx endpoint: lazy-load run list for a single step (C.1 expansion)."""
+    _get_project_or_404(project_id, db)
+    _get_item_or_404(project_id, item_id, db)
+
+    # Resolve the WorkflowStep DB id from the string step_id
+    ws = db.scalar(
+        select(WorkflowStep).where(
+            WorkflowStep.project_id == project_id,
+            WorkflowStep.work_item_id == item_id,
+            WorkflowStep.step_id == step_id,
+        )
+    )
+    if ws is None:
+        raise HTTPException(status_code=404, detail=f"Step {step_id!r} not found")
+
+    runs = list(
+        db.scalars(
+            select(StepRun).where(StepRun.step_id == ws.id).order_by(StepRun.run_number)
+        ).all()
+    )
+
+    run_rows = []
+    for r in runs:
+        dur: float | None = None
+        if r.started_at and r.completed_at:
+            dur = (r.completed_at - r.started_at).total_seconds()
+        run_rows.append(
+            {
+                "run_number": r.run_number,
+                "status": r.status.value,
+                "started_at": r.started_at,
+                "completed_at": r.completed_at,
+                "duration_secs": dur,
+            }
+        )
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/step_run_list.html",
+        {
+            "step_id": step_id,
+            "runs": run_rows,
         },
     )
 

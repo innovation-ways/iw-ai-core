@@ -37,7 +37,10 @@ from orch.db.models import (
 # ---------------------------------------------------------------------------
 
 
-def _project_config(fix_cycle_max: int = 5) -> ProjectConfig:
+def _project_config(
+    fix_cycle_max: int = 5,
+    aggregate_fix_cycle_max: int = 25,
+) -> ProjectConfig:
     return ProjectConfig(
         id="test-proj",
         display_name="Test",
@@ -46,6 +49,7 @@ def _project_config(fix_cycle_max: int = 5) -> ProjectConfig:
         cli_tool="claude",
         worktree_base="/repos/test/.worktrees",
         config={"fix_cycle_max": fix_cycle_max},
+        aggregate_fix_cycle_max=aggregate_fix_cycle_max,
     )
 
 
@@ -91,11 +95,20 @@ def _make_step(
     step_type: StepType = StepType.code_review,
     status: StepStatus = StepStatus.failed,
     step_id: str = "S02",
+    step_number: int | None = None,
 ) -> WorkflowStep:
+    # Default step_number derived from step_id (S02 → 2, S04 → 4, …) so callers
+    # that create multiple steps for the same work item don't collide on the
+    # (project_id, work_item_id, step_number) unique constraint.
+    if step_number is None:
+        try:
+            step_number = int(step_id.lstrip("Ss"))
+        except ValueError:
+            step_number = 2
     step = WorkflowStep(
         project_id="test-proj",
         work_item_id="CR-00001",
-        step_number=2,
+        step_number=step_number,
         step_id=step_id,
         agent_label="CodeReview",
         step_type=step_type,
@@ -293,13 +306,15 @@ def test_browser_fix_prompt_warns_about_env_misclassification() -> None:
     assert "previous agent claimed this was environmental" not in plain
 
 
-def test_default_browser_fix_cycle_max_is_three() -> None:
-    """Browser fix-cycle budget is 3 (bumped from 2 after observing that
-    4/6 recent successful browser_verification steps used both cycles and
-    two items ran out on the first wrong hypothesis)."""
+def test_default_browser_fix_cycle_max_is_five() -> None:
+    """Browser fix-cycle budget is 5.
+
+    History: bumped 2 → 3 after observing 4/6 successful runs used both
+    cycles. Then bumped 3 → 5 after CR-00036 hit the wall at 3/3 mid-
+    validation of the cascade-replay feature (Change 1 — 7f57021)."""
     from orch.daemon.fix_cycle import _DEFAULT_BROWSER_FIX_CYCLE_MAX
 
-    assert _DEFAULT_BROWSER_FIX_CYCLE_MAX == 3
+    assert _DEFAULT_BROWSER_FIX_CYCLE_MAX == 5
 
 
 # ---------------------------------------------------------------------------
@@ -647,3 +662,97 @@ def test_i00050_get_browser_findings_integration(
     assert "V1" in result
     assert "FAIL" in result
     assert result.index("browser env setup failed") < result.index("V1")
+
+
+# ---------------------------------------------------------------------------
+# B.3: Aggregate per-work-item fix-cycle budget
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_budget_blocks_new_cycle_when_exhausted(
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    """When total fix cycles across all steps for a work item reach the
+    aggregate cap, no new cycle is created — even if the per-step budget
+    has slack."""
+    _make_item(db_session)
+    # Use small cap so the test is cheap.
+    config = _project_config(aggregate_fix_cycle_max=4)
+    # Create 3 steps with 2 cycles each (6 total); each step is well under
+    # its per-step max (5), but the aggregate is 6 > cap 4.
+    for step_id in ("S02", "S04", "S06"):
+        s = _make_step(db_session, step_type=StepType.code_review, step_id=step_id)
+        _make_fix_cycle(db_session, s, cycle_number=1)
+        _make_fix_cycle(db_session, s, cycle_number=2)
+    # New step that wants a fix cycle.
+    new_step = _make_step(db_session, step_type=StepType.code_review, step_id="S08")
+    assert should_attempt_fix(db_session, new_step, config) is False
+
+
+def test_aggregate_budget_emits_daemon_event(
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    from orch.db.models import DaemonEvent  # noqa: PLC0415
+
+    _make_item(db_session)
+    config = _project_config(aggregate_fix_cycle_max=2)
+    s1 = _make_step(db_session, step_type=StepType.code_review, step_id="S02")
+    _make_fix_cycle(db_session, s1, cycle_number=1)
+    _make_fix_cycle(db_session, s1, cycle_number=2)
+    new_step = _make_step(db_session, step_type=StepType.code_review, step_id="S04")
+    should_attempt_fix(db_session, new_step, config)
+    db_session.commit()
+
+    events = (
+        db_session.query(DaemonEvent)
+        .filter(DaemonEvent.event_type == "aggregate_budget_exhausted")
+        .filter(DaemonEvent.entity_id == "CR-00001")
+        .all()
+    )
+    assert len(events) == 1
+    payload = events[0].event_metadata or {}
+    assert payload["aggregate_used"] == 2
+    assert payload["aggregate_max"] == 2
+    assert payload["step_id"] == "S04"
+
+
+def test_aggregate_budget_does_not_count_other_work_items(
+    db_session: Any,
+    test_project: Project,
+) -> None:
+    """Cycles on a different work item must not consume this item's budget."""
+    # Item under test
+    _make_item(db_session)
+    s1 = _make_step(db_session, step_type=StepType.code_review, step_id="S02")
+    # Other work item with 5 fix cycles — should be invisible.
+    other = WorkItem(
+        project_id="test-proj",
+        id="CR-99999",
+        type=WorkItemType.ChangeRequest,
+        title="Unrelated",
+        status=WorkItemStatus.in_progress,
+        phase=WorkItemPhase.active,
+        config={},
+        depends_on=[],
+        blocks=[],
+    )
+    db_session.add(other)
+    db_session.flush()
+    other_step = WorkflowStep(
+        project_id="test-proj",
+        work_item_id="CR-99999",
+        step_number=2,
+        step_id="S02",
+        agent_label="CodeReview",
+        step_type=StepType.code_review,
+        status=StepStatus.failed,
+    )
+    db_session.add(other_step)
+    db_session.flush()
+    for n in range(1, 6):
+        _make_fix_cycle(db_session, other_step, cycle_number=n)
+
+    # Our item has 0 cycles — should be allowed even with cap=2.
+    assert should_attempt_fix(db_session, s1, _project_config(aggregate_fix_cycle_max=2)) is True

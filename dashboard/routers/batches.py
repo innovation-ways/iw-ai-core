@@ -101,6 +101,8 @@ class BatchRow:
     progress_pct: int
     created_at: datetime
     duration_secs: float | None
+    # C.4: how many work items in this batch had cascade replay events
+    cascade_item_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +286,44 @@ def _batch_item_rows(
     return rows
 
 
+def _cascade_counts_for_batches(
+    project_id: str, batch_ids: list[str], db: Session
+) -> dict[str, int]:
+    """C.4: Return {batch_id: count_of_items_with_cascade_events} in one query.
+
+    Joins batch_items → daemon_events filtering to replay event types. Groups
+    by batch_id to produce a denormalised count without schema changes.
+    """
+    from sqlalchemy import func
+
+    if not batch_ids:
+        return {}
+
+    replay_types = ("cascaded_replay_after_fix", "review_replay_after_fix")
+
+    # Subquery: distinct work_item_ids that have at least one cascade event
+    # within the given batches.
+    subq = (
+        select(
+            BatchItem.batch_id,
+            func.count(BatchItem.work_item_id.distinct()).label("cascade_items"),
+        )
+        .join(
+            DaemonEvent,
+            (DaemonEvent.entity_id == BatchItem.work_item_id)
+            & (DaemonEvent.event_type.in_(replay_types)),
+        )
+        .where(
+            BatchItem.project_id == project_id,
+            BatchItem.batch_id.in_(batch_ids),
+        )
+        .group_by(BatchItem.batch_id)
+        .subquery()
+    )
+    rows = db.execute(select(subq.c.batch_id, subq.c.cascade_items)).all()
+    return {row.batch_id: row.cascade_items for row in rows}
+
+
 def _all_batches(project_id: str, db: Session, status_filter: list[str]) -> list[BatchRow]:
     stmt = select(Batch).where(Batch.project_id == project_id).order_by(Batch.created_at.desc())
     valid = [s for s in status_filter if s in _ALL_STATUSES]
@@ -294,6 +334,8 @@ def _all_batches(project_id: str, db: Session, status_filter: list[str]) -> list
     batches = list(db.scalars(stmt).all())
     batch_ids = [b.id for b in batches]
     step_progress = compute_batch_step_progress(project_id, batch_ids, db)
+    # C.4: cascade item counts per batch (single query)
+    cascade_counts = _cascade_counts_for_batches(project_id, batch_ids, db)
 
     rows = []
     for batch in batches:
@@ -322,6 +364,7 @@ def _all_batches(project_id: str, db: Session, status_filter: list[str]) -> list
                 progress_pct=pct,
                 created_at=batch.created_at,
                 duration_secs=dur,
+                cascade_item_count=cascade_counts.get(batch.id, 0),
             )
         )
     return rows

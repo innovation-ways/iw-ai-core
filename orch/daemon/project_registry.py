@@ -67,6 +67,23 @@ class ProjectConfig:
     # (dashboard) or run `iw item approve-merge` (CLI) before the merge queue
     # picks them up. Read from projects.toml: [projects.<id>] auto_merge.
     auto_merge_default: bool = True
+    # Per-gate fix-cycle budgets for quality_validation steps.
+    # Keys are gate names (e.g. "lint", "unit-tests"); values are integers.
+    # When empty the global defaults in fix_cycle._DEFAULT_QV_GATE_BUDGETS apply.
+    # Read from projects.toml: [projects.<id>] qv_fix_cycle_max = { lint = 3 }.
+    qv_fix_cycle_max: dict[str, int] = field(default_factory=dict)
+    # Cascade thrashing detector: how many times the same trigger step must fire
+    # cascades before the thrashing guard short-circuits. Default 3.
+    # Read from projects.toml: [projects.<id>] cascade_thrashing_threshold = 3.
+    cascade_thrashing_threshold: int = 3
+    # Minimum Jaccard similarity between consecutive cascade reset-sets to
+    # classify repeated cascades from the same trigger as "thrashing". Default 0.5.
+    # Read from projects.toml: [projects.<id>] cascade_thrashing_jaccard_min = 0.5.
+    cascade_thrashing_jaccard_min: float = 0.5
+    # Aggregate per-work-item fix-cycle budget — backstop independent of per-step
+    # caps. Prevents pathological cascades from burning unbounded total cycles.
+    # Default 25. Read from projects.toml: [projects.<id>] aggregate_fix_cycle_max = 25.
+    aggregate_fix_cycle_max: int = 25
 
     @property
     def working_dir(self) -> str:
@@ -155,6 +172,69 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         )
         auto_merge_default = True
 
+    # qv_fix_cycle_max — per-gate budget overrides for quality_validation steps.
+    # Expected: { lint = 3, format = 3, "unit-tests" = 5, ... }
+    # Silently drops non-integer values with a warning so a bad entry doesn't
+    # prevent the project from loading.
+    raw_qv_budgets = entry.get("qv_fix_cycle_max", {})
+    if isinstance(raw_qv_budgets, dict):
+        qv_fix_cycle_max: dict[str, int] = {}
+        for gate_name, budget in raw_qv_budgets.items():
+            if isinstance(budget, int):
+                qv_fix_cycle_max[gate_name] = budget
+            else:
+                logger.warning(
+                    "Project %r qv_fix_cycle_max[%r] is not an int (%r) — ignoring",
+                    project_id,
+                    gate_name,
+                    budget,
+                )
+    else:
+        logger.warning(
+            "Project %r has non-dict 'qv_fix_cycle_max' value — ignoring",
+            project_id,
+        )
+        qv_fix_cycle_max = {}
+
+    # cascade_thrashing_threshold — number of same-trigger cascades before
+    # the thrashing guard fires. Default 3. Must be a positive integer.
+    raw_ct_threshold = entry.get("cascade_thrashing_threshold", 3)
+    if isinstance(raw_ct_threshold, int) and raw_ct_threshold > 0:
+        cascade_thrashing_threshold = raw_ct_threshold
+    else:
+        logger.warning(
+            "Project %r has invalid 'cascade_thrashing_threshold' value %r — defaulting to 3",
+            project_id,
+            raw_ct_threshold,
+        )
+        cascade_thrashing_threshold = 3
+
+    # cascade_thrashing_jaccard_min — minimum Jaccard similarity of consecutive
+    # reset-sets to count as thrashing. Default 0.5. Must be in [0.0, 1.0].
+    raw_ct_jaccard = entry.get("cascade_thrashing_jaccard_min", 0.5)
+    if isinstance(raw_ct_jaccard, (int, float)) and 0.0 <= float(raw_ct_jaccard) <= 1.0:
+        cascade_thrashing_jaccard_min = float(raw_ct_jaccard)
+    else:
+        logger.warning(
+            "Project %r has invalid 'cascade_thrashing_jaccard_min' value %r — defaulting to 0.5",
+            project_id,
+            raw_ct_jaccard,
+        )
+        cascade_thrashing_jaccard_min = 0.5
+
+    # aggregate_fix_cycle_max — total fix cycles across all steps per work item.
+    # Backstop against pathological cascades. Default 25. Must be a positive int.
+    raw_aggregate_max = entry.get("aggregate_fix_cycle_max", 25)
+    if isinstance(raw_aggregate_max, int) and raw_aggregate_max > 0:
+        aggregate_fix_cycle_max = raw_aggregate_max
+    else:
+        logger.warning(
+            "Project %r has invalid 'aggregate_fix_cycle_max' value %r — defaulting to 25",
+            project_id,
+            raw_aggregate_max,
+        )
+        aggregate_fix_cycle_max = 25
+
     return ProjectConfig(
         id=project_id,
         display_name=display_name,
@@ -167,6 +247,10 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         scope_gate_enabled=scope_gate_enabled,
         self_assess_enabled=self_assess_enabled,
         auto_merge_default=auto_merge_default,
+        qv_fix_cycle_max=qv_fix_cycle_max,
+        cascade_thrashing_threshold=cascade_thrashing_threshold,
+        cascade_thrashing_jaccard_min=cascade_thrashing_jaccard_min,
+        aggregate_fix_cycle_max=aggregate_fix_cycle_max,
     )
 
 

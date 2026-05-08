@@ -1,0 +1,49 @@
+<!-- C.1: Lazy-loaded run list for a single step. Rendered by item_step_runs endpoint. -->
+<div class="step-run-list mt-2 border border-border rounded bg-muted/30">
+  {% if runs %}
+    <table class="w-full text-xs">
+      <thead>
+        <tr class="border-b border-border bg-muted/50">
+          <th class="px-3 py-1.5 text-left font-medium text-muted-foreground">#</th>
+          <th class="px-3 py-1.5 text-left font-medium text-muted-foreground">Status</th>
+          <th class="px-3 py-1.5 text-left font-medium text-muted-foreground">Started</th>
+          <th class="px-3 py-1.5 text-left font-medium text-muted-foreground">Completed</th>
+          <th class="px-3 py-1.5 text-left font-medium text-muted-foreground">Duration</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+          <tr class="border-b border-border last:border-0">
+            <td class="px-3 py-1.5 font-mono text-muted-foreground">{{ run.run_number }}</td>
+            <td class="px-3 py-1.5">
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-medium
+                {% if run.status == 'completed' %}bg-success text-success-foreground
+                {% elif run.status == 'failed' %}bg-destructive text-destructive-foreground
+                {% elif run.status == 'running' %}bg-primary text-primary-foreground
+                {% else %}bg-muted text-muted-foreground{% endif %}">
+                {{ run.status }}
+              </span>
+            </td>
+            <td class="px-3 py-1.5 font-mono text-muted-foreground">
+              {% if run.started_at %}{{ run.started_at | localdt('%H:%M:%S') }}{% else %}—{% endif %}
+            </td>
+            <td class="px-3 py-1.5 font-mono text-muted-foreground">
+              {% if run.completed_at %}{{ run.completed_at | localdt('%H:%M:%S') }}{% else %}—{% endif %}
+            </td>
+            <td class="px-3 py-1.5 font-mono text-muted-foreground">
+              {% if run.duration_secs is not none %}
+                {% set m = (run.duration_secs // 60)|int %}
+                {% set s = (run.duration_secs % 60)|int %}
+                {{ "%dm%02ds"|format(m, s) }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="px-3 py-2 text-xs text-muted-foreground">No run records found.</p>
+  {% endif %}
+</div>

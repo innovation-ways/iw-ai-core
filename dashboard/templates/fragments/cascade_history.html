@@ -1,0 +1,113 @@
+<!-- C.2 / C.5: Cascade causality timeline + thrashing alert.
+     Rendered inline in item_overview.html.
+     Only shown when cascade_history.cascade_event_count > 0. -->
+
+{% if cascade_history and cascade_history.cascade_event_count > 0 %}
+
+<!-- C.5: Thrashing alert banner (only when cascade_thrashing_detected event exists) -->
+{% if cascade_history.thrashing %}
+<div class="cascade-thrashing-alert mb-4 flex items-start gap-2 px-3 py-2 rounded-md
+            border border-destructive/50 bg-destructive/10 text-sm"
+     role="alert"
+     aria-label="Cascade thrashing detected">
+  <span class="mt-0.5 font-bold text-destructive" aria-hidden="true">&#x26a0;</span>
+  <div>
+    <span class="font-semibold text-destructive">Thrashing detected</span>
+    &mdash;
+    <span class="text-foreground">
+      This work item triggered the thrashing detector &mdash;
+      step <code class="font-mono text-xs">{{ cascade_history.thrashing.trigger_step_id }}</code>
+      retriggered cascades {{ cascade_history.thrashing.cascade_count }} time{{ 's' if cascade_history.thrashing.cascade_count != 1 else '' }}.
+      {{ cascade_history.thrashing.recommendation }}
+    </span>
+    <div class="text-xs text-muted-foreground mt-0.5">
+      Detected at {{ cascade_history.thrashing.created_at | localdt('%H:%M:%S') }}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- C.2: Replay history collapsible section -->
+{% set turbulent = cascade_history.cascade_event_count > 3 %}
+<details {% if turbulent %}open{% endif %}
+         class="cascade-history-section mt-4">
+  <summary class="flex items-center gap-2 cursor-pointer text-sm font-semibold
+                  text-muted-foreground uppercase tracking-wide mb-2
+                  hover:text-foreground transition-colors list-none"
+           aria-expanded="{{ 'true' if turbulent else 'false' }}">
+    <span>Replay history</span>
+    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
+                 bg-warning/20 text-warning-foreground border border-warning/30">
+      {{ cascade_history.cascade_event_count }} round{{ 's' if cascade_history.cascade_event_count != 1 else '' }}
+    </span>
+    {% if cascade_history.fix_cycle_count > 0 %}
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
+                   bg-muted text-muted-foreground border border-border">
+        {{ cascade_history.fix_cycle_count }} fix cycle{{ 's' if cascade_history.fix_cycle_count != 1 else '' }}
+      </span>
+    {% endif %}
+    {% if cascade_history.replay_wall_clock_minutes is not none %}
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
+                   bg-muted text-muted-foreground border border-border">
+        {{ cascade_history.replay_wall_clock_minutes }} min wall-clock
+      </span>
+    {% endif %}
+  </summary>
+
+  <div class="bg-card border border-border rounded-lg p-4 font-mono text-xs">
+    {% if cascade_history.tree %}
+      {% macro render_node(node, prefix, is_last) %}
+        <div class="cascade-node">
+          <div class="flex items-start gap-1 text-foreground">
+            <span class="text-muted-foreground select-none whitespace-pre">{{ prefix }}{{ '└─' if is_last else '├─' }}</span>
+            <span>
+              <span class="text-muted-foreground">{{ node.timestamp | localdt('%H:%M') }}</span>
+              <span class="mx-1 text-muted-foreground">&middot;</span>
+              <code class="text-primary font-semibold">{{ node.trigger_step_id }}</code>
+              {% if node.cycle_id %}
+                <span class="text-muted-foreground"> fix cycle {{ node.cycle_id }}</span>
+              {% endif %}
+              <span class="text-muted-foreground"> &#x2192; re-ran </span>
+              {% for sid in node.reset_step_ids %}
+                <code class="text-foreground">{{ sid }}</code>{% if not loop.last %}<span class="text-muted-foreground">, </span>{% endif %}
+              {% endfor %}
+              {% if node.event_type == 'review_replay_after_fix' %}
+                {% if node.changed_files %}
+                  <br>
+                  <span class="ml-4 text-muted-foreground">changed files: </span>
+                  {% for f in node.changed_files[:3] %}
+                    <code class="text-foreground">{{ f }}</code>{% if not loop.last %}<span class="text-muted-foreground">, </span>{% endif %}
+                  {% endfor %}
+                  {% if node.changed_files | length > 3 %}
+                    <span class="text-muted-foreground">+{{ node.changed_files | length - 3 }} more</span>
+                  {% endif %}
+                {% endif %}
+                {% if node.review_reset_step_ids %}
+                  <br>
+                  <span class="ml-4 text-muted-foreground">re-ran reviews: </span>
+                  {% for sid in node.review_reset_step_ids %}
+                    <code class="text-foreground">{{ sid }}</code>{% if not loop.last %}<span class="text-muted-foreground">, </span>{% endif %}
+                  {% endfor %}
+                {% endif %}
+              {% endif %}
+            </span>
+          </div>
+          {% if node.children %}
+            {% for child in node.children %}
+              {% set child_prefix = prefix ~ ('   ' if is_last else '│  ') %}
+              {{ render_node(child, child_prefix, loop.last) }}
+            {% endfor %}
+          {% endif %}
+        </div>
+      {% endmacro %}
+
+      {% for node in cascade_history.tree %}
+        {{ render_node(node, '', loop.last) }}
+      {% endfor %}
+    {% else %}
+      <p class="text-muted-foreground font-sans text-sm">No cascade tree data available.</p>
+    {% endif %}
+  </div>
+</details>
+
+{% endif %}
