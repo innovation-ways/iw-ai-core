@@ -27,7 +27,7 @@ Choose the language based on the diagram type:
 |-------------|----------|-----------|
 | Flowcharts | **Mermaid** | Widest support, renders in GitHub |
 | Sequence diagrams | **Mermaid** | Clean syntax, good auto-layout |
-| Architecture overviews | **Mermaid** (flowchart with subgraphs) | Supports nested grouping |
+| Architecture overviews (inline markdown) | **Mermaid** (flowchart with subgraphs) | Renders natively in GitHub |
 | C4 Context/Container | **Mermaid** (C4 diagram type) | Native C4 support since Mermaid v10 |
 | ER diagrams | **Mermaid** (erDiagram) | Good relationship notation |
 | State machines | **Mermaid** (stateDiagram-v2) | Clean state representation |
@@ -35,13 +35,24 @@ Choose the language based on the diagram type:
 | Mind maps | **Mermaid** (mindmap) | Simple hierarchy |
 | Class diagrams | **Mermaid** (classDiagram) | UML-compliant |
 | Git graphs | **Mermaid** (gitGraph) | Branch visualization |
-| Client-facing (high aesthetics) | **D2** | Superior auto-layout, modern look |
+| Architecture overviews (high aesthetics / docs) | **D2** | Superior auto-layout, ELK-native, modern look |
 | Cloud architecture with icons | **Python Diagrams** (mingrammer) | Official cloud provider icons |
 | Complex UML | **PlantUML** | Most comprehensive UML support |
 
 **Default to Mermaid** unless there is a specific reason to use another language.
 
 ### 2. Apply Brand Theme
+
+Every Mermaid diagram MUST begin with the ELK layout frontmatter — this is the single most impactful visual quality improvement:
+
+```
+---
+config:
+  layout: elk
+---
+```
+
+Place this as the very first line of the `.mmd` file, then add the theme init string below it.
 
 Every Mermaid diagram MUST include the IW theme initialization as the first line. Load it from `templates/brand/brand.json` field `diagrams.mermaidInit`:
 
@@ -61,6 +72,7 @@ For D2 diagrams, apply brand colors through D2's style system.
 - **Use meaningful node IDs** — `API[FastAPI Backend]` not `A[FastAPI Backend]`.
 - **Group related components** using subgraphs with descriptive labels.
 - **Consistent direction**: Use `TD` (top-down) for hierarchical diagrams, `LR` (left-right) for flow/sequence-like diagrams.
+- **"Why" paragraph required**: Every diagram in a document MUST be preceded by 1–2 sentences answering: "What question does this diagram answer? When should a developer refer to it?"
 
 ### 4. C4 Model Guidelines
 
@@ -85,14 +97,21 @@ C4Context
 
 ### 5. Rendering
 
-**Preferred method**: Use mermaid-cli (mmdc) for rendering:
+**Method 1 — mmdc with playwright Chromium** (preferred when available):
 
 ```bash
-mmdc -i diagram.mmd -o diagram.svg -b white
-mmdc -i diagram.mmd -o diagram.png -b white -w 1200
+# Create puppeteer config once
+cat > /tmp/puppeteer-config.json << 'EOF'
+{"args": ["--no-sandbox", "--disable-setuid-sandbox"]}
+EOF
+
+PUPPETEER_EXECUTABLE_PATH="$HOME/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome" \
+  npx @mermaid-js/mermaid-cli \
+  -i diagram.mmd -o diagram.svg -b white \
+  --puppeteerConfigFile /tmp/puppeteer-config.json
 ```
 
-**Fallback**: If mmdc is unavailable, use Kroki.io API:
+**Method 2 — Kroki.io API** (fallback if mmdc fails):
 
 ```bash
 curl -X POST https://kroki.io/mermaid/svg \
@@ -101,7 +120,13 @@ curl -X POST https://kroki.io/mermaid/svg \
   -o diagram.svg
 ```
 
-**MCP server**: If the Mermaid MCP server is configured, use it for rendering.
+**Method 3 — MCP server**: If the Mermaid MCP server is configured, use it for rendering.
+
+After rendering, verify the SVG is non-empty (>2KB):
+```bash
+ls -la diagram.svg
+```
+If under 2KB, the Mermaid syntax is likely invalid — review and fix.
 
 ### 6. Output Format Selection
 

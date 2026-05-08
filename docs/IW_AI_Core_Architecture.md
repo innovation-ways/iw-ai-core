@@ -29,6 +29,12 @@ IW AI Core is a standalone platform that centralizes AI-assisted development orc
 
 ## 2. System Architecture Overview
 
+> **Diagram 1: System Architecture Overview** — _Use this diagram to understand which physical components exist, how the iw-ai-core platform relates to managed projects, and where each type of traffic (human UI, agent CLI, daemon orchestration) flows._
+
+![Diagram 1: System Architecture Overview](diagrams/01-system-architecture.svg)
+
+_Figure 1: System Architecture Overview_
+
 *See Diagram 1: System Architecture Overview*
 
 ### 2.1. Physical Layout
@@ -88,6 +94,12 @@ Developer Machine (iw-dev-01)
 ---
 
 ## 3. End-to-End Flow: Creating a New Incident
+
+> **Diagram 2: End-to-End Flow** — _Use this diagram when you need to trace the exact sequence of messages between developer, Claude Code, iw CLI, daemon, and agent across all 5 phases — from typing `/iw-new-incident` to a merged and archived work item._
+
+![Diagram 2: End-to-End Flow](diagrams/02-end-to-end-flow.svg)
+
+_Figure 2: End-to-End Flow_
 
 *See Diagram 2: End-to-End Flow*
 
@@ -234,6 +246,12 @@ make batch-launch BATCH=BATCH-001
 3. Daemon picks up the batch on its next poll cycle
 
 ### Phase 4: Daemon Execution
+
+> **Diagram 3: Daemon Execution Pipeline** — _Use this diagram to understand the daemon's poll loop decision tree: when it picks up a batch, how it monitors running agents, when it triggers a timeout or stall, and how it proceeds to merge and archive._
+
+![Diagram 3: Daemon Execution Pipeline](diagrams/03-daemon-execution.svg)
+
+_Figure 3: Daemon Execution Pipeline_
 
 *See Diagram 3: Daemon Execution Pipeline*
 
@@ -414,6 +432,12 @@ iw archive I001 --project innoforge
 ---
 
 ## 4. Multi-Project Management
+
+> **Diagram 4: Multi-Project Topology** — _Use this diagram to see how a single PostgreSQL instance, daemon, and dashboard serve multiple isolated projects simultaneously, with worktrees and design files kept strictly within each project's own repository._
+
+![Diagram 4: Multi-Project Topology](diagrams/04-multi-project-topology.svg)
+
+_Figure 4: Multi-Project Topology_
 
 *See Diagram 4: Multi-Project Topology*
 
@@ -723,6 +747,12 @@ The `iw` CLI is installed once on the machine (`pip install -e /path/to/iw-ai-co
 ---
 
 ## 6. Database Architecture
+
+> **Diagram 5: Database ER** — _Use this diagram to understand how the core tables relate to each other, which tables use composite `project_id` keys for multi-project isolation, and how work items flow from sequences through steps and step_runs to batches._
+
+![Diagram 5: Database ER](diagrams/05-database-er.svg)
+
+_Figure 5: Database ER_
 
 *See Diagram 7: Database Schema (ER Diagram)*
 
