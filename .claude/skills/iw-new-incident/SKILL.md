@@ -298,6 +298,20 @@ Create the `Tests` prompt. The Tests prompt MUST require:
    - PASSES against the current (fixed) code
 2. **Regression tests** — Additional tests covering the root cause path and edge cases
 3. **Semantic correctness** — assert specific expected values, not just response shape
+4. **Targeted verification only** — the Tests prompt's "Test Verification"
+   section MUST run only the new test file the agent created
+   (`uv run pytest path/to/new_test_file.py -v`). It MUST NOT call
+   `make test-integration` or `make test-unit` — full-suite execution is
+   owned by the downstream QV gates (`unit-tests`, `integration-tests`).
+   Duplicating it inside the Tests step routinely blows the step's
+   timeout budget (see I-00073/S03 post-mortem, 2026-05-08).
+5. **No manual revert RED-check inside this step** — if you want to verify
+   the suite would have caught the bug pre-fix, that is a *design-time*
+   exercise (the human authoring the design proves the bug existed by
+   running the failing test against pre-fix HEAD before writing the
+   prompt). Do not instruct the agent to `git checkout HEAD~1 -- ...`,
+   `git stash`, or otherwise revert source files at runtime — that is a
+   thrash-prone operation, not a verification.
 
 **MANDATORY WARNING in Tests prompt** (include verbatim):
 ```

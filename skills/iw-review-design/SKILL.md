@@ -140,6 +140,31 @@ For each step in the manifest with a `prompt` field:
 - [ ] **Reproduction test** requirement is explicit
 - [ ] **Regression tests** requirement is explicit
 - [ ] **I003 Semantic Correctness Warning** is included verbatim
+- [ ] **Targeted verification only** — the prompt's "Test Verification"
+      section runs only the new test file
+      (`uv run pytest path/to/new_test_file.py`). It does NOT contain
+      `make test-integration` or `make test-unit` — full-suite execution
+      is owned by downstream QV gates. **FAIL** if the prompt instructs
+      the agent to run either of those Makefile targets at large.
+      (Rationale: I-00073/S03 timed out at 2702s in 2026-05-08 because
+      the prompt told the agent to execute the full integration suite
+      inside the implementation step, duplicating the S13 QV gate.)
+- [ ] **No runtime source-revert RED-check** — the prompt does NOT instruct
+      the agent to `git checkout HEAD~1`, `git stash`, or otherwise
+      revert previously-shipped source files at runtime. Pre-fix
+      reproduction is a design-time exercise (the design author proves
+      the bug existed before writing the prompt), not a runtime
+      verification step. **FAIL** if found — these instructions cause
+      thrash and timeouts.
+
+### For ALL implementation prompts (any `*-impl` step):
+
+- [ ] The "Test Verification" section runs **targeted** tests only — never
+      `make test-integration` (full suite). `make test-unit` at large is
+      tolerated only when the agent cannot narrow the scope, and never
+      in a `tests-impl` step. **FAIL** on any `make test-integration`
+      reference inside the verification section of any implementation
+      prompt.
 
 ## Step 5: Cross-Reference Consistency
 
