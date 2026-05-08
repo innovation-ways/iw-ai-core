@@ -3,6 +3,9 @@
 {% from "components/action_button.html" import restart_button, skip_button, kill_button, restart_merge_button, abandon_merge_button, restart_setup_button, approve_merge_button with context %}
 {% from "macros/db_guard.html" import write_button_attrs %}
 
+<!-- C.3: Recovery summary banner (only when cascade events exist) -->
+{% include "fragments/recovery_summary.html" %}
+
 <!-- Step pipeline overview -->
 <div class="mb-6">
   <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Step Pipeline</h3>
@@ -49,13 +52,37 @@
     </thead>
     <tbody>
       {% for step in steps %}
+        {% set run_count = step_run_counts[step.step_id] if step_run_counts is defined and step.step_id in step_run_counts else step.run_count %}
         <tr class="border-b border-border last:border-0 hover:bg-muted/20">
-          <td class="px-4 py-2 font-mono text-xs font-semibold">{{ step.step_id }}</td>
+          <td class="px-4 py-2 font-mono text-xs font-semibold">
+            {{ step.step_id }}
+            <!-- C.1: run-count badge when step ran more than once -->
+            {% if not step.is_synthetic and run_count > 1 %}
+              <button
+                class="step-run-badge ml-1 inline-flex items-center px-1 py-0.5 rounded
+                       text-xs font-normal bg-muted text-muted-foreground border border-border
+                       cursor-pointer hover:bg-muted/80 transition-colors"
+                aria-label="{{ run_count }} runs for step {{ step.step_id }} — click to expand"
+                hx-get="/project/{{ item.project_id }}/item/{{ item.id }}/step-runs/{{ step.step_id }}"
+                hx-target="#step-runs-{{ step.step_id }}"
+                hx-swap="innerHTML"
+                hx-trigger="click"
+                onclick="this.setAttribute('aria-expanded', this.getAttribute('aria-expanded') === 'true' ? 'false' : 'true')"
+                aria-expanded="false"
+                aria-controls="step-runs-{{ step.step_id }}">
+                ×{{ run_count }}
+              </button>
+            {% endif %}
+          </td>
           <td class="px-4 py-2">
             <div class="text-xs text-foreground">{{ step.agent_label }}</div>
             {% set subtitle = step.step_label or step.description %}
             {% if subtitle %}
               <div class="text-xs text-muted-foreground truncate max-w-xs" title="{{ subtitle }}">{{ subtitle }}</div>
+            {% endif %}
+            <!-- C.1: lazy-loaded run list container -->
+            {% if not step.is_synthetic and run_count > 1 %}
+              <div id="step-runs-{{ step.step_id }}" class="step-runs-container"></div>
             {% endif %}
           </td>
           <td class="px-4 py-2">{{ status_badge(step.status) }}</td>
@@ -128,6 +155,9 @@
     </tbody>
   </table>
 </div>
+
+<!-- C.2: Cascade causality timeline (only when cascade events exist) -->
+{% include "fragments/cascade_history.html" %}
 
 <!-- Impacted Paths (F-00076 cross-batch conflict gate visibility) -->
 {% set scope_config = item.config.get('scope_extraction') if item.config else None %}
