@@ -9,6 +9,7 @@ from typing import Any
 
 import click
 from sqlalchemy import select
+from sqlalchemy.orm import load_only
 
 from orch.active_files import ensure_active_files_committed
 from orch.archive import archive_all_completed, archive_work_item
@@ -35,6 +36,88 @@ from orch.design_doc_parser import parse_dependencies
 from orch.evidences import EvidenceTooLargeError, ingest_phase_from_disk
 from orch.qv_gate_validator import auto_skip_phantom_qv_gates
 from orch.services import approve_merge
+
+# ---------------------------------------------------------------------------
+# Agent-facing CLI column pinning — see R2b in docs/IW_AI_Core_Agent_Constraints.md
+# ---------------------------------------------------------------------------
+
+_WORK_ITEM_CLI_COLUMNS = (
+    WorkItem.project_id,
+    WorkItem.id,
+    WorkItem.type,
+    WorkItem.title,
+    WorkItem.status,
+    WorkItem.phase,
+    WorkItem.config,
+    WorkItem.depends_on,
+    WorkItem.blocks,
+    WorkItem.impacted_paths,
+    WorkItem.design_doc_path,
+    WorkItem.design_doc_content,
+    WorkItem.functional_doc_path,
+    WorkItem.functional_doc_content,
+    WorkItem.summary,
+    WorkItem.archive_path,
+    WorkItem.archive_size_bytes,
+    WorkItem.created_at,
+    WorkItem.updated_at,
+    WorkItem.completed_at,
+    WorkItem.archived_at,
+    # NOTE: diff_text, diff_summary, merge_commit_sha are intentionally
+    # excluded — they are feature-gate columns (F-00079) that the live
+    # orch DB may not have yet (migration un-applied). The CLI SELECT must
+    # not mention them so it does not crash against a drifted schema.
+)
+
+_WORKFLOW_STEP_CLI_COLUMNS = (
+    WorkflowStep.id,
+    WorkflowStep.project_id,
+    WorkflowStep.work_item_id,
+    WorkflowStep.step_number,
+    WorkflowStep.step_id,
+    WorkflowStep.agent_label,
+    WorkflowStep.opencode_agent,
+    WorkflowStep.step_type,
+    WorkflowStep.step_label,
+    WorkflowStep.description,
+    WorkflowStep.command,
+    WorkflowStep.gate,
+    # NOTE: gate is included in the pinned set — it was added by F-00079
+    # (merged), so it is present in both the in-process ORM and the live DB.
+    # Excluding it would break item-status output for all registered items.
+    WorkflowStep.timeout_secs,
+    WorkflowStep.status,
+    WorkflowStep.prompt_file,
+    WorkflowStep.report_file,
+    WorkflowStep.report_content,
+    WorkflowStep.started_at,
+    WorkflowStep.completed_at,
+)
+
+_BATCH_ITEM_CLI_COLUMNS = (
+    BatchItem.id,
+    BatchItem.project_id,
+    BatchItem.batch_id,
+    BatchItem.work_item_id,
+    BatchItem.execution_group,
+    # NOTE: status intentionally excluded — batch_items.status may be added
+    # by future features and not yet migrated to the live DB.
+    BatchItem.pid,
+    BatchItem.started_at,
+    BatchItem.merged_at,
+    BatchItem.notes,
+    BatchItem.stall_count,
+    BatchItem.last_progress,
+    BatchItem.worktree_info,
+    BatchItem.merge_info,
+    BatchItem.worktree_db_host,
+    BatchItem.worktree_db_port,
+    BatchItem.worktree_db_name,
+    BatchItem.worktree_db_user,
+    BatchItem.worktree_db_password,
+    BatchItem.worktree_app_port,
+    BatchItem.worktree_compose_path,
+)
 
 # ---------------------------------------------------------------------------
 # Pure validation helpers (used by unit tests without DB)
@@ -247,7 +330,11 @@ def register(
     try:
         with get_session() as session:
             # Idempotency check
-            existing = session.get(WorkItem, (project_id, item_id))
+            existing = session.execute(
+                select(WorkItem)
+                .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                .where(WorkItem.project_id == project_id, WorkItem.id == item_id)
+            ).scalar_one_or_none()
             if existing is not None:
                 if ctx.obj.get("json"):
                     click.echo(
@@ -414,7 +501,11 @@ def register(
             # Blocks inversion: for each item this work item blocks, add this
             # item's ID to the blocked item's depends_on (de-duplicated).
             for blocked_id in deps.blocks:
-                blocked_item = session.get(WorkItem, (project_id, blocked_id))
+                blocked_item = session.execute(
+                    select(WorkItem)
+                    .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                    .where(WorkItem.project_id == project_id, WorkItem.id == blocked_id)
+                ).scalar_one_or_none()
                 if blocked_item is None:
                     click.echo(
                         f"Warning: {item_id} blocks '{blocked_id}' which is not yet "
@@ -540,7 +631,11 @@ def approve(ctx: click.Context, item_id: str) -> None:
 
     try:
         with get_session() as session:
-            item = session.get(WorkItem, (project_id, item_id))
+            item = session.execute(
+                select(WorkItem)
+                .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                .where(WorkItem.project_id == project_id, WorkItem.id == item_id)
+            ).scalar_one_or_none()
             if item is None:
                 output_error(ctx, f"Work item {item_id} not found in project {project_id}", 1)
 
@@ -603,13 +698,18 @@ def unapprove(ctx: click.Context, item_id: str) -> None:
 
     try:
         with get_session() as session:
-            item = session.get(WorkItem, (project_id, item_id))
+            item = session.execute(
+                select(WorkItem)
+                .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                .where(WorkItem.project_id == project_id, WorkItem.id == item_id)
+            ).scalar_one_or_none()
             if item is None:
                 output_error(ctx, f"Work item {item_id} not found in project {project_id}", 1)
 
             # Detect active batch membership
             active_batch_item = session.execute(
                 select(BatchItem)
+                .options(load_only(*_BATCH_ITEM_CLI_COLUMNS))
                 .join(
                     Batch,
                     (BatchItem.project_id == Batch.project_id) & (BatchItem.batch_id == Batch.id),
@@ -716,13 +816,18 @@ def item_status(ctx: click.Context, item_id: str, json_output: bool) -> None:
 
     try:
         with get_session() as session:
-            item = session.get(WorkItem, (project_id, item_id))
+            item = session.execute(
+                select(WorkItem)
+                .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                .where(WorkItem.project_id == project_id, WorkItem.id == item_id)
+            ).scalar_one_or_none()
             if item is None:
                 output_error(ctx, f"Work item {item_id} not found in project {project_id}", 1)
 
             steps = (
                 session.execute(
                     select(WorkflowStep)
+                    .options(load_only(*_WORKFLOW_STEP_CLI_COLUMNS))
                     .where(
                         WorkflowStep.project_id == project_id,
                         WorkflowStep.work_item_id == item_id,
@@ -756,6 +861,7 @@ def item_status(ctx: click.Context, item_id: str, json_output: bool) -> None:
             # Find active batch membership
             active_batch_item = session.execute(
                 select(BatchItem)
+                .options(load_only(*_BATCH_ITEM_CLI_COLUMNS))
                 .join(
                     Batch,
                     (BatchItem.project_id == Batch.project_id) & (BatchItem.batch_id == Batch.id),
@@ -852,7 +958,11 @@ def item_report(ctx: click.Context, item_id: str, stdout: bool, archive_dir: str
 
     try:
         with get_session() as session:
-            item = session.get(WorkItem, (project_id, item_id))
+            item = session.execute(
+                select(WorkItem)
+                .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                .where(WorkItem.project_id == project_id, WorkItem.id == item_id)
+            ).scalar_one_or_none()
             if item is None:
                 output_error(ctx, f"Work item {item_id} not found in project {project_id}", 1)
 
