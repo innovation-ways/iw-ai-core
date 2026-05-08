@@ -1,0 +1,69 @@
+---
+config:
+  layout: elk
+---
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#D4E4F7', 'primaryTextColor': '#1A1A2E', 'primaryBorderColor': '#2E86AB', 'lineColor': '#6B7280', 'secondaryColor': '#E0F0F8', 'tertiaryColor': '#F5F7FA', 'background': '#FFFFFF', 'mainBkg': '#D4E4F7', 'nodeBorder': '#2E86AB', 'clusterBkg': '#F0F4F8', 'clusterBorder': '#2E86AB', 'titleColor': '#1B2A4A', 'fontFamily': 'Inter', 'fontSize': '14px'}}}%%
+sequenceDiagram
+    participant Dev as Developer
+    participant CC as Claude Code
+    participant IW as iw CLI
+    participant PG as PostgreSQL
+    participant DM as Daemon
+    participant AG as Agent LLM
+
+    rect rgb(214, 234, 248)
+        Note over Dev,IW: Phase 1 — Design
+        Dev->>CC: /iw-new-incident
+        CC->>IW: iw next-id --type incident
+        IW->>PG: SELECT FOR UPDATE id_sequences
+        PG-->>IW: I001
+        IW-->>CC: I001
+        CC->>CC: create design doc + prompts in repo
+        CC->>IW: iw register I001 "title"
+        IW->>PG: INSERT work_items + workflow_steps
+        PG-->>IW: OK
+        IW-->>CC: OK
+        CC-->>Dev: I001 created
+    end
+
+    rect rgb(209, 250, 229)
+        Note over Dev,PG: Phase 2 — Review + Approval
+        Dev->>IW: iw approve I001
+        IW->>PG: UPDATE work_items status=approved
+        PG-->>IW: OK
+    end
+
+    rect rgb(254, 243, 199)
+        Note over Dev,PG: Phase 3 — Batch Planning
+        Dev->>IW: iw batch-create I001 I002
+        IW->>PG: INSERT batches + batch_items
+        PG-->>IW: BATCH-001
+        Dev->>IW: iw batch-approve BATCH-001
+        IW->>PG: UPDATE batches status=approved
+    end
+
+    rect rgb(254, 226, 226)
+        Note over DM,AG: Phase 4 — Daemon Execution
+        DM->>PG: SELECT approved batches
+        PG-->>DM: BATCH-001
+        DM->>DM: worktree_setup.sh I001
+        DM->>PG: UPDATE batch_items status=executing
+        DM->>AG: launch agent in worktree
+        AG->>IW: iw step-start I001 S01
+        IW->>PG: UPDATE workflow_steps status=in_progress
+        AG->>AG: implement fix / write report
+        AG->>IW: iw step-done I001 S01 --report path
+        IW->>PG: UPDATE workflow_steps status=completed
+        DM->>PG: SELECT all steps completed?
+        PG-->>DM: yes
+    end
+
+    rect rgb(237, 233, 254)
+        Note over DM,PG: Phase 5 — Merge + Archive
+        DM->>DM: worktree_commit.sh I001
+        DM->>PG: UPDATE batch_items status=merged
+        Dev->>IW: iw archive I001
+        IW->>PG: store design_doc_content + reports
+        IW->>IW: compress to archive/I001.tar.zst
+        IW->>PG: UPDATE archived_at, archive_path
+    end

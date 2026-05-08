@@ -1,0 +1,45 @@
+---
+config:
+  layout: elk
+---
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#D4E4F7', 'primaryTextColor': '#1A1A2E', 'primaryBorderColor': '#2E86AB', 'lineColor': '#6B7280', 'secondaryColor': '#E0F0F8', 'tertiaryColor': '#F5F7FA', 'background': '#FFFFFF', 'mainBkg': '#D4E4F7', 'nodeBorder': '#2E86AB', 'clusterBkg': '#F0F4F8', 'clusterBorder': '#2E86AB', 'titleColor': '#1B2A4A', 'fontFamily': 'Inter', 'fontSize': '14px'}}}%%
+graph TD
+    DEV[Developer Machine]:::external
+
+    subgraph PLATFORM["iw-ai-core Platform"]
+        PG[(PostgreSQL\nport 5433)]:::data
+        DASH[Dashboard\nport 9900]:::ui
+        DAEMON[Daemon\n1 process]:::core
+        CLI[iw CLI\npip install]:::worker
+        EXEC[Executor Scripts\nbash]:::worker
+        SKILLS[Base Skills\nmaster copies]:::core
+    end
+
+    subgraph PROJECTS["Registered Projects"]
+        PJ_A[InnoForge\n/dev/iw-doc-plan]:::external
+        PJ_B[Project B\n/dev/project-b]:::external
+        PJ_C[Project C\n/dev/project-c]:::external
+    end
+
+    DEV -->|"browses UI"| DASH
+    DEV -->|"runs iw commands"| CLI
+    DASH -->|"queries state"| PG
+    DAEMON -->|"reads / writes state"| PG
+    CLI -->|"updates state via SQL"| PG
+    DAEMON -->|"launches worktrees"| EXEC
+    EXEC -->|"creates worktree in"| PJ_A
+    EXEC -->|"creates worktree in"| PJ_B
+    EXEC -->|"creates worktree in"| PJ_C
+    DAEMON -->|"syncs skills to"| PJ_A
+    DAEMON -->|"syncs skills to"| PJ_B
+    DAEMON -->|"syncs skills to"| PJ_C
+    SKILLS -->|"distributed via iw sync-skills"| PJ_A
+    SKILLS -->|"distributed via iw sync-skills"| PJ_B
+    SKILLS -->|"distributed via iw sync-skills"| PJ_C
+
+    classDef api fill:#DBEAFE,stroke:#3B82F6,color:#1E3A5F
+    classDef data fill:#D1FAE5,stroke:#10B981,color:#065F46
+    classDef worker fill:#FEF3C7,stroke:#F59E0B,color:#78350F
+    classDef external fill:#F3F4F6,stroke:#9CA3AF,color:#374151
+    classDef ui fill:#EDE9FE,stroke:#8B5CF6,color:#3B0764
+    classDef core fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D
