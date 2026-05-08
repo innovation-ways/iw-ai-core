@@ -21,7 +21,15 @@ from orch.cli.doc_commands import (
     docs_export,
 )
 from orch.cli.id_commands import current_project, next_id
-from orch.cli.item_commands import approve, archive, item_report, item_status, register, unapprove
+from orch.cli.item_commands import (
+    approve,
+    approve_merge_cmd,
+    archive,
+    item_report,
+    item_status,
+    register,
+    unapprove,
+)
 from orch.cli.lock_commands import migration_lock
 from orch.cli.merge_queue_commands import merge_queue_group
 from orch.cli.migrations_commands import migrations_group
@@ -97,6 +105,7 @@ cli.add_command(current_project)
 cli.add_command(next_id)
 cli.add_command(register)
 cli.add_command(approve)
+cli.add_command(approve_merge_cmd, name="approve-merge")
 cli.add_command(unapprove)
 cli.add_command(archive)
 cli.add_command(item_status)

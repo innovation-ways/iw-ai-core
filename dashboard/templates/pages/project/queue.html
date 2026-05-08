@@ -102,6 +102,15 @@
     </div>
 
     {% if approved_items %}
+      <div class="flex items-center gap-4 mb-3">
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox"
+                 name="auto_merge"
+                 {% if auto_merge_default %}checked{% endif %}
+                 class="rounded border-border text-primary focus:ring-ring" />
+          Auto-merge each item when it succeeds
+        </label>
+      </div>
       <button type="submit" id="create-batch-btn" data-tour="queue-create" disabled
               class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium
                      hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"

@@ -323,6 +323,38 @@ runtime data live in the manifest only.
 
 ---
 
+#### `iw item approve-merge`
+
+Approve a manual merge for a batch item that is awaiting approval (CR-00036). Used when `Batch.auto_merge = false` to release a parked item into the merge queue.
+
+```
+iw item approve-merge <item_id> [--project <id>] [--json]
+```
+
+**Behavior:**
+1. Validates the batch item exists and is in `awaiting_merge_approval` status
+2. Transitions `BatchItem.status` to `completed`
+3. Emits `DaemonEvent(event_type='merge_approved_by_operator', ...)`
+4. The next daemon poll cycle picks the item up via the merge queue
+
+**Exit codes:**
+| Code | Meaning |
+|------|---------|
+| 0 | Success — item transitioned to `completed` |
+| 4 | Invalid state — item is not in `awaiting_merge_approval` |
+
+**Output (human):**
+```
+Approved merge for F-00001
+```
+
+**Output (JSON):**
+```json
+{"item_id": "F-00001", "status": "completed"}
+```
+
+---
+
 ### 3.3. Step Lifecycle
 
 These commands are called by LLM agents (via the `/execute` skill) during step execution. They update the database through the `iw` CLI — agents never write state files.
@@ -388,14 +420,15 @@ iw step-fail <item_id> --step <step_id> --reason <text> [--project <id>] [--json
 Create a new batch with specified work items.
 
 ```
-iw batch-create <item_ids...> [--max-parallel <n>] [--auto-publish] [--project <id>] [--json]
+iw batch-create <item_ids...> [--max-parallel <n>] [--auto-publish] [--auto-merge | --no-auto-merge] [--project <id>] [--json]
 ```
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `item_ids` | Yes | One or more work item IDs (space-separated) |
-| `--max-parallel` | No | Maximum concurrent items (default: from project config) |
+| `--max-parallel` | No | Maximum concurrent items (default: 4) |
 | `--auto-publish` | No | Auto-push to origin after all items merged |
+| `--auto-merge` / `--no-auto-merge` | No | Auto-merge each item to main on success (default: from project's `auto_merge` in projects.toml, which itself defaults to `true`) |
 
 **Behavior:**
 1. Allocates next batch ID via `iw next-id --type batch`

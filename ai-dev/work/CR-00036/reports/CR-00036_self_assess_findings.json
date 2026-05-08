@@ -1,0 +1,48 @@
+{
+  "item_id": "CR-00036",
+  "bottom_line": "QV gates required multiple fix cycles primarily due to unparseable gate failure output (platform issue) and one E2E fixture authoring error in S17's verification step (design issue) — the core implementation was clean and passed all checks on first attempt.",
+  "coverage_notes": "No run logs in .worktrees/CR-00036/ai-dev/logs/ (worktree already cleaned). All analysis from secondary evidence: step reports (ai-dev/active/CR-00036/reports/*.md), fix-cycle prompts (ai-dev/active/CR-00036/fix-cycles/), workflow manifest, and DB via 'iw item-status --json'. Fix-cycle prompts read in full for S12, S13, S16, S17. DB:UP — full signal available.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "QV fix-cycle count inflated by unparseable gate failure output",
+      "recommendation": "Strengthen QV gate reporter to emit structured, machine-parseable error output (actual ruff/mypy/pytest failure lines, not just exit codes). Current 'unparseable output' pattern wastes an agent turn on diagnostic spelunking.",
+      "evidence": [
+        "ai-dev/active/CR-00036/fix-cycles/CR-00036_S12_FIX_cycle1_prompt.md:16 — 'lint failed: exit=2' with no actual ruff output",
+        "ai-dev/active/CR-00036/fix-cycles/CR-00036_S12_FIX_cycle2_prompt.md:16 — same unparseable output on cycle 2",
+        "S13 had 4 format-fix cycles for a single-file format issue in e2e_fixtures/002_v1_v4_v7_seed.py — each cycle consumed a full gate run + agent invocation",
+        "S16 had 3 integration-test fix cycles for migration-roundtrip schema mismatch (CR-00036 auto_merge column vs test's hardcoded downgrade SQL)"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Strengthen QV gate reporter to emit structured failure output (actual ruff/mypy/pytest lines) instead of just exit codes — analyzed in CR-00036 (see ai-dev/active/CR-00036/reports/CR-00036_self_assess_report.md). Target files: orch/qv_gate_validator.py, orch/test_runner.py. Effort: M."
+    },
+    {
+      "severity": "MED",
+      "class": "design",
+      "target": "project",
+      "title": "Browser verification E2E seed authored inline in worktree caused 3 fix cycles",
+      "recommendation": "E2E fixtures in ai-dev/active/<ID>/e2e_fixtures/ should be self-verifying (smoke-testable standalone) before browser verification runs. Add fixture validation against current schema before E2E stack launch.",
+      "evidence": [
+        "ai-dev/active/CR-00036/e2e_fixtures/CR-00036_S17_FIX_cycle1_prompt.md:92 — 'e2e_seed: failed: cannot import name Item from orch.db.models' — fixture imported Item which does not exist in the current models",
+        "3 fix cycles on S17 were needed: cycle 1 failed on import error, cycles 2-3 on seeding awaiting_merge_approval state correctly"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Add E2E fixture smoke-test validation before browser verification runs — analyzed in CR-00036 (see ai-dev/active/CR-00036/reports/CR-00036_self_assess_report.md). Target: ai-dev/active/<ID>/e2e_fixtures/ or orch/daemon/browser_env.py. Effort: M."
+    },
+    {
+      "severity": "LOW",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "QV gates passed on retry without agent action (flaky-on-first-run)",
+      "recommendation": "Introduce a 'retry once before declaring failure' behavior for QV gates, so transient failures (e.g., concurrent file modification during format check) don't create a full fix-cycle agent turn.",
+      "evidence": [
+        "S12 lint gate: fix cycle 1 failed, fix cycle 2 passed — unclear if agent action resolved it or re-run succeeded",
+        "S13 format gate: 4 cycles with no clear delta between cycles 1-3 all failing on the same file (e2e_fixtures/002_v1_v4_v7_seed.py)"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Add one-retry-before-failure logic to QV gates to reduce fix cycles on transient failures — analyzed in CR-00036 (see ai-dev/active/CR-00036/reports/CR-00036_self_assess_report.md). Target: orch/qv_gate_validator.py. Effort: S."
+    }
+  ]
+}

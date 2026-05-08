@@ -129,6 +129,14 @@ _ITEM_ACTION_LABELS: dict[str, tuple[str, str, str, bool]] = {
         "Abandon Merge",
         True,
     ),
+    # CR-00036: operator-approved manual merge gate
+    "approve-merge": (
+        "Approve merge?",
+        "Releases the item from awaiting_merge_approval to the merge queue. "
+        "The daemon will pick it up on the next poll.",
+        "Approve Merge",
+        False,
+    ),
     "restart-setup": (
         "Restart setup?",
         "This deletes the worktree and resets every step. "
@@ -550,6 +558,23 @@ async def create_batch_from_selection(
     if not item_ids:
         raise HTTPException(status_code=422, detail="No item IDs provided")
 
+    # Resolve auto_merge: explicit form value > project default > True
+    auto_merge_raw = form.get("auto_merge")
+    if auto_merge_raw is not None and isinstance(auto_merge_raw, str):
+        auto_merge_lower = auto_merge_raw.lower()
+        auto_merge_value = auto_merge_lower in ("on", "true", "1")
+    else:
+        # No form value — use the project's configured default
+        try:
+            from orch.config import load_config
+            from orch.daemon.project_registry import load_projects_toml
+
+            cfg = load_projects_toml(load_config().projects_toml)
+            proj_cfg = cfg.get(project_id)
+            auto_merge_value = proj_cfg.auto_merge_default if proj_cfg else True
+        except Exception:
+            auto_merge_value = True
+
     # Verify all items exist and are approved
     items = list(
         db.scalars(
@@ -575,6 +600,7 @@ async def create_batch_from_selection(
         max_parallel=5,
         cli_tool="claude",
         auto_publish=False,
+        auto_merge=auto_merge_value,
     )
     db.add(batch)
     db.flush()
@@ -1055,6 +1081,40 @@ def abandon_merge(
     return _action_response(
         f"Merge abandoned for {item_id} — cascade-fail triggered.",
         toast_type="warning",
+        reload=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Approve merge (awaiting_merge_approval → completed) — CR-00036
+# ---------------------------------------------------------------------------
+
+
+@router.post("/item/{item_id}/approve-merge", response_class=Response)
+def approve_merge(
+    project_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Operator releases a batch item from awaiting_merge_approval to completed.
+
+    The next daemon tick picks it up via the existing merge queue path.
+    Raises ValueError (mapped to 409 Conflict) if the item is not in
+    awaiting_merge_approval status.
+    """
+    from orch.services import approve_merge as _approve_merge
+
+    try:
+        _approve_merge(db, project_id, item_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+    return _action_response(
+        "Merge approved — item will merge on the next daemon tick.",
+        toast_type="success",
         reload=True,
     )
 
@@ -1628,3 +1688,47 @@ def update_batch_max_parallel(
     batch.updated_at = datetime.now(UTC)
     db.commit()
     return _action_response(f"Max parallel set to {max_parallel}.", toast_type="success")
+
+
+# ---------------------------------------------------------------------------
+# Update batch auto_merge (planning/approved/paused only) — CR-00036
+# ---------------------------------------------------------------------------
+
+
+@router.post("/batch/{batch_id}/auto-merge", response_class=Response)
+def update_batch_auto_merge(
+    project_id: str,
+    batch_id: str,
+    auto_merge: str | None = Form(None),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Toggle auto_merge on a batch.
+
+    Accepts ``auto_merge`` as a Form field. Because <input type="checkbox">
+    only sends the field name when checked, ``None`` means "unchecked" (False).
+    """
+    batch = _get_batch(db, project_id, batch_id)
+    if batch.status not in (
+        BatchStatus.planning,
+        BatchStatus.approved,
+        BatchStatus.paused,
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot change auto-merge while batch is {batch.status.value}",
+        )
+
+    # Convert form value: "on"/"true"/"1" → True; None/"off"/"false"/"0" → False
+    new_value = False
+    if auto_merge is not None:
+        auto_merge_lower = auto_merge.lower()
+        if auto_merge_lower in ("on", "true", "1"):
+            new_value = True
+
+    batch.auto_merge = new_value
+    batch.updated_at = datetime.now(UTC)
+    db.commit()
+    return _action_response(
+        f"Auto-merge set to {'on' if new_value else 'off'}.",
+        toast_type="success",
+    )

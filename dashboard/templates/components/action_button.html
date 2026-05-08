@@ -59,6 +59,19 @@
   </button>
 {% endmacro %}
 
+{% macro approve_merge_button(project_id, item_id) %}
+  <button
+    type="button"
+    hx-post="/project/{{ project_id }}/api/item/{{ item_id }}/approve-merge"
+    hx-target="#action-toast"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-success text-success-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    title="Approve and trigger the squash-merge to main"
+    {{ write_button_attrs(request) }}>
+    Merge
+  </button>
+{% endmacro %}
+
 {% macro restart_setup_button(project_id, item_id) %}
   <button
     hx-get="/project/{{ project_id }}/api/confirm-item/restart-setup/{{ item_id }}"
