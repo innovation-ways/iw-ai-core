@@ -146,12 +146,42 @@ the result of each command:
 
 ## Test Verification (NON-NEGOTIABLE)
 
-After implementation:
+After implementation, verify your own changes — but **DO NOT run the full
+test suite**. Full-suite execution is owned by the dedicated QV gate steps
+downstream (`unit-tests`, `integration-tests`, `frontend-tests`); duplicating
+them here burns this step's budget and is a common cause of step timeouts
+(see I-00073/S03 post-mortem, 2026-05-08).
 
-1. Run the project's unit test command (check Makefile or `CLAUDE.md` for the exact command)
-2. Run lint and type checking (check Makefile or `CLAUDE.md` for the exact command)
-3. Do **NOT** report `tests_passed: true` unless ALL unit tests pass with zero failures
-4. If tests fail, fix them before reporting completion
+Scope rules:
+
+1. **Tests step (`tests-impl`)** — run only the test file(s) **you wrote or
+   modified** in this step:
+   ```bash
+   uv run pytest tests/integration/path/to/your_new_test.py -v
+   ```
+   That is sufficient to prove your tests work. Do **NOT** run
+   `make test-integration` or `make test-unit` — those are S{NN} QV gates
+   and will run with their own (longer) budgets.
+
+2. **Implementation steps (Backend / API / Database / Frontend / Pipeline /
+   Template)** — run the **targeted** unit tests that exercise the code
+   path you changed:
+   ```bash
+   uv run pytest tests/unit/path/to/affected_module/ -v
+   ```
+   If you cannot identify a narrow target, run the full unit suite — but
+   **never** the full integration suite. Integration-suite verification is
+   the QV gate's job.
+
+3. Run lint and type checking on your touched files (check Makefile or
+   `CLAUDE.md` for project-specific commands).
+
+4. Do **NOT** report `tests_passed: true` unless your targeted tests pass
+   with zero failures.
+
+5. If your targeted tests fail, fix them before reporting completion. If
+   they pass but you suspect a wider regression, note it in your report
+   under `notes` — do not pre-emptively run the full suite to "be safe".
 
 ## Migration Verification (Database steps only — NON-NEGOTIABLE)
 
