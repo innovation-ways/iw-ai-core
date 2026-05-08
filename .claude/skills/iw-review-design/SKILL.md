@@ -77,6 +77,39 @@ Check the design document against its template. Every required section must be p
 - [ ] **Impact Analysis** — Affected Components table, Breaking Changes, Data Migration
 - [ ] **Rollback Plan** — Database / Code / Data all addressed
 
+### Functional Design Document Checks
+
+The functional doc (`ai-dev/active/{ID}/{ID}_Functional.md`) is the human-facing
+summary alongside the technical design. It is validated in two phases:
+
+#### Structural Checks (BLOCKING — must fail the review if any check fails)
+
+These checks verify the file exists and has the correct structure. A blocking
+failure prevents approval — the reviewer must fix the issue before proceeding.
+
+- [ ] File `ai-dev/active/{ID}/{ID}_Functional.md` exists
+- [ ] File body contains H1 `# {ID} — Functional Design` (or variant using en-dash `—`)
+- [ ] File body contains H2 `## Why`
+- [ ] File body contains H2 `## What Changed (for the User)`
+- [ ] File body contains H2 `## How It Behaves`
+- [ ] Word count of prose body (excluding the HTML comment at the top and all headings) is **at most 500** — ≤500 passes; >500 is a **blocking error**
+
+#### Content Checks (WARNING — reported but non-blocking unless reviewer explicitly dismisses)
+
+These checks detect implementation detail that should not appear in a human-facing
+summary. Warnings may be dismissed by the reviewer if the offending term is
+genuinely appropriate in context (e.g. "the dashboard" is fine; "dashboard/routers"
+is a path fragment and is not). To dismiss, note the dismissal in the review output.
+
+- [ ] **File-extension regex**: `\b[A-Za-z0-9_./-]+\.(py|md|js|ts|tsx|sql|html|json|toml|yaml|yml)\b` — any match triggers a warning (e.g. `orch/foo.py`, `test_issue.md` are not allowed)
+- [ ] **Path-fragment regex**: `\b(orch|dashboard|scripts|ai-dev|tests|skills|templates|executor)/` — any match triggers a warning (e.g. `dashboard/routers` is not allowed, but "the dashboard" alone is fine)
+- [ ] **SQL-DDL regex** (case-insensitive): `\b(ALTER\s+TABLE|CREATE\s+TABLE|DROP\s+TABLE|INSERT\s+INTO|SELECT\s+\*)\b` — any match triggers a warning
+- [ ] **Fenced code block**: three backticks (` ``` `) anywhere in the body — triggers a warning
+
+**Blocking vs Warning distinction**: Structural checks are enforced by the skill
+automatically and block approval. Content checks produce warnings that the reviewer
+may dismiss with justification — the skill does not block on warnings alone.
+
 ## Step 3: Validate the Workflow Manifest
 
 Check `ai-dev/active/{ID}/workflow-manifest.json`:
@@ -107,6 +140,31 @@ For each step in the manifest with a `prompt` field:
 - [ ] **Reproduction test** requirement is explicit
 - [ ] **Regression tests** requirement is explicit
 - [ ] **I003 Semantic Correctness Warning** is included verbatim
+- [ ] **Targeted verification only** — the prompt's "Test Verification"
+      section runs only the new test file
+      (`uv run pytest path/to/new_test_file.py`). It does NOT contain
+      `make test-integration` or `make test-unit` — full-suite execution
+      is owned by downstream QV gates. **FAIL** if the prompt instructs
+      the agent to run either of those Makefile targets at large.
+      (Rationale: I-00073/S03 timed out at 2702s in 2026-05-08 because
+      the prompt told the agent to execute the full integration suite
+      inside the implementation step, duplicating the S13 QV gate.)
+- [ ] **No runtime source-revert RED-check** — the prompt does NOT instruct
+      the agent to `git checkout HEAD~1`, `git stash`, or otherwise
+      revert previously-shipped source files at runtime. Pre-fix
+      reproduction is a design-time exercise (the design author proves
+      the bug existed before writing the prompt), not a runtime
+      verification step. **FAIL** if found — these instructions cause
+      thrash and timeouts.
+
+### For ALL implementation prompts (any `*-impl` step):
+
+- [ ] The "Test Verification" section runs **targeted** tests only — never
+      `make test-integration` (full suite). `make test-unit` at large is
+      tolerated only when the agent cannot narrow the scope, and never
+      in a `tests-impl` step. **FAIL** on any `make test-integration`
+      reference inside the verification section of any implementation
+      prompt.
 
 ## Step 5: Cross-Reference Consistency
 

@@ -169,6 +169,7 @@
         highlight: true,
         synchronisedScroll: true,
         fileListToggle: true,
+        fileListStartVisible: true,
         stickyFileHeaders: false,
       });
 
@@ -192,21 +193,84 @@
   }
 
   function _afterDiffDraw() {
-    // Build _allFilePaths from rendered diff2html file headers
-    var fileHeaders = document.querySelectorAll(
-      "#diff-render-root .d2h-file-header"
+    // Build _allFilePaths from rendered diff2html file wrappers (the file
+    // path lives as text inside `.d2h-file-name`; the wrappers carry no
+    // data-file attribute in diff2html-ui-slim v3.x).
+    var wrappers = document.querySelectorAll(
+      "#diff-render-root .d2h-file-wrapper"
     );
     _allFilePaths = [];
-    fileHeaders.forEach(function (hdr) {
-      var path = hdr.getAttribute("data-file");
-      if (path) _allFilePaths.push(path);
+    wrappers.forEach(function (w, i) {
+      var nameEl = w.querySelector(".d2h-file-header .d2h-file-name");
+      var path = nameEl ? nameEl.textContent.trim() : "";
+      _allFilePaths.push(path);
+      // Show only the first file by default. Clicking another file in the
+      // top-list switches which one is visible (see below). This keeps the
+      // page short instead of stacking 38 files of highlighted code.
+      w.style.display = i === 0 ? "" : "none";
     });
+
+    // Wire click handlers on the top file-list anchors so a click swaps
+    // which file's diff is shown below — not jumps to its anchor inside
+    // a giant scrollable wall of all files.
+    _attachFileListSelection();
 
     // Attach collapse toggle to large diff cards
     _attachLargeFileToggles();
 
-    // Make diff cards scroll-into-view when tree rows clicked
+    // Make diff cards scroll-into-view when tree rows clicked (no-op for
+    // diff2html-ui-slim, which doesn't render `.d2h-file-tree-list-item`).
     _attachTreeRowHandlers();
+  }
+
+  // ─── File list selection (one-file-at-a-time view) ──────────────────────
+
+  function _attachFileListSelection() {
+    var links = document.querySelectorAll(
+      "#diff-render-root .d2h-file-list-line a.d2h-file-name"
+    );
+    links.forEach(function (a, idx) {
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        var href = a.getAttribute("href") || "";
+        if (href.charAt(0) !== "#") return;
+        _showOnlyFile(href.slice(1));
+      });
+    });
+    // Mark the first file as active in the list.
+    var firstLine = document.querySelector(
+      "#diff-render-root .d2h-file-list-line"
+    );
+    if (firstLine) firstLine.classList.add("iw-file-active");
+  }
+
+  function _showOnlyFile(wrapperId) {
+    var root = document.getElementById("diff-render-root");
+    if (!root) return;
+    var wrappers = root.querySelectorAll(".d2h-file-wrapper");
+    var shown = null;
+    wrappers.forEach(function (w) {
+      if (w.id === wrapperId) {
+        w.style.display = "";
+        shown = w;
+      } else {
+        w.style.display = "none";
+      }
+    });
+    // Highlight active row in the list at top.
+    root.querySelectorAll(".d2h-file-list-line").forEach(function (li) {
+      var a = li.querySelector("a.d2h-file-name");
+      var matches = a && a.getAttribute("href") === "#" + wrapperId;
+      li.classList.toggle("iw-file-active", !!matches);
+    });
+    // Reset scroll so the file list stays at the top and the newly-shown
+    // file's diff appears right below it (instead of scrolling past the
+    // list). All hidden wrappers take 0 height, so the visible one is
+    // always positioned just below the file-list wrapper.
+    var fileList = root.querySelector(".d2h-file-list-wrapper");
+    if (fileList) {
+      fileList.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   // ─── Large-file collapse toggle ─────────────────────────────────────────
@@ -292,50 +356,31 @@
   }
 
   function _applyFilter(text) {
+    var root = document.getElementById("diff-render-root");
+    if (!root) return;
+
+    // Filter narrows the file list at the top only; the diff area below
+    // shows whichever single file the user has selected. Wrapper visibility
+    // is managed by _showOnlyFile, not by the filter.
+    var listLines = root.querySelectorAll(".d2h-file-list-line");
+    var totalCount = listLines.length;
+
     if (!text) {
-      // Show all
-      _showAllFiles();
+      listLines.forEach(function (line) { line.style.display = ""; });
       _updateFilterCounts(null);
       return;
     }
 
     var lcText = text.toLowerCase();
-    var root = document.getElementById("diff-render-root");
-    if (!root) return;
-
-    var wrappers = root.querySelectorAll(".d2h-file-wrapper");
     var visibleCount = 0;
-    var totalCount = wrappers.length;
-
-    // diff2html-ui-slim does not stamp data-file on the wrapper; the path
-    // lives as text inside `.d2h-file-name`. Read it from there.
-    wrappers.forEach(function (wrapper) {
-      var nameEl = wrapper.querySelector(".d2h-file-name");
-      var path = ((nameEl && nameEl.textContent) || "").trim().toLowerCase();
-      var matches = path.indexOf(lcText) !== -1;
-      wrapper.style.display = matches ? "" : "none";
+    listLines.forEach(function (line) {
+      var fn = (line.textContent || "").trim().toLowerCase();
+      var matches = fn.indexOf(lcText) !== -1;
+      line.style.display = matches ? "" : "none";
       if (matches) visibleCount++;
     });
 
-    // Also hide rows in the file list at the top that don't match
-    var listLines = root.querySelectorAll(".d2h-file-list-line");
-    listLines.forEach(function (line) {
-      var fn = (line.textContent || "").trim().toLowerCase();
-      line.style.display = fn.indexOf(lcText) !== -1 ? "" : "none";
-    });
-
     _updateFilterCounts({ visible: visibleCount, total: totalCount });
-  }
-
-  function _showAllFiles() {
-    var root = document.getElementById("diff-render-root");
-    if (!root) return;
-    root.querySelectorAll(".d2h-file-wrapper").forEach(function (w) {
-      w.style.display = "";
-    });
-    root.querySelectorAll(".d2h-file-list-line").forEach(function (line) {
-      line.style.display = "";
-    });
   }
 
   function _updateFilterCounts(obj) {
@@ -508,42 +553,34 @@
       var fi = document.getElementById("diff-filter-input");
       if (fi) { fi.focus(); fi.select(); }
     } else if (e.key === "j" || e.key === "k") {
-      // Navigate files
-      var current = _getCurrentFileIndex();
-      var next = e.key === "j" ? current + 1 : current - 1;
-      next = Math.max(0, Math.min(next, _allFilePaths.length - 1));
-      var target = document.querySelector(
-        "#diff-render-root .d2h-file-wrapper[data-file='" +
-        _cssEscape(_allFilePaths[next] || "") +
-        "']"
-      );
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-        target.classList.add("iw-highlight-file");
-        setTimeout(function () { target.classList.remove("iw-highlight-file"); }, 1500);
-      }
+      // Navigate through visible (filter-respecting) file list and select.
+      var root = document.getElementById("diff-render-root");
+      if (!root) return;
+      var visibleLines = Array.from(
+        root.querySelectorAll(".d2h-file-list-line")
+      ).filter(function (li) { return li.style.display !== "none"; });
+      if (!visibleLines.length) return;
+      var activeIdx = visibleLines.findIndex(function (li) {
+        return li.classList.contains("iw-file-active");
+      });
+      if (activeIdx < 0) activeIdx = 0;
+      var nextIdx = e.key === "j" ? activeIdx + 1 : activeIdx - 1;
+      nextIdx = Math.max(0, Math.min(nextIdx, visibleLines.length - 1));
+      var nextLink = visibleLines[nextIdx].querySelector("a.d2h-file-name");
+      if (!nextLink) return;
+      var href = nextLink.getAttribute("href") || "";
+      if (href.charAt(0) === "#") _showOnlyFile(href.slice(1));
     } else if (e.key === "o" && e.target === document.body) {
-      // Toggle current file collapse
-      var highlighted = document.querySelector(".iw-highlight-file");
-      if (highlighted) {
-        var toggle = highlighted.querySelector(".iw-diff-toggle");
+      // Toggle large-file collapse on the currently shown file.
+      var current = document.querySelector(
+        "#diff-render-root .d2h-file-wrapper:not([style*='display: none'])"
+      );
+      if (current) {
+        var toggle = current.querySelector(".iw-diff-toggle");
         if (toggle) toggle.click();
       }
     }
   });
-
-  function _getCurrentFileIndex() {
-    var root = document.getElementById("diff-render-root");
-    if (!root) return 0;
-    var visible = root.querySelectorAll(".d2h-file-wrapper[style=''], .d2h-file-wrapper:not([style])");
-    var inView = Array.from(visible).find(function (el) {
-      var rect = el.getBoundingClientRect();
-      return rect.top >= 0 && rect.bottom <= window.innerHeight;
-    });
-    return inView
-      ? _allFilePaths.indexOf(inView.getAttribute("data-file") || "")
-      : 0;
-  }
 
   // ─── Utilities ─────────────────────────────────────────────────────────────
 

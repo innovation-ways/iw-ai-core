@@ -8,6 +8,43 @@
 
 {% include "components/libs/diff2html.html" %}
 
+{# Override diff2html's `.d2h-code-linenumber { position: absolute }` rule. The
+   bundled stylesheet expects a positioned ancestor on the row/table; we have
+   none, so line-number <td>s otherwise position relative to <body> and stack
+   far below the code rows (the diff looks "all wrong"). Restoring the cells
+   to normal table-cell flow fixes the layout. Loaded after diff2html.min.css
+   so no !important needed. #}
+<style>
+  #diff-render-root .d2h-code-linenumber {
+    position: static;
+    display: table-cell;
+  }
+  #diff-render-root .d2h-code-line {
+    padding: 0 0.5em;
+    width: auto;
+  }
+  /* The top file list is the menu; rendering all 38 file diffs at once
+     would balloon the page. files.js shows one wrapper at a time and
+     gives the active row in the list a left-bar accent. */
+  #diff-render-root .d2h-file-list-line {
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  #diff-render-root .d2h-file-list-line:hover {
+    background: rgb(0 0 0 / 4%);
+  }
+  #diff-render-root .d2h-file-list-line.iw-file-active {
+    border-left-color: hsl(var(--primary, 222 47% 31%));
+    background: rgb(0 0 0 / 6%);
+  }
+  /* Cap the file list at ~10 rows; long lists scroll inside the menu so
+     the selected file's diff is always visible just below. */
+  #diff-render-root .d2h-file-list {
+    max-height: 18rem;
+    overflow-y: auto;
+  }
+</style>
+
 {# ── Toolbar ── #}
 <div class="flex flex-wrap items-center gap-3 mb-4">
   {# Step selector — files.js handles the re-fetch + Diff2HtmlUI re-render on change #}
