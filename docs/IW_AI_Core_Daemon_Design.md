@@ -618,6 +618,12 @@ def process_merge_queue(self):
     item = ready[0]
     self._merge_item(item)
 
+### 4.7.2. Auto-merge Gate (CR-00036)
+
+When `batch.auto_merge` is `false`, `BatchManager` parks successful items in `awaiting_merge_approval` instead of `completed`. The merge queue continues to pick only `completed` items, so parked items remain invisible to it until an operator releases them via `POST /actions/item/{id}/approve-merge` (dashboard) or `iw item approve-merge` (CLI). The next daemon poll cycle then picks the item up via the existing merge queue path.
+
+**Stall-checker exemption**: `awaiting_merge_approval` is a *waiting-on-human* state — the stall monitor (driven by `IW_CORE_STALL_THRESHOLD`) MUST NOT auto-fail items in this state. Operators may legitimately leave items parked for days; the dashboard surfaces the wait via the existing `BatchItem.updated_at` timestamp.
+
 def _merge_item(self, batch_item: BatchItem):
     """Squash-merge a completed item's worktree branch to main."""
     item_id = batch_item.work_item_id

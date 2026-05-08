@@ -413,3 +413,52 @@ def test_registry_reload_preserves_state_on_parse_error(tmp_path: Path) -> None:
     assert "proj" in new_projects, "registry must keep the last-known-good projects"
     assert changes == {}, "no changes should be reported when parse fails"
     assert "proj" in registry.projects
+
+
+# ---------------------------------------------------------------------------
+# auto_merge parsing (CR-00036)
+# ---------------------------------------------------------------------------
+
+
+def test_auto_merge_default_true_when_absent(tmp_path: Path) -> None:
+    """When auto_merge is absent, auto_merge_default should be True."""
+    repo = make_project_dir(tmp_path, "proj")
+    toml_file = make_toml_file(tmp_path, {"proj": {"repo_root": str(repo)}})
+
+    projects = load_projects_toml(toml_file)
+
+    assert projects["proj"].auto_merge_default is True
+
+
+def test_auto_merge_true_when_explicit(tmp_path: Path) -> None:
+    """auto_merge = true is respected."""
+    repo = make_project_dir(tmp_path, "proj")
+    toml_file = make_toml_file(tmp_path, {"proj": {"repo_root": str(repo), "auto_merge": True}})
+
+    projects = load_projects_toml(toml_file)
+
+    assert projects["proj"].auto_merge_default is True
+
+
+def test_auto_merge_false_when_explicit(tmp_path: Path) -> None:
+    """auto_merge = false is respected."""
+    repo = make_project_dir(tmp_path, "proj")
+    toml_file = make_toml_file(tmp_path, {"proj": {"repo_root": str(repo), "auto_merge": False}})
+
+    projects = load_projects_toml(toml_file)
+
+    assert projects["proj"].auto_merge_default is False
+
+
+def test_auto_merge_non_bool_warns_and_defaults_to_true(tmp_path: Path, caplog) -> None:
+    """Non-bool auto_merge value logs a warning and defaults to True."""
+    import logging
+
+    repo = make_project_dir(tmp_path, "proj")
+    toml_file = make_toml_file(tmp_path, {"proj": {"repo_root": str(repo), "auto_merge": "yes"}})
+
+    projects = load_projects_toml(toml_file)
+
+    assert projects["proj"].auto_merge_default is True
+    assert any("non-bool 'auto_merge'" in record.message for record in caplog.records)
+    assert any(record.levelno == logging.WARNING for record in caplog.records)

@@ -34,6 +34,7 @@ from orch.db.models import (
 from orch.design_doc_parser import parse_dependencies
 from orch.evidences import EvidenceTooLargeError, ingest_phase_from_disk
 from orch.qv_gate_validator import auto_skip_phantom_qv_gates
+from orch.services import approve_merge
 
 # ---------------------------------------------------------------------------
 # Pure validation helpers (used by unit tests without DB)
@@ -869,3 +870,32 @@ def item_report(ctx: click.Context, item_id: str, stdout: bool, archive_dir: str
         output_error(ctx, str(exc), 2)
     except Exception as exc:
         output_error(ctx, f"Report error: {exc}", 1)
+
+
+@click.command("approve-merge")
+@click.argument("item_id")
+@click.option(
+    "--project",
+    "project_id_opt",
+    default=None,
+    help="Override project id (default: current project)",
+)
+@click.pass_context
+def approve_merge_cmd(ctx: click.Context, item_id: str, project_id_opt: str | None) -> None:
+    """Approve a manual merge for a batch item awaiting approval."""
+    project_id = project_id_opt if project_id_opt else resolve_project(ctx)
+    get_session = ctx.obj["get_session"]
+
+    try:
+        with get_session() as session:
+            approve_merge(session, project_id, item_id)
+
+    except ValueError as exc:
+        output_error(ctx, str(exc), 4)
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 1)
+
+    if ctx.obj.get("json"):
+        click.echo(json.dumps({"item_id": item_id, "status": "completed"}))
+    else:
+        click.echo(f"Approved merge for {item_id}")

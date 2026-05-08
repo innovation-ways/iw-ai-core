@@ -987,3 +987,104 @@ class TestBrowserEnvUpFailureTeardown:
             manager._launch_step(db, step, worktree_info)
 
         mock_down.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# CR-00036: auto_merge gate in _complete_item
+# ---------------------------------------------------------------------------
+
+
+class TestAutoMergeGate:
+    """Unit tests for CR-00036: _complete_item gates on batch.auto_merge."""
+
+    def _make_db_for_complete_item(self, batch: MagicMock) -> MagicMock:
+        """Set up a minimal db mock that returns the given batch from db.get(Batch, ...)."""
+        db = MagicMock()
+        # db.get(Batch, (project_id, batch_id)) returns the batch
+        db.get.return_value = batch
+        return db
+
+    def test_auto_merge_true_transitions_to_completed(self, tmp_path):
+        """When batch.auto_merge=True, _complete_item sets status=completed."""
+        db = MagicMock()
+        batch = MagicMock(spec=Batch)
+        batch.id = "B001"
+        batch.auto_merge = True
+
+        work_item = MagicMock(spec=WorkItem)
+        work_item.status = WorkItemStatus.approved
+
+        batch_item = MagicMock(spec=BatchItem)
+        batch_item.work_item_id = "F-00001"
+        batch_item.status = BatchItemStatus.executing
+        batch_item.batch_id = "B001"
+        batch_item.worktree_info = {"path": "/wt"}
+
+        # db.get: Batch → batch, WorkItem → work_item
+        # db.query: BatchItem → batch_item, WorkItem → work_item
+        def get_side_effect(model, key):
+            if model == Batch and key == ("test-proj", "B001"):
+                return batch
+            if model == WorkItem and key == ("test-proj", "F-00001"):
+                return work_item
+            return None
+
+        q_batch_item = MagicMock()
+        q_batch_item.filter.return_value.first.return_value = batch_item
+        q_work_item = MagicMock()
+        q_work_item.filter.return_value.one.return_value = work_item
+
+        db.get.side_effect = get_side_effect
+        db.query.side_effect = lambda model, *args, **kwargs: (  # noqa: ARG005
+            {
+                BatchItem: q_batch_item,
+                WorkItem: q_work_item,
+            }.get(model, MagicMock())
+        )
+
+        manager = make_manager(tmp_path, db)
+        manager._complete_item(db, "F-00001")
+
+        assert batch_item.status == BatchItemStatus.completed
+        assert batch_item.status != BatchItemStatus.awaiting_merge_approval
+
+    def test_auto_merge_false_transitions_to_awaiting_merge_approval(self, tmp_path):
+        """When batch.auto_merge=False, _complete_item sets status=awaiting_merge_approval."""
+        db = MagicMock()
+        batch = MagicMock(spec=Batch)
+        batch.id = "B001"
+        batch.auto_merge = False
+
+        work_item = MagicMock(spec=WorkItem)
+        work_item.status = WorkItemStatus.approved
+
+        batch_item = MagicMock(spec=BatchItem)
+        batch_item.work_item_id = "F-00001"
+        batch_item.status = BatchItemStatus.executing
+        batch_item.batch_id = "B001"
+        batch_item.worktree_info = {"path": "/wt"}
+
+        def get_side_effect(model, key):
+            if model == Batch and key == ("test-proj", "B001"):
+                return batch
+            if model == WorkItem and key == ("test-proj", "F-00001"):
+                return work_item
+            return None
+
+        q_batch_item = MagicMock()
+        q_batch_item.filter.return_value.first.return_value = batch_item
+        q_work_item = MagicMock()
+        q_work_item.filter.return_value.one.return_value = work_item
+
+        db.get.side_effect = get_side_effect
+        db.query.side_effect = lambda model, *args, **kwargs: (  # noqa: ARG005
+            {
+                BatchItem: q_batch_item,
+                WorkItem: q_work_item,
+            }.get(model, MagicMock())
+        )
+
+        manager = make_manager(tmp_path, db)
+        manager._complete_item(db, "F-00001")
+
+        assert batch_item.status == BatchItemStatus.awaiting_merge_approval

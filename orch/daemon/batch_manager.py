@@ -1449,18 +1449,37 @@ class BatchManager:
             .first()
         )
         if batch_item is not None:
-            batch_item.status = BatchItemStatus.completed
-
-        db.commit()
-        _emit_event(
-            db,
-            self.project_id,
-            "item_completed",
-            item_id,
-            "work_item",
-            f"All steps done for {item_id} — entering merge queue",
-        )
-        logger.info("[%s] Item %s completed — queued for merge", self.project_id, item_id)
+            # CR-00036: gate — load the parent batch to check auto_merge
+            batch = db.get(Batch, (self.project_id, batch_item.batch_id))
+            if batch is not None and not batch.auto_merge:
+                batch_item.status = BatchItemStatus.awaiting_merge_approval
+                db.commit()
+                _emit_event(
+                    db,
+                    self.project_id,
+                    "batch_item_awaiting_merge_approval",
+                    item_id,
+                    "work_item",
+                    f"All steps done for {item_id} — awaiting operator merge approval",
+                    {"batch_id": batch_item.batch_id, "work_item_id": item_id},
+                )
+                logger.info(
+                    "[%s] Item %s completed — awaiting merge approval (auto_merge=false)",
+                    self.project_id,
+                    item_id,
+                )
+            else:
+                batch_item.status = BatchItemStatus.completed
+                db.commit()
+                _emit_event(
+                    db,
+                    self.project_id,
+                    "item_completed",
+                    item_id,
+                    "work_item",
+                    f"All steps done for {item_id} — entering merge queue",
+                )
+                logger.info("[%s] Item %s completed — queued for merge", self.project_id, item_id)
 
     def _check_batch_completion(self, db: Session, batch: Batch, items: list[BatchItem]) -> None:
         """Transition batch to completed or completed_with_errors when all items are done."""

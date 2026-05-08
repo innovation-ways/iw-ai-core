@@ -61,6 +61,12 @@ class ProjectConfig:
     # failures as soft (item proceeds to merge regardless). Read from
     # projects.toml: [projects.<id>] self_assess = true.
     self_assess_enabled: bool = False
+    # Per-project default for auto_merge. When True (default), successful batch
+    # items go straight to the merge queue. When False, they park in
+    # awaiting_merge_approval and require an operator to click Merge
+    # (dashboard) or run `iw item approve-merge` (CLI) before the merge queue
+    # picks them up. Read from projects.toml: [projects.<id>] auto_merge.
+    auto_merge_default: bool = True
 
     @property
     def working_dir(self) -> str:
@@ -137,6 +143,18 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         )
         self_assess_enabled = False
 
+    # auto_merge flag — read from projects.toml entry, default True
+    raw_auto_merge = entry.get("auto_merge", True)
+    if isinstance(raw_auto_merge, bool):
+        auto_merge_default = raw_auto_merge
+    else:
+        logger.warning(
+            "Project %r has non-bool 'auto_merge' value %r — defaulting to True",
+            project_id,
+            raw_auto_merge,
+        )
+        auto_merge_default = True
+
     return ProjectConfig(
         id=project_id,
         display_name=display_name,
@@ -148,6 +166,7 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         dev_clone=dev_clone,
         scope_gate_enabled=scope_gate_enabled,
         self_assess_enabled=self_assess_enabled,
+        auto_merge_default=auto_merge_default,
     )
 
 

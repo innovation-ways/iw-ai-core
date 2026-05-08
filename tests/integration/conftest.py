@@ -167,6 +167,7 @@ BEGIN
         'setting_up',
         'executing',
         'completed',
+        'awaiting_merge_approval',
         'merging',
         'merged',
         'failed',
