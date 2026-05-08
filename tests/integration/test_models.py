@@ -207,6 +207,66 @@ def test_batch_insert_and_query(db_session: Session) -> None:
     assert result.auto_publish is False
 
 
+def test_batch_auto_merge_defaults_true(db_session: Session) -> None:
+    """Batch.auto_merge must default to True when not specified."""
+    db_session.add(make_project())
+    db_session.flush()
+
+    batch = Batch(project_id="test-proj", id="BATCH-00001")
+    db_session.add(batch)
+    db_session.flush()
+
+    result = db_session.get(Batch, ("test-proj", "BATCH-00001"))
+    assert result is not None
+    assert result.auto_merge is True
+
+
+def test_batch_auto_merge_roundtrips_false(db_session: Session) -> None:
+    """Batch.auto_merge=False must persist and round-trip correctly."""
+    db_session.add(make_project())
+    db_session.flush()
+
+    batch = Batch(project_id="test-proj", id="BATCH-00001", auto_merge=False)
+    db_session.add(batch)
+    db_session.flush()
+
+    result = db_session.get(Batch, ("test-proj", "BATCH-00001"))
+    assert result is not None
+    assert result.auto_merge is False
+
+
+def test_batch_item_status_awaiting_merge_approval_value(db_session: Session) -> None:
+    """BatchItemStatus.awaiting_merge_approval value must be 'awaiting_merge_approval'."""
+    assert BatchItemStatus.awaiting_merge_approval.value == "awaiting_merge_approval"
+
+
+def test_batch_item_awaiting_merge_approval_roundtrip(db_session: Session) -> None:
+    """BatchItem with status=awaiting_merge_approval must persist end-to-end."""
+    db_session.add(make_project())
+    db_session.flush()
+    db_session.add(make_work_item())
+    db_session.flush()
+    batch = Batch(project_id="test-proj", id="BATCH-00001")
+    db_session.add(batch)
+    db_session.flush()
+
+    bi = BatchItem(
+        project_id="test-proj",
+        batch_id="BATCH-00001",
+        work_item_id="F-00001",
+        status=BatchItemStatus.awaiting_merge_approval,
+    )
+    db_session.add(bi)
+    db_session.flush()
+
+    result = (
+        db_session.query(BatchItem)
+        .filter_by(project_id="test-proj", batch_id="BATCH-00001", work_item_id="F-00001")
+        .one()
+    )
+    assert result.status == BatchItemStatus.awaiting_merge_approval
+
+
 def test_batch_item_insert_and_query(db_session: Session) -> None:
     db_session.add(make_project())
     db_session.flush()

@@ -146,6 +146,7 @@ class BatchItemStatus(enum.Enum):
     setting_up = "setting_up"
     executing = "executing"
     completed = "completed"
+    awaiting_merge_approval = "awaiting_merge_approval"
     merging = "merging"
     merged = "merged"
     failed = "failed"
@@ -955,6 +956,13 @@ class Batch(Base):
         nullable=False,
         server_default=text("false"),
         comment="Whether to auto-push to origin after all items merged",
+    )
+    auto_merge: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+        comment="Whether to auto-merge each item to main on success; "
+        "false → operator must approve each merge",
     )
     plan_path: Mapped[str | None] = mapped_column(
         Text, nullable=True, comment="Path to the batch execution plan document (legacy)"

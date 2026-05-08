@@ -310,6 +310,7 @@ CREATE TABLE batches (
     max_parallel    INTEGER NOT NULL DEFAULT 4,
     cli_tool        TEXT NOT NULL DEFAULT 'opencode',
     auto_publish    BOOLEAN NOT NULL DEFAULT false,
+    auto_merge      BOOLEAN NOT NULL DEFAULT true,
     plan_path       TEXT,
     diagram_path    TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -322,6 +323,7 @@ CREATE TABLE batches (
 COMMENT ON TABLE batches IS 'Groups of work items scheduled for parallel execution';
 COMMENT ON COLUMN batches.max_parallel IS 'Maximum number of items executing simultaneously';
 COMMENT ON COLUMN batches.auto_publish IS 'Whether to auto-push to origin after all items merged';
+COMMENT ON COLUMN batches.auto_merge IS 'Whether to auto-merge each item to main on success; false → operator must approve each merge';
 COMMENT ON COLUMN batches.plan_path IS 'Path to the batch execution plan document';
 
 CREATE INDEX idx_batches_status ON batches(project_id, status);
@@ -334,28 +336,17 @@ Mapping of work items to batches with execution tracking.
 ```sql
 CREATE TYPE batch_item_status AS ENUM (
     'pending', 'setting_up', 'executing',
-    'completed', 'merged', 'failed', 'stalled',
+    'completed', 'awaiting_merge_approval', 'merged', 'failed', 'stalled',
     'skipped', 'migration_invalid', 'migration_rolled_back',
     'migration_rebase_failed', 'setup_failed'
 );
 ```
 
-**batch_items table** — see Alembic migration `550aecbbd42b_f_00062_add_worktree_compose_stack_`
-for the full DDL. Three nullable columns were added for per-worktree container isolation:
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `worktree_db_port` | `INTEGER NULL` | Discovered host port for the per-worktree Postgres container; NULL when the project runs in legacy mode (no `ai-dev/iw-config/`) |
-| `worktree_app_port` | `INTEGER NULL` | Discovered host port for the per-worktree app server container; NULL when no app service is declared or in legacy mode |
-| `worktree_compose_path` | `TEXT NULL` | Absolute filesystem path to the rendered `docker-compose-<id>.yml`; NULL in legacy mode. Used by the reaper and daemon-restart re-attach logic. |
-
-**Invariant #6**: `worktree_db_port`, `worktree_app_port`, and `worktree_compose_path` are
-all NULL or all non-NULL. Partial state is invalid.
-
 **Status meanings**:
 
 | State | Meaning |
 |-------|---------|
+| `awaiting_merge_approval` | Transient gate state — item finished workflow steps successfully but `batch.auto_merge=false`; operator must approve merge before it enters the merge queue |
 | `setup_failed` | Per-worktree compose stack setup failed (seed script error, gitignore violation, or docker failure); see F-00062 AC6/AC8 |
 | `migration_invalid` | Phase 1 dry-run failed — post-rebase chain has a real conflict; main untouched |
 | `migration_rolled_back` | Phase 2 apply failed and Phase 3 rollback succeeded; main untouched |
@@ -535,17 +526,27 @@ planning ──(approve)──> approved ──(daemon starts)──> executing
 
 ```
 pending ──(setup)──> setting_up ──(launch)──> executing
-                                                |
-                                                ├──(all steps done)──> completed ──(merge)──> merged
-                                                ├──(step failed)──> failed ──(requeue)──> pending
-                                                └──(no progress)──> stalled ──(reset)──> pending
+                                                 |
+                              ┌──────────────────┤
+                              │                  │
+              ┌──────────────┴──────────────┐   │
+              │ (auto_merge=true)           │   │ (auto_merge=false)
+              ▼                             │   ▼
+        completed ──(merge)──> merged        awaiting_merge_approval
+                                                 │
+                                                 └──(operator approves)──> completed
+              │                             │   │
+              └──(step failed)──> failed ───(requeue)──> pending
+              └──(no progress)──> stalled ──(reset)──> pending
 ```
 
 | From | To | Trigger |
 |------|----|---------|
 | `pending` | `setting_up` | Daemon starts worktree creation |
 | `setting_up` | `executing` | Worktree ready, agent launched |
-| `executing` | `completed` | All workflow steps completed |
+| `executing` | `completed` | All workflow steps completed, `batch.auto_merge=true` |
+| `executing` | `awaiting_merge_approval` | All workflow steps completed, `batch.auto_merge=false` |
+| `awaiting_merge_approval` | `completed` | Operator approves merge via dashboard or `iw item approve-merge` |
 | `executing` | `failed` | Workflow failed (escalated) |
 | `executing` | `stalled` | No progress for extended period |
 | `completed` | `merged` | Daemon squash-merges to main |

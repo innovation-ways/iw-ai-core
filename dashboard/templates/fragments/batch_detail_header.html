@@ -16,6 +16,7 @@
       {{ status_badge(batch_status) }}
       <span class="text-xs text-muted-foreground">{{ items|length }} item{{ 's' if items|length != 1 else '' }}</span>
       <span class="text-xs text-muted-foreground">Max parallel: {{ batch.max_parallel }}</span>
+      <span class="text-xs text-muted-foreground">Auto-merge: {{ 'yes' if batch.auto_merge else 'no' }}</span>
     </div>
     <div class="text-xs text-muted-foreground mt-1">
       Created: {{ batch.created_at | localdt('%Y-%m-%d %H:%M') }}

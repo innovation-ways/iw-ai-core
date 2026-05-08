@@ -494,15 +494,18 @@ def _setup_status(bi: BatchItem | None) -> str:
 
 
 def _merge_status(bi: BatchItem | None) -> str:
-    if bi is None or not bi.worktree_info:
+    if bi is None:
         return "pending"
+    if bi.status == BatchItemStatus.awaiting_merge_approval:
+        return "awaiting_approval"
     if bi.merged_at is not None:
         return "completed"
+    if not bi.worktree_info:
+        return "pending"
     if bi.status in (BatchItemStatus.merging, BatchItemStatus.completed):
         return "in_progress"
     if bi.status == BatchItemStatus.failed:
         return "failed"
-    # Recoverable merge statuses (CR-00028): retry or abandon via UI
     recoverable_merge_statuses = {
         BatchItemStatus.merge_failed,
         BatchItemStatus.migration_invalid,

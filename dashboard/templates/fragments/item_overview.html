@@ -1,6 +1,6 @@
 {% from "components/step_pipeline.html" import step_pipeline %}
 {% from "components/status_badge.html" import status_badge %}
-{% from "components/action_button.html" import restart_button, skip_button, kill_button, restart_merge_button, abandon_merge_button, restart_setup_button with context %}
+{% from "components/action_button.html" import restart_button, skip_button, kill_button, restart_merge_button, abandon_merge_button, restart_setup_button, approve_merge_button with context %}
 {% from "macros/db_guard.html" import write_button_attrs %}
 
 <!-- Step pipeline overview -->
@@ -88,7 +88,11 @@
             {{ step.error_message or '—' }}
           </td>
           <td class="px-4 py-2 text-right">
-            {% if step.step_id == 'MERGE' and step.status in ('failed', 'merge_failed') %}
+            {% if step.step_id == 'MERGE' and step.status == 'awaiting_approval' %}
+              <div class="flex items-center justify-end gap-1">
+                {{ approve_merge_button(item.project_id, item.id) }}
+              </div>
+            {% elif step.step_id == 'MERGE' and step.status in ('failed', 'merge_failed') %}
               <div class="flex items-center justify-end gap-1">
                 {{ restart_merge_button(item.project_id, item.id) }}
                 {% if step.status == 'merge_failed' %}

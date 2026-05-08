@@ -14,6 +14,8 @@ from sqlalchemy import select
 
 from orch.cli.id_commands import allocate_next_id
 from orch.cli.utils import output_error, resolve_project
+from orch.config import load_config
+from orch.daemon.project_registry import load_projects_toml
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -234,16 +236,37 @@ def _generate_batch_plan(
 @click.argument("item_ids", nargs=-1, required=True)
 @click.option("--max-parallel", default=4, show_default=True, help="Maximum concurrent items")
 @click.option("--auto-publish", is_flag=True, help="Auto-push to origin after all items merged")
+@click.option(
+    "--auto-merge/--no-auto-merge",
+    "auto_merge_flag",
+    default=None,
+    help=(
+        "Auto-merge each item to main on success "
+        "(default: project's auto_merge default in projects.toml)"
+    ),
+)
 @click.pass_context
 def batch_create(
     ctx: click.Context,
     item_ids: tuple[str, ...],
     max_parallel: int,
     auto_publish: bool,
+    auto_merge_flag: bool | None,
 ) -> None:
     """Create a new batch from a list of approved work items."""
     project_id = resolve_project(ctx)
     get_session = ctx.obj["get_session"]
+
+    # Resolve auto_merge: CLI flag > project default > True
+    auto_merge_value = auto_merge_flag
+    if auto_merge_value is None:
+        # Load project default from projects.toml
+        try:
+            cfg = load_projects_toml(load_config().projects_toml)
+            proj_cfg = cfg.get(project_id)
+            auto_merge_value = proj_cfg.auto_merge_default if proj_cfg else True
+        except Exception:
+            auto_merge_value = True
 
     try:
         with get_session() as session:
@@ -309,6 +332,7 @@ def batch_create(
                 status=BatchStatus.planning,
                 max_parallel=max_parallel,
                 auto_publish=auto_publish,
+                auto_merge=auto_merge_value,
             )
             session.add(batch)
             session.flush()
@@ -348,13 +372,18 @@ def batch_create(
                     "project_id": project_id,
                     "status": "planning",
                     "max_parallel": max_parallel,
+                    "auto_merge": auto_merge_value,
                     "groups": sorted_groups,
                 }
             )
         )
     else:
         total = len(item_ids)
-        click.echo(f"Created {batch_id} with {total} item(s) (max parallel: {max_parallel})")
+        am = "yes" if auto_merge_value else "no"
+        click.echo(
+            f"Created {batch_id} with {total} item(s) "
+            f"(max parallel: {max_parallel}, auto-merge: {am})"
+        )
         for grp_num in group_numbers:
             grp_items = groups_map[grp_num]
             dep_note = ""

@@ -566,3 +566,184 @@ def test_batch_create_rejects_research_item(
 
     batches = db_session.query(Batch).filter(Batch.project_id == "test-proj").all()
     assert len(batches) == 0
+
+
+# ---------------------------------------------------------------------------
+# CR-00036: auto_merge flag matrix
+# ---------------------------------------------------------------------------
+
+
+class TestBatchCreateAutoMergeFlag:
+    """AC1, AC2: CLI flag overrides project default; absent flag uses project default."""
+
+    def _make_item(self, db_session: Any, item_id: str) -> WorkItem:
+        item = WorkItem(
+            project_id="test-proj",
+            id=item_id,
+            type=WorkItemType.Issue,
+            title=f"Test item {item_id}",
+            status=WorkItemStatus.approved,
+            phase=WorkItemPhase.active,
+            config={},
+            depends_on=[],
+            blocks=[],
+        )
+        db_session.add(item)
+        db_session.flush()
+        return item
+
+    def test_batch_create_default_auto_merge_true_when_no_project_flag(
+        self,
+        db_session: Any,
+        test_project: Project,
+        cli_get_session: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AC1: absent --auto-merge/--no-auto-merge → project's auto_merge_default (True)."""
+        self._make_item(db_session, "WI-AM-DEFAULT-01")
+        self._make_item(db_session, "WI-AM-DEFAULT-02")
+
+        # Project default is True (absent auto_merge in projects.toml)
+        class FakeProjConfig:
+            auto_merge_default = True
+
+        class FakeProjectsToml:
+            def get(self, project_id: str) -> FakeProjConfig | None:
+                return FakeProjConfig()
+
+        monkeypatch.setattr(
+            "orch.cli.batch_commands.load_projects_toml",
+            lambda *_: {"test-proj": FakeProjConfig()},
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "--project",
+                "test-proj",
+                "--json",
+                "batch-create",
+                "WI-AM-DEFAULT-01",
+                "WI-AM-DEFAULT-02",
+            ],
+            obj={"get_session": cli_get_session},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        batch_id = data["batch_id"]
+
+        batch = db_session.get(Batch, ("test-proj", batch_id))
+        assert batch is not None
+        assert batch.auto_merge is True
+
+    def test_batch_create_project_default_false(
+        self,
+        db_session: Any,
+        test_project: Project,
+        cli_get_session: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AC1: absent --auto-merge/--no-auto-merge → project default (False)."""
+        self._make_item(db_session, "WI-AM-PROJ-FALSE-01")
+
+        class FakeProjConfig:
+            auto_merge_default = False
+
+        monkeypatch.setattr(
+            "orch.cli.batch_commands.load_projects_toml",
+            lambda *_: {"test-proj": FakeProjConfig()},
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["--project", "test-proj", "--json", "batch-create", "WI-AM-PROJ-FALSE-01"],
+            obj={"get_session": cli_get_session},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        batch_id = json.loads(result.output)["batch_id"]
+
+        batch = db_session.get(Batch, ("test-proj", batch_id))
+        assert batch is not None
+        assert batch.auto_merge is False
+
+    def test_batch_create_explicit_auto_merge_overrides_project_false(
+        self,
+        db_session: Any,
+        test_project: Project,
+        cli_get_session: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AC2: --auto-merge overrides project default (False) → True."""
+        self._make_item(db_session, "WI-AM-EXPLICIT-TRUE-01")
+
+        class FakeProjConfig:
+            auto_merge_default = False
+
+        monkeypatch.setattr(
+            "orch.cli.batch_commands.load_projects_toml",
+            lambda *_: {"test-proj": FakeProjConfig()},
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "--project",
+                "test-proj",
+                "--json",
+                "batch-create",
+                "--auto-merge",
+                "WI-AM-EXPLICIT-TRUE-01",
+            ],
+            obj={"get_session": cli_get_session},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        batch_id = json.loads(result.output)["batch_id"]
+
+        batch = db_session.get(Batch, ("test-proj", batch_id))
+        assert batch is not None
+        assert batch.auto_merge is True
+
+    def test_batch_create_explicit_no_auto_merge_overrides_project_true(
+        self,
+        db_session: Any,
+        test_project: Project,
+        cli_get_session: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AC2 variant: --no-auto-merge overrides project default (True) → False."""
+        self._make_item(db_session, "WI-AM-EXPLICIT-FALSE-01")
+
+        class FakeProjConfig:
+            auto_merge_default = True
+
+        monkeypatch.setattr(
+            "orch.cli.batch_commands.load_projects_toml",
+            lambda *_: {"test-proj": FakeProjConfig()},
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "--project",
+                "test-proj",
+                "--json",
+                "batch-create",
+                "--no-auto-merge",
+                "WI-AM-EXPLICIT-FALSE-01",
+            ],
+            obj={"get_session": cli_get_session},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        batch_id = json.loads(result.output)["batch_id"]
+
+        batch = db_session.get(Batch, ("test-proj", batch_id))
+        assert batch is not None
+        assert batch.auto_merge is False

@@ -226,6 +226,18 @@ def _history_items(
 def project_queue(project_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
     project = _get_project_or_404(project_id, db)
     approved, drafts = _queue_items(project_id, db)
+
+    # Load project auto_merge_default for pre-filling the create-batch form
+    try:
+        from orch.config import load_config
+        from orch.daemon.project_registry import load_projects_toml
+
+        cfg = load_projects_toml(load_config().projects_toml)
+        proj_cfg = cfg.get(project_id)
+        auto_merge_default = proj_cfg.auto_merge_default if proj_cfg else True
+    except Exception:
+        auto_merge_default = True
+
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -235,6 +247,7 @@ def project_queue(project_id: str, request: Request, db: Session = Depends(get_d
             "running_count": 0,
             "approved_items": approved,
             "draft_items": drafts,
+            "auto_merge_default": auto_merge_default,
         },
     )
 
