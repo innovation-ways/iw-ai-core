@@ -21,4 +21,17 @@ echo "[e2e_down] project=${COMPOSE_PROJECT_NAME}"
 docker compose -f docker-compose.e2e.yml -p "${COMPOSE_PROJECT_NAME}" \
     down --remove-orphans --volumes --rmi local --timeout 20 || true
 
+# `--rmi local` only removes the *currently tagged* per-project images. Each
+# `e2e_up.sh --build` cycle however orphans the previous build (it loses its
+# tag to the new layer), and those untagged remnants still carry the
+# com.docker.compose.project label.  Sweep them by label so the disk
+# does not bloat by ~2 GB per fix-cycle re-provision. Best-effort.
+dangling=$(docker images -a \
+    --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" -q \
+    2>/dev/null || true)
+if [[ -n "${dangling}" ]]; then
+    echo "[e2e_down] pruning $(echo "${dangling}" | wc -l) leftover image(s) for ${COMPOSE_PROJECT_NAME}"
+    echo "${dangling}" | xargs -r docker rmi -f >/dev/null 2>&1 || true
+fi
+
 exit 0

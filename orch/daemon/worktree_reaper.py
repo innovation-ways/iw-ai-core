@@ -232,7 +232,74 @@ def _reap_e2e_stack(compose_project: str) -> bool:
             result.stderr.strip(),
         )
         return False
+
+    # `--rmi local` only removes the *currently tagged* per-project images.
+    # Each `e2e_up.sh --build` cycle however orphans the previous build
+    # (the new layer steals the tag); those untagged remnants still carry
+    # the com.docker.compose.project label.  Sweep them by label so the
+    # disk does not bloat by ~2 GB per fix-cycle re-provision.
+    _prune_e2e_label_remnants(compose_project)
     return True
+
+
+def _prune_e2e_label_remnants(compose_project: str) -> None:
+    """Best-effort: delete any images still labelled with this compose project.
+
+    Idempotent and silent — runs after a successful ``compose down`` to mop
+    up dangling images that ``--rmi local`` left behind.  Failures are
+    logged at debug level only; the caller treats teardown as successful
+    regardless because the containers are already gone.
+    """
+    try:
+        listing = subprocess.run(  # noqa: S603,S607
+            [  # noqa: S603,S607
+                "docker",
+                "images",
+                "-a",
+                "--filter",
+                f"label=com.docker.compose.project={compose_project}",
+                "-q",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except Exception as exc:
+        logger.debug("[reaper] image label scan errored for %s: %s", compose_project, exc)
+        return
+    if listing.returncode != 0:
+        logger.debug(
+            "[reaper] image label scan exited %d for %s: %s",
+            listing.returncode,
+            compose_project,
+            listing.stderr.strip(),
+        )
+        return
+    image_ids = [line.strip() for line in listing.stdout.splitlines() if line.strip()]
+    if not image_ids:
+        return
+    try:
+        subprocess.run(  # noqa: S603,S607
+            ["docker", "rmi", "-f", *image_ids],  # noqa: S603,S607
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except Exception as exc:
+        logger.debug(
+            "[reaper] failed to prune %d label-leftover image(s) for %s: %s",
+            len(image_ids),
+            compose_project,
+            exc,
+        )
+        return
+    logger.info(
+        "[reaper] pruned %d label-leftover image(s) for %s",
+        len(image_ids),
+        compose_project,
+    )
 
 
 def reap_e2e_stacks(db: Session) -> list[E2EStackFinding]:
