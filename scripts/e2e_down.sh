@@ -4,6 +4,13 @@
 # Called by the daemon on step-done / step-fail / timeout paths.
 # Idempotent and best-effort — must never fail-fast (env is considered
 # torn down if the project namespace does not exist).
+#
+# `--rmi local` removes the per-project images that `e2e_up.sh --build`
+# produced (e.g. iw-ai-core-e2e-<item>-e2e-dashboard:latest). Without it
+# every browser_verification run leaves ~2.2 GB of images behind, which
+# accumulate across work items until the host disk fills up. `local` only
+# touches images built by this compose project — base images pulled from
+# registries (postgres, ollama, etc.) are kept.
 
 set -uo pipefail
 
@@ -12,6 +19,6 @@ set -uo pipefail
 echo "[e2e_down] project=${COMPOSE_PROJECT_NAME}"
 
 docker compose -f docker-compose.e2e.yml -p "${COMPOSE_PROJECT_NAME}" \
-    down --remove-orphans --volumes --timeout 20 || true
+    down --remove-orphans --volumes --rmi local --timeout 20 || true
 
 exit 0
