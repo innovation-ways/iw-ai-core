@@ -45,75 +45,72 @@
 <div id="stale-summary" data-tour="docs-diff" hx-get="/project/{{ current_project.id }}/api/docs/stale" hx-trigger="load" hx-swap="innerHTML"></div>
 
 <!-- Filter Bar -->
-<div class="mb-6 space-y-3">
-  <!-- Doc Type Filters -->
-  <div class="flex flex-wrap items-center gap-2">
-    <span class="text-xs text-muted-foreground font-medium mr-1">Type:</span>
-    <button
-      hx-get="/project/{{ current_project.id }}/api/docs/search"
-      hx-vals='{"doc_type": ""}'
-      hx-target="#docs-grid"
-      hx-swap="innerHTML"
-      class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
-             {% if not selected_type %}bg-primary text-primary-foreground border-primary{% else %}bg-card text-muted-foreground hover:bg-muted{% endif %}">
-      All
-    </button>
-    {% for dtype in doc_types %}
-    <button
-      hx-get="/project/{{ current_project.id }}/api/docs/search"
-      hx-vals='{"doc_type": "{{ dtype }}"}'
-      hx-target="#docs-grid"
-      hx-swap="innerHTML"
-      class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
-             bg-card text-muted-foreground hover:bg-muted">
-      {{ dtype|title }}
-    </button>
-    {% endfor %}
-  </div>
+<div class="mb-4">
+  <form id="docs-filter-form" class="flex items-center gap-3 flex-wrap">
+    <!-- Type -->
+    <div class="flex items-center gap-1.5">
+      <label for="docs-filter-type" class="text-xs text-muted-foreground font-medium whitespace-nowrap">Type</label>
+      <select id="docs-filter-type"
+              name="doc_type"
+              hx-get="/project/{{ current_project.id }}/api/docs/search"
+              hx-trigger="change"
+              hx-target="#docs-grid"
+              hx-swap="innerHTML"
+              hx-include="#docs-filter-form"
+              class="docs-filter-select text-sm bg-input border border-border rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+        <option value="">All</option>
+        {% for dtype in doc_types %}
+        <option value="{{ dtype }}">{{ dtype|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
 
-  <!-- Status Filters -->
-  <div class="flex flex-wrap items-center gap-2">
-    <span class="text-xs text-muted-foreground font-medium mr-1">Status:</span>
-    <button
-      hx-get="/project/{{ current_project.id }}/api/docs/search"
-      hx-vals='{"status": ""}'
-      hx-target="#docs-grid"
-      hx-swap="innerHTML"
-      class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
-             {% if not selected_status %}bg-primary text-primary-foreground border-primary{% else %}bg-card text-muted-foreground hover:bg-muted{% endif %}">
-      All
-    </button>
-    {% for s in statuses %}
-    <button
-      hx-get="/project/{{ current_project.id }}/api/docs/search"
-      hx-vals='{"status": "{{ s }}"}'
-      hx-target="#docs-grid"
-      hx-swap="innerHTML"
-      class="filter-pill px-3 py-1 rounded-full text-xs font-medium transition-all border border-border
-             bg-card text-muted-foreground hover:bg-muted">
-      {{ s|title }}
-    </button>
-    {% endfor %}
-  </div>
+    <!-- Status -->
+    <div class="flex items-center gap-1.5">
+      <label for="docs-filter-status" class="text-xs text-muted-foreground font-medium whitespace-nowrap">Status</label>
+      <select id="docs-filter-status"
+              name="status"
+              hx-get="/project/{{ current_project.id }}/api/docs/search"
+              hx-trigger="change"
+              hx-target="#docs-grid"
+              hx-swap="innerHTML"
+              hx-include="#docs-filter-form"
+              class="docs-filter-select text-sm bg-input border border-border rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+        <option value="">All</option>
+        {% for s in statuses %}
+        <option value="{{ s }}">{{ s|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
 
-  <!-- Search Input -->
-  <div class="relative max-w-md">
-    <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-    </svg>
-    <input
-      type="text"
-      name="q"
-      placeholder="Search documentation…"
-      hx-get="/project/{{ current_project.id }}/api/docs/search"
-      hx-trigger="input changed delay:300ms"
-      hx-target="#docs-grid"
-      hx-swap="innerHTML"
-      class="w-full pl-10 pr-4 py-2 bg-input border border-border rounded-md text-sm
-             text-foreground placeholder:text-muted-foreground
-             focus:outline-none focus:ring-2 focus:ring-ring"
-    />
-  </div>
+    <!-- Search -->
+    <div class="relative flex-1 min-w-[180px] max-w-sm">
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none"
+           fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+      <input type="text"
+             id="docs-search-input"
+             name="q"
+             placeholder="Search documentation…"
+             hx-get="/project/{{ current_project.id }}/api/docs/search"
+             hx-trigger="input changed delay:300ms"
+             hx-target="#docs-grid"
+             hx-swap="innerHTML"
+             hx-include="#docs-filter-form"
+             class="w-full pl-10 pr-4 py-1.5 bg-input border border-border rounded-md text-sm
+                    text-foreground placeholder:text-muted-foreground
+                    focus:outline-none focus:ring-2 focus:ring-ring"/>
+    </div>
+  </form>
+</div>
+
+<!-- Running Jobs Strip -->
+<div id="docs-running-jobs"
+     hx-get="/project/{{ current_project.id }}/api/docs/running-jobs"
+     hx-trigger="load, runningJobsReload from:body"
+     hx-swap="innerHTML">
 </div>
 
 <!-- Card Grid (htmx target) -->
