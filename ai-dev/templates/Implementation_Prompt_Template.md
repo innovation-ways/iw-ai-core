@@ -183,6 +183,12 @@ Scope rules:
    they pass but you suspect a wider regression, note it in your report
    under `notes` — do not pre-emptively run the full suite to "be safe".
 
+6. **CSS class renames — required test update.** When the design renames a
+   CSS class name, grep the test suite for the old class name and update
+   every assertion to match the new name before reporting
+   `tests_passed: true`. Stale CSS class assertions in tests are a
+   code-review failure mode (see CR-00039 self-assess finding [3]).
+
 ## Migration Verification (Database steps only — NON-NEGOTIABLE)
 
 If your step generated or modified an alembic migration under

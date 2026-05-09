@@ -160,3 +160,30 @@ def test_implementation_pair_pre_flight_blocks_match() -> None:
     assert contract_a == contract_b, (
         "preflight contract block drifted between Implementation template copies"
     )
+
+
+@pytest.mark.parametrize("template_rel", IMPLEMENTATION_TEMPLATES)
+def test_implementation_template_has_css_rename_checklist(template_rel: str) -> None:
+    """CR-00041: assert CSS-class-rename checklist line is present in Test Verification.
+
+    When the design renames a CSS class name, the agent must grep the test suite
+    for the old class name and update every assertion to match the new name before
+    reporting tests_passed: true. Stale CSS class assertions are a code-review
+    failure mode (see CR-00039 self-assess finding [3]).
+    """
+    content = (REPO_ROOT / template_rel).read_text(encoding="utf-8")
+
+    # Extract the Test Verification section
+    tv_start = content.find("## Test Verification (NON-NEGOTIABLE)")
+    assert tv_start != -1, f"{template_rel}: missing Test Verification section"
+
+    # End marker: next top-level heading or end-of-file
+    next_heading = content.find("\n## ", tv_start + 1)
+    tv_section = content[tv_start:] if next_heading == -1 else content[tv_start:next_heading]
+
+    assert "CSS class" in tv_section, (
+        f"{template_rel}: Test Verification section missing 'CSS class' substring"
+    )
+    assert "CR-00039" in tv_section, (
+        f"{template_rel}: Test Verification section missing 'CR-00039' reference"
+    )
