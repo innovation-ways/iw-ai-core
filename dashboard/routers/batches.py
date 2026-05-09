@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from dashboard.dependencies import get_db
 from dashboard.utils.batch_progress import compute_batch_step_progress
@@ -22,6 +22,7 @@ from orch.db.models import (
     BatchItem,
     BatchStatus,
     DaemonEvent,
+    FixCycle,
     Project,
     WorkflowStep,
     WorkItem,
@@ -53,6 +54,8 @@ class StepNode:
     agent_label: str
     status: str
     duration: str = ""
+    duration_secs: float | None = None
+    fix_cycle_count: int = 0
 
 
 @dataclass
@@ -277,6 +280,17 @@ def _batch_item_rows(
         ).all()
         has_step_override_items = {row[0] for row in override_rows}
 
+    # Fix-cycle counts per step (for step_pipeline fix-cycle rerun pills)
+    all_step_ids = [s.id for s in steps]
+    fix_cycle_counts: dict[int, int] = {}
+    if all_step_ids:
+        fix_cycle_rows = db.execute(
+            select(FixCycle.step_id, func.count(FixCycle.id).label("cnt"))
+            .where(FixCycle.step_id.in_(all_step_ids))
+            .group_by(FixCycle.step_id)
+        ).all()
+        fix_cycle_counts = {row.step_id: row.cnt for row in fix_cycle_rows}
+
     rows = []
     for bi in batch_items:
         wi = work_item_map.get((project_id, bi.work_item_id))
@@ -285,17 +299,20 @@ def _batch_item_rows(
         item_steps = steps_map.get(bi.work_item_id, [])
         step_nodes = []
         for s in item_steps:
-            dur = _format_duration(
+            dur_secs = (
                 (s.completed_at - s.started_at).total_seconds()
                 if s.started_at and s.completed_at
                 else None
             )
+            dur = _format_duration(dur_secs)
             step_nodes.append(
                 StepNode(
                     step_id=s.step_id,
                     agent_label=s.agent_label,
                     status=s.status.value,
                     duration=dur,
+                    duration_secs=dur_secs,
+                    fix_cycle_count=fix_cycle_counts.get(s.id, 0),
                 )
             )
 

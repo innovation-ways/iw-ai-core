@@ -1,28 +1,49 @@
 {% macro step_pipeline(steps) %}
-  {#
-    Compressed step strip — each step rendered as a 6×14px segment.
-    Width budget: 6px segment + 1px gap × (step_count - 1) ≤ 120px for ≤12 steps.
-    Each segment carries a tooltip with step_id agent_label: status: duration.
-    Container exposes data-step-count for no-regression testing.
-  #}
-  <div class="iw-step-strip" data-step-count="{{ steps | length }}">
-    {% for step in steps %}
-      {% if step.status == 'completed' %}
-        <div class="iw-step-seg iw-step-seg--completed"
-             title="{{ step.step_id }} {{ step.agent_label }}: completed{{ ' ' ~ step.duration if step.duration else '' }}"></div>
-      {% elif step.status == 'in_progress' %}
-        <div class="iw-step-seg iw-step-seg--in-progress"
-             title="{{ step.step_id }} {{ step.agent_label }}: running"></div>
-      {% elif step.status == 'failed' %}
-        <div class="iw-step-seg iw-step-seg--failed"
-             title="{{ step.step_id }} {{ step.agent_label }}: failed"></div>
-      {% elif step.status == 'skipped' %}
-        <div class="iw-step-seg iw-step-seg--skipped"
-             title="{{ step.step_id }}: skipped"></div>
-      {% else %}
-        <div class="iw-step-seg iw-step-seg--pending"
-             title="{{ step.step_id }} {{ step.agent_label }}: pending"></div>
+{#
+  Labeled pill step pipeline — each step rendered as a fixed-width pill showing:
+  - Line 1: step ID (e.g. S01)
+  - Line 2: formatted duration (e.g. 2m35s) if available
+  Fix-cycle reruns render as separate amber pills labelled ↺SXX.
+  Container exposes data-step-count for no-regression testing.
+#}
+<div class="iw-pipeline-strip" data-step-count="{{ steps | length }}">
+  {% for step in steps %}
+    {# ── Main pill ── #}
+    {% set pill_status = 'completed' if step.status == 'completed'
+                 else 'in-progress' if step.status == 'in_progress'
+                 else 'failed' if step.status in ('failed', 'needs_fix')
+                 else 'skipped' if step.status == 'skipped'
+                 else 'pending' %}
+    {% if step.duration_secs is not none %}
+      {% set dur_m = (step.duration_secs // 60)|int %}
+      {% set dur_s = (step.duration_secs % 60)|int %}
+      {% set dur_str = "{}m{}s"|format(dur_m, dur_s) if dur_m > 0 else "{}s"|format(dur_s) %}
+    {% else %}
+      {% set dur_str = '' %}
+    {% endif %}
+    <div class="iw-pipeline-pill iw-pipeline-pill--{{ pill_status }}"
+         title="{{ step.step_id }} {{ step.agent_label }}: {{ step.status }}{% if dur_str %} {{ dur_str }}{% endif %}">
+      <span class="iw-pipeline-pill-id">{{ step.step_id }}</span>
+      {% if dur_str %}
+        <span class="iw-pipeline-pill-dur">{{ dur_str }}</span>
       {% endif %}
-    {% endfor %}
-  </div>
+    </div>
+
+    {# ── Fix-cycle rerun pills ── #}
+    {% if step.fix_cycle_count > 0 %}
+      {% for i in range(step.fix_cycle_count) %}
+        <div class="iw-pipeline-connector iw-pipeline-connector--fixcycle"></div>
+        <div class="iw-pipeline-pill iw-pipeline-pill--fixcycle"
+             title="↺{{ step.step_id }}: fix cycle {{ loop.index }}">
+          <span class="iw-pipeline-pill-id">↺{{ step.step_id }}</span>
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    {# ── Connector to next step (if not last) ── #}
+    {% if not loop.last %}
+      <div class="iw-pipeline-connector"></div>
+    {% endif %}
+  {% endfor %}
+</div>
 {% endmacro %}
