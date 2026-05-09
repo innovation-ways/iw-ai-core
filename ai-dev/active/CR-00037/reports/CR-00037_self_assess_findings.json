@@ -1,6 +1,0 @@
-{
-  "item_id": "CR-00037",
-  "bottom_line": "No process improvements warranted. CR executed as designed.",
-  "coverage_notes": "Read all 13 run/fix logs in full. S01-S03, S06-S09 are single-run, no errors. S04 and S05 each ran twice and fixed a pre-existing test file drift via fix cycle.",
-  "findings": []
-}
