@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingRes
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
-from dashboard.utils.markdown import render_markdown, render_markdown_with_callouts
+from dashboard.utils.markdown import render_markdown_with_callouts
 from orch.db.models import DocStatus, DocType, JobStatus, Project
 from orch.doc_service import DocService
 
@@ -161,7 +161,7 @@ def docs_pdf_view(
     html_content = pdf_template.render(
         doc=doc,
         project=project,
-        rendered_content=render_markdown(doc.content),
+        rendered_content=render_markdown_with_callouts(doc.content),
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
     )
 
@@ -209,7 +209,7 @@ def docs_pdf(
     html_content = pdf_template.render(
         doc=doc,
         project=project,
-        rendered_content=render_markdown(doc.content),
+        rendered_content=render_markdown_with_callouts(doc.content),
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
     )
 
@@ -945,7 +945,7 @@ def docs_export_bundle(
     zip_bytes = svc.export_bundle(
         project_id,
         full_ids,
-        render_html_fn=lambda content, _doc: render_markdown(content),
+        render_html_fn=lambda content, _doc: render_markdown_with_callouts(content),
         render_pdf_fn=_make_render_pdf_fn(),
     )
 
@@ -976,7 +976,7 @@ def docs_export_single(
     zip_bytes = svc.export_bundle(
         project_id,
         [full_id],
-        render_html_fn=lambda content, _doc: render_markdown(content),
+        render_html_fn=lambda content, _doc: render_markdown_with_callouts(content),
         render_pdf_fn=_make_render_pdf_fn(),
     )
 

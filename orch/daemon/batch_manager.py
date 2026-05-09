@@ -1773,6 +1773,7 @@ RC=$?
 END_TS=$(date +%s)
 DURATION=$((END_TS - START_TS))
 TAIL_OUTPUT=$(tail -200 "$RAW_LOG" 2>/dev/null || true)
+cat "$RAW_LOG"
 rm -f "$RAW_LOG"
 
 if [ "$RC" -eq 0 ]; then
