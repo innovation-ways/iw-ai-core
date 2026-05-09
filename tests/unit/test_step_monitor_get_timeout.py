@@ -26,6 +26,7 @@ def _project_config(timeout_overrides: dict | None = None) -> ProjectConfig:
         repo_root="/nonexistent",
         enabled=True,
         cli_tool="opencode",
+        model="minimax",
         worktree_base=".worktrees",
         config=config,
     )

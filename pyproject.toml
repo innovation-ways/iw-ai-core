@@ -96,7 +96,7 @@ dev = [
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-exclude = ["skills/", ".claude/"]
+exclude = ["skills/", ".claude/", "ai-dev/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN", "PIE", "PT", "RSE", "RET", "SLF", "SIM", "TCH", "ARG", "PTH", "ERA"]

@@ -81,6 +81,7 @@ def make_project_config_with_bv(
         repo_root=worktree_root,
         enabled=True,
         cli_tool="opencode",
+        model="minimax",
         worktree_base=".worktrees",
         config={
             "browser_verification": {
@@ -106,6 +107,7 @@ def make_project_config_no_bv(worktree_root: str) -> ProjectConfig:
         repo_root=worktree_root,
         enabled=True,
         cli_tool="opencode",
+        model="minimax",
         worktree_base=".worktrees",
         config={},
     )

@@ -48,6 +48,7 @@ def project_config() -> ProjectConfig:
         repo_root="/repos/test",
         enabled=True,
         cli_tool="opencode",
+        model="minimax",
         worktree_base=".worktrees",
         config={},
     )

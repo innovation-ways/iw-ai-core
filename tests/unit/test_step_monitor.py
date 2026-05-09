@@ -74,6 +74,7 @@ def make_project_config(timeout_overrides: dict | None = None) -> ProjectConfig:
         repo_root="/nonexistent/test-project",
         enabled=True,
         cli_tool="opencode",
+        model="minimax",
         worktree_base=".worktrees",
         config=config,
     )

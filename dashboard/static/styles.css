@@ -347,3 +347,13 @@
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* F-00081: compressed step strip (6×14px segments, ≤120px for ≤12 steps) */
+.iw-step-strip { display: flex; gap: 1px; align-items: center; }
+.iw-step-seg   { width: 6px; height: 14px; border-radius: 1px; flex-shrink: 0; }
+.iw-step-seg--completed   { background: var(--success); }
+.iw-step-seg--in-progress { background: var(--primary); animation: pulse 1.4s ease-in-out infinite; }
+.iw-step-seg--failed      { background: var(--destructive); }
+.iw-step-seg--skipped     { background: var(--muted); }
+.iw-step-seg--pending     { background: var(--secondary); }
+@keyframes pulse { 0%,100% {opacity:1} 50% {opacity:.55} }

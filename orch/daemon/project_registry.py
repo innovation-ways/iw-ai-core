@@ -47,6 +47,7 @@ class ProjectConfig:
     repo_root: str
     enabled: bool
     cli_tool: str
+    model: str
     worktree_base: str
     config: dict[str, Any]  # full .iw-orch.json content
     dev_clone: str | None = None
@@ -137,7 +138,11 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
 
     # display_name: projects.toml takes precedence over .iw-orch.json, then project_id
     display_name: str = entry.get("display_name") or iw_config.get("display_name") or project_id
-    cli_tool: str = iw_config.get("cli_tool", "opencode")
+    # cli_tool: projects.toml entry takes precedence; .iw-orch.json is fallback
+    # for backwards compat. .iw-orch.json ONLY supplies cli_tool (not model).
+    cli_tool: str = entry.get("cli_tool") or iw_config.get("cli_tool", "opencode")
+    # model: read from projects.toml entry; default "minimax"
+    model: str = entry.get("model", "minimax")
     worktree_base: str = iw_config.get("worktree_base", ".worktrees")
 
     dev_clone: str | None = iw_config.get("dev_clone") or None
@@ -241,6 +246,7 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         repo_root=repo_root,
         enabled=enabled,
         cli_tool=cli_tool,
+        model=model,
         worktree_base=worktree_base,
         config=iw_config,
         dev_clone=dev_clone,

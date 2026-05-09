@@ -22,9 +22,12 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # 1. Pre-delete rows referencing dropped enum values
-    op.execute("DELETE FROM project_oss_job WHERE kind IN ('prepare','publish')")
-    op.execute("DELETE FROM oss_scan WHERE mode IN ('make_oss','publish')")
-    op.execute("DELETE FROM project_oss_job WHERE status IN ('awaiting_review','discarded')")
+    # Use ::text casts so these DELETEs succeed even when the enum type was
+    # pre-created with only the new values (e.g. in test containers where
+    # OSS_ENUMS_SQL seeds the final-state enum before Alembic runs).
+    op.execute("DELETE FROM project_oss_job WHERE kind::text IN ('prepare','publish')")
+    op.execute("DELETE FROM oss_scan WHERE mode::text IN ('make_oss','publish')")
+    op.execute("DELETE FROM project_oss_job WHERE status::text IN ('awaiting_review','discarded')")
 
     # 2. Drop columns from project_oss_job
     op.drop_column("project_oss_job", "files_changed_summary")

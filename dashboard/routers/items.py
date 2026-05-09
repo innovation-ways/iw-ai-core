@@ -22,6 +22,7 @@ from dashboard.dependencies import get_db
 from dashboard.utils.markdown import render_markdown
 from orch.daemon.execution_report import assemble_execution_report
 from orch.db.models import (
+    AgentRuntimeOption,
     BatchItem,
     BatchItemStatus,
     DaemonEvent,
@@ -67,6 +68,10 @@ class StepDetail:
     is_synthetic: bool = False
     fix_cycle_count: int = 0
     restartable: bool = False
+    # F-00081: resolved runtime option id (from step_runs → step override → item override)
+    runtime_option_id: int | None = None
+    # F-00081: step-level override (explicitly set on workflow_step row)
+    step_runtime_option_id: int | None = None
 
 
 @dataclass
@@ -370,10 +375,34 @@ def _get_steps(
 
     step_spans = _aggregate_step_spans(db, step_db_ids)
 
+    # F-00081: runtime option id from last run (most recent step_runs row per step)
+    last_run_option_map: dict[int, int] = {}
+    last_run_sub = (
+        select(
+            StepRun.step_id,
+            StepRun.agent_runtime_option_id,
+            func.row_number()
+            .over(
+                partition_by=StepRun.step_id,
+                order_by=StepRun.run_number.desc(),
+            )
+            .label("rn"),
+        )
+        .where(StepRun.step_id.in_(step_db_ids))
+        .subquery()
+    )
+    run_option_rows = db.execute(
+        select(last_run_sub.c.step_id, last_run_sub.c.agent_runtime_option_id).where(
+            last_run_sub.c.rn == 1
+        )
+    ).all()
+    for row in run_option_rows:
+        last_run_option_map[row.step_id] = row.agent_runtime_option_id
+
     last_run_map: dict[int, StepRun] = {}
     run_count_map: dict[int, int] = {}
     if step_db_ids:
-        last_run_sub = (
+        last_run_sub2 = (
             select(
                 StepRun.step_id,
                 StepRun.id.label("run_id"),
@@ -391,11 +420,11 @@ def _get_steps(
         )
         bulk_rows = db.execute(
             select(
-                last_run_sub.c.step_id,
-                last_run_sub.c.run_id,
-                last_run_sub.c.error_message,
-                last_run_sub.c.rc,
-            ).where(last_run_sub.c.rn == 1)
+                last_run_sub2.c.step_id,
+                last_run_sub2.c.run_id,
+                last_run_sub2.c.error_message,
+                last_run_sub2.c.rc,
+            ).where(last_run_sub2.c.rn == 1)
         ).all()
         for row in bulk_rows:
             run = StepRun(
@@ -407,6 +436,15 @@ def _get_steps(
             )
             last_run_map[row.step_id] = run
             run_count_map[row.step_id] = row.rc
+
+    # F-00081: item-level runtime override
+    item = db.scalar(
+        select(WorkItem).where(
+            WorkItem.project_id == project_id,
+            WorkItem.id == item_id,
+        )
+    )
+    item_runtime_option_id = item.agent_runtime_option_id if item else None
 
     result: list[StepDetail] = [_synthetic_setup_step(bi, [s.status.value for s in workflow_steps])]
     for step in workflow_steps:
@@ -421,6 +459,12 @@ def _get_steps(
             dur = None
 
         report = step.report_content or _read_report_file(step.report_file, repo_root)
+
+        # F-00081: runtime_option_id resolution:
+        # - step override (workflow_steps.agent_runtime_option_id)
+        # - item override (WorkItem.agent_runtime_option_id)
+        run_opt_id = last_run_option_map.get(step.id)
+        step_opt_id = step.agent_runtime_option_id  # explicit step-level override
 
         result.append(
             StepDetail(
@@ -437,6 +481,10 @@ def _get_steps(
                 description=step.description,
                 report_content=report,
                 fix_cycle_count=fix_cycle_counts.get(step.id, 0),
+                runtime_option_id=run_opt_id
+                if run_opt_id is not None
+                else (step_opt_id or item_runtime_option_id),
+                step_runtime_option_id=step_opt_id,
             )
         )
     result.append(_synthetic_merge_step(bi))
@@ -1046,6 +1094,28 @@ def item_detail(
     batch_ref = _get_batch_ref(project_id, item_id, db)
     setup_error = _get_batch_item_error(project_id, item_id, db)
 
+    # F-00081: fetch runtime options for dropdown population
+    runtime_options = list(
+        db.scalars(
+            select(AgentRuntimeOption)
+            .where(AgentRuntimeOption.enabled.is_(True))
+            .order_by(AgentRuntimeOption.sort_order, AgentRuntimeOption.id)
+        ).all()
+    )
+    runtime_options_list = [
+        {
+            "id": r.id,
+            "cli_tool": r.cli_tool,
+            "model": r.model,
+            "cli_label": r.cli_label,
+            "model_label": r.model_label,
+            "display_name": r.display_name,
+            "is_default": r.is_default,
+        }
+        for r in runtime_options
+    ]
+    item_runtime_option_id = item.agent_runtime_option_id
+
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -1060,6 +1130,8 @@ def item_detail(
             "metrics": metrics,
             "batch_ref": batch_ref,
             "setup_error": setup_error,
+            "runtime_options": runtime_options_list,
+            "item_runtime_option_id": item_runtime_option_id,
         },
     )
 
@@ -1109,6 +1181,28 @@ def item_tab_overview(
     # C.1: run-count per step (step_id string → run count)
     step_run_counts: dict[str, int] = {s.step_id: s.run_count for s in steps if not s.is_synthetic}
 
+    # F-00081: fetch runtime options for dropdown population
+    runtime_options = list(
+        db.scalars(
+            select(AgentRuntimeOption)
+            .where(AgentRuntimeOption.enabled.is_(True))
+            .order_by(AgentRuntimeOption.sort_order, AgentRuntimeOption.id)
+        ).all()
+    )
+    runtime_options_list = [
+        {
+            "id": r.id,
+            "cli_tool": r.cli_tool,
+            "model": r.model,
+            "cli_label": r.cli_label,
+            "model_label": r.model_label,
+            "display_name": r.display_name,
+            "is_default": r.is_default,
+        }
+        for r in runtime_options
+    ]
+    item_runtime_option_id = item.agent_runtime_option_id
+
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -1119,6 +1213,8 @@ def item_tab_overview(
             "steps": steps,
             "cascade_history": cascade_history,
             "step_run_counts": step_run_counts,
+            "runtime_options": runtime_options_list,
+            "item_runtime_option_id": item_runtime_option_id,
         },
     )
 

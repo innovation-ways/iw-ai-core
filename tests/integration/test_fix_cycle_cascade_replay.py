@@ -46,6 +46,7 @@ def _project_config() -> ProjectConfig:
         repo_root="/repos/test",
         enabled=True,
         cli_tool="claude",
+        model="minimax",
         worktree_base="/repos/test/.worktrees",
         config={"fix_cycle_max": 5},
     )

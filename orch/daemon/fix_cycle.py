@@ -28,6 +28,7 @@ from orch.db.models import (
     StepStatus,
     StepType,
     WorkflowStep,
+    WorkItem,
 )
 
 if TYPE_CHECKING:
@@ -492,7 +493,8 @@ def attempt_fix_cycle(
     db.flush()  # Get fix_cycle.id
 
     # Launch fix agent
-    pid, log_file, timeout = _launch_fix_agent(
+    pid, log_file, timeout, _step_run = _launch_fix_agent(
+        db,
         step,
         worktree_path,
         prompt_path,
@@ -1862,32 +1864,53 @@ def _build_fix_prompt_content(
 
 
 def _launch_fix_agent(
+    db: Session,
     step: WorkflowStep,
     worktree_path: str,
     prompt_path: Path | None,
     project_config: ProjectConfig,
     config: DaemonConfig,  # noqa: ARG001
     cycle_number: int,
-) -> tuple[int, Path, int]:
-    """Launch the fix agent subprocess. Returns (pid, log_file, timeout_secs)."""
+) -> tuple[int, Path, int, StepRun]:
+    """Launch the fix agent subprocess.
+
+    Returns (pid, log_file, timeout_secs, step_run).
+    The step_run row is already committed so fix-cycle monitoring can track it.
+    """
+    from orch.agent_runtime.resolver import resolve_runtime  # noqa: PLC0415
     from orch.daemon.batch_manager import _build_agent_env  # noqa: PLC0415
     from orch.daemon.step_monitor import get_timeout  # noqa: PLC0415
 
-    cli_tool = project_config.cli_tool
+    # F-00081: Resolve runtime option via cascade (step → item → project → catalogue default).
+    work_item = (
+        db.query(WorkItem).filter_by(project_id=project_config.id, id=step.work_item_id).first()
+    )
+    runtime_option = resolve_runtime(
+        db,
+        step=step,
+        item=work_item,
+        project=project_config,
+    )
+    resolved_cli_tool = runtime_option.cli_tool
+    resolved_model = runtime_option.model
+
     item_id = step.work_item_id
     step_id = step.step_id
     fix_step_type = _FIX_TIMEOUT_MAP.get(step.step_type, "code_review_fix")
     timeout = get_timeout(project_config, fix_step_type)
 
-    # Build command
-    if cli_tool == "opencode":
-        # Read the prompt file and pass to opencode
+    # Build command with --model injected
+    if resolved_cli_tool == "opencode":
+        # Read the prompt file and pass to opencode via stdin substitution
         prompt_text = prompt_path.read_text() if prompt_path else "Fix the code review findings."
         # Write to a temp file for opencode
         tmp_prompt = Path(worktree_path) / ".tmp" / f"{item_id}_{step_id}_fix{cycle_number}.prompt"
         tmp_prompt.parent.mkdir(parents=True, exist_ok=True)
         tmp_prompt.write_text(prompt_text)
-        command = f"opencode run '{tmp_prompt}'"
+        command = (
+            f'opencode run "$(cat {tmp_prompt})" --model {resolved_model} '
+            f"--dangerously-skip-permissions"
+        )
     else:
         if prompt_path and prompt_path.exists():
             prompt_text = prompt_path.read_text()
@@ -1896,18 +1919,23 @@ def _launch_fix_agent(
         tmp_prompt = Path(worktree_path) / ".tmp" / f"{item_id}_{step_id}_fix{cycle_number}.prompt"
         tmp_prompt.parent.mkdir(parents=True, exist_ok=True)
         tmp_prompt.write_text(prompt_text)
-        command = f'claude -p "$(cat {tmp_prompt})" --dangerously-skip-permissions'
+        command = (
+            f'claude -p "$(cat {tmp_prompt})" --model {resolved_model} '
+            f"--dangerously-skip-permissions"
+        )
 
     # Log file
     log_dir = Path(worktree_path) / "ai-dev" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"{item_id}_{step_id}_fix{cycle_number}.log"
 
-    # Build environment
-    env = _build_agent_env(cli_tool, item_id, worktree_path)
+    # Build environment with belt-and-suspenders model env vars
+    env = _build_agent_env(resolved_cli_tool, item_id, worktree_path)
+    env["OPENCODE_MODEL"] = resolved_model
+    env["ANTHROPIC_MODEL"] = resolved_model
 
     # Launch
-    if cli_tool == "opencode":
+    if resolved_cli_tool == "opencode":
         shell_command = f'script -qec "timeout {timeout} {command}" /dev/null'
     else:
         shell_command = f"timeout {timeout} {command}"
@@ -1924,15 +1952,37 @@ def _launch_fix_agent(
     )
 
     logger.info(
-        "Fix agent launched: %s/%s cycle %d (PID %d, timeout %ds)",
+        "Fix agent launched: %s/%s cycle %d (PID %d, timeout %ds, option_id=%d)",
         item_id,
         step_id,
         cycle_number,
         proc.pid,
         timeout,
+        runtime_option.id,
     )
 
-    return proc.pid, log_file, timeout
+    # Persist step_runs row with agent_runtime_option_id
+    now = datetime.now(UTC)
+    run_number = _next_run_number(db, step)
+    step_run = StepRun(
+        step_id=step.id,
+        run_number=run_number,
+        status=RunStatus.running,
+        pid=proc.pid,
+        pid_alive=True,
+        command=command,
+        worktree_path=worktree_path,
+        cli_tool=resolved_cli_tool,
+        agent_runtime_option_id=runtime_option.id,
+        log_file=str(log_file),
+        started_at=now,
+        last_heartbeat=now,
+        timeout_secs=timeout,
+    )
+    db.add(step_run)
+    db.commit()
+
+    return proc.pid, log_file, timeout, step_run
 
 
 # ---------------------------------------------------------------------------
@@ -2111,3 +2161,14 @@ def _parse_and_store_fix_summary(cycle: Any) -> None:
     if len(summary) > _MAX_FIX_SUMMARY_LEN:
         summary = summary[:_MAX_FIX_SUMMARY_LEN]
     cycle.fix_summary = summary
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _next_run_number(db: Session, step: WorkflowStep) -> int:
+    """Return the next run_number for a step (existing count + 1)."""
+    count = db.query(StepRun).filter(StepRun.step_id == step.id).count()
+    return count + 1

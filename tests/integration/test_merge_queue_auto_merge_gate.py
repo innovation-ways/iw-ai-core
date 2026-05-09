@@ -129,6 +129,7 @@ def _project_config(project_id: str = "test-proj") -> ProjectConfig:
         repo_root="/repos/test",
         enabled=True,
         cli_tool="claude",
+        model="minimax",
         worktree_base=".worktrees",
         config={},
     )

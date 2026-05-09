@@ -71,6 +71,7 @@ def make_project_config(cli_tool: str = "opencode") -> ProjectConfig:
         repo_root="/repos/test",
         enabled=True,
         cli_tool=cli_tool,
+        model="minimax",
         worktree_base=".worktrees",
         config={},
     )
@@ -376,20 +377,25 @@ class TestCommandBuilding:
         step.step_type = StepType.implementation
         step.id = 1
         step.started_at = None
+        step.agent_runtime_option_id = None
 
         worktree_info = {"path": "/wt/F-00001"}
 
-        # Capture the Popen call
         with (
             patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen,
+            patch("orch.agent_runtime.resolver.resolve_runtime") as mock_resolve,
             patch("pathlib.Path.open", MagicMock()),
             patch("pathlib.Path.mkdir"),
         ):
             mock_proc = MagicMock()
             mock_proc.pid = 12345
             mock_popen.return_value = mock_proc
+            mock_option = MagicMock()
+            mock_option.cli_tool = "opencode"
+            mock_option.model = "minimax"
+            mock_option.id = 1
+            mock_resolve.return_value = mock_option
             manager = make_manager(tmp_path, db, cli_tool="opencode")
-            # Mock next_run_number
             db.query.return_value.filter.return_value.count.return_value = 0
             manager._launch_step(db, step, worktree_info)
 
@@ -406,17 +412,24 @@ class TestCommandBuilding:
         step.step_type = StepType.code_review
         step.id = 2
         step.started_at = None
+        step.agent_runtime_option_id = None
 
         worktree_info = {"path": "/wt/F-00002"}
 
         with (
             patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen,
+            patch("orch.agent_runtime.resolver.resolve_runtime") as mock_resolve,
             patch("pathlib.Path.open", MagicMock()),
             patch("pathlib.Path.mkdir"),
         ):
             mock_proc = MagicMock()
             mock_proc.pid = 99999
             mock_popen.return_value = mock_proc
+            mock_option = MagicMock()
+            mock_option.cli_tool = "claude"
+            mock_option.model = "claude-sonnet-4-6"
+            mock_option.id = 4
+            mock_resolve.return_value = mock_option
             manager = make_manager(tmp_path, db, cli_tool="claude")
             db.query.return_value.filter.return_value.count.return_value = 0
             manager._launch_step(db, step, worktree_info)
@@ -441,17 +454,24 @@ class TestStepLaunchFields:
         step.step_type = StepType.implementation
         step.id = 3
         step.started_at = None
+        step.agent_runtime_option_id = None
 
         worktree_info = {"path": "/wt/F-00003"}
 
         with (
             patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen,
+            patch("orch.agent_runtime.resolver.resolve_runtime") as mock_resolve,
             patch("pathlib.Path.open", MagicMock()),
             patch("pathlib.Path.mkdir"),
         ):
             mock_proc = MagicMock()
             mock_proc.pid = 55555
             mock_popen.return_value = mock_proc
+            mock_option = MagicMock()
+            mock_option.cli_tool = "opencode"
+            mock_option.model = "minimax"
+            mock_option.id = 1
+            mock_resolve.return_value = mock_option
             manager = make_manager(tmp_path, db, cli_tool="opencode")
             db.query.return_value.filter.return_value.count.return_value = 0
             manager._launch_step(db, step, worktree_info)

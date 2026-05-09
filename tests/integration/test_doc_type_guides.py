@@ -113,8 +113,8 @@ Lead with the problem. Earn the pitch.
 @pytest.fixture
 def seed_type_guides(db_session: Session) -> None:
     """Insert _default and marketing guides (mirrors the migration seed data)."""
-    db_session.add(DocTypeGuide(doc_type="_default", guide_md=_DEFAULT_GUIDE))
-    db_session.add(DocTypeGuide(doc_type="marketing", guide_md=_MARKETING_GUIDE))
+    db_session.merge(DocTypeGuide(doc_type="_default", guide_md=_DEFAULT_GUIDE))
+    db_session.merge(DocTypeGuide(doc_type="marketing", guide_md=_MARKETING_GUIDE))
     db_session.flush()
 
 

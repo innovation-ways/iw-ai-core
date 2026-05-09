@@ -42,6 +42,8 @@
       <tr class="border-b border-border bg-muted/30">
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Step</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Agent</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">CLI</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Model</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Started</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
@@ -83,6 +85,40 @@
             <!-- C.1: lazy-loaded run list container -->
             {% if not step.is_synthetic and run_count > 1 %}
               <div id="step-runs-{{ step.step_id }}" class="step-runs-container"></div>
+            {% endif %}
+          </td>
+          {# F-00081: CLI column — <select> for editable steps (pending|failed), badge for others #}
+          <td class="px-4 py-2">
+            {% if step.is_synthetic %}
+              <span class="text-xs text-muted-foreground">—</span>
+            {% elif step.status in ('pending', 'failed') %}
+              <select
+                class="text-xs border border-border rounded bg-background text-foreground px-1 py-0.5 cursor-pointer w-24"
+                hx-patch="/project/{{ item.project_id }}/api/item/{{ item.id }}/step/{{ step.step_id }}/runtime-override"
+                hx-swap="none"
+                name="option_id"
+                onchange="this.style.opacity='0.5'; this.disabled=true; htmx.trigger(this, 'change');">
+                <option value="">— inherit —</option>
+                {% for opt in runtime_options %}
+                  <option value="{{ opt.id }}" {% if step.runtime_option_id == opt.id %}selected{% endif %}>{{ opt.cli_label }}</option>
+                {% endfor %}
+              </select>
+            {% else %}
+              {% set opt_cli = runtime_options | selectattr('id', 'equalto', step.runtime_option_id) | map(attribute='cli_label') | first %}
+              {% if opt_cli %}
+                <span class="text-xs font-medium text-foreground">{{ opt_cli }}</span>
+              {% else %}
+                <span class="text-xs text-muted-foreground">(default)</span>
+              {% endif %}
+            {% endif %}
+          </td>
+          {# F-00081: Model column — read-only badge #}
+          <td class="px-4 py-2">
+            {% if step.is_synthetic %}
+              <span class="text-xs text-muted-foreground">—</span>
+            {% else %}
+              {% set opt_model = runtime_options | selectattr('id', 'equalto', step.runtime_option_id) | map(attribute='model_label') | first %}
+              <span class="text-xs text-muted-foreground">{{ opt_model if opt_model else '—' }}</span>
             {% endif %}
           </td>
           <td class="px-4 py-2">{{ status_badge(step.status) }}</td>
@@ -154,6 +190,25 @@
       {% endif %}
     </tbody>
   </table>
+  {# F-00081: Apply to all remaining editable steps (pending|failed) #}
+  <div class="flex items-center gap-2 px-4 py-2 border-t border-border bg-muted/10">
+    <span class="text-xs text-muted-foreground">Apply to remaining steps:</span>
+    <select
+      id="bulk-runtime-option"
+      class="text-xs border border-border rounded bg-background text-foreground px-1 py-0.5 w-36">
+      <option value="">— inherit —</option>
+      {% for opt in runtime_options %}
+        <option value="{{ opt.id }}">{{ opt.cli_label }} / {{ opt.model_label }}</option>
+      {% endfor %}
+    </select>
+    <button
+      class="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-0.5 rounded border border-border transition-colors"
+      hx-patch="/project/{{ item.project_id }}/api/item/{{ item.id }}/runtime-override/bulk"
+      hx-vals="javascript:{option_id: document.getElementById('bulk-runtime-option').value}"
+      hx-swap="none">
+      Apply
+    </button>
+  </div>
 </div>
 
 <!-- C.2: Cascade causality timeline (only when cascade events exist) -->
