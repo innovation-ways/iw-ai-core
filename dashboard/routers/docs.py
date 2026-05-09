@@ -331,7 +331,6 @@ _STREAM_TIMEOUT_SECONDS = 15 * 60
 def docs_generate(
     project_id: str,
     doc_id: str,
-    request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
     """Create a DocGenerationJob for the given doc.
@@ -367,14 +366,30 @@ def docs_generate(
     job = svc.create_doc_job(project_id, doc_id)
     db.commit()
 
-    templates: Jinja2Templates = request.app.state.templates
-    response = templates.TemplateResponse(
-        request,
-        "fragments/docs_generate_running.html",
-        {"job": job, "doc_id": doc_id, "project_id": project_id},
+    import json
+
+    disabled_btn = (
+        "<button disabled "
+        'class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted text-muted-foreground '
+        'rounded-md text-sm font-medium cursor-not-allowed opacity-60 select-none" '
+        'aria-label="Generation queued">'
+        '<svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24" '
+        'xmlns="http://www.w3.org/2000/svg">'
+        '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">'
+        "</circle>"
+        '<path class="opacity-75" fill="currentColor" '
+        'd="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 '
+        '3.042 1.135 5.824 3 7.938l3-2.647z"></path>'
+        "</svg>"
+        "Queued…"
+        "</button>"
     )
-    response.headers["HX-Trigger"] = (
-        f'{{"docJobCreated": {{"job_id": "{job.id}", "doc_id": "{doc_id}"}}}}'
+    response = HTMLResponse(disabled_btn)
+    response.headers["HX-Trigger"] = json.dumps(
+        {
+            "docJobCreated": {"job_id": job.id, "doc_id": doc_id},
+            "runningJobsReload": None,
+        }
     )
     return response
 
@@ -534,6 +549,47 @@ def docs_job_cancel(
     job.error = "Cancelled by user"
     db.commit()
     return HTMLResponse("")
+
+
+@router.get("/api/docs/running-jobs", response_class=HTMLResponse)
+def docs_running_jobs(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: running DocGenerationJob rows for the project."""
+    _get_project_or_404(project_id, db)
+    from orch.db.models import DocGenerationJob, DocType, ProjectDoc
+
+    jobs = (
+        db.query(DocGenerationJob)
+        .join(ProjectDoc, DocGenerationJob.doc_id == ProjectDoc.id)
+        .filter(
+            DocGenerationJob.doc_id.startswith(f"{project_id}:"),
+            DocGenerationJob.status == JobStatus.running,
+            ProjectDoc.doc_type != DocType.research,
+        )
+        .order_by(DocGenerationJob.requested_at.asc())
+        .all()
+    )
+    svc = DocService(db)
+    running_jobs: list[dict[str, Any]] = []
+    for job in jobs:
+        doc_id_short = job.doc_id.split(":")[-1] if job.doc_id else ""
+        doc = svc.get_doc(project_id, doc_id_short)
+        running_jobs.append(
+            {
+                "job_id": job.id,
+                "doc_id": doc_id_short,
+                "doc_title": doc.title if doc else doc_id_short,
+            }
+        )
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/docs_running_jobs.html",
+        {"running_jobs": running_jobs, "project_id": project_id},
+    )
 
 
 @router.get("/api/docs/{doc_id}/jobs")
