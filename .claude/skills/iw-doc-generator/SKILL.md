@@ -1,5 +1,5 @@
 ---
-version: "1.1.0"
+version: "1.2.0"
 name: iw-doc-generator
 description: Generate or update documentation for InnoForge modules, architecture areas, release notes, error catalog, or webhook reference. Use when asked to "generate docs", "update documentation", "document module", "document architecture", "generate release notes", "update error catalog", "/iw-doc-generator".
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git:*), Bash(wc:*), Bash(python3:*)
@@ -126,6 +126,33 @@ When this skill is invoked by the platform's `DocJobPoller` (i.e. the slash comm
 1. **Read the job context.** Run `uv run iw doc-job-status <job-id> --json`. The JSON output gives you `editorial_category`, `doc_id`, `project_id`, `doc_title`, `section_guides_snapshot`, and `guide_snapshot` — everything you need to produce the right content. If this command exits non-zero, do NOT proceed — close the job immediately with `iw doc-job-done <job-id> --error 'job context not found'`.
 
 2. **Generate the document content** following the editorial guide rules described in the rest of this skill.
+
+   **OUTPUT FORMAT — NON-NEGOTIABLE:**
+   - Output **plain Markdown** only. NEVER output JSON, XML, or any structured data format.
+   - Diagrams MUST be embedded as fenced Mermaid code blocks directly in the Markdown:
+     ````
+     ```mermaid
+     flowchart TB
+         A["Node A"] --> B["Node B"]
+     ```
+     ````
+   - For `doc_type=diagram` or `editorial_category=diagram`: the entire document MUST consist of Markdown headings, prose context, and `\`\`\`mermaid` code blocks. No JSON wrappers. No "diagrams array". Just Markdown.
+   - Each diagram MUST be preceded by a blockquote explaining **why** the reader should look at it:
+     ```
+     > **Why this diagram?** Use this to understand X when Y.
+     ```
+   - For flowchart diagrams, add ELK layout frontmatter inside the fence:
+     ````
+     ```mermaid
+     ---
+     config:
+       layout: elk
+     ---
+     flowchart TB
+         ...
+     ```
+     ````
+   - Verify classDef names do not collide with node IDs — if you name a node `data`, do NOT also name a classDef `data`. Use distinct names like `dbstyle` or `dbcls`.
 
 3. **Persist content via `iw doc-update`:**
    ```

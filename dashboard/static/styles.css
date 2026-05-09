@@ -357,3 +357,12 @@
 .iw-step-seg--skipped     { background: var(--muted); }
 .iw-step-seg--pending     { background: var(--secondary); }
 @keyframes pulse { 0%,100% {opacity:1} 50% {opacity:.55} }
+
+/* Mermaid dark-mode isolation: SVG uses <foreignObject> with embedded HTML <p>/<span> for node
+   labels. Without this, .prose-doc p { color: var(--foreground) } cascades into those elements
+   and makes labels white in dark mode while SVG <rect> fills stay light (SVG fill attrs are
+   immune to CSS color). Specificity (0,1,2) beats .prose-doc p (0,1,1) regardless of source order. */
+div.mermaid-diagram p,
+div.mermaid-diagram span {
+  color: initial;
+}

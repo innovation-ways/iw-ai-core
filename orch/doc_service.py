@@ -153,6 +153,7 @@ class DocService:
         doc_id: str,
         *,
         title: str | None = None,
+        doc_type: DocType | None = None,
         status: DocStatus | None = None,
         tier: DocTier | None = None,
         editorial_category: EditorialCategory | None = None,
@@ -171,6 +172,8 @@ class DocService:
 
         if title is not None:
             doc.title = title
+        if doc_type is not None:
+            doc.doc_type = doc_type
         if status is not None:
             doc.status = status
         if tier is not None:

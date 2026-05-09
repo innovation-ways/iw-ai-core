@@ -1,31 +1,38 @@
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#DBEAFE', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#3B82F6', 'lineColor': '#64748B', 'secondaryColor': '#D1FAE5', 'tertiaryColor': '#F8FAFC', 'background': '#FFFFFF', 'mainBkg': '#DBEAFE', 'nodeBorder': '#3B82F6', 'clusterBkg': '#F1F5F9', 'titleColor': '#1E293B', 'edgeLabelBackground': '#F8FAFC', 'fontFamily': 'Inter'}}}%%
-graph TB
-    subgraph Platform ["IW AI Core Platform"]
-        DB[(PostgreSQL\nState & History)]
-        Daemon[Orchestration\nDaemon]
-        Dashboard[Web Dashboard]
-        CLI[iw CLI]
+flowchart TB
+    subgraph Platform["IW AI Core Platform"]
+        Daemon[\"Daemon\n(polls every 60s)\"]
+        Dashboard[\"Dashboard\n(port 9900)\"]
+        DB[(\"PostgreSQL\n(port 5433)\")]
+        CLI[\"iw CLI\n(agent-to-DB bridge)\"]
     end
 
-    subgraph Projects ["Registered Projects"]
-        P1[Project A]
-        P2[Project B]
-        P3[Project C]
+    subgraph Projects["Registered Projects"]
+        P1[\"Project A\n(e.g. InnoForge)\"]
+        P2[\"Project B\"]
+        P3[\"Project C\"]
     end
 
-    subgraph Agents ["AI Agents"]
-        A1[Claude Code]
-        A2[OpenCode]
+    subgraph Worktrees["Per-Project Worktrees"]
+        WT1[\".worktrees/\*
+(git worktrees)\"]
+        Agent[\"AI Agent\n(opencode / claude-code)\"]
     end
 
-    Human([Engineering\nTeam]) -->|designs & approves| Dashboard
-    Dashboard <-->|reads & controls| DB
-    Daemon <-->|polls & updates| DB
-    Daemon -->|launches agents in| Projects
-    A1 & A2 -->|iw step-start\niw step-done| CLI
-    CLI -->|writes state| DB
-    Daemon -->|merges to main| Projects
+    Daemon --> DB
+    Dashboard --> DB
+    CLI --> DB
+    Daemon --> P1
+    Daemon --> P2
+    Daemon --> P3
+    P1 --> WT1
+    P2 --> WT1
+    P3 --> WT1
+    WT1 --> Agent
+    Agent --> CLI
+    CLI --> DB
 
-    style Platform fill:#F1F5F9,stroke:#3B82F6,stroke-width:2px
-    style Projects fill:#D1FAE5,stroke:#10B981,stroke-width:2px
-    style Agents fill:#DBEAFE,stroke:#3B82F6,stroke-width:2px
+    style Daemon fill:#DBEAFE,stroke:#3B82F6,stroke-width:2px
+    style Dashboard fill:#DBEAFE,stroke:#3B82F6,stroke-width:2px
+    style DB fill:#D1FAE5,stroke:#10B981,stroke-width:2px
+    style CLI fill:#DBEAFE,stroke:#3B82F6,stroke-width:2px
