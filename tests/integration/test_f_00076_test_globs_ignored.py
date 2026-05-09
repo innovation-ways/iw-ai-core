@@ -111,6 +111,7 @@ def batch_manager(
         repo_root="/repos/test",
         enabled=True,
         cli_tool="iw",
+        model="minimax",
         worktree_base="/tmp/worktrees",
         config={},
     )

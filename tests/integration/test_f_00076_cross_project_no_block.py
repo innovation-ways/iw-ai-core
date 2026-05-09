@@ -135,6 +135,7 @@ def batch_manager_proj_a(
         repo_root="/repos/proj-a",
         enabled=True,
         cli_tool="iw",
+        model="minimax",
         worktree_base="/tmp/worktrees",
         config={},
     )
@@ -183,6 +184,7 @@ def batch_manager_proj_b(
         repo_root="/repos/proj-b",
         enabled=True,
         cli_tool="iw",
+        model="minimax",
         worktree_base="/tmp/worktrees",
         config={},
     )

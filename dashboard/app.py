@@ -44,6 +44,7 @@ from dashboard.routers import (
     quality,
     research,
     running,
+    runtime_overrides,
     search,
     sse,
     staleness,
@@ -279,6 +280,7 @@ def create_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(running.router)
     app.include_router(actions.router)
+    app.include_router(runtime_overrides.router)
     app.include_router(sse.router)
     app.include_router(system.router)
     app.include_router(keep_alive.router)

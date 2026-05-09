@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from orch.config import DaemonConfig
 from orch.daemon.fix_cycle import (
@@ -47,6 +47,7 @@ def _project_config(
         repo_root="/repos/test",
         enabled=True,
         cli_tool="claude",
+        model="minimax",
         worktree_base="/repos/test/.worktrees",
         config={"fix_cycle_max": fix_cycle_max},
         aggregate_fix_cycle_max=aggregate_fix_cycle_max,
@@ -328,7 +329,7 @@ def test_attempt_fix_cycle_creates_record(
     db_session: Any,
     test_project: Project,
 ) -> None:
-    mock_launch.return_value = (12345, "/tmp/log.log", 2700)  # noqa: S108
+    mock_launch.return_value = (12345, "/tmp/log.log", 2700, MagicMock())  # noqa: S108
 
     _make_item(db_session)
     step = _make_step(db_session, step_type=StepType.code_review, status=StepStatus.failed)
@@ -362,7 +363,7 @@ def test_attempt_fix_cycle_increments_cycle_number(
     db_session: Any,
     test_project: Project,
 ) -> None:
-    mock_launch.return_value = (12345, "/tmp/log.log", 2700)  # noqa: S108
+    mock_launch.return_value = (12345, "/tmp/log.log", 2700, MagicMock())  # noqa: S108
 
     _make_item(db_session)
     step = _make_step(db_session, step_type=StepType.code_review, status=StepStatus.failed)
@@ -515,7 +516,7 @@ def test_attempt_fix_cycle_records_failed_cycle_on_prompt_error(
 
     mock_generate.side_effect = OSError("disk full")
     # _launch_fix_agent should never be called if prompt generation fails
-    mock_launch.return_value = (12345, "/tmp/log.log", 2700)  # noqa: S108
+    mock_launch.return_value = (12345, "/tmp/log.log", 2700, MagicMock())  # noqa: S108
 
     _make_item(db_session)
     step = _make_step(db_session, step_type=StepType.code_review, status=StepStatus.failed)
@@ -570,7 +571,7 @@ def test_attempt_fix_cycle_failed_cycle_counts_toward_max(
     should_attempt_fix returns False once the budget is exhausted.
     """
     mock_generate.side_effect = OSError("disk full")
-    mock_launch.return_value = (12345, "/tmp/log.log", 2700)  # noqa: S108
+    mock_launch.return_value = (12345, "/tmp/log.log", 2700, MagicMock())  # noqa: S108
 
     _make_item(db_session)
     step = _make_step(db_session, step_type=StepType.code_review, status=StepStatus.failed)

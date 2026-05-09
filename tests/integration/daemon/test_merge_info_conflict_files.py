@@ -130,6 +130,7 @@ class TestMergeInfoConflictFiles:
             repo_root="/repos/test",
             enabled=True,
             cli_tool="iw",
+            model="minimax",
             worktree_base="/tmp/worktrees",
             config={},
         )
@@ -223,6 +224,7 @@ class TestMergeInfoConflictFiles:
             repo_root="/repos/test",
             enabled=True,
             cli_tool="iw",
+            model="minimax",
             worktree_base="/tmp/worktrees",
             config={},
         )
@@ -321,6 +323,7 @@ class TestMergeInfoConflictFiles:
             repo_root="/repos/test",
             enabled=True,
             cli_tool="iw",
+            model="minimax",
             worktree_base="/tmp/worktrees",
             config={},
         )
@@ -414,6 +417,7 @@ class TestMergeInfoConflictFiles:
             repo_root="/repos/test",
             enabled=True,
             cli_tool="iw",
+            model="minimax",
             worktree_base="/tmp/worktrees",
             config={},
         )
