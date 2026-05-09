@@ -86,6 +86,15 @@ You are reviewing the implementation work done in step S{NN} by {Agent} for **{W
 
 Read the design document to understand what was intended. Read the implementation report to understand what was done. Then review all changed files.
 
+## Read the Design Document FIRST
+
+Read the design document **before** running the lint/format gate and **before** opening any changed files. Specifically:
+
+- Read the `## Acceptance Criteria` section in full — every criterion is a mandatory check, not a suggestion.
+- Read the `## TDD Approach` section in full — note every test file the design names by path.
+- Write down every test file the design doc mentions; carry these expectations into the `## Review Checklist` below as a first-class anchor.
+- Cross-check every named test file against the implementation report's `files_changed`. If the design doc explicitly names a test file that should have changed and it does not appear in `files_changed`, that is a **CRITICAL** finding.
+
 ## Pre-Review Lint & Format Gate (NON-NEGOTIABLE)
 
 Before reading any code, run these two commands on the files listed in the
@@ -143,6 +152,7 @@ Do NOT skip this step or mark it as optional.
 - Do tests cover edge cases and error paths?
 - Are tests isolated and deterministic?
 - Do test names clearly describe what they verify?
+- Do test files cover the assertions the design doc's TDD section calls out by name? If a TDD-section test file is missing from `files_changed`, raise a CRITICAL finding.
 
 ## Test Verification (NON-NEGOTIABLE)
 

@@ -1,0 +1,60 @@
+{
+  "item_id": "CR-00040",
+  "bottom_line": "Add a clarification to S01 prompt templates and/or `iw sync-templates --help` that sync-templates updates registered project mirrors (main repo) but not the worktree's own ai-dev/templates/ — and that AC4 verification must diff the main-repo mirrors, not worktree-local mirrors.",
+  "coverage_notes": "All S01-S07 run logs read in full. S07 log (339 KB) spot-checked at lines 1-100 and tail; no errors. S03_fix1.log is 2 lines. Reports read as secondary evidence only. DB telemetry: full (DB:UP confirmed).",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "S01 prompt lacked guidance on iw sync-templates worktree-local mirror behavior",
+      "recommendation": "Add a note to S01 prompt templates clarifying that sync-templates updates registered project mirrors (main repo) NOT the worktree's own ai-dev/templates/; the correct AC4 verification diffs main-repo mirrors, not worktree-local directory.",
+      "evidence": [
+        ".worktrees/CR-00040/ai-dev/logs/CR-00040_S01_run3.log:128 — diff EXIT:1 (S01 reported sync failure; it was comparing wrong path)",
+        ".worktrees/CR-00040/ai-dev/logs/CR-00040_S02_run1.log:39-82 — Same false positive diff led to CRITICAL AC4 finding in S02",
+        ".worktrees/CR-00040/ai-dev/logs/CR-00040_S03_run1.log:39-96 — S03 also saw same diff; fix cycle resolved by manual cp"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add clarification to S01 prompt templates and sync-templates --help that sync-templates updates registered project mirrors (main repo ai-dev/templates/) not the worktree's own ai-dev/templates/; verified in CR-00040 self-assess (ai-dev/work/CR-00040/reports/CR-00040_self_assess_report.md). Target: templates/design/CR_S01_prompt.md + orch/cli/skills_commands.py. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S02 and S03 agents spent time glob-searching before finding correct active-item report path",
+      "recommendation": "Add a 'File path cheat sheet' to CLAUDE.md or code-review prompt templates: active item reports live at ai-dev/active/<ID>/reports/, not ai-dev/work/<ID>/reports/.",
+      "evidence": [
+        ".worktrees/CR-00040/ai-dev/logs/CR-00040_S02_run1.log:9 — File not found: ai-dev/work/CR-00040/reports/... then Glob found correct path at ai-dev/active/CR-00040/reports/",
+        ".worktrees/CR-00040/ai-dev/logs/CR-00040_S03_run1.log:9-21 — Same glob resolution thrash before finding correct path"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add file path cheat sheet to CLAUDE.md clarifying active item reports at ai-dev/active/<ID>/reports/ vs ai-dev/work/<ID>/reports/; analyzed in CR-00040 self-assess (ai-dev/work/CR-00040/reports/CR-00040_self_assess_report.md). Target: CLAUDE.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Model not found errors on S01 runs 1 and 2 caused 2 wasted runs",
+      "recommendation": "Monitor for recurrence. If transient minimax provider failures recur across many items, investigate the provider startup/initialization sequence. Platform self-healed on run 3.",
+      "evidence": [
+        ".worktrees/CR-00040/ai-dev/logs/CR-00040_S01_run1.log:22 — Error: Model not found: minimax/.",
+        ".worktrees/CR-00040/ai-dev/logs/CR-00040_S01_run2.log:22 — Error: Model not found: minimax/.",
+        ".worktrees/CR-00040/ai-dev/logs/CR-00040_S01_run3.log:3 — Run 3 succeeded with MiniMax-M2.7"
+      ],
+      "effort": "L",
+      "paste_prompt": "/iw-new-incident Investigate transient minimax provider ModelNotFoundError at worktree startup — causes 1-2 wasted runs before recovery; analyzed in CR-00040 self-assess (ai-dev/work/CR-00040/reports/CR-00040_self_assess_report.md). Target: orch/provider/ or agent bootstrap. Effort: L."
+    },
+    {
+      "severity": "LOW",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "S03 fix cycle log shows 'script: unexpected number of arguments' — malformed fix-cycle dispatch",
+      "recommendation": "Investigate how fix-cycle prompts are dispatched; add validation before invoking or improve error message. Note: fix cycle still succeeded on retry (run3), so impact was nil.",
+      "evidence": [
+        ".worktrees/CR-00040/ai-dev/logs/CR-00040_S03_fix1.log:1 — 'script: unexpected number of arguments'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Malformed fix-cycle dispatch caused 'script: unexpected number of arguments' in S03 fix1.log; fix cycle recovered on retry; analyzed in CR-00040 self-assess (ai-dev/work/CR-00040/reports/CR-00040_self_assess_report.md). Target: orch/daemon/step_dispatch.py. Effort: M."
+    }
+  ]
+}
