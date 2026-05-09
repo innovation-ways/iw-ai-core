@@ -275,13 +275,13 @@ class TestCompressedStepStrip:
         html = response.text
 
         # The compressed strip class is present
-        assert "iw-step-strip" in html
+        assert "iw-pipeline-strip" in html
         # data-step-count attribute with value 8
         assert 'data-step-count="8"' in html
         # No 32px circles
         assert "w-8" not in html
-        # Segments are 6px wide (iw-step-seg class)
-        assert "iw-step-seg" in html
+        # Pills are 52px wide (iw-pipeline-pill class)
+        assert "iw-pipeline-pill" in html
 
     def test_batch_item_row_strip_width_budget(self, db_session: Session) -> None:
         """Strip width formula: 6px × 8 + 1px gap × 7 = 55px, well within 120px."""

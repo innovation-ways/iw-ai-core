@@ -366,3 +366,66 @@ div.mermaid-diagram p,
 div.mermaid-diagram span {
   color: initial;
 }
+
+/* CR-00039: Step Pipeline pill redesign */
+.iw-pipeline-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0;
+  overflow-x: auto;
+}
+
+.iw-pipeline-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  min-height: 42px;
+  border-radius: 4px;
+  padding: 3px 4px;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.iw-pipeline-pill-id {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.iw-pipeline-pill-dur {
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+  line-height: 1.3;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.iw-pipeline-pill--completed   { background: var(--success); color: #fff; }
+.iw-pipeline-pill--in-progress { background: var(--primary); color: #fff; animation: pulse 1.4s ease-in-out infinite; }
+.iw-pipeline-pill--failed      { background: var(--destructive); color: #fff; }
+.iw-pipeline-pill--skipped     { background: var(--muted); color: var(--muted-foreground); }
+.iw-pipeline-pill--pending     { background: var(--secondary); color: var(--secondary-foreground); }
+.iw-pipeline-pill--fixcycle    { background: var(--warning, #f59e0b); color: var(--warning-foreground, #fff); }
+
+.iw-pipeline-connector {
+  width: 12px;
+  height: 2px;
+  background: var(--border);
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.iw-pipeline-connector--fixcycle {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--warning, #f59e0b) 0px,
+    var(--warning, #f59e0b) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}

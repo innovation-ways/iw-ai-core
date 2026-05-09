@@ -12,23 +12,6 @@
   <div class="bg-card border border-border rounded-lg p-4 overflow-x-auto">
     {% if steps %}
       {{ step_pipeline(steps) }}
-      <!-- Duration row -->
-      <div class="flex items-center gap-1 mt-2">
-        {% for step in steps %}
-          <div class="w-8 text-center">
-            <span class="text-xs text-muted-foreground font-mono">
-              {% if step.duration_secs is not none %}
-                {% set m = (step.duration_secs // 60)|int %}
-                {% set s = (step.duration_secs % 60)|int %}
-                {% if m > 0 %}{{ m }}m{% endif %}{{ s }}s
-              {% endif %}
-            </span>
-          </div>
-          {% if not loop.last %}
-            <div class="w-4"></div>
-          {% endif %}
-        {% endfor %}
-      </div>
     {% else %}
       <p class="text-muted-foreground text-sm">No steps defined.</p>
     {% endif %}
