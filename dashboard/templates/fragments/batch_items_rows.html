@@ -1,19 +1,41 @@
 {% from "components/status_badge.html" import status_badge %}
 {% from "components/step_pipeline.html" import step_pipeline %}
+{# F-00081: execution_group surfaced as tooltip on item_id to free column space #}
 {% for row in items %}
   <tr class="border-b border-border last:border-0 hover:bg-muted/20">
-    <td class="px-4 py-3 text-xs text-muted-foreground font-mono">{{ row.execution_group }}</td>
-    <td class="px-4 py-3 font-mono text-xs font-semibold">
+    <td class="px-4 py-3 font-mono text-xs font-semibold" title="execution_group {{ row.execution_group }}">
       <a href="/project/{{ current_project.id }}/item/{{ row.item_id }}"
          class="text-primary hover:underline">{{ row.item_id }}</a>
     </td>
     <td class="px-4 py-3">
       <div class="text-sm text-foreground truncate max-w-xs">{{ row.title }}</div>
       {% if row.steps %}
-        <div class="mt-1.5">{{ step_pipeline(row.steps) }}</div>
+        <div class="mt-1">{{ step_pipeline(row.steps) }}</div>
       {% endif %}
     </td>
     <td class="px-4 py-3">{{ status_badge(row.status) }}</td>
+    {# F-00081: CLI column #}
+    <td class="px-4 py-3">
+      {% if row.runtime_option_id and row.runtime_option_cli_label %}
+        <span class="inline-flex items-center gap-1 text-xs font-medium text-foreground">
+          {{ row.runtime_option_cli_label }}
+          {% if row.has_step_override %}
+            <span class="w-1.5 h-1.5 rounded-full bg-primary inline-block"
+                  title="Some steps have their own override"></span>
+          {% endif %}
+        </span>
+      {% else %}
+        <span class="text-xs text-muted-foreground">(default)</span>
+      {% endif %}
+    </td>
+    {# F-00081: Model column #}
+    <td class="px-4 py-3">
+      {% if row.runtime_option_id and row.runtime_option_model_label %}
+        <span class="text-xs text-muted-foreground">{{ row.runtime_option_model_label }}</span>
+      {% else %}
+        <span class="text-xs text-muted-foreground">—</span>
+      {% endif %}
+    </td>
     {% if row.held_reason %}
     <td class="px-4 py-3" title="{{ row.held_reason }}" aria-label="{{ row.held_reason }}">
       <span class="inline-flex items-center gap-1 text-xs text-warning font-medium">
@@ -43,7 +65,7 @@
 {% endfor %}
 {% if not items %}
   <tr>
-    <td colspan="6" class="px-4 py-8 text-center text-muted-foreground text-sm">
+    <td colspan="8" class="px-4 py-8 text-center text-muted-foreground text-sm">
       No items in this batch.
     </td>
   </tr>

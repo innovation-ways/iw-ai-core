@@ -27,15 +27,10 @@ from sqlalchemy.orm import sessionmaker
 from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
 from orch.db.models import (
-    FTS_FUNCTION_SQL,
-    FTS_TRIGGER_SQL,
-    FUNCTIONAL_DOC_FTS_FUNCTION_SQL,
-    FUNCTIONAL_DOC_FTS_TRIGGER_SQL,
-    PROJECT_DOCS_FTS_FUNCTION_SQL,
-    PROJECT_DOCS_FTS_TRIGGER_SQL,
     Base,
     Project,
 )
+from orch.db.safe_migrate import _build_alembic_config, _run_alembic_upgrade
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
@@ -134,7 +129,7 @@ BEGIN
     CREATE TYPE ossscan_status AS ENUM ('pending', 'running', 'complete', 'error');
 
     DROP TYPE IF EXISTS ossscan_mode CASCADE;
-    CREATE TYPE ossscan_mode AS ENUM ('scan');
+    CREATE TYPE ossscan_mode AS ENUM ('scan', 'make_oss', 'publish');
 
     DROP TYPE IF EXISTS osspill_color CASCADE;
     CREATE TYPE osspill_color AS ENUM ('green', 'yellow', 'red', 'gray');
@@ -216,19 +211,20 @@ def db_engine(pg_container: PostgresContainer) -> Engine:
         conn.execute(text(BATCH_ITEM_STATUS_SQL))
         conn.commit()
 
-    # create_all() is idempotent for existing ENUM types (checkfirst=True by default),
-    # so the pre-created OSS enums above are reused rather than re-created.
-    Base.metadata.create_all(engine)
+    # Run Alembic migrations FIRST (before create_all):
+    # The agent_runtime_options table (F-00081), seed rows, partial-index
+    # constraints, and all other migration-created artefacts exist only
+    # in Alembic, not in SQLAlchemy Base.metadata. Running alembic first also
+    # creates all the core tables, so create_all below is a no-op for them
+    # (SQLAlchemy is idempotent — existing tables are skipped).
+    # Alembic's env.py also runs create_all() and FTS trigger installation, so
+    # those steps are intentionally skipped here to avoid duplicates.
+    cfg = _build_alembic_config(url)
+    _run_alembic_upgrade(cfg)
 
-    # Install the FTS trigger (DDL not captured by metadata.create_all)
-    with engine.connect() as conn:
-        conn.execute(text(FTS_FUNCTION_SQL))
-        conn.execute(text(FTS_TRIGGER_SQL))
-        conn.execute(text(PROJECT_DOCS_FTS_FUNCTION_SQL))
-        conn.execute(text(PROJECT_DOCS_FTS_TRIGGER_SQL))
-        conn.execute(text(FUNCTIONAL_DOC_FTS_FUNCTION_SQL))
-        conn.execute(text(FUNCTIONAL_DOC_FTS_TRIGGER_SQL))
-        conn.commit()
+    # create_all() is now a no-op for existing tables; it only ensures tables
+    # that may exist purely in SQLAlchemy (not in alembic) are present.
+    Base.metadata.create_all(engine)
 
     return engine
 

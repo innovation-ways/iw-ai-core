@@ -17,6 +17,7 @@ from sqlalchemy import select
 from dashboard.dependencies import get_db
 from dashboard.utils.batch_progress import compute_batch_step_progress
 from orch.db.models import (
+    AgentRuntimeOption,
     Batch,
     BatchItem,
     BatchStatus,
@@ -69,6 +70,12 @@ class BatchItemRow:
     ended_at_ts: float | None = None
     # F-00076: held-reason for pending items with a recent item_held_for_scope event.
     held_reason: str | None = None
+    # F-00081: item-level runtime override (None = default)
+    runtime_option_id: int | None = None
+    runtime_option_cli_label: str | None = None
+    runtime_option_model_label: str | None = None
+    # F-00081: step-level override dot — True if any step has its own override
+    has_step_override: bool = False
 
 
 @dataclass
@@ -243,6 +250,33 @@ def _batch_item_rows(
     for s in steps:
         steps_map.setdefault(s.work_item_id, []).append(s)
 
+    # F-00081: pre-fetch runtime option labels for item-level overrides
+    item_option_ids = [
+        wi.agent_runtime_option_id for wi in work_items if wi.agent_runtime_option_id is not None
+    ]
+    option_map: dict[int, AgentRuntimeOption] = {}
+    if item_option_ids:
+        option_map = {
+            r.id: r
+            for r in db.scalars(
+                select(AgentRuntimeOption).where(AgentRuntimeOption.id.in_(item_option_ids))
+            ).all()
+        }
+
+    # F-00081: which work items have a step-level override
+    has_step_override_items: set[str] = set()
+    if steps:
+        override_rows = db.execute(
+            select(WorkflowStep.work_item_id)
+            .where(
+                WorkflowStep.project_id == project_id,
+                WorkflowStep.work_item_id.in_(list(steps_map.keys())),
+                WorkflowStep.agent_runtime_option_id.isnot(None),
+            )
+            .group_by(WorkflowStep.work_item_id)
+        ).all()
+        has_step_override_items = {row[0] for row in override_rows}
+
     rows = []
     for bi in batch_items:
         wi = work_item_map.get((project_id, bi.work_item_id))
@@ -269,6 +303,9 @@ def _batch_item_rows(
         if bi.started_at and bi.merged_at:
             dur_total = (bi.merged_at - bi.started_at).total_seconds()
 
+        opt_id = wi.agent_runtime_option_id if wi else None
+        opt = option_map.get(opt_id) if opt_id else None
+
         rows.append(
             BatchItemRow(
                 item_id=bi.work_item_id,
@@ -281,6 +318,10 @@ def _batch_item_rows(
                 started_at_ts=bi.started_at.timestamp() if bi.started_at else None,
                 ended_at_ts=bi.merged_at.timestamp() if bi.merged_at else None,
                 held_reason=(held_reasons or {}).get(bi.work_item_id),
+                runtime_option_id=opt_id,
+                runtime_option_cli_label=opt.cli_label if opt else None,
+                runtime_option_model_label=opt.model_label if opt else None,
+                has_step_override=bi.work_item_id in has_step_override_items,
             )
         )
     return rows

@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "7fcf3ddaa283"  # head — CR-00036 auto_merge gate
+_HEAD_REVISION = "mergef81cr00036"  # head — merge of F-00081 and CR-00036
 _PREV_REVISION = "e53ce8e86a3c"  # F-00077 — chat conversations memory (before I-00062)
 
 

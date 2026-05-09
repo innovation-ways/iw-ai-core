@@ -299,7 +299,7 @@ def _write_migration_log(
         engine.dispose()
 
 
-_ALEMBIC_UPGRADE_LINE = re.compile(r"Running upgrade\s+\S+\s+->\s+([A-Za-z0-9_]+)")
+_ALEMBIC_UPGRADE_LINE = re.compile(r"Running upgrade\s+[^>]+->\s+([A-Za-z0-9_]+)")
 
 
 class _AlembicRevisionCapture(logging.Handler):

@@ -48,6 +48,7 @@ def make_project_config(bv_cfg: dict | None = None) -> ProjectConfig:
         repo_root="/repos/innoforge",
         enabled=True,
         cli_tool="claude",
+        model="minimax",
         worktree_base=".worktrees",
         config=config,
     )

@@ -66,6 +66,7 @@ def _project_config() -> ProjectConfig:
         repo_root="/nonexistent",
         enabled=True,
         cli_tool="opencode",
+        model="minimax",
         worktree_base=".worktrees",
         config={},
     )

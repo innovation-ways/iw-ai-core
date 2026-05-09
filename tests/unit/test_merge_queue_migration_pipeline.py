@@ -88,6 +88,7 @@ def _make_project_config() -> MagicMock:
         repo_root="/repos/test",
         enabled=True,
         cli_tool="opencode",
+        model="minimax",
         worktree_base=".worktrees",
         config={},
     )

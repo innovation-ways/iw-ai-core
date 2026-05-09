@@ -48,6 +48,50 @@ class Base(DeclarativeBase):
 
 
 # ---------------------------------------------------------------------------
+# Global catalogue: agent runtime options (no project_id — global singleton)
+# ---------------------------------------------------------------------------
+
+
+class AgentRuntimeOption(Base):
+    """Catalogue of curated (cli_tool, model) pairs the daemon can launch.
+
+    A partial unique index on ``is_default = true`` enforces at most one default row.
+    A CHECK constraint prevents disabling the default row.
+    """
+
+    __tablename__ = "agent_runtime_options"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cli_tool: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    cli_label: Mapped[str] = mapped_column(Text, nullable=False)
+    model_label: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+    __table_args__ = (
+        UniqueConstraint(
+            "cli_tool",
+            "model",
+            name="uq_agent_runtime_options_cli_model",
+        ),
+        Index(
+            "uq_agent_runtime_options_one_default",
+            "is_default",
+            unique=True,
+            postgresql_where=text("is_default = true"),
+        ),
+        CheckConstraint(
+            "NOT (is_default = true AND enabled = false)",
+            name="ck_agent_runtime_options_default_must_be_enabled",
+        ),
+        {"comment": "Catalogue of curated (cli_tool, model) pairs the daemon can launch."},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Python Enums (mirror the PostgreSQL ENUM types exactly)
 # ---------------------------------------------------------------------------
 
@@ -537,6 +581,13 @@ class WorkItem(Base):
         nullable=True,
         comment="SHA of the squash commit on main; enables lazy git diff for completed items",
     )
+    # F-00081 — per-item agent+model override (NULL = inherit project/catalogue default)
+    agent_runtime_option_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("agent_runtime_options.id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="Override pair to use for this item; NULL = inherit. F-00081.",
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
@@ -655,6 +706,13 @@ class WorkflowStep(Base):
     # Timestamps
     started_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(_TIMESTAMPTZ, nullable=True)
+    # F-00081 — per-step agent+model override (NULL = inherit item/project default)
+    agent_runtime_option_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("agent_runtime_options.id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="Override pair to use for this step; NULL = inherit. F-00081.",
+    )
 
     baselines: Mapped[list["QvBaseline"]] = relationship(
         "QvBaseline", back_populates="step", cascade="all, delete-orphan"
@@ -760,6 +818,13 @@ class StepRun(Base):
             "Set by step_monitor when a one-time 50%-of-timeout warning fires "
             "for this run; suppresses duplicate warns across poll cycles (CR-00024)."
         ),
+    )
+    # F-00081 — records which runtime option was used for this run (append-only, never modified)
+    agent_runtime_option_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("agent_runtime_options.id", ondelete="RESTRICT"),
+        nullable=True,
+        comment="The resolved (cli_tool, model) pair used for this run. F-00081.",
     )
 
     __table_args__ = (

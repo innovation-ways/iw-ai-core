@@ -995,11 +995,25 @@ class BatchManager:
 
     def _launch_step(self, db: Session, step: WorkflowStep, worktree_info: dict[str, Any]) -> None:
         """Start the agent process and record everything in DB."""
+        from orch.agent_runtime.resolver import resolve_runtime  # noqa: PLC0415
         from orch.daemon import browser_env  # noqa: PLC0415
         from orch.daemon.step_monitor import get_timeout  # noqa: PLC0415
 
         worktree_path = worktree_info.get("path", "")
-        cli_tool = self.project_config.cli_tool
+
+        # F-00081: Resolve the runtime (cli_tool, model) option via cascade.
+        # _load_item is called to get the work_item for the resolver.
+        work_item = (
+            db.query(WorkItem).filter_by(project_id=self.project_id, id=step.work_item_id).first()
+        )
+        runtime_option = resolve_runtime(
+            db,
+            step=step,
+            item=work_item,
+            project=self.project_config,
+        )
+        resolved_cli_tool = runtime_option.cli_tool
+        resolved_model = runtime_option.model
 
         # ------------------------------------------------------------------
         # browser_verification pre-hook: bring up the test environment
@@ -1041,7 +1055,7 @@ class BatchManager:
                         status=RunStatus.failed,
                         error_message=error_msg,
                         worktree_path=worktree_path,
-                        cli_tool=cli_tool,
+                        cli_tool=resolved_cli_tool,
                         log_file=str(log_path),
                         started_at=now,
                         completed_at=now,
@@ -1114,7 +1128,7 @@ class BatchManager:
                             status=RunStatus.failed,
                             error_message=f"per-item fixture apply failed: {fixture_exc}",
                             worktree_path=worktree_path,
-                            cli_tool=cli_tool,
+                            cli_tool=resolved_cli_tool,
                             started_at=now,
                             completed_at=now,
                             timeout_secs=get_timeout(
@@ -1191,15 +1205,18 @@ class BatchManager:
             prompt_file.parent.mkdir(parents=True, exist_ok=True)
             prompt_file.write_text(prompt)
 
-            if cli_tool == "opencode":
+            if resolved_cli_tool == "opencode":
                 agent_name = step.opencode_agent or step.agent_label
                 agent_args = f"--agent {agent_name}" if agent_name else ""
                 command = (
-                    f'opencode run "$(cat {prompt_file})" --dangerously-skip-permissions '
-                    f"{agent_args}"
+                    f'opencode run "$(cat {prompt_file})" --model {resolved_model} '
+                    f"--dangerously-skip-permissions {agent_args}"
                 ).strip()
             else:
-                command = f'claude -p "$(cat {prompt_file})" --dangerously-skip-permissions'
+                command = (
+                    f'claude -p "$(cat {prompt_file})" --model {resolved_model} '
+                    f"--dangerously-skip-permissions"
+                )
 
         # CR-00023: prefer the DB column (populated at register time). Fall
         # back to a manifest read for items registered before CR-00023.
@@ -1267,6 +1284,11 @@ class BatchManager:
         # `iw step-done "$IW_ITEM_ID" --step "$IW_STEP_ID"` without hardcoding.
         agent_env["IW_STEP_ID"] = step.step_id
         agent_env["IW_ITEM_ID"] = step.work_item_id
+        # F-00081: belt-and-suspenders env vars in case the CLI flag is silently ignored.
+        # The daemon always passes --model <resolved_model> via the launch command;
+        # these are secondary fallbacks.
+        agent_env["OPENCODE_MODEL"] = resolved_model
+        agent_env["ANTHROPIC_MODEL"] = resolved_model
 
         proc_env = agent_env
 
@@ -1290,7 +1312,8 @@ class BatchManager:
             pid_alive=True,
             command=command,
             worktree_path=worktree_path,
-            cli_tool=cli_tool,
+            cli_tool=resolved_cli_tool,
+            agent_runtime_option_id=runtime_option.id,
             log_file=str(log_file),
             started_at=now,
             last_heartbeat=now,

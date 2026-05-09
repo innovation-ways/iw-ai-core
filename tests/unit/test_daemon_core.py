@@ -234,6 +234,7 @@ def test_poll_cycle_continues_after_project_error(tmp_path: Path) -> None:
             repo_root=str(tmp_path),
             enabled=True,
             cli_tool="opencode",
+            model="minimax",
             worktree_base=".worktrees",
             config={},
         )
