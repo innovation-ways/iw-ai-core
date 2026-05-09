@@ -2,7 +2,7 @@
 # IW AI Core — Developer Commands
 # ============================================================
 
-.PHONY: install lint lint-js format format-check typecheck type-check quality \
+.PHONY: install lint lint-fix lint-js format format-check typecheck type-check quality \
          test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
          db-up db-down db-migrate db-revision \
          daemon-start daemon-stop dashboard-start css \
@@ -19,6 +19,13 @@ install:
 # --- Quality ---
 lint: lint-js
 	uv run ruff check .
+
+# Auto-fix all ruff-fixable lint and format violations (safe to run in worktrees).
+# Use this as a recovery step when `make lint` or `make format-check` fails with
+# auto-fixable errors (e.g. Alembic merge-migration boilerplate, import ordering).
+lint-fix:
+	uv run ruff check --fix .
+	uv run ruff format .
 
 # Syntax-check every hand-written dashboard JS file (excludes vendor/).
 # Fails fast on unclosed braces / stray tokens that would otherwise only
