@@ -89,6 +89,15 @@ This review looks at the complete picture -- not individual steps in isolation, 
 
 Read the design document to understand the full intended scope. Read all implementation and review reports to understand what was built. Then review all changed files holistically.
 
+## Read the Design Document FIRST
+
+Read the design document **before** running the lint/format gate and **before** opening any changed files. Specifically:
+
+- Read the `## Acceptance Criteria` section in full — every criterion is a mandatory check, not a suggestion.
+- Read the `## TDD Approach` section in full — note every test file the design names by path.
+- Write down every test file the design doc mentions; carry these expectations into the `## Review Checklist` below as a first-class anchor.
+- Cross-check every test file mentioned in the design doc's TDD section against the `files_changed` arrays of ALL implementation step reports. Any test file the design names that does not appear anywhere is a **CRITICAL** finding.
+
 ## Pre-Review Lint & Format Gate (NON-NEGOTIABLE)
 
 Before reading any code, run these two commands on the files listed in the
@@ -117,6 +126,7 @@ Do NOT skip this step or mark it as optional.
 - Are there any design document sections with no corresponding code?
 - Are there any TODO comments or placeholder implementations?
 - Does the implementation match the design's API contracts and data models?
+- Are all test files the design doc's TDD section names by path actually present in some implementation step's `files_changed`? Missing entries are **CRITICAL**.
 
 ### 2. Cross-Agent Consistency
 
