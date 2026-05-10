@@ -19,6 +19,16 @@
 #     clean HEAD (git reset --hard + git clean -fd) before returning, so no
 #     branch content leaks onto main as modified tracked files or untracked
 #     files.
+#   - main's worktree is NEVER left with unmerged index entries. A single
+#     unmerged path makes `git stash` (Step 5a) refuse to run, which would
+#     wedge EVERY subsequent merge with "Failed to stash uncommitted changes
+#     on main". So: (a) a pre-flight clears any stale unmerged paths before
+#     starting, and (b) the stash-pop exit trap resolves conflicts instead of
+#     dropping the stash and leaving markers behind. The "ours" side of any
+#     such conflict is whatever is committed at HEAD, so it is never lost —
+#     recoverable via `git show HEAD:<file>`. (Diagnosed in CR-00042: an
+#     I-00076 stash-pop left an unresolved conflict in item_overview.html and
+#     every later merge jammed.)
 #
 # Usage:
 #   executor/worktree_commit.sh <item_id> <project_repo_root>
@@ -38,6 +48,46 @@ PROJECT_REPO_ROOT="${2:?project_repo_root is required}"
 WORKTREE_DIR="$PROJECT_REPO_ROOT/.worktrees/$ITEM_ID"
 
 # ---------------------------------------------------------------------------
+# Shared helper: clear any unmerged paths in main's worktree by keeping the
+# WORKING-TREE side of each conflict (= the user's in-flight edits, or — after
+# a stash-pop — the stashed content). The "ours" side of such a conflict is
+# whatever is committed at HEAD, so it is never lost (`git show HEAD:<file>`).
+#
+# This guarantees main's index is left WITHOUT unmerged entries — a single
+# unmerged path makes `git stash` (Step 5a) refuse to run, which jams every
+# subsequent merge until a human intervenes (CR-00042).
+#
+#   $1 — short context label for log messages.
+# Returns non-zero only if unmerged paths somehow survive (hard error).
+# ---------------------------------------------------------------------------
+_clear_main_unmerged() {
+    local _ctx="${1:-recovery}"
+    cd "$PROJECT_REPO_ROOT"
+    local _unmerged
+    _unmerged=$(git ls-files --unmerged 2>/dev/null | cut -f2 | sort -u || true)
+    [[ -z "$_unmerged" ]] && return 0
+    local _f
+    while IFS= read -r _f; do
+        [[ -z "$_f" ]] && continue
+        if git checkout --theirs -- "$_f" 2>/dev/null && git add -- "$_f" 2>/dev/null; then
+            : # kept the working-tree / stashed version
+        elif git rm -f -- "$_f" 2>/dev/null; then
+            : # file deleted on the working-tree side — honour the deletion
+        else
+            git checkout --ours -- "$_f" 2>/dev/null || true
+            git add -- "$_f" 2>/dev/null || true
+        fi
+        echo "[worktree_commit] WARN: [$_ctx] cleared a stale merge conflict on $_f — kept the working-tree version; the other side is at HEAD ('git show HEAD:$_f')" >&2
+    done <<< "$_unmerged"
+    # Belt-and-braces: anything still unmerged is a problem we cannot auto-fix.
+    if [[ -n "$(git ls-files --unmerged 2>/dev/null || true)" ]]; then
+        echo "[worktree_commit] ERROR: [$_ctx] main still has unmerged paths after recovery — manual fix required ('git -C $PROJECT_REPO_ROOT status')" >&2
+        return 1
+    fi
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # Exit trap: always restore main's stash if we pushed one, regardless of how
 # the script exits (success, failure, or unexpected crash).
 # ---------------------------------------------------------------------------
@@ -50,27 +100,26 @@ _restore_main_stash() {
         if git stash pop >&2; then
             echo "[worktree_commit] OK: Stashed changes restored on main" >&2
         else
-            # git stash pop can fail when the merge committed a file that also
-            # existed as an untracked file in the stash (e.g. local_notes.md
-            # written by the user before the worktree was created). Git refuses
-            # to overwrite the tracked version with the stashed untracked copy.
-            # Solution: extract the colliding files manually, save them with a
-            # .iw-collision suffix, then drop the stash so the repo is clean.
-            echo "[worktree_commit] INFO: Stash pop had conflicts — checking for untracked collisions" >&2
-            local _stash_tmp
-            _stash_tmp=$(mktemp -d)
-            # Export the stash as a tar to access its untracked files safely
+            echo "[worktree_commit] INFO: Stash pop had conflicts — recovering" >&2
+            # 1. Resolve tracked-file merge conflicts (e.g. the merge changed a
+            #    file main also had uncommitted edits to). MUST happen before we
+            #    drop the stash, or main's index is left with unmerged paths and
+            #    every future merge jams. (Diagnosed in CR-00042.)
+            local _stash_recovered=true
+            _clear_main_unmerged "stash-pop" || _stash_recovered=false
+            # 2. Handle untracked-file collisions: the merge committed a file
+            #    that also existed as an untracked file in the stash (e.g.
+            #    local_notes.md written by the user before the worktree was
+            #    created). Git refuses to overwrite the tracked version with the
+            #    stashed untracked copy — extract those, save with .iw-collision.
             if git stash show -p stash@{0} >/dev/null 2>&1; then
-                # List files in the stash's untracked-file tree (stash^3 is the
-                # untracked-files pseudo-commit that --include-untracked records)
+                # stash^3 is the untracked-files pseudo-commit --include-untracked records.
                 local _untracked_tree
                 _untracked_tree=$(git rev-parse stash@{0}^3 2>/dev/null || true)
                 if [[ -n "$_untracked_tree" ]]; then
                     git ls-tree -r --name-only "$_untracked_tree" 2>/dev/null | while IFS= read -r _f; do
                         _dest="$PROJECT_REPO_ROOT/$_f"
                         if [[ -e "$_dest" ]]; then
-                            # Collision: tracked file exists from the merge.
-                            # Save the stashed user copy with .iw-collision suffix.
                             git show "${_untracked_tree}:${_f}" 2>/dev/null > "${_dest}.iw-collision" || true
                             echo "[worktree_commit] WARN: Collision on $_f — user copy saved as ${_dest}.iw-collision" >&2
                         else
@@ -80,10 +129,15 @@ _restore_main_stash() {
                     done
                 fi
             fi
-            rm -rf "$_stash_tmp"
-            # Drop the stash so the repo is in a clean state
-            git stash drop stash@{0} >/dev/null 2>&1 || true
-            echo "[worktree_commit] OK: Stash conflicts resolved (any collisions saved with .iw-collision suffix)" >&2
+            # 3. Drop the stash only if recovery fully cleared the index — its
+            #    content is now reflected in the working tree. If recovery is
+            #    incomplete, keep the stash so a human can finish by hand.
+            if [[ "$_stash_recovered" == true ]]; then
+                git stash drop stash@{0} >/dev/null 2>&1 || true
+                echo "[worktree_commit] OK: Stash conflicts resolved (collisions saved with .iw-collision; conflicted files left modified on main)" >&2
+            else
+                echo "[worktree_commit] ERROR: stash-pop recovery incomplete — keeping stash@{0} for manual recovery ('git -C $PROJECT_REPO_ROOT status')" >&2
+            fi
         fi
     fi
 }
@@ -100,6 +154,27 @@ fi
 if [[ ! -f "$WORKTREE_DIR/.git" ]]; then
     echo "[worktree_commit] ERROR: $WORKTREE_DIR exists but is not a git worktree" >&2
     exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Step 1.5: Pre-flight — main must not be mid-operation or wedged
+# ---------------------------------------------------------------------------
+# Refuse to start if a human-initiated git operation is in progress on main —
+# we would clobber it. If main merely carries stale unmerged paths left over
+# from a prior bad stash-pop (the CR-00042 failure mode), clear them now so the
+# merge queue self-heals instead of jamming on this and every subsequent item.
+cd "$PROJECT_REPO_ROOT"
+if [[ -e "$(git rev-parse --git-path MERGE_HEAD)" \
+   || -e "$(git rev-parse --git-path rebase-merge)" \
+   || -e "$(git rev-parse --git-path rebase-apply)" \
+   || -e "$(git rev-parse --git-path CHERRY_PICK_HEAD)" ]]; then
+    echo "[worktree_commit] ERROR: a git operation (merge/rebase/cherry-pick) is in progress in $PROJECT_REPO_ROOT — refusing to merge $ITEM_ID." >&2
+    echo "[worktree_commit]        Finish or abort it, then: iw merge-queue retry-merge $ITEM_ID" >&2
+    exit 1
+fi
+if [[ -n "$(git ls-files --unmerged 2>/dev/null || true)" ]]; then
+    echo "[worktree_commit] WARN: main's working tree has stale unresolved merge conflict(s) — clearing before merge" >&2
+    _clear_main_unmerged "pre-flight" || exit 1
 fi
 
 cd "$WORKTREE_DIR"

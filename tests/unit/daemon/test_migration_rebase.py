@@ -537,12 +537,24 @@ def downgrade() -> None:
                 return ""
             if args[0] == "rev-parse":
                 return "new_main"
+            if args[0] == "diff":
+                # Preflight check: pretend the batch added a migration so we
+                # actually reach the rebase step.
+                return "orch/db/migrations/versions/abc123_add_col.py"
+            if args[0] == "status":
+                return " M orch/db/migrations/versions/abc123_add_col.py"
             if args[0] == "rebase":
                 if args[1] == "--abort":
                     nonlocal abort_called
                     abort_called = True
                     return ""
-                raise GitCommandError("CONFLICT (content): Merge conflict in orch/db/models.py")
+                raise GitCommandError(
+                    "CONFLICT (content): Merge conflict in orch/db/models.py",
+                    argv=args,
+                    stdout="",
+                    stderr="CONFLICT (content): Merge conflict in orch/db/models.py",
+                    returncode=1,
+                )
             return ""
 
         with (
@@ -558,7 +570,118 @@ def downgrade() -> None:
         assert result.success is False
         assert result.rebased is False
         assert "git rebase main failed" in result.error_message
+        assert "CONFLICT" in result.error_message
         assert abort_called
+
+    def test_rebase_abort_failure_does_not_mask_original_error(self, tmp_path: Path) -> None:
+        """If `git rebase --abort` fails (e.g. no rebase actually started),
+        the original git rebase error must still be surfaced — not the abort
+        error. Regression test for CR-00039 diagnostic loss.
+        """
+        worktree = tmp_path / "worktree"
+        worktree.mkdir()
+        (worktree / ".git").touch()
+        versions = worktree / "orch" / "db" / "migrations" / "versions"
+        versions.mkdir(parents=True)
+
+        def git_side_effect(cwd: str, args: list[str]) -> str:
+            if args[0] == "merge-base":
+                return "old_base"
+            if args[0] == "fetch":
+                return ""
+            if args[0] == "rev-parse":
+                if "--abbrev-ref" in args:
+                    return "agent/CR-00039"
+                if args[-1] == "HEAD":
+                    return "deadbeef"
+                return "new_main"
+            if args[0] == "diff":
+                return "orch/db/migrations/versions/abc123_add_col.py"
+            if args[0] == "status":
+                return (
+                    " M dashboard/templates/components/step_pipeline.html\n"
+                    " M dashboard/static/styles.css"
+                )
+            if args[0] == "rebase":
+                if args[1] == "--abort":
+                    raise GitCommandError(
+                        "fatal: No rebase in progress?",
+                        argv=args,
+                        stdout="",
+                        stderr="fatal: No rebase in progress?",
+                        returncode=128,
+                    )
+                raise GitCommandError(
+                    "error: cannot rebase: You have unstaged changes.",
+                    argv=args,
+                    stdout="",
+                    stderr="error: cannot rebase: You have unstaged changes.",
+                    returncode=1,
+                )
+            return ""
+
+        with (
+            patch("orch.daemon.migration_rebase._git", side_effect=git_side_effect),
+            patch("orch.daemon.migration_rebase._emit_daemon_event"),
+        ):
+            result = run_pre_merge_rebase(
+                batch_id=84,
+                worktree_path=str(worktree),
+                _repo_root=str(tmp_path),
+            )
+
+        assert result.success is False
+        # The real cause must be preserved, not the abort failure.
+        assert "cannot rebase" in result.error_message
+        assert "unstaged changes" in result.error_message
+        # The abort failure should still be noted, but as a footnote.
+        assert "abort cleanup also failed" in result.error_message
+        assert "No rebase in progress" in result.error_message
+        # Working-tree state should be captured.
+        assert "working tree dirty: True" in result.error_message
+        assert "branch: agent/CR-00039" in result.error_message
+
+    def test_no_batch_migration_files_skips_rebase_entirely(self, tmp_path: Path) -> None:
+        """AC: When this batch added no migration files, the rebase is skipped
+        entirely — preventing failures on unrelated reasons (e.g. unstaged
+        agent work that worktree_commit.sh is responsible for committing).
+        """
+        worktree = tmp_path / "worktree"
+        worktree.mkdir()
+        (worktree / ".git").touch()
+
+        rebase_called = False
+
+        def git_side_effect(cwd: str, args: list[str]) -> str:
+            if args[0] == "merge-base":
+                return "old_base"
+            if args[0] == "fetch":
+                return ""
+            if args[0] == "rev-parse":
+                return "new_main"
+            if args[0] == "diff":
+                return ""  # batch added no migration files
+            if args[0] == "rebase":
+                nonlocal rebase_called
+                rebase_called = True
+                return ""
+            return ""
+
+        with (
+            patch("orch.daemon.migration_rebase._git", side_effect=git_side_effect),
+            patch("orch.daemon.migration_rebase._emit_daemon_event"),
+        ):
+            result = run_pre_merge_rebase(
+                batch_id=1,
+                worktree_path=str(worktree),
+                _repo_root=str(tmp_path),
+            )
+
+        assert result.success is True
+        assert result.rebased is False
+        assert result.rewrites == []
+        assert "No migration files" in result.message
+        assert rebase_called is False, "rebase must be skipped when no batch migrations"
 
     def test_parse_error_returns_failure(self, tmp_path: Path) -> None:
         """Malformed migration file → success=False with parse error message."""
@@ -621,7 +744,11 @@ def downgrade() -> None:
         assert "Git command failed" in result.message
 
     def test_no_batch_migration_files_is_idempotent_noop(self, tmp_path: Path) -> None:
-        """No batch migration files → returns success with empty rewrites, no commit."""
+        """No batch migration files → returns success with empty rewrites, no commit.
+
+        After CR-00039 fix, the rebase is skipped entirely when no migration files
+        were added by the batch — so `rebased` is False (the rebase did not run).
+        """
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         (worktree / ".git").touch()
@@ -650,7 +777,7 @@ def downgrade() -> None:
             )
 
         assert result.success is True
-        assert result.rebased is True
+        assert result.rebased is False
         assert result.rewrites == []
         assert "No migration files" in result.message
 

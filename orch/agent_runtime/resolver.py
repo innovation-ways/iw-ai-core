@@ -91,7 +91,7 @@ def resolve_runtime(
 
     # Project.toml (cli_tool, model) lookup
     cli_tool = getattr(project, "cli_tool", "opencode")
-    model = getattr(project, "model", "minimax")
+    model = getattr(project, "model", "minimax/MiniMax-M2.7")
 
     option = _load_option_by_cli_model(session, cli_tool, model)
     if option is not None:

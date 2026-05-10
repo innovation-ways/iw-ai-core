@@ -1,0 +1,116 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00044",
+  "type": "ChangeRequest",
+  "title": "Markdown viewer for subdirectory docs, sharper per-page help-doc mappings, and favicon route",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/app.py",
+      "dashboard/routers/system.py",
+      "dashboard/routers/help.py",
+      "dashboard/templates/pages/system/docs_view.html",
+      "dashboard/CLAUDE.md",
+      "tests/dashboard/test_system_docs_route.py",
+      "tests/dashboard/test_help_router.py",
+      "tests/dashboard/test_favicon.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "app.py /favicon.ico route; system.py /docs/{doc_path:path} with recursive docs/**/*.md + curated CLAUDE.md allow-list, 4-part traversal guard, H1-derived title; help.py _SLUG_TO_DOC retargeting (code -> RAG CLAUDE.md; item_detail/research/search -> Dashboard_Design; projects unchanged); dashboard/CLAUDE.md note",
+      "prompt": "prompts/CR-00044_S01_backend-impl_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S01: path traversal on the :path converter, allow-list correctness, FileResponse safety, anchor validity, no scope creep",
+      "prompt": "prompts/CR-00044_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Extend tests/dashboard/test_system_docs_route.py (subdir 200, RAG CLAUDE.md 200, flat-form regression, traversal/rejection 404 x5, H1 title); add tests/dashboard/test_favicon.py; update tests/dashboard/test_help_router.py mapping asserts",
+      "prompt": "prompts/CR-00044_S03_tests-impl_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S03: traversal negative tests present, help-mapping asserts precise (no false-positive on /system/docs/orch/rag/CLAUDE.md), favicon + H1-title tests, test isolation",
+      "prompt": "prompts/CR-00044_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Cross-agent global review: AC1-AC6 trace, traversal security re-trace, anchor verification, no scope creep, full test suite",
+      "prompt": "prompts/CR-00044_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture check"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST (bandit)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests (includes tests/dashboard/)"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — favicon no console error; code help popover opens RAG doc; item_detail/research/search links -> Dashboard_Design; subdir doc renders + traversal rejected; no regressions",
+      "prompt": "prompts/CR-00044_S13_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S14",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00044_S14_SelfAssess_prompt.md"
+    }
+  ]
+}

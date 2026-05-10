@@ -1389,9 +1389,12 @@ def _format_qv_findings_from_delta(delta: Fingerprint, latest_run: StepRun | Non
     for f in delta.failures:
         failure_lines.append(f"  [{f.kind}] {f.key}")
 
-    unparseable_lines = []
-    for u in delta.unparseable:
-        unparseable_lines.append(f"  {u}")
+    # Belt-and-suspenders: even though every parser already caps its own
+    # `unparseable` list, re-cap here so a future parser change can't bloat the
+    # fix-cycle prompt past execve's argv limit. (See I-00074.)
+    from orch.daemon.qv_baseline import cap_unparseable  # noqa: PLC0415
+
+    unparseable_lines = [f"  {u}" for u in cap_unparseable(list(delta.unparseable))]
 
     if failure_lines or unparseable_lines:
         blocks = []
@@ -1863,6 +1866,33 @@ def _build_fix_prompt_content(
 # ---------------------------------------------------------------------------
 
 
+def _build_fix_launch_argv(cli_tool: str, inner_command: str) -> list[str]:
+    """Build the argv (list form) for launching a fix agent.
+
+    ``inner_command`` is a complete shell command — e.g.
+    ``timeout 600 opencode run "$(cat /wt/.tmp/I-00074_S06_fix1.prompt)" --model x/y …``
+    — that embeds a ``"$(cat …)"`` substitution and therefore double quotes.
+
+    It MUST be passed as a single argv element so the *inner* shell parses it:
+
+    * opencode behaves differently without a controlling TTY, so it is wrapped
+      in ``script -qec <inner_command> /dev/null`` (``script`` runs the command
+      via ``$SHELL -c``, allocating a PTY).
+    * other CLIs run directly under ``/bin/sh -c <inner_command>``.
+
+    Regression guard (I-00074): the previous implementation built
+    ``f'script -qec "timeout … {command}" /dev/null'`` and ran it with
+    ``shell=True``.  The ``"`` inside ``{command}`` (from ``"$(cat …)"``, added
+    by F-00081) closed the wrapper's own ``-c`` quote, so the prompt text — any
+    word starting with ``-``, e.g. ``-->`` from an embedded Mermaid snippet —
+    leaked onto ``script``'s command line and it aborted with
+    ``script: unrecognized option``.  Every opencode fix cycle failed silently.
+    """
+    if cli_tool == "opencode":
+        return ["script", "-qec", inner_command, "/dev/null"]
+    return ["/bin/sh", "-c", inner_command]
+
+
 def _launch_fix_agent(
     db: Session,
     step: WorkflowStep,
@@ -1878,7 +1908,10 @@ def _launch_fix_agent(
     The step_run row is already committed so fix-cycle monitoring can track it.
     """
     from orch.agent_runtime.resolver import resolve_runtime  # noqa: PLC0415
-    from orch.daemon.batch_manager import _build_agent_env  # noqa: PLC0415
+    from orch.daemon.batch_manager import (  # noqa: PLC0415
+        _build_agent_env,
+        write_agent_prompt,
+    )
     from orch.daemon.step_monitor import get_timeout  # noqa: PLC0415
 
     # F-00081: Resolve runtime option via cascade (step → item → project → catalogue default).
@@ -1899,26 +1932,26 @@ def _launch_fix_agent(
     fix_step_type = _FIX_TIMEOUT_MAP.get(step.step_type, "code_review_fix")
     timeout = get_timeout(project_config, fix_step_type)
 
-    # Build command with --model injected
+    # Build the agent command with --model injected.  NOTE: this mirrors the
+    # step launcher in ``batch_manager._launch_step`` — keep the two in sync.
+    # (F-00081 updated the step launcher's `opencode run "$(cat …)"` form here
+    # but left the `script -qec` wrapper below unescaped, which broke every
+    # opencode fix cycle — see ``_build_fix_launch_argv``.)
+    if prompt_path and prompt_path.exists():
+        prompt_text = prompt_path.read_text()
+    else:
+        prompt_text = "Fix the code review findings."
+    tmp_prompt = Path(worktree_path) / ".tmp" / f"{item_id}_{step_id}_fix{cycle_number}.prompt"
+    tmp_prompt.parent.mkdir(parents=True, exist_ok=True)
+    # I-00074: cap the prompt so a bloated fix-cycle prompt can't blow past
+    # execve's per-argument limit when it's spliced in as `"$(cat …)"` below.
+    write_agent_prompt(tmp_prompt, prompt_text)
     if resolved_cli_tool == "opencode":
-        # Read the prompt file and pass to opencode via stdin substitution
-        prompt_text = prompt_path.read_text() if prompt_path else "Fix the code review findings."
-        # Write to a temp file for opencode
-        tmp_prompt = Path(worktree_path) / ".tmp" / f"{item_id}_{step_id}_fix{cycle_number}.prompt"
-        tmp_prompt.parent.mkdir(parents=True, exist_ok=True)
-        tmp_prompt.write_text(prompt_text)
         command = (
             f'opencode run "$(cat {tmp_prompt})" --model {resolved_model} '
             f"--dangerously-skip-permissions"
         )
     else:
-        if prompt_path and prompt_path.exists():
-            prompt_text = prompt_path.read_text()
-        else:
-            prompt_text = "Fix the code review findings."
-        tmp_prompt = Path(worktree_path) / ".tmp" / f"{item_id}_{step_id}_fix{cycle_number}.prompt"
-        tmp_prompt.parent.mkdir(parents=True, exist_ok=True)
-        tmp_prompt.write_text(prompt_text)
         command = (
             f'claude -p "$(cat {tmp_prompt})" --model {resolved_model} '
             f"--dangerously-skip-permissions"
@@ -1934,15 +1967,13 @@ def _launch_fix_agent(
     env["OPENCODE_MODEL"] = resolved_model
     env["ANTHROPIC_MODEL"] = resolved_model
 
-    # Launch
-    if resolved_cli_tool == "opencode":
-        shell_command = f'script -qec "timeout {timeout} {command}" /dev/null'
-    else:
-        shell_command = f"timeout {timeout} {command}"
-
-    proc = subprocess.Popen(  # noqa: S602  # nosec B602
-        shell_command,
-        shell=True,  # nosec B602
+    # Launch.  Pass argv as a list so the agent command (which embeds a
+    # `"$(cat …)"` substitution) is handed to ``script``/``sh`` as one element
+    # and parsed by the *inner* shell — never folded into an outer quoted
+    # string. See ``_build_fix_launch_argv``.
+    launch_argv = _build_fix_launch_argv(resolved_cli_tool, f"timeout {timeout} {command}")
+    proc = subprocess.Popen(  # noqa: S603
+        launch_argv,
         cwd=worktree_path,
         stdin=subprocess.DEVNULL,
         stdout=Path(log_file).open("w"),  # noqa: SIM115

@@ -183,7 +183,20 @@ def _merge_item(
         )
         if not rebase_result.success:
             batch_item.status = BatchItemStatus.migration_rebase_failed
-            batch_item.notes = f"Pre-merge rebase failed: {rebase_result.error_message}"
+            # `notes` is single-line for the badge/list views; keep it short.
+            first_line = (rebase_result.error_message or "").splitlines()[0:1]
+            short = first_line[0] if first_line else (rebase_result.message or "rebase failed")
+            batch_item.notes = f"Pre-merge rebase failed: {short}"
+            # `merge_info` is rendered in the Squash Merge log section — store the
+            # full diagnostic so operators can read the actual git output.
+            batch_item.merge_info = {
+                "phase": "rebase",
+                "success": False,
+                "summary": rebase_result.message,
+                "error_message": rebase_result.error_message,
+                "worktree_base_sha": rebase_result.worktree_base_sha,
+                "current_main_sha": rebase_result.current_main_sha,
+            }
             # C4: revert WorkItem so it is not orphaned as completed
             _revert_work_item(db, project_id, item_id)
             db.commit()
