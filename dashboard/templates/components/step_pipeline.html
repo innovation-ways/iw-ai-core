@@ -17,7 +17,11 @@
     {% if step.duration_secs is not none %}
       {% set dur_m = (step.duration_secs // 60)|int %}
       {% set dur_s = (step.duration_secs % 60)|int %}
-      {% set dur_str = "{}m{}s"|format(dur_m, dur_s) if dur_m > 0 else "{}s"|format(dur_s) %}
+      {# Jinja2's `format` filter is %-style — the format string MUST use %d/%s
+         placeholders, never str.format-style {} (which raises "not all arguments
+         converted during string formatting" when the page actually has a step
+         with a non-NULL duration). See I-00075. #}
+      {% set dur_str = "%dm%02ds"|format(dur_m, dur_s) if dur_m > 0 else "%ds"|format(dur_s) %}
     {% else %}
       {% set dur_str = '' %}
     {% endif %}
