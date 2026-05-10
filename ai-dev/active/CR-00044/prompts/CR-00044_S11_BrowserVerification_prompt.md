@@ -1,7 +1,7 @@
-# Browser Verification Prompt: CR-00044-S13-BrowserVerification
+# Browser Verification Prompt: CR-00044-S11-BrowserVerification
 
 **Work Item**: CR-00044 -- Markdown viewer for subdirectory docs, sharper per-page help-doc mappings, and favicon route
-**Step**: S13
+**Step**: S11
 **Agent**: qv-browser
 
 ---
@@ -100,7 +100,7 @@ Do NOT run any of the following -- they will break the isolated stack or duplica
 
 ## Output Files
 
-- `ai-dev/active/CR-00044/reports/CR-00044_S13_BrowserVerification_Report.md` -- the mandatory report
+- `ai-dev/active/CR-00044/reports/CR-00044_S11_BrowserVerification_Report.md` -- the mandatory report
 - `ai-dev/active/CR-00044/evidences/post/` -- screenshots taken during verification
 
 ## Prerequisites
@@ -188,7 +188,7 @@ For this CR, ENV_DATA_MISSING is unlikely (no seeded data involved). A traversal
 
 ## Report
 
-After verification, write `ai-dev/active/CR-00044/reports/CR-00044_S13_BrowserVerification_Report.md` containing:
+After verification, write `ai-dev/active/CR-00044/reports/CR-00044_S11_BrowserVerification_Report.md` containing:
 
 - A pass/fail table with one row per V1..V5.
 - The exact `$IW_BROWSER_BASE_URL` used (copy from env so the report is self-contained).
@@ -201,12 +201,12 @@ Then call **one** of:
 ```bash
 # On full pass
 uv run iw step-done "$IW_ITEM_ID" --step "$IW_STEP_ID" \
-  --report ai-dev/active/CR-00044/reports/CR-00044_S13_BrowserVerification_Report.md
+  --report ai-dev/active/CR-00044/reports/CR-00044_S11_BrowserVerification_Report.md
 
 # On any failure
 uv run iw step-fail "$IW_ITEM_ID" --step "$IW_STEP_ID" \
   --reason "<short, specific reason>" \
-  --report ai-dev/active/CR-00044/reports/CR-00044_S13_BrowserVerification_Report.md
+  --report ai-dev/active/CR-00044/reports/CR-00044_S11_BrowserVerification_Report.md
 ```
 
 Always include the `--report` path on both success and failure so the orchestrator can archive the evidence.
@@ -215,7 +215,7 @@ Always include the `--report` path on both success and failure so the orchestrat
 
 ```json
 {
-  "step": "S13",
+  "step": "S11",
   "agent": "qv-browser",
   "work_item": "CR-00044",
   "overall_status": "pass|fail",
