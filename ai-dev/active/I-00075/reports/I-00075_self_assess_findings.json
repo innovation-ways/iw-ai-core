@@ -1,0 +1,47 @@
+{
+  "item_id": "I-00075",
+  "bottom_line": "qv-browser fix-cycle prompt classifier must prioritize code_defect over ENV_DATA_MISSING on HTTP 500 failures to prevent wasted stack-reprovision cycles.",
+  "coverage_notes": "No .worktrees/I-00075/ai-dev/logs/ directory found — raw run logs were absent. Analysis based on agent self-reports (S01-S13 *_report.md), fix-cycle prompts (5 cycles fully read), and DB telemetry (iw db-identity check: UP). S13 fix-cycle prompt progression: cycle1=ENV_DATA_MISSING, cycle2=code_defect, cycle3=code_defect, cycle4=code_defect, cycle5=code_defect (correct). Steps S01-S12: no fix cycles, no retries. S13: 5 fix cycles. S14: this step.",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "qv-browser fix-cycle agent misclassified Jinja2 code defect as ENV_DATA_MISSING, causing 4 wasted cycles",
+      "recommendation": "Lead qv-browser fix-cycle prompts with a mandatory reclassification step: on HTTP 500 or TypeError, re-evaluate as code_defect before accepting ENV_DATA_MISSING. Add: 'Re-read the failing report root-cause. If it is ENV_DATA_MISSING, ask: does the error log show a code-level traceback (e.g. TypeError, AttributeError in a template)? If yes, classify as code_defect. Only preserve ENV_DATA_MISSING for genuinely missing seed rows or unreachable services not preceded by a 500.'",
+      "evidence": [
+        "ai-dev/active/I-00075/fix-cycles/I-00075_S13_FIX_cycle1_prompt.md:27 — failure_class: env_data_missing for V1/V2/V3; root cause: 'E2E stack never launched, alembic migration crashed'",
+        "ai-dev/active/I-00075/fix-cycles/I-00075_S13_FIX_cycle5_prompt.md:41-45 — persistent bug: '{}m{}s'|format(dur_m, dur_s) TypeError in step_pipeline.html — fixed in one shot once correctly classified as code_defect"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add code_defect-first reclassification guard to qv-browser fix-cycle prompt: on HTTP 500 or TypeError, force re-evaluation as code_defect before accepting ENV_DATA_MISSING. Analyzed in I-00075 (see ai-dev/active/I-00075/reports/I-00075_self_assess_report.md). Target: skills/iw-execute/SKILL.md or commands/qv-browser prompt template. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "environment",
+      "target": "project",
+      "title": "E2E fixture exposed latent Jinja2 duration-format bug invisible in production pg_dump data",
+      "recommendation": "Add a Jinja2 inline comment in step_pipeline.html near the duration-format line explaining that '%dm%02ds'|format requires tuple or string args (not bare integers). Also add a 'Testing notes' section in the E2E fixture design-doc template warning that non-NULL timestamps exercise render paths that NULL-duration production data never reaches.",
+      "evidence": [
+        "ai-dev/active/I-00075/fix-cycles/I-00075_S13_FIX_cycle5_prompt.md:41-45 — TypeError: not all arguments converted during string formatting in step_pipeline.html:18; production pg_dump items have NULL started_at/completed_at so dur_secs was never computed, hiding the bug",
+        "ai-dev/active/I-00075/reports/I-00075_S13_BrowserVerification_Report.md:9-13 — fix '%dm%02ds'|format(...) verified end-to-end; V1..V3 all passed"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Document Jinja2 integer-formatting constraint in step_pipeline.html comment and add 'Testing notes' to E2E fixture design-doc template for non-NULL timestamp implications. Analyzed in I-00075 (see ai-dev/active/I-00075/reports/I-00075_self_assess_report.md). Target: dashboard/templates/components/step_pipeline.html + ai-dev/templates/Issue_Design_Template.md. Effort: M."
+    },
+    {
+      "severity": "MED",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "S03 tests agent found two S01 fixture bugs that S02 code review missed",
+      "recommendation": "Add a 'common fixture bugs' checklist to the CodeReview prompt for fixture-only implementations: (a) verify all ORM enum imports used in constructors, (b) verify FK insert-order (parent rows flushed before child rows with FK references).",
+      "evidence": [
+        "ai-dev/active/I-00075/reports/I-00075_S03_Tests_report.md:44-50 — S03 found: missing WorkItemStatus/WorkItemPhase imports and BatchItem flushed before WorkItem (FK violation)",
+        "ai-dev/active/I-00075/reports/I-00075_S01_Backend_report.md:28 — S01 preflight all passed before fixture shipped",
+        "ai-dev/active/I-00075/reports/I-00075_S02_CodeReview_report.md — S02 reviewed S01 but did not catch either bug"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add fixture-specific review checklist to CodeReview prompt for fixture implementations: verify ORM enum imports and FK insert-order. Analyzed in I-00075 (see ai-dev/active/I-00075/reports/I-00075_self_assess_report.md). Target: commands/claude/code-review prompt template. Effort: S."
+    }
+  ]
+}
