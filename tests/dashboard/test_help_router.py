@@ -8,6 +8,7 @@ regex violations, and HTTP method restrictions.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Generator
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
+from dashboard.routers.help import _SLUG_TO_DOC
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -169,3 +171,115 @@ def test_help_fragment_docs_link_points_to_system_docs(client: TestClient, slug:
     )
     # Must not contain /orch/ href
     assert 'href="/orch/' not in resp.text, f"slug={slug!r} fragment still contains /orch/ href"
+
+
+class TestHelpRouterSlugMappingCR00044:
+    """Tests for CR-00044 AC4: updated _SLUG_TO_DOC mappings."""
+
+    def test_code_slug_maps_to_rag_claude_md(self, client: TestClient) -> None:
+        """AC4: The code slug maps to /system/docs/orch/rag/CLAUDE.md."""
+        resp = client.get("/_help/code")
+        assert resp.status_code == 200
+        # The docs_link rendered in the fragment must point at orch/rag/CLAUDE.md
+        # Use exact prefix match (allowing optional #fragment)
+        href = 'href="/system/docs/orch/rag/CLAUDE.md'
+        assert href in resp.text, (
+            f"code help fragment should link to /system/docs/orch/rag/CLAUDE.md; "
+            f"first 500 chars: {resp.text[:500]}"
+        )
+
+    def test_item_detail_slug_maps_to_dashboard_design(self, client: TestClient) -> None:
+        """AC4: The item_detail slug maps to /system/docs/IW_AI_Core_Dashboard_Design."""
+        resp = client.get("/_help/item_detail")
+        assert resp.status_code == 200
+        # Must link to Dashboard_Design (with the specific anchor for this slug)
+        href = 'href="/system/docs/IW_AI_Core_Dashboard_Design'
+        assert href in resp.text, (
+            f"item_detail help fragment should link to /system/docs/IW_AI_Core_Dashboard_Design; "
+            f"first 500 chars: {resp.text[:500]}"
+        )
+
+    def test_research_slug_maps_to_dashboard_design(self, client: TestClient) -> None:
+        """AC4: The research slug maps to /system/docs/IW_AI_Core_Dashboard_Design."""
+        resp = client.get("/_help/research")
+        assert resp.status_code == 200
+        href = 'href="/system/docs/IW_AI_Core_Dashboard_Design'
+        assert href in resp.text, (
+            f"research help fragment should link to /system/docs/IW_AI_Core_Dashboard_Design; "
+            f"first 500 chars: {resp.text[:500]}"
+        )
+
+    def test_search_slug_maps_to_dashboard_design(self, client: TestClient) -> None:
+        """AC4: The search slug maps to /system/docs/IW_AI_Core_Dashboard_Design."""
+        resp = client.get("/_help/search")
+        assert resp.status_code == 200
+        href = 'href="/system/docs/IW_AI_Core_Dashboard_Design'
+        assert href in resp.text, (
+            f"search help fragment should link to /system/docs/IW_AI_Core_Dashboard_Design; "
+            f"first 500 chars: {resp.text[:500]}"
+        )
+
+    def test_projects_slug_still_maps_to_architecture(self, client: TestClient) -> None:
+        """AC4: The projects slug still maps to /system/docs/IW_AI_Core_Architecture."""
+        resp = client.get("/_help/projects")
+        assert resp.status_code == 200
+        href = 'href="/system/docs/IW_AI_Core_Architecture'
+        assert href in resp.text, (
+            f"projects help fragment should link to /system/docs/IW_AI_Core_Architecture; "
+            f"first 500 chars: {resp.text[:500]}"
+        )
+
+
+class TestHelpRouterAnchorPinning:
+    """AC4 anchor-pinning tests: every #anchor in _SLUG_TO_DOC exists in rendered HTML."""
+
+    @pytest.mark.parametrize(
+        ("slug", "expected_url"),
+        [(slug, url) for slug, url in sorted(_SLUG_TO_DOC.items()) if "#" in url],
+    )
+    def test_anchor_pinning(self, client: TestClient, slug: str, expected_url: str) -> None:
+        """AC4: Every #anchor in _SLUG_TO_DOC is present as id= in the rendered target doc."""
+        # Parse the doc path and anchor from _SLUG_TO_DOC value
+        # expected_url is like "/system/docs/IW_AI_Core_Dashboard_Design#anchor"
+        doc_path_with_prefix, _, anchor = expected_url.partition("#")
+        assert anchor, f"slug={slug!r}: expected an anchor in {expected_url!r}"
+
+        # Strip the /system/docs/ prefix to get just the doc_path portion
+        doc_path = doc_path_with_prefix[len("/system/docs/") :]
+        assert doc_path, f"slug={slug!r}: doc_path should not be empty after stripping prefix"
+
+        # Request the target doc_path
+        resp = client.get(f"/system/docs/{doc_path}")
+        if resp.status_code != 200:
+            pytest.fail(
+                f"slug={slug!r}: GET /system/docs/{doc_path} returned {resp.status_code}; "
+                f"the anchor {anchor!r} cannot be verified"
+            )
+
+        # Assert the anchor id exists in the rendered HTML
+        assert f'id="{anchor}"' in resp.text, (
+            f"slug={slug!r}: anchor id={anchor!r} not found in rendered HTML of "
+            f"/system/docs/{doc_path}; full response first 500 chars: {resp.text[:500]}"
+        )
+
+
+class TestHelpRouterNoHardcodedOldLinks:
+    """AC4 regression guard: no help fragment contains old hardcoded /docs/ or /orch/ hrefs."""
+
+    @pytest.mark.parametrize("slug", ALL_SLUGS)
+    def test_no_hardcoded_docs_or_orch_href(self, client: TestClient, slug: str) -> None:
+        """AC4: No rendered fragment contains a hardcoded /docs/IW_AI_Core or /orch/ href."""
+        resp = client.get(f"/_help/{slug}")
+        assert resp.status_code == 200
+        # The only /docs/ hrefs should be /system/docs/ — old /docs/IW_AI_Core is gone
+        assert 'href="/docs/' not in resp.text, (
+            f"slug={slug!r}: fragment still contains old /docs/IW_AI_Core href"
+        )
+        # No /orch/ bare hrefs (orch/rag/CLAUDE.md legitimately contains "orch/" in path)
+        # We check that any /orch/ href is actually /system/docs/orch/ (a subdir doc)
+        orch_hrefs = re.findall(r'href="(/orch/[^"]+)"', resp.text)
+        for href in orch_hrefs:
+            assert href.startswith("/system/docs/orch/"), (
+                f"slug={slug!r}: fragment contains suspicious /orch/ href: {href!r}; "
+                f"only /system/docs/orch/... hrefs are allowed"
+            )
