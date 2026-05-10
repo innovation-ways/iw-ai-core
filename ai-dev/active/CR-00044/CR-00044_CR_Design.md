@@ -38,7 +38,10 @@ Read the project's `CLAUDE.md` and `dashboard/CLAUDE.md` for architecture, conve
 
 ## Desired Behavior
 
-1. **Subdirectory docs.** `GET /system/docs/{doc_path:path}` serves any markdown document whose repo-relative path is in a precomputed allow-list: all of `docs/**/*.md` (recursive) plus an explicit curated list of `**/CLAUDE.md` files worth surfacing (at minimum `orch/rag/CLAUDE.md`; the implementer may include other top-level `CLAUDE.md` files). Path-traversal is prevented by: rejecting any `doc_path` containing a `..` segment or a leading `/`; resolving the final filesystem path and confirming it stays inside one of the allowed base directories; requiring a `.md` suffix; and requiring membership in the precomputed allow-list set. Unknown / disallowed paths return `404`. The rendered page's `<title>` is derived from the document's first level-1 heading (falling back to the file's basename) rather than `slug.replace("_", " ")`.
+1. **Subdirectory docs.** `GET /system/docs/{doc_path:path}` serves any markdown document on a precomputed allow-list built once at module load from (a) every file under `docs/**/*.md` (recursive) and (b) an explicit curated list of `**/CLAUDE.md` files worth surfacing (at minimum `orch/rag/CLAUDE.md`; the implementer may include other top-level `CLAUDE.md` files). The allow-list is a `dict` mapping a **URL key** → the document's repo-relative path:
+   - for a `docs/` document the URL key is its path **relative to `docs/` with the `.md` suffix dropped** — e.g. `IW_AI_Core_Daemon_Design` → `docs/IW_AI_Core_Daemon_Design.md` (this preserves every flat-form URL CR-00042 served), `implementation/00_INDEX` → `docs/implementation/00_INDEX.md`;
+   - for a curated `CLAUDE.md` the URL key is its **repo-relative path including the `.md`** — e.g. `orch/rag/CLAUDE.md` → `orch/rag/CLAUDE.md`.
+   A request resolves by looking `doc_path` up in this dict; a miss returns `404`. Path-traversal / escape is additionally guarded by: rejecting any `doc_path` that is empty, starts with `/`, or has a `..` or `.` path component; resolving the mapped file path and confirming it stays inside one of the allowed base directories (`docs/` plus each curated `CLAUDE.md`'s parent dir); and requiring the resolved path to be an existing `.md` file. (The dict membership alone is sufficient; the resolved-path checks are defence-in-depth and the regression tests exercise them.) The rendered page's `<title>` is derived from the document's first level-1 heading (falling back to the file's basename) rather than `slug.replace("_", " ")`.
 2. **Sharper help mappings.** `_SLUG_TO_DOC` in `help.py` retargets the generic-Architecture entries at content-appropriate documents: `code` → the RAG layer doc (`/system/docs/orch/rag/CLAUDE.md`), `item_detail` / `research` / `search` → `/system/docs/IW_AI_Core_Dashboard_Design` (with `#anchor` fragments where a stable heading id exists in the rendered output). `projects` stays on `/system/docs/IW_AI_Core_Architecture` (genuinely the right document). Where a target heading id is stable, additional existing entries may gain `#anchor` fragments too. Any anchor placed in `_SLUG_TO_DOC` MUST be verified against the rendered `toc` heading ids of the target document during implementation; if a stable id cannot be confirmed, ship that entry without a fragment. The fallback for an unmapped slug remains `/system/docs/IW_AI_Core_Architecture`.
 3. **Favicon route.** `GET /favicon.ico` returns `dashboard/static/favicon.svg` with media type `image/svg+xml` (registered directly on the app in `dashboard/app.py`, next to `GET /health`). No more `/favicon.ico` 404.
 
@@ -56,7 +59,7 @@ Read the project's `CLAUDE.md` and `dashboard/CLAUDE.md` for architecture, conve
 
 ### Breaking Changes
 
-None. Existing top-level URLs such as `/system/docs/IW_AI_Core_Daemon_Design` keep resolving (a bare filename is still a valid `{doc_path:path}` and stays in the allow-list). The new subdirectory form (`/system/docs/orch/rag/CLAUDE.md`, `/system/docs/implementation/00_INDEX`) is purely additive. `GET /favicon.ico` is a new route.
+None. Existing top-level URLs such as `/system/docs/IW_AI_Core_Daemon_Design` keep resolving (a bare filename stays a URL key in the allow-list map). The new subdirectory form (`/system/docs/orch/rag/CLAUDE.md`, `/system/docs/implementation/00_INDEX`) is purely additive. `GET /favicon.ico` is a new route.
 
 ### Data Migration
 
@@ -77,12 +80,12 @@ None. Existing top-level URLs such as `/system/docs/IW_AI_Core_Daemon_Design` ke
 | S06 | qv-gate (lint) | `make lint` | — |
 | S07 | qv-gate (format) | `make format-check` | — |
 | S08 | qv-gate (typecheck) | `make type-check` | — |
-| S09 | qv-gate (arch-check) | `make arch-check` | — |
-| S10 | qv-gate (security-sast) | `make security-sast` | — |
-| S11 | qv-gate (unit-tests) | `make test-unit` | — |
-| S12 | qv-gate (integration-tests) | `make test-integration` (includes `tests/dashboard/`) | — |
-| S13 | qv-browser | Help popovers open the right rendered doc; a subdirectory doc renders; `/favicon.ico` returns 200; no regressions | — |
-| S14 | self-assess-impl | Post-execution analysis via the iw-item-analyze skill | — |
+| S09 | qv-gate (unit-tests) | `make test-unit` | — |
+| S10 | qv-gate (integration-tests) | `make test-integration` (includes `tests/dashboard/`) | — |
+| S11 | qv-browser | Help popovers open the right rendered doc; a subdirectory doc renders; `/favicon.ico` returns 200; no regressions | — |
+| S12 | self-assess-impl | Post-execution analysis via the iw-item-analyze skill | — |
+
+QV-gate set is the project's standard five (lint, format-check, type-check, unit-tests, integration-tests). `arch-check` / `security-sast` are intentionally omitted: this CR touches only dashboard routers + tests, neither gate has a baseline fingerprint, and a pre-existing violation on `main` (or a missing `bandit`/`pip-audit` in the worktree env) would burn fix cycles on issues unrelated to the change.
 
 No frontend-impl step: the help fragments already render `href="{{ docs_link }}"` (CR-00042); `docs_view.html` needs at most no change (the title variable is populated differently server-side).
 
@@ -116,8 +119,8 @@ No frontend-impl step: the help fragments already render `href="{{ docs_link }}"
 | `prompts/CR-00044_S03_tests-impl_prompt.md` | Prompt | S03: tests |
 | `prompts/CR-00044_S04_CodeReview_prompt.md` | Prompt | S04: review S03 |
 | `prompts/CR-00044_S05_CodeReview_Final_prompt.md` | Prompt | S05: cross-agent global review |
-| `prompts/CR-00044_S13_BrowserVerification_prompt.md` | Prompt | S13: browser verification |
-| `prompts/CR-00044_S14_SelfAssess_prompt.md` | Prompt | S14: self-assessment |
+| `prompts/CR-00044_S11_BrowserVerification_prompt.md` | Prompt | S11: browser verification |
+| `prompts/CR-00044_S12_SelfAssess_prompt.md` | Prompt | S12: self-assessment |
 | `dashboard/app.py` | Code | `GET /favicon.ico` route |
 | `dashboard/routers/system.py` | Code | `{doc_path:path}` route + recursive allow-list + traversal guard + H1 title |
 | `dashboard/routers/help.py` | Code | `_SLUG_TO_DOC` retargeting |
@@ -237,5 +240,5 @@ Then it reflects the document's first level-1 heading (not the literal string
 - The `markdown` library and its `toc` extension are already dependencies — no new dependency.
 - Heading-anchor ids are generated by the `toc` extension by slugifying the heading text content (markdown formatting stripped): `#### \`iw approve\`` → `id="iw-approve"`. Any `#anchor` in `_SLUG_TO_DOC` MUST be confirmed against the rendered ids of the target document during S01; if no stable id can be confirmed, ship that entry without a fragment.
 - Keep the curated `**/CLAUDE.md` allow-list small and intentional — these files are agent-instruction documents. `orch/rag/CLAUDE.md` is the one needed for the `code` help link; the implementer may add other top-level `CLAUDE.md` files but should not bulk-add every `CLAUDE.md` in the tree.
-- Security: with FastAPI's `:path` converter the matched value can contain `/` and `..`. The guard must (1) reject any path component equal to `..` and any leading `/`, (2) `Path(base, doc_path).resolve()` and assert it `is_relative_to` an allowed base dir (`docs/` or each curated CLAUDE.md's parent), (3) require `.suffix == ".md"`, and (4) require the normalised relpath to be in the precomputed allow-list set. All four together; the allow-list alone is sufficient but the resolved-path check is defence-in-depth and the regression tests should exercise it.
+- Security: with FastAPI's `:path` converter the matched value can contain `/` and `..`. The guard is, in order: (1) reject any `doc_path` that is empty, starts with `/`, or has a path component equal to `..` or `.`; (2) `mapped = _DOC_URL_MAP.get(doc_path)` — a miss is `404` (this dict-membership check is the real gate); (3) `(_REPO_ROOT / mapped).resolve()` and assert it `is_relative_to` an allowed base dir (`docs/` or each curated `CLAUDE.md`'s parent) — defence-in-depth against symlink / `..` escapes; (4) require the resolved path's `.suffix == ".md"` and `is_file()`. The dict lookup alone is sufficient; steps 3-4 are defence-in-depth and the regression tests exercise them.
 - Out of scope: externalising `_SLUG_TO_DOC` to a config file; changing the unmapped-slug fallback behaviour; rewriting help-fragment prose; writing any new documentation content.

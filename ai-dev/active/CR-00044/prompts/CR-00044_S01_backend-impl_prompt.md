@@ -38,15 +38,15 @@ Register `GET /favicon.ico` directly on the app object, next to the existing `GE
 
 Replace `GET /docs/{doc_slug}` (currently `_DOCS_SLUG_RE = ^[A-Za-z0-9_]+$`, allow-list = stems of `docs/*.md`, reads `docs/{slug}.md`, title = `slug.replace("_"," ")`) with `GET /docs/{doc_path:path}`:
 
-- **Allow-list**, computed once at module load:
-  - every repo-relative POSIX path under `docs/**/*.md` (recursive — use `Path.rglob("*.md")`);
-  - **plus** a small, explicit curated list of `**/CLAUDE.md` paths worth surfacing. At minimum include `orch/rag/CLAUDE.md` (the `code` help link needs it). You may add other top-level `CLAUDE.md` files (e.g. `orch/CLAUDE.md`, `dashboard/CLAUDE.md`, `executor/CLAUDE.md`) if you judge them useful — but do NOT bulk-add every `CLAUDE.md` in the tree; keep the list intentional and short.
-  - Store them as a `set[str]` of normalised POSIX relpaths (relative to the repo root). Also keep, alongside it, the set of allowed *base directories* (the repo's `docs/` dir, plus each curated CLAUDE.md's parent dir) for the resolved-path defence-in-depth check below.
-- **Validation** (all four, in this order; any failure → `HTTPException(404, "Document not found")`):
+- **Allow-list / URL map**, computed once at module load — a `dict[str, str]` (`_DOC_URL_MAP`) mapping a *URL key* → a repo-relative POSIX path:
+  - for every file under `docs/**/*.md` (recursive — `Path.rglob("*.md")`): URL key = the path **relative to `docs/`, with the `.md` suffix dropped** (`p.relative_to(_DOCS_DIR).with_suffix("").as_posix()`), value = the repo-relative path (`p.relative_to(_REPO_ROOT).as_posix()`). So `docs/IW_AI_Core_Daemon_Design.md` → key `IW_AI_Core_Daemon_Design` (this preserves every CR-00042 flat-form URL), `docs/implementation/00_INDEX.md` → key `implementation/00_INDEX`.
+  - **plus** a small, explicit curated list of `**/CLAUDE.md` paths worth surfacing — at minimum `orch/rag/CLAUDE.md` (the `code` help link needs it). You MAY add other top-level `CLAUDE.md` files (`orch/CLAUDE.md`, `dashboard/CLAUDE.md`, `executor/CLAUDE.md`) if you judge them useful — but do NOT bulk-add every `CLAUDE.md` in the tree; keep the list intentional and short. For each, URL key = value = its repo-relative POSIX path **including** the `.md` (e.g. key `orch/rag/CLAUDE.md` → value `orch/rag/CLAUDE.md`).
+  - Also compute the set of allowed *base directories* — the repo's `docs/` dir, plus each curated `CLAUDE.md`'s parent dir — for the resolved-path defence-in-depth check below.
+- **Validation** (in this order; any failure → `HTTPException(404, "Document not found")`):
   1. Reject if `doc_path` is empty, starts with `/`, or any of its `PurePosixPath(doc_path).parts` equals `..` or `.`.
-  2. Resolve the candidate filesystem path (`(_REPO_ROOT / doc_path).resolve()`) and require it `is_relative_to` one of the allowed base directories (`Path.is_relative_to` is available on the project's Python). This catches symlink / `..` escapes.
-  3. Require `candidate.suffix == ".md"` and `candidate.is_file()`.
-  4. Require the normalised relpath (`candidate.relative_to(_REPO_ROOT).as_posix()`) to be in the precomputed allow-list set.
+  2. `mapped = _DOC_URL_MAP.get(doc_path)` — if `None`, 404. This dict-membership check is the real gate.
+  3. Resolve the candidate filesystem path (`(_REPO_ROOT / mapped).resolve()`) and require it `is_relative_to` one of the allowed base directories (`Path.is_relative_to` is available on the project's Python). Defence-in-depth against symlink / `..` escapes.
+  4. Require `candidate.suffix == ".md"` and `candidate.is_file()`.
 - **Render**: read the file, `markdown(content, extensions=["toc", "tables", "fenced_code"])`, return `pages/system/docs_view.html` with the rendered HTML wrapped in `markupsafe.Markup` (as today).
 - **Title**: derive `doc_title` from the document's first level-1 ATX heading (`# Heading` — the first line matching `^#\s+(.+)$` after stripping). Fall back to the file's basename without extension if there is no H1. Pass it under the same context key the template already uses (`doc_title`); if you must rename it, update `dashboard/templates/pages/system/docs_view.html` accordingly and list that file in `files_changed`. Satisfies **AC1, AC2, AC3, AC6**.
 - Keep the existing `logger` usage and module structure; this is a focused edit, not a rewrite of `system.py`.

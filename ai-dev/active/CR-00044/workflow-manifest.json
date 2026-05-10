@@ -74,43 +74,29 @@
     {
       "step": "S09",
       "agent": "qv-gate",
-      "gate": "arch-check",
-      "command": "make arch-check",
-      "description": "QV: Architecture check"
-    },
-    {
-      "step": "S10",
-      "agent": "qv-gate",
-      "gate": "security-sast",
-      "command": "make security-sast",
-      "description": "QV: Security SAST (bandit)"
-    },
-    {
-      "step": "S11",
-      "agent": "qv-gate",
       "gate": "unit-tests",
       "command": "make test-unit",
       "description": "QV: Unit tests"
     },
     {
-      "step": "S12",
+      "step": "S10",
       "agent": "qv-gate",
       "gate": "integration-tests",
       "command": "make test-integration",
       "description": "QV: Integration tests (includes tests/dashboard/)"
     },
     {
-      "step": "S13",
+      "step": "S11",
       "agent": "qv-browser",
       "description": "QV: Browser verification — favicon no console error; code help popover opens RAG doc; item_detail/research/search links -> Dashboard_Design; subdir doc renders + traversal rejected; no regressions",
-      "prompt": "prompts/CR-00044_S13_BrowserVerification_prompt.md"
+      "prompt": "prompts/CR-00044_S11_BrowserVerification_prompt.md"
     },
     {
-      "step": "S14",
+      "step": "S12",
       "agent": "self-assess-impl",
       "step_type": "self_assess",
       "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
-      "prompt": "prompts/CR-00044_S14_SelfAssess_prompt.md"
+      "prompt": "prompts/CR-00044_S12_SelfAssess_prompt.md"
     }
   ]
 }

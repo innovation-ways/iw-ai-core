@@ -1,7 +1,7 @@
-# CR-00044_S14_SelfAssess_prompt
+# CR-00044_S12_SelfAssess_prompt
 
 **Work Item**: CR-00044 -- Markdown viewer for subdirectory docs, sharper per-page help-doc mappings, and favicon route
-**Step**: S14
+**Step**: S12
 **Agent**: self-assess-impl
 
 ---
@@ -39,7 +39,7 @@ Failure here does NOT block merge — still produce a usable report. If analysis
 
 ```json
 {
-  "step": "S14",
+  "step": "S12",
   "agent": "self-assess-impl",
   "work_item": "CR-00044",
   "completion_status": "complete|partial|blocked",
