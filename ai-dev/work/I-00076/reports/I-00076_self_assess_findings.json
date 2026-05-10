@@ -1,0 +1,32 @@
+{
+  "item_id": "I-00076",
+  "bottom_line": "The E2E seed fixture template should emit StepRun rows alongside WorkflowStep rows to satisfy the FK-ordering assertion in test_e2e_seed_runs_against_fresh_db, eliminating per-item fix cycles for this pattern.",
+  "coverage_notes": "Sampled tail (last 80 lines) of S13_run3.log (1.2 MB); read S12_fix4.log in full (38 KB); read S01-S05, S13_run1 logs in full. DB telemetry: full (DB:UP). S12 large logs (300 KB runs) were sampled via grep for errors; tail read for fix4 (38 KB).",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "project",
+      "title": "E2E seed fixture creates WorkflowStep but no StepRun rows, causing test_e2e_seed_runs_against_fresh_db to fail",
+      "recommendation": "The fixture generator (or template) for ai-dev/active/<ID>/e2e_fixtures/ should emit a StepRun row alongside each WorkflowStep row, so that test_e2e_seed_runs_against_fresh_db's FK-ordering assertion passes. Alternatively, update the test's success criterion to not require StepRun rows when the fixture legitimately creates no runs.",
+      "evidence": [
+        "ai-dev/logs/I-00076_S12_fix4.log:213 — \"AssertionError: no StepRun rows after seed() — either every fixture has been archived (this regression net is then defunct) or fixtures are silently skipping their inserts\"",
+        "ai-dev/logs/I-00076_S13_run1.log:274 — \"Error: File not found: .../ai-dev/archive/F-00055/e2e_fixtures/001_f00055_workflow.py\" (same fixture gap pattern in F-00055)"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Fix E2E seed fixture generator to emit StepRun rows alongside WorkflowStep rows, so test_e2e_seed_runs_against_fresh_db passes without per-item fix cycles. Analyzed in ai-dev/active/I-00076/reports/I-00076_self_assess_report.md. Target: ai-dev/templates/ or tests/integration/test_e2e_seed.py. Effort: S."
+    },
+    {
+      "severity": "LOW",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S04 code-review agent mistyped path on first attempt (sgeriog vs sergiog) — self-corrected",
+      "recommendation": "No action needed — single transient typo that was self-corrected on retry.",
+      "evidence": [
+        "ai-dev/logs/I-00076_S04_run1.log:15 — \"cd: /home/sgeriog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/I-00076: No such file or directory\""
+      ],
+      "effort": "N/A",
+      "paste_prompt": null
+    }
+  ]
+}
