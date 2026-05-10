@@ -50,6 +50,8 @@ The **`iw` CLI** is the agent-to-DB bridge — agents call `iw step-done` to rec
 - **CRITICAL**: `DaemonEvent.metadata` is named `event_metadata` in Python — SQLAlchemy reserves `metadata`
 - **MUST** ensure `.env` and `.iw/` are listed in every managed project's `.gitignore` — daemon refuses to launch worktrees otherwise.
 - **NEW**: per-worktree DB exists for app runtime when project has `ai-dev/iw-config/`. The agent's `IW_CORE_DB_*` env vars point at the per-worktree DB; `IW_CORE_ORCH_DB_*` always points at the global orch DB on 5433.
+- **NEVER** apply an uncommitted Alembic migration to the production orch DB. Every worktree is `git worktree add`-ed from a commit, while its per-worktree DB is `pg_dump`-restored from prod — so a revision file that's in your working tree but not committed will be missing in worktrees while their DB is already at that revision, and `alembic upgrade head` dies with `Can't locate revision identified by '<rev>'`, taking down the worktree's E2E compose stack. Commit the revision file (or `alembic downgrade` and remove it) before doing anything else. (Diagnosed in I-00075 / I-00076.)
+- **MUST** keep Jinja2 `format`-filter calls `%`-style: `"%dm%02ds"|format(m, s)`, never `str.format`-style `"{}m{}s"|format(m, s)` (raises `TypeError: not all arguments converted during string formatting` at render time — and only when real data exercises the branch). Enforced by `make lint` → `scripts/check_templates.py`. (See I-00075.)
 - **NEVER** use `agent-browser` for browser automation — use `playwright-cli` exclusively
 - **NEVER** run `npx playwright install` or modify `.playwright/cli.config.json`
 - **NEVER** run `docker compose up` (with or without `-d db`) against the orchestration DB from any directory — the default compose file is empty and the bootstrap file requires an explicit `-f` flag. Use `./ai-core.sh db start` instead. See `docs/IW_AI_Core_DB_Setup.md`.
@@ -94,7 +96,7 @@ uv run iw --help                                    # CLI help
 uv run iw db-identity check                         # verify DB instance fingerprint
 make test-unit                                      # Fast tests (no containers)
 make test-integration                               # Tests with PostgreSQL testcontainer
-make lint                                           # ruff + node --check on dashboard/static/**/*.js
+make lint                                           # ruff + node --check (dashboard JS) + scripts/check_templates.py (Jinja2)
 make quality                                        # lint + format-check + mypy
 make check                                          # quality + all tests
 make db-migrate                                     # alembic upgrade head

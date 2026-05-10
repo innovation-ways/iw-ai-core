@@ -2,7 +2,7 @@
 # IW AI Core — Developer Commands
 # ============================================================
 
-.PHONY: install lint lint-fix lint-js format format-check typecheck type-check quality \
+.PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
          test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
          db-up db-down db-migrate db-revision \
          daemon-start daemon-stop dashboard-start css \
@@ -17,7 +17,7 @@ install:
 	uv run alembic upgrade head
 
 # --- Quality ---
-lint: lint-js
+lint: lint-js lint-templates
 	uv run ruff check .
 
 # Auto-fix all ruff-fixable lint and format violations (safe to run in worktrees).
@@ -33,6 +33,12 @@ lint-fix:
 lint-js:
 	@command -v node >/dev/null 2>&1 || { echo "ERROR: 'node' is required for lint-js (dashboard JS syntax check)"; exit 1; }
 	@find dashboard/static -name '*.js' -not -path '*/vendor/*' -print0 | xargs -0 -r -n1 node --check
+
+# Static lint for Jinja2 templates — currently rejects str.format-style {}
+# placeholders passed to the %-style `format` filter (these only blow up at
+# render time, and only when real data exercises the branch — see I-00075).
+lint-templates:
+	uv run python scripts/check_templates.py
 
 format:
 	uv run ruff format --check .
