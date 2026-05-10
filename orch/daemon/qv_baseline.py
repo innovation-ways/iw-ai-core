@@ -146,17 +146,49 @@ def _parse_ruff_json(raw_output: str) -> tuple[list[FailureEntry], list[str]]:
     return failures, unparseable
 
 
-_PYTEST_FAILED_RE = re.compile(r"^(?P<prefix>FAILED)\s+(?P<nodeid>\S+)\s*-\s*(?P<msg>.*)$")
+# pytest's short-summary line. The trailing " - <reason>" is optional: pytest
+# omits it for assertion-introspection failures (the common case) and only adds
+# it for collection/setup errors. The original regex *required* the dash, so the
+# bare "FAILED <nodeid>" line was silently dropped — every test failure became
+# zero parsed failures plus, under `pytest -v`, a few thousand "<nodeid> PASSED"
+# progress lines in the `unparseable` bucket. That ~349 KB blob is what made the
+# I-00074 fix-cycle prompt overflow execve's argv limit so every fix cycle died
+# on launch ("/usr/bin/timeout: Argument list too long"). Make the dash optional.
+_PYTEST_FAILED_RE = re.compile(r"^FAILED\s+(?P<nodeid>\S+)(?:\s+-\s+(?P<msg>.*))?\s*$")
+
+# `pytest -v` prints one line per test: "<path>::<test> PASSED [ 12%]" (also
+# SKIPPED / XFAIL / XPASS / ERROR / FAILED). These are pure progress noise that
+# must never reach `unparseable`. FAILED/ERROR verbose lines are redundant with
+# the short summary above (which `_PYTEST_FAILED_RE` already captures), so it is
+# safe to drop all of them.
+_PYTEST_VERBOSE_RESULT_RE = re.compile(r"^\S+::.*\s(?:PASSED|FAILED|SKIPPED|XFAIL|XPASS|ERROR)\b")
+
+# Hard ceiling on the lines kept in `unparseable`, so a parser miss can never
+# bloat a fix-cycle prompt again. Keep the head (run header / error context) and
+# the tail (the failure summary that lives at the bottom of pytest output).
+_MAX_UNPARSEABLE_LINES = 80
+
+
+def cap_unparseable(lines: list[str]) -> list[str]:
+    """Truncate the middle of an over-long `unparseable` list, keeping head + tail."""
+    if len(lines) <= _MAX_UNPARSEABLE_LINES:
+        return list(lines)
+    head = _MAX_UNPARSEABLE_LINES // 2
+    tail = _MAX_UNPARSEABLE_LINES - head
+    omitted = len(lines) - _MAX_UNPARSEABLE_LINES
+    return [*lines[:head], f"...({omitted} lines omitted)...", *lines[-tail:]]
 
 
 def parse_pytest(raw_output: str) -> Fingerprint:
     """Parse pytest output into a Fingerprint.
 
-    Extracts each "FAILED <nodeid> - <msg>" line's nodeid.
-    Key: the nodeid itself (no trailing error message).
+    Extracts each ``FAILED <nodeid>`` short-summary line's nodeid (the trailing
+    ``- <reason>`` is optional). ``pytest -v`` per-test progress lines and the
+    ``===`` banners are dropped; anything else is collected as ``unparseable``
+    (capped — see :func:`cap_unparseable`).
     Boundary Behavior row 5: ignore trailing error message.
     Boundary Behavior row 6: if no explicit FAILED lines (e.g. xdist worker crash),
-    treat the whole section as unparseable.
+    surface the (capped) section as unparseable.
     """
     failures: list[FailureEntry] = []
     unparseable: list[str] = []
@@ -165,20 +197,26 @@ def parse_pytest(raw_output: str) -> Fingerprint:
     lines = raw_output.strip().splitlines()
 
     for raw in lines:
-        if not raw.strip() or _UNPARSEABLE_RE.match(raw):
+        stripped = raw.strip()
+        if not stripped or _UNPARSEABLE_RE.match(raw):
             continue
-        m = _PYTEST_FAILED_RE.match(raw)
+        m = _PYTEST_FAILED_RE.match(stripped)
         if m:
             nodeid = m.group("nodeid")
             if nodeid and nodeid not in seen:
                 seen.add(nodeid)
                 failures.append(_make_key("test", nodeid))
-        elif raw.startswith(("===", "FAILED", "PASSED")):
             continue
-        else:
-            unparseable.append(raw)
+        if _PYTEST_VERBOSE_RESULT_RE.match(stripped) or stripped.startswith(
+            ("===", "FAILED", "PASSED")
+        ):
+            continue
+        unparseable.append(raw)
 
-    return Fingerprint(failures=_sort_failures(failures), unparseable=tuple(unparseable))
+    return Fingerprint(
+        failures=_sort_failures(failures),
+        unparseable=tuple(cap_unparseable(unparseable)),
+    )
 
 
 _MYPY_LINE_RE = re.compile(

@@ -10,6 +10,7 @@ from orch.daemon.fix_cycle import (
     _SPEC_MISMATCH_PREFIX,
     _build_browser_fix_prompt_content,
     _build_design_doc_block,
+    _build_fix_launch_argv,
     _build_fix_prompt_content,
     _build_qv_fix_prompt_content,
     _extract_mandatory_findings,
@@ -625,3 +626,41 @@ def test_is_spec_mismatch_failure_returns_false_for_empty_string() -> None:
 def test_is_spec_mismatch_failure_case_insensitive() -> None:
     """The prefix check is case-insensitive to tolerate agent variation."""
     assert is_spec_mismatch_failure("spec_mismatch: lowercase variant") is True
+
+
+# ---------------------------------------------------------------------------
+# _build_fix_launch_argv  (I-00074: opencode fix cycle never launched)
+# ---------------------------------------------------------------------------
+
+
+def test_build_fix_launch_argv_opencode_wraps_in_script_pty() -> None:
+    inner = (
+        'timeout 600 opencode run "$(cat /wt/.tmp/I-00074_S06_fix1.prompt)" '
+        "--model anthropic/claude-x --dangerously-skip-permissions"
+    )
+    assert _build_fix_launch_argv("opencode", inner) == ["script", "-qec", inner, "/dev/null"]
+
+
+def test_build_fix_launch_argv_non_opencode_runs_under_sh() -> None:
+    inner = (
+        'timeout 600 claude -p "$(cat /wt/.tmp/I-00074_S06_fix1.prompt)" '
+        "--model anthropic/claude-x --dangerously-skip-permissions"
+    )
+    assert _build_fix_launch_argv("claude", inner) == ["/bin/sh", "-c", inner]
+
+
+def test_build_fix_launch_argv_keeps_inner_command_as_single_element() -> None:
+    """Regression (I-00074): the inner command — which embeds `"$(cat …)"` and a
+    Mermaid-flavoured prompt containing `-->` — must be ONE argv element, never
+    folded into an outer quoted shell string (the `"` would close `script`'s own
+    `-c` argument and the prompt words would leak onto `script`'s command line,
+    aborting with `script: unrecognized option '-->'`)."""
+    inner = (
+        'timeout 600 opencode run "$(cat /wt/.tmp/I-00074_S06_fix1.prompt)" '
+        "--model x/y --dangerously-skip-permissions"
+    )
+    argv = _build_fix_launch_argv("opencode", inner)
+    # exactly one element equals the whole inner command, with its quotes intact
+    assert argv.count(inner) == 1
+    assert argv[2] == inner
+    assert all('"$(cat ' not in tok for tok in argv if tok != inner)
