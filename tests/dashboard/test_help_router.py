@@ -151,3 +151,21 @@ class TestHelpFragmentEndpoint:
         assert resp.status_code == 405, (
             f"{method.upper()} {path} should return 405, got {resp.status_code}"
         )
+
+
+@pytest.mark.parametrize("slug", ["queue", "batches", "status", "code"])
+def test_help_fragment_docs_link_points_to_system_docs(client: TestClient, slug: str) -> None:
+    """The 'Open full docs' link in help fragments uses /system/docs/ not /docs/."""
+    resp = client.get(f"/_help/{slug}")
+    assert resp.status_code == 200
+    # Must contain a /system/docs/ href
+    assert 'href="/system/docs/' in resp.text, (
+        f'slug={slug!r} fragment should contain href="/system/docs/..."; '
+        f"first 500 chars: {resp.text[:500]}"
+    )
+    # Must not contain the old broken /docs/ href
+    assert 'href="/docs/' not in resp.text, (
+        f"slug={slug!r} fragment still contains old broken /docs/ href"
+    )
+    # Must not contain /orch/ href
+    assert 'href="/orch/' not in resp.text, f"slug={slug!r} fragment still contains /orch/ href"
