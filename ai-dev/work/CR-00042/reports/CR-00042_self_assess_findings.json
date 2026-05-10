@@ -1,0 +1,37 @@
+{
+  "item_id": "CR-00042",
+  "bottom_line": "Add Jinja2 Markup/safe-filter guidance to Backend implementation prompts to prevent 2-3 retry cycles on docs-rendering features; fix filename pattern mismatch between prompts and step report output.",
+  "coverage_notes": "Full logs read for S01-S07, S15. QV gate logs (S08-S14) read in full — all clean. S15 browser verification logs: env-up/env-down logs empty, main S15 log empty (browser automation succeeded silently). No fix cycles. No install/setup commands detected in any log.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S01 Backend agent required 3 internal test retries to converge on correct implementation",
+      "recommendation": "Add a note to the Backend implementation prompt template clarifying that when passing pre-rendered HTML content to Jinja2 templates, use the |safe filter to prevent double-escaping. This is a common pitfall when using markupsafe.Markup with Jinja2's |tojson.",
+      "evidence": [
+        "CR-00042_S01_run1.log:78 — 'AssertionError: expected 200, got 404' (first run, route not registered yet)",
+        "CR-00042_S01_run1.log:416 — 'AssertionError: response should contain rendered HTML headings' (second run, Markup double-escaped)",
+        "CR-00042_S01_run1.log:698 — same AssertionError (third run, still investigating)",
+        "CR-00042_S01_run1.log:456 — 'The Markup is being double-escaped by Jinja2\\'s |tojson filter. I need to use |safe' (root cause found)"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add Jinja2 Markup/safe-filter guidance to Backend implementation prompts; analyzed in CR-00042 (see ai-dev/work/CR-00042/reports/CR-00042_self_assess_report.md). Target file: templates/design/CR_Template.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "CodeReview agents failed to read step reports due to filename pattern mismatch",
+      "recommendation": "The agent prompts use a lowercase pattern (backend-impl, code_review) while the actual step report filenames use capitalized agent labels (Backend, CodeReview). Fix the prompt filename generator or standardize the convention. Also consider having iw step-done verify the report filename matches what the next step expects.",
+      "evidence": [
+        "CR-00042_S02_run1.log:8 — 'File not found: .../reports/CR-00042_S01_backend-impl_report.md' (expected lowercase)",
+        "CR-00042_S07_run1.log:15 — 'File not found: .../reports/CR-00042_S02_code_review_report.md' (expected lowercase)",
+        "CR-00042_S07_run1.log:17 — 'File not found: .../reports/CR-00042_S04_code_review_report.md' (expected lowercase)",
+        "Actual filenames: CR-00042_S01_Backend_report.md, CR-00042_S02_CodeReview_report.md (capitalized)"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Fix filename pattern mismatch between prompts and step report output (backend-impl vs Backend); analyzed in CR-00042 (see ai-dev/work/CR-00042/reports/CR-00042_self_assess_report.md). Target: orch/cli/step_commands.py or prompt generator. Effort: M."
+    }
+  ]
+}

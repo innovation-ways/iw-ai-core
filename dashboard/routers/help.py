@@ -28,6 +28,32 @@ _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 #: Absolute path to the help fragments directory within the dashboard package.
 _HELP_FRAGMENTS_DIR = Path(__file__).resolve().parent.parent / "templates" / "_partials" / "help"
 
+#: Mapping from help slug to the docs URL for the "Open full docs" link (CR-00042).
+_SLUG_TO_DOC: dict[str, str] = {
+    "all_active": "/system/docs/IW_AI_Core_Daemon_Design",
+    "batch_detail": "/system/docs/IW_AI_Core_Daemon_Design",
+    "batches": "/system/docs/IW_AI_Core_Daemon_Design",
+    "code": "/system/docs/IW_AI_Core_Architecture",
+    "config": "/system/docs/IW_AI_Core_Tech_Stack",
+    "containers": "/system/docs/IW_AI_Core_Worktree_Isolation",
+    "coverage": "/system/docs/IW_AI_Core_Tech_Stack",
+    "docs": "/system/docs/IW_AI_Core_Dashboard_Design",
+    "history": "/system/docs/IW_AI_Core_CLI_Spec",
+    "item_detail": "/system/docs/IW_AI_Core_Architecture",
+    "job_detail": "/system/docs/IW_AI_Core_Daemon_Design",
+    "jobs": "/system/docs/IW_AI_Core_Daemon_Design",
+    "keep_alive": "/system/docs/IW_AI_Core_Daemon_Design",
+    "projects": "/system/docs/IW_AI_Core_Architecture",
+    "quality": "/system/docs/IW_AI_Core_Tech_Stack",
+    "queue": "/system/docs/IW_AI_Core_CLI_Spec#iw-approve",
+    "research": "/system/docs/IW_AI_Core_Architecture",
+    "running": "/system/docs/IW_AI_Core_Daemon_Design",
+    "search": "/system/docs/IW_AI_Core_Architecture",
+    "status": "/system/docs/IW_AI_Core_DB_Setup",
+    "tests": "/system/docs/IW_AI_Core_Tech_Stack",
+    "worktrees": "/system/docs/IW_AI_Core_Daemon_Design",
+}
+
 #: Module-level cached allow-list of valid slugs.
 _ALLOWED_SLUGS: set[str] = set()
 
@@ -66,11 +92,11 @@ def _load_allow_list() -> set[str]:
 _ALLOWED_SLUGS = _load_allow_list()
 
 
-def _render_help_fragment(slug: str, templates: Jinja2Templates) -> str:
+def _render_help_fragment(slug: str, templates: Jinja2Templates, docs_link: str) -> str:
     """Render and return the HTML string for the named help fragment."""
     template_name = f"_partials/help/{slug}.html"
     fragment = templates.get_template(template_name)
-    return fragment.render()
+    return fragment.render(docs_link=docs_link)
 
 
 if TYPE_CHECKING:
@@ -90,5 +116,6 @@ def get_help_fragment(slug: str, request: Request) -> HTMLResponse:
         raise HTTPException(status_code=404, detail="No help available for this page")
 
     templates: Jinja2Templates = request.app.state.templates
-    html_content = _render_help_fragment(slug, templates)
+    docs_link = _SLUG_TO_DOC.get(slug, "/system/docs/IW_AI_Core_Architecture")
+    html_content = _render_help_fragment(slug, templates, docs_link)
     return HTMLResponse(content=html_content)
