@@ -43,7 +43,7 @@ This regenerates `dashboard/static/styles.css` from `dashboard/templates/**/*.ht
 | `project_dashboard.py` | Per-project home (`/project/{id}/`) |
 | `project_pages.py` | Per-project queue and history pages |
 | `running.py` | System-wide "currently running items" view |
-| `system.py` | `/system/status`, `/system/config`, `/system/all-active` |
+| `system.py` | `/system/status`, `/system/config`, `/system/all-active`, `/system/docs/{doc_path:path}` (serves `docs/**/*.md` + curated `**/CLAUDE.md` files) |
 | `healthz.py` | `/healthz/identity` — DB instance identity probe (CR-00014), unauthenticated |
 
 **Work items, batches, actions**
