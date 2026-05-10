@@ -147,6 +147,7 @@ Always include `--report` on both success and failure so the fix-cycle agent see
 - **Stale screenshots.** If a `cp` fails silently (target dir missing, glob bug) the previous run's screenshot stays in `evidences/post/` and the report misleadingly claims a pass. Always `rm -f evidences/post/*.png` at the start of the run.
 - **Refs go stale on every navigation.** Always `playwright-cli snapshot` after `goto`/`reload`/`click`-that-navigated, before the next `click`/`fill`. Re-using `e59` from page A on page B almost always errors with "ref not found".
 - **Spec URL is wrong.** If a V(n) tells you to navigate to a URL that 404s, do not silently substitute another URL. Capture the 404 screenshot, mark the V as fail with reason "spec URL returns 404 — likely prompt error in V(n) step ABC", and report it. The orchestrator will route this to a prompt fix, not a code fix.
+- **Prefer navigating via the UI over hardcoded route paths.** When a V step needs an entity's detail page, open the relevant list/index page (`/history`, `/batches`, the project home) and click the row/link for that entity — the detail URL is whatever the link resolves to. Hardcoded route paths in prompts go stale (`/work/{id}` vs `/item/{id}`); a 404 from one is `SPEC_MISMATCH`, not a code defect. Also: before asserting on any element, confirm the page returned HTTP 200 and threw no load-time console exception — a 500 on the page that *contains* the element is itself a `CODE_DEFECT` (capture the server traceback, report it, don't retry).
 
 ## Report Template
 

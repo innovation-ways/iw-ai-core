@@ -94,6 +94,7 @@ Read the design document **before** running the lint/format gate and **before** 
 - Read the `## TDD Approach` section in full — note every test file the design names by path.
 - Write down every test file the design doc mentions; carry these expectations into the `## Review Checklist` below as a first-class anchor.
 - Cross-check every named test file against the implementation report's `files_changed`. If the design doc explicitly names a test file that should have changed and it does not appear in `files_changed`, that is a **CRITICAL** finding.
+- **Distrust "no production code change needed" when the work introduces a new data shape.** If the design claims an existing render/code path is correct and untouched, *but* this item adds a fixture, seed, or migration that produces values that path has never seen before (a non-NULL timestamp where prod rows are NULL, a fix-cycle row, an enum value, an empty collection, …), independently re-trace the **whole** path that new shape flows through — not just the lines the feature touches. Latent crashes hide in the parts the design didn't think to mention (I-00075: a `"{}m{}s"|format(...)` line in a shared template that only 500-ed once a fixture seeded steps with real durations — the design said the render path was "correct"). If you find such a defect, flag it even though the design says "no change needed"; note whether the file is inside this item's `scope.allowed_paths` (if not, it needs a follow-up item, not a fix cycle).
 
 ## Pre-Review Lint & Format Gate (NON-NEGOTIABLE)
 
