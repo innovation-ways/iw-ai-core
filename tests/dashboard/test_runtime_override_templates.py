@@ -560,5 +560,224 @@ class TestBatchItemsRuntimeColumns:
             assert step.runtime_option_id == 4
 
 
+# ---------------------------------------------------------------------------
+# I-00076: editable-step <select> uses hx-disabled-elt, not self-disabling onchange
+# ---------------------------------------------------------------------------
+
+
+class TestI00076EditableStepSelect:
+    """Regression tests for I-00076: the editable-step <select> must not self-disable.
+
+    Pre-fix markup had onchange="this.disabled=true; htmx.trigger(this,'change')"
+    which (a) drops option_id from the htmx PATCH body (htmx excludes disabled controls)
+    and (b) double-fires the request (redundant htmx.trigger).
+
+    Post-fix markup uses hx-disabled-elt="this" so htmx disables the element only
+    after serialising its value, and no explicit htmx.trigger is needed since a
+    <select> already triggers htmx on 'change'.
+    """
+
+    def test_i00076_editable_step_select_uses_hx_disabled_elt(
+        self,
+        client: TestClient,
+        db_session: Session,
+    ) -> None:
+        """The rendered <select> carries hx-disabled-elt="this" and no self-disabling handler."""
+        project, _batch = _seed_project_and_batch(db_session)
+        _seed_runtime_options(db_session)
+        # Step 0 (S01) is pending (editable) — ensure step-level override is clear
+        wi = _seed_work_item_with_steps(db_session, project.id, "WI-I00076-HTML", num_steps=3)
+        step = db_session.scalars(
+            select(WorkflowStep).where(
+                WorkflowStep.work_item_id == wi.id,
+                WorkflowStep.step_number == 1,
+            )
+        ).one()
+        step.status = StepStatus.pending
+        step.agent_runtime_option_id = None
+        db_session.commit()
+
+        response = client.get(f"/project/{project.id}/item/{wi.id}/tab/overview")
+        assert response.status_code == 200, response.text
+        html = response.text
+
+        # The htmx attribute that replaces the self-disabling onchange
+        assert 'hx-disabled-elt="this"' in html
+
+        # No self-disabling pattern — the pre-fix bug patterns
+        assert "this.disabled=true" not in html
+        assert "this.disabled = true" not in html
+        # No redundant explicit htmx trigger (a <select> already fires on change)
+        assert "htmx.trigger(this" not in html
+
+        # The PATCH endpoint and option_id field are still wired up
+        assert (
+            f'hx-patch="/project/{project.id}/api/item/{wi.id}/step/S01/runtime-override"' in html
+        )
+        assert 'name="option_id"' in html
+
+    def test_i00076_failed_step_select_also_uses_hx_disabled_elt(
+        self,
+        client: TestClient,
+        db_session: Session,
+    ) -> None:
+        """A step in 'failed' status also gets the corrected <select> markup."""
+        project, _batch = _seed_project_and_batch(db_session)
+        _seed_runtime_options(db_session)
+        # _seed_work_item_with_steps gives step index 3 status=failed
+        wi = _seed_work_item_with_steps(db_session, project.id, "WI-I00076-FAILED", num_steps=4)
+        step = db_session.scalars(
+            select(WorkflowStep).where(
+                WorkflowStep.work_item_id == wi.id,
+                WorkflowStep.step_number == 4,  # S04 has status=failed
+            )
+        ).one()
+        assert step.status == StepStatus.failed
+        db_session.commit()
+
+        response = client.get(f"/project/{project.id}/item/{wi.id}/tab/overview")
+        assert response.status_code == 200, response.text
+        html = response.text
+
+        # S04 is failed → hx-disabled-elt present, no self-disabling patterns
+        assert 'hx-disabled-elt="this"' in html
+        assert "this.disabled=true" not in html
+        assert "htmx.trigger(this" not in html
+
+        # PATCH endpoint for S04 is present
+        assert (
+            f'hx-patch="/project/{project.id}/api/item/{wi.id}/step/S04/runtime-override"' in html
+        )
+
+
+# ---------------------------------------------------------------------------
+# I-00076: PATCH step runtime override persists the chosen option
+# ---------------------------------------------------------------------------
+
+
+class TestI00076PatchStepOverride:
+    """AC1 / AC3: PATCH /project/{p}/api/item/{iid}/step/{sid}/runtime-override.
+
+    - PATCH with a real option_id (e.g. 5 = claude, claude-opus-4-7) must persist it.
+    - PATCH with no body (or empty option_id) must clear it — the '— inherit —' path.
+    """
+
+    def test_i00076_patch_step_override_persists_chosen_option(
+        self,
+        client: TestClient,
+        db_session: Session,
+    ) -> None:
+        """PATCH with option_id=5 sets workflow_steps.agent_runtime_option_id = 5."""
+        project, _batch = _seed_project_and_batch(db_session)
+        runtime_opts = _seed_runtime_options(
+            db_session
+        )  # id=5 is cli_tool=claude, model=claude-opus-4-7
+        wi = _seed_work_item_with_steps(db_session, project.id, "WI-I00076-PERSIST", num_steps=2)
+        step = db_session.scalars(
+            select(WorkflowStep).where(
+                WorkflowStep.work_item_id == wi.id,
+                WorkflowStep.step_id == "S01",
+            )
+        ).one()
+        step.status = StepStatus.failed
+        db_session.commit()
+
+        # Verify option id=5 is actually claude + opus-4-7
+        opt_5 = next(r for r in runtime_opts if r.id == 5)
+        assert opt_5.cli_tool == "claude"
+        assert opt_5.model == "claude-opus-4-7"
+
+        resp = client.patch(
+            f"/project/{project.id}/api/item/{wi.id}/step/S01/runtime-override",
+            data={"option_id": "5"},
+        )
+        assert resp.status_code == 204, resp.text
+
+        db_session.expire_all()
+        db_session.refresh(step)
+        assert step.agent_runtime_option_id == 5, (
+            f"Expected step override id=5, got {step.agent_runtime_option_id}"
+        )
+
+    def test_i00076_patch_step_override_clears_on_empty_body(
+        self,
+        client: TestClient,
+        db_session: Session,
+    ) -> None:
+        """PATCH with no option_id body clears the step override (AC3: '— inherit —')."""
+        project, _batch = _seed_project_and_batch(db_session)
+        _seed_runtime_options(db_session)
+        wi = _seed_work_item_with_steps(db_session, project.id, "WI-I00076-CLEAR", num_steps=2)
+        step = db_session.scalars(
+            select(WorkflowStep).where(
+                WorkflowStep.work_item_id == wi.id,
+                WorkflowStep.step_id == "S01",
+            )
+        ).one()
+        step.status = StepStatus.failed
+        step.agent_runtime_option_id = 3  # pre-set an override
+        db_session.commit()
+
+        # PATCH with empty option_id (no body) → clears to None
+        resp = client.patch(
+            f"/project/{project.id}/api/item/{wi.id}/step/S01/runtime-override",
+            data={"option_id": ""},
+        )
+        assert resp.status_code == 204, resp.text
+
+        db_session.expire_all()
+        db_session.refresh(step)
+        assert step.agent_runtime_option_id is None, (
+            f"Expected override cleared (None), got {step.agent_runtime_option_id}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# I-00076: resolve_runtime honours step-level override
+# ---------------------------------------------------------------------------
+
+
+class TestI00076ResolveRuntime:
+    """Optional resolver assertion: step override wins over project default."""
+
+    def test_i00076_resolve_runtime_step_override_wins(
+        self,
+        db_session: Session,
+    ) -> None:
+        """With workflow_steps.agent_runtime_option_id=5, resolve_runtime returns that row."""
+        project, _batch = _seed_project_and_batch(db_session)
+        _seed_runtime_options(db_session)  # seeds id=5 (claude, claude-opus-4-7); resolver loads it
+        wi = _seed_work_item_with_steps(db_session, project.id, "WI-I00076-RESOLVE", num_steps=2)
+        step = db_session.scalars(
+            select(WorkflowStep).where(
+                WorkflowStep.work_item_id == wi.id,
+                WorkflowStep.step_id == "S01",
+            )
+        ).one()
+        step.agent_runtime_option_id = 5  # claude + claude-opus-4-7
+        db_session.commit()
+
+        from orch.agent_runtime.resolver import resolve_runtime
+
+        # Build minimal project-like objects
+        class FakeProject:
+            cli_tool = "opencode"
+            model = "minimax"
+
+        resolved = resolve_runtime(
+            db_session,
+            step=step,
+            item=wi,
+            project=FakeProject(),
+        )
+
+        # The step override (id=5) must win, not the FakeProject default (opencode/minimax)
+        assert resolved.cli_tool == "claude", f"Expected cli_tool=claude, got {resolved.cli_tool}"
+        assert resolved.model == "claude-opus-4-7", (
+            f"Expected model=claude-opus-4-7, got {resolved.model}"
+        )
+        assert resolved.id == 5
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
