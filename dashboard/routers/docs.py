@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
-from dashboard.utils.markdown import render_markdown_with_callouts
+from dashboard.utils.markdown import render_markdown_with_callouts, render_pdf_chromium
 from orch.db.models import DocStatus, DocType, JobStatus, Project
 from orch.doc_service import DocService
 
@@ -165,12 +164,12 @@ def docs_pdf_view(
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
     )
 
-    try:
-        from weasyprint import HTML
-
-        pdf_bytes = HTML(string=html_content).write_pdf()
-    except ImportError as exc:
-        raise HTTPException(status_code=501, detail="WeasyPrint not installed") from exc
+    pdf_bytes = cast("bytes", render_pdf_chromium(html_content))
+    if pdf_bytes is None:
+        raise HTTPException(
+            status_code=503,
+            detail="PDF generation unavailable — Chromium binary not found",
+        )
 
     return Response(content=pdf_bytes, media_type="application/pdf")
 
@@ -213,28 +212,14 @@ def docs_pdf(
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
     )
 
-    try:
-        from weasyprint import HTML
-
-        def generate_pdf() -> bytes:
-            return HTML(string=html_content).write_pdf()  # type: ignore[no-any-return]
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(generate_pdf)
-            try:
-                pdf_bytes = future.result(timeout=10)
-            except concurrent.futures.TimeoutError:
-                return JSONResponse(
-                    {"error": "PDF generation timed out", "retry": True},
-                    status_code=504,
-                )
-    except ImportError:
+    pdf_bytes = cast("bytes", render_pdf_chromium(html_content))
+    if pdf_bytes is None:
         return JSONResponse(
             {
-                "error": "PDF generation not available",
-                "detail": "WeasyPrint is not installed. Run: pip install weasyprint",
+                "error": "PDF generation unavailable",
+                "detail": "Chromium binary not found — check _PLAYWRIGHT_CHROME path",
             },
-            status_code=501,
+            status_code=503,
         )
 
     cache_dir = Path(project.repo_root) / "docs" / ".generated" / project_id
@@ -912,15 +897,7 @@ def docs_diff_ai_summary(
 
 
 def _make_render_pdf_fn() -> Any:
-    def render_pdf(html_content: str) -> bytes | None:
-        try:
-            from weasyprint import HTML
-
-            return HTML(string=html_content).write_pdf()  # type: ignore[no-any-return]
-        except ImportError:
-            return None
-
-    return render_pdf
+    return render_pdf_chromium
 
 
 @router.get("/api/docs/export")

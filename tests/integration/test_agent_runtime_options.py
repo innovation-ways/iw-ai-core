@@ -130,7 +130,7 @@ class TestAgentRuntimeOptionsTable:
             """)
         ).fetchall()
         assert len(rows) == 5, f"Expected 5 rows, got {len(rows)}"
-        assert rows[0] == ("opencode", "minimax", True, 10)
+        assert rows[0] == ("opencode", "minimax/MiniMax-M2.7", True, 10)
         assert rows[1] == ("opencode", "claude-sonnet-4-6", False, 20)
         assert rows[2] == ("opencode", "claude-opus-4-7", False, 30)
         assert rows[3] == ("claude", "claude-sonnet-4-6", False, 40)

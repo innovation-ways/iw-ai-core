@@ -32,8 +32,56 @@ _PUPPETEER_CONFIG = '{"args":["--no-sandbox","--disable-setuid-sandbox"]}'
 
 # Path to the Playwright-managed Chromium binary used by mmdc
 _PLAYWRIGHT_CHROME = (
-    Path.home() / ".cache" / "ms-playwright" / "chromium-1217" / "chrome-linux64" / "chrome"
+    Path(os.environ.get("IW_PLAYWRIGHT_CHROME_PATH", ""))
+    if os.environ.get("IW_PLAYWRIGHT_CHROME_PATH")
+    else Path.home() / ".cache" / "ms-playwright" / "chromium-1217" / "chrome-linux64" / "chrome"
 )
+
+
+def render_pdf_chromium(html_content: str, timeout: int = 30) -> bytes | None:
+    """Render HTML to PDF using headless Chromium.
+
+    WeasyPrint does not support SVG <foreignObject> (Mermaid node labels live there),
+    so we use the Playwright-managed Chromium binary with --print-to-pdf instead.
+    Returns None if the binary is missing or the subprocess fails.
+    """
+    if not _PLAYWRIGHT_CHROME.exists():
+        logger.warning(
+            "Chromium binary not found at %s — PDF generation unavailable", _PLAYWRIGHT_CHROME
+        )
+        return None
+    with tempfile.TemporaryDirectory() as tmpdir:
+        html_path = Path(tmpdir) / "doc.html"
+        pdf_path = Path(tmpdir) / "doc.pdf"
+        html_path.write_text(html_content, encoding="utf-8")
+        try:
+            result = subprocess.run(  # noqa: S603
+                [
+                    str(_PLAYWRIGHT_CHROME),
+                    "--headless",
+                    "--disable-gpu",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    f"--print-to-pdf={pdf_path}",
+                    f"file://{html_path}",
+                ],
+                timeout=timeout,
+                capture_output=True,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
+            logger.warning("Chromium PDF generation aborted: %s", exc)
+            return None
+        if result.returncode != 0:
+            logger.warning(
+                "Chromium PDF generation failed (rc=%d): %s",
+                result.returncode,
+                result.stderr.decode(errors="replace"),
+            )
+            return None
+        if not pdf_path.exists():
+            logger.warning("Chromium ran but no PDF was written to %s", pdf_path)
+            return None
+        return pdf_path.read_bytes()
 
 
 def _sanitize_mermaid(source: str) -> str:
