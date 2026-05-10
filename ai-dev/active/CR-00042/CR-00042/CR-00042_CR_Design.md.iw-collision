@@ -1,0 +1,214 @@
+# CR-00042: Fix Broken "Open full docs" Links in Help Popups
+
+**Type**: Change Request
+**Priority**: Medium
+**Reason**: Tech debt — all 22 "Open full docs" links in dashboard help popups return 404; hardcoded hrefs in 22 HTML files make future maintenance error-prone.
+**Created**: 2026-05-09
+**Status**: Draft
+
+---
+
+## ⛔ Docker is off-limits
+
+(Standard policy. Testcontainer fixtures in tests are exempt.)
+
+## ⛔ Migrations: agents generate, daemon applies
+
+This CR does not add, modify, or remove any database migrations.
+
+## Description
+
+Every dashboard page has a "?" help popup with an "Open full docs →" link. All 22 links currently 404 because they point to paths like `/docs/IW_AI_Core_Daemon_Design.md` that do not exist as routes — the `/docs` route serves the DB-registered project docs library, not the architecture reference files on disk. One link points to `/orch/rag/CLAUDE.md`, which is a filesystem path, not a URL. This CR adds a `/system/docs/{doc_slug}` route that renders files from the `docs/` directory as HTML, and centralises all 22 doc link hrefs in a single Python dict in `help.py` so future link changes require editing one file.
+
+## Project Context
+
+Read the project's `CLAUDE.md` for architecture, conventions, and hard rules. Key points relevant to this CR:
+- Dashboard: FastAPI + Jinja2 templates, `dashboard/routers/`, `dashboard/templates/`
+- Help system: `dashboard/routers/help.py` renders fragments from `dashboard/templates/_partials/help/{slug}.html`
+- `markdown` library (≥3.10.2) is already a project dependency — no new dep needed
+- Append plain CSS to `dashboard/static/styles.css` if `make css` fails (Tailwind toolchain issue, see I-00067)
+
+## Current Behavior
+
+The `/_help/{slug}` endpoint returns help popup HTML fragments. Each fragment has a hardcoded `<a href="...">Open full docs →</a>` in its footer `<a>` tag. All 22 hrefs point to non-existent routes:
+
+- 20 partials link to `/docs/IW_AI_Core_*.md` (e.g., `/docs/IW_AI_Core_Daemon_Design.md`)
+- 1 partial (`docs.html`) links to `/docs/implementation/00_INDEX.md`
+- 1 partial (`code.html`) links to `/orch/rag/CLAUDE.md` (a filesystem path, not a URL)
+
+The `/docs` route at `dashboard/routers/docs.py` (mounted under `/project/{project_id}/docs`) serves the DB-registered project docs library — a completely different concept. There is no route that serves files from the `docs/` directory on disk.
+
+## Desired Behavior
+
+1. A new `GET /system/docs/{doc_slug}` route reads the corresponding `.md` file from `docs/`, renders it to HTML using the `markdown` library (with `toc`, `tables`, and `fenced_code` extensions for heading anchors), and returns it in a `docs_view.html` template that extends `base.html`. The slug is validated against an explicit allow-list to prevent directory traversal.
+
+2. `help.py` gains a `_SLUG_TO_DOC: dict[str, str]` mapping each of the 22 help slugs to a `/system/docs/{doc_slug}` URL (with anchor fragments where appropriate). The `_render_help_fragment` function passes `docs_link` as template context.
+
+3. All 22 help partial templates replace their hardcoded `href="..."` with `href="{{ docs_link }}"`. Clicking "Open full docs →" navigates to a rendered, styled page that displays the relevant architecture reference document.
+
+## Impact Analysis
+
+### Affected Components
+
+| Component | Current State | Changed To |
+|-----------|---------------|------------|
+| `dashboard/routers/help.py` | Renders fragment with no docs_link context | Adds `_SLUG_TO_DOC` dict; passes `docs_link` to template render |
+| `dashboard/routers/system.py` | No `/system/docs/` route | New `GET /system/docs/{doc_slug}` route added |
+| `dashboard/templates/_partials/help/*.html` (22 files) | Hardcoded `href` strings | `href="{{ docs_link }}"` |
+| `dashboard/templates/pages/system/docs_view.html` | Does not exist | New template for rendered markdown view |
+
+### Breaking Changes
+
+None. The existing `/_help/{slug}` endpoint contract is unchanged. The new `/system/docs/{doc_slug}` route is additive.
+
+### Data Migration
+
+Not required.
+
+## Implementation Plan
+
+### Agents and Execution Order
+
+| Step | Agent | Scope | Parallel With |
+|------|-------|-------|---------------|
+| S01 | `backend-impl` | Add `/system/docs/{doc_slug}` route to `system.py`; new `docs_view.html` template; add `_SLUG_TO_DOC` dict to `help.py`; pass `docs_link` context | — |
+| S02 | `code-review-impl` | Review S01 | — |
+| S03 | `frontend-impl` | Update all 22 help partials: replace hardcoded `href` with `{{ docs_link }}` | — |
+| S04 | `code-review-impl` | Review S03 | — |
+| S05 | `tests-impl` | Unit tests for new route; update `test_help_router.py` for context injection | — |
+| S06 | `code-review-impl` | Review S05 | — |
+| S07 | `code-review-final-impl` | Cross-agent global review: AC trace, security, test coverage | — |
+| S08 | `qv-gate` (lint) | `make lint` | — |
+| S09 | `qv-gate` (format) | `make format-check` | — |
+| S10 | `qv-gate` (typecheck) | `make type-check` | — |
+| S11 | `qv-gate` (arch-check) | `make arch-check` | — |
+| S12 | `qv-gate` (security-sast) | `make security-sast` | — |
+| S13 | `qv-gate` (unit-tests) | `make test-unit` | — |
+| S14 | `qv-gate` (integration-tests) | `make test-integration` | — |
+| S15 | `qv-browser` | Verify help popup links open rendered docs; no regressions | — |
+| S16 | `self-assess-impl` | Post-execution analysis | — |
+
+### Database Changes
+
+- **New tables**: None
+- **Modified tables**: None
+- **Migration notes**: N/A
+
+### API Changes
+
+- **New endpoints**: `GET /system/docs/{doc_slug}` — returns HTML page rendering the named architecture doc
+- **Modified endpoints**: `GET /_help/{slug}` — response HTML now contains a dynamic `docs_link` value instead of a hardcoded href (same endpoint, richer output)
+- **Removed endpoints**: None
+
+### Frontend Changes
+
+- **New templates**: `dashboard/templates/pages/system/docs_view.html`
+- **Modified templates**: `dashboard/templates/_partials/help/*.html` (22 files) — `href="{{ docs_link }}"`
+- **Removed templates**: None
+
+## File Manifest
+
+| File | Type | Purpose |
+|------|------|---------|
+| `ai-dev/active/CR-00042/CR-00042_CR_Design.md` | Design | This document |
+| `ai-dev/active/CR-00042/CR-00042_Functional.md` | Design | Human-facing summary |
+| `ai-dev/active/CR-00042/workflow-manifest.json` | Manifest | Step definitions for orchestrator |
+| `ai-dev/active/CR-00042/prompts/CR-00042_S01_backend-impl_prompt.md` | Prompt | S01: backend route + dict |
+| `ai-dev/active/CR-00042/prompts/CR-00042_S02_CodeReview_prompt.md` | Prompt | S02: review S01 |
+| `ai-dev/active/CR-00042/prompts/CR-00042_S03_frontend-impl_prompt.md` | Prompt | S03: update 22 partials |
+| `ai-dev/active/CR-00042/prompts/CR-00042_S04_CodeReview_prompt.md` | Prompt | S04: review S03 |
+| `ai-dev/active/CR-00042/prompts/CR-00042_S05_tests-impl_prompt.md` | Prompt | S05: tests |
+| `ai-dev/active/CR-00042/prompts/CR-00042_S06_CodeReview_prompt.md` | Prompt | S06: review S05 |
+| `ai-dev/active/CR-00042/prompts/CR-00042_S07_CodeReview_Final_prompt.md` | Prompt | S07: final global review |
+| `ai-dev/active/CR-00042/prompts/CR-00042_S15_BrowserVerification_prompt.md` | Prompt | S15: browser verification |
+| `ai-dev/active/CR-00042/prompts/CR-00042_S16_SelfAssess_prompt.md` | Prompt | S16: self-assessment |
+| `dashboard/routers/system.py` | Code | New `/system/docs/{doc_slug}` route |
+| `dashboard/routers/help.py` | Code | `_SLUG_TO_DOC` dict + context injection |
+| `dashboard/templates/pages/system/docs_view.html` | Template | New markdown viewer page |
+| `dashboard/templates/_partials/help/*.html` | Templates | 22 files: dynamic `docs_link` |
+| `tests/dashboard/test_system_docs_route.py` | Test | New unit tests for the docs route |
+| `tests/dashboard/test_help_router.py` | Test | Update existing tests for `docs_link` context |
+
+## Acceptance Criteria
+
+### AC1: All "Open full docs" links resolve to a rendered page
+
+```
+Given the dashboard is running
+When a user opens any help popup and clicks "Open full docs →"
+Then the browser navigates to /system/docs/{doc_slug} and returns HTTP 200
+  with a styled HTML page rendering the relevant architecture document
+```
+
+### AC2: The docs_link mapping is centralised — no hardcoded hrefs in partials
+
+```
+Given the 22 help partial templates
+When inspected for hardcoded /docs/ or /orch/ href values
+Then none are found — all "Open full docs" links use {{ docs_link }}
+  sourced from the _SLUG_TO_DOC dict in help.py
+```
+
+### AC3: Unknown doc slugs return 404 (directory traversal prevented)
+
+```
+Given the /system/docs/{doc_slug} route
+When called with a slug not in the allow-list (e.g. /system/docs/../secrets)
+Then the route returns HTTP 404 with no file content leaked
+```
+
+### AC4: The rendered page displays correct content for each mapped slug
+
+```
+Given the slug-to-doc mapping in help.py
+When /system/docs/IW_AI_Core_Daemon_Design is requested
+Then the response body contains content from docs/IW_AI_Core_Daemon_Design.md
+  (e.g. a heading from that file)
+```
+
+### AC5: Heading anchors work (TOC extension active)
+
+```
+Given /system/docs/IW_AI_Core_CLI_Spec#approve is opened
+When the page loads
+Then the browser scrolls to the "approve" heading
+  (heading IDs are generated by the toc extension)
+```
+
+## Rollback Plan
+
+- **Database**: N/A — no schema changes
+- **Code**: Revert the merge commit. No data is affected.
+- **Data**: No data loss on rollback.
+
+## Dependencies
+
+- **Depends on**: None
+- **Blocks**: None
+
+## Impacted Paths
+
+- `dashboard/routers/system.py`
+- `dashboard/routers/help.py`
+- `dashboard/templates/pages/system/docs_view.html`
+- `dashboard/templates/_partials/help/*.html`
+- `tests/dashboard/test_system_docs_route.py`
+- `tests/dashboard/test_help_router.py`
+
+## TDD Approach
+
+- **Unit tests** (`tests/dashboard/test_system_docs_route.py`):
+  - `GET /system/docs/IW_AI_Core_Daemon_Design` returns 200 with HTML containing a heading from the file
+  - `GET /system/docs/nonexistent_slug` returns 404
+  - `GET /system/docs/../etc/passwd` returns 404 (traversal blocked by allow-list)
+  - `GET /system/docs/IW_AI_Core_Architecture` returns 200 with rendered HTML (not raw markdown)
+- **Updated tests** (`tests/dashboard/test_help_router.py`):
+  - Verify that the rendered help fragment for `queue` contains a valid `href` pointing to `/system/docs/`
+  - Verify no hardcoded `/docs/IW_AI_Core` or `/orch/` hrefs appear in any rendered fragment
+
+## Notes
+
+- The `markdown` library is already listed in `pyproject.toml` (`markdown>=3.10.2`). No new dependency needed.
+- The `docs_view.html` template should reuse the `.prose-doc` CSS class already defined in `docs_detail.html` (inline `<style>` block) to ensure consistent rendering without a Tailwind rebuild.
+- Heading anchor IDs generated by the `toc` extension use slugified heading text (e.g., "## Approve an item" → `id="approve-an-item"`). The mapping for `queue` uses `#approve` which matches the existing heading in `IW_AI_Core_CLI_Spec.md` — verify during implementation.
+- The allow-list in `/system/docs/` should be derived at startup from the actual `.md` files present in `docs/` (similar to how `_ALLOWED_SLUGS` is built in `help.py`) rather than a hardcoded list, so new docs added to `docs/` become accessible without a code change.

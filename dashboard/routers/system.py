@@ -1,17 +1,21 @@
-"""System-level pages: status, all-active, config."""
+"""System-level pages: status, all-active, config, docs-view."""
 
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from markdown import markdown
+from markupsafe import Markup
 from sqlalchemy import func, select
 
 from dashboard.dependencies import get_db
@@ -378,5 +382,60 @@ def system_config(request: Request, db: Session = Depends(get_db)) -> Any:
             "projects_toml": projects_toml_raw,
             "env_summary": env_summary,
             "project_configs": project_configs,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Docs view  (CR-00042)
+# ---------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_DOCS_DIR = _REPO_ROOT / "docs"
+_DOCS_SLUG_RE = re.compile(r"^[A-Za-z0-9_]+$")
+_ALLOWED_DOC_SLUGS: set[str] = set()
+
+
+def _load_doc_allow_list() -> set[str]:
+    """Scan docs/ at module load time and return the set of valid doc stems."""
+    if not _DOCS_DIR.is_dir():
+        logger.warning("docs/ directory not found at %s", _DOCS_DIR)
+        return set()
+    return {p.stem for p in _DOCS_DIR.glob("*.md") if p.is_file()}
+
+
+_ALLOWED_DOC_SLUGS = _load_doc_allow_list()
+
+
+@router.get("/docs/{doc_slug}", response_class=HTMLResponse)
+def system_docs_view(doc_slug: str, request: Request) -> HTMLResponse:
+    """Render a docs/ .md file as HTML and return the docs_view page."""
+    # Step 1: strict regex validation
+    if not _DOCS_SLUG_RE.match(doc_slug):
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Step 2: allow-list check
+    if doc_slug not in _ALLOWED_DOC_SLUGS:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Step 3: construct safe path and read file
+    file_path = _DOCS_DIR / f"{doc_slug}.md"
+    if not file_path.is_file():
+        # Double-check after allow-list check (defensive)
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    content = file_path.read_text(encoding="utf-8")
+    rendered = markdown(content, extensions=["toc", "tables", "fenced_code"])
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "pages/system/docs_view.html",
+        {
+            "doc_slug": doc_slug,
+            "doc_title": doc_slug.replace("_", " "),
+            "rendered_html": Markup(rendered),  # noqa: S704
         },
     )

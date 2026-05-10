@@ -1,0 +1,148 @@
+# CR-00042_S05_tests-impl_prompt
+
+**Work Item**: CR-00042 — Fix Broken "Open full docs" Links in Help Popups
+**Step**: S05
+**Agent**: tests-impl
+
+---
+
+## ⛔ Docker is off-limits
+
+Full policy: docs/IW_AI_Core_Agent_Constraints.md
+
+## ⛔ Migrations: agents generate, daemon applies
+
+This step does not touch migrations.
+
+## Input Files
+
+- `ai-dev/active/CR-00042/CR-00042_CR_Design.md` — acceptance criteria (AC1–AC5)
+- `dashboard/routers/system.py` — new `/system/docs/{doc_slug}` route
+- `dashboard/routers/help.py` — `_SLUG_TO_DOC` dict and `_render_help_fragment` with `docs_link`
+- `tests/dashboard/test_help_router.py` — existing help router tests to update
+- `tests/dashboard/test_help_fragments_present.py` — existing fragment presence tests
+- `tests/conftest.py` — test client fixtures
+- `tests/CLAUDE.md` — test conventions for this project
+
+## Output Files
+
+- `tests/dashboard/test_system_docs_route.py` — new test file (may already exist from S01; update/extend as needed)
+- `tests/dashboard/test_help_router.py` — updated to assert `docs_link` in rendered fragment HTML
+- `ai-dev/active/CR-00042/reports/CR-00042_S05_tests-impl_report.md` — step report
+
+## Context
+
+S01 created a skeleton `tests/dashboard/test_system_docs_route.py`. Your job is to ensure the test suite is complete and correct. Read `tests/CLAUDE.md` for test conventions. Follow TDD (Red-Green-Refactor) — for any new tests, write them RED first, run to confirm failure, then verify GREEN.
+
+## Requirements
+
+### 1. `tests/dashboard/test_system_docs_route.py` — complete the unit tests
+
+Ensure the following tests are present and passing:
+
+**T1** — valid slug returns 200 with rendered HTML (not raw markdown):
+```python
+def test_system_docs_valid_slug_returns_200(client):
+    resp = client.get("/system/docs/IW_AI_Core_Daemon_Design")
+    assert resp.status_code == 200
+    assert "<h" in resp.text  # rendered HTML, not raw # markdown
+    assert "IW_AI_Core_Daemon_Design" not in resp.text or "Daemon" in resp.text
+```
+
+**T2** — unknown slug returns 404:
+```python
+def test_system_docs_unknown_slug_returns_404(client):
+    assert client.get("/system/docs/nonexistent_slug").status_code == 404
+```
+
+**T3** — path traversal attempts return 404 (the regex blocks `.`, `%`, `/`):
+```python
+@pytest.mark.parametrize("slug", ["../etc/passwd", "..%2F..%2Fetc%2Fpasswd", "foo/bar", "foo.md"])
+def test_system_docs_traversal_returns_404(client, slug):
+    assert client.get(f"/system/docs/{slug}").status_code == 404
+```
+
+**T4** — rendered output contains heading IDs (toc extension active):
+```python
+def test_system_docs_toc_extension_generates_heading_ids(client):
+    resp = client.get("/system/docs/IW_AI_Core_Architecture")
+    assert resp.status_code == 200
+    assert 'id="' in resp.text  # toc extension generates heading id attrs
+```
+
+**T5** — all slugs in `_SLUG_TO_DOC` resolve to a path starting with `/system/docs/`:
+```python
+def test_slug_to_doc_all_values_point_to_system_docs():
+    from dashboard.routers.help import _SLUG_TO_DOC
+    for slug, url in _SLUG_TO_DOC.items():
+        assert url.startswith("/system/docs/"), f"{slug!r} maps to bad URL: {url!r}"
+```
+
+**T6** — `_SLUG_TO_DOC` covers all 22 known help partial slugs:
+```python
+EXPECTED_SLUGS = {
+    "all_active", "batch_detail", "batches", "code", "config", "containers",
+    "coverage", "docs", "history", "item_detail", "job_detail", "jobs",
+    "keep_alive", "projects", "quality", "queue", "research", "running",
+    "search", "status", "tests", "worktrees",
+}
+def test_slug_to_doc_covers_all_help_slugs():
+    from dashboard.routers.help import _SLUG_TO_DOC
+    missing = EXPECTED_SLUGS - set(_SLUG_TO_DOC.keys())
+    assert not missing, f"Missing slugs in _SLUG_TO_DOC: {missing}"
+```
+
+### 2. Update `tests/dashboard/test_help_router.py`
+
+Add or update a test to assert that the rendered fragment HTML contains a `/system/docs/` href (not a hardcoded broken path):
+
+```python
+@pytest.mark.parametrize("slug", ["queue", "batches", "status", "code"])
+def test_help_fragment_docs_link_points_to_system_docs(client, slug):
+    resp = client.get(f"/_help/{slug}")
+    assert resp.status_code == 200
+    assert 'href="/system/docs/' in resp.text
+    # Ensure no old broken hrefs remain. NOTE: do NOT assert `"/docs/IW_AI_Core"
+    # not in resp.text` — that substring also appears inside the *new* valid path
+    # `/system/docs/IW_AI_Core_...`. Anchor the negative checks to the `href="` prefix.
+    assert 'href="/docs/' not in resp.text
+    assert 'href="/orch/' not in resp.text
+```
+
+## Pre-flight Quality Gates (NON-NEGOTIABLE)
+
+1. `make format`
+2. `make typecheck`
+3. `make lint`
+
+## Test Verification
+
+Run only the test files you wrote or modified:
+```bash
+uv run pytest tests/dashboard/test_system_docs_route.py tests/dashboard/test_help_router.py -v
+```
+
+## Subagent Result Contract
+
+```json
+{
+  "step": "S05",
+  "agent": "tests-impl",
+  "work_item": "CR-00042",
+  "completion_status": "complete|partial|blocked",
+  "files_changed": [
+    "tests/dashboard/test_system_docs_route.py",
+    "tests/dashboard/test_help_router.py",
+    "ai-dev/active/CR-00042/reports/CR-00042_S05_tests-impl_report.md"
+  ],
+  "preflight": {
+    "format": "ok|fixed|skipped:<reason>",
+    "typecheck": "ok|skipped:<reason>",
+    "lint": "ok|skipped:<reason>"
+  },
+  "tests_passed": true,
+  "test_summary": "X passed, 0 failed",
+  "blockers": [],
+  "notes": ""
+}
+```
