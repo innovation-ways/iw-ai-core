@@ -1,0 +1,125 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00043",
+  "type": "ChangeRequest",
+  "title": "Robust Chromium resolution for dashboard PDF / Mermaid rendering in containers",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/utils/markdown.py",
+      "Dockerfile.e2e",
+      "tests/dashboard/test_markdown_chromium.py",
+      "tests/dashboard/test_docs_pdf_chromium.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Add _resolve_chromium_binary() (env IW_PLAYWRIGHT_CHROME_PATH -> newest ~/.cache/ms-playwright/chromium-*/chrome -> shutil.which chromium/chromium-browser/google-chrome/google-chrome-stable -> None) to dashboard/utils/markdown.py; route render_pdf_chromium() and _render_mermaid_mmdc() through it; keep the existing IW_PLAYWRIGHT_CHROME_PATH env name (do not add a new one); keep the graceful None behavior",
+      "prompt": "prompts/CR-00043_S01_backend-impl_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Code review of S01 (resolver priority order, no DB import added, graceful-None path preserved)",
+      "prompt": "prompts/CR-00043_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Provision a Chromium browser in Dockerfile.e2e (apt-get install -y --no-install-recommends chromium + minimal headless runtime libs, cleaned in the same RUN layer); do not remove the existing libpango deps; the per-worktree compose app container is out of scope (see design Notes)",
+      "prompt": "prompts/CR-00043_S03_backend-impl_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Code review of S03 (Dockerfile.e2e change minimal and correct; --no-install-recommends + cleanup in same layer; libpango deps retained; no docker lifecycle commands; non-root + --no-sandbox compatibility; image still starts the dashboard the same way)",
+      "prompt": "prompts/CR-00043_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Unit tests for _resolve_chromium_binary(): env override wins; non-existent env path ignored; newest chromium-* glob picked; shutil.which fallback; None -> graceful (tests/dashboard/test_markdown_chromium.py). Update tests/dashboard/test_docs_pdf_chromium.py only if it asserts the old hardcoded path",
+      "prompt": "prompts/CR-00043_S05_tests-impl_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Code review of S05 (resolver test coverage; isolation via monkeypatch/tmp_path; no live DB import)",
+      "prompt": "prompts/CR-00043_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Final cross-agent review: resolver correctness + priority order, image provisioning sane, graceful degradation intact, AC1-AC5 traced",
+      "prompt": "prompts/CR-00043_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture check"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST (bandit)"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests (includes tests/dashboard/)"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — /pdf route returns HTTP 200 + %PDF in the E2E stack; no regressions on the doc detail page",
+      "prompt": "prompts/CR-00043_S15_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S16",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00043_S16_SelfAssess_prompt.md"
+    }
+  ]
+}

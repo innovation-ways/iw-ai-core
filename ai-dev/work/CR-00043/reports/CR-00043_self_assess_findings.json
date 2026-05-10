@@ -1,0 +1,10 @@
+{
+  "item_id": "CR-00043",
+  "bottom_line": "CR-00043 executed cleanly with zero fix-cycles, zero retries, and all QV gates passing on first attempt. No process improvements warranted.",
+  "coverage_notes": "Worktree logs directory not present (`.worktrees/CR-00043/ai-dev/logs/` absent). Primary evidence unavailable; relied on agent self-reports in `ai-dev/active/CR-00043/reports/` as secondary evidence. DB telemetry via `iw item-status --json` confirmed step statuses. S15 browser verification report + evidence screenshots confirmed AC5 satisfied.",
+  "findings": [],
+  "steps_analyzed": 15,
+  "total_retries": 0,
+  "total_fix_cycles": 0,
+  "db_signal": true
+}
