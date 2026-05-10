@@ -28,27 +28,27 @@ _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 #: Absolute path to the help fragments directory within the dashboard package.
 _HELP_FRAGMENTS_DIR = Path(__file__).resolve().parent.parent / "templates" / "_partials" / "help"
 
-#: Mapping from help slug to the docs URL for the "Open full docs" link (CR-00042).
+#: Mapping from help slug to the docs URL for the "Open full docs" link (CR-00042, CR-00044).
 _SLUG_TO_DOC: dict[str, str] = {
     "all_active": "/system/docs/IW_AI_Core_Daemon_Design",
     "batch_detail": "/system/docs/IW_AI_Core_Daemon_Design",
     "batches": "/system/docs/IW_AI_Core_Daemon_Design",
-    "code": "/system/docs/IW_AI_Core_Architecture",
+    "code": "/system/docs/orch/rag/CLAUDE.md",
     "config": "/system/docs/IW_AI_Core_Tech_Stack",
     "containers": "/system/docs/IW_AI_Core_Worktree_Isolation",
     "coverage": "/system/docs/IW_AI_Core_Tech_Stack",
     "docs": "/system/docs/IW_AI_Core_Dashboard_Design",
     "history": "/system/docs/IW_AI_Core_CLI_Spec",
-    "item_detail": "/system/docs/IW_AI_Core_Architecture",
+    "item_detail": "/system/docs/IW_AI_Core_Dashboard_Design",
     "job_detail": "/system/docs/IW_AI_Core_Daemon_Design",
     "jobs": "/system/docs/IW_AI_Core_Daemon_Design",
     "keep_alive": "/system/docs/IW_AI_Core_Daemon_Design",
     "projects": "/system/docs/IW_AI_Core_Architecture",
     "quality": "/system/docs/IW_AI_Core_Tech_Stack",
     "queue": "/system/docs/IW_AI_Core_CLI_Spec#iw-approve",
-    "research": "/system/docs/IW_AI_Core_Architecture",
+    "research": "/system/docs/IW_AI_Core_Dashboard_Design",
     "running": "/system/docs/IW_AI_Core_Daemon_Design",
-    "search": "/system/docs/IW_AI_Core_Architecture",
+    "search": "/system/docs/IW_AI_Core_Dashboard_Design",
     "status": "/system/docs/IW_AI_Core_DB_Setup",
     "tests": "/system/docs/IW_AI_Core_Tech_Stack",
     "worktrees": "/system/docs/IW_AI_Core_Daemon_Design",

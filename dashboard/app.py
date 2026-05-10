@@ -239,6 +239,24 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "iw-ai-core-dashboard"}
 
+    # Favicon route — returns the SVG as image/svg+xml so browsers don't 404
+    # on the automatic GET /favicon.ico request (CR-00044 AC5)
+    favicon_svg_path = _STATIC_DIR / "favicon.svg"
+
+    @app.get("/favicon.ico")
+    def favicon_ico() -> Response:
+        from fastapi.responses import FileResponse
+
+        if favicon_svg_path.is_file():
+            return FileResponse(
+                path=str(favicon_svg_path),
+                media_type="image/svg+xml",
+            )
+        # Defensive: if the SVG is somehow missing, return 204 No Content
+        from starlette.responses import Response
+
+        return Response(status_code=204)
+
     # Schema-mismatch guard. When the live DB is missing a column that the
     # ORM model declares (e.g. a per-worktree DB seeded from production whose
     # schema is behind the worktree's own migration), every SELECT 500s with

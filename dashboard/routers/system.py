@@ -9,7 +9,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -387,55 +387,95 @@ def system_config(request: Request, db: Session = Depends(get_db)) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Docs view  (CR-00042)
+# Docs view  (CR-00042 + CR-00044: subdirectory support)
 # ---------------------------------------------------------------------------
 
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _DOCS_DIR = _REPO_ROOT / "docs"
-_DOCS_SLUG_RE = re.compile(r"^[A-Za-z0-9_]+$")
-_ALLOWED_DOC_SLUGS: set[str] = set()
+
+# Curated CLAUDE.md files surfaced via the docs viewer (URL key = repo-relative path)
+_CLAUDE_MD_PATHS: list[str] = [
+    "orch/rag/CLAUDE.md",
+    "orch/CLAUDE.md",
+    "dashboard/CLAUDE.md",
+    "executor/CLAUDE.md",
+]
+
+# Precompute the URL-key → repo-relative-path map at module load.
+# - docs/ files: key = path relative to docs/ with .md suffix stripped
+#   (e.g. docs/implementation/00_INDEX.md → "implementation/00_INDEX")
+#   This preserves every flat-form URL from CR-00042.
+# - curated CLAUDE.md files: key = repo-relative path including .md
+#   (e.g. "orch/rag/CLAUDE.md" → "orch/rag/CLAUDE.md")
+_DOC_URL_MAP: dict[str, str] = {}
+
+# Allowed base directories for resolved-path defence-in-depth check
+_ALLOWED_BASE_DIRS: list[Path] = [_DOCS_DIR]
+
+for _p in _DOCS_DIR.rglob("*.md"):
+    _url_key = _p.relative_to(_DOCS_DIR).with_suffix("").as_posix()
+    _repo_rel = _p.relative_to(_REPO_ROOT).as_posix()
+    _DOC_URL_MAP[_url_key] = _repo_rel
+
+for _claude_rel in _CLAUDE_MD_PATHS:
+    _claude_path = _REPO_ROOT / _claude_rel
+    if _claude_path.is_file():
+        _DOC_URL_MAP[_claude_rel] = _claude_rel
+        _ALLOWED_BASE_DIRS.append((_REPO_ROOT / _claude_rel).parent.resolve())
 
 
-def _load_doc_allow_list() -> set[str]:
-    """Scan docs/ at module load time and return the set of valid doc stems."""
-    if not _DOCS_DIR.is_dir():
-        logger.warning("docs/ directory not found at %s", _DOCS_DIR)
-        return set()
-    return {p.stem for p in _DOCS_DIR.glob("*.md") if p.is_file()}
+def _extract_h1_title(content: str) -> str:
+    """Return the first level-1 ATX heading text from a markdown string, or None."""
+
+    m = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
+    if m:
+        return m.group(1).strip()
+    return ""
 
 
-_ALLOWED_DOC_SLUGS = _load_doc_allow_list()
+@router.get("/docs/{doc_path:path}", response_class=HTMLResponse)
+def system_docs_view(doc_path: str, request: Request) -> HTMLResponse:
+    """Render a docs/ .md file (or curated CLAUDE.md) as HTML.
 
-
-@router.get("/docs/{doc_slug}", response_class=HTMLResponse)
-def system_docs_view(doc_slug: str, request: Request) -> HTMLResponse:
-    """Render a docs/ .md file as HTML and return the docs_view page."""
-    # Step 1: strict regex validation
-    if not _DOCS_SLUG_RE.match(doc_slug):
+    The doc_path is validated against a precomputed allow-list map, then
+    defended by resolved-path checks inside allowed base directories.
+    The page title is derived from the document's first H1 heading.
+    """
+    # --- Step 1: structural validation ---
+    if not doc_path or doc_path.startswith("/"):
+        raise HTTPException(status_code=404, detail="Document not found")
+    _pp = PurePosixPath(doc_path)
+    if any(p in (".", "..") for p in _pp.parts):
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Step 2: allow-list check
-    if doc_slug not in _ALLOWED_DOC_SLUGS:
+    # --- Step 2: allow-list lookup ---
+    mapped = _DOC_URL_MAP.get(doc_path)
+    if mapped is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Step 3: construct safe path and read file
-    file_path = _DOCS_DIR / f"{doc_slug}.md"
-    if not file_path.is_file():
-        # Double-check after allow-list check (defensive)
+    # --- Step 3: resolved-path defence-in-depth ---
+    candidate = (_REPO_ROOT / mapped).resolve()
+    if not any(candidate.is_relative_to(base) for base in _ALLOWED_BASE_DIRS):
         raise HTTPException(status_code=404, detail="Document not found")
 
-    content = file_path.read_text(encoding="utf-8")
+    # --- Step 4: require a .md file ---
+    if candidate.suffix != ".md" or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # --- Step 5: read and render ---
+    content = candidate.read_text(encoding="utf-8")
     rendered = markdown(content, extensions=["toc", "tables", "fenced_code"])
+    doc_title = _extract_h1_title(content) or PurePosixPath(doc_path).stem.replace("_", " ")
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "pages/system/docs_view.html",
         {
-            "doc_slug": doc_slug,
-            "doc_title": doc_slug.replace("_", " "),
+            "doc_slug": doc_path,
+            "doc_title": doc_title,
             "rendered_html": Markup(rendered),  # noqa: S704
         },
     )
