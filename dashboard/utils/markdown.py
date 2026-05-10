@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -19,8 +20,71 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Mermaid → SVG rendering helpers
+# Chromium binary resolution
 # ---------------------------------------------------------------------------
+# Resolution order (all paths must actually exist to be returned):
+#   1. $IW_PLAYWRIGHT_CHROME_PATH  (explicit override — keep this name)
+#   2. Newest ~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome  (glob)
+#   3. shutil.which("chromium" | "chromium-browser" | "google-chrome" |
+#                   "google-chrome-stable")
+#   4. None  →  callers degrade gracefully (PDF → 503, mmdc → Kroki fallback)
+
+
+def _resolve_chromium_binary() -> Path | None:
+    """Locate a Chromium/Chrome executable for headless PDF + mmdc rendering.
+
+    Resolution order:
+      1. $IW_PLAYWRIGHT_CHROME_PATH, if set and the path exists.
+      2. The newest ~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome.
+         "Newest" means highest numeric suffix; a Path.glob over ``chromium-*``
+         followed by sorting on the integer suffix handles it.
+         Only returns a candidate whose ``chrome`` file actually exists.
+      3. shutil.which for ``chromium``, ``chromium-browser``, ``google-chrome``,
+         ``google-chrome-stable``.
+      4. None — callers must degrade gracefully (PDF route → 503,
+         mmdc → Kroki fallback), exactly as today.
+    """
+    # Step 1: env var override
+    env_path = os.environ.get("IW_PLAYWRIGHT_CHROME_PATH", "")
+    if env_path:
+        candidate = Path(env_path)
+        if candidate.exists():
+            return candidate
+        # Env var is set but the path does not exist — fall through.
+
+    # Step 2: newest ms-playwright Chromium
+    ms_playwright_root = Path.home() / ".cache" / "ms-playwright"
+    if ms_playwright_root.is_dir():
+        # glob for chromium-* directories, extract numeric suffix, sort descending
+        chromium_dirs: list[tuple[int, Path]] = []
+        for d in ms_playwright_root.iterdir():
+            if not d.is_dir() or not d.name.startswith("chromium-"):
+                continue
+            suffix_str = d.name.removeprefix("chromium-")
+            try:
+                suffix = int(suffix_str)
+            except ValueError:
+                continue
+            chrome_bin = d / "chrome-linux64" / "chrome"
+            if chrome_bin.is_file():
+                chromium_dirs.append((suffix, chrome_bin))
+
+        if chromium_dirs:
+            # Pick the highest numbered Chromium version
+            chromium_dirs.sort(key=lambda x: x[0], reverse=True)
+            return chromium_dirs[0][1]
+
+    # Step 3: PATH lookup
+    for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable"):
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+
+    # Step 4: nothing found
+    return None
+
+
+_PLAYWRIGHT_CHROME: Path | None = _resolve_chromium_binary()
 
 _MERMAID_CODE_RE = re.compile(
     r'<pre><code class="language-mermaid">(.*?)</code></pre>',
@@ -30,13 +94,6 @@ _MERMAID_CODE_RE = re.compile(
 # Puppeteer config for headless Chromium (no sandbox for Linux/WSL)
 _PUPPETEER_CONFIG = '{"args":["--no-sandbox","--disable-setuid-sandbox"]}'
 
-# Path to the Playwright-managed Chromium binary used by mmdc
-_PLAYWRIGHT_CHROME = (
-    Path(os.environ.get("IW_PLAYWRIGHT_CHROME_PATH", ""))
-    if os.environ.get("IW_PLAYWRIGHT_CHROME_PATH")
-    else Path.home() / ".cache" / "ms-playwright" / "chromium-1217" / "chrome-linux64" / "chrome"
-)
-
 
 def render_pdf_chromium(html_content: str, timeout: int = 30) -> bytes | None:
     """Render HTML to PDF using headless Chromium.
@@ -45,9 +102,10 @@ def render_pdf_chromium(html_content: str, timeout: int = 30) -> bytes | None:
     so we use the Playwright-managed Chromium binary with --print-to-pdf instead.
     Returns None if the binary is missing or the subprocess fails.
     """
-    if not _PLAYWRIGHT_CHROME.exists():
+    if _PLAYWRIGHT_CHROME is None or not _PLAYWRIGHT_CHROME.exists():
         logger.warning(
-            "Chromium binary not found at %s — PDF generation unavailable", _PLAYWRIGHT_CHROME
+            "Chromium binary not found — PDF generation unavailable "
+            "(searched IW_PLAYWRIGHT_CHROME_PATH, ms-playwright cache, and PATH)"
         )
         return None
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -241,7 +299,7 @@ def _render_mermaid_mmdc(mermaid_source: str) -> str | None:
         cfg_path.write_text(_PUPPETEER_CONFIG, encoding="utf-8")
 
         env = os.environ.copy()
-        if _PLAYWRIGHT_CHROME.exists():
+        if _PLAYWRIGHT_CHROME is not None and _PLAYWRIGHT_CHROME.exists():
             env["PUPPETEER_EXECUTABLE_PATH"] = str(_PLAYWRIGHT_CHROME)
 
         try:
