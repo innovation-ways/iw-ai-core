@@ -724,6 +724,21 @@ def _merge_log_content(bi: BatchItem) -> str:
     if bi.merged_at:
         lines.append(f"Merged at: {bi.merged_at.isoformat()}")
     if bi.merge_info and isinstance(bi.merge_info, dict):
+        # Pre-merge rebase failures and similar phase-tagged failures land here.
+        phase = bi.merge_info.get("phase")
+        if phase and bi.merge_info.get("success") is False:
+            lines.append("")
+            lines.append(f"--- pre-merge {phase} failure ---")
+            summary = bi.merge_info.get("summary")
+            if summary:
+                lines.append(f"Summary: {summary}")
+            for sha_key in ("worktree_base_sha", "current_main_sha"):
+                if bi.merge_info.get(sha_key):
+                    lines.append(f"{sha_key}: {bi.merge_info[sha_key]}")
+            err = bi.merge_info.get("error_message")
+            if err:
+                lines.append("")
+                lines.append(err)
         stdout = bi.merge_info.get("stdout", "")
         if stdout:
             lines.append("")

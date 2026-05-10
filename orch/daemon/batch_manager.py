@@ -1203,8 +1203,12 @@ class BatchManager:
                 Path(worktree_path) / ".tmp" / f"{step.work_item_id}_{step.step_id}.prompt"
             )
             prompt_file.parent.mkdir(parents=True, exist_ok=True)
-            prompt_file.write_text(prompt)
+            write_agent_prompt(prompt_file, prompt)
 
+            # NOTE: the fix-agent launcher in ``fix_cycle._launch_fix_agent``
+            # builds the same `opencode run "$(cat …)"` / `claude -p "$(cat …)"`
+            # form — keep the two in sync (F-00081 changed this site but missed
+            # the fix-cycle copy; see I-00074).
             if resolved_cli_tool == "opencode":
                 agent_name = step.opencode_agent or step.agent_label
                 agent_args = f"--agent {agent_name}" if agent_name else ""
@@ -1605,6 +1609,50 @@ def substitute_worktree_placeholders(
         return str(value)
 
     return _WORKTREE_PLACEHOLDER_RE.sub(_replace, prompt)
+
+
+# Max bytes for a prompt that is later embedded on a shell command line as
+# ``"$(cat <file>)"`` (the form both _launch_step and fix_cycle._launch_fix_agent
+# use). Linux's MAX_ARG_STRLEN caps a *single* argv element at 128 KiB; a prompt
+# larger than that makes ``execve`` fail with E2BIG ("Argument list too long")
+# and the agent process never starts. Cap well below it.
+#
+# Diagnosed in I-00074: a QV fix-cycle prompt that embedded a full ``pytest -v``
+# dump (~2700 PASSED lines routed to the "unparseable" bucket) was ~349 KB, so
+# every one of the 5 fix cycles died on launch with
+# ``bash: line 1: /usr/bin/timeout: Argument list too long`` and the item ground
+# to ``failed``. parse_pytest now keeps that output small; this is the belt-and-
+# suspenders cap so no future bloat source can re-trigger E2BIG.
+MAX_PROMPT_BYTES = 96 * 1024
+
+
+def write_agent_prompt(path: Path, text: str) -> None:
+    """Write an agent prompt file, truncating its middle if it would overflow execve.
+
+    The file is consumed as ``"$(cat <path>)"`` on a shell command line, so it
+    must stay under :data:`MAX_PROMPT_BYTES`. When it doesn't, keep the head
+    (task framing) and tail (usually the actionable summary), drop the middle,
+    and log a warning so the bloat source is visible in the daemon log.
+    """
+    encoded = text.encode("utf-8")
+    if len(encoded) <= MAX_PROMPT_BYTES:
+        path.write_text(text, encoding="utf-8")
+        return
+    marker = (
+        f"\n\n...[prompt truncated: {len(encoded)} bytes exceeds the "
+        f"{MAX_PROMPT_BYTES}-byte launch-argument limit; middle removed — see the "
+        f"step log for the full gate output]...\n\n"
+    )
+    keep = max(0, (MAX_PROMPT_BYTES - len(marker.encode("utf-8"))) // 2)
+    head = encoded[:keep].decode("utf-8", errors="ignore")
+    tail = encoded[-keep:].decode("utf-8", errors="ignore") if keep else ""
+    logger.warning(
+        "Agent prompt %s truncated from %d to ~%d bytes (execve arg limit)",
+        path,
+        len(encoded),
+        MAX_PROMPT_BYTES,
+    )
+    path.write_text(head + marker + tail, encoding="utf-8")
 
 
 def _agent_subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:

@@ -158,6 +158,44 @@ class TestPytestParser:
         fp_b = parse_pytest(PYTEST_HAPPY_SAMPLE)
         assert fingerprint_to_jsonable(fp_a) == fingerprint_to_jsonable(fp_b)
 
+    def test_bare_failed_line_without_reason_is_parsed(self) -> None:
+        """I-00074: pytest omits the ' - <reason>' suffix for assertion failures.
+
+        The original regex required the dash, so a bare ``FAILED <nodeid>`` line
+        produced zero parsed failures (and, under ``pytest -v``, a few thousand
+        progress lines in ``unparseable``).
+        """
+        fp = parse_pytest(
+            "FAILED tests/unit/test_skill_files.py::test_skills_sync_is_byte_identical[iw-workflow]"
+        )
+        assert [f.key for f in fp.failures] == [
+            "tests/unit/test_skill_files.py::test_skills_sync_is_byte_identical[iw-workflow]"
+        ]
+        assert fp.unparseable == ()
+
+    def test_verbose_progress_lines_are_not_unparseable(self) -> None:
+        """I-00074: ``pytest -v`` per-test lines must never reach ``unparseable``."""
+        raw = "\n".join(
+            [
+                "tests/unit/test_a.py::test_one PASSED [  1%]",
+                "tests/unit/test_b.py::test_two SKIPPED (reason) [  2%]",
+                "tests/unit/test_c.py::test_three XFAIL [  3%]",
+                "tests/unit/test_d.py::test_four FAILED [  4%]",
+                "FAILED tests/unit/test_d.py::test_four - AssertionError: nope",
+                "=========================== 1 failed, 3 passed ============================",
+            ]
+        )
+        fp = parse_pytest(raw)
+        assert [f.key for f in fp.failures] == ["tests/unit/test_d.py::test_four"]
+        assert fp.unparseable == ()
+
+    def test_unparseable_is_capped(self) -> None:
+        """I-00074: a parser miss must not bloat the fix-cycle prompt past execve's argv limit."""
+        raw = "\n".join(f"weird noise line {i}" for i in range(5000))
+        fp = parse_pytest(raw)
+        assert len(fp.unparseable) <= 81  # _MAX_UNPARSEABLE_LINES + omission marker
+        assert any("lines omitted" in line for line in fp.unparseable)
+
 
 # ---------------------------------------------------------------------------
 # TestMypyParser

@@ -141,8 +141,9 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
     # cli_tool: projects.toml entry takes precedence; .iw-orch.json is fallback
     # for backwards compat. .iw-orch.json ONLY supplies cli_tool (not model).
     cli_tool: str = entry.get("cli_tool") or iw_config.get("cli_tool", "opencode")
-    # model: read from projects.toml entry; default "minimax"
-    model: str = entry.get("model", "minimax")
+    # model: read from projects.toml entry; default "minimax/MiniMax-M2.7"
+    # (opencode --model expects provider/model_id format; bare "minimax" crashes)
+    model: str = entry.get("model", "minimax/MiniMax-M2.7")
     worktree_base: str = iw_config.get("worktree_base", ".worktrees")
 
     dev_clone: str | None = iw_config.get("dev_clone") or None

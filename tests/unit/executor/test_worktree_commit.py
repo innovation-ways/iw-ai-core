@@ -273,3 +273,110 @@ class TestCommitBody:
         log = _git(["log", "-1", "--format=%B"], cwd=project)
         msg = log.stdout
         assert "Source commits:" in msg
+
+
+# ---------------------------------------------------------------------------
+# CR-00042: a leftover stash-pop conflict on main must never wedge the queue
+# ---------------------------------------------------------------------------
+
+
+def _make_main_wedge(project: Path) -> None:
+    """Reproduce the CR-00042 wedge: unmerged index entry on main with NO
+    MERGE_HEAD — the state left behind when a `git stash pop` conflicts and the
+    stash is dropped anyway.
+    """
+    readme = project / "README.md"
+    readme.write_text("# user uncommitted edit\n")
+    _git(["stash", "push", "-m", "wedge-setup"], cwd=project)
+    readme.write_text("# committed change to readme\n")
+    _git(["add", "README.md"], cwd=project)
+    _git(["commit", "-m", "change readme"], cwd=project)
+    _git(["stash", "pop"], cwd=project, check=False)  # conflicts on README.md
+    _git(["stash", "drop"], cwd=project, check=False)  # drop -> unmerged entry left
+
+
+class TestStashPopConflictRecovery:
+    """The stash-pop exit trap must leave main without unmerged index entries."""
+
+    def test_merge_changing_a_file_main_has_edited_does_not_wedge(self, tmp_path: Path) -> None:
+        """When the merged branch changes a file main has an uncommitted edit
+        to, the stash-pop conflicts — but main must end up merely *modified*,
+        never *unmerged*, so the next merge can still stash."""
+        project = tmp_path / "proj"
+        _make_git_repo(project)
+
+        # Branch rewrites README.md
+        _setup_worktree_with_branch(project, "I-00001", {"README.md": "# branch version\n"})
+
+        # main has an overlapping uncommitted edit to README.md
+        (project / "README.md").write_text("# main local edit\n")
+
+        result = _run_commit(project, "I-00001")
+        assert result.returncode == 0, (
+            f"merge should still succeed (conflict is post-commit, in the "
+            f"stash-pop):\nstdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+
+        # Main's index must be clean of unmerged entries.
+        unmerged = _git(["ls-files", "--unmerged"], cwd=project).stdout.strip()
+        assert unmerged == "", f"main left with unmerged paths — would wedge: {unmerged!r}"
+
+        # The user's uncommitted edit survives in the working tree...
+        assert (project / "README.md").read_text() == "# main local edit\n"
+        # ...and the merge's version is recoverable from HEAD.
+        head_readme = _git(["show", "HEAD:README.md"], cwd=project).stdout
+        assert head_readme == "# branch version\n"
+
+        # A subsequent `git stash` must work (the wedge symptom).
+        stash = _git(
+            ["stash", "push", "--include-untracked", "-m", "next"], cwd=project, check=False
+        )
+        assert stash.returncode == 0, f"git stash failed — main is wedged:\n{stash.stderr}"
+
+    def test_preflight_self_heals_a_pre_existing_wedge(self, tmp_path: Path) -> None:
+        """A stale unmerged path on main (no MERGE_HEAD) is cleared by the
+        pre-flight so the merge proceeds instead of jamming forever."""
+        project = tmp_path / "proj"
+        _make_git_repo(project)
+        _make_main_wedge(project)
+
+        # Sanity: main is wedged but not mid-merge.
+        assert _git(["ls-files", "--unmerged"], cwd=project).stdout.strip() != ""
+        assert not (project / ".git" / "MERGE_HEAD").exists()
+
+        _setup_worktree_with_branch(project, "I-00002", {"new_feature.py": "x = 1\n"})
+        result = _run_commit(project, "I-00002")
+        assert result.returncode == 0, (
+            f"pre-flight should clear the wedge and merge:\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "stale unresolved merge conflict" in result.stderr
+        assert _git(["ls-files", "--unmerged"], cwd=project).stdout.strip() == ""
+        # The merge actually landed.
+        assert (project / "new_feature.py").exists()
+        log = _git(["log", "-1", "--format=%s"], cwd=project).stdout
+        assert "I-00002" in log
+
+    def test_preflight_refuses_when_a_merge_is_in_progress(self, tmp_path: Path) -> None:
+        """If main is genuinely mid-merge (MERGE_HEAD present), refuse rather
+        than clobber the human's in-progress operation."""
+        project = tmp_path / "proj"
+        _make_git_repo(project)
+
+        # Create a real, unresolved `git merge` conflict on main -> MERGE_HEAD exists.
+        _git(["checkout", "-b", "side"], cwd=project)
+        (project / "README.md").write_text("# side change\n")
+        _git(["commit", "-am", "side"], cwd=project)
+        _git(["checkout", "main"], cwd=project)
+        (project / "README.md").write_text("# main change\n")
+        _git(["commit", "-am", "main"], cwd=project)
+        merge = _git(["merge", "side"], cwd=project, check=False)
+        assert merge.returncode != 0
+        assert (project / ".git" / "MERGE_HEAD").exists()
+
+        _setup_worktree_with_branch(project, "I-00003", {"z.py": "1\n"})
+        result = _run_commit(project, "I-00003")
+        assert result.returncode == 1
+        assert "in progress" in result.stderr
+        # MERGE_HEAD untouched — the human's merge is intact.
+        assert (project / ".git" / "MERGE_HEAD").exists()

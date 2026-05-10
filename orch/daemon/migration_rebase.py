@@ -48,7 +48,41 @@ logger = logging.getLogger(__name__)
 
 
 class GitCommandError(RuntimeError):
-    """Raised when a git subprocess returns non-zero."""
+    """Raised when a git subprocess returns non-zero.
+
+    Carries the full command, stdout, and stderr so failure callers can surface
+    the real diagnostic instead of just a one-line stderr summary.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        argv: list[str] | None = None,
+        stdout: str = "",
+        stderr: str = "",
+        returncode: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.argv = list(argv) if argv is not None else []
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+    def diagnostic_block(self) -> str:
+        """Return a formatted multi-line block for inclusion in error messages."""
+        lines: list[str] = []
+        if self.argv:
+            lines.append(f"$ git {' '.join(self.argv)}")
+        if self.returncode is not None:
+            lines.append(f"  exit code: {self.returncode}")
+        if self.stdout:
+            lines.append("  --- stdout ---")
+            lines.append(self.stdout.rstrip())
+        if self.stderr:
+            lines.append("  --- stderr ---")
+            lines.append(self.stderr.rstrip())
+        return "\n".join(lines)
 
 
 class MigrationParseError(RuntimeError):
@@ -98,8 +132,38 @@ def _git(cwd: str, args: list[str]) -> str:
         timeout=60,
     )
     if result.returncode != 0:
-        raise GitCommandError(result.stderr.strip())
+        raise GitCommandError(
+            result.stderr.strip() or result.stdout.strip() or f"exit code {result.returncode}",
+            argv=args,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            returncode=result.returncode,
+        )
     return result.stdout.strip()
+
+
+def _capture_worktree_state(worktree_path: str) -> dict[str, Any]:
+    """Best-effort capture of git worktree state for failure diagnostics.
+
+    Never raises — returns whatever it could collect plus per-key error strings.
+    """
+    state: dict[str, Any] = {}
+    fields: dict[str, list[str]] = {
+        "branch": ["rev-parse", "--abbrev-ref", "HEAD"],
+        "head_sha": ["rev-parse", "HEAD"],
+        "origin_main_sha": ["rev-parse", "origin/main"],
+        "status_porcelain": ["status", "--porcelain"],
+    }
+    for key, argv in fields.items():
+        try:
+            state[key] = _git(worktree_path, argv)
+        except GitCommandError as exc:
+            state[key] = None
+            state[f"{key}_error"] = str(exc)
+    # Detect the more obvious cases up-front for the reader
+    porcelain = state.get("status_porcelain") or ""
+    state["dirty"] = bool(porcelain.strip())
+    return state
 
 
 def _parse_migration(path: str) -> tuple[str, str | None]:
@@ -313,6 +377,50 @@ def run_pre_merge_rebase(
             message="Pre-merge rebase starting",
         )
 
+        # Step 2b: Early-skip when this batch added no migration files.
+        # The rebase exists *only* to rewrite stale down_revisions on migrations
+        # this batch added; if there are none, the rebase is a no-op and would
+        # only risk failing on unrelated reasons (e.g. unstaged agent work that
+        # worktree_commit.sh is responsible for committing). Use origin/main..HEAD
+        # which is well-defined regardless of any local 'main' divergence.
+        try:
+            preflight_added = _git(
+                worktree_path,
+                [
+                    "diff",
+                    "origin/main..HEAD",
+                    "--name-only",
+                    "--diff-filter=A",
+                    "--",
+                    "orch/db/migrations/versions/",
+                ],
+            )
+        except GitCommandError as exc:
+            return RebaseResult(
+                success=False,
+                rebased=False,
+                rewrites=[],
+                worktree_base_sha=worktree_base_sha,
+                current_main_sha=current_main_sha,
+                message="Failed to inspect batch migration files",
+                error_message=("git diff origin/main..HEAD failed:\n" + exc.diagnostic_block()),
+            )
+
+        preflight_batch_files = [f for f in preflight_added.splitlines() if f.strip()]
+        if not preflight_batch_files:
+            logger.info(
+                "[rebase] Batch added no migration files — skipping rebase (idempotent no-op)"
+            )
+            return RebaseResult(
+                success=True,
+                rebased=False,
+                rewrites=[],
+                worktree_base_sha=worktree_base_sha,
+                current_main_sha=current_main_sha,
+                message="No migration files added by this batch",
+                error_message=None,
+            )
+
         rebased = False
 
         # Step 3: Run the rebase (no-op if already on main)
@@ -321,7 +429,36 @@ def run_pre_merge_rebase(
                 _git(worktree_path, ["rebase", "main"])
                 rebased = True
             except GitCommandError as exc:
-                _git(worktree_path, ["rebase", "--abort"])
+                # Capture worktree state BEFORE the abort so we surface the real
+                # cause even when git can't be inspected later.
+                state = _capture_worktree_state(worktree_path)
+                # Try to abort cleanly, but never let abort failure mask the
+                # original rebase error (the abort can fail e.g. when git
+                # short-circuited before starting the rebase: "fatal: No rebase
+                # in progress?").
+                abort_failure: str | None = None
+                try:
+                    _git(worktree_path, ["rebase", "--abort"])
+                except GitCommandError as abort_exc:
+                    abort_failure = str(abort_exc)
+                    logger.info(
+                        "[rebase] git rebase --abort failed (likely no rebase started): %s",
+                        abort_exc,
+                    )
+                detail = exc.diagnostic_block()
+                lines = [
+                    "git rebase main failed",
+                    detail,
+                    f"branch: {state.get('branch')}",
+                    f"head_sha: {state.get('head_sha')}",
+                    f"origin/main: {state.get('origin_main_sha')}",
+                    f"working tree dirty: {state.get('dirty')}",
+                ]
+                if state.get("status_porcelain"):
+                    lines.append("--- git status --porcelain ---")
+                    lines.append(state["status_porcelain"])
+                if abort_failure:
+                    lines.append(f"(abort cleanup also failed: {abort_failure})")
                 return RebaseResult(
                     success=False,
                     rebased=False,
@@ -329,7 +466,7 @@ def run_pre_merge_rebase(
                     worktree_base_sha=worktree_base_sha,
                     current_main_sha=current_main_sha,
                     message="Rebase failed and aborted",
-                    error_message=f"git rebase main failed: {exc}",
+                    error_message="\n".join(lines),
                 )
 
         # Step 4: Identify batch's own migration files
@@ -503,7 +640,7 @@ def run_pre_merge_rebase(
                     worktree_base_sha=worktree_base_sha,
                     current_main_sha=current_main_sha,
                     message="Rewrite commit failed",
-                    error_message=f"rewrite commit failed: {exc}",
+                    error_message="rewrite commit failed:\n" + exc.diagnostic_block(),
                 )
 
         # Step 10: Write PendingMigrationLog rows
@@ -536,7 +673,7 @@ def run_pre_merge_rebase(
             worktree_base_sha=None,
             current_main_sha=None,
             message="Git command failed",
-            error_message=str(exc),
+            error_message=exc.diagnostic_block(),
         )
 
     except Exception as exc:

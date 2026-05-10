@@ -81,14 +81,14 @@
                  disables it only after serialising the value. A <select> already triggers
                  htmx on `change` by default — no explicit htmx.trigger needed. #}
               <select
-                class="text-xs border border-border rounded bg-background text-foreground px-1 py-0.5 cursor-pointer w-24"
+                class="text-xs border border-border rounded bg-background text-foreground px-1 py-0.5 cursor-pointer w-48"
                 hx-patch="/project/{{ item.project_id }}/api/item/{{ item.id }}/step/{{ step.step_id }}/runtime-override"
                 hx-swap="none"
                 hx-disabled-elt="this"
                 name="option_id">
                 <option value="">— inherit —</option>
                 {% for opt in runtime_options %}
-                  <option value="{{ opt.id }}" {% if step.runtime_option_id == opt.id %}selected{% endif %}>{{ opt.cli_label }}</option>
+                  <option value="{{ opt.id }}" {% if step.runtime_option_id == opt.id %}selected{% endif %}>{{ opt.display_name }}</option>
                 {% endfor %}
               </select>
             {% else %}
