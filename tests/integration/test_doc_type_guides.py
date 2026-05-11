@@ -193,3 +193,98 @@ def test_guide_snapshot_captured_at_job_creation(db_session: Session) -> None:
     db_session.commit()
 
     assert job.guide_snapshot == "# Module Guide\nContent here."
+
+
+def test_create_doc_job_snapshots_default_guide_for_diagram_doc(
+    db_session: Session,
+) -> None:
+    """Reproduction for I-00077: diagram doc with no diagram guide and no instance
+    guide falls back to the _default guide — guide_snapshot must NOT be None."""
+    project = Project(
+        id="i00077-diagram-proj",
+        display_name="I-00077 Diagram Test",
+        repo_root="/repos/diagram-test",
+        config={},
+    )
+    db_session.add(project)
+    db_session.flush()
+
+    doc = ProjectDoc(
+        id="i00077-diagram-proj:diagram-architecture",
+        project_id="i00077-diagram-proj",
+        doc_id="diagram-architecture",
+        title="Architecture Diagram",
+        slug="diagram-architecture",
+        doc_type=DocType.diagram,  # no diagram-specific guide seeded
+        tier=DocTier.semi_automated,
+        editorial_category=EditorialCategory.technical,
+        status=DocStatus.planned,
+        audience=[],
+        source_paths=[],
+    )
+    db_session.add(doc)
+    db_session.flush()
+
+    # Seed _default guide (explicit — not via migration, which is not applied in tests)
+    svc = DocService(db_session)
+    svc.save_type_guide("_default", _DEFAULT_GUIDE)
+    db_session.commit()
+
+    job = svc.create_doc_job("i00077-diagram-proj", "diagram-architecture")
+    db_session.commit()
+
+    # This was None before the S01 fix
+    assert job.guide_snapshot == _DEFAULT_GUIDE, (
+        f"guide_snapshot should be the _default guide content; got: {job.guide_snapshot!r}"
+    )
+    # section_guides_snapshot is None for a diagram doc (no section guides)
+    assert job.section_guides_snapshot is None
+
+
+def test_create_doc_job_instance_guide_takes_precedence_over_default(
+    db_session: Session,
+) -> None:
+    """No-regression: an instance-level guide must be used even when a _default
+    guide exists — instance wins over _default."""
+    project = Project(
+        id="i00077-instance-proj",
+        display_name="I-00077 Instance Test",
+        repo_root="/repos/instance-test",
+        config={},
+    )
+    db_session.add(project)
+    db_session.flush()
+
+    doc = ProjectDoc(
+        id="i00077-instance-proj:instance-override-doc",
+        project_id="i00077-instance-proj",
+        doc_id="instance-override-doc",
+        title="Instance Override Doc",
+        slug="instance-override-doc",
+        doc_type=DocType.diagram,  # no diagram-specific guide
+        tier=DocTier.semi_automated,
+        editorial_category=EditorialCategory.technical,
+        status=DocStatus.planned,
+        audience=[],
+        source_paths=[],
+    )
+    db_session.add(doc)
+    db_session.flush()
+
+    svc = DocService(db_session)
+    # Seed _default and an instance guide for this specific doc
+    svc.save_type_guide("_default", _DEFAULT_GUIDE)
+    svc.save_instance_guide(
+        "i00077-instance-proj",
+        "instance-override-doc",
+        "# Instance Override\nDoc-specific content.",
+    )
+    db_session.commit()
+
+    job = svc.create_doc_job("i00077-instance-proj", "instance-override-doc")
+    db_session.commit()
+
+    # Instance guide must be used, not _default
+    assert job.guide_snapshot == "# Instance Override\nDoc-specific content.", (
+        f"guide_snapshot should be the instance guide; got: {job.guide_snapshot!r}"
+    )

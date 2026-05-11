@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "macros/empty_state.html" import empty_state %}
+{% include "components/toast.html" %}
 
 {% block title %}Documentation — {{ current_project.display_name if current_project else '' }}{% endblock %}
 {% block page_help_slug %}docs{% endblock %}
@@ -248,6 +249,25 @@ document.addEventListener('DOMContentLoaded', function() {
       updateSelectedCount();
     }
   });
+});
+
+// Listen for failed doc job events and show a persistent toast
+document.body.addEventListener('docJobFailed', function(e) {
+  var detail = e.detail || {};
+  var msg = 'Documentation generation failed';
+  if (detail.doc_id) { msg += ' — ' + detail.doc_id; }
+  if (detail.error) {
+    var err = detail.error.length > 160 ? detail.error.substring(0, 160) + '…' : detail.error;
+    msg += ': ' + err;
+  }
+  showToast({type: 'error', message: msg});
+});
+
+// Trigger running-jobs strip reload on doc job creation (quick queued→running transition)
+document.body.addEventListener('docJobCreated', function(e) {
+  document.body.dispatchEvent(new CustomEvent('runningJobsReload'));
+  setTimeout(function() { document.body.dispatchEvent(new CustomEvent('runningJobsReload')); }, 3000);
+  setTimeout(function() { document.body.dispatchEvent(new CustomEvent('runningJobsReload')); }, 8000);
 });
 </script>
 

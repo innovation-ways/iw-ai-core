@@ -14,6 +14,7 @@ response. Verifies:
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import pytest
@@ -401,3 +402,162 @@ class TestGenerateResponseDisablesButton:
             .count()
         )
         assert job_count == 1, f"Expected 1 DocGenerationJob for doc, found {job_count}"
+
+
+class TestRunningJobsFailedIncluded:
+    """GET /project/{project_id}/api/docs/running-jobs — recently-failed jobs included."""
+
+    def _make_failed_job(
+        self,
+        db_session: Session,
+        project_id: str,
+        doc_id: str,
+        job_id: str,
+        error: str,
+        minutes_ago: int = 1,
+    ) -> DocGenerationJob:
+        """Create a DocGenerationJob row with status=failed and completed_at set."""
+        from datetime import UTC, timedelta
+
+        composite_doc_id = f"{project_id}:{doc_id}"
+        completed = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+        job = DocGenerationJob(
+            id=job_id,
+            project_id=project_id,
+            doc_id=composite_doc_id,
+            status=JobStatus.failed,
+            error=error,
+            requested_at=datetime.now(UTC) - timedelta(minutes=minutes_ago + 1),
+            completed_at=completed,
+        )
+        db_session.add(job)
+        db_session.flush()
+        return job
+
+    def test_running_jobs_includes_recently_failed_job(
+        self,
+        client: TestClient,
+        db_session: Session,
+        test_project: Project,
+    ) -> None:
+        """Failed job in strip: error text shown, dismiss button present, no SSE."""
+        _make_project_doc(db_session, test_project.id, "doc-fail", title="Failing Doc")
+        self._make_failed_job(
+            db_session,
+            test_project.id,
+            "doc-fail",
+            "job-failed-001",
+            error="job context has no section_guides_snapshot",
+            minutes_ago=1,
+        )
+        db_session.commit()
+
+        resp = client.get(f"/project/{test_project.id}/api/docs/running-jobs")
+        assert resp.status_code == 200
+
+        # Row div must be present
+        assert 'id="docs-rjob-job-failed-001"' in resp.text, (
+            "Failed job row docs-rjob-job-failed-001 not found in response"
+        )
+        # Error text must be present (HTML-escaped by Jinja2)
+        assert "section_guides_snapshot" in resp.text, "Error message not found in failed job row"
+        # Dismiss control present (client-side JS onclick)
+        assert "onclick" in resp.text, "onclick handler not found in failed job row"
+        assert "remove()" in resp.text, "remove() not found in failed job row"
+        # No Cancel button for failed jobs
+        assert "Cancel" not in resp.text, "Cancel button should not appear on a failed job row"
+        # No EventSource script for failed jobs (no SSE stream)
+        assert "EventSource" not in resp.text, (
+            "EventSource SSE script should not appear on a failed job row"
+        )
+
+    def test_running_jobs_excludes_stale_failed_job(
+        self,
+        client: TestClient,
+        db_session: Session,
+        test_project: Project,
+    ) -> None:
+        """A failed job completed more than ~10 min ago does NOT appear in the strip."""
+        _make_project_doc(db_session, test_project.id, "doc-stale", title="Stale Failed Doc")
+        self._make_failed_job(
+            db_session,
+            test_project.id,
+            "doc-stale",
+            "job-stale-fail",
+            error="old failure",
+            minutes_ago=30,  # well outside the ~10 min window
+        )
+        db_session.commit()
+
+        resp = client.get(f"/project/{test_project.id}/api/docs/running-jobs")
+        assert resp.status_code == 200
+
+        # Stale failed job row must NOT be present
+        assert 'id="docs-rjob-job-stale-fail"' not in resp.text
+        assert "Stale Failed Doc" not in resp.text
+
+    def test_running_jobs_running_first_then_failed(
+        self,
+        client: TestClient,
+        db_session: Session,
+        test_project: Project,
+    ) -> None:
+        """Running jobs appear before failed jobs (deterministic order)."""
+        _make_project_doc(db_session, test_project.id, "doc-run-a", title="Running A")
+        _make_project_doc(db_session, test_project.id, "doc-fail-b", title="Failed B")
+        _make_running_job(db_session, test_project.id, "doc-run-a", job_id="job-running-a")
+        self._make_failed_job(
+            db_session,
+            test_project.id,
+            "doc-fail-b",
+            "job-failed-b",
+            error="boom",
+            minutes_ago=1,
+        )
+        db_session.commit()
+
+        resp = client.get(f"/project/{test_project.id}/api/docs/running-jobs")
+        assert resp.status_code == 200
+
+        # Both rows present
+        assert 'id="docs-rjob-job-running-a"' in resp.text
+        assert 'id="docs-rjob-job-failed-b"' in resp.text
+        # Running job's doc title appears before failed job's doc title in the HTML
+        pos_a = resp.text.find("Running A")
+        pos_b = resp.text.find("Failed B")
+        assert pos_a < pos_b, (
+            f"Running job should appear before failed job in HTML; "
+            f"found 'Running A' at {pos_a}, 'Failed B' at {pos_b}"
+        )
+
+
+class TestDocsLibraryDocJobFailedListener:
+    """Regression for I-00077: docs_library.html must wire a docJobFailed listener
+    that shows a persistent toast so failures are not silently invisible."""
+
+    def test_docs_library_page_has_docjobfailed_listener(
+        self,
+        client: TestClient,
+        db_session: Session,
+        test_project: Project,
+    ) -> None:
+        """The docs_library.html page (full catalogue) must include a
+        docJobFailed addEventListener that calls showToast."""
+        # Create at least one doc so the page renders without errors
+        _make_project_doc(db_session, test_project.id, "doc-lib-test", title="Lib Test Doc")
+        db_session.commit()
+
+        resp = client.get(f"/project/{test_project.id}/docs")
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+
+        html = resp.text
+        # The page must have a docJobFailed event listener on document.body
+        assert "addEventListener('docJobFailed'" in html, (
+            "docs_library.html must have addEventListener('docJobFailed', ...) — "
+            "without this, failed job toasts are silently dropped on the catalogue page"
+        )
+        # The showToast helper must be available on the page
+        assert "showToast" in html, (
+            "docs_library.html must reference showToast (from components/toast.html) "
+            "to display the failure toast"
+        )
