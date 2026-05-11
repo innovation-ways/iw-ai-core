@@ -1,7 +1,7 @@
 """
 Fixture: insert ~16 steps for F-00055 so the pipeline strip overflows.
 """
-from orch.db.models import StepType, StepStatus
+from orch.db.models import StepType, StepStatus, WorkflowStep
 
 
 def seed(db):
@@ -24,7 +24,6 @@ def seed(db):
         ("S01-R2", "Requirements (fix 2)", StepType.implementation, 13),
         ("S02-R2", "Design (fix 2)", StepType.implementation, 14),
         ("S01-R3", "Requirements (fix 3)", StepType.implementation, 15),
-        ("MERGE", "Squash Merge", StepType("merge"), 16),
     ]
 
     for step_id_str, label, stype, seq in step_specs:
