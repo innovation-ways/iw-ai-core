@@ -1,0 +1,102 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00079",
+  "type": "Issue",
+  "title": "Empty-state CTA links point to non-existent /docs/<name>.md route (404)",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/templates/pages/project/queue.html",
+      "dashboard/templates/pages/project/history.html",
+      "dashboard/templates/pages/project/batches.html",
+      "dashboard/templates/pages/system/all_active.html",
+      "dashboard/templates/docs_library.html",
+      "dashboard/templates/research_library.html",
+      "tests/dashboard/test_empty_states.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "frontend-impl",
+      "description": "Fix the 7 empty_state primary_href values across the 6 templates (/docs/<name>.md → /system/docs/<name>)",
+      "prompt": "prompts/I-00079_S01_frontend-impl_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S01 (frontend-impl)",
+      "prompt": "prompts/I-00079_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Reproduction test + regression tests: every empty-state CTA href resolves to HTTP 200, no stale /docs/*.md pattern",
+      "prompt": "prompts/I-00079_S03_tests-impl_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S03 (tests-impl)",
+      "prompt": "prompts/I-00079_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Global cross-agent review of all I-00079 work",
+      "prompt": "prompts/I-00079_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting (ruff + node --check + scripts/check_templates.py)"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — empty-state CTAs open the doc page (no 404), no console errors, no regressions",
+      "prompt": "prompts/I-00079_S11_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00079_S12_SelfAssess_prompt.md"
+    }
+  ]
+}
