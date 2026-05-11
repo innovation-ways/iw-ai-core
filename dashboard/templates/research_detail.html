@@ -3,6 +3,7 @@
 {% block title %}{{ doc.title }} — Research{% endblock %}
 
 {% block content %}
+{% include "components/libs/mermaid.html" %}
 
 {# ── Breadcrumb ── #}
 <div class="flex items-center gap-2 text-xs text-muted-foreground mb-4">
@@ -181,6 +182,26 @@ function switchDocTab(mode) {
     frame.setAttribute('src', frame.getAttribute('data-src'));
   }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+  var proseDoc = document.querySelector('.prose-doc');
+  if (proseDoc && typeof window.iwRenderMermaid === 'function') {
+    // Shim: convert pre>code.language-mermaid blocks into div.mermaid so
+    // iwRenderMermaid can process them.
+    var preBlocks = proseDoc.querySelectorAll('pre > code.language-mermaid');
+    preBlocks.forEach(function(codeEl) {
+      var preEl = codeEl.parentNode;
+      if (!preEl || preEl.tagName !== 'PRE') return;
+      var src = codeEl.textContent || '';
+      src = src.replace(/^<!--[\s\S]*?-->\s*/m, '').trim();
+      var div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = src;
+      preEl.parentNode.replaceChild(div, preEl);
+    });
+    window.iwRenderMermaid(proseDoc);
+  }
+});
 </script>
 
 {% endblock %}

@@ -238,14 +238,21 @@ def test_i00074_docs_pdf_view_does_not_call_weasyprint(
     mock_render.assert_called_once()
 
 
-def test_i00074_docs_pdf_view_503_when_chromium_unavailable(
+def test_i00074_docs_pdf_view_returns_200_with_unavailable_message(
     client: TestClient, test_doc_project: Project, test_doc: ProjectDoc
 ):
-    """When Chromium returns None, response is 503, not 500 or 501."""
+    """When Chromium returns None, response is 200 with styled HTML message (not bare 503).
+
+    I-00080 S05 changed docs_pdf_view to return a styled 'PDF unavailable' HTML page
+    with HTTP 200 when Chromium is unavailable, so the iframe shows a meaningful
+    message instead of a blank screen. This aligns with the AC2 acceptance criterion.
+    """
     with patch("dashboard.routers.docs.render_pdf_chromium", return_value=None):
         response = client.get(f"/project/{test_doc_project.id}/docs/{test_doc.doc_id}/pdf-view")
 
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert "PDF unavailable" in response.text
+    assert "text/html" in response.headers.get("content-type", "")
 
 
 def test_i00074_docs_pdf_download_does_not_call_weasyprint(

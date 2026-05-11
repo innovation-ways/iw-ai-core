@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -23,6 +24,31 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/project/{project_id}")
+
+
+def _normalize_doc_content_for_render(doc: Any) -> str:
+    """Normalise bare-DSL diagram-doc content into a fenced mermaid block.
+
+    ``doc_type=diagram`` docs from the code-mapping pipeline (mapgen.py) are
+    stored as ``<!-- purpose: ... -->\n<bare Mermaid DSL>`` — no
+    `` ```mermaid `` fence.  This helper wraps them in one so both the
+    client-side shim and the server-side renderer recognise them as diagrams.
+
+    Conservative (idempotent):
+      * only touches ``doc_type==DocType.diagram`` docs
+      * only wraps when no `` ```mermaid `` fence is already present
+      * strips a leading ``<!-- purpose: ... -->`` HTML comment (and
+        surrounding blank lines) before wrapping, so the purpose text does
+        not leak into the DSL and confuse Mermaid.
+    """
+    if doc.doc_type != DocType.diagram:
+        return doc.content or ""
+    content = doc.content or ""
+    if "```mermaid" in content:
+        return content
+    # Strip leading <!-- purpose: ... --> comment and surrounding blank lines
+    stripped = re.sub(r"^<!--[\s\S]*?-->\s*", "", content, count=1).lstrip("\n")
+    return f"```mermaid\n{stripped}\n```"
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
@@ -74,7 +100,12 @@ def docs_detail(
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
     versions = svc.list_doc_versions(project_id, doc_id)
-    content_html = render_markdown_with_callouts(doc.content) if doc.content else ""
+    normalized_content = _normalize_doc_content_for_render(doc)
+    content_html = (
+        render_markdown_with_callouts(normalized_content, render_mermaid=False)
+        if normalized_content
+        else ""
+    )
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -94,8 +125,12 @@ def docs_html_view(
     doc_id: str,
     db: Session = Depends(get_db),
 ) -> Response:
-    """Serve the stored branded HTML file, or render markdown on-the-fly as fallback."""
-    _get_project_or_404(project_id, db)
+    """Serve the stored branded HTML file, or render markdown on-the-fly as fallback.
+
+    When rendering on-the-fly the result is cached to ``ProjectDoc.html_path``
+    (keyed by doc version) so repeat views are instant.
+    """
+    project = _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
     if doc is None:
@@ -109,7 +144,8 @@ def docs_html_view(
         return Response(content=html_bytes, media_type="text/html")
 
     # Fallback: render markdown inline with minimal styling
-    rendered = render_markdown_with_callouts(doc.content)
+    normalized_content = _normalize_doc_content_for_render(doc)
+    rendered = render_markdown_with_callouts(normalized_content, render_mermaid=True)
     fallback_html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -130,6 +166,22 @@ def docs_html_view(
 </head>
 <body>{rendered}</body>
 </html>"""
+
+    # Cache to disk only when mmdc succeeded (no raw mermaid block fell through)
+    if 'class="language-mermaid"' not in fallback_html:
+        cache_dir = Path(project.repo_root) / "docs" / ".generated" / project_id
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_file = cache_dir / f"{doc_id}-v{doc.version}.html"
+            cache_file.write_bytes(fallback_html.encode("utf-8"))
+            svc.update_doc(project_id, doc_id, html_path=str(cache_file))
+        except Exception:  # noqa: BLE001 — read-only fs, permission error, etc.
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Failed to write html_path cache for doc %s/%s", project_id, doc_id
+            )
+
     return Response(content=fallback_html, media_type="text/html")
 
 
@@ -157,18 +209,60 @@ def docs_pdf_view(
     # Generate on-the-fly
     templates: Jinja2Templates = request.app.state.templates
     pdf_template = templates.get_template("pdf/doc_pdf.html")
+    normalized_content = _normalize_doc_content_for_render(doc)
     html_content = pdf_template.render(
         doc=doc,
         project=project,
-        rendered_content=render_markdown_with_callouts(doc.content),
+        rendered_content=render_markdown_with_callouts(normalized_content),
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
     )
 
     pdf_bytes = cast("bytes", render_pdf_chromium(html_content))
     if pdf_bytes is None:
-        raise HTTPException(
-            status_code=503,
-            detail="PDF generation unavailable — Chromium binary not found",
+        # Return a styled HTML page instead of a bare 503 so the iframe shows
+        # a meaningful message rather than a blank screen.
+        unavailable_html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF unavailable</title>
+<style>
+  body { font-family: system-ui, sans-serif; display: flex; align-items: center;
+         justify-content: center; min-height: 100vh; margin: 0;
+         background: #f8fafc; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+          padding: 32px 40px; max-width: 440px; text-align: center;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  h2 { color: #1e293b; font-size: 1.125rem; margin: 0 0 12px; }
+  p  { color: #64748b; font-size: 0.9rem; line-height: 1.5; margin: 0 0 20px; }
+  .hint { background: #f1f5f9; border-radius: 6px; padding: 12px;
+           font-size: 0.8rem; color: #475569; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>PDF unavailable</h2>
+  <p>Chromium binary not found on this server. The HTML view is accessible below.</p>
+  <div class="hint">Install Chromium or check the
+   <code>_PLAYWRIGHT_CHROME</code> environment variable.</div>
+</div>
+</body>
+</html>"""
+        return Response(content=unavailable_html, media_type="text/html", status_code=200)
+
+    # Cache to disk keyed by doc version
+    cache_dir = Path(project.repo_root) / "docs" / ".generated" / project_id
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"{doc_id}-v{doc.version}.pdf"
+        cache_file.write_bytes(pdf_bytes)
+        svc.update_doc(project_id, doc_id, pdf_path=str(cache_file))
+    except Exception:  # noqa: BLE001 — read-only fs, permission error, etc.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Failed to write pdf_path cache for doc %s/%s", project_id, doc_id
         )
 
     return Response(content=pdf_bytes, media_type="application/pdf")
@@ -205,10 +299,11 @@ def docs_pdf(
 
     templates: Jinja2Templates = request.app.state.templates
     pdf_template = templates.get_template("pdf/doc_pdf.html")
+    normalized_content = _normalize_doc_content_for_render(doc)
     html_content = pdf_template.render(
         doc=doc,
         project=project,
-        rendered_content=render_markdown_with_callouts(doc.content),
+        rendered_content=render_markdown_with_callouts(normalized_content),
         generated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
     )
 
@@ -951,10 +1046,19 @@ def docs_export_bundle(
     if not full_ids:
         raise HTTPException(status_code=422, detail="No valid doc_ids provided")
 
+    def _render_html_for_export(content: str, doc: Any) -> str:
+        # Replicate the normalisation logic using only the content string.
+        # This mirrors _normalize_doc_content_for_render but works on the
+        # raw content string passed by export_bundle's signature.
+        if doc.doc_type == DocType.diagram and "```mermaid" not in content:
+            stripped = re.sub(r"^<!--[\s\S]*?-->\s*", "", content, count=1).lstrip("\n")
+            content = f"```mermaid\n{stripped}\n```"
+        return render_markdown_with_callouts(content)
+
     zip_bytes = svc.export_bundle(
         project_id,
         full_ids,
-        render_html_fn=lambda content, _doc: render_markdown_with_callouts(content),
+        render_html_fn=_render_html_for_export,
         render_pdf_fn=_make_render_pdf_fn(),
     )
 
@@ -982,10 +1086,17 @@ def docs_export_single(
         raise HTTPException(status_code=404, detail=f"Document {doc_id!r} not found")
 
     full_id = f"{project_id}:{doc_id}"
+
+    def _render_html_for_single(content: str, _d: Any) -> str:
+        if _d.doc_type == DocType.diagram and "```mermaid" not in content:
+            stripped = re.sub(r"^<!--[\s\S]*?-->\s*", "", content, count=1).lstrip("\n")
+            content = f"```mermaid\n{stripped}\n```"
+        return render_markdown_with_callouts(content)
+
     zip_bytes = svc.export_bundle(
         project_id,
         [full_id],
-        render_html_fn=lambda content, _doc: render_markdown_with_callouts(content),
+        render_html_fn=_render_html_for_single,
         render_pdf_fn=_make_render_pdf_fn(),
     )
 
