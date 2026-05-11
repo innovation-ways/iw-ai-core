@@ -4,6 +4,7 @@
 
 .PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
          test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
+         test-assertions \
          db-up db-down db-migrate db-revision \
          daemon-start daemon-stop dashboard-start css \
          allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
@@ -53,7 +54,15 @@ typecheck:
 
 type-check: typecheck
 
-quality: lint format typecheck
+# AST assertion-scanner gate (CR-00046, P1-CR-A) — flag tests that can't fail
+# (no-assert / tautology / mock-only / pytest.raises(Exception) without match=).
+# See scripts/check_test_assertions.py and tests/assertion_free_baseline.txt.
+# Run with --strict (no baseline) only when intentionally auditing the cleanup
+# backlog — `make quality` always runs in baseline mode.
+test-assertions:
+	uv run python scripts/check_test_assertions.py --baseline tests/assertion_free_baseline.txt tests/
+
+quality: lint format typecheck test-assertions
 
 # --- Tests ---
 test-unit:

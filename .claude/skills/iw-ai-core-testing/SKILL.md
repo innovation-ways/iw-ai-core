@@ -100,6 +100,8 @@ with pytest.raises(FixCycleExhausted):
 | `, `.join → `XX, XX`.join | assert the exact formatted string |
 | statement deletion | assert the side effect that statement produces |
 
+> **Statically enforced (CR-00046):** the no-assert / tautology / mock-only / `pytest.raises(Exception)`-without-`match=` bans above are checked by `scripts/check_test_assertions.py` and run as `make test-assertions`, the dedicated `assertions` daemon QV gate (right after `lint`), and a step in `.github/workflows/test-quality.yml`. A new violation in a new test file fails CI. The right fix is to *strengthen the test*; the baseline file `tests/assertion_free_baseline.txt` tracks the existing cleanup backlog only — it is **not** for silencing new violations.
+
 ---
 
 ## 2. IW AI Core test infrastructure rules (NON-NEGOTIABLE)
