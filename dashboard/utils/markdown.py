@@ -289,14 +289,33 @@ def _render_mermaid_to_svg(mermaid_source: str) -> str | None:
 
 
 def _render_mermaid_mmdc(mermaid_source: str) -> str | None:
-    """Render Mermaid to SVG using the local mmdc (npx @mermaid-js/mermaid-cli)."""
+    """Render Mermaid to SVG using the local mmdc (npx @mermaid-js/mermaid-cli).
+
+    Uses the ``default`` theme with an explicit dark primaryTextColor so
+    labels remain legible regardless of where the SVG is later embedded
+    (dark dashboard page, standalone HTML file, PDF).  A mermaid config file
+    is passed via ``--configFile`` to set themeVariables that survive the
+    SVG serialisation.
+    """
+    # Mermaid config: default theme + explicit dark label colour + light bg.
+    # The "default" theme uses a light background by default; explicit
+    # primaryTextColor ensures <foreignObject> label <div>s do not inherit
+    # a near-white page colour and render invisible in dark mode.
+    mermaid_config = (
+        '{"theme": "default", "themeVariables": '
+        '{"primaryTextColor": "#1e293b", "textColor": "#1e293b", '
+        '"lineColor": "#334155", "background": "#ffffff"}}'
+    )
+
     with tempfile.TemporaryDirectory() as tmpdir:
         mmd_path = Path(tmpdir) / "diagram.mmd"
         svg_path = Path(tmpdir) / "diagram.svg"
         cfg_path = Path(tmpdir) / "puppeteer.json"
+        mmd_cfg_path = Path(tmpdir) / "mermaid.json"
 
         mmd_path.write_text(mermaid_source, encoding="utf-8")
         cfg_path.write_text(_PUPPETEER_CONFIG, encoding="utf-8")
+        mmd_cfg_path.write_text(mermaid_config, encoding="utf-8")
 
         env = os.environ.copy()
         if _PLAYWRIGHT_CHROME is not None and _PLAYWRIGHT_CHROME.exists():
@@ -312,9 +331,13 @@ def _render_mermaid_mmdc(mermaid_source: str) -> str | None:
                     "-o",
                     str(svg_path),
                     "-b",
-                    "white",
+                    "#ffffff",
+                    "-t",
+                    "default",
                     "--puppeteerConfigFile",
                     str(cfg_path),
+                    "-c",
+                    str(mmd_cfg_path),
                 ],
                 capture_output=True,
                 text=True,
@@ -383,8 +406,13 @@ def _render_mermaid_blocks(html_text: str) -> str:
         if svg is None:
             # All methods failed — keep the original code block as fallback
             return match.group(0)
+        # Wrap in a div that forces a dark, legible label colour as a safety
+        # net: any <foreignObject> label <div> or SVG <text> element inside
+        # the SVG will inherit color:#1e293b and not render white-on-white
+        # when the host page is in dark mode.
         return (
-            '<div class="mermaid-diagram" style="overflow-x:auto;margin:1rem 0;">' + svg + "</div>"
+            '<div class="mermaid-diagram" style="overflow-x:auto;margin:1rem 0;'
+            'background:#ffffff;color:#1e293b;border-radius:6px;padding:0.5rem;">' + svg + "</div>"
         )
 
     return _MERMAID_CODE_RE.sub(_replace, html_text)

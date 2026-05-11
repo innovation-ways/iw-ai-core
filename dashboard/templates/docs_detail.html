@@ -4,6 +4,7 @@
 {% block title %}{{ doc.title }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
 
 {% block content %}
+{% include "components/libs/mermaid.html" %}
 
 {# ── Breadcrumb ── #}
 <div class="flex items-center gap-2 text-xs text-muted-foreground mb-4">
@@ -215,6 +216,8 @@
           .doc-toc a { color:var(--muted-foreground); text-decoration:none; }
           .doc-toc a:hover { color:var(--foreground); }
           @media (max-width:1279px) { .doc-toc { display:none; } }
+          .prose-doc .mermaid svg { max-width:100%; height:auto; }
+          .prose-doc .mermaid-diagram svg { max-width:100%; height:auto; }
         </style>
         <div id="doc-toc-container"></div>
         {{ content_html | safe }}
@@ -387,6 +390,23 @@ function iwBuildToc(container) {
 document.addEventListener('DOMContentLoaded', function() {
   var proseDoc = document.querySelector('.prose-doc');
   if (proseDoc) {
+    // Shim: convert pre>code.language-mermaid blocks produced by the markdown
+    // converter into div.mermaid so iwRenderMermaid can process them.
+    if (typeof window.iwRenderMermaid === 'function') {
+      var preBlocks = proseDoc.querySelectorAll('pre > code.language-mermaid');
+      preBlocks.forEach(function(codeEl) {
+        var preEl = codeEl.parentNode;
+        if (!preEl || preEl.tagName !== 'PRE') return;
+        var src = codeEl.textContent || '';
+        // Strip leading <!-- purpose: ... --> HTML comment and surrounding blank lines
+        src = src.replace(/^<!--[\s\S]*?-->\s*/m, '').trim();
+        var div = document.createElement('div');
+        div.className = 'mermaid';
+        div.textContent = src;
+        preEl.parentNode.replaceChild(div, preEl);
+      });
+      window.iwRenderMermaid(proseDoc);
+    }
     iwProcessCallouts(proseDoc);
     iwBuildToc(proseDoc);
   }
