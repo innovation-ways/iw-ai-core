@@ -6,7 +6,11 @@ Called every poll cycle for each project. Merges one item at a time
 Migration pipeline integration (CR-00017):
 - Before any merge cycle: check is_merge_queue_frozen() — if frozen, skip entirely.
 - Before squash-merge: run_pre_merge_dry_run() (Phase 1) — on fail, mark MIGRATION_INVALID.
-- After squash-merge: run_post_merge_apply() (Phase 2) — on fail, run_rollback() (Phase 3).
+- After squash-merge: run_post_merge_apply() (Phase 2). On fail *after* one or
+  more revisions were applied → run_rollback() (Phase 3). On fail *before* any
+  revision was applied (SelfBlockerError, lock timeout, …) → defer; do NOT roll
+  back — a `downgrade -1` would clobber a previously-applied migration (the
+  post-merge rollback regression seen after the BATCH-00089 merge, 2026-05-11).
 """
 
 from __future__ import annotations
@@ -373,11 +377,14 @@ def _merge_item(
         # Phase 2: apply migrations to live DB
         if batch_id_for_apply is not None:
             apply_result = run_post_merge_apply(batch_id_for_apply)
-            if not apply_result.success:
+            if not apply_result.success and apply_result.revisions_applied:
+                # A migration actually started applying and then failed —
+                # Phase 3 rollback is warranted.
                 logger.warning(
-                    "[%s] Phase 2 apply failed for batch %s — running rollback",
+                    "[%s] Phase 2 apply failed for batch %s after applying %s — running rollback",
                     project_id,
                     batch_id_for_apply,
+                    apply_result.revisions_applied,
                 )
                 rollback_result = run_rollback(batch_id_for_apply)
                 _emit_event(
@@ -401,6 +408,36 @@ def _merge_item(
                         project_id,
                         batch_id_for_apply,
                     )
+            elif not apply_result.success:
+                # Apply failed *before* touching the live DB (SelfBlockerError
+                # pre-flight, lock timeout, …). Nothing was committed, so a
+                # `downgrade -1` here would clobber a previously-applied
+                # migration (the post-merge rollback regression seen after the
+                # BATCH-00089 merge, 2026-05-11). Leave the DB as-is; the daemon
+                # retries Phase 2 on the next merge cycle and the dashboard
+                # alembic guard surfaces any genuinely-pending revision in the
+                # meantime.
+                logger.warning(
+                    "[%s] Phase 2 apply deferred for batch %s (no revision applied): %s",
+                    project_id,
+                    batch_id_for_apply,
+                    apply_result.message,
+                )
+                _emit_event(
+                    db,
+                    project_id,
+                    "migration_pipeline",
+                    item_id,
+                    "work_item",
+                    f"Phase 2 apply deferred (no rollback): {apply_result.message}",
+                    {
+                        "phase": "apply",
+                        "success": False,
+                        "deferred": True,
+                        "batch_id": batch_id_for_apply,
+                    },
+                )
+                db.commit()
 
     except (MergeError, subprocess.TimeoutExpired) as e:
         # CR-00028: use merge_failed so the cascade is NOT triggered.

@@ -14,7 +14,7 @@ Integration points:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from sqlalchemy import text
@@ -44,6 +44,15 @@ class PipelineResult:
     final_batch_state: str
     frozen: bool
     message: str
+    # Revisions actually applied to the live DB during a Phase 2 apply.
+    # Empty when the apply was a no-op (DB already at head) or failed a
+    # pre-flight check (e.g. SelfBlockerError, lock timeout) before touching
+    # the DB. The merge queue uses this to decide whether a Phase 3 rollback
+    # (`alembic downgrade -1`) is warranted: rolling back when nothing was
+    # applied would clobber a previously-applied migration — the post-merge
+    # rollback regression observed after the BATCH-00089 merge on 2026-05-11,
+    # which left the orch DB one revision behind head.
+    revisions_applied: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +130,18 @@ def run_pre_merge_dry_run(
 def run_post_merge_apply(batch_id: str | int | None) -> PipelineResult:
     """Phase 2: Apply pending migrations to the live DB after squash-merge.
 
-    On failure → triggers Phase 3 rollback.
+    On failure *after* one or more revisions were applied → triggers Phase 3
+    rollback (``rollback_triggered``).
+
+    On failure *before any revision was applied* — e.g. a SelfBlockerError
+    pre-flight trip (I-00063) or a lock timeout — returns
+    ``apply_deferred``: there is nothing on the DB to roll back, so a Phase 3
+    ``alembic downgrade -1`` would clobber a previously-applied migration
+    (this is the post-merge rollback regression seen after the BATCH-00089
+    merge on 2026-05-11). The daemon retries Phase 2 on the next merge cycle,
+    and the dashboard's alembic guard surfaces any genuinely-pending revision
+    until then.
+
     On success → no state change (item already merged).
     """
     live_url = get_db_url()
@@ -131,16 +151,34 @@ def run_post_merge_apply(batch_id: str | int | None) -> PipelineResult:
         result = safe_apply(live_url, batch_id=batch_id)
 
         if not result.success:
+            if result.revisions_applied:
+                logger.warning(
+                    "[pipeline] Phase 2 apply failed for batch %s after applying "
+                    "%s — triggering rollback",
+                    batch_id,
+                    result.revisions_applied,
+                )
+                return PipelineResult(
+                    phase="apply",
+                    success=False,
+                    final_batch_state="rollback_triggered",
+                    frozen=False,
+                    message=result.error_message or "Apply failed",
+                    revisions_applied=list(result.revisions_applied),
+                )
             logger.warning(
-                "[pipeline] Phase 2 apply failed for batch %d — triggering rollback",
+                "[pipeline] Phase 2 apply failed for batch %s before any revision "
+                "was applied (%s) — deferring, no rollback",
                 batch_id,
+                result.error_message or "unknown error",
             )
             return PipelineResult(
                 phase="apply",
                 success=False,
-                final_batch_state="rollback_triggered",
+                final_batch_state="apply_deferred",
                 frozen=False,
-                message=result.error_message or "Apply failed",
+                message=result.error_message or "Apply deferred (no revision applied)",
+                revisions_applied=[],
             )
 
         return PipelineResult(
@@ -149,16 +187,21 @@ def run_post_merge_apply(batch_id: str | int | None) -> PipelineResult:
             final_batch_state="merged",
             frozen=False,
             message=f"Applied successfully ({result.duration_ms}ms)",
+            revisions_applied=list(result.revisions_applied),
         )
 
     except Exception as exc:
+        # safe_apply already wrote a pending_migration_log entry and re-raised.
+        # Whatever blew up here happened before/around the apply, so nothing was
+        # committed to the live DB — do NOT roll back (see revisions_applied note).
         logger.exception("[pipeline] Phase 2 apply error for batch %s", batch_id)
         return PipelineResult(
             phase="apply",
             success=False,
-            final_batch_state="rollback_triggered",
+            final_batch_state="apply_deferred",
             frozen=False,
             message=f"Phase 2 error: {exc}",
+            revisions_applied=[],
         )
 
 
