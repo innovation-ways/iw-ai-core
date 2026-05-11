@@ -83,6 +83,10 @@
   --shadow-opacity: 0;
   --letter-spacing: 0em;
 
+  /* --- Scrollbar --- */
+  --scrollbar-thumb: #c4c4c8;
+  --scrollbar-thumb-hover: #a8a8ad;
+
   /* --- Fonts --- */
   --font-sans: 'Inter', 'Noto Sans JP', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace;
@@ -125,6 +129,10 @@
   --success: #4ade80;
   --warning: #fbbf24;
   --info: #38bdf8;
+
+  /* --- Scrollbar --- */
+  --scrollbar-thumb: #5c5d65;
+  --scrollbar-thumb-hover: #74757d;
 }
 
 /* --- Base resets --- */
@@ -134,6 +142,7 @@
 
 html, body {
   height: 100%;
+  overflow: hidden;
   margin: 0;
   padding: 0;
   font-family: var(--font-sans);
@@ -200,6 +209,15 @@ body.sidebar-open {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--scrollbar-thumb);
   border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Firefox fallback */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
