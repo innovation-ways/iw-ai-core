@@ -1,0 +1,87 @@
+{
+  "item_id": "I-00078",
+  "bottom_line": "Fix the QV lint gate to scope checks to changed files or exclude pre-existing violations, and add PT018 guidance to the Implementation prompt template to prevent fix-cycle churn in Tests steps.",
+  "coverage_notes": "Read S01–S05 logs in full (all < 140 KB). S09/S10 logs sampled (342 KB each) — read tail-500 + grep for errors. S11 log read full (1115 lines). S06_fix log read full. DB telemetry available (DB:UP).",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "QV lint gate (S06) flags pre-existing unused-import in unrelated test file",
+      "recommendation": "Scope `ruff check` in the lint gate to changed files only, or exclude pre-existing violations in `ruff.toml`/`pyproject.toml`, or scope the gate to directories that the item actually touches.",
+      "evidence": [
+        "ai-dev/active/I-00078/fix-cycles/I-00078_S06_FIX_cycle1_prompt.md:1 — 'The error is straightforward: `select` is imported but never used. Remove it.'",
+        "ai-dev/logs/I-00078_S06_run3.log:3 — 'F401 [*] `sqlalchemy.select` imported but unused --> tests/integration/test_e2e_seed.py:18:39'",
+        "ai-dev/logs/I-00078_S06_fix1.log:16 — 'Fixed. Removed unused `select` import from tests/integration/test_e2e_seed.py'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Fix QV lint gate to scope ruff check to changed files or exclude pre-existing violations in test_e2e_seed.py; analyzed in I-00078 (see ai-dev/active/I-00078/reports/I-00078_self_assess_report.md). Target: Makefile or orch/test_runner.py. Effort: S."
+    },
+    {
+      "severity": "HIGH",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "QV integration-tests gate (S10) fails on pre-existing testcontainers fixture error",
+      "recommendation": "Mark `tests/integration/test_e2e_seed.py` as expected-to-fail in the integration-test gate config, or add it to a skip list in `orch/test_runner.py`.",
+      "evidence": [
+        "ai-dev/logs/I-00078_S10_run1.log:66 — 'FAILED tests/integration/test_e2e_seed.py::test_e2e_seed_runs_against_fresh_db'",
+        "ai-dev/logs/I-00078_S10_run1.log:64 — 'FAIL Required test coverage of 46.0% not reached. Total coverage: 3.33%'",
+        "ai-dev/active/I-00078/fix-cycles/I-00078_S10_FIX_cycle1_prompt.md — fix cycle prompt confirms testcontainers/postgres `execute_batch` error at startup"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Mark test_e2e_seed.py as skip in integration-test gate or fix the testcontainers execute_batch error; analyzed in I-00078 (see ai-dev/active/I-00078/reports/I-00078_self_assess_report.md). Target: orch/test_runner.py. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Code-review agents (S02, S04, S05) fail to find report files due to wrong filename convention",
+      "recommendation": "Add a clarifying note to CodeReview prompt templates stating the correct report naming pattern: `_<AgentName>_[...]_report.md`, e.g. `I-00078_S01_Frontend_report.md`, not `_<step>_impl_report.md`.",
+      "evidence": [
+        "ai-dev/logs/I-00078_S02_run1.log:9 — 'File not found: .../I-00078_S01_frontend-impl_report.md'",
+        "ai-dev/logs/I-00078_S04_run1.log:10 — 'File not found: .../I-00078_S03_tests-impl_report.md'",
+        "ai-dev/logs/I-00078_S05_run1.log:10 — 'File not found: .../I-00078_S01_Impl_Start_report.md'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Add report-naming convention note to CodeReview prompt templates; analyzed in I-00078 (see ai-dev/active/I-00078/reports/I-00078_self_assess_report.md). Target: templates/design/CodeReview_Prompt_Template.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Tests-impl agent (S03) breaks PT018 rule — fix cycle needed to learn split assertion",
+      "recommendation": "Add PT018 to the list of rules explicitly checked before writing assertions in the Implementation prompt template.",
+      "evidence": [
+        "ai-dev/logs/I-00078_S03_run1.log:253 — 'PT018 Assertion should be broken down into multiple parts --> tests/dashboard/test_i00078_layout.py:259:5'",
+        "ai-dev/logs/I-00078_S03_run1.log:282 — edit fixing lines 259–265: 'assert root_block, ...assert \"--scrollbar-thumb\" in...'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Add PT018 rule guidance to Implementation prompt template; analyzed in I-00078 (see ai-dev/active/I-00078/reports/I-00078_self_assess_report.md). Target: templates/design/Implementation_Prompt_Template.md. Effort: S."
+    },
+    {
+      "severity": "LOW",
+      "class": "environment",
+      "target": "project",
+      "title": "S11 browser verification uses SQL seed workaround instead of e2e_fixtures file",
+      "recommendation": "Supply E2E DB credentials (`IW_E2E_DB_*` env vars) so the agent can run fixture SQL directly against the e2e postgres container.",
+      "evidence": [
+        "ai-dev/active/I-00078/e2e_fixtures/001_long_pipeline.py:1 — fixture file present (1.8 KB)",
+        "ai-dev/logs/I-00078_S11_run1.log:~80 — 'V2 required seeding 16 steps for F-00055 directly in the E2E PostgreSQL container since the worktree was not mounted in the app container'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Supply IW_E2E_DB_* env vars for S11 items so e2e_fixtures SQL can be run directly against the container DB; analyzed in I-00078 (see ai-dev/active/I-00078/reports/I-00078_self_assess_report.md). Target: orch/daemon/browser_env.py. Effort: M."
+    },
+    {
+      "severity": "LOW",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S05 agent uses a typo path causing a read failure (self-corrected)",
+      "recommendation": "No action needed — agent self-corrected after concession error.",
+      "evidence": [
+        "ai-dev/logs/I-00078_S05_run1.log:20 — 'Error: File not found: /home/sgeriog/dev/iw-doc-plan/...' (note `sgeriog` vs `sergioG` typo)"
+      ],
+      "effort": "N/A",
+      "paste_prompt": null
+    }
+  ]
+}

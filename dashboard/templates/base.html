@@ -39,12 +39,12 @@
 
   {% block head %}{% endblock %}
 </head>
-<body class="bg-background text-foreground font-sans antialiased">
+<body class="bg-background text-foreground font-sans antialiased h-dvh overflow-hidden flex flex-col">
 {% if is_db_stale(request) %}
 {% set status = request.state.alembic_guard_status %}
 <div role="alert"
      aria-live="polite"
-     class="bg-destructive text-white px-4 py-3 text-sm flex items-center justify-between"
+     class="bg-destructive text-white px-4 py-3 text-sm flex items-center justify-between flex-shrink-0"
      id="stale-db-banner">
   <div>
     <strong>Orch DB schema is behind head</strong> —
@@ -69,7 +69,7 @@
 <div id="confirm-dialog"></div>
 
 <!-- App shell: sidebar + main -->
-<div class="flex h-screen overflow-hidden">
+<div class="flex flex-1 overflow-hidden">
 
   <!-- ===== Sidebar backdrop (mobile only) ===== -->
   <div id="sidebar-backdrop"
@@ -151,15 +151,6 @@
       </details>
 
     </nav>
-
-    <!-- Dark mode toggle at bottom of sidebar -->
-    <div class="px-4 py-3 border-t border-sidebar-border">
-      <button onclick="toggleDarkMode()"
-              class="flex items-center gap-2 text-xs text-sidebar-foreground hover:text-sidebar-primary-foreground transition-colors w-full">
-        <span id="theme-icon">☾</span>
-        <span>Toggle theme</span>
-      </button>
-    </div>
   </aside>
 
   <!-- ===== Main content ===== -->
@@ -202,21 +193,28 @@
       {% block breadcrumb %}{% endblock %}
       {% block content %}{% endblock %}
     </main>
-
-    <!-- LLM usage footer — polls every 5m, only while tab is visible -->
-    <footer
-      class="flex-shrink-0 border-t border-border bg-muted px-3 sm:px-6 py-2 flex items-center gap-3 sm:gap-4 text-xs text-muted-foreground"
-      hx-get="/api/usage/llm/fragment"
-      hx-trigger="load, every 300s [document.visibilityState=='visible'], visibilitychange[document.visibilityState=='visible'] from:document"
-      hx-swap="innerHTML"
-    >
-      <span class="font-medium">Claude</span>
-      <span class="text-muted-foreground">—</span>
-      <span class="ml-auto text-muted-foreground">IW AI Core v0.1</span>
-    </footer>
   </div>
 
 </div>
+
+<!-- Full-width footer — below the sidebar + content row -->
+<footer class="flex-shrink-0 w-full border-t border-border bg-muted px-3 sm:px-6 py-2 flex items-center gap-3 sm:gap-4 text-xs text-muted-foreground">
+  <button onclick="toggleDarkMode()"
+          class="flex items-center gap-1.5 hover:text-foreground transition-colors flex-shrink-0"
+          aria-label="Toggle theme">
+    <span id="theme-icon">☾</span>
+    <span>Theme</span>
+  </button>
+  <span class="text-border select-none">·</span>
+  <div class="flex-1 flex items-center gap-3 sm:gap-4"
+       hx-get="/api/usage/llm/fragment"
+       hx-trigger="load, every 300s[document.visibilityState=='visible'], visibilitychange[document.visibilityState=='visible'] from:document"
+       hx-swap="innerHTML">
+    <span class="font-medium">Claude</span>
+    <span class="text-muted-foreground">—</span>
+    <span class="ml-auto text-muted-foreground">IW AI Core v0.1</span>
+  </div>
+</footer>
 
 <!-- JS -->
 <script src="/static/theme-toggle.js"></script>

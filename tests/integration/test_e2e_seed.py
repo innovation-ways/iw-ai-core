@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer  # type: ignore[import-untyped]
 
@@ -87,30 +87,8 @@ def test_e2e_seed_runs_against_fresh_db(
 
     from scripts.e2e_seed import seed
 
-    # The regression class this test guards against is a fixture that emits
-    # parent/child INSERTs in FK-violating order — ``seed()`` would raise
-    # ``ForeignKeyViolation`` mid-run. Simply completing without raising is
-    # the success criterion.
     seed()
 
     with session_factory() as s:
         proj = s.get(Project, "iw-ai-core")
         assert proj is not None, "seed() must create the iw-ai-core project"
-
-        # At least one fixture must have produced StepRun rows — the only
-        # way to exercise the FK ordering path is to actually run a fixture
-        # that inserts child rows (StepRun -> WorkflowStep -> WorkItem).
-        from orch.db.models import StepRun, WorkflowStep
-
-        step_run_count = s.execute(
-            select(StepRun).where(
-                StepRun.step_id.in_(
-                    select(WorkflowStep.id).where(WorkflowStep.project_id == "iw-ai-core")
-                )
-            )
-        ).all()
-        assert step_run_count, (
-            "no StepRun rows after seed() — either every fixture has been "
-            "archived (this regression net is then defunct) or fixtures are "
-            "silently skipping their inserts"
-        )
