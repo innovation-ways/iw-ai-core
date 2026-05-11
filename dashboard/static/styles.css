@@ -367,13 +367,15 @@ div.mermaid-diagram span {
   color: initial;
 }
 
-/* CR-00039: Step Pipeline pill redesign */
+/* ── Dynamic viewport height utility (not in prebuilt Tailwind) ── */
+.h-dvh { height: 100dvh; }
 .iw-pipeline-strip {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
   gap: 0;
   overflow-x: auto;
+  padding-bottom: 0.5rem;
 }
 
 .iw-pipeline-pill {
