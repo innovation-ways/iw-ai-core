@@ -187,6 +187,10 @@ These are codified, with examples, in `skills/iw-ai-core-testing/SKILL.md`.
 
 Mutation testing (introduce a small bug — a "mutant" — into production code; check that some test fails) is the only direct measure of whether our tests catch regressions: line coverage cannot tell a strong assertion from `assert x is not None`. **It is not yet set up** — it's roadmap item 2.1 (`mutmut`, scoped to changed files as a PR gate plus a periodic full audit over `orch/`). Until then, write every assertion as if a mutant were coming: *"if I change the production code to return a different value / flip this comparison, will this test fail?"* If the answer is no, the assertion is too weak.
 
+### Assertion scanner (CR-00046, P1-CR-A)
+
+`scripts/check_test_assertions.py` is a static AST scanner that flags four categories of vacuous test — **no-assert**, **tautology** (every `assert` is `is not None` / `isinstance` / `len > 0` / `in` / `True` / `<bare Name>` / `x == x`), **mock-only** (every assertion is `mock.assert_called*`/`assert_await*` on a mock-named receiver), and **broad-raises** (`pytest.raises(Exception)` without `match=`). It runs as `make test-assertions`, is folded into `make quality`, and is the dedicated `assertions` daemon QV gate (right after `lint`) and a step in `.github/workflows/test-quality.yml`'s `lint-typecheck` job. The committed baseline at `tests/assertion_free_baseline.txt` lists current offenders so the gate fires only on **new** violations; regenerate it with `uv run python scripts/check_test_assertions.py --write-baseline tests/assertion_free_baseline.txt tests/`. **The right way to silence the gate is to fix the test, not to add it to the baseline** — the baseline is a cleanup backlog, not an accept-list. Local opt-out for the rare legitimate case is `# noqa: assertion-scanner` on the function `def` line (reviewers should push back).
+
 ---
 
 ## 9. Known gaps & roadmap
@@ -198,7 +202,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Branch coverage enabled | ✅ (`branch = true`) |
 | Coverage failure floor | ⚠️ exists but low (`fail_under = 46`) — raise & ratchet (1.2) |
 | Diff/patch coverage on PRs | ❌ (1.3) |
-| AST assertion scanner | ❌ (1.1) |
+| AST assertion scanner | ✅ (CR-00046, 2026-05-11) — `make test-assertions` + baseline `tests/assertion_free_baseline.txt` |
 | `ruff` PT rules | ✅ enabled |
 | Test-order randomisation (`pytest-randomly`) | ❌ (1.4) |
 | Secrets scanning (`gitleaks`) | ❌ (1.6) — currently only in the `iw-oss-publish` skill |

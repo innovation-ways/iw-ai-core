@@ -124,11 +124,14 @@ QV gates run as shell commands (no LLM):
 
 ```json
 {"step": "S10", "agent": "qv-gate", "gate": "lint", "command": "make lint", "description": "QV: Linting"},
-{"step": "S11", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
-{"step": "S12", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
-{"step": "S13", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
-{"step": "S14", "agent": "qv-gate", "gate": "integration-tests", "command": "make allure-integration", "description": "QV: Integration tests", "timeout": 900}
+{"step": "S11", "agent": "qv-gate", "gate": "assertions", "command": "make test-assertions", "description": "QV: Assertion scanner (forbid new vacuous tests)"},
+{"step": "S12", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
+{"step": "S13", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
+{"step": "S14", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
+{"step": "S15", "agent": "qv-gate", "gate": "integration-tests", "command": "make allure-integration", "description": "QV: Integration tests", "timeout": 900}
 ```
+
+The 6 canonical QV gates are: `lint` → `assertions` → `format` → `typecheck` → `unit-tests` → `integration-tests`. The `assertions` gate (added by CR-00046, Phase-1 P1-CR-A) runs `scripts/check_test_assertions.py` against the committed baseline at `tests/assertion_free_baseline.txt` and fails on **new** vacuous tests (no-assert / tautology / mock-only / `pytest.raises(Exception)` without `match=`).
 
 QV gate failure → item moves to `failed` status (no fix cycles for QV gates).
 
