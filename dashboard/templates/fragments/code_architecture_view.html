@@ -44,7 +44,7 @@
     {% include "fragments/code_module_spinner.html" %}
   </div>
 
-  {% if arch_diagram_dsl %}
+  {% if arch_diagram_dsl or arch_diagram_html %}
     {% include "fragments/code_architecture_diagram.html" %}
   {% endif %}
 </div>
