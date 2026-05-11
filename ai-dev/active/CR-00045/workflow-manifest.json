@@ -71,7 +71,7 @@
       "step": "S08",
       "agent": "qv-gate",
       "gate": "integration-tests",
-      "command": "make allure-integration",
+      "command": "make test-integration",
       "description": "QV: Integration tests",
       "timeout": 900
     },
