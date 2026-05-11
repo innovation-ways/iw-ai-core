@@ -913,7 +913,15 @@ class DocService:
         instance = self.get_instance_guide(project_id, doc_id)
         if instance is not None:
             return instance
-        return self.get_type_guide(doc_type)
+        type_guide = self.get_type_guide(doc_type)
+        if type_guide is not None:
+            return type_guide
+        # Guard: don't re-query _default if doc_type is already "_default"
+        if doc_type != "_default":
+            default_guide = self.get_type_guide("_default")
+            if default_guide is not None:
+                return default_guide
+        return None
 
     # -----------------------------------------------------------------------
     # Section Guide

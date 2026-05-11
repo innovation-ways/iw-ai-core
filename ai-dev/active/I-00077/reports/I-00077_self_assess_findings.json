@@ -1,0 +1,98 @@
+{
+  "item_id": "I-00077",
+  "bottom_line": "Add an explicit _default editorial guide seed to tests/integration/conftest.py so integration tests match production behavior and avoid false 'nothing exists' edge cases; add SQLAlchemy and_() guidance for complex filters to prevent silent query logic errors.",
+  "coverage_notes": "Read S01-S05, S08-S13 run logs in full. Sampled tail (last 200 lines) of S03 (82KB) and S12 (342KB) run logs. Sampled S08 fix1 log (4KB) and S12 fix1 log (11KB). S14 run1 log read in full (684 bytes). DB telemetry used for step list confirmation.",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "iw-ai-core",
+      "title": "_default guide not seeded by create_all() in integration tests — caused S12 fix cycle",
+      "recommendation": "Seed the _default editorial guide in tests/integration/conftest.py db_session fixture so every integration test starts with the guide present, matching production behavior where migrations seed it.",
+      "evidence": [
+        "ai-dev/logs/I-00077_S12_fix1.log:91-93 — 'FAILED tests/integration/test_doc_instance_guides.py::test_falls_back_to_none_when_neither_guide_exists'",
+        "ai-dev/logs/I-00077_S12_fix1.log:115-118 — 'db_session.execute(delete(DocTypeGuide))' fix applied"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Add _default editorial guide seed to tests/integration/conftest.py db_session fixture; analyzed in I-00077 (see ai-dev/active/I-00077/reports/I-00077_self_assess_report.md). Target file: tests/integration/conftest.py. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "SQLAlchemy & operator silently wrong inside or_() — requires and_() explicitly",
+      "recommendation": "Add a ruff rule or custom lint check that flags & between SQLAlchemy column expressions inside or_() without surrounding and_(). Add editorial guidance to dashboard/routers/docs.py complex filter sections noting that and_() must be used explicitly.",
+      "evidence": [
+        "ai-dev/logs/I-00077_S03_run1.log:405-407 — 'edit failed ... Could not find oldString in the file' (agent attempted to edit wrong string due to & operator issue)",
+        "ai-dev/logs/I-00077_S03_run1.log:421-423 — 'and_(DocGenerationJob.status == JobStatus.failed, DocGenerationJob.completed_at >= cutoff)' used in run 2 to fix"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Add ruff rule or inline comment guidance for SQLAlchemy and_() usage in complex or_() filters in dashboard/routers/docs.py; analyzed in I-00077 (see ai-dev/active/I-00077/reports/I-00077_self_assess_report.md). Target files: dashboard/routers/docs.py, Makefile or pyproject.toml ruff config. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S03 initial edit used wrong SQLAlchemy operator — consumed one step run",
+      "recommendation": "Add a code comment above complex filter expressions in docs.py noting that SQLAlchemy & is not valid in this context and must use and_() explicitly. Also add an advisory in the S03 prompt to run lint locally before marking step done.",
+      "evidence": [
+        "ai-dev/logs/I-00077_S03_run1.log:405 — 'edit failed' after agent tried to change & to and_ but file state didn't match expected",
+        "ai-dev/logs/I-00077_S03_run1.log:432 — 'uv run pytest ... 3 failed' on run 1; run 2 passes"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Add SQLAlchemy filter guidance comments to dashboard/routers/docs.py complex filter sections; analyzed in I-00077 (see ai-dev/active/I-00077/reports/I-00077_self_assess_report.md). Target file: dashboard/routers/docs.py. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "S08 lint fix cycle — import sort and long line errors introduced by S03 edit",
+      "recommendation": "Add 'run lint locally before marking step done' advisory to the S03 prompt (and the generic frontend-impl prompt template) to reduce fix cycles triggered by lint errors from implementation edits.",
+      "evidence": [
+        "ai-dev/logs/I-00077_S08_fix1.log:7-10 — 'two errors: sort imports (I001) and shorten line (E501)' introduced by S03 edit",
+        "ai-dev/logs/I-00077_S08_fix1.log:44 — 'make lint 2>&1' → 'All checks passed!' after fix"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add 'run lint locally before marking step done' advisory to ai-dev/templates/Frontend_Impl_Template.md (or similar) to reduce lint-triggered fix cycles; analyzed in I-00077 (see ai-dev/active/I-00077/reports/I-00077_self_assess_report.md). Target file: ai-dev/templates/Frontend_Impl_Template.md (or prompts/I-00077_S03_frontend-impl_prompt.md). Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "environment",
+      "target": "iw-ai-core",
+      "title": "S13 browser env down/up — container setup adds ~1 min to QV gate when cache misses",
+      "recommendation": "No change needed — this is expected behavior for cross-worktree isolation. The ~1 min cost is acceptable for isolation guarantees. Informational only.",
+      "evidence": [
+        "ai-dev/logs/I-00077_S13_browser_env_down.log:1 — '[e2e_down] project=iw-ai-core-e2e-i00077'",
+        "ai-dev/logs/I-00077_S13_browser_env_up.log:169 — '[e2e_up] stack healthy' after container startup"
+      ],
+      "effort": "N/A",
+      "paste_prompt": null
+    },
+    {
+      "severity": "LOW",
+      "class": "design",
+      "target": "iw-ai-core",
+      "title": "Skill-wording change (S01/S02) propagated cleanly across all subsequent steps",
+      "recommendation": "No change needed — the skill-doc update pattern is working well. Evidence shows the change interacted cleanly across fix cycles with no agent re-opening skill files to re-discuss wording.",
+      "evidence": [
+        "ai-dev/logs/I-00077_S02_run1.log:267-270 — 'Both skill files edited identically; Markdown style matches surrounding sections'",
+        "ai-dev/logs/I-00077_S02_run1.log:282-285 — '8 passed, 0 failed' unit tests"
+      ],
+      "effort": "N/A",
+      "paste_prompt": null
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "S03 dashboard change (failed jobs in running-jobs strip) needed one SQLAlchemy correction — same class as Finding #2",
+      "recommendation": "Same as Finding #2 — add ruff rule or editorial guidance for SQLAlchemy boolean operators in filter contexts. The S03 implementation needed one self-correction for the and_() vs & issue.",
+      "evidence": [
+        "ai-dev/logs/I-00077_S03_run1.log:405-407 — 'edit failed' on first attempt to change & to and_()",
+        "ai-dev/logs/I-00077_S03_run1.log:421 — 'and_(...DocGenerationJob.status == JobStatus.failed...)' correctly implemented in run 2"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Add SQLAlchemy filter guidance to dashboard/routers/docs.py; same as Finding #2 (already covering the same root cause). See I-00077 self assess report at ai-dev/active/I-00077/reports/I-00077_self_assess_report.md. Target file: dashboard/routers/docs.py. Effort: S."
+    }
+  ]
+}

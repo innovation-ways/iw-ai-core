@@ -176,6 +176,8 @@ When this skill is invoked by the platform's `DocJobPoller` (i.e. the slash comm
 
 1. **Read the job context.** Run `uv run iw doc-job-status <job-id> --json`. The JSON output gives you `editorial_category`, `doc_id`, `project_id`, `doc_title`, `section_guides_snapshot`, and `guide_snapshot` — everything you need to produce the right content. If this command exits non-zero, do NOT proceed — close the job immediately with `iw doc-job-done <job-id> --error 'job context not found'`.
 
+   **Note on null editorial snapshots:** `section_guides_snapshot` and/or `guide_snapshot` being `null` (or empty) is **normal and expected** — many docs have no per-section or per-type editorial guide. It is **not** a reason to abort. When the editorial snapshot is null/empty, proceed using the static editorial guidance bundled with this skill (`references/diagram-guidelines.md` for diagram docs, and the other `references/…-guidelines.md` / the rest of this SKILL.md for prose docs). Only close the job with `--error` when `iw doc-job-status <job-id> --json` itself exits non-zero (job not found / DB error), or when generation genuinely cannot proceed for a concrete reason — never merely because the editorial snapshot was empty.
+
 2. **Generate the document content** following the editorial guide rules described in the rest of this skill.
 
 3. **Persist content via `iw doc-update`:**

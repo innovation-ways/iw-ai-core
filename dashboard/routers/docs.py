@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -542,21 +542,51 @@ def docs_running_jobs(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
-    """htmx fragment: running DocGenerationJob rows for the project."""
+    """htmx fragment: running and recently-failed DocGenerationJob rows for the project.
+
+    Returns jobs with status==running, plus jobs with status==failed whose
+    completed_at falls within roughly the last 10 minutes.  Jobs older than that
+    window (e.g. user-cancelled jobs that have no completed_at, or very old
+    failures) are not included.  Within the result set running jobs are ordered
+    first, then failed jobs — both sorted by requested_at ascending.
+    """
     _get_project_or_404(project_id, db)
     from orch.db.models import DocGenerationJob, DocType, ProjectDoc
+
+    # 10-minute cutoff for failed jobs to show in the strip
+    recently_failed_cutoff = datetime.now(UTC) - timedelta(minutes=10)
+
+    # Build a union: running jobs + recently-failed jobs.
+    # Ordering: running jobs first (requested_at ASC), then failed jobs
+    # (requested_at ASC within the failed group — requested_at is set at job
+    # creation so this is deterministic and stable).  We implement this with a
+    # computed priority column so both groups are returned in a single query
+    # with a stable sort.
+    from sqlalchemy import and_, case, or_
+
+    priority = case(
+        (DocGenerationJob.status == JobStatus.running, 0),
+        else_=1,
+    )
 
     jobs = (
         db.query(DocGenerationJob)
         .join(ProjectDoc, DocGenerationJob.doc_id == ProjectDoc.id)
         .filter(
             DocGenerationJob.doc_id.startswith(f"{project_id}:"),
-            DocGenerationJob.status == JobStatus.running,
             ProjectDoc.doc_type != DocType.research,
+            or_(
+                DocGenerationJob.status == JobStatus.running,
+                and_(
+                    DocGenerationJob.status == JobStatus.failed,
+                    DocGenerationJob.completed_at >= recently_failed_cutoff,
+                ),
+            ),
         )
-        .order_by(DocGenerationJob.requested_at.asc())
+        .order_by(priority.asc(), DocGenerationJob.requested_at.asc())
         .all()
     )
+
     svc = DocService(db)
     running_jobs: list[dict[str, Any]] = []
     for job in jobs:
@@ -567,6 +597,8 @@ def docs_running_jobs(
                 "job_id": job.id,
                 "doc_id": doc_id_short,
                 "doc_title": doc.title if doc else doc_id_short,
+                "status": job.status.value,
+                "error": job.error or "",
             }
         )
     templates: Jinja2Templates = request.app.state.templates

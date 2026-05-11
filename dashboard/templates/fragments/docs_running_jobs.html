@@ -2,8 +2,18 @@
 <div class="mb-4 space-y-2">
   {% for item in running_jobs %}
   <div id="docs-rjob-{{ item.job_id }}"
-       class="flex items-center justify-between gap-3 px-4 py-2.5 bg-primary/5 border border-primary/20 rounded-lg text-sm transition-colors">
+       class="flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg text-sm transition-colors{% if item.status == 'failed' %} bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 border-l-4 border-l-[var(--destructive)]{% else %} bg-primary/5 border border-primary/20{% endif %}">
     <div class="flex items-center gap-3 min-w-0">
+      {% if item.status == 'failed' %}
+      {# Failed job: static red row — no spinner, no timer, no EventSource #}
+      <svg class="w-4 h-4 text-[var(--destructive)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" stroke-width="2"/>
+        <line x1="15" y1="9" x2="9" y2="15" stroke-width="2" stroke-linecap="round"/>
+        <line x1="9" y1="9" x2="15" y2="15" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span class="font-medium text-foreground truncate">{{ item.doc_title }}</span>
+      <span class="text-red-500 text-xs flex-shrink-0">{{ item.error }}</span>
+      {% else %}
       <svg class="animate-spin w-4 h-4 text-primary flex-shrink-0" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
         <path class="opacity-75" fill="currentColor"
@@ -11,7 +21,15 @@
       </svg>
       <span class="font-medium text-foreground truncate">{{ item.doc_title }}</span>
       <span class="text-muted-foreground text-xs flex-shrink-0" id="rjob-elapsed-{{ item.job_id }}">0:00</span>
+      {% endif %}
     </div>
+    {% if item.status == 'failed' %}
+    <button onclick="this.closest('[id^=docs-rjob-]').remove()"
+            class="text-xs text-red-500 hover:text-red-700 transition-colors px-2 py-1 rounded hover:bg-red-100 dark:hover:bg-red-900/40 flex-shrink-0"
+            aria-label="Dismiss failed job">
+      Dismiss
+    </button>
+    {% else %}
     <button hx-delete="/project/{{ project_id }}/api/docs/jobs/{{ item.job_id }}"
             hx-target="#docs-rjob-{{ item.job_id }}"
             hx-swap="outerHTML"
@@ -20,22 +38,22 @@
             aria-label="Cancel generation">
       Cancel
     </button>
+    {% endif %}
   </div>
 
+  {% if item.status != 'failed' %}
   <script>
   (function() {
     var jobId = {{ item.job_id | tojson }};
     var projectId = {{ project_id | tojson }};
     var docId = {{ item.doc_id | tojson }};
 
-    // Deduplicate: close any existing EventSource for this job
     window._docJobSources = window._docJobSources || {};
     if (window._docJobSources[jobId]) {
       window._docJobSources[jobId].close();
       delete window._docJobSources[jobId];
     }
 
-    // Elapsed timer
     var startTs = Date.now();
     var timerId = setInterval(function() {
       var el = document.getElementById('rjob-elapsed-' + jobId);
@@ -44,7 +62,6 @@
       el.textContent = Math.floor(s / 60) + ':' + (s % 60 < 10 ? '0' : '') + (s % 60);
     }, 1000);
 
-    // SSE stream
     var url = '/project/' + projectId + '/api/docs/jobs/' + jobId + '/stream';
     var source = new EventSource(url);
     window._docJobSources[jobId] = source;
@@ -53,12 +70,10 @@
       clearInterval(timerId);
       source.close();
       delete window._docJobSources[jobId];
-      // Optionally colour the row before it disappears
       var row = document.getElementById('docs-rjob-' + jobId);
       if (row && className) {
         row.classList.add(className);
       }
-      // Signal strip and card to update
       setTimeout(function() {
         document.body.dispatchEvent(new CustomEvent('runningJobsReload'));
       }, className ? 1200 : 0);
@@ -74,7 +89,6 @@
       cleanup('border-red-400 bg-red-50 dark:bg-red-900/20');
     });
     source.onerror = function() {
-      // On stream error, reload the strip after a short delay to re-check
       clearInterval(timerId);
       source.close();
       delete window._docJobSources[jobId];
@@ -84,6 +98,7 @@
     };
   })();
   </script>
+  {% endif %}
   {% endfor %}
 </div>
 {% endif %}
