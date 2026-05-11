@@ -2,6 +2,18 @@
 
 pytest-based tests with strict DB isolation rules.
 
+## Required reading (agents writing or reviewing tests)
+
+- **`skills/iw-ai-core-testing/SKILL.md` — MUST read before writing, reviewing, or designing any test.** Assertion-strength rules, the live-DB-guard / testcontainer rules, cross-project isolation, state-machine/property guidance, the test red-flag checklist.
+- **`docs/IW_AI_Core_Testing_Strategy.md`** — the full strategy: layers, infrastructure, conventions, quality gates, known gaps, roadmap.
+- **`ai-dev/work/TESTS_ENHANCEMENT.md`** — the phased plan for improving testing here (status of each item).
+
+## TDD & test quality (NON-NEGOTIABLE)
+
+- **TDD = RED → GREEN → REFACTOR.** `backend-impl` writes the failing test first, *runs it and confirms it fails for the right reason*, records the RED output in its execution report, then writes the minimal implementation, then refactors with tests green. Tests are written *before* the implementation — not after, not alongside.
+- **Coverage is a floor on what's exercised, not the gate.** A high coverage number with weak assertions is the failure mode, not the goal. Coverage has a `fail_under` floor (`pyproject.toml`); never drop it — but passing it is necessary, not sufficient. Every assertion must be one that would fail if the production code regressed (the "mutation test question" in the testing skill §0).
+- **Every test must be able to fail.** If deleting the production line it covers wouldn't fail the test, the test is worthless — strengthen or remove it. Tests assert on *behaviour*, never only on their own mocks.
+
 ## Structure
 
 | Path | Purpose |
