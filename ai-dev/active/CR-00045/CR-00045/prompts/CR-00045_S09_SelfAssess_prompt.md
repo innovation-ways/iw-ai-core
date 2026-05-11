@@ -1,7 +1,7 @@
-# {TYPE}{NNN}_S{NN}_SelfAssess_prompt
+# CR-00045_S09_SelfAssess_prompt
 
-**Work Item**: {ID} -- {Title}
-**Step**: S{NN}
+**Work Item**: CR-00045 -- Require & verify TDD RED-run evidence from the backend-impl agent
+**Step**: S09
 **Agent**: SelfAssess
 
 ---
@@ -68,17 +68,17 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 ## Input Files
 
 - **Item ID** — `$IW_ITEM_ID` env var (set by the executor; this is the canonical source).
-- **Worktree logs** — `.worktrees/{ID}/ai-dev/logs/` — run logs, fix-cycle logs.
-- **Item reports dir** — `ai-dev/work/{ID}/reports/` — existing step reports (secondary evidence only).
+- **Worktree logs** — `.worktrees/CR-00045/ai-dev/logs/` — run logs, fix-cycle logs.
+- **Item reports dir** — `ai-dev/work/CR-00045/reports/` — existing step reports (secondary evidence only).
 
 ## Output Files
 
-- `ai-dev/work/{ID}/reports/{ID}_self_assess_report.md` — Human-readable narrative analysis.
-- `ai-dev/work/{ID}/reports/{ID}_self_assess_findings.json` — Structured findings JSON.
+- `ai-dev/work/CR-00045/reports/CR-00045_self_assess_report.md` — Human-readable narrative analysis.
+- `ai-dev/work/CR-00045/reports/CR-00045_self_assess_findings.json` — Structured findings JSON.
 
 ## Context
 
-You are running the self-assessment step for work item **{ID}**.
+You are running the self-assessment step for work item **CR-00045**.
 
 This step invokes the `iw-item-analyze` skill to analyze the just-completed item's
 execution history and surface process improvement findings. This step is **soft** —
@@ -99,35 +99,19 @@ This step's failure does NOT block merge — but produce a usable report anyway.
 If the analysis can't complete, write a stub report explaining why and a
 `findings: []` JSON.
 
-## TDD RED Evidence (behaviour-implementing steps only)
-
-For each **behaviour-implementing step** (notably Backend) whose report
-claims new behavioural tests were added:
-
-- The report contains `tdd_red_evidence` — the field records
-  `run the new failing test` (the RED run) and shows a plausible failure
-  snippet (`AssertionError` / `NotImplementedError`, not an
-  import/collection error).
-- If the step added no behavioural test, the report says so with a one-line
-  justification (e.g. `"n/a — template/markdown edits only"`).
-
-**Dedicated coverage steps (`tests-impl`) are exempt** — they add tests after
-the code exists and are not RED-first by nature. Apply this checklist only when
-the reviewed step type is Backend or another behaviour-implementing agent.
-
 ## Subagent Result Contract
 
 When your work is complete, report results in this JSON structure:
 
 ```json
 {
-  "step": "S{NN}",
+  "step": "S09",
   "agent": "self-assess-impl",
-  "work_item": "{ID}",
+  "work_item": "CR-00045",
   "completion_status": "complete|partial|blocked",
   "files_changed": [
-    "ai-dev/work/{ID}/reports/{ID}_self_assess_report.md",
-    "ai-dev/work/{ID}/reports/{ID}_self_assess_findings.json"
+    "ai-dev/work/CR-00045/reports/CR-00045_self_assess_report.md",
+    "ai-dev/work/CR-00045/reports/CR-00045_self_assess_findings.json"
   ],
   "preflight": {
     "format": "ok|skipped:no-code-changes",

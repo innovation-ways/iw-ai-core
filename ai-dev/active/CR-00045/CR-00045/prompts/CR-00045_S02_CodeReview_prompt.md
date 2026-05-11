@@ -1,8 +1,8 @@
-# {TYPE}{NNN}_S{NN}_CodeReview_prompt
+# CR-00045_S02_CodeReview_prompt
 
-**Work Item**: {ID} -- {Title}
-**Step Being Reviewed**: S{NN} ({Agent})
-**Review Step**: S{review_step_NN}
+**Work Item**: CR-00045 -- Require & verify TDD RED-run evidence from the backend-impl agent
+**Step Being Reviewed**: S01 (backend-impl)
+**Review Step**: S02
 
 ---
 
@@ -71,18 +71,18 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
 ## Input Files
 
-- **Runtime step state** — for the current step list, status, prompt paths, gate commands, etc., prefer `uv run iw item-status {ID} --json`. The `workflow-manifest.json` file is a design-time snapshot and may be out of date (CR-00023).
-- `ai-dev/work/{ID}/{ID}_{Type}_Design.md` -- Design document
-- `ai-dev/work/{ID}/reports/{ID}_S{NN}_{Agent}_report.md` -- Implementation step report
+- **Runtime step state** — for the current step list, status, prompt paths, gate commands, etc., prefer `uv run iw item-status CR-00045 --json`. The `workflow-manifest.json` file is a design-time snapshot and may be out of date (CR-00023).
+- `ai-dev/work/CR-00045/CR-00045_CR_Design.md` -- Design document
+- `ai-dev/work/CR-00045/reports/CR-00045_S01_Backend_report.md` -- Implementation step report
 - All files listed in the implementation report's `files_changed`
 
 ## Output Files
 
-- `ai-dev/work/{ID}/reports/{ID}_S{review_step_NN}_CodeReview_report.md` -- Review report
+- `ai-dev/work/CR-00045/reports/CR-00045_S02_CodeReview_report.md` -- Review report
 
 ## Context
 
-You are reviewing the implementation work done in step S{NN} by {Agent} for **{Work Item Title}**.
+You are reviewing the implementation work done in step S01 by backend-impl for **Require & verify TDD RED-run evidence from the backend-impl agent**.
 
 Read the design document to understand what was intended. Read the implementation report to understand what was done. Then review all changed files.
 
@@ -155,27 +155,6 @@ Do NOT skip this step or mark it as optional.
 - Do test names clearly describe what they verify?
 - Do test files cover the assertions the design doc's TDD section calls out by name? If a TDD-section test file is missing from `files_changed`, raise a CRITICAL finding.
 
-### 5a. TDD RED Evidence (behaviour-implementing steps only)
-
-**Applies when the reviewed step is a behaviour-implementing step (notably Backend);
-dedicated coverage steps (`tests-impl`) are exempt.**
-
-1. **Confirm `tdd_red_evidence` is present and plausible.** For any new behavioural
-   test added by the step, verify the report's `tdd_red_evidence` field records
-   `run the new failing test` (the RED run) and shows a plausible failure snippet
-   (`AssertionError` / `NotImplementedError`, not an `ImportError`, `SyntaxError`,
-   or collection error). If the step added no behavioural test, verify the report
-   uses `"n/a — <one-line reason>"`.
-2. **Reason about whether the test would actually fail against pre-change code.** For
-   at least one new behavioural test, evaluate whether it would fail against the
-   production code *before* the change was applied. A test that passes without the
-   new code is **not** a RED-first test — flag it as a HIGH finding.
-3. **(Optional) Stash-recheck.** When quick and safe, you may scope-stash only the
-   production-code hunks for that test's target, re-run the test to see it fail, then
-   restore. State explicitly that this step was performed. This step is **optional**
-   and **not mandatory** because a `git stash` mid-workflow in the worktree is risky.
-   The mandatory parts are steps 1 and 2.
-
 ## Test Verification (NON-NEGOTIABLE)
 
 Before submitting your review:
@@ -199,10 +178,10 @@ Classify each finding with one of these severities:
 
 ```json
 {
-  "step": "S{review_step_NN}",
+  "step": "S02",
   "agent": "CodeReview",
-  "work_item": "{ID}",
-  "step_reviewed": "S{NN}",
+  "work_item": "CR-00045",
+  "step_reviewed": "S01",
   "verdict": "pass|fail",
   "findings": [
     {
