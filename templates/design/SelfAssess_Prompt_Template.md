@@ -99,6 +99,22 @@ This step's failure does NOT block merge — but produce a usable report anyway.
 If the analysis can't complete, write a stub report explaining why and a
 `findings: []` JSON.
 
+## TDD RED Evidence (behaviour-implementing steps only)
+
+For each **behaviour-implementing step** (notably Backend) whose report
+claims new behavioural tests were added:
+
+- The report contains `tdd_red_evidence` — the field records
+  `run the new failing test` (the RED run) and shows a plausible failure
+  snippet (`AssertionError` / `NotImplementedError`, not an
+  import/collection error).
+- If the step added no behavioural test, the report says so with a one-line
+  justification (e.g. `"n/a — template/markdown edits only"`).
+
+**Dedicated coverage steps (`tests-impl`) are exempt** — they add tests after
+the code exists and are not RED-first by nature. Apply this checklist only when
+the reviewed step type is Backend or another behaviour-implementing agent.
+
 ## Subagent Result Contract
 
 When your work is complete, report results in this JSON structure:

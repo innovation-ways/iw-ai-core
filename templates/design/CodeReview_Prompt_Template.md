@@ -155,6 +155,27 @@ Do NOT skip this step or mark it as optional.
 - Do test names clearly describe what they verify?
 - Do test files cover the assertions the design doc's TDD section calls out by name? If a TDD-section test file is missing from `files_changed`, raise a CRITICAL finding.
 
+### 5a. TDD RED Evidence (behaviour-implementing steps only)
+
+**Applies when the reviewed step is a behaviour-implementing step (notably Backend);
+dedicated coverage steps (`tests-impl`) are exempt.**
+
+1. **Confirm `tdd_red_evidence` is present and plausible.** For any new behavioural
+   test added by the step, verify the report's `tdd_red_evidence` field records
+   `run the new failing test` (the RED run) and shows a plausible failure snippet
+   (`AssertionError` / `NotImplementedError`, not an `ImportError`, `SyntaxError`,
+   or collection error). If the step added no behavioural test, verify the report
+   uses `"n/a — <one-line reason>"`.
+2. **Reason about whether the test would actually fail against pre-change code.** For
+   at least one new behavioural test, evaluate whether it would fail against the
+   production code *before* the change was applied. A test that passes without the
+   new code is **not** a RED-first test — flag it as a HIGH finding.
+3. **(Optional) Stash-recheck.** When quick and safe, you may scope-stash only the
+   production-code hunks for that test's target, re-run the test to see it fail, then
+   restore. State explicitly that this step was performed. This step is **optional**
+   and **not mandatory** because a `git stash` mid-workflow in the worktree is risky.
+   The mandatory parts are steps 1 and 2.
+
 ## Test Verification (NON-NEGOTIABLE)
 
 Before submitting your review:

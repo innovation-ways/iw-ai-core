@@ -113,9 +113,16 @@ Follow all rules defined there exactly. When in doubt, match existing code in th
 
 Follow TDD (Red-Green-Refactor):
 
-1. **RED**: Write failing tests first that define the expected behavior
-2. **GREEN**: Write the minimal implementation to make tests pass
-3. **REFACTOR**: Improve code structure while keeping all tests green
+1. **RED**: Write failing tests first that define the expected behavior.
+   Then **run the new failing test** — a *targeted* run only
+   (`uv run pytest tests/.../test_x.py -v`), never the full suite.
+   **Confirm the failure is for the expected reason** — an
+   `AssertionError` or `NotImplementedError`/`AttributeError` from
+   missing implementation, *not* an `ImportError`, `SyntaxError`,
+   fixture error, or collection error (those mean the test itself is
+   broken, not RED). Capture the failing line(s).
+2. **GREEN**: Write the minimal implementation to make tests pass.
+3. **REFACTOR**: Improve code structure while keeping all tests green.
 
 Do not skip the RED phase. Tests must exist before implementation code.
 
@@ -228,10 +235,20 @@ When your work is complete, report results in this JSON structure:
   },
   "tests_passed": true,
   "test_summary": "X passed, 0 failed",
+  "tdd_red_evidence": "tests/unit/test_x.py::test_foo — AssertionError: assert 0 == 42  // captured RED run",
   "blockers": [],
   "notes": ""
 }
 ```
+
+- `tdd_red_evidence`: **Required for Backend steps.** When the step adds
+  behavioural test(s), record the test id(s) and a 1–3 line snippet of
+  the RED run output (the failure line), e.g. `"tests/unit/test_x.py::test_foo
+  — AssertionError: assert 0 == 42"`. When the step legitimately adds no
+  behavioural test (pure refactor, config-only, doc/template-only), use
+  `"n/a — <one-line reason>"`, e.g. `"n/a — template/markdown edits only,
+  no production logic"`. Non-backend steps should use the `"n/a — …"` form
+  when no behavioural tests are added.
 
 - `completion_status`: Use `complete` when all deliverables are done and tests pass. Use `partial` if some deliverables are done but others remain. Use `blocked` if external dependencies prevent progress.
 - `blockers`: List any issues that prevented full completion. Include enough detail for the orchestrator to decide next steps.
