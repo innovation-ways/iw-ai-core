@@ -1,9 +1,11 @@
 # IW AI Core — Testing Enhancement Plan
 
-> **Status**: living plan — draft v1 (2026-05-11)
+> **Status**: living plan — v1.1 (2026-05-11)
 > **Owner**: sergio
 > **Source research**: [`docs/research/R-00068-ai-core-test-quality-strategy.md`](../../docs/research/R-00068-ai-core-test-quality-strategy.md) (R-00068)
 > **Purpose**: the single place we track *what* we want to improve about IW AI Core's testing, *why*, and *how* — and the running status of each piece. We tackle items one at a time, each delivered either as a CR/Feature or as a direct change, decided at the time.
+>
+> **Current status (2026-05-11):** Phase 0 (the "constitution") is essentially done — 0.1 (strategy doc), 0.2 (`iw-ai-core-testing` skill), 0.3 (`tests/CLAUDE.md` updates) are committed (`db8f7b2`); **0.4 is CR-00045**, drafted + registered (status `draft`), under review, queued to run. Once CR-00045 merges, Phase 0 is complete and **Phase 1 begins — start with the assertion scanner (1.1)**; see the "proposed CR grouping & sequencing" at the top of §5.
 
 ---
 
@@ -61,7 +63,7 @@ IW AI Core has 413 test files (175 unit / 169 integration / 69 dashboard), stron
 | 0.1 | `docs/IW_AI_Core_Testing_Strategy.md` | We have no written test strategy; InnoForge does and it's clearly worth it | Adapt InnoForge's `docs/testing-strategy.md`: philosophy (AI writes the tests), current layers (unit / integration / dashboard-TestClient / browser-playwright-cli) + accurate inventory + `make` targets, infrastructure (live-DB guard, testcontainers, fixtures, markers), conventions, current quality-gate table, known gaps, roadmap pointer. Link from `CLAUDE.md` (Quick Nav + Docs Reference) and `tests/CLAUDE.md`. | Direct (doc) | **DONE 2026-05-11** | `docs/IW_AI_Core_Testing_Strategy.md` |
 | 0.2 | `skills/iw-ai-core-testing/SKILL.md` | The agent-facing rules; biggest lever on what gets generated | Adapt InnoForge's `innoforge-testing` skill: headline "the mutation-test question — would this test fail if the code regressed?"; anti-patterns (no `is not None`-only / mock-only / `pytest.raises(Exception)`-without-`match`); patterns (assert specific values, every dict field, error messages); IW-AI-Core infra rules (live-DB guard, the `dashboard.routers.*` collection-time gotcha, testcontainer fixtures, no `importlib.reload(orch.config)`, per-worktree-DB-vs-testcontainers); cross-project isolation; state-machine/property guidance; TDD + RED evidence; the red-flag checklist. `tests/CLAUDE.md` declares it MUST-read for agents writing/reviewing tests. **Still to do: sync to IW-AI-DEV + InnoForge repos** (per memory `feedback_skills_sync`). | Direct (skill) + sync | **DONE 2026-05-11** (sync to sibling repos still pending) | `skills/iw-ai-core-testing/SKILL.md` |
 | 0.3 | `tests/CLAUDE.md` updates | The existing test doc should point at 0.1/0.2 and state the non-negotiables | Added: "Required reading" section (skill MUST-read, strategy doc, this plan); "TDD & test quality" section (RED-GREEN-REFACTOR + RED output recorded; "coverage is a floor, not the gate"; "every test must be able to fail"). The `pytest-randomly` reproduce recipe is deferred until item 1.4 lands. | Direct (doc) | **DONE 2026-05-11** | `tests/CLAUDE.md` |
-| 0.4 | TDD-evidence requirement in `backend-impl` workflow | Agents do TDD well *if* required to; we should require and *verify* it | Update `agents/claude/backend-impl.md` (+ opencode mirror) and the Implementation / SelfAssess prompt templates to record the RED run output in the execution report; extend the subagent result-contract JSON (it has `tests_passed` but no "RED run recorded"); add a review-step check that new tests would fail against pre-change code (`git stash` + run, or targeted mutmut on the new code). Remember to `iw sync-agents` / `iw sync-templates` after. | CR (touches agent prompts/templates) | TODO | |
+| 0.4 | TDD-evidence requirement in `backend-impl` workflow | Agents do TDD well *if* required to; we should require and *verify* it | `backend-impl` (both mirrors) must run the new failing test, confirm it fails for the expected reason (assertion/`NotImplementedError`, not import/collection error), and record a `tdd_red_evidence` field in the result-contract JSON; the Implementation/SelfAssess/CodeReview prompt templates (+ `templates/design/` masters) get matching language; a guard test pins the contract strings; `iw sync-agents` afterward; cross-repo `iw sync-templates` is a post-merge operator step. **Drafted as CR-00045** (design + functional doc + 9-step manifest + 4 prompts; committed `eca002c`; registered, status `draft`). | CR | **CR-00045 — drafted & registered (`draft`); under review; queued to run** | CR-00045 |
 
 ---
 
@@ -70,6 +72,20 @@ IW AI Core has 413 test files (175 unit / 169 integration / 69 dashboard), stron
 **Why now**: these stop *new* test-quality regressions from landing, at near-zero ongoing cost, and most are direct ports from InnoForge.
 
 **Major gains**: coverage can't silently rot; new code can't ship uncovered; secrets can't leak; the most common AI test smells (no-assert, tautology, mock-only) are blocked at CI; order-dependent pollution surfaces immediately; dead code and dep drift get flagged; we get an Allure report we already paid for.
+
+### Phase 1 — proposed CR grouping & sequencing
+
+Two things changed the picture: (a) recon (Phase 0) showed several "1.x" items are partly done already; (b) iw-ai-core has **two CI surfaces**, not one — see §9. So Phase 1 is best delivered as ~5 small CRs, done one at a time. Recommended order:
+
+| CR | Bundles | What it does (high level) | Notes / open Qs |
+|----|---------|---------------------------|-----------------|
+| **P1-CR-A — Assertion scanner** *(start here)* | 1.1 | Port InnoForge's `scripts/check_test_assertions.py` (+ extend: tautology, mock-only, `pytest.raises` without `match`); `make test-assertions`; baseline file (`tests/assertion_free_baseline.txt`-style) so it blocks *new* violations while tracking existing; wire into both CI surfaces (a `qv-gate` in the workflow canon + a step in `.github/workflows/test-quality.yml`). | Decide where the daemon gate lives — fold into `make quality` (currently `lint format typecheck`), make it part of `lint`, or a new `assertions` qv-gate. Leaning a new `qv-gate` so failures are attributed cleanly. |
+| **P1-CR-B — Coverage gates** | 1.2 + 1.3 + the 1.10 audit | Raise `fail_under` (from 46) to just below measured branch coverage and ratchet; add `diff-cover` dev dep + `make diff-cover` (`diff-cover coverage.xml --compare-branch=origin/main --fail-under=N`) as a `qv-gate` *and* a step in `test-quality.yml`'s `unit` job (which already uploads `coverage.xml`); audit the cov config for the known gotchas (`relative_files`, `pytest -n auto --cov` not `coverage run -m pytest`, `include-hidden-files` on the `.coverage` artefact). | Needs a one-off "measure current branch coverage" run first. Pick the starting `fail_under` and the diff-cover `--fail-under` (≈90). |
+| **P1-CR-C — Test hygiene** | 1.4 + 1.5 + 1.7 | Add `pytest-randomly` (default) + budget a cleanup pass for whatever inter-test pollution it surfaces + document the reproduce recipe in `tests/CLAUDE.md`; make `--strict-markers` the default in `addopts`; add `vulture` + `deptry` dev deps + `make` targets, warn-first then gate after a burn-in. | `pytest-randomly` may surface a non-trivial cleanup (session-scoped fixtures + the live-DB guard). If it's big, split it out of this CR. |
+| **P1-CR-D — Security gates** | 1.6 + 1.9 | Add `gitleaks` — a pre-commit hook (extend `.pre-commit-config.yaml`) **and** a job (extend `security-scan.yml` and/or a `qv-gate`); add **Semgrep** alongside `bandit` (today `make security-sast` is just a `bandit` alias) — extend `security-scan.yml` and the `security-sast` target. | Align `gitleaks` config with what the `iw-oss-publish` skill already uses. |
+| **P1-CR-E — Allure + smoke SLA** | 1.8 + 1.11 | Fill in real recipes for the empty `allure-*` `.PHONY` stubs in the Makefile (model on InnoForge/Podforger); curate the `smoke` marker set to ≤15 tests / <60 s on the critical paths, document the SLA in `tests/CLAUDE.md` + the strategy doc, and keep `make smoke` running first in the daemon QV order and the `smoke` GH job. | Could split into two if the smoke curation grows. |
+
+Sequencing rationale: A first (highest leverage, smallest, blocks the most common AI smell, pure port). B next (coverage is the other half of the cheap-gate story and the floor is dangerously low at 46). C/D/E in any order after — D is independent; C might need a cleanup detour; E is the lightest. Items can interleave with Phase 2 once A+B land.
 
 | # | Item | Why | How / approach | Likely vehicle | Status | Link |
 |---|------|-----|----------------|----------------|--------|------|
@@ -140,6 +156,13 @@ IW AI Core has 413 test files (175 unit / 169 integration / 69 dashboard), stron
 
 ## 9. CI gate matrix (target end-state)
 
+**Two CI surfaces** — every Phase-1+ gate should be considered for both:
+
+1. **Daemon QV gates** — run per work item, in the worktree, before squash-merge. Defined in each item's `workflow-manifest.json`; the canonical set lives in `skills/iw-workflow/SKILL.md` (today: `lint` → `make lint`, `format` → `make format-check`, `typecheck` → `make type-check`, `unit-tests` → `make test-unit`, `integration-tests` → `make allure-integration` [note: that target is a no-op stub right now — see 1.8]). Adding a gate here means adding it to the skill's canon **and** to the design templates so new items pick it up.
+2. **GitHub Actions** — run on PR/push to `main` (and some on a weekly cron). Already present: `test-quality.yml` (jobs: `lint-typecheck`, `unit` [uploads `coverage.xml`], `integration` [real postgres service], `smoke`), `security-scan.yml` (pip-audit + bandit + trivy), `codeql.yml`, `scorecard.yml`, `compliance-scan.yml`, `schema-validation.yml`. Plus `.pre-commit-config.yaml` hooks (trailing-whitespace, end-of-file, ruff, mypy, …) — the place for `gitleaks`.
+
+A gate isn't "done" until it's wired into whichever of these surfaces makes sense (most cheap gates: both — `qv-gate` for the merge gate, GH workflow step for the PR view).
+
 - **Blocking on every PR**: assertion scanner · `--cov-fail-under` floor · `diff-cover --fail-under` · `ruff PT` + `--strict-markers` · `gitleaks` · smoke (fail-fast, first) · unit + integration + dashboard tests · contract route sweep · CLI-contract · cross-project isolation · security module · data-layer module · Hypothesis `ci` profile · `vulture`/`deptry` (after burn-in) · mutation score on changed files (after non-blocking burn-in) · daemon chaos subset.
 - **Periodic (nightly/weekly, informational → alert on regression)**: full `mutation-audit` · Hypothesis `deep` profile · `schemathesis` full run · full E2E matrix · visual regression · perf budgets · `pytest-rerunfailures` flaky sweep · `security-all` + Semgrep + Trivy + image scan · LLM-as-judge experiment.
 - **One-time / on-change**: testing-strategy doc · testing skill · `tests/CLAUDE.md` updates · Allure targets · CI plumbing.
@@ -148,10 +171,12 @@ IW AI Core has 413 test files (175 unit / 169 integration / 69 dashboard), stron
 
 ## 10. Open questions / decisions to make as we go
 
-- **Phase 0 first, or a couple of Phase-1 quick wins in parallel?** Leaning Phase 0 first (gates should enforce written rules) but 1.8 (Allure) and 1.2/1.5 (config-only) are harmless to do alongside.
+- ~~Phase 0 first, or Phase-1 quick wins in parallel?~~ **Resolved** — Phase 0 first; 0.1/0.2/0.3 done, 0.4 = CR-00045 in flight.
+- **Where does the assertion-scanner daemon gate live?** Fold into `make quality` (currently `lint format typecheck`), make it part of `lint`, or a dedicated `assertions` qv-gate? Leaning a dedicated gate (clean attribution). Decide in P1-CR-A.
+- **Coverage floor starting value** — needs a one-off "measure current branch coverage" run; set `fail_under` just below it, ratchet. And the `diff-cover --fail-under` value (≈90?). Decide in P1-CR-B.
+- **`pytest-randomly` cleanup size** — unknown until we turn it on; if it surfaces a large inter-test-pollution backlog, split the cleanup out of P1-CR-C into its own item.
 - **Mutation testing cost** — unknown until the 2.1 spike. If a changed-files run is too slow even cache-warmed, fall back to nightly-only for a while.
 - **E2E runner** — `playwright-cli` only (per `CLAUDE.md`). InnoForge's raw `@playwright/test` TypeScript package can't be ported verbatim; the *structure* (named projects, saved auth state, journey scripts, Allure output) ports, the *runner* must be `playwright-cli`. Decide whether journeys live as bash scripts (like the existing browser checks) or a thin Python harness.
-- **Coverage floor starting value** — measure current branch coverage, set the floor just below it, ratchet.
 - **What's a CR vs a direct change** — decided per item at pickup time; the "Likely vehicle" column is a hint, not a commitment.
 
 ---
@@ -159,4 +184,6 @@ IW AI Core has 413 test files (175 unit / 169 integration / 69 dashboard), stron
 ## 11. Changelog
 
 - **2026-05-11** — v1 draft created from research R-00068; phases 0–4 outlined.
-- **2026-05-11** — Phase 0 started. **Items 0.1 / 0.2 / 0.3 done**: `docs/IW_AI_Core_Testing_Strategy.md`, `skills/iw-ai-core-testing/SKILL.md`, and `tests/CLAUDE.md` updates created; `CLAUDE.md` Quick-Nav + Docs-Reference updated to link them. Recon corrected several Phase-1/3 assumptions: branch coverage (`branch = true`) and a `fail_under` gate already exist (floor is low at 46 — item 1.2 becomes ratchet-only); `ruff` `PT` rules already enabled (item 1.5 reduces to `--strict-markers`); Allure `make` targets are `.PHONY` stubs with no recipes; `security-sast` is currently just a `bandit` alias (no Semgrep); migration round-trip test + `make migration-check` already exist (item 3.6 partly done); `factory-boy` is a dependency but unused (no `tests/factories.py`). Still pending in Phase 0: sync the new skill to IW-AI-DEV + InnoForge; item 0.4 (TDD RED-evidence in `backend-impl`, to be a CR).
+- **2026-05-11** — Phase 0 started. **Items 0.1 / 0.2 / 0.3 done** (committed `db8f7b2`): `docs/IW_AI_Core_Testing_Strategy.md`, `skills/iw-ai-core-testing/SKILL.md` (synced to `.claude/skills/` via `iw sync-skills`), `tests/CLAUDE.md` updates; `CLAUDE.md` Quick-Nav + Docs-Reference link them. Recon corrected several Phase-1/3 assumptions: branch coverage (`branch = true`) and a `fail_under` gate already exist (floor is low at 46 — item 1.2 becomes ratchet-only); `ruff` `PT` rules already enabled (item 1.5 reduces to `--strict-markers`); Allure `make` targets are `.PHONY` stubs with no recipes; `security-sast` is currently just a `bandit` alias (no Semgrep); migration round-trip test + `make migration-check` already exist (item 3.6 partly done); `factory-boy` is a dependency but unused (no `tests/factories.py`). Clarified: the `iw-ai-core-testing` skill is **project-specific** (the iw-ai-core analog of InnoForge's `innoforge-testing`) — it lives only in iw-ai-core, not propagated to the other managed projects (only shared `iw-*` workflow skills are).
+- **2026-05-11** — **Item 0.4 → CR-00045** drafted, committed (`eca002c`), registered (status `draft`): design + functional doc + 9-step workflow manifest (`backend-impl` → `code-review-impl` → `code-review-final-impl` → 5 QV gates → `self-assess-impl`) + 4 step prompts under `ai-dev/active/CR-00045/`. Under review; queued to run. Phase 0 completes when it merges.
+- **2026-05-11** — Planned **Phase 1 as ~5 CRs** (P1-CR-A … P1-CR-E — see §5) and recorded the **two CI surfaces** (daemon QV gates + GitHub Actions workflows incl. `test-quality.yml` / `security-scan.yml` / `.pre-commit-config.yaml` — see §9). Recommended next item: **P1-CR-A, the assertion scanner.**
