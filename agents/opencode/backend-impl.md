@@ -32,9 +32,16 @@ Implement backend and business logic scope as defined in the provided implementa
 2. **Read CLAUDE.md** — located at the project root. This file defines the project's architecture, layer boundaries, coding conventions, naming rules, and hard constraints. Follow them exactly. If CLAUDE.md conflicts with your defaults, CLAUDE.md wins.
 3. **Identify existing patterns** — before writing new code, search the codebase for similar implementations. Match the style, structure, imports, and error handling patterns already in use.
 4. **Apply TDD (RED, GREEN, REFACTOR)**:
-   - **RED**: Write failing tests first that define the expected behavior.
-   - **GREEN**: Write the minimal implementation to make tests pass.
-   - **REFACTOR**: Clean up while keeping tests green.
+    - **RED**: Write failing tests first that define the expected behavior.
+      Then **run the new failing test** — a *targeted* run only
+      (`uv run pytest tests/.../test_x.py -v`), never the full suite.
+      **Confirm the failure is for the expected reason** — an
+      `AssertionError` or `NotImplementedError`/`AttributeError` from
+      missing implementation, *not* an `ImportError`, `SyntaxError`,
+      fixture error, or collection error (those mean the test itself is
+      broken, not RED). Capture the failing line(s).
+    - **GREEN**: Write the minimal implementation to make tests pass.
+    - **REFACTOR**: Clean up while keeping tests green.
 5. **Run checks** — execute the project's test suite and any linting/type-checking commands specified in CLAUDE.md or the Makefile. Fix all failures before finishing.
 6. **Return the result report** — see Output Format below.
 
@@ -91,9 +98,23 @@ You MUST end your response with this exact JSON structure:
   "work_item": "{ID}",
   "completion_status": "complete|partial|blocked",
   "files_changed": [],
+  "preflight": {
+    "format": "ok|fixed|skipped:<reason>",
+    "typecheck": "ok|skipped:<reason>",
+    "lint": "ok|skipped:<reason>"
+  },
   "tests_passed": true,
   "test_summary": "",
+  "tdd_red_evidence": "tests/unit/test_x.py::test_foo — AssertionError: assert 0 == 42  // captured RED run",
   "blockers": [],
   "notes": ""
 }
 ```
+
+- `tdd_red_evidence`: Required for Backend steps. When the step adds
+  behavioural test(s), record the test id(s) and a 1–3 line snippet of
+  the RED run output (the failure line), e.g. `"tests/unit/test_x.py::test_foo
+  — AssertionError: assert 0 == 42"`. When the step legitimately adds no
+  behavioural test (pure refactor, config-only, doc/template-only), use
+  `"n/a — <one-line reason>"`, e.g. `"n/a — template/markdown edits only,
+  no production logic"`.
