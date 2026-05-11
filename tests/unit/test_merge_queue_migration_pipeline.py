@@ -395,3 +395,105 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
             _merge_item(db, item, "test-proj", _make_project_config())
 
         assert item.status == BatchItemStatus.merged
+
+
+# ---------------------------------------------------------------------------
+# 4. Phase 3 rollback only when Phase 2 actually applied a revision
+# ---------------------------------------------------------------------------
+
+
+def _make_failed_apply_result(*, revisions_applied: list[str]) -> MagicMock:
+    """A PipelineResult for a Phase-2 apply that failed.
+
+    revisions_applied non-empty → apply advanced the DB and then died
+    (rollback warranted). Empty → apply tripped a pre-flight check
+    (SelfBlockerError / lock timeout) before touching the DB (no rollback).
+    """
+    from orch.daemon.migration_pipeline import PipelineResult
+
+    if revisions_applied:
+        return PipelineResult(
+            phase="apply",
+            success=False,
+            final_batch_state="rollback_triggered",
+            frozen=False,
+            message="Apply failed after applying revisions",
+            revisions_applied=list(revisions_applied),
+        )
+    return PipelineResult(
+        phase="apply",
+        success=False,
+        final_batch_state="apply_deferred",
+        frozen=False,
+        message="Phase 2 apply would self-deadlock: ... See I-00063 for context.",
+        revisions_applied=[],
+    )
+
+
+def _make_rollback_result() -> MagicMock:
+    from orch.daemon.migration_pipeline import PipelineResult
+
+    return PipelineResult(
+        phase="rollback",
+        success=True,
+        final_batch_state="MIGRATION_ROLLED_BACK",
+        frozen=False,
+        message="Rollback succeeded (10ms)",
+    )
+
+
+class TestMergeItemRollbackGuard:
+    """`_merge_item` must only run Phase 3 rollback when Phase 2 advanced the DB.
+
+    Regression: a transient SelfBlockerError pre-flight failure (zero revisions
+    applied) used to trigger `alembic downgrade -1`, which rolled back a
+    previously-applied migration and left the orch DB behind head with writes
+    disabled in the dashboard (observed after the BATCH-00089 merge, 2026-05-11).
+    """
+
+    def _run_merge_item(self, apply_result: MagicMock) -> dict[str, MagicMock]:
+        from orch.daemon.merge_queue import _merge_item
+
+        db = MagicMock()
+        item = _make_batch_item(batch_id="BATCH-00089")
+
+        with (
+            patch(
+                "orch.daemon.merge_queue.run_pre_merge_rebase",
+                return_value=_make_successful_rebase_result(),
+            ),
+            patch(
+                "orch.daemon.merge_queue.run_pre_merge_dry_run",
+                return_value=_make_successful_dry_run_result(),
+            ),
+            patch(
+                "orch.daemon.merge_queue.run_post_merge_apply",
+                return_value=apply_result,
+            ),
+            patch(
+                "orch.daemon.merge_queue.run_rollback", return_value=_make_rollback_result()
+            ) as mock_rollback,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_subproc,
+            patch("orch.daemon.merge_queue._cleanup_worktree"),
+            patch("orch.daemon.merge_queue.worktree_compose.down"),
+        ):
+            mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
+            _merge_item(db, item, "test-proj", _make_project_config())
+
+        return {"rollback": mock_rollback, "item": item}
+
+    def test_no_rollback_when_apply_failed_with_zero_revisions(self) -> None:
+        result = self._run_merge_item(_make_failed_apply_result(revisions_applied=[]))
+        result["rollback"].assert_not_called()
+        # The git squash-merge already happened — the item stays merged.
+        from orch.db.models import BatchItemStatus
+
+        assert result["item"].status == BatchItemStatus.merged
+
+    def test_rollback_when_apply_failed_after_applying_a_revision(self) -> None:
+        result = self._run_merge_item(_make_failed_apply_result(revisions_applied=["abc123"]))
+        result["rollback"].assert_called_once()
+
+    def test_no_rollback_on_successful_apply(self) -> None:
+        result = self._run_merge_item(_make_successful_apply_result())
+        result["rollback"].assert_not_called()

@@ -138,8 +138,10 @@ def test_apply_fails_rollback_succeeds(unique_batch_id: int) -> None:
         with patch("orch.daemon.migration_pipeline.safe_apply") as mock_apply:
             from orch.db.safe_migrate import ApplyResult
 
+            # Apply started, committed revision abc123, then died — Phase 3
+            # rollback is warranted because the live DB advanced.
             mock_apply.return_value = ApplyResult(
-                revisions_applied=[],
+                revisions_applied=["abc123"],
                 success=False,
                 duration_ms=50,
                 stdout_tail="",
@@ -150,6 +152,7 @@ def test_apply_fails_rollback_succeeds(unique_batch_id: int) -> None:
 
         assert apply_result.success is False
         assert apply_result.final_batch_state == "rollback_triggered"
+        assert apply_result.revisions_applied == ["abc123"]
 
         with patch("orch.daemon.migration_pipeline.safe_rollback") as mock_rollback:
             from orch.db.safe_migrate import RollbackResult
@@ -166,6 +169,38 @@ def test_apply_fails_rollback_succeeds(unique_batch_id: int) -> None:
         assert rollback_result.success is True
         assert rollback_result.final_batch_state == "MIGRATION_ROLLED_BACK"
         assert rollback_result.frozen is False
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_apply_fails_before_any_revision_defers_without_rollback(
+    unique_batch_id: int,
+) -> None:
+    """A SelfBlockerError-style apply failure that applied *zero* revisions
+    must NOT advertise ``rollback_triggered`` — there is nothing on the DB to
+    roll back, and a ``downgrade -1`` would clobber a previously-applied
+    migration (the post-merge rollback regression seen after the BATCH-00089
+    merge on 2026-05-11)."""
+    with patch("orch.daemon.migration_pipeline.get_db_url", return_value=DUMMY_DB_URL):
+        with patch("orch.daemon.migration_pipeline.safe_apply") as mock_apply:
+            from orch.db.safe_migrate import ApplyResult
+
+            mock_apply.return_value = ApplyResult(
+                revisions_applied=[],
+                success=False,
+                duration_ms=0,
+                stdout_tail="",
+                stderr_tail="",
+                error_message=(
+                    "Phase 2 apply would self-deadlock: daemon's own session "
+                    "holds AccessShareLock on projects. See I-00063 for context."
+                ),
+            )
+            apply_result = run_post_merge_apply(batch_id=unique_batch_id)
+
+        assert apply_result.success is False
+        assert apply_result.final_batch_state == "apply_deferred"
+        assert apply_result.revisions_applied == []
 
 
 @pytest.mark.integration
