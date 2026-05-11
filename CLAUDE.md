@@ -17,7 +17,8 @@ AI orchestration platform that drives AI-assisted development across multiple pr
 | Unified jobs view | `orch/jobs/aggregator.py` · `dashboard/routers/jobs_ui.py` |
 | DB instance identity (CR-00014) | `orch/db/identity.py` · `dashboard/routers/healthz.py` |
 | Worktree container isolation | `orch/daemon/worktree_compose.py` · `orch/daemon/worktree_reaper.py` · `docs/IW_AI_Core_Worktree_Isolation.md` |
-| Test patterns & rules | `tests/conftest.py` · see `tests/CLAUDE.md` |
+| Test patterns & rules | `tests/conftest.py` · see `tests/CLAUDE.md` · `docs/IW_AI_Core_Testing_Strategy.md` · `skills/iw-ai-core-testing/SKILL.md` |
+| Testing enhancement plan | `ai-dev/work/TESTS_ENHANCEMENT.md` · research `docs/research/R-00068-ai-core-test-quality-strategy.md` |
 | Configuration | `orch/config.py` (reads `.env`) · `projects.toml` |
 | Evidences ingestion (CR-00025) | `orch/evidences.py` · hooks in `orch/cli/item_commands.py` (approve) and `orch/cli/step_commands.py` (step-done) |
 | Migrations | `orch/db/migrations/versions/` |
@@ -150,4 +151,5 @@ playwright-cli -s=<name> open <url>  # Named session (for auth persistence)
 | `docs/IW_AI_Core_Daemon_Design.md` | Daemon loop, state transitions, monitoring |
 | `docs/IW_AI_Core_Agent_Constraints.md` | Docker/migration off-limits rules (R1, R2) |
 | `docs/IW_AI_Core_Dashboard_Design.md` | Dashboard pages, htmx patterns, SSE |
+| `docs/IW_AI_Core_Testing_Strategy.md` | Test layers, infrastructure, conventions, quality gates, known gaps, roadmap |
 | `docs/implementation/00_INDEX.md` | Implementation plan index |
