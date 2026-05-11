@@ -14,10 +14,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from sqlalchemy import delete
+
 from orch.db.models import (
     DocStatus,
     DocTier,
     DocType,
+    DocTypeGuide,
     EditorialCategory,
     Project,
     ProjectDoc,
@@ -114,14 +117,17 @@ def test_falls_back_to_type_guide_when_no_instance_override(db_session: Session)
 
 
 # ---------------------------------------------------------------------------
-# AC3 — Falls back to None when neither guide exists
+# AC1 (updated) — Falls back to _default guide when neither instance nor type guide exists
 # ---------------------------------------------------------------------------
 
 
 def test_falls_back_to_none_when_neither_guide_exists(db_session: Session) -> None:
-    """When no type guide and no instance guide, snapshot is None with no exception."""
+    """When no type guide, no instance guide, and no _default row either, snapshot is None."""
     _make_project(db_session)
     _make_doc(db_session, doc_id="unknown-doc", doc_type=DocType.module)
+
+    db_session.execute(delete(DocTypeGuide))
+    db_session.commit()
 
     svc = DocService(db_session)
 
@@ -129,6 +135,21 @@ def test_falls_back_to_none_when_neither_guide_exists(db_session: Session) -> No
     db_session.commit()
 
     assert job.guide_snapshot is None
+
+
+def test_falls_back_to_default_guide_when_no_instance_or_type_guide(db_session: Session) -> None:
+    """When no type guide but _default exists, snapshot is the _default guide."""
+    _make_project(db_session)
+    _make_doc(db_session, doc_id="diagram-doc", doc_type=DocType.module)
+
+    svc = DocService(db_session)
+    svc.save_type_guide("_default", "# Global Editorial Guidelines\nbaseline content")
+    db_session.commit()
+
+    job = svc.create_doc_job("test-proj", "diagram-doc")
+    db_session.commit()
+
+    assert job.guide_snapshot == "# Global Editorial Guidelines\nbaseline content"
 
 
 # ---------------------------------------------------------------------------
