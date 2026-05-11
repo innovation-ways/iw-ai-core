@@ -1,0 +1,75 @@
+{
+  "item_id": "I-00081",
+  "bottom_line": "Fix the design-doc generators (iw-new-incident/feature/cr) and/or `iw step-done` so step-report filenames match what downstream prompts reference — every multi-step item currently burns 1-4 wasted tool calls per dependent step because prompts ask for `<ID>_S<NN>_<agent-slug>_report.md` while the lifecycle writes `<ID>_S<NN>_<Label>_report.md`.",
+  "coverage_notes": "All 17 logs read in full (largest is S11 at 343 KB, well under the 1 MB sampling threshold). DB telemetry: full (`iw db-identity check`=UP, `iw item-status --json`=complete 14-step manifest with zero fix-cycles). Workflow ran cleanly: 0 fix-cycles, every step exactly 1 run. Reports under `ai-dev/active/I-00081/reports/` cross-checked against raw `ai-dev/logs/I-00081_*.log` for self-report bias. Step-prompt directory `ai-dev/active/I-00081/prompts/` cross-referenced for prompt-vs-log gaps. No agent-self-report cited as primary evidence.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Per-step prompt template substitutes `{Agent}` with OpenCode slug; lifecycle writes reports using friendly label — every downstream step hits 'File not found' on first read",
+      "frequency": "systemic",
+      "recommendation": "Either (a) change the design-doc generator skills (`iw-new-incident`, `iw-new-feature`, `iw-new-cr`) so `{Agent}` in the prompt templates is substituted with the step `label` (e.g. `Backend`, `Frontend`, `Tests`) — the same string the lifecycle uses when writing reports; OR (b) change `iw step-done` / report-writer in `orch/cli/step_commands.py` to write reports as `<ID>_S<NN>_<agent-slug>_report.md` (matching the templates). Option (a) is the smaller surface change. Either way, document the convention in `templates/design/Implementation_Prompt_Template.md` lines 76–80 so the placeholder semantics are explicit.",
+      "evidence": [
+        "ai-dev/logs/I-00081_S02_run1.log:9 — \"Error: File not found: ...I-00081_S01_backend-impl_report.md\"  (real file is ...I-00081_S01_Backend_report.md, line :12 shows the recovery Read)",
+        "ai-dev/logs/I-00081_S03_run1.log:9 — \"Error: File not found: ...I-00081_S01_backend-impl_report.md\"  (S03 instructed to 'read this first' for S01's exact context-var names)",
+        "ai-dev/logs/I-00081_S04_run1.log:9 and :11 — \"File not found: ...I-00081_S01_backend-impl_report.md\" + \"File not found: ...I-00081_S03_frontend-impl_report.md\"  (S04 needs both upstream reports)",
+        "ai-dev/active/I-00081/prompts/I-00081_S02_CodeReview_prompt.md:23 — \"`ai-dev/active/I-00081/reports/I-00081_S01_backend-impl_report.md`\" (prompt-as-written)",
+        "ai-dev/active/I-00081/reports/I-00081_S01_Backend_report.md (actual filename on disk)"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Reconcile step-report filename convention: design-doc generators (iw-new-incident/feature/cr) substitute {Agent} with the friendly Label so prompts reference the same filename `iw step-done` writes; analyzed in I-00081 self-assess (ai-dev/active/I-00081/reports/I-00081_self_assess_report.md). Target: templates/design/Implementation_Prompt_Template.md + skills/iw-new-incident/SKILL.md + skills/iw-new-feature/SKILL.md + skills/iw-new-cr/SKILL.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "OpenCode tool wrappers reject string-typed numeric args and JSON-string arrays — agent must rewrite & retry (todowrite/bash/read)",
+      "frequency": "recurring",
+      "recommendation": "Add input-coercion in the OpenCode tool wrappers (or whichever shim the daemon launches): coerce numeric strings to numbers for `bash.timeout` and `read.offset`/`limit`, and parse JSON-array strings into arrays for `todowrite`. Right now the agent emits a JSON-encoded value (a sensible reflex when copying example JSON), the schema validator rejects it, and the agent has to translate to the native type on retry. Eleven retries across four steps in this item alone. Either: (i) Zod/JSONSchema preprocess hook that does `z.union([z.array(...), z.string().transform(JSON.parse)])` and `z.coerce.number()`; OR (ii) update the agent system prompt to call out 'do not quote numeric arguments' in the tool-use guidance.",
+      "evidence": [
+        "ai-dev/logs/I-00081_S01_run1.log:20 — \"todowrite ... Expected array, got '[{\\\"content\\\": ...}]' Please rewrite the input so it satisfies the expected schema.\"",
+        "ai-dev/logs/I-00081_S01_run1.log:24,28 — same `todowrite` failure, two more retries with the same JSON-string body (3 wasted turns in S01 alone)",
+        "ai-dev/logs/I-00081_S01_run1.log:38 — \"bash ... Expected number | undefined, got '60000'\"",
+        "ai-dev/logs/I-00081_S01_run1.log:126 — \"read ... Expected number | undefined, got '1'\"",
+        "ai-dev/logs/I-00081_S02_run1.log:31,35 — `bash` retried with `'120000'` then `'180000'` (both string-typed)",
+        "ai-dev/logs/I-00081_S03_run1.log:158,162 — `read` rejected twice with offset/limit `'44'`",
+        "ai-dev/logs/I-00081_S04_run1.log:31 — same `bash` string-timeout pattern; 11 schema rejections across S01-S04"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Coerce string-typed numeric args and JSON-string arrays in OpenCode tool wrappers (bash.timeout, read.offset/limit, todowrite items) so the agent doesn't burn a turn on every emit-then-rewrite cycle; analyzed in I-00081 self-assess (ai-dev/active/I-00081/reports/I-00081_self_assess_report.md). Target: OpenCode tool-shim layer (likely under `executor/` or wherever the daemon launches the OpenCode CLI). Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "environment",
+      "target": "iw-ai-core",
+      "title": "E2E pg_dump is missing an iw-doc-generator-form `diagram-architecture` ProjectDoc — every browser-verification step that exercises this widget must hand-seed a fixture first",
+      "frequency": "systemic",
+      "recommendation": "Refresh the E2E pg_dump (`ai-dev/iw-config/...` or wherever the seed lives) so the `iw-ai-core:diagram-architecture` ProjectDoc exists in the **Markdown-with-fences** form that the iw-doc-generator skill produces today. The current dump predates DOC-00057 (per S13's report) — the bug I-00081 fixed only manifests with the Markdown-doc shape, so any future browser-verification of Code-page Architecture Diagram features will hit the same gap. Either: (i) snapshot a fresh dump after DOC-00057 lands, OR (ii) move the I-00081 fixture (`ai-dev/active/I-00081/e2e_fixtures/001_md_diagram_architecture.py`) into a reusable e2e seed-fixtures library and document it.",
+      "evidence": [
+        "ai-dev/active/I-00081/reports/I-00081_S13_BrowserVerification_Report.md:12 — \"No `diagram-architecture` doc existed in the seeded E2E DB (the pg_dump predates DOC-00057).\"",
+        "ai-dev/active/I-00081/reports/I-00081_S13_QvBrowser_report.md:17 — \"...which was absent from the pg_dump-seeded E2E DB.\"",
+        "ai-dev/active/I-00081/e2e_fixtures/001_md_diagram_architecture.py (file created mid-step, not committed at design time)"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Refresh the E2E pg_dump to include an iw-doc-generator-form `diagram-architecture` ProjectDoc (post-DOC-00057 state) so Code-page browser verifications don't need ad-hoc fixtures; analyzed in I-00081 self-assess (ai-dev/active/I-00081/reports/I-00081_self_assess_report.md). Target: the e2e pg_dump under ai-dev/iw-config/ (or wherever `[e2e_up] probing http://localhost:9942/health` sources its seed) + a small fixture-library under tests/e2e_fixtures/. Effort: M."
+    },
+    {
+      "severity": "LOW",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "iw-item-analyze skill and master prompt templates still say `ai-dev/work/<ID>/` while active items live at `ai-dev/active/<ID>/`",
+      "frequency": "systemic",
+      "recommendation": "Update `skills/iw-item-analyze/SKILL.md` (lines 51, 157-158, 241) and `templates/design/SelfAssess_Prompt_Template.md` (lines 72, 76-77, 113-114) and `templates/design/Implementation_Prompt_Template.md` (lines 76, 80) and `templates/design/CodeReview_Final_Prompt_Template.md` (lines 75-82) and `templates/design/CodeReview_Prompt_Template.md` (lines 76-81) to reference `ai-dev/active/<ID>/reports/` for in-flight items. The per-item I-00081 prompts already use `ai-dev/active/` (correctly) — only the master templates and the skill itself are out of date. Already filed twice (CR-00040, CR-00041 self-assess findings) but not fixed; the drift cost on I-00081 was zero because the per-item prompt overrode the skill, but the next time someone runs the skill against a different item or extends the templates the rot will resurface.",
+      "evidence": [
+        "skills/iw-item-analyze/SKILL.md:51 — \"Report: `ai-dev/work/<ID>/reports/<ID>_<STEP>_*_report.md`\"",
+        "skills/iw-item-analyze/SKILL.md:157-158 — output-path declarations using `ai-dev/work/<ID>/`",
+        "templates/design/SelfAssess_Prompt_Template.md:76-77 — same `ai-dev/work/{ID}/` paths",
+        "templates/design/Implementation_Prompt_Template.md:76,80 — `ai-dev/work/{ID}/{ID}_{Type}_Design.md` and `ai-dev/work/{ID}/reports/...`",
+        "ai-dev/work/CR-00040/reports/CR-00040_self_assess_findings.json:25 — prior finding flagging this same drift"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Replace `ai-dev/work/<ID>/` with `ai-dev/active/<ID>/` across master prompt templates and the iw-item-analyze skill so in-flight item paths are consistent (this drift was filed by CR-00040 and CR-00041 self-assess but not fixed); analyzed in I-00081 self-assess (ai-dev/active/I-00081/reports/I-00081_self_assess_report.md). Target: skills/iw-item-analyze/SKILL.md, templates/design/SelfAssess_Prompt_Template.md, templates/design/Implementation_Prompt_Template.md, templates/design/CodeReview_Prompt_Template.md, templates/design/CodeReview_Final_Prompt_Template.md. Effort: S."
+    }
+  ]
+}

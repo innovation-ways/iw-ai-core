@@ -1,0 +1,200 @@
+- generic [active] [ref=e1]:
+  - text: code
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - link "IW AI Core IW AI Core" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img "IW AI Core" [ref=e5]
+        - generic [ref=e6]: IW AI Core
+      - navigation [ref=e7]:
+        - group [ref=e8]:
+          - generic "Projects" [ref=e9] [cursor=pointer]:
+            - generic [ref=e10]: Projects
+            - img [ref=e11]
+          - generic [ref=e13]:
+            - group [ref=e14]:
+              - generic "Curriculum Vitae" [ref=e15] [cursor=pointer]:
+                - generic [ref=e16]: Curriculum Vitae
+                - img [ref=e17]
+            - group [ref=e19]:
+              - generic "IW AI Core Platform" [ref=e20] [cursor=pointer]:
+                - generic [ref=e21]: IW AI Core Platform
+                - img [ref=e22]
+              - generic [ref=e24]:
+                - link "Dashboard" [ref=e25] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/
+                - link "Batches" [ref=e26] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/batches
+                - link "Queue" [ref=e27] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/queue
+                - link "Jobs" [ref=e28] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/jobs
+                - link "History" [ref=e29] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/history
+                - link "Tests" [ref=e30] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/tests
+                - link "Quality" [ref=e31] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/quality
+                - link "Docs" [ref=e32] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/docs
+                - link "Research" [ref=e33] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/research
+                - link "Code" [ref=e34] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/code
+                - link "OSS" [ref=e35] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/oss
+            - group [ref=e36]:
+              - generic "InnoForge Document Platform" [ref=e37] [cursor=pointer]:
+                - generic [ref=e38]: InnoForge Document Platform
+                - img [ref=e39]
+            - group [ref=e41]:
+              - generic "Podforger" [ref=e42] [cursor=pointer]:
+                - generic [ref=e43]: Podforger
+                - img [ref=e44]
+        - group [ref=e46]:
+          - generic "System" [ref=e47] [cursor=pointer]:
+            - generic [ref=e48]: System
+            - img [ref=e49]
+          - link "Running Tasks" [ref=e51] [cursor=pointer]:
+            - /url: /system/running
+            - generic [ref=e52]: Running Tasks
+          - link "Worktree Health 1 dirty worktree" [ref=e53] [cursor=pointer]:
+            - /url: /system/worktrees
+            - generic [ref=e54]: Worktree Health
+            - generic "1 dirty worktree" [ref=e55]
+          - link "Container Health" [ref=e56] [cursor=pointer]:
+            - /url: /system/containers
+            - generic [ref=e57]: Container Health
+          - link "System Status" [ref=e58] [cursor=pointer]:
+            - /url: /system/status
+            - generic [ref=e59]: System Status
+          - link "Test Coverage" [ref=e60] [cursor=pointer]:
+            - /url: /system/coverage
+            - generic [ref=e61]: Test Coverage
+          - link "Keep-Alive" [ref=e62] [cursor=pointer]:
+            - /url: /system/keep-alive
+            - generic [ref=e63]: Keep-Alive
+          - link "All Active Work" [ref=e64] [cursor=pointer]:
+            - /url: /system/all-active
+            - generic [ref=e65]: All Active Work
+          - link "Configuration" [ref=e66] [cursor=pointer]:
+            - /url: /system/config
+            - generic [ref=e67]: Configuration
+    - generic [ref=e68]:
+      - generic [ref=e69]:
+        - searchbox "Search work items… (Ctrl+K)" [ref=e70]
+        - button "Help for this page" [ref=e72] [cursor=pointer]:
+          - generic: "?"
+      - main [ref=e73]:
+        - generic [ref=e74]:
+          - generic [ref=e75]:
+            - heading "Code Understanding" [level=1] [ref=e76]
+            - paragraph [ref=e77]: "Provider: local (balanced) · gemma4:26b · qwen3-embedding:8b · Last indexed: 9d ago · 564 files · 3,092 chunks"
+          - button "Code actions" [ref=e79] [cursor=pointer]:
+            - img [ref=e80]
+            - text: Generate Code Map
+            - img [ref=e82]
+        - generic [ref=e84]:
+          - generic [ref=e86]:
+            - heading "Architecture" [level=2] [ref=e88]
+            - generic [ref=e90]:
+              - heading "IW AI Core Platform — Architecture Map" [level=1] [ref=e91]
+              - paragraph [ref=e92]:
+                - strong [ref=e93]: Project
+                - text: ": IW AI Core"
+                - strong [ref=e94]: Doc ID
+                - text: ":"
+                - code [ref=e95]: iw-ai-core:architecture-map
+                - strong [ref=e96]: Status
+                - text: ": Published"
+                - strong [ref=e97]: Audience
+                - text: ": architects, senior-developers"
+                - strong [ref=e98]: Generated
+                - text: ": 2026-05-09"
+              - separator [ref=e99]
+              - group [ref=e100]:
+                - generic "1. Platform Overview" [ref=e101]
+                - paragraph [ref=e102]: IW AI Core is a standalone AI orchestration platform that drives AI-assisted development across multiple software projects. It replaces file-based tracking systems (markdown ID files, JSON manifests) with a PostgreSQL-backed, multi-project platform.
+                - paragraph [ref=e103]:
+                  - strong [ref=e104]: "Core capabilities:"
+                - list [ref=e105]:
+                  - listitem [ref=e106]:
+                    - text: Atomic ID allocation with
+                    - code [ref=e107]: FOR UPDATE
+                    - text: row locks — no race conditions under concurrency
+                  - listitem [ref=e108]: Git worktree-based agent execution with per-step PID tracking and heartbeat monitoring
+                  - listitem [ref=e109]:
+                    - text: "DB-backed execution control plane: every step launch creates an append-only"
+                    - code [ref=e110]: step_runs
+                    - text: row
+                  - listitem [ref=e111]:
+                    - text: "Two-tier content storage: design docs and reports in PostgreSQL (instant rendering), full artifacts compressed to"
+                    - code [ref=e112]: .tar.zst
+                    - text: archives (on-demand extraction)
+                  - listitem [ref=e113]:
+                    - text: Multi-project isolation via composite primary keys
+                    - code [ref=e114]: (project_id, id)
+                  - listitem [ref=e115]: Single daemon process manages all registered projects; dashboard serves all projects via URL-scoped routing
+                - separator [ref=e116]
+                - heading [level=2] [ref=e117]
+              - group [ref=e118]:
+                - generic "2. Component Architecture" [ref=e119]
+              - group [ref=e120]:
+                - generic "3. Data Architecture" [ref=e121]
+              - group [ref=e122]:
+                - generic "4. Multi-Project Isolation" [ref=e123]
+              - group [ref=e124]:
+                - generic "5. Work Item Lifecycle" [ref=e125]
+              - group [ref=e126]:
+                - generic "6. Daemon Poll Loop" [ref=e127]
+              - group [ref=e128]:
+                - generic "7. Two-Tier Content Storage" [ref=e129]
+              - group [ref=e130]:
+                - generic "8. CLI–Database Communication Pattern" [ref=e131]
+              - group [ref=e132]:
+                - generic "9. Key Design Decisions" [ref=e133]
+              - group [ref=e134]:
+                - generic "10. Related Documentation" [ref=e135]
+            - generic [ref=e137]:
+              - heading "Components" [level=3] [ref=e139]
+              - paragraph [ref=e141]: No components found.
+            - generic [ref=e143]:
+              - heading "Architecture Diagram" [level=3] [ref=e144]
+              - generic [ref=e147]: "Mermaid error: No diagram type detected matching given configuration for text: # IW AI Core Platform — Architecture Diagram > **Why this diagram?** Use this diagram to understand the complete physical topology of the IW AI Core platform — which processes run, which ports they use, how human traffic (dashboard), agent traffic (CLI), and daemon orchestration traffic flow, and how the single PostgreSQL database serves all projects simultaneously. ```mermaid --- config: layout: elk --- flowchart TB subgraph platform[\"Platform (iw-ai-core repo)\"] DB[((\"PostgreSQL<br/>port 5433\"))] Dashboard[\"Dashboard<br/>FastAPI · port 9900\"] Daemon[\"Daemon<br/>Python polling loop\"] CLI[\"iw CLI<br/>Click · pip install\"] Executor[\"Executor Scripts<br/>Bash · worktree_*\"] end subgraph projects[\"Managed Project Repos\"] P1[\"innoforge<br/>(iw-doc-plan)\"] P2[\"project-b\"] P3[\"project-c\"] end subgraph agents[\"LLM Agents (per worktree)\"] A1[\"opencode / claude-code<br/>in .worktrees/\"] A2[\"opencode / claude-code\"] A3[\"opencode / claude-code\"] end DB <-->|SQL queries| Daemon DB <-->|SQL queries| Dashboard DB <-->|SQL queries| CLI Daemon -->|worktree_setup.sh| P1 Daemon -->|worktree_setup.sh| P2 Daemon -->|worktree_setup.sh| P3 Daemon -->|step_executor.sh| A1 Daemon -->|step_executor.sh| A2 Daemon -->|step_executor.sh| A3 CLI -->|iw step-done / approve| DB A1 -->|iw CLI calls| CLI A2 -->|iw CLI calls| CLI A3 -->|iw CLI calls| CLI Dashboard -->|http / SSE| Human[(\"Human<br/>Browser\")] Human -->|http / SSE| Dashboard P1 -.->|.worktrees/| A1 P2 -.->|.worktrees/| A2 P3 -.->|.worktrees/| A3 style DB fill:#D1FAE5,stroke:#10B981,color:#065F46 style Dashboard fill:#EDE9FE,stroke:#8B5CF6,color:#3B0764 style Daemon fill:#FEF3C7,stroke:#F59E0B,color:#78350F style CLI fill:#DBEAFE,stroke:#3B82F6,color:#1E3A5F style Executor fill:#FEF3C7,stroke:#F59E0B,color:#78350F style P1 fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D style P2 fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D style P3 fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D style A1 fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D style A2 fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D style A3 fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D style Human fill:#F3F4F6,stroke:#9CA3AF,color:#374151 ``` --- > **Why this diagram?** Use this diagram to trace the end-to-end lifecycle of a work item — from human approval through daemon orchestration, agent execution in a git worktree, step completion reporting via `iw CLI`, to merge and archival. It shows every major data flow and which component is responsible for each stage. ```mermaid --- config: layout: elk --- flowchart LR Human[\"Human<br/>Dashboard\"] -->|approve| DB[((\"PostgreSQL\"))] DB -->|polls approved| Daemon[\"Daemon<br/>60s loop\"] Daemon -->|worktree_setup.sh| Worktree[\"Git Worktree<br/>.worktrees/{id}/\"] Daemon -->|opencode run| Agent[\"LLM Agent<br/>(opencode / claude)\"] Agent -->|reads design doc| Worktree Agent -->|iw step-start| CLI[\"iw CLI\"] CLI -->|UPDATE steps| DB Agent -->|iw step-done| CLI CLI -->|UPDATE steps| DB Daemon -->|worktree_commit.sh| Git[\"Git Main<br/>squash-merge\"] DB -->|Tier 1| DesignDoc[\"Design Doc<br/>DB TEXT column\"] DB -->|Tier 2| Archive[\"archive/{project}/{id}.tar.zst\"] DB -->|Tier 1| Report[\"Step Reports<br/>DB TEXT column\"] style DB fill:#D1FAE5,stroke:#10B981,color:#065F46 style Daemon fill:#FEF3C7,stroke:#F59E0B,color:#78350F style CLI fill:#DBEAFE,stroke:#3B82F6,color:#1E3A5F style Agent fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D style Worktree fill:#FEE2E2,stroke:#EF4444,color:#7F1D1D style Human fill:#F3F4F6,stroke:#9CA3AF,color:#374151 style Git fill:#F3F4F6,stroke:#9CA3AF,color:#374151 style DesignDoc fill:#D1FAE5,stroke:#10B981,color:#065F46 style Archive fill:#D1FAE5,stroke:#10B981,color:#065F46 style Report fill:#D1FAE5,stroke:#10B981,color:#065F46 ``` --- > **Why this diagram?** Use this diagram to understand the database schema structure — the core tables, their primary keys, and the foreign-key relationships that enforce multi-project isolation. It shows the full operational data model without archiving or RAG extensions. ```mermaid --- config: layout: elk --- erDiagram PROJECTS ||--o{ ID_SEQUENCES : \"\" PROJECTS ||--o{ WORK_ITEMS : \"\" PROJECTS ||--o{ BATCHES : \"\" WORK_ITEMS ||--o{ WORKFLOW_STEPS : \"\" WORK_ITEMS }o--o{ WORK_ITEMS : \"depends_on\" WORKFLOW_STEPS ||--o{ STEP_RUNS : \"\" WORKFLOW_STEPS ||--o{ FIX_CYCLES : \"\" BATCHES ||--o{ BATCH_ITEMS : \"\" BATCH_ITEMS }o--|| WORK_ITEMS : \"\" DAEMON_EVENTS ||--o| PROJECTS : \"\" PROJECTS { id PK \"\" display_name \"\" repo_root \"\" enabled \"\" config JSONB \"\" } ID_SEQUENCES { project_id PK FK \"\" prefix PK \"\" next_number \"\" } WORK_ITEMS { project_id PK FK \"\" id PK \"\" type \"\" title \"\" status \"\" phase \"\" design_doc_path \"\" design_doc_content TEXT \"\" summary TEXT \"\" archive_path TEXT \"\" archived_at \"\" } WORKFLOW_STEPS { id PK \"\" project_id FK \"\" work_item_id FK \"\" step_number \"\" agent \"\" status \"\" report_file \"\" report_content TEXT \"\" started_at \"\" completed_at \"\" } STEP_RUNS { id PK \"\" step_id FK \"\" run_number \"\" status \"\" pid \"\" pid_alive \"\" command \"\" worktree_path \"\" timeout_secs \"\" last_heartbeat \"\" started_at \"\" completed_at \"\" duration_secs \"\" error_message TEXT \"\" } FIX_CYCLES { id PK \"\" step_id FK \"\" cycle_number \"\" trigger_type \"\" status \"\" created_at \"\" } BATCHES { project_id PK FK \"\" id PK \"\" status \"\" max_parallel \"\" created_at \"\" } BATCH_ITEMS { project_id FK \"\" batch_id FK \"\" work_item_id FK \"\" group_num \"\" status \"\" pid \"\" merged_at \"\" } DAEMON_EVENTS { id PK \"\" project_id FK \"\" event_type \"\" entity_id \"\" message \"\" event_metadata JSONB \"\" created_at \"\" } style PROJECTS fill:#D1FAE5,stroke:#10B981,color:#065F46 style ID_SEQUENCES fill:#D1FAE5,stroke:#10B981,color:#065F46 style WORK_ITEMS fill:#D1FAE5,stroke:#10B981,color:#065F46 style WORKFLOW_STEPS fill:#D1FAE5,stroke:#10B981,color:#065F46 style STEP_RUNS fill:#D1FAE5,stroke:#10B981,color:#065F46 style FIX_CYCLES fill:#D1FAE5,stroke:#10B981,color:#065F46 style BATCHES fill:#D1FAE5,stroke:#10B981,color:#065F46 style BATCH_ITEMS fill:#D1FAE5,stroke:#10B981,color:#065F46 style DAEMON_EVENTS fill:#D1FAE5,stroke:#10B981,color:#065F46 ```"
+          - complementary "Code module chat" [ref=e148]:
+            - region "Code module chat" [ref=e150]:
+              - button "Expand chat panel (Cmd+\\)" [ref=e153] [cursor=pointer]:
+                - img [ref=e154]
+                - generic [ref=e156]: Chat
+                - img [ref=e157]
+  - contentinfo [ref=e159]:
+    - button "Toggle theme" [ref=e160] [cursor=pointer]:
+      - generic [ref=e161]: ☾
+      - generic [ref=e162]: Theme
+    - generic [ref=e163]: ·
+    - generic [ref=e164]:
+      - generic [ref=e201]: Claude
+      - generic [ref=e202]:
+        - generic [ref=e203]: 2h 42m
+        - generic [ref=e206]: 11%
+      - generic [ref=e207]:
+        - generic [ref=e208]: 09:00
+        - generic [ref=e211]: 62%
+      - generic [ref=e212]: ·
+      - generic [ref=e213]: MiniMax
+      - generic "250 / 4500 requests" [ref=e214]:
+        - generic [ref=e215]: 3h 42m
+        - generic [ref=e218]: 6%
+      - generic [ref=e219]: IW AI Core v0.1
+  - document [ref=e169]:
+    - generic [ref=e170]:
+      - generic [ref=e177]: Syntax error in text
+      - generic [ref=e178]: mermaid version 11.14.0
+  - img [ref=e180]:
+    - generic [ref=e181]:
+      - generic [ref=e188]: Syntax error in text
+      - generic [ref=e189]: mermaid version 11.14.0
+  - document [ref=e191]:
+    - generic [ref=e192]:
+      - generic [ref=e199]: Syntax error in text
+      - generic [ref=e200]: mermaid version 11.14.0

@@ -88,6 +88,75 @@ def _render_architecture_html(arch_doc: Any) -> str | None:
     return wrap_h2_sections_collapsible(html)
 
 
+def _render_arch_diagram(raw: str) -> tuple[str | None, str | None, str | None]:
+    """Render the stored `diagram-architecture` doc content for the Code page.
+
+    Two content shapes exist in the wild for slug ``diagram-architecture``:
+
+    1. **Markdown-doc form** (iw-doc-generator skill) — a full Markdown document:
+       a ``# H1``, ``<!-- ... -->`` comments, ``> **Why this diagram?** ...``
+       blockquotes, and one or more `` ```mermaid `` fenced blocks (each with
+       its own ``---\nconfig:\n  layout: elk\n---`` front-matter).
+       → render the whole Markdown through ``_preprocess_mermaid`` + ``render_markdown``
+       so every fenced block becomes a client-renderable ``<pre data-lang="mermaid">``.
+       Returns ``(rendered_html, None, None)``.  The ``> Why`` blockquotes carry
+       the purpose inline, so no separate ``arch_purpose`` is needed.
+
+    2. **Bare-DSL form** (orch/rag/mapgen.py) — a raw Mermaid DSL string, optionally
+       prefixed by a ``<!-- purpose: ... -->`` comment and a leading
+       ``---\nconfig:\n  layout: elk\n---`` front-matter block.
+       → return ``(None, cleaned_dsl, purpose)``; the caller renders it via the
+       existing ``<div class="mermaid">`` path.
+
+    Returns: (rendered_html, arch_diagram_dsl, arch_purpose)
+      - Markdown-doc form: (html_string, None, None)
+      - bare-DSL form:     (None, dsl_string, purpose_string_or_None)
+    """
+    # Strip HTML comments first (applies to both forms)
+    stripped = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL).strip()
+
+    # Detect Markdown-doc form: presence of a ```mermaid fence at line-start.
+    # A bare DSL never starts with a fence (it starts with --- or graph/script keywords).
+    has_fence = bool(re.search(r"^```mermaid", stripped, re.MULTILINE))
+
+    if has_fence:
+        # ----- Markdown-doc path -----
+        # Drop a single leading `# …` H1 (duplicates the widget's own <h3>).
+        if stripped.startswith("#"):
+            stripped = re.sub(r"^#\s+[^\n]+\n+", "", stripped, count=1)
+
+        # Strip the ---\nconfig:\n  layout: elk\n--- front-matter from each fenced block.
+        # The dashboard's client-side Mermaid has no ELK layout loader registered,
+        # so a `layout: elk` block makes mermaid.render() throw.
+        def _strip_elk_fm(block_body: str) -> str:
+            if block_body.startswith("---\n"):
+                end = block_body.find("\n---", 4)
+                if end != -1:
+                    return block_body[end + 5 :].lstrip()
+            return block_body
+
+        # Process each fenced mermaid block in-place.
+        fence_pat = re.compile(r"^```mermaid\n(.*?)```", re.DOTALL | re.MULTILINE)
+
+        def replacer(m: re.Match[str]) -> str:
+            body = m.group(1)
+            cleaned_body = _strip_elk_fm(body)
+            return f"```mermaid\n{cleaned_body}```"
+
+        stripped = fence_pat.sub(replacer, stripped)
+
+        rendered = render_markdown(_preprocess_mermaid(stripped))
+        return (rendered, None, None)
+
+    # ----- Bare-DSL path (unchanged existing behaviour) -----
+    purpose = None
+    m = re.search(r"<!-- purpose: (.*?) -->", raw)
+    if m:
+        purpose = m.group(1).strip()
+    dsl = _clean_diagram_dsl(raw)
+    return (None, dsl, purpose)
+
+
 @router.get("/code", response_class=HTMLResponse)
 def code_page(
     project_id: str,
@@ -142,6 +211,7 @@ def code_page(
 
     arch_doc_for_template: Any = None
     content_html: str | None = None
+    arch_diagram_html: str | None = None
     arch_diagram_dsl: str | None = None
     arch_purpose: str | None = None
     if last_completed_job and last_completed_job.doc_id:
@@ -150,10 +220,9 @@ def code_page(
             content_html = _render_architecture_html(arch_doc_for_template)
         arch_diagram_doc = DocService(db).get_doc(project_id, "diagram-architecture")
         if arch_diagram_doc and arch_diagram_doc.content:
-            m = re.search(r"<!-- purpose: (.*?) -->", arch_diagram_doc.content)
-            if m:
-                arch_purpose = m.group(1).strip()
-            arch_diagram_dsl = _clean_diagram_dsl(arch_diagram_doc.content)
+            arch_diagram_html, arch_diagram_dsl, arch_purpose = _render_arch_diagram(
+                arch_diagram_doc.content
+            )
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -169,6 +238,7 @@ def code_page(
             "last_completed_duration": last_completed_duration,
             "arch_doc": arch_doc_for_template,
             "content_html": content_html,
+            "arch_diagram_html": arch_diagram_html,
             "arch_diagram_dsl": arch_diagram_dsl,
             "arch_purpose": arch_purpose,
         },
@@ -268,7 +338,6 @@ def code_architecture(
     svc = DocService(db)
     arch_doc = svc.get_doc(project_id, "architecture-map")
     arch_diagram_doc = svc.get_doc(project_id, "diagram-architecture")
-    arch_diagram_dsl = None
 
     if arch_doc is None:
         templates: Jinja2Templates = request.app.state.templates
@@ -279,12 +348,13 @@ def code_architecture(
         )
 
     content_html = _render_architecture_html(arch_doc)
-    arch_purpose = None
+    arch_diagram_html: str | None = None
+    arch_diagram_dsl: str | None = None
+    arch_purpose: str | None = None
     if arch_diagram_doc and arch_diagram_doc.content:
-        m = re.search(r"<!-- purpose: (.*?) -->", arch_diagram_doc.content)
-        if m:
-            arch_purpose = m.group(1).strip()
-        arch_diagram_dsl = _clean_diagram_dsl(arch_diagram_doc.content)
+        arch_diagram_html, arch_diagram_dsl, arch_purpose = _render_arch_diagram(
+            arch_diagram_doc.content
+        )
 
     templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -294,6 +364,7 @@ def code_architecture(
             "current_project": _get_project_or_404(project_id, db),
             "content_html": content_html,
             "arch_doc": arch_doc,
+            "arch_diagram_html": arch_diagram_html,
             "arch_diagram_dsl": arch_diagram_dsl,
             "arch_purpose": arch_purpose,
         },
