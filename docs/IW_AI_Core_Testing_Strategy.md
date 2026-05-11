@@ -158,9 +158,9 @@ Coverage is reported in four formats (`term-missing`, `html`, `xml`, `json`) und
 
 ## 6. TDD & RED evidence
 
-`backend-impl` follows **RED → GREEN → REFACTOR**: write a failing test that defines the expected behaviour, write the minimal implementation to make it pass, then refactor while keeping tests green. The test is written *before* the implementation — not after, not alongside.
+`backend-impl` follows **RED → GREEN → REFACTOR**: write a failing test that defines the expected behaviour, **run it and confirm it fails for the expected reason** (an `AssertionError` or `NotImplementedError`/`AttributeError`-from-missing-implementation — *not* an `ImportError`/`SyntaxError`/collection error, which would mean the test itself is broken), then write the minimal implementation to make it pass, then refactor while keeping tests green. The test is written *before* the implementation — not after, not alongside.
 
-> **Roadmap (item 0.4)**: the `backend-impl` agent prompt and the Implementation/SelfAssess templates will require the **RED run output to be recorded** in the execution report, and the review step will check that new tests would fail against the pre-change code. Until then, RED-GREEN-REFACTOR is followed but not independently verified.
+The captured RED failure (test id(s) + the failure line) is recorded in the Subagent Result Contract JSON as `tdd_red_evidence` — required for behavioural steps; non-behavioural steps (pure refactor, config-only, doc/template-only) record `"n/a — <one-line reason>"` instead. The Implementation / SelfAssess / CodeReview prompt templates carry matching language; SelfAssess checks the field is present and plausible, and CodeReview reasons about whether each new test would actually fail against pre-change code. `tests/unit/test_tdd_red_evidence_contract.py` is a content-guard that pins the contract strings in the agent and template files so the requirement can't quietly drift away. (Landed in **CR-00045**, 2026-05-11.)
 
 ---
 
@@ -208,7 +208,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Curated smoke layer with SLA | ⚠️ marker exists, no SLA (1.11) |
 | Testing strategy doc | ✅ this document (0.1) |
 | Agent testing skill | ✅ `skills/iw-ai-core-testing/` (0.2) |
-| TDD RED-evidence requirement | ❌ (0.4) |
+| TDD RED-evidence requirement | ✅ (CR-00045, 2026-05-11) — `tdd_red_evidence` field in result contract; guard test pins it |
 | Mutation testing | ❌ (2.1) |
 | Property-based tests (Hypothesis) on state machines | ❌ (2.2) |
 | Flaky/quarantine workflow | ❌ (2.3) |
