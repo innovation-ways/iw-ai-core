@@ -23,7 +23,7 @@ So our metrics and gates are chosen accordingly:
 
 | Principle | Consequence |
 |-----------|-------------|
-| Coverage is a *floor on what's exercised*, not a measure of quality. | Coverage alone is never the only gate. We pair it with structural checks (and, per the roadmap, mutation testing). |
+| Coverage is a *floor on what's exercised*, not a measure of quality. | Coverage alone is never the only gate. We pair it with structural checks (and, per the roadmap, mutation testing). The `fail_under` floor is set just below measured branch coverage and **ratchets up over time, never down** (CR-00047); a `diff-coverage` gate additionally requires new/changed lines to be well-covered (see §5). |
 | Every test must be able to fail. | If deleting the corresponding production line wouldn't fail the test, the test is worthless — remove it or strengthen it. |
 | Tests assert on **behaviour**, not on their own mocks. | A test whose only assertion is `mock.assert_called_*` is a red flag. |
 | Write the test first; confirm it fails before implementing. | `backend-impl` follows RED-GREEN-REFACTOR; the RED run is recorded (see §6). |
@@ -148,11 +148,18 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Security — IaC | `trivy config` HIGH/CRITICAL | exit 1 on findings | `make security-iac` |
 | Unit tests | pytest | 100 % pass | `make test-unit` |
 | Integration + dashboard tests | pytest + testcontainers | 100 % pass | `make test-integration` |
-| Coverage | `coverage.py` (`branch = true`) | `fail_under = 46` (low — raising it is roadmap item 1.2) | enforced via `pytest --cov` (config in `pyproject.toml`) |
+| Coverage | `coverage.py` (`branch = true`) | `fail_under = 50` — just below measured branch coverage; **ratchets up over time, never down** (CR-00047) | enforced via `pytest --cov` (config in `pyproject.toml`) at the end of *every* test run that picks up `addopts` (incl. the `unit-tests` and CI `integration` runs) |
+| Diff coverage | `diff-cover` | new/changed Python lines ≥ ~90 % covered (vs `origin/main`) | `make diff-coverage` (daemon `diff-coverage` QV gate) + a `pull_request`-conditional step in `test-quality.yml`'s `unit` job |
 | Migration round-trip | pytest `test_migrations_round_trip.py` | 100 % pass | `make migration-check` |
 | Smoke | pytest `-m smoke --strict-markers --no-cov` | 100 % pass | `make smoke` |
 
 Coverage is reported in four formats (`term-missing`, `html`, `xml`, `json`) under `tests/output/coverage/`. The dashboard has a coverage page that surfaces it.
+
+### Coverage floor & diff-coverage (CR-00047, P1-CR-B)
+
+- **The `fail_under` floor.** `[tool.coverage.report] fail_under` is set a few points *below* the lower of the two measured branch-coverage slices — the `make test-unit` slice (covers `tests/unit/`) and the `make test-integration` slice (covers `tests/integration/ tests/dashboard/`), which cover different code and have different totals. The floor must clear the *lower* slice, because `pytest --cov` re-checks `fail_under` at the end of *every* run that picks up `addopts` (the `unit-tests` QV gate, the CI `integration` job, and `make diff-coverage`'s intermediate runs — those last ones pass `--cov-fail-under=0` to opt out). It is a **ratchet**: raise it as coverage improves, never lower it. To re-derive it, run `make test` (note both slices' branch %) and set `fail_under` ≈ (lower slice) rounded down to the nearest 5.
+- **The `diff-coverage` gate** checks that new/changed Python lines are ≥ ~90 % covered, compared against `origin/main` — it forces *new* code to be covered without holding the repo hostage to legacy gaps. Run it locally with `make diff-coverage` (it re-runs the unit + integration + dashboard suites to build its own combined coverage, then `diff-cover`; it's the slow gate). It's the 7th daemon QV gate (after `integration-tests`, with a generous 1800 s timeout).
+- **Coverage-source caveat.** The daemon `diff-coverage` gate builds its **own combined** unit+integration+dashboard coverage (it does not reuse the `coverage.xml` a preceding step left behind — each `pytest --cov` run overwrites it, so the leftover is the integration+dashboard slice only — nor does it depend on the `integration-tests` QV gate, currently a no-op `make allure-integration` stub). The GitHub `Run diff coverage` step in `test-quality.yml`'s `unit` job is cheaper: it diffs against the **unit** `coverage.xml` already produced by `make test-unit`. So the GH PR check may flag a changed line that the daemon gate (with integration coverage folded in) considers covered — the daemon gate is the authoritative one.
 
 ---
 
@@ -200,8 +207,8 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Area | Status |
 |------|--------|
 | Branch coverage enabled | ✅ (`branch = true`) |
-| Coverage failure floor | ⚠️ exists but low (`fail_under = 46`) — raise & ratchet (1.2) |
-| Diff/patch coverage on PRs | ❌ (1.3) |
+| Coverage failure floor | ✅ (CR-00047, 2026-05-12) — `fail_under` raised from 46 to just below measured branch coverage; ratchets up, never down (1.2) |
+| Diff/patch coverage on PRs | ✅ (CR-00047, 2026-05-12) — `diff-cover` dev dep + `make diff-coverage` daemon QV gate + `pull_request` step in `test-quality.yml`'s `unit` job (1.3) |
 | AST assertion scanner | ✅ (CR-00046, 2026-05-11) — `make test-assertions` + baseline `tests/assertion_free_baseline.txt` |
 | `ruff` PT rules | ✅ enabled |
 | Test-order randomisation (`pytest-randomly`) | ❌ (1.4) |
