@@ -1,0 +1,100 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00047",
+  "type": "ChangeRequest",
+  "title": "Coverage gates — raise the floor, ratchet it, and gate diff-coverage on PRs (P1-CR-B)",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "pyproject.toml",
+      "uv.lock",
+      "Makefile",
+      "skills/iw-workflow/SKILL.md",
+      ".claude/skills/iw-workflow/SKILL.md",
+      "skills/iw-ai-core-testing/SKILL.md",
+      ".claude/skills/iw-ai-core-testing/SKILL.md",
+      ".github/workflows/test-quality.yml",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "ai-dev/work/TESTS_ENHANCEMENT.md",
+      "tests/unit/test_coverage_gate_config.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Measure current line+branch coverage (`make test`); raise [tool.coverage.report] fail_under to just below the measured branch % (with headroom); add [tool.coverage.run] relative_files = true; add `diff-cover` dev dep (regenerates uv.lock); add a self-contained `make diff-coverage` target (own combined unit+integration coverage → diff-cover --compare-branch=origin/main --fail-under=N≈90); add the `diff-coverage` gate to skills/iw-workflow/SKILL.md canon after `integration-tests` (+ update the 'N canonical gates' prose); add a pull_request-conditional `Run diff coverage` step to .github/workflows/test-quality.yml's unit job; confirm the rest of the 1.10 coverage-plumbing audit and record findings; update docs/IW_AI_Core_Testing_Strategy.md §1/§5/§9 + a diff-coverage paragraph; update skills/iw-ai-core-testing/SKILL.md §8; run `iw sync-skills`; tick items 1.2/1.3/1.10-audit + §5 grouping + changelog in ai-dev/work/TESTS_ENHANCEMENT.md; optional RED-first guard test tests/unit/test_coverage_gate_config.py; record tdd_red_evidence (guard-test RED run, or the 'n/a — config/Makefile/skill/workflow + dependency add' form). `make quality` + `make check` must still pass.",
+      "prompt": "prompts/CR-00047_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: fail_under value sensible (below the recorded measurement, with headroom); `make diff-coverage` correct (combined coverage source, --compare-branch=origin/main, --fail-under, exits non-zero on shortfall, self-contained); `diff-coverage` QV gate placement + prose update; the GH step's pull_request conditional + fetch-depth handling; relative_files added; uv.lock updated; docs/plan/skill updates; `iw sync-skills` ran (diff .claude/skills/* vs masters); cov-plumbing audit findings recorded; no out-of-scope edits.",
+      "prompt": "prompts/CR-00047_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global review: coverage-config <-> Makefile <-> skill canon <-> GH workflow <-> docs chain consistent; `diff-coverage` wired into both CI surfaces with the right coverage source for each (daemon=combined, GH=unit); .claude/skills/ copies in sync; cov-plumbing audit recorded; `make quality`/`make check` pass; no scope creep into the integration-gate fix / other Phase-1 deps / baseline scrub.",
+      "prompt": "prompts/CR-00047_S03_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage (the new gate, dogfooded on its own CR)",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00047_S11_SelfAssess_prompt.md"
+    }
+  ]
+}
