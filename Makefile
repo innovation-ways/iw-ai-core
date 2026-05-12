@@ -4,7 +4,7 @@
 
 .PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
          test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
-         test-assertions \
+         test-assertions diff-coverage \
          db-up db-down db-migrate db-revision \
          daemon-start daemon-stop dashboard-start css \
          allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
@@ -96,6 +96,34 @@ test-parallel:
 
 smoke:
 	uv run pytest -m smoke --strict-markers --no-cov -v
+
+# Diff-coverage gate (CR-00047, P1-CR-B) — new/changed Python lines must be
+# >=90% covered, compared against origin/main.
+#
+# This target is deliberately SELF-CONTAINED: it builds its OWN combined
+# unit + integration + dashboard coverage rather than reusing the
+# tests/output/coverage/coverage.xml that a preceding step left behind
+# (each `pytest --cov` run overwrites it, so the leftover artefact is the
+# integration+dashboard slice only) or relying on the `integration-tests`
+# QV gate (currently a no-op `make allure-integration` stub — P1-CR-E).
+# Run the unit suite first (fresh coverage data), then the integration +
+# dashboard suite with --cov-append into the same .coverage file, then
+# emit a combined XML and feed it to diff-cover.
+#
+# `--cov-fail-under=0` on the two pytest runs suppresses the per-run
+# `[tool.coverage.report] fail_under` check (the unit-only slice, taken
+# alone, sits below the raised floor) — diff-cover's own `--fail-under`
+# is this gate's verdict, independent of the global coverage floor.
+#
+# This is a SLOW gate: it re-runs the unit + integration + dashboard
+# suites plus diff-cover. That's the cost of being robust to the
+# overwritten-artefact and no-op-integration-gate gotchas. The daemon QV
+# step that runs it gets a generous (1800s) timeout for that reason.
+diff-coverage:
+	uv run pytest tests/unit/ --cov-fail-under=0 -q
+	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser --cov-append --cov-fail-under=0 -q
+	uv run coverage xml -o tests/output/coverage/coverage-combined.xml
+	uv run diff-cover tests/output/coverage/coverage-combined.xml --compare-branch=origin/main --fail-under=90
 
 # --- All checks (run before commit) ---
 check: quality test
