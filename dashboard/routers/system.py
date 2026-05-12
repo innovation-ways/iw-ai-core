@@ -476,6 +476,6 @@ def system_docs_view(doc_path: str, request: Request) -> HTMLResponse:
         {
             "doc_slug": doc_path,
             "doc_title": doc_title,
-            "rendered_html": Markup(rendered),  # noqa: S704
+            "rendered_html": Markup(rendered),  # noqa: S704  # nosec B704 — rendered from an allow-listed repo .md file (see Steps 1-4), not user input
         },
     )
