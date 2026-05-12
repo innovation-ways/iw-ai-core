@@ -99,12 +99,12 @@ Add all three to `pyproject.toml`'s `[dependency-groups] dev` group (loose pins,
 
 ### 2. Make the suite robust to randomization
 
-Run `make test-unit` and `make test-integration` **at least 3 times each** with different seeds (`uv run pytest tests/unit/ --randomly-seed=12345 -q`, `=67890`, `=11111`, etc.; same for `tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser`). Catalogue every order-dependent failure. Then **triage**:
+**Time budget:** running the suites is expensive — keep the multi-seed sweep bounded. Run **`make test-unit` 3 times** with different `--randomly-seed` values (`uv run pytest tests/unit/ --randomly-seed=12345 -q`, `=67890`, `=11111`) and **`make test-integration` once** with one more seed (`uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser --randomly-seed=42424 -q`) — that's the whole sweep, no more. (The cheap unit suite is where most order-dependence surfaces; the QV gates downstream — S08 `make test-unit`, S10 `make diff-coverage` which re-runs unit+integration+dashboard — give you two more seeds for free, so don't burn this step's budget re-running the integration suite repeatedly.) Catalogue every order-dependent failure. Then **triage**:
 - **Small backlog (≤ ~10 tests)** — fix them all here. Usual fixes: a test mutating module/global state without restoring it (use `monkeypatch`); a test depending on another's side effect (make it self-contained); an autouse fixture missing cleanup; a direct `app.state.x = …` that should be `monkeypatch.setattr(app.state, …)`. **Test-isolation fixes only — no behavioral test changes, no weakened assertions.**
 - **Large backlog** — fix the easy ones; **quarantine** the rest with `@pytest.mark.order_dependent` (add `"order_dependent: test relies on test order; tracked for cleanup in P1-CR-C-followup"` to `pyproject.toml`'s `markers` list) + a one-line comment on each; **file `P1-CR-C-followup — fix the order-dependent test backlog`** in the plan's §5 grouping table (near `P1-CR-A-followup`). Note: quarantined tests still *run* (they're just marked) — they must still pass under random order, or be `xfail`-ed if genuinely broken.
 - **Last-resort fallback** (only if the backlog is too large to even quarantine cleanly in this CR) — keep the `pytest-randomly` dep but add `-p no:randomly` to `addopts` (off by default), document why in the changelog + the design's Notes, and file the follow-up to flip it on. **Use this only if you genuinely can't get the suite green under randomization any other way.**
 
-End state (mandatory): `make test-unit` and `make test-integration` exit 0 under randomization (fixed or quarantined), OR randomization is off-by-default per the fallback. **Do not merge with the suite failing under random order.**
+End state (mandatory): `make test-unit` (across the 3 seeds you ran) and `make test-integration` (the one seed you ran) exit 0 under randomization (fixed or quarantined), OR randomization is off-by-default per the fallback. **Do not merge with the suite failing under random order.**
 
 Document the recipe in `tests/CLAUDE.md`: `pytest-randomly` is default-on; the per-run seed prints at the top; `pytest -p no:randomly …` disables it; `pytest --randomly-seed=<N> …` reproduces a failure. Also add it to `skills/iw-ai-core-testing/SKILL.md` §2 (infrastructure) and §7 (red-flags — a test that only passes in fixed order is a smell).
 
@@ -142,7 +142,7 @@ Run `uv run iw sync-skills` (it'll pick up the `skills/iw-ai-core-testing/SKILL.
 
 ### 9. GREEN + REFACTOR
 
-Re-run the `test_safe_migrate` tests (deliverable 0's command) — must pass. Run `make test-unit` and `make test-integration` once more under randomization — must pass (or off-by-default per the fallback). Run `make quality` — must pass (lint + format-check + typecheck + test-assertions all pass; `dead-code`/`dep-check` print findings but **do not fail it**). Run `make check` — must pass. Targeted-run any test file you fixed/touched (not the whole suite — those are the QV gates downstream).
+Re-run the `test_safe_migrate` tests (deliverable 0's command) — must pass. Run `make quality` — must pass (lint + format-check + typecheck + test-assertions all pass; `dead-code`/`dep-check` print findings but **do not fail it** — this verifies the warn-only wiring). Targeted-run any test file you fixed/touched. **Do NOT also run `make check` or the full `make test-unit`/`make test-integration` again here** — deliverable 2 already ran the multi-seed sweep, and the full-suite-under-randomization verdict belongs to the QV gates (S08 `unit-tests`, S09 `integration-tests`, S10 `diff-coverage`); re-running them in this step risks a timeout (the I-00073 lesson).
 
 **Scope discipline**: touch only the files in the design's "Impacted Paths" (`pyproject.toml`, `uv.lock`, `Makefile`, `vulture_whitelist.py`, `.github/workflows/test-quality.yml`, `tests/**`, `tests/CLAUDE.md`, `docs/IW_AI_Core_Testing_Strategy.md`, `skills/iw-ai-core-testing/SKILL.md` + its `.claude/` copy, `skills/iw-workflow/SKILL.md` + `.claude/` copy *only if a marker is documented there*, `ai-dev/work/TESTS_ENHANCEMENT.md`) plus this CR's `ai-dev/active|work/CR-00048/**`. **Diffs under `tests/` must be ONLY test-isolation fixes + the `test_safe_migrate` fix + quarantine markers — no behavioral test changes, no weakened assertions.** Do **not** fix the `integration-tests` no-op gate (P1-CR-E). Do **not** add `mutmut`/`gitleaks`/`semgrep` (subsequent CRs). Do **not** flip `vulture`/`deptry` to hard gates. Do **not** scrub the assertion baseline (P1-CR-A-followup). Do **not** do a dead-code deletion pass. Do **not** change the workflow-manifest schema. Do **not** change production code beyond what the `test_safe_migrate` fix genuinely requires (it shouldn't require any).
 
@@ -202,11 +202,24 @@ the result of each command:
 
 ## Test Verification (NON-NEGOTIABLE)
 
+> **Bounded exception — this is a testing-infrastructure CR.** The standard
+> rule is "an implementation step never runs the full suite, never touches
+> `make test-integration` — that's the QV gates' job" (I-00073/S03 timeout
+> lesson). CR-00048's *deliverable* is making the suite robust to
+> `pytest-randomly`, which can only be proven by running the suite under
+> several seeds — so deliverable 2 is **explicitly allowed** to run
+> `make test-unit` (×3 seeds) and `make test-integration` (×1 seed), and
+> *only* that. This is a designed, bounded exception, not licence to
+> re-run suites "to be safe": outside deliverable 2 the standard rule
+> still applies in full — no `make check`, no extra `make test-integration`,
+> targeted runs only for your own verification (deliverable 9).
+
 After implementation, verify your own changes — but **DO NOT run the full
-test suite**. Full-suite execution is owned by the dedicated QV gate steps
-downstream (`unit-tests`, `integration-tests`, `frontend-tests`); duplicating
-them here burns this step's budget and is a common cause of step timeouts
-(see I-00073/S03 post-mortem, 2026-05-08).
+test suite** beyond the bounded deliverable-2 sweep above. Full-suite
+execution is otherwise owned by the dedicated QV gate steps downstream
+(`unit-tests`, `integration-tests`, `frontend-tests`); duplicating them here
+burns this step's budget and is a common cause of step timeouts (see
+I-00073/S03 post-mortem, 2026-05-08).
 
 Scope rules:
 
@@ -216,11 +229,10 @@ Scope rules:
    uv run pytest tests/integration/path/to/your_new_test.py -v
    ```
    That is sufficient to prove your tests work. The QV-gate steps downstream
-   re-run the full suites with their own (longer) budgets — but note that
-   THIS step's deliverable 2 deliberately runs `make test-unit` /
-   `make test-integration` several times with different `--randomly-seed`
-   values to *verify the suite is robust to randomization*; that's a
-   required part of the change, not a "be safe" re-run.
+   re-run the full suites with their own (longer) budgets. (For *this* CR,
+   the one extra allowance is deliverable 2's bounded multi-seed sweep —
+   `make test-unit` ×3 + `make test-integration` ×1 — which is a required
+   part of the change, not a "be safe" re-run; see the exception box above.)
 
 2. **Implementation steps (Backend / API / Database / Frontend / Pipeline /
    Template)** — run the **targeted** unit tests that exercise the code
