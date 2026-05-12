@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -646,6 +647,23 @@ def _work_item_status(engine: Any, project_id: str, item_id: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+def _uv_binary() -> str:
+    """Locate the ``uv`` executable.
+
+    On dev machines ``uv`` typically lives at ``~/.local/bin/uv``; under CI
+    (GitHub Actions) it is installed elsewhere on ``PATH``.  Resolve via
+    ``PATH`` first, then fall back to the well-known per-user install location,
+    then to the bare name (let ``subprocess`` resolve it / fail loudly).
+    """
+    found = shutil.which("uv")
+    if found:
+        return found
+    fallback = Path.home() / ".local" / "bin" / "uv"
+    if fallback.exists():
+        return str(fallback)
+    return "uv"
+
+
 def _run_iw(
     args: list[str],
     engine: Any,
@@ -683,7 +701,7 @@ def _run_iw(
             env.pop(key, None)
 
     return subprocess.run(
-        ["/home/sergiog/.local/bin/uv", "run", "iw", "--project", project_id, *args],
+        [_uv_binary(), "run", "iw", "--project", project_id, *args],
         capture_output=True,
         text=True,
         env=env,
