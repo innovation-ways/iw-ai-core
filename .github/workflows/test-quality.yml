@@ -52,6 +52,9 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+          # diff-cover (the `Run diff coverage` step below) needs the PR base
+          # commit to compute the changed-line set — fetch full history.
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       # Several unit tests (test_migration_rebase, test_batch_archiver) shell
       # out to `git commit` against tmp_path repos and need a global identity.
@@ -67,6 +70,18 @@ jobs:
         with:
           name: coverage-xml
           path: tests/output/coverage/coverage.xml
+      # Diff coverage (CR-00047, P1-CR-B): new/changed Python lines must be
+      # >=90% covered. PR-only — there's no diff to measure on a push to main.
+      # Uses the unit `coverage.xml` already produced above (cheap); the daemon
+      # `diff-coverage` QV gate is the authoritative one that builds combined
+      # unit+integration coverage. See docs/IW_AI_Core_Testing_Strategy.md §5.
+      - name: Run diff coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+          uv run diff-cover tests/output/coverage/coverage.xml \
+            --compare-branch="origin/${{ github.base_ref }}" \
+            --fail-under=90
 
   integration:
     name: Integration tests

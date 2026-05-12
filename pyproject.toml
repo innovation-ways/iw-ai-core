@@ -90,6 +90,7 @@ dev = [
     "pip-audit>=2.7",
     "bandit[toml]>=1.7",
     "pytest-timeout>=2.4.0",
+    "diff-cover>=9",
 ]
 
 # --- Ruff ---
@@ -148,9 +149,18 @@ omit = [
     "bin/*",
 ]
 branch = true
+# Store paths relative to the repo root, not absolute — so coverage data
+# generated in a daemon worktree (`.worktrees/<ITEM>/`) lines up with the
+# main checkout and with diff-cover's git-relative paths. (CR-00047, 1.10 audit.)
+relative_files = true
 
 [tool.coverage.report]
-fail_under = 46
+# Raised from 46 by CR-00047 (P1-CR-B). Set a few points below the *lower* of
+# the two measured branch-coverage slices (the `make test-unit` slice ~52% and
+# the `make test-integration` slice — see ai-dev/work/TESTS_ENHANCEMENT.md
+# changelog). This is a RATCHET: bump it up as coverage improves, never down.
+# Enforced by `pytest --cov` at the end of every test run that picks up addopts.
+fail_under = 50
 skip_covered = true
 show_missing = true
 

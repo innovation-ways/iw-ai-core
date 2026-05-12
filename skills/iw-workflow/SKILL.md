@@ -128,10 +128,11 @@ QV gates run as shell commands (no LLM):
 {"step": "S12", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
 {"step": "S13", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
 {"step": "S14", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
-{"step": "S15", "agent": "qv-gate", "gate": "integration-tests", "command": "make allure-integration", "description": "QV: Integration tests", "timeout": 900}
+{"step": "S15", "agent": "qv-gate", "gate": "integration-tests", "command": "make allure-integration", "description": "QV: Integration tests", "timeout": 900},
+{"step": "S16", "agent": "qv-gate", "gate": "diff-coverage", "command": "make diff-coverage", "description": "QV: Diff coverage (new/changed lines must be well-covered)", "timeout": 1800}
 ```
 
-The 6 canonical QV gates are: `lint` → `assertions` → `format` → `typecheck` → `unit-tests` → `integration-tests`. The `assertions` gate (added by CR-00046, Phase-1 P1-CR-A) runs `scripts/check_test_assertions.py` against the committed baseline at `tests/assertion_free_baseline.txt` and fails on **new** vacuous tests (no-assert / tautology / mock-only / `pytest.raises(Exception)` without `match=`).
+The 7 canonical QV gates are: `lint` → `assertions` → `format` → `typecheck` → `unit-tests` → `integration-tests` → `diff-coverage`. The `assertions` gate (added by CR-00046, Phase-1 P1-CR-A) runs `scripts/check_test_assertions.py` against the committed baseline at `tests/assertion_free_baseline.txt` and fails on **new** vacuous tests (no-assert / tautology / mock-only / `pytest.raises(Exception)` without `match=`). The `diff-coverage` gate (added by CR-00047, Phase-1 P1-CR-B) runs `make diff-coverage` — a self-contained run that builds its own combined unit+integration coverage, then `diff-cover --compare-branch=origin/main --fail-under≈90` so new/changed Python lines must be well-covered; it gets a generous (1800s) timeout because it re-runs the unit + integration + dashboard suites.
 
 QV gate failure → item moves to `failed` status (no fix cycles for QV gates).
 

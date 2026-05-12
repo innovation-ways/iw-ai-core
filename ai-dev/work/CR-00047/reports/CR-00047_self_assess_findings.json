@@ -1,0 +1,22 @@
+{
+  "item_id": "CR-00047",
+  "bottom_line": "Item executed cleanly (0 retries, 0 fix-cycles, all 7 QV gates green first try); the only actionable pattern is a minor platform bug — worktree setup leaves a nested duplicate ai-dev/active/<ID>/<ID>/ of the design package that every review step has to flag as out-of-scope noise.",
+  "coverage_notes": "DB up (db-identity check passed); only DB query used was `iw item-status CR-00047 --json`. Per-step run logs read in full except S08 (350 KB — read head/tail ~60 lines each + grep for Error/FAILED) and S10 (73 KB — read head/tail ~40 lines each + grep). S01–S03 run logs contain only the agent's final summary message, not the full execution transcript, so within-step tool-failure visibility for those steps is limited. No fix-cycle logs exist (0 fix cycles). Manifest, design docs, and the nested-dup directory inspected directly on the filesystem.",
+  "findings": [
+    {
+      "severity": "LOW",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Worktree carries a nested duplicate of the design package at ai-dev/active/<ID>/<ID>/",
+      "recommendation": "Find the path-join that produces ai-dev/active/<ID>/<ID>/ (likely a `dest = ai-dev/active/<ID>` that then copies a source tree already rooted at `<ID>/` into it instead of into ai-dev/active/) in the item-approval / worktree-setup copy step (orch/cli/item_commands.py approve hook or the executor worktree-setup script). Fix the join, or have worktree setup prune a `<ID>/<ID>/` nesting if it appears. Add a regression test.",
+      "evidence": [
+        "ai-dev/logs/CR-00047_S01_run1.log:30 — 'untracked nested-dup dir ai-dev/active/CR-00047/CR-00047/ predates this step (was in `git status` at session start) — not touched here; flagging for cleanup'",
+        "ai-dev/logs/CR-00047_S02_run1.log:18 — 'The untracked `ai-dev/active/CR-00047/CR-00047/` nested-dup dir predates this step — flagged for orchestrator cleanup'",
+        "ai-dev/logs/CR-00047_S03_run1.log:13 — 'untracked nested-dup dir `ai-dev/active/CR-00047/CR-00047/` predates this step — flagged for orchestrator cleanup before merge'",
+        "filesystem — ai-dev/active/CR-00047/CR-00047/{workflow-manifest.json,CR-00047_CR_Design.md,CR-00047_Functional.md,prompts/*,evidences/} duplicates the package already at ai-dev/active/CR-00047/"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Worktree setup leaves a nested duplicate of the design package at ai-dev/active/<ID>/<ID>/ — find and fix the path-join (item approval hook in orch/ or the executor worktree-setup script) and add a regression test; observed in CR-00047 (see ai-dev/active/CR-00047/reports/CR-00047_self_assess_report.md). Effort: S."
+    }
+  ]
+}
