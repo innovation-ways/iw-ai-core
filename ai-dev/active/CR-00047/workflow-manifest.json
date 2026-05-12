@@ -87,7 +87,7 @@
       "gate": "diff-coverage",
       "command": "make diff-coverage",
       "description": "QV: Diff coverage (the new gate, dogfooded on its own CR)",
-      "timeout": 900
+      "timeout": 1800
     },
     {
       "step": "S11",

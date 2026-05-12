@@ -91,9 +91,13 @@ This change is config (`pyproject.toml`/`uv.lock`), a Makefile target, a skill-c
 
 If — and only if — you judge it meaningful, create `tests/unit/test_coverage_gate_config.py` with **real** assertions on parsed values: parse `pyproject.toml` and assert `[tool.coverage.report].fail_under` is `>=` the floor you set in deliverable 1 and `> 46`; assert `diff-cover` appears in the dev dependency group; read `Makefile` and assert it contains a `diff-coverage:` target. Run `uv run pytest tests/unit/test_coverage_gate_config.py -v` first and confirm it fails (the `pyproject.toml`/`Makefile` edits aren't in yet) — capture that RED line as `tdd_red_evidence`. Use specific assertions (`assert fail_under == 70`, not `assert fail_under is not None`) — the `assertions` QV gate (S05) runs against this file. If you skip this test, `tdd_red_evidence` is the `"n/a — …"` form.
 
-### 1. Measure current coverage, then raise & ratchet `fail_under`
+### 1. Measure current coverage (BOTH slices), then raise & ratchet `fail_under`
 
-First: run `make test` (unit + integration + dashboard) and read the resulting `tests/output/coverage/coverage.json` (or the terminal summary) — **record the measured line % and branch % in your step report**. Then set `[tool.coverage.report] fail_under` in `pyproject.toml` to a value a few points *below* the measured **branch** coverage — enough headroom that a routine CR's coverage wobble won't trip it, tight enough that ~real rot is caught. Rule of thumb: floor = measured branch % rounded down to the nearest 5, minus 0–5 more if the measurement felt noisy. (Examples: measured 73% → set 70; measured 68% → set 65.) Keep `skip_covered`/`show_missing`. **Do not** set it to the measured value (a ratchet, not a guillotine). After the change, `make quality` must still pass.
+Run `make test` — it runs `make test-unit` (covers `tests/unit/`) then `make test-integration` (covers `tests/integration/ tests/dashboard/`). These are **two different coverage slices** of `orch+dashboard+executor` and the second run *overwrites* `coverage.json`/`coverage.xml`, so the leftover artefact is the integration+dashboard slice only — **do not** read just that. Capture the **line % and branch % from BOTH terminal summaries** (the unit-suite run's and the integration-suite run's) and **record both pairs in your step report**.
+
+Why both: `fail_under` in `[tool.coverage.report]` is re-checked by `pytest --cov` at the end of *every* run that picks up `addopts` — that includes the `unit-tests` QV gate (S08, `make test-unit`), the CI `integration` job (`make test-integration`), and the intermediate `--cov`/`--cov-append` runs inside `make diff-coverage`. A floor pinned just below the *higher* slice would make the *lower*-slice run fail. So set `[tool.coverage.report] fail_under` in `pyproject.toml` to a value a few points *below* the **lower** of the two measured **branch** %s. Rule of thumb: floor = (lower branch %) rounded down to the nearest 5, minus 0–5 more if the measurement felt noisy. (Examples: branch slices 73%/65% → set 60; 70%/68% → set 65.) Keep `skip_covered`/`show_missing`. **Do not** set it to the measured value (a ratchet, not a guillotine).
+
+After the edit, re-run `make test-unit` once to confirm the new floor passes (QV gates get no fix cycles — a too-high floor would fail S08 and kill the item). `make quality` must also still pass (note: `make quality` does not run pytest, so it won't catch a too-high floor — `make test-unit` is the real check here).
 
 ### 2. Coverage-plumbing audit (1.10) — add `relative_files`
 
@@ -105,17 +109,24 @@ Add `diff-cover` to `pyproject.toml`'s dev dependency group (the same group that
 
 ### 4. Add `make diff-coverage` — self-contained combined-coverage gate
 
-Add a `diff-coverage:` target to the `Makefile` (and to `.PHONY`). It must be **self-contained** — produce its own *combined* unit+integration coverage rather than reusing a `coverage.xml` left behind by a preceding step or relying on the `integration-tests` QV gate (which is currently a no-op stub). Mechanism is your choice — e.g. run the unit suite and the integration suite with `--cov-append` into one `.coverage` file (`pytest tests/unit ... --cov ... ; pytest tests/integration tests/dashboard ... --cov ... --cov-append`), then `coverage xml -o <path>`; or `coverage run -p` parallel + `coverage combine`. Then run `uv run diff-cover <combined coverage.xml> --compare-branch=origin/main --fail-under=90` (N ≈ 90 — new/changed Python lines must be ≥90% covered). Exit non-zero if changed-line coverage < N. Add a short header comment explaining what it does and the combined-coverage rationale. Note: this is a slow gate (it re-runs the suite) — that's the trade-off for robustness; document it in the target comment.
+Add a `diff-coverage:` target to the `Makefile` (and to `.PHONY`). It must be **self-contained** — produce its own *combined* unit+integration coverage rather than reusing a `coverage.xml` left behind by a preceding step or relying on the `integration-tests` QV gate (which is currently a no-op stub). Mechanism is your choice — e.g. run the unit suite and the integration suite with `--cov-append` into one `.coverage` file (`pytest tests/unit ... --cov ... ; pytest tests/integration tests/dashboard --ignore=tests/dashboard/browser ... --cov ... --cov-append`), then `coverage xml -o <path>`; or `coverage run -p` parallel + `coverage combine`. Then run `uv run diff-cover <combined coverage.xml> --compare-branch=origin/main --fail-under=90` (N ≈ 90 — new/changed Python lines must be ≥90% covered). Exit non-zero if changed-line coverage < N. Add a short header comment explaining what it does and the combined-coverage rationale.
+
+Implementation gotchas to handle:
+- The existing `test-integration` target does *not* pass `--cov-append`, so you can't just chain `make test-unit` then `make test-integration` — write your own `pytest` invocations (mirror `test-integration`'s path args + `--ignore=tests/dashboard/browser`).
+- Each intermediate `pytest --cov` run re-checks `[tool.coverage.report] fail_under`. The unit-only run, taken alone, may fall below the (raised) floor — pass `--cov-fail-under=0` on the intermediate runs (or otherwise suppress the per-run check) and let the *final* combined `coverage xml`/`coverage report` be the one that matters; `diff-cover`'s own `--fail-under=90` is the gate's verdict, separate from `[tool.coverage.report] fail_under`.
+- This is a **slow** gate (it re-runs unit + integration + dashboard suites) — that's the trade-off for robustness; document it in the target comment. Because of this, the QV-gate step that runs it needs a generous timeout (see deliverable 5: use `"timeout": 1800` on the `diff-coverage` gate entry, not the 900 that `integration-tests` uses).
 
 ### 5. Add the `diff-coverage` daemon QV gate to `skills/iw-workflow/SKILL.md`
 
 In the "QV Gate Steps" JSON block (currently 6 gates ending with `integration-tests`), add a 7th entry **after** `integration-tests`:
 
 ```json
-{"step": "S{NN}", "agent": "qv-gate", "gate": "diff-coverage", "command": "make diff-coverage", "description": "QV: Diff coverage (new/changed lines must be well-covered)", "timeout": 900}
+{"step": "S{NN}", "agent": "qv-gate", "gate": "diff-coverage", "command": "make diff-coverage", "description": "QV: Diff coverage (new/changed lines must be well-covered)", "timeout": 1800}
 ```
 
-Update the prose: "The 6 canonical QV gates are: lint → assertions → format → typecheck → unit-tests → integration-tests" → "The 7 canonical QV gates are: lint → assertions → format → typecheck → unit-tests → integration-tests → diff-coverage" and add a sentence noting the `diff-coverage` gate (added by CR-00047, P1-CR-B) runs `make diff-coverage` (self-contained combined coverage, compares to `origin/main`, fails on changed-line coverage < ~90%).
+(The `1800` timeout — vs the `900` `integration-tests` uses — is deliberate: `make diff-coverage` re-runs unit + integration + dashboard suites *plus* `diff-cover`, so it strictly dominates the integration gate's runtime.)
+
+Update the prose: "The 6 canonical QV gates are: lint → assertions → format → typecheck → unit-tests → integration-tests" → "The 7 canonical QV gates are: lint → assertions → format → typecheck → unit-tests → integration-tests → diff-coverage" and add a sentence noting the `diff-coverage` gate (added by CR-00047, P1-CR-B) runs `make diff-coverage` (self-contained combined coverage, compares to `origin/main`, fails on changed-line coverage < ~90%; generous timeout because it re-runs the suites).
 
 ### 6. Add the GH `Run diff coverage` step to `.github/workflows/test-quality.yml`
 
@@ -123,7 +134,7 @@ In the `unit` job, after the `make test-unit` step (and the coverage-XML artefac
 
 ### 7. Update `docs/IW_AI_Core_Testing_Strategy.md`
 
-- §1 (the principles table): the "Coverage is a floor on what's exercised" row already exists — leave the principle, but make sure the §5 table reflects the new floor (next item). Optionally add a one-line note that the floor ratchets up over time.
+- §1 (the principles table): the "Coverage is a floor on what's exercised" row already exists — keep the principle and add a one-line note that the floor is set just below measured coverage and **ratchets up over time, never down** (AC6 requires §1 to reflect the new floor + ratchet rule).
 - §5 (the gate table): update the Coverage row — new `fail_under` value, mention it's enforced via `pytest --cov` *and* there's now a `diff-coverage` gate; add a `Diff coverage` row to the table (`diff-cover` / `>=90% on changed lines` / `make diff-coverage` (daemon QV gate) + the PR check).
 - Add a short paragraph (in §5 near the gate table, or a §8 sibling) titled "Coverage floor & diff-coverage": the floor is just below measured branch coverage and ratchets up; the `diff-coverage` gate checks changed lines are ≥~90% covered; run it locally with `make diff-coverage`; **coverage-source caveat** — the daemon `diff-coverage` gate builds its own combined unit+integration coverage; the GH PR check uses the unit `coverage.xml` (cheaper); regenerate-the-floor guidance.
 - §9 (the gaps table): flip "Coverage failure floor" and "Diff/patch coverage on PRs" rows to ✅ (CR-00047).
@@ -142,7 +153,11 @@ Tick items **1.2**, **1.3**, and the **1.10 audit** as DONE with `(CR-00047)` li
 
 ### 11. GREEN + REFACTOR
 
-Run the optional guard test (if added) — must pass. Run `make diff-coverage` once — it should pass (this CR's diff is ≈0 new production Python lines; the guard test's own lines are covered when it runs). Run `make quality` — must pass (incl. the new `fail_under`, lint, assertions, format, typecheck, the `test-assertions` step). Targeted-run the unit suite for any file you added (not the whole suite — those are the QV gates downstream).
+- Run the optional guard test (if added) — `uv run pytest tests/unit/test_coverage_gate_config.py -v` — must pass.
+- Run `make test-unit` once — must pass with the new `fail_under` (this is the run that enforces the floor; if it fails, your floor is too high — lower it). [Already done in deliverable 1's re-verify step; re-run here only if you've touched `pyproject.toml` since.]
+- Run `make diff-coverage` once — it should exit 0. This CR adds ≈0 new production Python lines; `tests/` is in `[tool.coverage.run] omit`, so the optional guard-test file isn't in the coverage data and `diff-cover` simply has no changed lines to judge → exit 0. If `make diff-coverage` *fails*, something unexpected happened — investigate, don't paper over it.
+- Run `make quality` — must pass (lint, format-check, typecheck, the `test-assertions` step). (Note: `make quality` does *not* run pytest, so it does not exercise the new `fail_under` — `make test-unit` above is that check.)
+- Targeted-run the unit suite for any file you added (not the whole suite — those are the QV gates downstream).
 
 **Scope discipline**: touch only the files in the design's "Impacted Paths" list (plus this CR's `ai-dev/active|work/CR-00047/**`). Do **not** fix the `integration-tests` no-op gate (P1-CR-E). Do **not** add `mutmut`/`vulture`/`deptry`/`gitleaks`/`semgrep`/`pytest-randomly` (subsequent CRs). Do **not** scrub the assertion baseline (P1-CR-A-followup). Do **not** raise `fail_under` to the *measured* value (headroom). Do **not** change the workflow-manifest schema. Do **not** restructure the existing `--cov-report` config beyond adding `relative_files`. Do **not** wire up subprocess coverage.
 
@@ -220,8 +235,12 @@ Scope rules:
    steps downstream and will run with their own (longer) budgets.
 
    **Exception for THIS step**: deliverable 1 requires running `make test`
-   once to *measure* current coverage — that's a deliberate measurement,
-   not a "be safe" re-run. Do it once, record the numbers, move on.
+   once to *measure* current coverage (both slices) — that's a deliberate
+   measurement, not a "be safe" re-run — and re-running `make test-unit`
+   once afterward to confirm the new `fail_under` still passes. Plus
+   deliverable 11 runs `make diff-coverage` once (it re-runs the suite by
+   design). Those are the deliberate full/unit runs for this step; do not
+   add others, and never run `make test-integration` at large.
 
 2. **Implementation steps (Backend / API / Database / Frontend / Pipeline /
    Template)** — run the **targeted** unit tests that exercise the code
@@ -290,7 +309,7 @@ When your work is complete, report results in this JSON structure:
   "test_summary": "X passed, 0 failed",
   "tdd_red_evidence": "n/a — config (pyproject.toml/uv.lock) + Makefile target + skill canon + GH workflow + docs edits + diff-cover dependency add; no production logic. [OR, if the optional guard test was added: tests/unit/test_coverage_gate_config.py — RED before edits: AssertionError: assert 46 >= 70 (fail_under not raised yet); GREEN after deliverables 1 & 3-4]",
   "blockers": [],
-  "notes": "Measured coverage: line <L>%, branch <B>% (`make test`). Set fail_under = <floor> (= <B> rounded down to nearest 5, minus headroom). Added relative_files = true. Cov-plumbing audit: pytest --cov OK; raw-.coverage-artefact N/A; subprocess coverage = known limitation, not wired. `make diff-coverage` builds combined unit+integration coverage then diff-cover --fail-under=90 vs origin/main. Ran `iw sync-skills` (.claude/skills/iw-workflow & iw-ai-core-testing in sync). Did NOT run iw sync-templates (no template edits). Sibling repos pick up the new diff-coverage gate at their next iw sync-skills. Items 1.2/1.3/1.10-audit ticked DONE."
+  "notes": "Measured coverage — unit slice (`make test-unit`): line <Lu>%, branch <Bu>%; integration+dashboard slice (`make test-integration`): line <Li>%, branch <Bi>%. Set fail_under = <floor> (= min(<Bu>,<Bi>) rounded down to nearest 5, minus headroom); re-ran `make test-unit` to confirm it passes. Added relative_files = true. Cov-plumbing audit: pytest --cov OK; raw-.coverage-artefact N/A; subprocess coverage = known limitation, not wired. `make diff-coverage` builds combined unit+integration coverage (intermediate runs use --cov-fail-under=0) then diff-cover --fail-under=90 vs origin/main; diff-coverage QV gate timeout = 1800. Ran `iw sync-skills` (.claude/skills/iw-workflow & iw-ai-core-testing in sync). Did NOT run iw sync-templates (no template edits). Sibling repos pick up the new diff-coverage gate at their next iw sync-skills. Items 1.2/1.3/1.10-audit ticked DONE."
 }
 ```
 
