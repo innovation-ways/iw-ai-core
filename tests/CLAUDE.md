@@ -94,3 +94,48 @@ This is separate from `make test-integration`'s testcontainers.
   Backend step changes), NOT for tests.
 - Tests must NEVER assume the per-worktree DB exists — they spin up their own
   testcontainer.
+
+## pytest-randomly — test-order randomisation
+
+`pytest-randomly` is installed as a dev dependency but is **currently OFF by default**
+via `-p no:randomly` in `pyproject.toml` `[tool.pytest.ini_options] addopts` — the
+design's explicit fallback (CR-00048 AC1 / Desired Behavior). S01's bounded unit-suite
+sweep was green, but `make diff-coverage` (which runs `tests/integration/` +
+`tests/dashboard/` together under a fresh `pytest` invocation) surfaced order-dependent
+fixture failures across ~50 integration tests that 5 fix cycles could not converge.
+Follow-up `P1-CR-C-followup-randomly` tracks the cleanup that re-enables randomisation
+by default.
+
+**Opt in manually** (for the follow-up cleanup, or to surface order-dependence
+ad-hoc):
+
+```bash
+# Re-enable randomisation (overrides `-p no:randomly` from addopts)
+uv run pytest tests/unit/ -p randomly -q
+
+# Reproduce a specific seed
+uv run pytest tests/unit/ -p randomly --randomly-seed=<N> -q
+
+# Surface order-dependence across multiple seeds (the bounded-sweep recipe)
+uv run pytest tests/unit/ -p randomly --randomly-seed=12345 -q
+uv run pytest tests/unit/ -p randomly --randomly-seed=67890 -q
+uv run pytest tests/unit/ -p randomly --randomly-seed=11111 -q
+```
+
+When randomisation is active, the per-run seed is printed at the top:
+
+```
+Using --randomly-seed=770868803
+```
+
+**If a test fails under random order but passes in fixed order**, it is
+**order-dependent** — a test isolation bug (state leaking between tests).
+Fix the leaking side effect (or quarantine it with `@pytest.mark.order_dependent`
++ a tracking comment). A quarantined test must still pass when it runs under
+random order; if it genuinely cannot, mark it `@pytest.mark.xfail(strict=False, ...)`
+as well.
+
+**Cleanup contract** (for the follow-up): integration-suite order-dependence must
+be eliminated (or every offender registered with `@pytest.mark.order_dependent`)
+before `-p no:randomly` is removed from `addopts`. Until then, randomisation is
+opt-in only.

@@ -23,6 +23,10 @@ jobs:
       - run: make test-assertions
       - run: make format-check || make format
       - run: make typecheck
+      # dead-code (vulture) + dep-check (deptry) — informational/warn-only (Phase-1 P1-CR-C).
+      # Flipping to hard gates is a follow-up after the noise is triaged.
+      - run: make dead-code || true
+      - run: make dep-check || true
 
   unit:
     name: Unit tests + coverage
