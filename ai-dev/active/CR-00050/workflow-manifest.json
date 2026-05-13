@@ -1,0 +1,109 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00050",
+  "type": "ChangeRequest",
+  "title": "Security gates — gitleaks (blocking) + Semgrep (nightly-first) (P1-CR-D)",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      ".gitleaks.toml",
+      ".pre-commit-config.yaml",
+      ".github/workflows/security-scan.yml",
+      "Makefile",
+      "pyproject.toml",
+      "skills/iw-workflow/**",
+      ".claude/skills/iw-workflow/**",
+      "skills/iw-ai-core-testing/**",
+      ".claude/skills/iw-ai-core-testing/**",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "RED-first: capture pre-patch `gitleaks detect --no-git --config .gitleaks.toml -v` output (~109 findings; save full JSON + summary to ai-dev/active/CR-00050/evidences/pre/). Triage per the Mixed strategy: FALSE_POSITIVE_PATH → widen `[allowlist].paths` regex (each entry gets a `# why` comment); FALSE_POSITIVE_VALUE → per-rule `[[rules.allowlists]]` stopwords/regexes with `# why` comment; REAL_OR_SUSPICIOUS → escalate via `blockers` (do NOT silently allowlist; the CR can't merge while any real-looking secret is unrotated). Wire gitleaks on three surfaces: (1) pre-commit hook in .pre-commit-config.yaml (gitleaks/gitleaks repo, pinned tag); (2) `secrets-scan` GH job in security-scan.yml (push + pull_request + existing schedule cron; SARIF upload mirroring trivy-iac's private-repo-skip caveat); (3) daemon QV gate `security-secrets` (8th canonical gate, added to skills/iw-workflow/SKILL.md after diff-coverage). Add `make security-secrets` target (gitleaks detect; folded into security-all; in .PHONY). Rewrite `make security-sast` from its current `@echo` alias to a real Semgrep invocation (`--config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor`); bandit unchanged in security-deps. Add `semgrep` GH job in security-scan.yml with `continue-on-error: true` at JOB level during burn-in; SARIF upload. Update docs/IW_AI_Core_Testing_Strategy.md §5 (new rows) + §9 (flip gitleaks ⚠️→✅ and Semgrep ❌→⚠️); skills/iw-ai-core-testing/SKILL.md §8 (note both gates). Run `iw sync-skills` (default for iw-workflow; `--force iw-ai-core-testing` for project-override). Verify `.claude/skills/` byte-equal to masters. Update ai-dev/work/TESTS_ENHANCEMENT.md: §5 P1-CR-D row → SHIPPED with date; items 1.6 + 1.9 → DONE; new `P1-CR-D-followup-semgrep-block` row filed; §11 changelog entry with triage counts (FP_PATH/FP_VALUE/REAL by top RuleIDs). Pre-flight: `make format` + `make typecheck` + `make lint` must pass; targeted verification: `pre-commit run gitleaks --all-files`, `make security-secrets`, `make security-sast`, `gitleaks detect --no-git --config .gitleaks.toml -v` (must be 0 findings). Do NOT run make check / make test-integration / make diff-coverage — that's S08/S09/S10's job. 2400s timeout for the triage workload.",
+      "prompt": "prompts/CR-00050_S01_Backend_prompt.md",
+      "timeout": 2400
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: every new .gitleaks.toml entry carries a substantive `# why` comment naming the file/value/pattern AND why it is provably safe; spot-check 5 random new entries against actual file content; no `regexes = ['''.+''']`-style overly-broad allowlists (CRITICAL if present); no path allowlist widening to production code under orch/dashboard/executor/bin/scripts/ (CRITICAL); independent gitleaks scan (`gitleaks detect --no-git --config .gitleaks.toml -v`) must report 0 findings against patched tree; pre-commit hook pinned to a tag (not main/HEAD); GH `secrets-scan` job pinned action SHAs + private-repo-skip comment mirroring iac-scan; daemon QV gate `security-secrets` is the 8th canonical gate (after diff-coverage) in skills/iw-workflow/SKILL.md; .claude/skills/iw-workflow/SKILL.md byte-equal to master; make security-secrets exits 0 against patched tree; make security-sast actually invokes Semgrep (not @echo); GH `semgrep` job has continue-on-error: true at JOB level; bandit unmoved in security-deps; docs §5+§9 flipped consistently; skill §8 mentions both gates; TESTS_ENHANCEMENT.md §5 P1-CR-D SHIPPED + items 1.6/1.9 DONE + follow-up row filed + §11 changelog entry; S01's blockers list (if any REAL_OR_SUSPICIOUS) is accurate (no contradiction with a 0-finding post-patch scan); no out-of-scope edits (no Trivy image scan, no Semgrep custom rules, no port to sibling projects, no flip-Semgrep-to-blocking).",
+      "prompt": "prompts/CR-00050_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review: independent re-scan `gitleaks detect --no-git --config .gitleaks.toml -v` must produce 0 findings (the linchpin — if non-zero, the entire CR is moot, CRITICAL); `make security-sast` runs Semgrep and either reports 0 or every reported line has an inline `# nosemgrep:` comment with `# why` (no silent ignoring of local findings — the burn-in covers CI noise, not local); the allowlist tells a coherent auditable story (no black hole of unexplained suppressions); 109-finding triage counts (FP_PATH/FP_VALUE/REAL) in S01's notes match §11 changelog counts; no scope creep (no production code, no Trivy image scan, no custom Semgrep rules, no flip-Semgrep-to-blocking); make quality + the new make security-secrets both pass; .claude/skills/iw-workflow/SKILL.md and .claude/skills/iw-ai-core-testing/SKILL.md both byte-equal to their masters; the chicken-and-egg S11 prediction holds (security-secrets gate runs on this CR's own changes; if it would fail, S03 catches it before the daemon hits S11).",
+      "prompt": "prompts/CR-00050_S03_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scan (gitleaks against the working tree using the project's .gitleaks.toml allowlist). The NEW gate this CR introduces; runs as its inaugural exercise on this CR's own changes. Zero fix cycles expected — S01's deliverable 0 triage should have produced a clean post-patch state. A fix cycle on S11 means triage missed something; deliverable 0 evidence and the .gitleaks.toml diff are the first places to look.",
+      "timeout": 300
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Cross-reference patterns with CR-00046 (the prior baseline-driven gate-introducing CR — 621-entry assertion baseline analog of this CR's 109-finding gitleaks triage). Surface any process findings about: zero-fix-cycle expectation on S11, weak `# why` rationales, REAL_OR_SUSPICIOUS escalations, or chicken-and-egg pitfalls when introducing a new daemon QV gate.",
+      "prompt": "prompts/CR-00050_S12_SelfAssess_prompt.md"
+    }
+  ]
+}
