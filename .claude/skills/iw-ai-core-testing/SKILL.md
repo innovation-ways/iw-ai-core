@@ -126,6 +126,28 @@ with pytest.raises(FixCycleExhausted):
 
 Unit tests that just need to *mock* DB calls get a `MagicMock` `db_session` from `tests/unit/conftest.py`.
 
+### pytest-randomly — test-order randomisation (currently OFF-by-default)
+
+`pytest-randomly` is installed but **currently OFF by default** via `-p no:randomly` in `pyproject.toml` `[tool.pytest.ini_options] addopts` — the design's explicit fallback (CR-00048 AC1 / Desired Behavior). S01's bounded unit sweep was green, but `make diff-coverage` (full `tests/integration/` + `tests/dashboard/` in one invocation) surfaced ~50 order-dependent fixture failures (`sqla…` collection errors) that 5 fix cycles could not converge. Follow-up `P1-CR-C-followup-randomly` (see `ai-dev/work/TESTS_ENHANCEMENT.md`) tracks the cleanup and re-enables randomisation by default.
+
+**Opt in manually** (cleanup work, or surfacing order-dependence ad-hoc):
+
+```bash
+# Re-enable randomisation (overrides `-p no:randomly` from addopts)
+pytest -p randomly ...
+
+# Reproduce a specific seed
+pytest -p randomly --randomly-seed=<N> ...
+
+# Surface order-dependence with different seeds
+pytest tests/unit/ -p randomly --randomly-seed=12345 -q
+pytest tests/unit/ -p randomly --randomly-seed=67890 -q
+```
+
+The seed is printed at the top of every randomised run (e.g. `Using --randomly-seed=770868803`).
+
+**If a test fails under random order but passes in fixed order**, it is **order-dependent** — a test isolation bug. Fix it (remove the leaking side effect) or quarantine it with `@pytest.mark.order_dependent` (registered in `pyproject.toml`) + a tracking comment. A test that is quarantined must still pass under random order when it runs; if it genuinely can't, mark it `@pytest.mark.xfail(strict=False, ...)` as well. The cleanup contract: integration-suite order-dependence must be eliminated (or every offender registered with `@pytest.mark.order_dependent`) before `-p no:randomly` is removed from `addopts`.
+
 ### Hard rules (also in `tests/CLAUDE.md`)
 
 1. **NEVER** connect to the live DB (port 5433) — testcontainers only, random ports.
@@ -182,7 +204,13 @@ The test is written before the implementation — not after, not alongside. A te
 
 ---
 
-## 6. Test red-flag checklist (for `tests-review` and any reviewer)
+## 8. Quality gates you must leave green
+
+`make check` = `make quality` (`lint` → ruff + `lint-js` + `lint-templates`; `format-check`; `typecheck` → mypy; `test-assertions` → assertion scanner) + `make test` (unit + integration + dashboard). `make quality` also runs `make dead-code` (`vulture`) and `make dep-check` (`deptry`) — **informational / warn-only this CR**; they flip to hard gates after a burn-in follow-up. Also keep `make migration-check` and `make smoke` passing if your change touches migrations or critical paths. Coverage has a `[tool.coverage.report] fail_under` floor (set just below measured branch coverage and **ratcheted up over time, never down** — CR-00047, roadmap 1.2): don't drop it; `make diff-coverage` is the dedicated diff-coverage QV gate (new/changed Python lines must be ≥~90% covered vs `origin/main` — CR-00047, roadmap 1.3). The browser layer (`make test-browser`) is not in `make test` — run it when you touch browser flows. The 7 daemon QV gates: `lint` → `assertions` → `format` → `typecheck` → `unit-tests` → `integration-tests` → `diff-coverage`. Full gate table: `docs/IW_AI_Core_Testing_Strategy.md` §5.
+
+---
+
+## 9. Test red-flag checklist (for `tests-review` and any reviewer)
 
 Flag a test for scrutiny / rework if **any** apply:
 
@@ -198,20 +226,4 @@ Flag a test for scrutiny / rework if **any** apply:
 - [ ] A snapshot/golden-file test whose baseline was regenerated rather than reviewed.
 - [ ] It imports `dashboard.routers.*` / `dashboard.dependencies` in a unit test without a `db_session` in scope (will fail at collection).
 - [ ] It would still pass if you deleted the production line it's supposed to cover.
-
----
-
-## 7. Naming, structure, and scope
-
-- `test_<unit>_<scenario>_<expected_result>` — e.g. `test_aggregate_jobs_with_two_batches_returns_total_four`, `test_start_fix_cycle_when_cap_reached_raises_fix_cycle_exhausted`.
-- AAA blocks, clearly separated; no logic in Assert.
-- One behaviour per test (multiple `assert`s OK if they verify one behaviour).
-- Match existing patterns in the nearest test file/directory — fixtures, assertion style, organisation. Don't invent conventions.
-- Tests live next to their layer: `tests/unit/` (no I/O), `tests/integration/` (testcontainer DB), `tests/dashboard/` (TestClient), `tests/dashboard/browser/` (`playwright-cli` only — never `agent-browser`, never `chromium.launch()`, never `npx playwright install`, never modify `.playwright/cli.config.json`).
-- No new dependencies, no production-code changes from `tests-impl`, no out-of-scope changes — stick to the prompt.
-
----
-
-## 8. Quality gates you must leave green
-
-`make check` = `make quality` (`lint` → ruff + `lint-js` + `lint-templates`; `format-check`; `typecheck` → mypy) + `make test` (unit + integration + dashboard). Also keep `make migration-check` and `make smoke` passing if your change touches migrations or critical paths. Coverage has a `[tool.coverage.report] fail_under` floor (set just below measured branch coverage and **ratcheted up over time, never down** — CR-00047, roadmap 1.2): don't drop it; `make diff-coverage` is the dedicated diff-coverage QV gate (new/changed Python lines must be ≥~90% covered vs `origin/main` — CR-00047, roadmap 1.3). The browser layer (`make test-browser`) is not in `make test` — run it when you touch browser flows. The 7 daemon QV gates: `lint` → `assertions` → `format` → `typecheck` → `unit-tests` → `integration-tests` → `diff-coverage`. Full gate table: `docs/IW_AI_Core_Testing_Strategy.md` §5.
+- [ ] **It only passes in fixed order** — this is an order-dependence smell: the test (or a fixture it uses) leaks state to other tests. Fix the leak or mark it `@pytest.mark.order_dependent` with a tracking comment.

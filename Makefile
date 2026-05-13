@@ -3,14 +3,14 @@
 # ============================================================
 
 .PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
-         test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
-         test-assertions diff-coverage \
-         db-up db-down db-migrate db-revision \
-         daemon-start daemon-stop dashboard-start css \
-         allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
-         e2e-health e2e-logs e2e-stats \
-         security-deps security-iac security-image-dashboard security-all security-report security-sast \
-         arch-check test-frontend
+          test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
+          test-assertions diff-coverage \
+          db-up db-down db-migrate db-revision \
+          daemon-start daemon-stop dashboard-start css \
+          allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
+          e2e-health e2e-logs e2e-stats \
+          security-deps security-iac security-image-dashboard security-all security-report security-sast \
+          arch-check test-frontend dead-code dep-check
 
 # --- Setup ---
 install:
@@ -62,7 +62,17 @@ type-check: typecheck
 test-assertions:
 	uv run python scripts/check_test_assertions.py --baseline tests/assertion_free_baseline.txt tests/
 
-quality: lint format typecheck test-assertions
+# warn-only for now (Phase-1 P1-CR-C); flips to a hard gate in a follow-up after noise is triaged.
+# Exclude skills/ — those are IW skill master copies (not project code) and have their own dep chains.
+dead-code:
+	uv run vulture || true
+
+dep-check:
+	uv run deptry . \
+		--per-rule-ignores DEP001=sqlalchemy.ext.mypy.plugin,DEP001=pytest,DEP001=_pytest,DEP001=testcontainers,DEP002=factory-boy,DEP002=freezegun,DEP002=ruff,DEP002=mypy,DEP002=pre-commit,DEP002=types-freezegun,DEP003=yaml,DEP003=pydantic \
+		--extend-exclude "skills/.*" || true
+
+quality: lint format typecheck test-assertions dead-code dep-check
 
 # --- Tests ---
 test-unit:

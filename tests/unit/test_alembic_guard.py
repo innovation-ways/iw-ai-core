@@ -206,27 +206,59 @@ class TestAssertDbAtHeadSkipsGuard:
     ) -> None:
         """IW_CORE_SKIP_ALEMBIC_GUARD=true causes silent return without calling DB."""
         monkeypatch.setenv("IW_CORE_SKIP_ALEMBIC_GUARD", "true")
-        from importlib import reload
-
-        import orch.db.alembic_guard as ag
-
-        reload(ag)
-        try:
-            ag.assert_db_at_head("postgresql://dummy")
-        finally:
-            reload(ag)
+        with patch("orch.db.alembic_guard.check_db_at_head") as mock_check:
+            assert_db_at_head("postgresql://dummy")
+            mock_check.assert_not_called()
 
     def test_assert_db_at_head_skips_when_agent_context(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """IW_CORE_AGENT_CONTEXT=true causes silent return without calling DB."""
         monkeypatch.setenv("IW_CORE_AGENT_CONTEXT", "true")
-        from importlib import reload
+        with patch("orch.db.alembic_guard.check_db_at_head") as mock_check:
+            assert_db_at_head("postgresql://dummy")
+            mock_check.assert_not_called()
 
-        import orch.db.alembic_guard as ag
+    def test_raises_db_behind_head_error_with_revs_in_msg(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Raised exception message contains current_rev, head_rev, and 'make db-migrate'."""
+        monkeypatch.delenv("IW_CORE_SKIP_ALEMBIC_GUARD", raising=False)
+        monkeypatch.delenv("IW_CORE_AGENT_CONTEXT", raising=False)
+        status = GuardStatus(
+            current_rev="old_rev",
+            head_rev="new_rev",
+            pending=["c", "b"],
+            multiple_heads=[],
+            ok=False,
+        )
+        with patch("orch.db.alembic_guard.check_db_at_head", return_value=status):
+            with pytest.raises(DBBehindHeadError) as exc_info:
+                assert_db_at_head("postgresql://dummy")
 
-        reload(ag)
-        try:
-            ag.assert_db_at_head("postgresql://dummy")
-        finally:
-            reload(ag)
+            msg = str(exc_info.value)
+            assert "old_rev" in msg
+            assert "new_rev" in msg
+            assert "make db-migrate" in msg
+
+    def test_raises_db_behind_head_error_with_empty_for_none_current_rev(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """current_rev=None is displayed as 'EMPTY' in the error message."""
+        monkeypatch.delenv("IW_CORE_SKIP_ALEMBIC_GUARD", raising=False)
+        monkeypatch.delenv("IW_CORE_AGENT_CONTEXT", raising=False)
+        status = GuardStatus(
+            current_rev=None,
+            head_rev="head_abc",
+            pending=["p1"],
+            multiple_heads=[],
+            ok=False,
+        )
+        with patch("orch.db.alembic_guard.check_db_at_head", return_value=status):
+            with pytest.raises(DBBehindHeadError) as exc_info:
+                assert_db_at_head("postgresql://dummy")
+
+            msg = str(exc_info.value)
+            assert "EMPTY" in msg
+            assert "head_abc" in msg
+            assert "make db-migrate" in msg

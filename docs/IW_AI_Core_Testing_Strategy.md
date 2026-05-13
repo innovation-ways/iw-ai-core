@@ -94,6 +94,29 @@ IW AI Core's most important test-safety mechanism. `tests/conftest.py` arms it f
 - `test_project` — **function-scoped**, a `Project` row inside the `db_session` transaction; tests that create work items/batches/docs must use this project's `id`.
 - `cli_get_session` — a `get_session` factory yielding `db_session`, for CLI-command tests.
 
+### pytest-randomly — test-order randomisation (CR-00048, P1-CR-C — fallback)
+
+`pytest-randomly` is installed as a dev dependency but is **currently OFF by default** via `-p no:randomly` in `pyproject.toml` `[tool.pytest.ini_options] addopts` — the design's explicit fallback (CR-00048 AC1 / Desired Behavior). S01's bounded unit-suite sweep was green across 3 seeds, but `make diff-coverage` — which runs `tests/integration/` + `tests/dashboard/` together in one `pytest` invocation — surfaced order-dependent fixture failures across ~50 integration tests (truncated `sqla…` collection errors in `test_cli_steps`, `test_dashboard_fragments`, `test_history_sorting`, `test_code_qa_routes`, `test_doc_job_log_endpoints`, `test_step_monitor_lifecycle`, `test_register_persists_dependencies`, `test_invariants_f00060`, `test_phantom_gate_auto_skip`, `test_project_onboarding_api`, `test_batch_manager_scope_gate`). 5 fix cycles could not converge within budget; follow-up `P1-CR-C-followup-randomly` tracks the cleanup that re-enables randomisation by default.
+
+**Opt in manually** (during the follow-up cleanup, or to surface order-dependence ad-hoc):
+
+```bash
+# Re-enable randomisation (overrides `-p no:randomly` from addopts)
+pytest -p randomly ...
+
+# Reproduce a specific seed
+pytest -p randomly --randomly-seed=<N> ...
+
+# Surface order-dependence across multiple seeds (the bounded-sweep recipe)
+pytest tests/unit/ -p randomly --randomly-seed=12345 -q
+pytest tests/unit/ -p randomly --randomly-seed=67890 -q
+pytest tests/unit/ -p randomly --randomly-seed=11111 -q
+```
+
+The seed is printed at the top of every randomised run (e.g. `Using --randomly-seed=770868803`).
+
+**Cleanup contract** (for the follow-up): integration-suite order-dependence must be eliminated (or every offender registered with `@pytest.mark.order_dependent`) before `-p no:randomly` is removed from `addopts`. Until then, randomisation is opt-in only.
+
 Hard rules (full list in `tests/CLAUDE.md`):
 
 1. **NEVER** connect to the live DB (port 5433) — all DB tests use testcontainers on random ports.
@@ -117,6 +140,10 @@ F-00062 introduced a per-worktree Postgres container for *app runtime* (started 
 | `smoke` | fast critical-path tests; run via `make smoke` (currently ~10; an SLA is roadmap item 1.11) |
 | `slow` | deselected by default unless `-m slow` is passed |
 | `browser` | drives real Chromium via `playwright-cli`; **deselected by default** (`addopts` `-m 'not browser'`); run via `make test-browser` |
+| `order_dependent` | test relies on test execution order; tracked for cleanup in P1-CR-C-followup |
+| `--strict-markers` | **default in `addopts`** — any unregistered/typo'd marker raises an error at collection time |
+
+> `--strict-markers` is enabled by default (`pyproject.toml` `addopts`). All markers above are registered. Any new marker must be added to the `markers` list in `pyproject.toml` before use.
 
 ---
 
@@ -144,6 +171,8 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Format | `ruff format --check` | 0 diffs | `make format-check` |
 | Type checking | `mypy orch/ dashboard/` | 0 errors | `make typecheck` |
 | Architecture | `scripts/arch_check.py` (layer-boundary import rules) | 0 violations | `make arch-check` |
+| Dead-code detection | `vulture` | warnings (warn-only in Phase-1) | `make dead-code` |
+| Dependency hygiene | `deptry` | warnings (warn-only in Phase-1) | `make dep-check` |
 | Security — deps & SAST (basic) | `pip-audit` (`-l --strict`) + `bandit` (`-r orch dashboard executor -ll`) | advisory (currently `|| true`) | `make security-deps` (alias `make security-sast`) |
 | Security — IaC | `trivy config` HIGH/CRITICAL | exit 1 on findings | `make security-iac` |
 | Unit tests | pytest | 100 % pass | `make test-unit` |
@@ -211,10 +240,10 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Diff/patch coverage on PRs | ✅ (CR-00047, 2026-05-12) — `diff-cover` dev dep + `make diff-coverage` daemon QV gate + `pull_request` step in `test-quality.yml`'s `unit` job (1.3) |
 | AST assertion scanner | ✅ (CR-00046, 2026-05-11) — `make test-assertions` + baseline `tests/assertion_free_baseline.txt` |
 | `ruff` PT rules | ✅ enabled |
-| Test-order randomisation (`pytest-randomly`) | ❌ (1.4) |
+| Test-order randomisation (`pytest-randomly`) | ⚠️ (CR-00048, P1-CR-C, 2026-05-12) — dep installed but **off by default** via `-p no:randomly` (the design's named fallback); ~50 integration-fixture order-dependences surfaced; follow-up `P1-CR-C-followup-randomly` (§5) cleans them up and flips it back on. Opt-in recipe in §3 and `tests/CLAUDE.md`. |
 | Secrets scanning (`gitleaks`) | ❌ (1.6) — currently only in the `iw-oss-publish` skill |
 | Semgrep SAST | ❌ (1.9) — `security-sast` is currently just a `bandit` alias |
-| `vulture` / `deptry` suite-health | ❌ (1.7) |
+| `vulture` / `deptry` suite-health | ✅ (CR-00048, P1-CR-C, 2026-05-12) — warn-only this CR; `make dead-code` + `make dep-check` in `make quality` + GH workflow |
 | Allure reporting `make` targets | ❌ (1.8) — `allure-pytest` is a dep, targets are `.PHONY`-only stubs |
 | Curated smoke layer with SLA | ⚠️ marker exists, no SLA (1.11) |
 | Testing strategy doc | ✅ this document (0.1) |

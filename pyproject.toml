@@ -75,6 +75,7 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "pytest-xdist>=3.5.0",
+    "pytest-randomly>=3.15",
     "testcontainers[postgres]>=4.0",
     "factory-boy>=3.3",
     "freezegun>=1.4",
@@ -91,6 +92,8 @@ dev = [
     "bandit[toml]>=1.7",
     "pytest-timeout>=2.4.0",
     "diff-cover>=9",
+    "vulture>=2.11",
+    "deptry>=0.20",
 ]
 
 # --- Ruff ---
@@ -131,14 +134,25 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 # xdist is opt-in only via `make test-parallel` which passes `-n auto --dist=loadfile`.
 # Do NOT add xdist defaults here — that would change `make test-unit` / `make test-integration` semantics.
-addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser'"
+#
+# `pytest-randomly` is installed (S01) and `--strict-markers` is enforced.  Randomisation
+# is currently **off by default** via `-p no:randomly` — the design's explicit fallback
+# (CR-00048 AC1 / Desired Behavior).  Reason: S01's bounded sweep declared the unit suite
+# green, but `make diff-coverage` (which runs the full `tests/integration/` + `tests/dashboard/`
+# suites under a fresh `pytest` invocation, with randomisation active) surfaced order-dependent
+# fixture failures across ~50 integration tests (`sqla…` collection errors) that 5 fix cycles
+# could not converge within budget — see TESTS_ENHANCEMENT.md follow-up `P1-CR-C-followup-randomly`.
+# Reproduce / opt in once the follow-up lands:
+#     uv run pytest tests/unit/ -p randomly                 # re-enable (overrides `-p no:randomly`)
+#     uv run pytest tests/unit/ -p randomly --randomly-seed=<N>   # reproduce a specific seed
+addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser' --strict-markers -p no:randomly"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
     "smoke: fast critical-path tests; ~10 covering core flows; run via `make smoke`",
     "slow: marks tests as slow (deselected by default unless -m slow is passed)",
     "browser: marks tests that drive a real Chromium via playwright-cli; deselected by default — run with `-m browser` against a live dashboard the test data is visible to (e.g. iw-ai-core's existing data or an E2E stack)",
+    "order_dependent: test relies on test order; tracked for cleanup in P1-CR-C-followup",
 ]
-env = ["IW_CORE_AGENT_CONTEXT="]
 
 [tool.coverage.run]
 source = ["orch", "dashboard", "executor"]
@@ -168,3 +182,39 @@ show_missing = true
 [tool.bandit]
 exclude_dirs = ["tests", "scripts", "orch/db/migrations/versions", ".venv"]
 skips = ["B101"]
+
+# --- vulture (dead code) ---
+[tool.vulture]
+min_confidence = 70
+paths = ["orch", "dashboard", "executor", "scripts"]
+ignore_decorators = [
+    "fastapi.*",
+    "pytest.*",
+    "click.*",
+    "app.route.*",
+    "routes.*",
+]
+ignore_names = [
+    "test_*",
+    "_*",
+    "__all__",
+    "main",
+]
+
+# --- deptry (dependency hygiene) ---
+[tool.deptry]
+per_rule_ignores = [
+    "DEP001 = sqlalchemy.ext.mypy.plugin",
+    "DEP001 = pytest",
+    "DEP001 = _pytest",
+    "DEP001 = testcontainers",
+    "DEP002 = factory-boy",
+    "DEP002 = freezegun",
+    "DEP002 = ruff",
+    "DEP002 = mypy",
+    "DEP002 = pre-commit",
+    "DEP002 = types-freezegun",
+    "DEP003 = yaml",
+    "DEP003 = pydantic",
+]
+extend_exclude = ["skills/.*"]
