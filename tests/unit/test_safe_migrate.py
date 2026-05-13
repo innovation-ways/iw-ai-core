@@ -35,14 +35,16 @@ class TestAssertNotAgentContext:
 
 class TestApply:
     def test_apply_refuses_in_agent_context(self) -> None:
-        env = {"IW_CORE_AGENT_CONTEXT": "true"}
+        # IW_CORE_PER_WORKTREE_DB leaks in via clear=False from the ambient agent
+        # worktree env; set it explicitly so the refuse path is exercised.
+        env = {"IW_CORE_AGENT_CONTEXT": "true", "IW_CORE_PER_WORKTREE_DB": "false"}
         with patch.dict("os.environ", env, clear=False), pytest.raises(AgentContextForbiddenError):
             apply("postgresql+psycopg://unused/db")
 
 
 class TestRollback:
     def test_rollback_refuses_in_agent_context(self) -> None:
-        env = {"IW_CORE_AGENT_CONTEXT": "true"}
+        env = {"IW_CORE_AGENT_CONTEXT": "true", "IW_CORE_PER_WORKTREE_DB": "false"}
         with patch.dict("os.environ", env, clear=False), pytest.raises(AgentContextForbiddenError):
             rollback("postgresql+psycopg://unused/db")
 
