@@ -1,0 +1,96 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00049",
+  "type": "ChangeRequest",
+  "title": "Re-enable pytest-randomly by default (P1-CR-C-followup-randomly)",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "pyproject.toml",
+      "tests/**",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "skills/iw-ai-core-testing/**",
+      ".claude/skills/iw-ai-core-testing/**",
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "RED-first reproduce: `uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser -p randomly --randomly-seed=12345 -q`; capture the failing module list + counts + first untruncated `sqla…` traceback (this is tdd_red_evidence). Diagnose the leak (top suspects: tests/conftest.py:28 autouse session, tests/integration/conftest.py:181 + :192 session-scoped; the FTS DDL hook; IW_CORE_PER_WORKTREE_DB leakage). Fix the leak at the fixture level where reasonable — test-isolation fixes only, no behavioral test changes, no production code. Quarantine residue per the established pattern (tests/unit/test_browser_env.py:423): `@pytest.mark.order_dependent` + `@pytest.mark.xfail(strict=False, reason=...)` + `# NOTE(P1-CR-C-followup-randomly):` tracking comment. Iterate seeds (12345/67890/11111/42424) until all four exit 0 (xfailed counts as passing). Remove `-p no:randomly` from pyproject.toml addopts and rewrite the comment block (keep --strict-markers, preserve CR-00048 as a brief 'Earlier fallback' historical note). Flip tests/CLAUDE.md §7, docs/IW_AI_Core_Testing_Strategy.md §3 + §9 row, skills/iw-ai-core-testing/SKILL.md §2 from ⚠️ off-by-default to ✅ default-on (same historical-note pattern). Run `uv run iw sync-skills --force iw-ai-core-testing` (project-override requires --force). Targeted re-run each modified test file under -p randomly --randomly-seed=12345 to confirm idempotency. Update ai-dev/work/TESTS_ENHANCEMENT.md: §5 row P1-CR-C-followup-randomly → DONE (CR-00049) with fix/quarantine counts; item 1.4 row → DONE (CR-00049); add §11 changelog entry with the root-cause one-liner, the fix count, the quarantine list, and the four-seed green sweep. Record tdd_red_evidence = deliverable 0's reproduction. Bounded exception authorised: deliverables 0 + 4 may run `pytest tests/integration/ tests/dashboard/ -p randomly --randomly-seed=<N>` (×4 seeds total). Do NOT run make check / make test-integration / make diff-coverage / extra full-suite runs — that's S08/S09/S10's job. make quality must pass (warn-only steps non-failing). 2400s timeout.",
+      "prompt": "prompts/CR-00049_S01_Backend_prompt.md",
+      "timeout": 2400
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: `-p no:randomly` genuinely removed from pyproject.toml addopts (grep returns nothing); `--strict-markers` still present; comment block above addopts rewritten with historical 'Earlier fallback (CR-00048)' note (not silently deleted). Every one of the 12 modules listed in design's Current Behavior either passes under -p randomly across the 4 seeds OR carries `@pytest.mark.order_dependent` + `@pytest.mark.xfail(strict=False, reason='<substantive: names what leaks>')` + `# NOTE(P1-CR-C-followup-randomly):` tracking comment. No `@pytest.mark.skip`, no comment-outs. Diffs under tests/** are test-isolation only — no behavioral test changes, no weakened assertions, no new test files. No production code touched (orch/dashboard/executor/bin/scripts/). `.claude/skills/iw-ai-core-testing/SKILL.md` matches its master byte-for-byte (verifies iw sync-skills --force ran). tests/CLAUDE.md §7, strategy §3 + §9 row, skill §2 all flipped to default-on with consistent historical notes. TESTS_ENHANCEMENT.md §5 row + item 1.4 + §11 changelog all DONE (CR-00049) with matching counts. No scope creep (no integration-gate fix, no hard-gate flip for vulture/deptry, no baseline scrub, no sibling-project port). Pre-review gate (`make lint` + `make format-check`) must show zero new violations.",
+      "prompt": "prompts/CR-00049_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review: AC1 (fallback removed) verified by grep; AC2 (12 modules fixed or quarantined) verified by re-running the design's seed-12345 reproduction PLUS an independent 5th seed (99999) to catch any seed-specific gap S01 might have missed. AC3 (docs flipped consistently across tests/CLAUDE.md §7, strategy §3 + §9 row, skill §2); historical 'Earlier fallback (CR-00048)' note preserved in all four locations (not silently deleted — that's MEDIUM fixable if missing). AC4 (plan + changelog updated; counts internally consistent — §11 changelog claims match §5 row claims match item 1.4 claims). AC5 (this step's own 5-seed sweep is the proxy for S04–S10 passing). No scope creep (no production code, no new tests, no Makefile/.github changes). Quarantine quality audit: each new marker has substantive `reason` (not just 'order-dependent'), `strict=False`, tracking comment. make quality passes (warn-only steps don't fail). make check NOT run here — that's S08–S10.",
+      "prompt": "prompts/CR-00049_S03_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests (now with pytest-randomly default-on — independent randomisation exercise on this CR's own changes)"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage — the gate that previously burned 5 fix cycles on CR-00048; passing here is the definitive proof randomisation cleanup landed",
+      "timeout": 1800
+    },
+    {
+      "step": "S11",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Cross-reference patterns with CR-00048's saga (the item this is a follow-up to) — did S01 cover make diff-coverage in its bounded sweep? Did S10 need any fix cycles? Did fixture-level fix land or did the CR lean entirely on quarantines?",
+      "prompt": "prompts/CR-00049_S11_SelfAssess_prompt.md"
+    }
+  ]
+}
