@@ -109,9 +109,10 @@ _ITEM_ACTION_LABELS: dict[str, tuple[str, str, str, bool]] = {
         True,
     ),
     "cancel": (
-        "Cancel item?",
-        "This cancels the item and removes it from the queue. This cannot be undone.",
-        "OK",
+        "Cancel Item?",
+        "Cancels this work item. Kills any running step process, marks pending steps as skipped, "
+        "and tears down its worktree. Optionally resets to draft so it can be redesigned.",
+        "Cancel Item",
         True,
     ),
     "restart-merge": (
@@ -520,20 +521,28 @@ def approve_item(
 def cancel_item(
     project_id: str,
     item_id: str,
+    reason: str = Form("cancelled by operator"),
+    to_draft: bool = Form(False),
     db: Session = Depends(get_db),
 ) -> Any:
-    item = _get_item(db, project_id, item_id)
-    if item.status not in (WorkItemStatus.draft, WorkItemStatus.approved):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Cannot cancel: status '{item.status.value}' (must be draft or approved)",
-        )
-    item.status = WorkItemStatus.cancelled
-    _emit(
-        db, "item_cancelled", project_id, item_id, "work_item", f"Item {item_id} cancelled by user"
-    )
-    db.commit()
-    return _action_response(f"Item {item_id} cancelled.", toast_type="info", reload=True)
+    from orch.cancel import cancel_work_item
+
+    try:
+        result = cancel_work_item(db, project_id, item_id, reason=reason, to_draft=to_draft)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        if "active batch" in str(exc):
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    new_status = "draft" if to_draft else "cancelled"
+    msg = f"Item {item_id} → {new_status}"
+    if result.teardown_errors:
+        for err in result.teardown_errors:
+            msg = f"{msg}\nWarning: {err}"
+
+    return _action_response(msg, toast_type="warning", reload=True)
 
 
 # ---------------------------------------------------------------------------
@@ -751,16 +760,29 @@ def confirm_item_dialog(
 
     action_url = f"/project/{project_id}/api/item/{item_id}/{action}"
 
+    template_name = (
+        "fragments/confirm_action_form.html"
+        if action == "cancel"
+        else "fragments/confirm_action.html"
+    )
+
+    extra_context = {
+        "title": f"{title.rstrip('?')} {item_id}?",
+        "description": description,
+        "confirm_url": action_url,
+        "confirm_label": confirm_label,
+        "danger": danger,
+    }
+
+    if action == "cancel":
+        extra_context["default_reason"] = "cancelled by operator"
+        extra_context["reset_field_name"] = "to_draft"
+        extra_context["reset_field_label"] = "Also reset item to draft (re-runnable)"
+
     return templates.TemplateResponse(
         request,
-        "fragments/confirm_action.html",
-        {
-            "title": f"{title.rstrip('?')} {item_id}?",
-            "description": description,
-            "confirm_url": action_url,
-            "confirm_label": confirm_label,
-            "danger": danger,
-        },
+        template_name,
+        extra_context,
     )
 
 
@@ -1438,9 +1460,10 @@ _BATCH_ACTION_LABELS: dict[str, tuple[str, str, str, bool]] = {
         False,
     ),
     "cancel": (
-        "Cancel batch?",
-        "Cancels this batch. It will no longer be eligible for execution.",
-        "Cancel",
+        "Cancel Batch?",
+        "Cancels this batch and every non-terminal item in it. Kills running steps, tears down "
+        "worktrees, and marks each work item as cancelled (or resets to draft if you tick).",
+        "Cancel Batch",
         True,
     ),
     "archive": (
@@ -1490,16 +1513,29 @@ def confirm_batch_dialog(
 
     action_url = f"/project/{project_id}/api/batch/{batch_id}/{action}"
 
+    template_name = (
+        "fragments/confirm_action_form.html"
+        if action == "cancel"
+        else "fragments/confirm_action.html"
+    )
+
+    extra_context = {
+        "title": f"{title.rstrip('?')} {batch_id}?",
+        "description": description,
+        "confirm_url": action_url,
+        "confirm_label": confirm_label,
+        "danger": danger,
+    }
+
+    if action == "cancel":
+        extra_context["default_reason"] = "cancelled by operator"
+        extra_context["reset_field_name"] = "reset_items"
+        extra_context["reset_field_label"] = "Also reset member items to draft (re-runnable)"
+
     return templates.TemplateResponse(
         request,
-        "fragments/confirm_action.html",
-        {
-            "title": f"{title.rstrip('?')} {batch_id}?",
-            "description": description,
-            "confirm_url": action_url,
-            "confirm_label": confirm_label,
-            "danger": danger,
-        },
+        template_name,
+        extra_context,
     )
 
 
@@ -1597,24 +1633,31 @@ def resume_batch(
 def cancel_batch(
     project_id: str,
     batch_id: str,
+    reason: str = Form("cancelled by operator"),
+    reset_items: bool = Form(False),
     db: Session = Depends(get_db),
 ) -> Any:
-    batch = _get_batch(db, project_id, batch_id)
-    if batch.status not in (BatchStatus.planning, BatchStatus.approved):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Cannot cancel: batch status is '{batch.status.value}'"
-                " (must be planning or approved)"
-            ),
-        )
-    batch.status = BatchStatus.cancelled
-    batch.updated_at = datetime.now(UTC)
-    _emit(
-        db, "batch_cancelled", project_id, batch_id, "batch", f"Batch {batch_id} cancelled by user"
-    )
-    db.commit()
-    return _action_response(f"Batch {batch_id} cancelled.", toast_type="warning", reload=True)
+    from orch.cancel import cancel_batch as _cancel_batch
+
+    try:
+        result = _cancel_batch(db, project_id, batch_id, reason=reason, reset_items=reset_items)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    msg = f"Batch {batch_id} cancelled"
+    if result.cancelled_batch_items:
+        msg = f"{msg} — items: {', '.join(result.cancelled_batch_items)}"
+    if result.reset_to_draft:
+        msg = f"{msg} — reset to draft: {', '.join(result.reset_to_draft)}"
+    if result.killed_pids:
+        msg = f"{msg} — killed PIDs: {result.killed_pids}"
+    if result.teardown_errors:
+        for err in result.teardown_errors:
+            msg = f"{msg}\nWarning: {err}"
+
+    return _action_response(msg, toast_type="warning", reload=True)
 
 
 # ---------------------------------------------------------------------------

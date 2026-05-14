@@ -23,6 +23,7 @@ from dashboard.utils.markdown import render_markdown
 from orch.daemon.execution_report import assemble_execution_report
 from orch.db.models import (
     AgentRuntimeOption,
+    Batch,
     BatchItem,
     BatchItemStatus,
     DaemonEvent,
@@ -535,6 +536,14 @@ def _get_batch_ref(project_id: str, item_id: str, db: Session) -> str | None:
         .order_by(BatchItem.id.desc())
     )
     return bi.batch_id if bi else None
+
+
+def _get_batch_status(project_id: str, batch_id: str | None, db: Session) -> str | None:
+    """Return the status string of a batch, or None if not found."""
+    if not batch_id:
+        return None
+    batch = db.get(Batch, (project_id, batch_id))
+    return batch.status.value if batch else None
 
 
 def _get_batch_item_error(project_id: str, item_id: str, db: Session) -> str | None:
@@ -1107,6 +1116,7 @@ def item_detail(
     steps = _get_steps(project_id, item_id, db)
     metrics = _get_metrics(project_id, item_id, steps, db)
     batch_ref = _get_batch_ref(project_id, item_id, db)
+    batch_status = _get_batch_status(project_id, batch_ref, db)
     setup_error = _get_batch_item_error(project_id, item_id, db)
 
     # F-00081: fetch runtime options for dropdown population
@@ -1144,6 +1154,7 @@ def item_detail(
             "steps": steps,
             "metrics": metrics,
             "batch_ref": batch_ref,
+            "batch_status": batch_status,
             "setup_error": setup_error,
             "runtime_options": runtime_options_list,
             "item_runtime_option_id": item_runtime_option_id,
@@ -1164,6 +1175,7 @@ def item_header_fragment(
     steps = _get_steps(project_id, item_id, db)
     metrics = _get_metrics(project_id, item_id, steps, db)
     batch_ref = _get_batch_ref(project_id, item_id, db)
+    batch_status = _get_batch_status(project_id, batch_ref, db)
     setup_error = _get_batch_item_error(project_id, item_id, db)
 
     templates: Jinja2Templates = request.app.state.templates
@@ -1176,6 +1188,7 @@ def item_header_fragment(
             "item_type": item.type.value,
             "item_status": item.status.value,
             "batch_ref": batch_ref,
+            "batch_status": batch_status,
             "setup_error": setup_error,
             "metrics": metrics,
         },
