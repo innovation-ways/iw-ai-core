@@ -132,7 +132,18 @@ QV gates run as shell commands (no LLM):
 {"step": "S16", "agent": "qv-gate", "gate": "diff-coverage", "command": "make diff-coverage", "description": "QV: Diff coverage (new/changed lines must be well-covered)", "timeout": 1800}
 ```
 
-The 7 canonical QV gates are: `lint` → `assertions` → `format` → `typecheck` → `unit-tests` → `integration-tests` → `diff-coverage`. The `assertions` gate (added by CR-00046, Phase-1 P1-CR-A) runs `scripts/check_test_assertions.py` against the committed baseline at `tests/assertion_free_baseline.txt` and fails on **new** vacuous tests (no-assert / tautology / mock-only / `pytest.raises(Exception)` without `match=`). The `diff-coverage` gate (added by CR-00047, Phase-1 P1-CR-B) runs `make diff-coverage` — a self-contained run that builds its own combined unit+integration coverage, then `diff-cover --compare-branch=origin/main --fail-under≈90` so new/changed Python lines must be well-covered; it gets a generous (1800s) timeout because it re-runs the unit + integration + dashboard suites.
+The canonical QV gate chain (in order):
+
+1. `lint` — ruff + `lint-js` + `lint-templates`
+2. `assertions` — `scripts/check_test_assertions.py` against `tests/assertion_free_baseline.txt` (CR-00046)
+3. `format` — `make format-check` (ruff-format)
+4. `typecheck` — `make type-check` (mypy)
+5. `unit-tests` — `make test-unit`
+6. `integration-tests` — `make allure-integration`
+7. `diff-coverage` — `make diff-coverage` (CR-00047)
+8. `security-secrets` — `make security-secrets` (gitleaks, CR-00050)
+
+The `assertions` gate (added by CR-00046, Phase-1 P1-CR-A) runs `scripts/check_test_assertions.py` against the committed baseline at `tests/assertion_free_baseline.txt` and fails on **new** vacuous tests (no-assert / tautology / mock-only / `pytest.raises(Exception)` without `match=`). The `diff-coverage` gate (added by CR-00047, Phase-1 P1-CR-B) runs `make diff-coverage` — a self-contained run that builds its own combined unit+integration coverage, then `diff-cover --compare-branch=origin/main --fail-under≈90` so new/changed Python lines must be well-covered; it gets a generous (1800s) timeout because it re-runs the unit + integration + dashboard suites. The `security-secrets` gate (added by CR-00050, Phase-1 P1-CR-D) runs `make security-secrets` — a gitleaks scan against the working tree using the project's `.gitleaks.toml` allowlist; it is the blocking secret-scanning gate on every PR.
 
 QV gate failure → item moves to `failed` status (no fix cycles for QV gates).
 

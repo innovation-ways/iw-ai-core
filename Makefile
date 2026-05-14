@@ -9,7 +9,7 @@
           daemon-start daemon-stop dashboard-start css \
           allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
           e2e-health e2e-logs e2e-stats \
-          security-deps security-iac security-image-dashboard security-all security-report security-sast \
+          security-deps security-iac security-image-dashboard security-secrets security-all security-report security-sast \
           arch-check test-frontend dead-code dep-check
 
 # --- Setup ---
@@ -209,11 +209,31 @@ security-iac:
 security-image-dashboard:
 	@echo "no built image — N/A for this project"
 
-security-all: security-deps security-iac
+security-all: security-deps security-iac security-secrets
 	@echo "[security-all] complete (image scans run separately if images are built)"
 
-security-sast: security-deps
-	@echo "[security-sast] complete"
+security-secrets:
+	@command -v gitleaks >/dev/null 2>&1 || { \
+		echo "ERROR: 'gitleaks' not found."; \
+		echo "Install: brew install gitleaks   (or)   curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz | tar -xz -C /tmp && sudo mv /tmp/gitleaks /usr/local/bin/"; \
+		exit 1; \
+	}
+	@mkdir -p $(SECURITY_DIR)
+	@echo "[security-secrets] gitleaks ..."
+	@gitleaks detect --no-git --config .gitleaks.toml --report-format json --report-path $(SECURITY_DIR)/gitleaks.json
+	@echo "[security-secrets] OK"
+
+security-sast:
+	@command -v semgrep >/dev/null 2>&1 || { \
+		echo "ERROR: 'semgrep' not found."; \
+		echo "Install: uv add --dev semgrep   (or)   pip install semgrep"; \
+		exit 1; \
+	}
+	@mkdir -p $(SECURITY_DIR)
+	@echo "[security-sast] semgrep ..."
+	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --error --json --output $(SECURITY_DIR)/semgrep.json || true
+	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --error
+	@echo "[security-sast] OK"
 
 security-report:
 	@uv run python scripts/security_report.py
