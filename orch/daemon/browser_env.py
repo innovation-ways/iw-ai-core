@@ -418,7 +418,7 @@ def run_env_up_hook(
         with log_path.open("w") as log_fh:
             result = subprocess.run(  # noqa: S602  # nosec B602
                 env_up_cmd,
-                shell=True,  # nosec B602
+                shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true — trusted env_up command (e.g. `docker compose up`) from server-side project config, no untrusted input on argv
                 cwd=worktree_path,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,
@@ -647,7 +647,7 @@ def run_env_down_hook(
         with log_path.open("w") as log_fh:
             result = subprocess.run(  # noqa: S602  # nosec B602
                 env_down_cmd,
-                shell=True,  # nosec B602
+                shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true — trusted env_down command (e.g. `docker compose down`) from server-side project config, no untrusted input on argv
                 cwd=worktree_path,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,

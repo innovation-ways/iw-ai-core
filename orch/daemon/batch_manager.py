@@ -872,7 +872,7 @@ class BatchManager:
         """
         with subprocess.Popen(  # noqa: S602  # nosec B602
             command,
-            shell=True,  # nosec B602
+            shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true — trusted quality-gate command (e.g. `make test-unit`) from server-side config, no untrusted input on argv
             cwd=worktree_path,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -1299,7 +1299,7 @@ class BatchManager:
         with log_file.open("w") as log_fh:
             proc = subprocess.Popen(  # noqa: S602  # nosec B602
                 command,
-                shell=True,  # nosec B602
+                shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true — trusted agent-launch command built from server-side step config, no untrusted input on argv
                 cwd=worktree_path,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,

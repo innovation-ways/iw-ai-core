@@ -8,6 +8,7 @@
     {% endif %}
     {% if form_html %}
       <form method="post" action="{{ confirm_url }}" hx-post="{{ confirm_url }}" hx-swap="none" class="mt-4">
+        {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted dialog form HTML composed server-side from router-supplied strings #}
         {{ form_html | safe }}
         <div class="flex gap-3 mt-4 justify-end">
           <button

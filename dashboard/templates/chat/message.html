@@ -1,5 +1,6 @@
 <article data-role="{{ role }}" data-msg-id="{{ id }}" class="chat-message">
   <header class="text-xs text-muted-foreground">{{ role_label }}</header>
+  {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted chat message body (server-side citation rendering) #}
   <div class="chat-message-body">{{ content | safe }}</div>
   {% if role == "assistant" %}
     {% include "chat/parts/actions.html" %}

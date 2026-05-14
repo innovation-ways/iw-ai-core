@@ -77,6 +77,7 @@
         {% endif %}
       </div>
     {% elif doc_html %}
+      {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted code module detail panel #}
       <div class="prose-doc text-sm">{{ doc_html | safe }}</div>
       <div id="code-module-diagram-slot"
            hx-get="/api/projects/{{ project_id }}/code/modules/{{ module.slug }}/diagram"

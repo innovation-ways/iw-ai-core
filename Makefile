@@ -223,6 +223,29 @@ security-secrets:
 	@gitleaks detect --no-git --config .gitleaks.toml --report-format json --report-path $(SECURITY_DIR)/gitleaks.json
 	@echo "[security-secrets] OK"
 
+# security-sast: SAST gate via Semgrep. Four rules are project-wide-excluded
+# because their false-positive density is 100% in this codebase:
+#   generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var
+#     — fires at every {{ write_button_attrs(request) }} macro callsite (26 sites
+#       in 12 files). The macro emits a constant pre-quoted attribute string with
+#       no user input. In-macro {# nosemgrep #} does NOT silence the rule (verified
+#       empirically); per-line annotation across 12 caller files would be churny
+#       and re-fired by every new caller. The macro's constant-output invariant is
+#       locked by tests/unit/test_db_guard_macro.py — if a future edit introduces
+#       user-input interpolation, that test will fail and this exclude flag must
+#       be re-justified.
+#   generic.html-templates.security.var-in-href.var-in-href
+#     — fires on every <a href="{{ ... }}">; in this codebase, every flagged value
+#       is a route-supplied URL, hardcoded route path, or template-author macro
+#       parameter. The rule cannot prove safety statically. Per-line annotation
+#       across 31 sites in 29 files would be unsustainable.
+#   generic.html-templates.security.var-in-script-tag.var-in-script-tag
+#     — fires on {{ ... }} inside <script>; in this codebase, every flagged value
+#       passes through Jinja's tojson filter which emits a valid JSON literal.
+#   html.security.plaintext-http-link.plaintext-http-link
+#     — fires on http://-prefixed hrefs; in this codebase the one flagged site is
+#       a dev-only localhost link, never reachable in production.
+# Triage convention: docs/IW_AI_Core_Testing_Strategy.md "Semgrep finding triage".
 security-sast:
 	@command -v semgrep >/dev/null 2>&1 || { \
 		echo "ERROR: 'semgrep' not found."; \
@@ -231,24 +254,18 @@ security-sast:
 	}
 	@mkdir -p $(SECURITY_DIR)
 	@echo "[security-sast] semgrep ..."
-	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --error --json --output $(SECURITY_DIR)/semgrep.json \
-		--exclude-rule python.jinja2.security.audit.autoescape-disabled-false.incorrect-autoescape-disabled \
-		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
-		--exclude-rule generic.html-templates.security.var-in-href.var-in-href \
+	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit \
 		--exclude-rule generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var \
-		--exclude-rule python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe \
-		--exclude-rule python.lang.security.audit.subprocess-shell-true.subprocess-shell-true \
-		--exclude-rule generic.html-templates.security.var-in-script-tag.var-in-script-tag \
-		--exclude-rule html.security.plaintext-http-link.plaintext-http-link || true
-	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --error \
-		--exclude-rule python.jinja2.security.audit.autoescape-disabled-false.incorrect-autoescape-disabled \
-		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
 		--exclude-rule generic.html-templates.security.var-in-href.var-in-href \
-		--exclude-rule generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var \
-		--exclude-rule python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe \
-		--exclude-rule python.lang.security.audit.subprocess-shell-true.subprocess-shell-true \
 		--exclude-rule generic.html-templates.security.var-in-script-tag.var-in-script-tag \
-		--exclude-rule html.security.plaintext-http-link.plaintext-http-link
+		--exclude-rule html.security.plaintext-http-link.plaintext-http-link \
+		orch dashboard executor --error --json --output $(SECURITY_DIR)/semgrep.json || true
+	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit \
+		--exclude-rule generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var \
+		--exclude-rule generic.html-templates.security.var-in-href.var-in-href \
+		--exclude-rule generic.html-templates.security.var-in-script-tag.var-in-script-tag \
+		--exclude-rule html.security.plaintext-http-link.plaintext-http-link \
+		orch dashboard executor --error
 	@echo "[security-sast] OK"
 
 security-report:

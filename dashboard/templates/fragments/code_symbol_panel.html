@@ -10,6 +10,7 @@
             class="text-xs text-muted-foreground hover:text-primary ml-2">✕ close</button>
   </div>
   <div class="p-4">
+    {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted code symbol panel #}
     <div class="prose-doc text-sm">{{ explanation_html | safe }}</div>
   </div>
 </div>

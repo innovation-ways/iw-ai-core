@@ -220,6 +220,7 @@
           .prose-doc .mermaid-diagram svg { max-width:100%; height:auto; }
         </style>
         <div id="doc-toc-container"></div>
+        {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted doc-detail rendered HTML #}
         {{ content_html | safe }}
       </div>
     </div>

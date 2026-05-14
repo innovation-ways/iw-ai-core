@@ -7,6 +7,7 @@
     <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Architecture Diagram</h3>
     <div class="code-diagram-container">
       {% if arch_diagram_html %}
+        {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted code architecture diagram (server-built SVG) #}
         {{ arch_diagram_html | safe }}
       {% else %}
         <div class="mermaid">{{ arch_diagram_dsl | e }}</div>
