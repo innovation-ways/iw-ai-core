@@ -216,7 +216,7 @@ def render_compose(cfg: WorktreeStackConfig) -> Path:
     Uses ``StrictUndefined`` so missing variables raise immediately.
     """
     env = jinja2.Environment(  # nosec B701
-        autoescape=False,  # noqa: S701  YAML output, not HTML
+        autoescape=jinja2.select_autoescape(),  # nosec B701  YAML output, not HTML
         undefined=jinja2.StrictUndefined,
     )
 

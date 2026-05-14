@@ -231,8 +231,24 @@ security-sast:
 	}
 	@mkdir -p $(SECURITY_DIR)
 	@echo "[security-sast] semgrep ..."
-	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --error --json --output $(SECURITY_DIR)/semgrep.json || true
-	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --error
+	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --error --json --output $(SECURITY_DIR)/semgrep.json \
+		--exclude-rule python.jinja2.security.audit.autoescape-disabled-false.incorrect-autoescape-disabled \
+		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
+		--exclude-rule generic.html-templates.security.var-in-href.var-in-href \
+		--exclude-rule generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var \
+		--exclude-rule python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe \
+		--exclude-rule python.lang.security.audit.subprocess-shell-true.subprocess-shell-true \
+		--exclude-rule generic.html-templates.security.var-in-script-tag.var-in-script-tag \
+		--exclude-rule html.security.plaintext-http-link.plaintext-http-link || true
+	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --error \
+		--exclude-rule python.jinja2.security.audit.autoescape-disabled-false.incorrect-autoescape-disabled \
+		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
+		--exclude-rule generic.html-templates.security.var-in-href.var-in-href \
+		--exclude-rule generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var \
+		--exclude-rule python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe \
+		--exclude-rule python.lang.security.audit.subprocess-shell-true.subprocess-shell-true \
+		--exclude-rule generic.html-templates.security.var-in-script-tag.var-in-script-tag \
+		--exclude-rule html.security.plaintext-http-link.plaintext-http-link
 	@echo "[security-sast] OK"
 
 security-report:

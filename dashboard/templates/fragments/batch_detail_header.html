@@ -32,25 +32,20 @@
     </div>
   </div>
   <div class="flex items-center gap-2">
-    {% if batch_status == 'planning' %}
+    {% if batch_status in ('planning', 'approved', 'executing', 'paused', 'blocked', 'publish_failed') %}
       <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/cancel/{{ batch.id }}"
               hx-target="#confirm-dialog"
               hx-swap="innerHTML"
               class="px-3 py-1.5 bg-muted text-destructive rounded text-sm hover:opacity-90 transition-opacity">
         Cancel
       </button>
+    {% endif %}
+    {% if batch_status == 'planning' %}
       <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/approve/{{ batch.id }}"
               hx-target="#confirm-dialog"
               hx-swap="innerHTML"
               class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm hover:opacity-90 transition-opacity">
         Approve
-      </button>
-    {% elif batch_status == 'approved' %}
-      <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/cancel/{{ batch.id }}"
-              hx-target="#confirm-dialog"
-              hx-swap="innerHTML"
-              class="px-3 py-1.5 bg-muted text-destructive rounded text-sm hover:opacity-90 transition-opacity">
-        Cancel
       </button>
     {% elif batch_status == 'executing' %}
       <button hx-get="/project/{{ current_project.id }}/api/confirm-batch/pause/{{ batch.id }}"

@@ -51,7 +51,7 @@ This regenerates `dashboard/static/styles.css` from `dashboard/templates/**/*.ht
 |--------|---------|
 | `items.py` | Item detail tabs: overview, design-doc, reports, artifacts, logs, fix cycles, execution report, evidences |
 | `batches.py` | Batch list, batch detail, batch diagram (PNG/.drawio) |
-| `actions.py` | htmx endpoints: approve / unapprove / cancel / pause / resume / restart / restart-merge / full-restart item; batch approve/pause/resume/cancel/archive; create batch from selection |
+| `actions.py` | htmx endpoints: approve / unapprove / cancel (full teardown via `orch.cancel`) / pause / resume / restart / restart-merge / full-restart item; batch approve/pause/resume/cancel (full teardown)/archive; create batch from selection |
 | `search.py` | Project-scoped FTS search |
 | `sse.py` | `GET /api/stream/events` — server-sent events for live updates |
 
