@@ -119,6 +119,7 @@ select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN
 "orch/keep_alive_service.py" = ["S603", "S607"]  # claude CLI subprocess with hardcoded greetings; never user input
 "orch/daemon/browser_env.py" = ["S603", "S607"]  # docker logs is read-only; name from compose output
 "orch/doc_service.py" = ["S603", "S607"]  # git log is intentional for staleness detection
+"orch/cancel.py" = ["S603", "S607"]  # git worktree and docker compose are intentional for worktree teardown
 
 # --- mypy ---
 [tool.mypy]

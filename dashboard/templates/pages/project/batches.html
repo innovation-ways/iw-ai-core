@@ -62,18 +62,20 @@
           ("created", "Created"),
           ("duration", "Duration"),
           ("cascades", ""),
+          ("actions", ""),
         ] %}
         {% for key, label in cols %}
-          <th class="px-4 py-2 text-left font-medium text-muted-foreground cursor-pointer
-                     select-none hover:text-foreground transition-colors"
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground {% if key != 'actions' %}cursor-pointer select-none hover:text-foreground transition-colors{% endif %}"
               data-sort-key="{{ key }}"
-              onclick="sortTable('{{ key }}')">
+              {% if key != 'actions' %}onclick="sortTable('{{ key }}')"{% endif %}>
             <span class="inline-flex items-center gap-1">
               {{ label }}
+              {% if key != 'actions' %}
               <svg class="w-3 h-3 sort-icon opacity-0 transition-opacity" viewBox="0 0 10 6"
                    fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
                 <path d="M1 1 L5 5 L9 1"/>
               </svg>
+              {% endif %}
             </span>
           </th>
         {% endfor %}
@@ -124,6 +126,17 @@
                     aria-label="{{ batch.cascade_item_count }} work item{{ 's' if batch.cascade_item_count != 1 else '' }} had cascade rounds">
                 &#x1f501; {{ batch.cascade_item_count }}
               </span>
+            {% endif %}
+          </td>
+          <!-- Actions: quick-cancel for cancellable batches -->
+          <td class="px-4 py-2 text-center" onclick="event.stopPropagation()">
+            {% if batch.status in ('planning', 'approved', 'executing', 'paused', 'blocked', 'publish_failed') %}
+              <button type="button"
+                      onclick="confirm('Cancel {{ batch.id }}? This is destructive.') && htmx.ajax('POST', '/project/{{ current_project.id }}/api/batch/{{ batch.id }}/cancel', {values:{reason:'cancelled from batches list'}, swap:'none'})"
+                      class="text-destructive hover:opacity-80 text-sm"
+                      title="Cancel batch">
+                ✕
+              </button>
             {% endif %}
           </td>
         </tr>

@@ -50,7 +50,32 @@
           class="px-3 py-1 bg-secondary text-secondary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
           Unapprove
         </button>
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-muted text-destructive rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Cancel
+        </button>
       {% elif item_status == 'in_progress' %}
+        {% if batch_ref and batch_status in ('planning', 'approved', 'executing', 'paused', 'blocked', 'publish_failed', 'publishing') %}
+          {# Item is in an active batch — cancel must go through the batch #}
+          <button type="button" disabled class="px-3 py-1 bg-muted text-muted-foreground rounded text-xs font-medium cursor-not-allowed opacity-50">
+            Cancel
+          </button>
+          <p class="text-xs text-muted-foreground">Belongs to active batch
+            <a href="/project/{{ current_project.id }}/batch/{{ batch_ref }}" class="underline font-mono">{{ batch_ref }}</a>
+            — cancel the batch instead.
+          </p>
+        {% else %}
+          <button
+            hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+            hx-target="#confirm-dialog"
+            hx-swap="innerHTML"
+            class="px-3 py-1 bg-muted text-destructive rounded text-xs font-medium hover:opacity-90 transition-opacity">
+            Cancel
+          </button>
+        {% endif %}
         <button
           hx-get="/project/{{ current_project.id }}/api/confirm-item/pause/{{ item.id }}"
           hx-target="#confirm-dialog"
@@ -66,6 +91,23 @@
           Full Restart
         </button>
       {% elif item_status == 'paused' %}
+        {% if batch_ref and batch_status in ('planning', 'approved', 'executing', 'paused', 'blocked', 'publish_failed', 'publishing') %}
+          <button type="button" disabled class="px-3 py-1 bg-muted text-muted-foreground rounded text-xs font-medium cursor-not-allowed opacity-50">
+            Cancel
+          </button>
+          <p class="text-xs text-muted-foreground">Belongs to active batch
+            <a href="/project/{{ current_project.id }}/batch/{{ batch_ref }}" class="underline font-mono">{{ batch_ref }}</a>
+            — cancel the batch instead.
+          </p>
+        {% else %}
+          <button
+            hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+            hx-target="#confirm-dialog"
+            hx-swap="innerHTML"
+            class="px-3 py-1 bg-muted text-destructive rounded text-xs font-medium hover:opacity-90 transition-opacity">
+            Cancel
+          </button>
+        {% endif %}
         <button
           hx-get="/project/{{ current_project.id }}/api/confirm-item/resume/{{ item.id }}"
           hx-target="#confirm-dialog"
@@ -81,6 +123,23 @@
           Full Restart
         </button>
       {% elif item_status == 'failed' %}
+        {% if batch_ref and batch_status in ('planning', 'approved', 'executing', 'paused', 'blocked', 'publish_failed', 'publishing') %}
+          <button type="button" disabled class="px-3 py-1 bg-muted text-muted-foreground rounded text-xs font-medium cursor-not-allowed opacity-50">
+            Cancel
+          </button>
+          <p class="text-xs text-muted-foreground">Belongs to active batch
+            <a href="/project/{{ current_project.id }}/batch/{{ batch_ref }}" class="underline font-mono">{{ batch_ref }}</a>
+            — cancel the batch instead.
+          </p>
+        {% else %}
+          <button
+            hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+            hx-target="#confirm-dialog"
+            hx-swap="innerHTML"
+            class="px-3 py-1 bg-muted text-destructive rounded text-xs font-medium hover:opacity-90 transition-opacity">
+            Cancel
+          </button>
+        {% endif %}
         <button
           hx-get="/project/{{ current_project.id }}/api/confirm-item/restart/{{ item.id }}"
           hx-target="#confirm-dialog"

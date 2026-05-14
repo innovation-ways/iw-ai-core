@@ -1,0 +1,10 @@
+{% from "components/confirm_dialog.html" import confirm_dialog %}
+{{ confirm_dialog(
+     title=title,
+     description=description,
+     confirm_url=confirm_url,
+     confirm_method='post',
+     confirm_label=confirm_label,
+     danger=True,
+     form_html='<label class="block text-sm font-medium text-foreground mb-1.5">Reason:<textarea name="reason" rows="3" class="w-full mt-2 px-3 py-2 border border-border rounded text-sm bg-background text-foreground resize-y">' ~ default_reason ~ '</textarea></label><label class="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" name="' ~ reset_field_name ~ '" value="true" class="rounded border-border text-primary focus:ring-primary">' ~ reset_field_label ~ '</label>',
+) }}
