@@ -60,6 +60,50 @@ paths = [
   '''(?i)(?:^|/)allure-results/''',
   '''(?i)(?:^|/)coverage/''',
   '''(?i)(?:^|/)htmlcov/''',
+  # why: tests/unit/ — RFC 6761 reserved test domains (.local), RFC 1918 IPs, and
+  # secret-shaped fixture strings in unit tests for browser-env, OSS secrets-parser,
+  # staleness, and dashboard services. Entire directory is test code, not secrets.
+  '''(?i)(?:^|/)tests/unit/''',
+  # why: tests/integration/ — same patterns as tests/unit/ in integration test fixtures
+  '''(?i)(?:^|/)tests/integration/''',
+  # why: tests/dashboard/ — dashboard integration test fixtures
+  '''(?i)(?:^|/)tests/dashboard/''',
+  # why: ai-dev/ — design docs, prompts, and working files (example.local, foo.local,
+  # info@innovation-ways.com appear in prose, not in real credentials)
+  '''(?i)(?:^|/)ai-dev/''',
+  # why: .tmp/ — temporary working files during agent execution
+  '''(?i)(?:^|/)\.tmp/''',
+  # why: skills/iw-oss-publish/ — published skill copies with info@innovation-ways.com
+  # contact email in prose (not a secret — published in public README/CODE_OF_CONDUCT)
+  '''(?i)(?:^|/)skills/iw-oss-publish/''',
+  # why: orch/oss/ config + fix_recipe files contain info@innovation-ways.com in
+  # governance YAML fields (contact info published in public docs, not a secret)
+  '''(?i)(?:^|/)orch/oss/''',
+  # why: dashboard/services/oss_check_catalog.yaml — YAML config keys named env.local
+  # and info@innovation-ways.com contact; not real hostnames or credentials
+  '''(?i)(?:^|/)dashboard/services/''',
+  # why: .dockerignore, .gitignore — patterns like "env.local" appear as literal
+  # ignore rules, not as real internal hostnames
+  '''(?i)\.dockerignore$''',
+  '''(?i)\.gitignore$''',
+  # why: Dockerfile.e2e and GH workflows — "iw-ai-core.local" is a Docker service name
+  # in compose templates, not a real internal hostname
+  '''(?i)(?:^|/)Dockerfile\.e2e$''',
+  '''(?i)(?:^|/)Dockerfile$''',
+  '''(?i)(?:^|/)\.github/workflows/''',
+  # why: public docs — README, CODE_OF_CONDUCT, CONTRIBUTING, SECURITY, SUPPORT all
+  # publish info@innovation-ways.com as a public contact address
+  '''(?i)(?:^|/)README\.md$''',
+  '''(?i)(?:^|/)CODE_OF_CONDUCT\.md$''',
+  '''(?i)(?:^|/)CONTRIBUTING\.md$''',
+  '''(?i)(?:^|/)SECURITY\.md$''',
+  '''(?i)(?:^|/)SUPPORT\.md$''',
+  # why: orch/daemon/browser_env.py — example .iw-orch.json config embedded in a
+  # docstring with e2e_user: dev@example.local (fixture string, not a real credential)
+  '''(?i)(?:^|/)orch/daemon/browser_env\.py''',
+  # why: .iw-orch.json — Docker compose template references docker.internal as a
+  # Docker service name, not a real internal hostname
+  '''(?i)(?:^|/)\.iw-orch\.json$''',
   '''(?i)\.pyc$''',
   '''(?i)\.lock$''',
   '''(?i)(?:^|/)package-lock\.json$''',

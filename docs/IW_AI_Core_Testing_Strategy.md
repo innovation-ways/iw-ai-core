@@ -175,6 +175,8 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Dependency hygiene | `deptry` | warnings (warn-only in Phase-1) | `make dep-check` |
 | Security — deps & SAST (basic) | `pip-audit` (`-l --strict`) + `bandit` (`-r orch dashboard executor -ll`) | advisory (currently `|| true`) | `make security-deps` (alias `make security-sast`) |
 | Security — IaC | `trivy config` HIGH/CRITICAL | exit 1 on findings | `make security-iac` |
+| Security — Secret scan (gitleaks) | `gitleaks detect --no-git --config .gitleaks.toml` | 0 findings; blocking | `make security-secrets` (8th daemon QV gate); pre-commit hook; GH `secrets-scan` job |
+| Security — Semgrep SAST | `semgrep --config p/python --config p/owasp-top-ten --config p/security-audit` | informational (burn-in) | GH `semgrep` job (`continue-on-error: true`); `make security-sast`; flip to blocking in `P1-CR-D-followup-semgrep-block` |
 | Unit tests | pytest | 100 % pass | `make test-unit` |
 | Integration + dashboard tests | pytest + testcontainers | 100 % pass | `make test-integration` |
 | Coverage | `coverage.py` (`branch = true`) | `fail_under = 50` — just below measured branch coverage; **ratchets up over time, never down** (CR-00047) | enforced via `pytest --cov` (config in `pyproject.toml`) at the end of *every* test run that picks up `addopts` (incl. the `unit-tests` and CI `integration` runs) |
@@ -241,8 +243,8 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | AST assertion scanner | ✅ (CR-00046, 2026-05-11) — `make test-assertions` + baseline `tests/assertion_free_baseline.txt` |
 | `ruff` PT rules | ✅ enabled |
 | Test-order randomisation (`pytest-randomly`) | ⚠️ (CR-00048, P1-CR-C, 2026-05-12) — dep installed but **off by default** via `-p no:randomly` (the design's named fallback); ~50 integration-fixture order-dependences surfaced; follow-up `P1-CR-C-followup-randomly` (§5) cleans them up and flips it back on. Opt-in recipe in §3 and `tests/CLAUDE.md`. |
-| Secrets scanning (`gitleaks`) | ❌ (1.6) — currently only in the `iw-oss-publish` skill |
-| Semgrep SAST | ❌ (1.9) — `security-sast` is currently just a `bandit` alias |
+| Secrets scanning (`gitleaks`) | ✅ (CR-00050, 2026-05-14) — pre-commit hook + GH `secrets-scan` job + `make security-secrets` daemon QV gate (1.6) |
+| Semgrep SAST | ⚠️ (CR-00050, 2026-05-14) — managed rulesets; `continue-on-error: true` burn-in; GH `semgrep` job; flip to blocking in `P1-CR-D-followup-semgrep-block` (1.9) |
 | `vulture` / `deptry` suite-health | ✅ (CR-00048, P1-CR-C, 2026-05-12) — warn-only this CR; `make dead-code` + `make dep-check` in `make quality` + GH workflow |
 | Allure reporting `make` targets | ❌ (1.8) — `allure-pytest` is a dep, targets are `.PHONY`-only stubs |
 | Curated smoke layer with SLA | ⚠️ marker exists, no SLA (1.11) |

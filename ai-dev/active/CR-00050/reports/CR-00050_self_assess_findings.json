@@ -1,0 +1,103 @@
+{
+  "item_id": "CR-00050",
+  "bottom_line": "S11 passed with zero fix cycles (primary success criterion met); S08 had one fix cycle due to a GH action SHA-form review gap that CR-00046 self-assess should have surfaced earlier. TDD RED anchor is present (74 findings, not 'n/a').",
+  "coverage_notes": "No raw run logs in .worktrees/CR-00050/ai-dev/logs/ (worktree sparse). All evidence from ai-dev/active/CR-00050/reports/ (11 step reports), ai-dev/active/CR-00050/fix-cycles/ (S08 fix cycle), ai-dev/active/CR-00050/evidences/pre/ (74-finding RED baseline), and ai-dev/work/CR-00046/reports/ (CR-00046 self-assess cross-reference). DB signal: full (DB:UP).",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "S08 fix cycle: test_workflow_actions_pinned_to_sha rejected gitleaks action SHA comment style",
+      "recommendation": "Add S02/S03 review checklist item: for every new GH action added, verify the action ref passes the existing SHA-regex test before approving. Extend skills/iw-workflow/SKILL.md to include a note that newly added GH actions must pass the test_workflow_actions_pinned_to_sha validation.",
+      "evidence": [
+        "ai-dev/active/CR-00050/fix-cycles/CR-00050_S08_FIX_cycle1_prompt.md:37 — \"Action 'gitleaks/gitleaks-action' pinned to non-SHA ref '4dd7c0a5a7ad8cda5c7a0e7c3c3d7b0c5d9a4f1e2' — must be a 40-char commit SHA\"",
+        "ai-dev/active/CR-00050/reports/CR-00050_S02_CodeReview_report.md:84 — S02 confirmed action SHA was pinned but did not verify against SHA-regex test",
+        "ai-dev/active/CR-00050/reports/CR-00050_S08_QvGate_report.md:1 — S08 passed after fix cycle"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add a review checklist item in skills/iw-workflow/SKILL.md requiring every new GH action's ref to pass the existing SHA-regex validation test (test_workflow_actions_pinned_to_sha) before S02 approval; analyzed in CR-00050 (see ai-dev/active/CR-00050/reports/CR-00050_self_assess_report.md). Target file: skills/iw-workflow/SKILL.md. Effort: S."
+    },
+    {
+      "severity": "HIGH",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S11 (security-secrets gate) passed with zero fix cycles — success criterion met",
+      "recommendation": "No platform change needed. Document this zero-fix-cycle outcome as the reference case for future baseline-driven gate introductions. The triage workflow (RED capture -> classify -> allowlist -> verify 0 post-patch) is confirmed complete.",
+      "evidence": [
+        "ai-dev/active/CR-00050/reports/CR-00050_S11_QvGate_report.md:9 — \"Exit code | 0 … Result | PASS … Duration (s) | 0\"",
+        "ai-dev/active/CR-00050/reports/CR-00050_S11_QvGate_report.md:25 — \"no leaks found\""
+      ],
+      "effort": "N/A",
+      "paste_prompt": "/iw-new-cr Document CR-00050 S11's zero-fix-cycle outcome as the reference case for baseline-driven gate introductions in skills/iw-workflow/SKILL.md; analyzed in CR-00050 (see ai-dev/active/CR-00050/reports/CR-00050_self_assess_report.md). Target file: skills/iw-workflow/SKILL.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "TDD RED evidence present: S01 captured 74-finding pre-patch scan (not 'n/a')",
+      "recommendation": "Add a CodeReview review item to flag S01 reports with tdd_red_evidence: 'n/a' as a review failure for behaviour-implementing steps. Ensure every RED-first CR has a DB-backed anchor.",
+      "evidence": [
+        "ai-dev/active/CR-00050/evidences/pre/cr-00050-gitleaks-pre.json — 74-finding JSON RED anchor",
+        "ai-dev/active/CR-00050/evidences/pre/cr-00050-gitleaks-summary.md — RED summary",
+        "ai-dev/active/CR-00050/reports/CR-00050_S02_CodeReview_report.md:144 — \"S01's report tdd_red_evidence field is not n/a — it accurately records 74 findings\""
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add CodeReview review checklist item in skills/iw-workflow/SKILL.md to flag S01 reports with tdd_red_evidence: 'n/a' as a failure for RED-first steps; analyzed in CR-00050 (see ai-dev/active/CR-00050/reports/CR-00050_self_assess_report.md). Target file: skills/iw-workflow/SKILL.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "No nosemgrep abuse: S01 did not suppress Semgrep findings without triage",
+      "recommendation": "Add CodeReview checklist item: if Semgrep findings exist and no nosemgrep comments were added, confirm findings are intentional burn-in findings and not silently suppressed. Prevents burn-in being used to quietly suppress real findings.",
+      "evidence": [
+        "ai-dev/active/CR-00050/reports/CR-00050_S01_Backend_report.md:99 — \"Not silenced with # nosemgrep because (a) they are real findings and (b) the burn-in period will determine which ones need suppression\"",
+        "ai-dev/active/CR-00050/reports/CR-00050_S03_CodeReviewFinal_report.md:25 — S03 confirmed no silent ignoring"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add CodeReview checklist item in skills/iw-workflow/SKILL.md requiring agents to confirm Semgrep findings are intentional burn-in findings (not silently suppressed) when nosemgrep comments are absent; analyzed in CR-00050 (see ai-dev/active/CR-00050/reports/CR-00050_self_assess_report.md). Target file: skills/iw-workflow/SKILL.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "0 REAL_OR_SUSPICIOUS: triage taxonomy was consistent and complete across S01/S02/S03",
+      "recommendation": "Document the triage taxonomy (FALSE_POSITIVE_PATH / FALSE_POSITIVE_VALUE / REAL_OR_SUSPICIOUS / blockers) in skills/iw-workflow/SKILL.md so future baseline-driven gate CRs have a consistent template. Reduces operator confusion when blockers > 0.",
+      "evidence": [
+        "ai-dev/active/CR-00050/reports/CR-00050_S01_Backend_report.md:22 — \"All findings classified as FALSE_POSITIVE_PATH or FALSE_POSITIVE_VALUE; 0 REAL_OR_SUSPICIOUS\"",
+        "ai-dev/active/CR-00050/reports/CR-00050_S02_CodeReview_report.md:117 — \"All 74 classified FALSE_POSITIVE_PATH or FALSE_POSITIVE_VALUE; 0 REAL_OR_SUSPICIOUS\"",
+        "ai-dev/active/CR-00050/reports/CR-00050_S03_CodeReviewFinal_report.md:68 — \"All 74 classified FALSE_POSITIVE_PATH or FALSE_POSITIVE_VALUE; 0 REAL_OR_SUSPICIOUS\""
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Document the FALSE_POSITIVE_PATH / FALSE_POSITIVE_VALUE / REAL_OR_SUSPICIOUS / blockers triage taxonomy in skills/iw-workflow/SKILL.md as a template for future baseline-driven gate CRs; analyzed in CR-00050 (see ai-dev/active/CR-00050/reports/CR-00050_self_assess_report.md). Target file: skills/iw-workflow/SKILL.md. Effort: S."
+    },
+    {
+      "severity": "LOW",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Design estimate (109) vs actual (74): S01 correctly noted the discrepancy",
+      "recommendation": "Add a note in skills/iw-new-cr/SKILL.md and skills/iw-new-feature/SKILL.md: RED baseline counts are estimates; always run the actual scan in S01 and record the real count.",
+      "evidence": [
+        "ai-dev/active/CR-00050/reports/CR-00050_S01_Backend_report.md:13 — \"74 findings (not 109 as the design estimated — the design was captured on 2026-05-13, some findings may have been cleaned up since)\"",
+        "ai-dev/active/CR-00050/reports/CR-00050_S02_CodeReview_report.md:116 — \"S01's report correctly notes 74 findings (design's 109 estimate was from 2026-05-13; some cleaned up since)\"",
+        "ai-dev/active/CR-00050/reports/CR-00050_S03_CodeReviewFinal_report.md:89 — \"S01 correctly captured the current actual count\""
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add a note in skills/iw-new-cr/SKILL.md and skills/iw-new-feature/SKILL.md that RED baseline counts are estimates; agents must run the actual scan in S01 and record the real count, not rely on the design estimate; analyzed in CR-00050 (see ai-dev/active/CR-00050/reports/CR-00050_self_assess_report.md). Target file: skills/iw-new-cr/SKILL.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "design",
+      "target": "iw-ai-core",
+      "title": "CR-00046 self-assess lesson NOT applied: SHA-form review gap for new GH actions",
+      "recommendation": "Add a design-rule in skills/iw-new-cr/SKILL.md: before S02 review, run any existing tests that validate the new gate's inputs (e.g., SHA-form tests for new GH actions, output-format tests for new make targets). This is analogous to CR-00046's gate-plumbing lesson but for test compatibility.",
+      "evidence": [
+        "CR-00046 self-assess (ai-dev/work/CR-00046/reports/CR-00046_self_assess_report.md) found integration-tests gate was a no-op — a platform issue CR-00050 should have checked",
+        "CR-00050 fix cycle on S08: gitleaks action SHA mismatch with test_workflow_actions_pinned_to_sha regex — the direct consequence of not having a pre-review checklist item for new GH action test compatibility",
+        "ai-dev/active/CR-00050/fix-cycles/CR-00050_S08_FIX_cycle1_prompt.md:37 — \"must be a 40-char commit SHA\""
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add a pre-review validation step in skills/iw-new-cr/SKILL.md: before S02 review, run existing tests that validate new gate inputs (SHA-form tests for GH actions, output-format tests for make targets); CR-00050 S08 fix cycle (SHA mismatch) is the lesson; analyzed in CR-00050 (see ai-dev/active/CR-00050/reports/CR-00050_self_assess_report.md). Target file: skills/iw-new-cr/SKILL.md. Effort: S."
+    }
+  ]
+}
