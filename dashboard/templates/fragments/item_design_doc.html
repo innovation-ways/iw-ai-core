@@ -58,6 +58,7 @@
       }
       .prose-doc a { color: var(--primary); text-decoration: underline; }
     </style>
+    {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted design-doc Markdown render #}
     {{ design_doc_html | safe }}
   </div>
 {% else %}

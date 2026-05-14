@@ -175,7 +175,7 @@ def _spawn_command(command: str, repo_root: str) -> None:
     """
     subprocess.Popen(  # noqa: S602  # nosec B602 — shell=True intentional; command from trusted projects.toml
         command,
-        shell=True,  # nosec B602
+        shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true — trusted constructed command (operator-supplied via projects.toml), no untrusted input on argv
         start_new_session=True,
         stdout=DEVNULL,
         stderr=DEVNULL,

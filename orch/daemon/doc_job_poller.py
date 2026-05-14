@@ -245,7 +245,7 @@ class DocJobPoller:
 
         proc = subprocess.Popen(  # noqa: S602  # nosec B602
             cmd,
-            shell=True,  # nosec B602
+            shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true — trusted doc-generation agent-launch command built from server-side job config, no untrusted input on argv
             cwd=worktree_path,
             stdout=log_file.open("w"),
             stderr=subprocess.STDOUT,

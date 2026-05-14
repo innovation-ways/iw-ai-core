@@ -1255,7 +1255,7 @@ def _recompute_baseline_for_gate(
     try:
         result = subprocess.run(  # noqa: S602  # nosec B602
             command,
-            shell=True,  # nosec B602
+            shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true — trusted gate command from server-side step config used to recompute baseline fingerprint, no untrusted input on argv
             cwd=worktree_path,
             capture_output=True,
             text=True,

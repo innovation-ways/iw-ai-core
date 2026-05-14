@@ -34,6 +34,7 @@
             }
             .report-content pre code { background: none; padding: 0; }
           </style>
+          {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted item-report Markdown render #}
           <div class="report-content text-sm">{{ section.report_html | safe }}</div>
         </div>
       </details>

@@ -60,6 +60,7 @@
                   <p class="text-xs text-muted-foreground line-clamp-2 mb-1">
                     {% set snippet = item.snippet | safe %}
                     {# Convert <b> tags to <mark> for highlighting #}
+                    {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted global docs search results #}
                     {{ snippet | replace('<b>', '<mark class="bg-yellow-200 rounded px-0.5 dark:bg-yellow-800 dark:text-yellow-200">') | replace('</b>', '</mark>') | safe }}
                   </p>
                 {% endif %}

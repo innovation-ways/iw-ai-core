@@ -110,6 +110,7 @@
                 [&_li]:text-sm [&_li]:text-muted-foreground
                 [&_strong]:text-foreground
                 [&_hr]:border-border [&_hr]:my-4">
+      {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted batch-plan content #}
       {{ plan_html | safe }}
     </div>
   </div>
