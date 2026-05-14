@@ -1,0 +1,147 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00051",
+  "type": "ChangeRequest",
+  "title": "Semgrep baseline cleanup — drive `make security-sast` to zero blocking findings",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/routers/staleness.py",
+      "dashboard/templates/chat/message.html",
+      "dashboard/templates/chat/parts/table.html",
+      "dashboard/templates/chat/parts/text.html",
+      "dashboard/templates/docs_detail.html",
+      "dashboard/templates/exports/diff_pdf.html",
+      "dashboard/templates/fragments/code_architecture_diagram.html",
+      "dashboard/templates/fragments/code_architecture_view.html",
+      "dashboard/templates/fragments/code_module_detail.html",
+      "dashboard/templates/fragments/code_symbol_panel.html",
+      "dashboard/templates/fragments/docs_global_results.html",
+      "dashboard/templates/fragments/item_design_doc.html",
+      "dashboard/templates/fragments/item_functional_doc.html",
+      "dashboard/templates/fragments/item_reports.html",
+      "dashboard/templates/pages/project/batch_detail.html",
+      "dashboard/templates/pdf/doc_pdf.html",
+      "dashboard/templates/research_detail.html",
+      "orch/archive/batch_archiver.py",
+      "orch/daemon/batch_manager.py",
+      "orch/daemon/browser_env.py",
+      "orch/daemon/doc_job_poller.py",
+      "orch/daemon/fix_cycle.py",
+      "orch/daemon/worktree_compose.py",
+      "orch/rag/chat_repo.py",
+      "orch/test_runner.py",
+      "Makefile",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "tests/unit/test_db_guard_macro.py",
+      "tests/integration/test_security_sast_baseline.py",
+      "ai-dev/active/CR-00051/**",
+      "ai-dev/archive/CR-00051/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Add `# nosemgrep: <rule>` annotations to the 15 Python lines flagged by Semgrep (Classes A=12, D=1, E=2). Preserve every existing `# nosec` / `# noqa` marker (Invariant I1). Add four `--exclude-rule` flags to the `Makefile` `security-sast` target (Classes C=unquoted-attribute-var, F=var-in-href, G=var-in-script-tag, H=plaintext-http-link) with an inline rationale comment block above the target. Append the Semgrep triage section to docs/IW_AI_Core_Testing_Strategy.md. No behavioural code change.",
+      "prompt": "prompts/CR-00051_S01_Backend_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: every per-line suppression has a same-line rationale; no `# nosec` / `# noqa` was removed (Invariant I1); only the listed Python lines and the Makefile `security-sast` target (plus the triage doc) were touched; no behaviour changed; the four Makefile `--exclude-rule` flags are rule-id-specific (Invariant I4) and carry rationale comments; the triage doc section is accurate and self-contained.",
+      "prompt": "prompts/CR-00051_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "frontend-impl",
+      "description": "Add `{# nosemgrep: <rule> — <rationale> #}` to the 16 Class B template lines (template-unescaped-with-safe `| safe` filter sites). No edits to `db_guard.html` or to any of the 12 macro-caller files — Class C is handled by S01's Makefile `--exclude-rule` flag.",
+      "prompt": "prompts/CR-00051_S03_Frontend_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: template suppressions have rationale; no edit to `db_guard.html` or to any of the 12 macro-caller files (Class C is handled by S01's Makefile flag, not by S03); no new `| safe` introduced (Invariant I2); no edits leaked outside the design's 16 Class B template files.",
+      "prompt": "prompts/CR-00051_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Add tests/unit/test_db_guard_macro.py (render-and-assert the unmodified write_button_attrs macro for stale=False / stale=True; locks the constant-attribute rationale that justifies the Class C Makefile-exclude — see AC4/AC5). Add tests/integration/test_security_sast_baseline.py (subprocess-invoke semgrep with the project's three configs AND the four `--exclude-rule` flags against orch/dashboard/executor; assert zero blocking findings; skip with reason if `semgrep` is not on PATH).",
+      "prompt": "prompts/CR-00051_S05_Tests_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-final-impl",
+      "description": "Cross-agent review of S01+S03+S05: AC1–AC8 traceability matrix complete; no production behaviour change (db_guard.html unchanged; orch suppressions are comment-only; Makefile change adds CLI flags only); the baseline-zero test will pass against the just-applied per-line suppressions + four-flag Makefile exclude set.",
+      "prompt": "prompts/CR-00051_S06_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "description": "QV: Linting",
+      "command": "make lint",
+      "gate": "lint"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "description": "QV: Formatting",
+      "command": "make format-check",
+      "gate": "format"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "description": "QV: Type checking",
+      "command": "make type-check",
+      "gate": "typecheck"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "description": "QV: Architecture",
+      "command": "make arch-check",
+      "gate": "arch-check"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "description": "QV: Security SAST — dogfood. This CR exists to make this gate green.",
+      "command": "make security-sast",
+      "gate": "security-sast"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "description": "QV: Unit tests",
+      "command": "make test-unit",
+      "gate": "unit-tests"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "description": "QV: Dashboard / frontend tests",
+      "command": "make test-frontend",
+      "gate": "frontend-tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "description": "QV: Integration tests (Allure)",
+      "command": "make allure-integration",
+      "gate": "integration-tests",
+      "timeout": 900
+    },
+    {
+      "step": "S15",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill.",
+      "prompt": "prompts/CR-00051_S15_SelfAssess_prompt.md"
+    }
+  ]
+}
