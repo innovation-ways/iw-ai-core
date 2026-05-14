@@ -1,0 +1,109 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "F-00083",
+  "type": "Feature",
+  "title": "Dashboard AI Assistant — OpenCode-backed chat panel (v1)",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/chat/**",
+      "orch/config.py",
+      ".env.example",
+      ".opencode/config.json",
+      "pyproject.toml",
+      "dashboard/app.py",
+      "dashboard/routers/chat.py",
+      "dashboard/templates/base.html",
+      "dashboard/templates/chat_assistant/**",
+      "dashboard/templates/pages/project/item_detail.html",
+      "dashboard/templates/pages/project/batch_detail.html",
+      "dashboard/templates/research_detail.html",
+      "dashboard/templates/research_library.html",
+      "dashboard/templates/docs_detail.html",
+      "dashboard/templates/docs_library.html",
+      "dashboard/templates/project_code.html",
+      "dashboard/static/chat_assistant/**",
+      "dashboard/static/styles.css",
+      "tests/unit/test_chat_*.py",
+      "tests/integration/test_chat_*.py",
+      "tests/dashboard/test_chat_*.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "orch/chat/opencode_runtime.py — subprocess manager (start, stop, health-poll, restart-on-crash, Linux PR_SET_PDEATHSIG, per-startup random OPENCODE_SERVER_PASSWORD held in process memory only — never logged or persisted). Add IW_CORE_OPENCODE_PORT (default 4096) and IW_CORE_OPENCODE_BIN (default 'opencode') to orch/config.py and .env.example. Add httpx-sse to pyproject.toml if not present. TDD-RED first for the runtime lifecycle tests in tests/unit/test_chat_runtime.py.",
+      "prompt": "prompts/F-00083_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "backend-impl",
+      "description": "orch/chat/opencode_client.py (httpx.AsyncClient + httpx_sse.aconnect_sse; methods create_session, prompt, abort, reply_permission, stream_events, get_messages, get_config, get_session). orch/chat/relay_manager.py — multi-session relay; one upstream SSE per OpenCode session_id; fans out to N browser SSE subscribers; each relay holds deque(maxlen=256) for Last-Event-ID replay; subscriber detach cleans up. orch/chat/filters.py — normalise OpenCode bus events to {event, data, id} triples per dashboard/routers/sse.py shape. Pre-step spike: capture an actual permission.asked SSE event from a real opencode serve to confirm the payload shape before finalising the relay's event types. TDD-RED first.",
+      "prompt": "prompts/F-00083_S02_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "api-impl",
+      "description": "dashboard/routers/chat.py — 8 endpoints: POST /api/chat/sessions, GET /api/chat/sessions, GET /api/chat/sessions/{sid}, GET /api/chat/sessions/{sid}/stream (SSE relay; honours Last-Event-ID header), POST /api/chat/sessions/{sid}/prompt, POST /api/chat/sessions/{sid}/abort, POST /api/chat/sessions/{sid}/permissions/{rid}, GET /api/chat/config (returns models + default; cached 30s), GET /api/chat/skills (returns combined .opencode/skills/ + .opencode/commands/ list; cached 30s with mtime check). Register router in dashboard/app.py. In dashboard/app.py _lifespan, call OpencodeRuntime.start() before existing daemon startup; .stop() on shutdown. The stream endpoint mirrors dashboard/routers/sse.py shape exactly. Targeted unit tests via FastAPI TestClient + mocked OpencodeClient.",
+      "prompt": "prompts/F-00083_S03_API_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "frontend-impl",
+      "description": "dashboard/templates/chat_assistant/ — panel.html (left-sidebar slide-out, collapsed by default, DOM ids prefixed chat-assistant-), composer.html (textarea + slash-menu + chip area), message.html (user/assistant/tool-call/tool-result cards), approval.html (modal fragment), skills_tray.html, history_dropdown.html. dashboard/static/chat_assistant/chat.js — window.iwChat API (setContext, openWith, openOrToggle), EventSource wiring with client-side message-id dedup + gap detection (compare last-seen-id to first-received-id on reconnect; emit visible warning if gap), tab-id generation + sessionStorage lookup mapped to OpenCode session_id, Ctrl+/ keybinding handler, model-selector populated from /api/chat/config, skills tray populated from /api/chat/skills, / autocomplete in composer. dashboard/static/chat_assistant/chat.css — append plain CSS to dashboard/static/styles.css per dashboard/CLAUDE.md (avoid Tailwind-only classes that need a rebuild). dashboard/templates/base.html — include the panel + add the Ctrl+/ script block. .opencode/config.json — add (or merge into) the 6-line permission block from R-00074 §5: '*' ask, read/glob/grep/webfetch/websearch allow, external_directory deny. Per-page setContext wiring in 7 templates: pages/project/item_detail.html, pages/project/batch_detail.html, research_detail.html, research_library.html, docs_detail.html, docs_library.html, project_code.html. Research view's existing 'Create new research' button becomes a deep-link via window.iwChat.openWith('/iw-research '). REGRESSION GUARD: zero edits to dashboard/templates/chat/** or dashboard/static/chat/**.",
+      "prompt": "prompts/F-00083_S04_Frontend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Unit tests: tests/unit/test_chat_runtime.py (start/stop/health/restart, PR_SET_PDEATHSIG presence, password-never-logged grep, missing-binary error), tests/unit/test_chat_client.py (respx-driven request shape checks for every OpencodeClient method), tests/unit/test_chat_relay.py (multi-subscriber fan-out, ring-buffer replay, Last-Event-ID semantics, subscriber detach cleanup, ring wrap when buffer ages out), tests/unit/test_chat_filters.py (event normalisation). Integration tests: tests/integration/test_chat_endpoint_session_lifecycle.py (TestClient + mocked OpencodeClient; full session lifecycle), tests/integration/test_chat_endpoint_permission_flow.py (synthetic permission.asked emission and reply forwarding), tests/integration/test_chat_endpoint_reconnect.py (Last-Event-ID replay through the dashboard relay). NO new test fixtures touch the live DB (testcontainer-only per tests/CLAUDE.md). Run only the new files before reporting.",
+      "prompt": "prompts/F-00083_S05_Tests_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01–S05. CRITICAL on: edits to dashboard/templates/chat/** or dashboard/static/chat/** (regression in existing Code Q&A); DOM id collisions (any new id without 'chat-assistant-' prefix); password logged or persisted; OPENCODE_SERVER_PASSWORD bound to anything other than 127.0.0.1; missing or malformed .opencode/config.json permission block; new DB tables or migrations (this FR adds NONE); httpx-sse pinned to a known-broken version; scope-creep file outside scope.allowed_paths. HIGH on: missing IntegrityError-style error handling on subprocess restart; ring buffer size diverges from invariant 7 (maxlen=256); skills cache TTL not implemented; Ctrl+/ keybinding overlap with the existing Cmd+\\ binding; /api/chat/* endpoints missing the SSE keep-alive header from dashboard/routers/sse.py. MEDIUM on: incomplete test coverage of Boundary Behavior rows; missing 'Currently viewing X' chip dismissal logic.",
+      "prompt": "prompts/F-00083_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-fix-impl",
+      "description": "Apply CRITICAL/HIGH fixes from S06. Re-run only the targeted unit/integration tests for files touched by the fixes. Do not run make test-* — those are QV gates.",
+      "prompt": "prompts/F-00083_S07_CodeReview_FIX_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-final-impl",
+      "description": "Cross-agent final review. Independent reruns: targeted unit+integration tests for the new files; visual inspection of git diff --stat against scope.allowed_paths; verify that dashboard/templates/chat/** and dashboard/static/chat/** are unchanged byte-for-byte (regression guard); verify .opencode/config.json permission block matches R-00074 §5 verbatim; grep production code for the OPENCODE_SERVER_PASSWORD variable and confirm it is never passed to any logging function. Pre-confirm what S15 (test-integration) will run by running it once locally — if integration tests fail here, that's a CRITICAL pre-S15 catch.",
+      "prompt": "prompts/F-00083_S08_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-fix-final-impl",
+      "description": "Apply CRITICAL/HIGH fixes from S08. If S08 was clean, this step is a no-op — write a brief report and pass through.",
+      "prompt": "prompts/F-00083_S09_CodeReview_FIX_Final_prompt.md"
+    },
+    {"step": "S10", "agent": "qv-gate", "gate": "lint", "command": "make lint", "description": "QV: Linting"},
+    {"step": "S11", "agent": "qv-gate", "gate": "assertions", "command": "make test-assertions", "description": "QV: Assertion scanner (forbid vacuous tests)"},
+    {"step": "S12", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
+    {"step": "S13", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
+    {"step": "S14", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
+    {"step": "S15", "agent": "qv-gate", "gate": "integration-tests", "command": "make test-integration", "description": "QV: Integration tests", "timeout": 900},
+    {"step": "S16", "agent": "qv-gate", "gate": "diff-coverage", "command": "make diff-coverage", "description": "QV: Diff coverage", "timeout": 1800},
+    {"step": "S17", "agent": "qv-gate", "gate": "security-secrets", "command": "make security-secrets", "description": "QV: Secret scan (gitleaks, CR-00050)", "timeout": 300},
+    {
+      "step": "S18",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — full happy path through every AC: Ctrl+/ toggle (AC1, AC10), prompt → stream → approval modal → allow + deny + abort (AC2), per-tab isolation (AC3), model selector (AC4), skills tray + / autocomplete (AC5), tab-refresh reconnect with Last-Event-ID (AC6), Research view deep-link (AC7), per-page 'Currently viewing X' chip (AC8), context % indicator (AC9), regression guard — existing right-side Code Q&A chat unchanged (AC10).",
+      "prompt": "prompts/F-00083_S18_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S19",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of F-00083 via iw-item-analyze. Focus: (1) how often did fix-cycles touch dashboard/templates/chat/** by accident (regression-guard signal for the design's invariant 1); (2) did the 5-minute permission.asked spike in S02 actually happen, or did the implementer skip it and guess the payload shape; (3) did S18 surface UX issues the design missed (chip dismissal, history dropdown, skills tray); (4) Pi-runtime portability — could the relay layer swap without changing the router?; (5) prompt-template improvement signals — compare with CR-00053's self-assess for cross-item patterns.",
+      "prompt": "prompts/F-00083_S19_SelfAssess_prompt.md"
+    }
+  ]
+}
