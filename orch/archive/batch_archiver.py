@@ -322,7 +322,7 @@ def _run_command(cmd: str, cwd: Path, project_id: str) -> str | None:
     try:
         result = subprocess.run(  # noqa: S602  # nosec B602
             cmd,
-            shell=True,  # nosec B602
+            shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true — trusted post-archive hook command from server-side config, no untrusted input on argv
             cwd=str(cwd),
             capture_output=True,
             text=True,

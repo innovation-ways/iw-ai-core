@@ -27,6 +27,7 @@
         .prose-doc img { max-width:100%; border-radius:var(--radius); border:1px solid var(--border); margin:1em 0; }
         .prose-doc hr { border:none; border-top:1px solid var(--border); margin:2em 0; }
       </style>
+      {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted code architecture view (server-built HTML) #}
       {{ content_html | safe }}
     </div>
   </div>

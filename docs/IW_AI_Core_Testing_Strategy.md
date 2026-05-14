@@ -295,3 +295,30 @@ make arch-check            # layer-boundary import rules
 make security-deps         # pip-audit + bandit
 make security-iac          # trivy config scan
 ```
+
+## 11. Semgrep finding triage (CR-00051)
+
+`make security-sast` runs Semgrep with three configs (`p/python`, `p/owasp-top-ten`, `p/security-audit`) and **must report zero blocking findings**. When a true rule misfire is unavoidable, the project follows these conventions.
+
+**Bandit `# nosec` does NOT silence Semgrep.** The two tools share heritage but suppression markers are independent. The marker Semgrep recognises is:
+
+- Python: a same-line `# nosemgrep: <rule-id>` on the offending statement.
+- Jinja2: a `{# nosemgrep: <rule-id> — <rationale> #}` comment placed on the line immediately **before** the flagged template line.
+- Project-wide: a `--exclude-rule <rule-id>` flag on the `semgrep` invocation in the `Makefile` `security-sast:` target, accompanied by a `# …`-prefixed rationale comment block immediately above the target.
+
+**Macro-emitted findings do not propagate.** Suppressions placed `{# nosemgrep #}` inside a macro body do **not** silence findings emitted at the macro's call sites. This was verified empirically during CR-00051: an in-macro suppression on `write_button_attrs` did not silence the 26 caller-site findings. When the false-positive lives in a macro that's called from many template files, the correct tool is a project-wide Makefile `--exclude-rule`, not an in-macro comment.
+
+**Four reasons to suppress rather than fix:**
+
+1. *Confirmed false positive* — the rule's pattern matches a construct that is provably safe at this call site (e.g. `tojson`-filtered values inside `<script>`; a logger format string whose substituted argument is a model name, not a credential).
+2. *Trusted-source rendering* — server-rendered HTML produced from internal documents (Markdown → HTML for a project doc, `| safe` on such output) where the source is not user-controlled.
+3. *Deliberate-but-audited pattern* — `shell=True` on a command constructed from server-side config with no untrusted input on argv. Per-line annotation + same-line rationale documents the audit.
+4. *Project-wide structural false positive* — the rule misfires across so many sites that per-line annotation would create unsustainable churn, AND every flagged site has been audited and found safe. Use `--exclude-rule` in the `Makefile` with a rationale comment block listing each excluded rule and the reason.
+
+**Every per-line suppression carries a same-line rationale** after an em-dash, like:
+
+```python
+shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true — trusted constructed command, no untrusted input on argv
+```
+
+**Every Makefile `--exclude-rule` carries a rationale comment block above the target** enumerating each excluded rule, the finding count, and why per-line annotation is not the right tool. If a future change invalidates the rationale (e.g. a macro previously known to emit constant output starts interpolating user input), the corresponding test invariant must fail loudly so the exclude flag is re-justified.

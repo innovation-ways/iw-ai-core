@@ -1,0 +1,37 @@
+{
+  "item_id": "CR-00051",
+  "bottom_line": "Tighten the CR design-doc generator so the Class-B `| safe` site enumeration is canonical (single grep, no manual classification) — the same off-by-one drift cost three reviewers a finding here and will recur on any future Semgrep-baseline CR.",
+  "coverage_notes": "All 15 step run logs read in full (largest were S12=350 KB and S13=108 KB; the rest <5 KB). DB telemetry: full (item-status JSON confirmed all 14 prior steps completed, zero retries, zero fix cycles). S05 agent self-report read in full for TDD/RED evidence and Jinja2 caching discussion. No fix-cycle logs existed; .worktrees/<ID> WAS the current working directory (worktree-rooted layout — logs live under ai-dev/logs/, not under .worktrees/<ID>/ai-dev/logs/). No archived tarball needed (item is active).",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "design",
+      "target": "iw-ai-core",
+      "title": "CR design under-counted Class B `| safe` sites — agents had to silently re-classify mid-step",
+      "recommendation": "Replace the design-doc's hand-enumerated 'N Class B files' with a single canonical command (e.g. `rg -l '\\| safe' dashboard/templates/`) and auto-populate `scope.allowed_paths` from that list. Removes the manual classification step that wrongly grouped `confirm_dialog.html` with Class C macro-callers.",
+      "evidence": [
+        "ai-dev/logs/CR-00051_S03_run1.log:3 — \"design enumerated 16; an unenumerated 17th site existed in `components/confirm_dialog.html:11`\"",
+        "ai-dev/logs/CR-00051_S04_run1.log:21 — \"One LOW finding (non-blocking): files_changed is 17 vs the prompt's 16\"",
+        "ai-dev/logs/CR-00051_S06_run1.log:14 — \"INFO finding: confirm_dialog.html … absent from workflow-manifest.json:scope.allowed_paths\"",
+        "ai-dev/active/CR-00051/workflow-manifest.json:32 — `confirm_dialog.html` missing from scope.allowed_paths despite being touched"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Replace hand-enumerated `| safe`/Class-B file lists in the Change Request design template with a canonical grep command and auto-derive workflow-manifest.json:scope.allowed_paths from it; analyzed in CR-00051 (see ai-dev/active/CR-00051/reports/CR-00051_S15_SelfAssess_report.md). Target: templates/design/Change_Request_Template.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "`.iw-collision` duplicates blanket the active-item dir and a nested `<ID>/<ID>/` shadow directory is created at setup",
+      "recommendation": "Investigate who creates `<id>/<id>/` (likely a path-join bug where `<id>` is appended to an already-`<id>`-suffixed root); then either deduplicate at write time (single writer) or clean `.iw-collision` artifacts at archive time. Read-only safety first: confirm `.iw-collision` is not an audit trail before deleting.",
+      "evidence": [
+        "ai-dev/active/CR-00051/CR-00051_CR_Design.md.iw-collision — byte-identical twin of the design doc",
+        "ai-dev/active/CR-00051/workflow-manifest.json.iw-collision — byte-identical twin of the manifest",
+        "ai-dev/active/CR-00051/prompts/CR-00051_S01_Backend_prompt.md.iw-collision (and 6 more sibling collisions, one per prompt file)",
+        "ai-dev/active/CR-00051/CR-00051/ — entire nested duplicate dir; `git status` reports `?? ai-dev/active/CR-00051/CR-00051/`"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Active items are scaffolded with .iw-collision duplicates of every design/manifest/prompt file and a nested <ID>/<ID>/ shadow directory containing more of the same; analyzed in CR-00051 (see ai-dev/active/CR-00051/reports/CR-00051_S15_SelfAssess_report.md). Likely path-join bug in the approve/scaffold path. Target: orch/cli/item_commands.py and/or orch/evidences.py. Effort: M."
+    }
+  ]
+}
