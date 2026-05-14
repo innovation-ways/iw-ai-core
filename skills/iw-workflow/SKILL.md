@@ -128,7 +128,7 @@ QV gates run as shell commands (no LLM):
 {"step": "S12", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
 {"step": "S13", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
 {"step": "S14", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
-{"step": "S15", "agent": "qv-gate", "gate": "integration-tests", "command": "make allure-integration", "description": "QV: Integration tests", "timeout": 900},
+{"step": "S15", "agent": "qv-gate", "gate": "integration-tests", "command": "make test-integration", "description": "QV: Integration tests", "timeout": 900},
 {"step": "S16", "agent": "qv-gate", "gate": "diff-coverage", "command": "make diff-coverage", "description": "QV: Diff coverage (new/changed lines must be well-covered)", "timeout": 1800}
 ```
 
@@ -139,7 +139,7 @@ The canonical QV gate chain (in order):
 3. `format` — `make format-check` (ruff-format)
 4. `typecheck` — `make type-check` (mypy)
 5. `unit-tests` — `make test-unit`
-6. `integration-tests` — `make allure-integration`
+6. `integration-tests` — `make test-integration` (was `make allure-integration` — a no-op `.PHONY` stub — until 2026-05-14; see TESTS_ENHANCEMENT.md §10)
 7. `diff-coverage` — `make diff-coverage` (CR-00047)
 8. `security-secrets` — `make security-secrets` (gitleaks, CR-00050)
 
