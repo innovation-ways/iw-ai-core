@@ -1,0 +1,105 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00052",
+  "type": "ChangeRequest",
+  "title": "Allure reporting recipes + curated smoke layer with SLA (P1-CR-E)",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "Makefile",
+      ".gitignore",
+      "pyproject.toml",
+      "tests/**",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "RED-first: capture the 6 empty Allure stub state (`make -n allure-*` produces no recipe) AND the smoke baseline (16 markers across 7 files, wall-clock measurement, no written SLA — save to evidences/pre/cr-00052-smoke-baseline.txt). Wire 6 Allure recipes ported from InnoForge's Makefile:318–348 pattern: define ALLURE_RESULTS := tests/output/allure-results + ALLURE_REPORT := tests/output/allure-report; allure-unit/integration/all use `uv run pytest ... --alluredir=$(ALLURE_RESULTS)`; allure-report uses `allure generate` (with `command -v allure` install-check); allure-serve uses `allure serve`; allure-clean rm -rfs both dirs. Add both output dirs to .gitignore. Audit each of the 16 @pytest.mark.smoke decorators against the 5 plan critical paths (daemon-worktree-start / dashboard-main-pages / iw-next-id / work-item-queue / /healthz); produce an audit table (one row per decorator: file, test name, covers path(s), decision keep|remove|add, reason); land at ≤15 markers covering all 5 paths. Remove `@pytest.mark.smoke` from redundant tests (test stays as regular test); add `@pytest.mark.smoke` to existing tests that cover a missing path (no new test files). Measure `time make smoke` cache-warmed — must be <60s; record in step report + §11 changelog. Update pyproject.toml smoke marker description (line 152) from '~10 covering core flows' to match the SLA. Add 'Smoke layer SLA' subsection to tests/CLAUDE.md naming the ≤15/<60s contract, the 5 critical paths, and the audit-on-change rule. Extend docs/IW_AI_Core_Testing_Strategy.md §5/§6 with the same SLA prose. Update ai-dev/work/TESTS_ENHANCEMENT.md: §5 P1-CR-E row → SHIPPED (CR-00052) with audit summary; items 1.8 + 1.11 → DONE; §11 changelog entry with audit table summary + wall-clock measurement. Pre-flight: `make format` + `make typecheck` + `make lint`. Targeted verification: `make allure-clean && make allure-unit && ls tests/output/allure-results/` + `time make smoke`. Do NOT run `make check` / `make test-integration` / `make diff-coverage` — that's S08/S09/S10's job. 2400s timeout.",
+      "prompt": "prompts/CR-00052_S01_Backend_prompt.md",
+      "timeout": 2400
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: every Allure recipe matches InnoForge pattern with `command -v` install-checks; ALLURE_RESULTS variable defined; .gitignore covers both allure-results and allure-report; `make allure-clean && make allure-unit` exits 0 and produces *-result.json files; the audit table in S01's report has all 16 original decorators classified with rationale (spot-check 5 random rows against actual test bodies to verify the rationale holds); final smoke count ≤15 (grep -rc; CRITICAL if >15); all 5 plan paths represented (CRITICAL if any path has 0 keepers); independent `time make smoke` measurement within ±5s of S01's recorded value (HIGH if larger discrepancy); SLA prose internally consistent across tests/CLAUDE.md + docs/IW_AI_Core_Testing_Strategy.md + pyproject.toml smoke marker (same count, same wall-clock, same 5 paths — HIGH on inconsistency); diff under tests/** is decorators-only (no test-body changes — CRITICAL on scope creep); no production code touched; no make smoke-sla target added (out of scope); no CI artefact upload added; no sibling-project sync.",
+      "prompt": "prompts/CR-00052_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review: independently re-run `make allure-clean && make allure-unit` — must produce result files; independently re-run `time make smoke` — must be <60s (the linchpin for AC4); independently run `make test-integration` to PRE-CONFIRM what S09 will do (CR-00052 is the first CR whose integration-tests QV gate exercises the real suite after the 2026-05-14 no-op-gate flip — if `make test-integration` fails here, that's a CRITICAL pre-S09 catch); audit-table ↔ git-diff parity (every 'remove' row in S01's table maps to an actual decorator removal in the diff; HIGH on divergence, CRITICAL on missing removal); cross-doc SLA-prose consistency (count, wall-clock, 5 path names match across 3 locations); §11 changelog counts match S01's report counts; no scope creep (production code, new test files, smoke-sla target, CI changes, sibling sync); make quality passes. Timeout 1800s to accommodate the embedded `make test-integration` pre-check.",
+      "prompt": "prompts/CR-00052_S03_CodeReview_Final_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests — the FIRST real run of this gate after the 2026-05-14 no-op-gate flip (`make allure-integration` → `make test-integration`). If this surfaces failures, suspect either (a) S01's smoke marker re-balancing inadvertently broke a test, or (b) latent integration-test issues that the silent no-op gate had been hiding for months. S03's anticipation check should have caught either before this step ran.",
+      "timeout": 900
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scan (gitleaks, CR-00050)",
+      "timeout": 300
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Cross-reference patterns with CR-00050 (the prior audit-table-as-deliverable CR — 109-finding gitleaks triage analog of this CR's 16-decorator smoke audit). Surface findings about: did S09 surface latent integration-test issues on its first real run after the no-op-gate flip; did the audit-table pattern scale well to 16 rows vs CR-00050's 109; Phase-2 readiness — what process improvements from Phase 1 should bake into Phase-2 mutation/property/flaky CRs.",
+      "prompt": "prompts/CR-00052_S12_SelfAssess_prompt.md"
+    }
+  ]
+}
