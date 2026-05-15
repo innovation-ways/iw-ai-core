@@ -130,6 +130,8 @@ smoke:
 # overwritten-artefact and no-op-integration-gate gotchas. The daemon QV
 # step that runs it gets a generous (1800s) timeout for that reason.
 diff-coverage:
+	# I-00084: sync stale origin/main so diff-cover compares against actual local main
+	@git fetch . main:refs/remotes/origin/main 2>/dev/null || true
 	uv run pytest tests/unit/ --cov-fail-under=0 -q
 	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser --cov-append --cov-fail-under=0 -q
 	uv run coverage xml -o tests/output/coverage/coverage-combined.xml

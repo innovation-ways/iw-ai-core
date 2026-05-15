@@ -129,22 +129,25 @@ class TestAgentRuntimeOptionsTable:
                 ORDER BY sort_order
             """)
         ).fetchall()
-        assert len(rows) == 5, f"Expected 5 rows, got {len(rows)}"
+        # d1e2f3gpt53c added openai/gpt-5.3-codex (sort_order=15) as a 6th row
+        assert len(rows) == 6, f"Expected 6 rows, got {len(rows)}"
         assert rows[0] == ("opencode", "minimax/MiniMax-M2.7", True, 10)
-        assert rows[1] == ("opencode", "claude-sonnet-4-6", False, 20)
-        assert rows[2] == ("opencode", "claude-opus-4-7", False, 30)
-        assert rows[3] == ("claude", "claude-sonnet-4-6", False, 40)
-        assert rows[4] == ("claude", "claude-opus-4-7", False, 50)
+        assert rows[1] == ("opencode", "openai/gpt-5.3-codex", False, 15)
+        assert rows[2] == ("opencode", "claude-sonnet-4-6", False, 20)
+        assert rows[3] == ("opencode", "claude-opus-4-7", False, 30)
+        assert rows[4] == ("claude", "claude-sonnet-4-6", False, 40)
+        assert rows[5] == ("claude", "claude-opus-4-7", False, 50)
 
     def test_unique_constraint_on_cli_tool_model(
         self, db_session, seed_agent_runtime_options
     ) -> None:
         """Uniqueness on (cli_tool, model) is enforced."""
+        # a1b2c3fixmm renamed 'minimax' → 'minimax/MiniMax-M2.7'; use the current value
         stmt = text("""
             INSERT INTO agent_runtime_options
             (cli_tool, model, cli_label, model_label, display_name,
              is_default, enabled, sort_order)
-            VALUES ('opencode', 'minimax', 'X', 'X', 'X', false, true, 99)
+            VALUES ('opencode', 'minimax/MiniMax-M2.7', 'X', 'X', 'X', false, true, 99)
         """)
         with pytest.raises(IntegrityError):
             db_session.execute(stmt)
@@ -180,7 +183,7 @@ class TestAgentRuntimeOptionsTable:
             """)
         ).fetchall()
         db_session.commit()
-        assert len(result) == 4  # 4 non-default rows
+        assert len(result) == 5  # 5 non-default rows (d1e2f3gpt53c added a 6th row)
 
 
 class TestAgentRuntimeOptionFKColumns:
