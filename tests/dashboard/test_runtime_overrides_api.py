@@ -199,9 +199,10 @@ class TestGetRuntimeOptions:
 
         data = resp.json()
         # Row 5 (id=5) is enabled=False — should be excluded
-        assert len(data) == 4
+        # d1e2f3gpt53c added id=6 (openai/gpt-5.3-codex, sort_order=15, enabled=True)
+        assert len(data) == 5
         ids = [r["id"] for r in data]
-        assert ids == [1, 2, 3, 4]  # sort_order 10, 20, 30, 40
+        assert ids == [1, 6, 2, 3, 4]  # sort_order 10, 15, 20, 30, 40
 
         # Check shape of first row
         row = data[0]

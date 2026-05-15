@@ -1,0 +1,49 @@
+{
+  "work_item": "I-00084",
+  "step": "S14",
+  "date": "2026-05-16",
+  "verdict": "PASS",
+  "s12_diff_coverage": {
+    "ran_clean_first_try": true,
+    "exit_code": 0,
+    "duration_seconds": 746,
+    "diff_cover_output": "No lines with coverage information in this diff.",
+    "explanation": "Expected result: changed files are bash (worktree_setup.sh) and Makefile, neither tracked by pytest-cov. New test file is untracked (not in git diff). Gate passes when there are no lines to evaluate.",
+    "fix_required": false
+  },
+  "fix_cycles": [
+    {
+      "gate": "S11",
+      "gate_label": "integration-tests",
+      "cycle_number": 1,
+      "cause": "Pre-existing WIP failures from gpt-5.3-codex agent_runtime_options DDL (commit 6750cda0), unrelated to I-00084",
+      "failing_tests": [
+        "tests/integration/daemon/test_phase2_apply_no_self_deadlock.py (2 tests)",
+        "tests/integration/test_agent_runtime_options.py (3 tests)",
+        "tests/dashboard/test_runtime_overrides_api.py (1 test)"
+      ],
+      "related_to_cr": false
+    }
+  ],
+  "cross_cr_pattern": {
+    "reference": "CR-00053 manual rescue",
+    "command": "git fetch . main:refs/remotes/origin/main",
+    "impact": "Fix automates the manual step that was required during CR-00053 rescue. Eliminates stale-ref inflation for all future CRs.",
+    "synergy_with": "I-00082 (drift-induced fix cycle reduction)"
+  },
+  "acceptance_criteria": {
+    "AC1_bug_fixed": "PASS",
+    "AC2_regression_test_exists": "PASS",
+    "AC3_diff_coverage_correct_diffs": "PASS"
+  },
+  "gates_summary": {
+    "S06_lint": "PASS",
+    "S07_assertions": "PASS",
+    "S08_format": "PASS",
+    "S09_typecheck": "PASS",
+    "S10_unit_tests": "PASS",
+    "S11_integration_tests": "PASS_after_fix_cycle_1",
+    "S12_diff_coverage": "PASS",
+    "S13_security_secrets": "PASS"
+  }
+}
