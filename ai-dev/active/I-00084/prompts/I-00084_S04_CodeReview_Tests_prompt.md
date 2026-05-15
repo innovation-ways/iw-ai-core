@@ -10,7 +10,7 @@
 
 - `ai-dev/active/I-00084/I-00084_Issue_Design.md`
 - `ai-dev/work/I-00084/reports/I-00084_S03_Tests_report.md`
-- `tests/integration/test_setup_worktree_origin_main_sync.py`
+- `tests/integration/test_worktree_setup_origin_main_sync.py`
 
 ## Output Files
 

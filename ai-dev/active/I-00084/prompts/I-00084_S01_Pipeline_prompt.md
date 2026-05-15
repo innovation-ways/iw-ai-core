@@ -18,24 +18,24 @@
 
 - **Runtime step state**: `uv run iw item-status I-00084 --json`
 - `ai-dev/active/I-00084/I-00084_Issue_Design.md` — READ FIRST
-- `executor/setup_worktree.sh` — current worktree-creation script
+- `executor/worktree_setup.sh` — current worktree-creation script
 - `Makefile` — `diff-coverage` target
 
 ## Output Files
 
 - `ai-dev/work/I-00084/reports/I-00084_S01_Pipeline_report.md`
-- Modified: `executor/setup_worktree.sh`, `Makefile`
+- Modified: `executor/worktree_setup.sh`, `Makefile`
 
 ## Context
 
-Two-line fix. The first goes in `executor/setup_worktree.sh` immediately
+Two-line fix. The first goes in `executor/worktree_setup.sh` immediately
 after the `git worktree add ...` call. The second goes at the top of the
 `diff-coverage:` Makefile target body, before any of the existing
 `uv run pytest ...` lines.
 
 ## Requirements
 
-### 1. `executor/setup_worktree.sh`
+### 1. `executor/worktree_setup.sh`
 
 Immediately after `git worktree add <path> <branch>` (verify the exact
 shell), add:
@@ -44,7 +44,7 @@ shell), add:
 # I-00084: Sync origin/main ref to local main so diff-cover, scope_gate,
 # and any other compare-vs-origin tools see the right base. This setup is
 # local-only — origin/main never advances on its own.
-git -C "$WORKTREE_PATH" fetch . main:refs/remotes/origin/main 2>/dev/null || true
+git -C "$WORKTREE_DIR" fetch . main:refs/remotes/origin/main 2>/dev/null || true
 ```
 
 The `2>/dev/null || true` makes it safe in environments where the local
@@ -60,7 +60,7 @@ diff-coverage:
 ```
 
 This is a defensive duplicate that handles any code path that runs
-diff-coverage in a worktree NOT created by `setup_worktree.sh` (operator
+diff-coverage in a worktree NOT created by `worktree_setup.sh` (operator
 debugging, CI variants, etc.).
 
 ### 3. Idempotency
@@ -78,13 +78,13 @@ itself, not `origin`). Existing pull-from-GitHub behaviour is unchanged.
 ## Project Conventions
 
 Read `CLAUDE.md` and `executor/CLAUDE.md`. Match the existing shell style
-in `executor/setup_worktree.sh` (quoting, error handling, log lines).
+in `executor/worktree_setup.sh` (quoting, error handling, log lines).
 
 ## TDD Requirement
 
 RED first: write the reproduction test from the design doc. Confirm it
 fails against pre-fix code (`origin/main` will still be stale after
-`setup_worktree.sh`). Capture the failing line in `tdd_red_evidence`.
+`worktree_setup.sh`). Capture the failing line in `tdd_red_evidence`.
 
 ## Pre-flight Quality Gates (NON-NEGOTIABLE)
 
@@ -96,7 +96,7 @@ fails against pre-fix code (`origin/main` will still be stale after
 ## Test Verification (NON-NEGOTIABLE)
 
 ```bash
-uv run pytest tests/integration/test_setup_worktree_origin_main_sync.py -v
+uv run pytest tests/integration/test_worktree_setup_origin_main_sync.py -v
 ```
 
 Do NOT run `make test-integration`.
@@ -109,11 +109,11 @@ Do NOT run `make test-integration`.
   "agent": "pipeline-impl",
   "work_item": "I-00084",
   "completion_status": "complete|partial|blocked",
-  "files_changed": ["executor/setup_worktree.sh", "Makefile"],
+  "files_changed": ["executor/worktree_setup.sh", "Makefile"],
   "preflight": {"format": "ok|fixed", "typecheck": "ok", "lint": "ok"},
   "tests_passed": true,
   "test_summary": "X passed, 0 failed",
-  "tdd_red_evidence": "tests/integration/test_setup_worktree_origin_main_sync.py::test_i00084_setup_worktree_syncs_origin_main — AssertionError: origin/main not synced",
+  "tdd_red_evidence": "tests/integration/test_worktree_setup_origin_main_sync.py::test_i00084_worktree_setup_syncs_origin_main — AssertionError: origin/main not synced",
   "blockers": [],
   "notes": ""
 }

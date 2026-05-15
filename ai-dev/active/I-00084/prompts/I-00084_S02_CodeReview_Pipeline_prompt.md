@@ -10,7 +10,7 @@
 
 - `ai-dev/active/I-00084/I-00084_Issue_Design.md`
 - `ai-dev/work/I-00084/reports/I-00084_S01_Pipeline_report.md`
-- The S01 diff (`executor/setup_worktree.sh`, `Makefile`)
+- The S01 diff (`executor/worktree_setup.sh`, `Makefile`)
 
 ## Output Files
 
@@ -29,11 +29,11 @@
 
 ### HIGH
 
-- Both insertion sites done: `setup_worktree.sh` AND `Makefile`.
+- Both insertion sites done: `worktree_setup.sh` AND `Makefile`.
 - Inline comment cites I-00084 so future maintainers understand why.
 - Error handling: `2>/dev/null || true` (or equivalent) protects against
   edge cases where local `main` does not exist.
-- Shell quoting matches existing style in `executor/setup_worktree.sh`.
+- Shell quoting matches existing style in `executor/worktree_setup.sh`.
 
 ### MEDIUM
 

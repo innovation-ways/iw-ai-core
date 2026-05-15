@@ -21,13 +21,13 @@
 ### Independently re-verify
 
 - Reproduction + idempotency tests pass locally.
-- `git diff --stat` shows ONLY: `executor/setup_worktree.sh`, `Makefile`,
-  `tests/integration/test_setup_worktree_origin_main_sync.py`. ANY other
+- `git diff --stat` shows ONLY: `executor/worktree_setup.sh`, `Makefile`,
+  `tests/integration/test_worktree_setup_origin_main_sync.py`. ANY other
   file is CRITICAL.
 
 ### Confirm
 
-- Both insertion sites (setup_worktree.sh + Makefile) include the sync.
+- Both insertion sites (worktree_setup.sh + Makefile) include the sync.
 - Both invocations are idempotent.
 - No `origin` (real-remote) fetch was added by mistake — must be
   `git fetch . main:...` (local-only).

@@ -14,7 +14,7 @@
 
 ## Output Files
 
-- `tests/integration/test_setup_worktree_origin_main_sync.py` (new file)
+- `tests/integration/test_worktree_setup_origin_main_sync.py` (new file)
 - `ai-dev/work/I-00084/reports/I-00084_S03_Tests_report.md`
 
 ## Context
@@ -22,9 +22,9 @@
 Two tests minimum:
 
 1. **Reproduction test (AC1, AC2)** — fake repo with origin/main lagging
-   local main by N commits; run setup_worktree; assert origin/main now
+   local main by N commits; run worktree_setup; assert origin/main now
    matches local main.
-2. **Idempotency test** — run setup_worktree twice; assert no error,
+2. **Idempotency test** — run worktree_setup twice; assert no error,
    origin/main still matches local main.
 3. (Optional bonus, AC3) — invoke `make diff-coverage` in the fake
    repo's worktree and assert the file list contains only the in-scope
@@ -40,7 +40,7 @@ Two tests minimum:
 
 `tmp_path` for the fake repo. Use `subprocess.run(["git", ...])` directly
 to set up the simulated commits and refs. Then either invoke
-`setup_worktree.sh` directly via subprocess, or import the Python wrapper
+`worktree_setup.sh` directly via subprocess, or import the Python wrapper
 that calls it (whichever entry point exists in the codebase).
 
 ## TDD Requirement
@@ -51,7 +51,7 @@ pre-S01 code and PASS after S01.
 ## Test Verification (NON-NEGOTIABLE)
 
 ```bash
-uv run pytest tests/integration/test_setup_worktree_origin_main_sync.py -v
+uv run pytest tests/integration/test_worktree_setup_origin_main_sync.py -v
 ```
 
 Do NOT run `make test-integration`.
@@ -64,7 +64,7 @@ Do NOT run `make test-integration`.
   "agent": "tests-impl",
   "work_item": "I-00084",
   "completion_status": "complete|partial|blocked",
-  "files_changed": ["tests/integration/test_setup_worktree_origin_main_sync.py"],
+  "files_changed": ["tests/integration/test_worktree_setup_origin_main_sync.py"],
   "preflight": {"format": "ok|fixed", "typecheck": "ok", "lint": "ok"},
   "tests_passed": true,
   "test_summary": "2 passed, 0 failed",
