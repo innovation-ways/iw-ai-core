@@ -101,10 +101,11 @@ observed.
 
 | Component | Impact |
 |-----------|--------|
-| `orch/daemon/fix_cycle.py` | Spawns LLM agents with no scope context |
-| Fix-cycle prompt template (in `orch/daemon/fix_cycle.py` or sibling) | Missing `allowed_paths` block |
-| `executor/scope_gate.py` | Reused — provides the matching logic; needs a wrapper invokable from Python |
-| `.iw-orch.json` (per project) | New optional flag `fix_cycle_scope_enforcement` (default true) |
+| `orch/daemon/fix_cycle.py` | Spawns LLM agents with no scope context; no post-cycle reconciliation; no `FixStatus.escalated` path for scope violations |
+| Fix-cycle prompt template (in `orch/daemon/fix_cycle.py`) | Missing `allowed_paths` block |
+| `executor/scope_gate.py` | Source of truth for the matcher and implicit-allow rules — the new fix-cycle helper inlines the same 4-line `_matches()` logic plus the same implicit-allow list (`ai-dev/active/<ID>/**`, `ai-dev/archive/<ID>/**`, `ai-dev/work/<ID>/**`). Acceptable duplication: the script must remain self-contained (no `orch.*` imports) because it runs as a stand-alone CLI from `executor/worktree_commit.sh`. A future incident can DRY the two if drift becomes a problem. |
+| `FixStatus` enum (`orch/db/models.py`) | Already has `escalated` — reuse it; do NOT add a new outcome value |
+| `DaemonEvent` types | Add `scope_violation_escalation` mirroring the existing `spec_mismatch_escalation` pattern |
 
 ## Fix Plan
 
@@ -112,7 +113,7 @@ observed.
 
 | Step | Agent | Scope | Parallel With |
 |------|-------|-------|---------------|
-| S01 | Pipeline | Inject `allowed_paths` into the fix-cycle prompt; after each cycle, diff against `allowed_paths`; if any out-of-scope file is touched, mark the cycle `escalate-to-operator` (do not auto-revert; do not auto-commit) | — |
+| S01 | Pipeline | Inject `allowed_paths` into the fix-cycle prompt; snapshot working-tree paths via `git diff --name-only HEAD` + `git ls-files --others` before/after each cycle; on any out-of-scope edit, set `FixCycle.status = FixStatus.escalated` (existing enum value, reused) and emit a `DaemonEvent` of type `scope_violation_escalation` (do not auto-revert; do not auto-commit) | — |
 | S02 | CodeReview | Per-agent review of S01 | — |
 | S03 | Tests | Reproduction test exercising fix-cycle with a fake LLM agent that edits an out-of-scope file; assert the cycle escalates instead of advancing | — |
 | S04 | CodeReview | Per-agent review of S03 | — |
@@ -128,8 +129,13 @@ observed.
 
 ### Code Changes
 
-- **Files to modify**: `orch/daemon/fix_cycle.py` (and any sibling prompt-template module — verify via grep at S01).
-- **Nature of change**: Read manifest's `scope.allowed_paths` before each cycle; format into prompt; after the cycle's git activity, run `scope_gate.py` (or its Python equivalent) on the diff and treat violations as escalation triggers.
+- **Files to modify**: `orch/daemon/fix_cycle.py`.
+- **Nature of change**:
+  1. Read the manifest's `scope.allowed_paths` before each cycle and inject it as an operator-readable block at the top of the fix-cycle prompt.
+  2. Snapshot `git diff --name-only HEAD` (staged + unstaged + untracked) *before* launching the fix-cycle agent into `pre_cycle_paths`.
+  3. After the agent exits, snapshot again into `post_cycle_paths` and compute `violations = (post_cycle_paths - pre_cycle_paths) - allowed_paths` using an inline mirror of `executor/scope_gate.py:_matches()` plus the implicit-allow list (`ai-dev/active/<ID>/**`, `ai-dev/archive/<ID>/**`, `ai-dev/work/<ID>/**`).
+  4. On any violation: set `FixCycle.status = FixStatus.escalated` (the enum value already exists), record violation paths in `fix_metadata`, emit a `DaemonEvent` of type `scope_violation_escalation` (mirroring `handle_spec_mismatch_escalation`), do **NOT** revert the agent's edits, do **NOT** increment the cycle budget toward the 5-cycle cap.
+  5. Empty / missing `scope.allowed_paths` skips reconciliation (legacy items continue to work unchanged).
 
 ## File Manifest
 
@@ -156,10 +162,13 @@ Add a test under `tests/integration/test_fix_cycle_scope_enforcement.py`:
 ```python
 def test_i00082_fix_cycle_escalates_on_out_of_scope_edit(tmp_path, monkeypatch):
     """When the fix-cycle agent edits a file outside allowed_paths,
-    the cycle is marked escalate-to-operator instead of advancing.
+    FixCycle.status is set to FixStatus.escalated and the agent's edits
+    are preserved verbatim.
 
     This test should FAIL before the fix and PASS after.
     """
+    from orch.db.models import FixStatus
+
     # Arrange: a fake worktree with a manifest declaring a tight allowed_paths
     # and a fake LLM agent that will write to a file outside that list.
     manifest_path = tmp_path / "workflow-manifest.json"
@@ -179,7 +188,7 @@ def test_i00082_fix_cycle_escalates_on_out_of_scope_edit(tmp_path, monkeypatch):
     )
 
     # Act
-    result = run_fix_cycle(
+    cycle = run_fix_cycle(
         worktree_path=tmp_path,
         item_id="I-99001",
         step_id="S01",
@@ -187,12 +196,12 @@ def test_i00082_fix_cycle_escalates_on_out_of_scope_edit(tmp_path, monkeypatch):
         gate_failure="lint failed",
     )
 
-    # Assert
-    assert result.outcome == "escalate-to-operator", (
-        f"expected escalation but got {result.outcome!r} — fix-cycle let the "
-        "agent edit a file outside allowed_paths"
+    # Assert — semantic, not shape
+    assert cycle.status == FixStatus.escalated, (
+        f"expected FixStatus.escalated, got {cycle.status!r} — fix-cycle let "
+        "the agent edit a file outside allowed_paths"
     )
-    assert "out_of_scope.py" in result.violation_paths
+    assert "out_of_scope.py" in cycle.fix_metadata["scope_violations"]
     assert (tmp_path / "out_of_scope.py").read_text() == "# agent-edited\n", (
         "agent's out-of-scope edit must be preserved verbatim — operator "
         "decides whether to amend allowed_paths or revert"
@@ -206,7 +215,7 @@ def test_i00082_fix_cycle_escalates_on_out_of_scope_edit(tmp_path, monkeypatch):
 ```
 Given an item with scope.allowed_paths = ["a.py"]
 When the fix-cycle agent edits "b.py" (outside allowed_paths)
-Then the cycle's outcome is "escalate-to-operator" and the daemon does NOT advance the step
+Then FixCycle.status == FixStatus.escalated (the existing enum value), a DaemonEvent of type scope_violation_escalation is emitted, and the daemon does NOT advance the step
 ```
 
 ### AC2: Regression test exists

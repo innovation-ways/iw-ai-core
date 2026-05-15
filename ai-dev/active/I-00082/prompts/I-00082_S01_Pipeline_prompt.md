@@ -28,6 +28,9 @@ adds no Docker usage.)
 
 - `ai-dev/work/I-00082/reports/I-00082_S01_Pipeline_report.md` — step report
 - Modified: `orch/daemon/fix_cycle.py`
+- New: `tests/integration/test_fix_cycle_scope_enforcement.py` — **only** the
+  AC1 reproduction test (one `def test_i00082_...` function). S03 will
+  extend this file with AC3/AC4 tests.
 
 ## Context
 
@@ -76,33 +79,65 @@ post-cycle reconciliation in deliverable 2 below.
 After the fix-cycle agent's subprocess exits, before deciding whether to
 re-run the failing gate:
 
-- Compute the working-tree diff against the cycle-start commit:
-  `git diff --name-only <cycle_start_sha>` for both staged and unstaged.
-- Filter the resulting paths through `scope_gate.py`'s matcher (or the
-  equivalent Python helper). Implicit allowances continue to apply:
-  `ai-dev/active/I-00082/**`, `ai-dev/archive/I-00082/**`,
-  `ai-dev/work/I-00082/**`.
-- If any path is **not** allowed, set the cycle outcome to
-  `escalate-to-operator` (new outcome — define it alongside the existing
-  `pass` / `fail` / `timeout` enum). Record the violation paths in the
-  cycle's metadata. **Do NOT git checkout / revert** — keep the agent's
-  edits in the working tree exactly as they are. The operator will inspect
-  and decide.
+- Build the matcher as an **inline mirror** of `executor/scope_gate.py:_matches()`
+  — copy the 4-line function and the implicit-allow construction (`ai-dev/active/<ID>/**`,
+  `ai-dev/archive/<ID>/**`, `ai-dev/work/<ID>/**`) into a private helper
+  inside `orch/daemon/fix_cycle.py` (e.g. `_scope_match()` and
+  `_implicit_allows(item_id)`). Do **NOT** import from `executor/` — that
+  script must remain a self-contained CLI. Do **NOT** shell out to
+  `python3 scope_gate.py` per cycle — subprocess overhead and double-error
+  handling. The duplication is intentional and documented in the design
+  doc.
+- Run the matcher over the post-cycle working-tree paths captured in
+  deliverable 3 below.
+- If any post-cycle path falls outside `allowed_paths + implicit_allows`,
+  set `FixCycle.status = FixStatus.escalated` (the enum value already
+  exists in `orch/db/models.py:165` — **DO NOT introduce a new string
+  outcome**; reuse the existing `escalated` value). Record the violation
+  paths in `FixCycle.fix_metadata["scope_violations"]`. Emit a
+  `DaemonEvent` of type `scope_violation_escalation` mirroring the
+  `handle_spec_mismatch_escalation` pattern at the top of the module
+  (`orch/daemon/fix_cycle.py:162`).
+- **Do NOT git checkout / revert / stash drop** — keep the agent's edits
+  in the working tree exactly as they are. The operator will inspect and
+  decide.
 
 If every path is allowed, behaviour is unchanged from today.
 
-### 3. Operator-pre-edit preservation
+### 3. Operator-pre-edit preservation (set-diff snapshots)
 
-When a cycle starts, capture the worktree's working-tree diff *before*
-launching the agent. After the cycle, the post-cycle reconciliation in
-deliverable 2 compares the *new* working-tree diff against the
-*pre-cycle* diff. Files that were modified before the cycle started but
-that the agent did not touch must NOT count as violations — they were the
-operator's edits, not the agent's.
+The pre-cycle / post-cycle reconciliation is a pure path-set diff. **Do
+NOT use `git stash`** — stashing would hide operator pre-edits from the
+fix-cycle agent (defeating AC3) and risks merge conflicts on restore.
 
-Implementation hint: take a `git stash --keep-index` snapshot at cycle
-start that records the pre-cycle path set; after the cycle, the violation
-set is `(post_cycle_paths - pre_cycle_paths) - allowed_paths`.
+Implementation:
+
+```python
+def _captured_paths(worktree: pathlib.Path) -> set[str]:
+    # Tracked changes (staged + unstaged) plus untracked files.
+    tracked = subprocess.run(
+        ["git", "diff", "--name-only", "HEAD"],
+        cwd=worktree, capture_output=True, text=True, check=True,
+    ).stdout.splitlines()
+    untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=worktree, capture_output=True, text=True, check=True,
+    ).stdout.splitlines()
+    return {p for p in tracked + untracked if p.strip()}
+
+pre_cycle_paths = _captured_paths(worktree)   # before launching the agent
+# … run the fix-cycle agent …
+post_cycle_paths = _captured_paths(worktree)  # after the agent exits
+
+agent_touched = post_cycle_paths - pre_cycle_paths
+violations = [p for p in agent_touched
+              if not any(_scope_match(p, pat) for pat in allowed + implicit_allows(item_id))]
+```
+
+A file the operator modified before the cycle started but the agent did
+NOT touch is in `pre_cycle_paths` AND `post_cycle_paths`; the set
+subtraction removes it from `agent_touched`, so it cannot become a
+violation. AC3 is satisfied by construction.
 
 ### 4. Daemon log line per cycle
 
@@ -117,16 +152,22 @@ stuck-CR triage trivial.
 
 ### 5. State machine update
 
-Wherever the fix-cycle outcome is consumed (`orch/daemon/fix_cycle.py`,
-possibly `orch/daemon/batch_manager.py`, possibly `orch/daemon/state_machine.py`),
-handle the new `escalate-to-operator` outcome:
+Reuse the existing `FixStatus.escalated` value — do **NOT** add a new
+enum member, do **NOT** add a new outcome string. The path is:
 
-- Mark the step's status as `needs_fix` (existing terminal-for-daemon state).
-- Write a one-line reason: `fix_cycle escalated: agent edited N files outside scope`.
-- Record the violation paths into the step's metadata so the dashboard /
-  `iw item-status` can display them.
-- Do NOT count escalation against the fix-cycle budget (3 / 5 / wherever).
-  An escalation is a clean exit, not a failed retry.
+- Set `FixCycle.status = FixStatus.escalated` and record the violation
+  paths in `FixCycle.fix_metadata["scope_violations"] = [...]`.
+- Emit a `DaemonEvent` of type `scope_violation_escalation` carrying the
+  reason `f"fix_cycle escalated: agent edited {len(violations)} files outside scope"`.
+  Mirror the call shape used by `handle_spec_mismatch_escalation` at
+  `orch/daemon/fix_cycle.py:162` (same module, same logger pattern).
+- Leave the step's status at whatever the gate-failure path set it to
+  (typically `failed needs human review`). Operators inspect via
+  `iw item-status` and the dashboard.
+- Do NOT count an escalation against the fix-cycle budget (3 / 5 /
+  wherever). An escalation is a clean exit, not a failed retry — the
+  caller that increments the budget must check `status != FixStatus.escalated`
+  before bumping.
 
 ## Project Conventions
 
@@ -137,11 +178,22 @@ re-parse the JSON ad-hoc.
 
 ## TDD Requirement
 
-RED first: write the failing reproduction test from the design doc
-(`tests/integration/test_fix_cycle_scope_enforcement.py`) and run it to
-confirm `AssertionError: expected 'escalate-to-operator' but got 'pass'`
-(or equivalent). Capture the failing line in `tdd_red_evidence` before
-writing the production code. Then GREEN, then REFACTOR.
+RED first: author the reproduction test only —
+`tests/integration/test_fix_cycle_scope_enforcement.py::test_i00082_fix_cycle_escalates_on_out_of_scope_edit`
+(spelled out in the design doc's "Test to Reproduce" section). Run it
+*before* touching `orch/daemon/fix_cycle.py` and capture the failing
+assertion line in `tdd_red_evidence` — the assertion will read something
+like `AssertionError: expected outcome FixStatus.escalated, got
+FixStatus.completed` (or similar — exact message depends on how the test
+exposes the cycle status).
+
+Then GREEN (implement deliverables 1-5), then REFACTOR.
+
+**Scope split with S03**: this step owns only the AC1 reproduction test.
+S03 (`tests-impl`) extends the same file with AC3 (operator-pre-edit
+preservation) and AC4 (in-scope happy path) regression tests on top of
+your reproduction test. Do **NOT** author AC3 or AC4 here — leave the
+file at one test so S03's diff is clean.
 
 ## Pre-flight Quality Gates (NON-NEGOTIABLE)
 
@@ -172,11 +224,14 @@ S10 / S11 QV gates with their own budgets.
   "agent": "pipeline-impl",
   "work_item": "I-00082",
   "completion_status": "complete|partial|blocked",
-  "files_changed": ["orch/daemon/fix_cycle.py"],
+  "files_changed": [
+    "orch/daemon/fix_cycle.py",
+    "tests/integration/test_fix_cycle_scope_enforcement.py"
+  ],
   "preflight": {"format": "ok|fixed", "typecheck": "ok", "lint": "ok"},
   "tests_passed": true,
-  "test_summary": "X passed, 0 failed",
-  "tdd_red_evidence": "tests/integration/test_fix_cycle_scope_enforcement.py::test_i00082_fix_cycle_escalates_on_out_of_scope_edit — AssertionError: expected outcome 'escalate-to-operator', got 'pass'",
+  "test_summary": "1 passed, 0 failed (AC3/AC4 added in S03)",
+  "tdd_red_evidence": "tests/integration/test_fix_cycle_scope_enforcement.py::test_i00082_fix_cycle_escalates_on_out_of_scope_edit — AssertionError: expected FixStatus.escalated, got FixStatus.completed",
   "blockers": [],
   "notes": ""
 }

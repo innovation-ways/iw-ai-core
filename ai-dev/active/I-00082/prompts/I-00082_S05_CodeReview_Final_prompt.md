@@ -20,18 +20,31 @@
 
 ### Independently re-verify
 
-- `make test-unit -k test_fix_cycle_scope_enforcement` (or `make test-integration -k ...`) passes locally.
+- `uv run pytest tests/integration/test_fix_cycle_scope_enforcement.py -v` passes locally. Do **NOT** run `make test-integration` or `make test-unit` — those are the S10/S11 QV gates and have their own budgets.
 - `git diff --stat` shows only `orch/daemon/fix_cycle.py` and the new test file. ANY other file in the diff is scope creep — flag CRITICAL.
 
 ### Confirm
 
-- Every AC in the design doc has at least one passing assertion.
-- The new `escalate-to-operator` outcome value is used consistently
-  everywhere the cycle outcome is consumed (grep the codebase).
+- Every AC in the design doc has at least one passing assertion (the file
+  combines S01's AC1 reproduction test with S03's AC3 and AC4 additions
+  for 3 tests total covering all 4 ACs).
+- The cycle outcome uses the **existing** `FixStatus.escalated` enum
+  value from `orch/db/models.py:165` — there is no new string outcome
+  like `escalate-to-operator`. Grep the codebase to confirm no new
+  outcome value snuck in.
+- A `DaemonEvent` of type `scope_violation_escalation` is emitted on
+  violation, mirroring the existing `handle_spec_mismatch_escalation`
+  pattern (`orch/daemon/fix_cycle.py:162`).
 - The daemon log line shape matches the design doc exactly.
-- Operator-preservation logic does not auto-revert any agent edit.
+- Operator-preservation logic uses set-diff snapshots
+  (`_captured_paths` before and after the cycle), **NOT** `git stash` —
+  flag CRITICAL if you find any stash/checkout/revert call in the
+  pre/post-cycle paths.
 - Empty / missing `scope.allowed_paths` is fail-open (legacy items still
   work).
+- The fix-cycle budget counter is NOT incremented when
+  `FixCycle.status == FixStatus.escalated` (escalation is a clean exit,
+  not a failed retry).
 
 ### Verify scope discipline
 
