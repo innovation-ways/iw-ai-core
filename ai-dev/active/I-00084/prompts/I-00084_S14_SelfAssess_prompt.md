@@ -25,7 +25,7 @@
    It should — the fix is now active in this worktree. If it didn't, the
    fix is incomplete and needs another cycle.
 2. **What does diff-coverage report on this CR's diff?** Should be ~100%
-   on `executor/setup_worktree.sh` (single line, easily covered) and
+   on `executor/worktree_setup.sh` (single line, easily covered) and
    the Makefile change (similar). Compare to pre-fix expectation
    (75% × inflated diff).
 3. **Cross-CR pattern vs CR-00053's stale-ref problem.** Reference the

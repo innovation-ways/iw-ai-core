@@ -6,16 +6,16 @@
   "browser_verification": false,
   "scope": {
     "allowed_paths": [
-      "executor/setup_worktree.sh",
+      "executor/worktree_setup.sh",
       "Makefile",
-      "tests/integration/test_setup_worktree_origin_main_sync.py"
+      "tests/integration/test_worktree_setup_origin_main_sync.py"
     ]
   },
   "steps": [
     {
       "step": "S01",
       "agent": "pipeline-impl",
-      "description": "Add `git fetch . main:refs/remotes/origin/main` to executor/setup_worktree.sh immediately after `git worktree add`. Also add the same one-liner as a defensive safeguard at the top of the `diff-coverage` Makefile target. Both must be idempotent / fast / no-op when already in sync.",
+      "description": "Add `git fetch . main:refs/remotes/origin/main` to executor/worktree_setup.sh immediately after `git worktree add`. Also add the same one-liner as a defensive safeguard at the top of the `diff-coverage` Makefile target. Both must be idempotent / fast / no-op when already in sync.",
       "prompt": "prompts/I-00084_S01_Pipeline_prompt.md"
     },
     {
@@ -28,7 +28,7 @@
     {
       "step": "S03",
       "agent": "tests-impl",
-      "description": "Author tests/integration/test_setup_worktree_origin_main_sync.py — reproduction test (stale origin/main → setup_worktree → origin/main = main) + AC3 verification (diff-coverage gives correct file list).",
+      "description": "Author tests/integration/test_worktree_setup_origin_main_sync.py — reproduction test (stale origin/main → worktree_setup → origin/main = main) + AC3 verification (diff-coverage gives correct file list).",
       "prompt": "prompts/I-00084_S03_Tests_prompt.md"
     },
     {

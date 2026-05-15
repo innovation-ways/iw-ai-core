@@ -34,7 +34,7 @@ diff of 243 lines — when the actual CR-00053 diff was 40 lines at 92%.
 
 Read the project's `CLAUDE.md` for architecture, conventions, and hard
 rules. Most relevant: `Makefile` `diff-coverage` target and
-`executor/setup_worktree.sh` (worktree creation site).
+`executor/worktree_setup.sh` (worktree creation site).
 
 ## Steps to Reproduce
 
@@ -67,7 +67,7 @@ This is fine in CI (where `origin/main` always reflects the current
 remote) but incorrect for a local-only daemon-driven setup where
 `origin/main` is never pushed to and `main` is the source of truth.
 
-There is no setup step in `executor/setup_worktree.sh` that synchronises
+There is no setup step in `executor/worktree_setup.sh` that synchronises
 `origin/main` with local `main`. A one-liner — `git fetch . main:refs/remotes/origin/main`
 — resolves it.
 
@@ -75,7 +75,7 @@ There is no setup step in `executor/setup_worktree.sh` that synchronises
 
 | Component | Impact |
 |-----------|--------|
-| `executor/setup_worktree.sh` | Missing `origin/main` sync at worktree-create time |
+| `executor/worktree_setup.sh` | Missing `origin/main` sync at worktree-create time |
 | `Makefile` (`diff-coverage` target) | Could optionally fall back to local `main` if `origin/main` is stale, but the cleaner fix is at worktree create |
 
 ## Fix Plan
@@ -84,9 +84,9 @@ There is no setup step in `executor/setup_worktree.sh` that synchronises
 
 | Step | Agent | Scope | Parallel With |
 |------|-------|-------|---------------|
-| S01 | Pipeline | Add `git fetch . main:refs/remotes/origin/main` to `executor/setup_worktree.sh` immediately after `git worktree add`; add the same one-liner as a safeguard at the top of the `diff-coverage` Makefile target | — |
+| S01 | Pipeline | Add `git fetch . main:refs/remotes/origin/main` to `executor/worktree_setup.sh` immediately after `git worktree add`; add the same one-liner as a safeguard at the top of the `diff-coverage` Makefile target | — |
 | S02 | CodeReview | Per-agent review of S01 | — |
-| S03 | Tests | Reproduction test: simulate stale origin/main, run setup_worktree, assert origin/main matches main after creation | — |
+| S03 | Tests | Reproduction test: simulate stale origin/main, run worktree_setup, assert origin/main matches main after creation | — |
 | S04 | CodeReview | Per-agent review of S03 | — |
 | S05 | CodeReview_Final | Cross-agent global review | — |
 | S06..S13 | QV Gates | lint, assertions, format, typecheck, unit-tests, integration-tests, diff-coverage, security-secrets | — |
@@ -100,7 +100,7 @@ There is no setup step in `executor/setup_worktree.sh` that synchronises
 
 ### Code Changes
 
-- **Files to modify**: `executor/setup_worktree.sh`, `Makefile`.
+- **Files to modify**: `executor/worktree_setup.sh`, `Makefile`.
 - **Nature of change**: insert a single `git fetch` line in two places.
 
 ## File Manifest
@@ -120,8 +120,8 @@ There is no setup step in `executor/setup_worktree.sh` that synchronises
 ## Test to Reproduce
 
 ```python
-def test_i00084_setup_worktree_syncs_origin_main(tmp_path):
-    """After setup_worktree, the new worktree's origin/main ref must match
+def test_i00084_worktree_setup_syncs_origin_main(tmp_path):
+    """After worktree_setup, the new worktree's origin/main ref must match
     local main, even if origin/main was stale beforehand.
 
     This test should FAIL before the fix and PASS after.
@@ -136,11 +136,11 @@ def test_i00084_setup_worktree_syncs_origin_main(tmp_path):
     assert get_origin_main(repo) == base_sha, "precondition: origin/main is stale"
 
     # Act
-    worktree_path = run_setup_worktree(repo, item_id="I-99001", branch="agent/foo")
+    worktree_path = run_worktree_setup(repo, item_id="I-99001", branch="agent/foo")
 
     # Assert
     assert get_origin_main(repo, cwd=worktree_path) == local_main_sha, (
-        f"setup_worktree must sync origin/main to local main; "
+        f"worktree_setup must sync origin/main to local main; "
         f"got {get_origin_main(repo, cwd=worktree_path)} expected {local_main_sha}"
     )
 ```
@@ -160,7 +160,7 @@ Then within the worktree, origin/main matches local main
 ```
 Given the fix is applied
 When the test suite runs
-Then tests/integration/test_setup_worktree_origin_main_sync.py passes
+Then tests/integration/test_worktree_setup_origin_main_sync.py passes
 ```
 
 ### AC3: `make diff-coverage` produces correct diffs
@@ -177,7 +177,7 @@ Then the diff includes only the in-scope changed files (no spurious files from o
 - Defensive `git fetch . main:refs/remotes/origin/main` at the top of the
   `Makefile` `diff-coverage` target (idempotent, fast, safe even if the
   worktree is already in sync) — protects against any future code path
-  that creates a worktree without going through `setup_worktree.sh`.
+  that creates a worktree without going through `worktree_setup.sh`.
 
 ## Dependencies
 
@@ -188,13 +188,13 @@ Then the diff includes only the in-scope changed files (no spurious files from o
 
 ## Impacted Paths
 
-- `executor/setup_worktree.sh`
+- `executor/worktree_setup.sh`
 - `Makefile`
-- `tests/integration/test_setup_worktree_origin_main_sync.py`
+- `tests/integration/test_worktree_setup_origin_main_sync.py`
 
 ## TDD Approach
 
-- Reproducing test: as above, end-to-end via `setup_worktree.sh` invoked
+- Reproducing test: as above, end-to-end via `worktree_setup.sh` invoked
   on a fake repo under `tmp_path`.
 - Unit tests: not strictly required (the change is a single `git fetch`
   invocation).
