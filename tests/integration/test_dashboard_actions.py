@@ -537,6 +537,9 @@ def test_cancel_batch_wrong_state_returns_422(
     db_session: Any,
     test_project: Project,
 ) -> None:
+    # Carry-over from CR-00052: F-00082 made executing a valid cancel state, so
+    # the test must use a still-invalid state. CR-00052's merge updated this on
+    # main; this branch base predates that merge.
     batch = _make_batch(db_session, status=BatchStatus.completed)
 
     resp = client.post(f"/project/{test_project.id}/api/batch/{batch.id}/cancel")

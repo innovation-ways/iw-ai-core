@@ -34,6 +34,9 @@ tests/dashboard/test_alembic_guard_banner.py::test_batch_approve_returns_503_whe
 tests/dashboard/test_batch_held_indicator.py::test_held_event_returns_reason_string # tautology
 tests/dashboard/test_batch_held_indicator.py::test_multiple_globs_shows_glob_summary # tautology
 tests/dashboard/test_batch_held_indicator.py::test_non_pending_item_not_returned # tautology
+tests/dashboard/test_cancel_button_visibility.py::test_cancel_batch_handler_no_status_enum_assignment # tautology
+tests/dashboard/test_cancel_button_visibility.py::test_cancel_item_handler_no_status_enum_assignment # tautology
+tests/dashboard/test_cancel_confirm_dialog.py::test_confirm_action_form_renders_without_error_for_non_cancel_action # tautology
 tests/dashboard/test_cascade_history.py::test_cascade_tree_top_level_nodes_without_children # tautology
 tests/dashboard/test_cascade_history.py::test_overview_renders_recovery_summary_when_cascade_events_exist # tautology
 tests/dashboard/test_cascade_history.py::test_replay_history_closed_when_not_turbulent # tautology
@@ -127,6 +130,8 @@ tests/dashboard/test_chat_workitem_templates.py::test_trust_strip_with_count_and
 tests/dashboard/test_chat_workitem_templates.py::test_work_item_id_link # tautology
 tests/dashboard/test_code_layout_fixes.py::test_last_run_banner_has_dismiss_button # tautology
 tests/dashboard/test_code_layout_fixes.py::test_page_body_has_gap_4 # tautology
+tests/dashboard/test_confirm_dialog_form.py::test_batch_detail_header_renders_cancel_button_for_executing_batch # tautology
+tests/dashboard/test_confirm_dialog_form.py::test_confirm_dialog_macro_renders_form_when_form_html_set # tautology
 tests/dashboard/test_docs_pdf_chromium.py::test_doc # no-assert
 tests/dashboard/test_docs_pdf_chromium.py::test_doc_project # no-assert
 tests/dashboard/test_help_js_smoke.py::test_base_html_has_help_slot # tautology
