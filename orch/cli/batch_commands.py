@@ -641,3 +641,79 @@ def batch_resume(ctx: click.Context, batch_id: str) -> None:
         )
     else:
         click.echo(f"Resumed {batch_id}")
+
+
+@click.command("batch-cancel")
+@click.argument("batch_id")
+@click.option(
+    "--reset-items",
+    is_flag=True,
+    help=(
+        "Reset each member work item back to draft with all workflow steps reset to pending. "
+        "Without this flag, work items are moved to the cancelled terminal state."
+    ),
+)
+@click.option(
+    "--reason",
+    default="cancelled by operator",
+    show_default=True,
+    help="Free-text reason recorded on the batch and each cancelled batch item",
+)
+@click.pass_context
+def batch_cancel(ctx: click.Context, batch_id: str, reset_items: bool, reason: str) -> None:
+    """Cancel a batch and its non-terminal items.
+
+    Kills any running step processes, tears down per-worktree compose stacks and
+    git worktrees (best-effort), marks each non-terminal batch item as 'skipped',
+    and moves the batch itself to 'cancelled'. Member work items go to
+    'cancelled' by default, or back to 'draft' (with steps reset) if
+    --reset-items is passed.
+    """
+    project_id = resolve_project(ctx)
+    get_session = ctx.obj["get_session"]
+
+    from orch.cancel import cancel_batch  # noqa: PLC0415
+
+    result_payload: dict[str, Any] = {}
+    try:
+        with get_session() as session:
+            cancel_result = cancel_batch(
+                session,
+                project_id,
+                batch_id,
+                reason=reason,
+                reset_items=reset_items,
+            )
+            result_payload = {
+                "project_id": project_id,
+                "batch_id": batch_id,
+                "status": "cancelled",
+                "reset_items": reset_items,
+                "cancelled_batch_items": cancel_result.cancelled_batch_items,
+                "reset_to_draft": cancel_result.reset_to_draft,
+                "killed_pids": cancel_result.killed_pids,
+                "teardown_errors": cancel_result.teardown_errors,
+            }
+
+    except LookupError as exc:
+        output_error(ctx, str(exc), 1)
+    except ValueError as exc:
+        output_error(ctx, str(exc), 1)
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 1)
+
+    if ctx.obj.get("json"):
+        click.echo(json.dumps(result_payload))
+    else:
+        click.echo(f"Cancelled {batch_id} ({reason})")
+        if result_payload.get("cancelled_batch_items"):
+            click.echo(f"  Skipped items: {', '.join(result_payload['cancelled_batch_items'])}")
+        if result_payload.get("reset_to_draft"):
+            click.echo(
+                f"  Reset to draft: {', '.join(result_payload['reset_to_draft'])} "
+                "(workflow steps → pending)"
+            )
+        if result_payload.get("killed_pids"):
+            click.echo(f"  Killed PIDs: {', '.join(str(p) for p in result_payload['killed_pids'])}")
+        for err in result_payload.get("teardown_errors", []):
+            click.echo(f"  Warning: {err}")

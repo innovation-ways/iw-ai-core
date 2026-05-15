@@ -6,6 +6,7 @@ import click
 
 from orch.cli.batch_commands import (
     batch_approve,
+    batch_cancel,
     batch_create,
     batch_pause,
     batch_resume,
@@ -25,6 +26,7 @@ from orch.cli.item_commands import (
     approve,
     approve_merge_cmd,
     archive,
+    item_cancel,
     item_report,
     item_status,
     register,
@@ -108,6 +110,7 @@ cli.add_command(approve)
 cli.add_command(approve_merge_cmd, name="approve-merge")
 cli.add_command(unapprove)
 cli.add_command(archive)
+cli.add_command(item_cancel, name="item-cancel")
 cli.add_command(item_status)
 cli.add_command(item_report)
 cli.add_command(step_start)
@@ -122,6 +125,7 @@ cli.add_command(batch_approve)
 cli.add_command(batch_status)
 cli.add_command(batch_pause)
 cli.add_command(batch_resume)
+cli.add_command(batch_cancel, name="batch-cancel")
 cli.add_command(migration_lock)
 cli.add_command(search)
 cli.add_command(sync_skills_cmd, name="sync-skills")

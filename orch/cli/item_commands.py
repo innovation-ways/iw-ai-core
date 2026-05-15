@@ -801,6 +801,74 @@ def archive(
             click.echo(f"Archived {aid}")
 
 
+@click.command("item-cancel")
+@click.argument("item_id")
+@click.option(
+    "--to-draft",
+    is_flag=True,
+    help="After cancelling, reset status to 'draft' and reset all workflow steps to pending.",
+)
+@click.option(
+    "--reason",
+    default="cancelled by operator",
+    show_default=True,
+    help="Free-text reason recorded on the cancellation event.",
+)
+@click.pass_context
+def item_cancel(ctx: click.Context, item_id: str, to_draft: bool, reason: str) -> None:
+    """Cancel a single work item not owned by an active batch.
+
+    Kills any running step process, marks pending/in-progress workflow steps
+    as skipped, and tears down any leftover worktree compose stack. Moves the
+    item to 'cancelled' by default, or to 'draft' (with steps reset) when
+    --to-draft is passed.
+
+    If the item is in an *active* (non-terminal) batch, this command refuses
+    and prompts the operator to run 'iw batch-cancel' instead.
+    """
+    project_id = resolve_project(ctx)
+    get_session = ctx.obj["get_session"]
+
+    from orch.cancel import cancel_work_item  # noqa: PLC0415
+
+    result_payload: dict[str, Any] = {}
+    try:
+        with get_session() as session:
+            cancel_result = cancel_work_item(
+                session,
+                project_id,
+                item_id,
+                reason=reason,
+                to_draft=to_draft,
+            )
+            new_status = "draft" if to_draft else "cancelled"
+            result_payload = {
+                "project_id": project_id,
+                "id": item_id,
+                "status": new_status,
+                "to_draft": to_draft,
+                "teardown_errors": cancel_result.teardown_errors,
+            }
+
+    except LookupError as exc:
+        output_error(ctx, str(exc), 1)
+    except ValueError as exc:
+        # Exit 4 mirrors `unapprove` when the item is gated by batch membership;
+        # all other validation errors use exit 1.
+        exit_code = 4 if "active batch" in str(exc) else 1
+        output_error(ctx, str(exc), exit_code)
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 1)
+
+    if ctx.obj.get("json"):
+        click.echo(json.dumps(result_payload))
+    else:
+        verb = "Cancelled and reset to draft" if to_draft else "Cancelled"
+        click.echo(f"{verb} {item_id} ({reason})")
+        for err in result_payload.get("teardown_errors", []):
+            click.echo(f"  Warning: {err}")
+
+
 @click.command("item-status")
 @click.argument("item_id")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Machine-readable JSON output")
