@@ -14,7 +14,7 @@
     {
       "step": "S01",
       "agent": "pipeline-impl",
-      "description": "Inject scope.allowed_paths into the fix-cycle prompt (operator-readable block at the top); after each cycle, run scope_gate matching against the working-tree diff; on any out-of-scope edit, set the cycle outcome to escalate-to-operator without auto-reverting the agent's edits and without advancing the step. Add a daemon log line per cycle: 'fix_cycle scope: allowed=N in_scope=K out_of_scope=M'.",
+      "description": "Inject scope.allowed_paths into the fix-cycle prompt (operator-readable block at the top); before/after the cycle, snapshot working-tree paths via git diff --name-only HEAD + git ls-files --others; on any out-of-scope edit set FixCycle.status = FixStatus.escalated (existing enum value) and emit a DaemonEvent of type scope_violation_escalation, without auto-reverting the agent's edits and without advancing the step. Add a daemon log line per cycle: 'fix_cycle scope: allowed=N in_scope=K out_of_scope=M'.",
       "prompt": "prompts/I-00082_S01_Pipeline_prompt.md"
     },
     {
@@ -27,7 +27,7 @@
     {
       "step": "S03",
       "agent": "tests-impl",
-      "description": "Author tests/integration/test_fix_cycle_scope_enforcement.py — reproduction test (out-of-scope edit triggers escalate-to-operator, agent's edits are preserved verbatim), happy-path regression (in-scope edits advance normally), and operator-pre-edit preservation test.",
+      "description": "Extend tests/integration/test_fix_cycle_scope_enforcement.py (S01 already authored the AC1 reproduction test) with two new regression tests: AC3 (operator pre-edit on an out-of-scope file is preserved — cycle status remains FixStatus.completed, no violation recorded) and AC4 (in-scope edits advance normally — cycle status FixStatus.completed, no scope_violation_escalation event). Assertions reference the existing FixStatus enum, not any new string outcome.",
       "prompt": "prompts/I-00082_S03_Tests_prompt.md"
     },
     {
