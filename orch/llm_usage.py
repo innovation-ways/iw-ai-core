@@ -1,4 +1,4 @@
-"""LLM usage service — Claude Code and MiniMax consumption tracking.
+"""LLM usage service — Claude Code, MiniMax, and Codex consumption tracking.
 
 Claude:
   Both bars (5h and 7d) are read from ~/.claude/rate-limits-cache.json,
@@ -21,6 +21,27 @@ MiniMax:
     ~/.local/share/opencode/auth.json. On missing key or failure the bar
     reports block_pct=0 and the failure is logged.
     Optional IW_MINIMAX_GROUP_ID env var appends ?GroupId=<value> to the URL.
+
+Codex (ChatGPT-subscription OAuth via opencode):
+  - Live call to https://chatgpt.com/backend-api/wham/usage — the same
+    undocumented endpoint the official Codex CLI polls every ~60s
+    (openai/codex issues #10869, #15281). Returns a 5-hour rolling
+    window (primary) and a weekly window (secondary), both as
+    {used_percent, limit_window_seconds, reset_after_seconds, reset_at}
+    per the codex-backend-openapi-models RateLimitWindowSnapshot
+    contract. Counts messages, not tokens; per-model multipliers apply.
+
+    Auth source is ~/.local/share/opencode/auth.json — the JSON object
+    under "openai" with type="oauth", supplying the bearer access token
+    and the ChatGPT-Account-Id header. We DO NOT refresh tokens here;
+    opencode refreshes on its own next invocation and our next 60s
+    cache miss picks up the fresh token. While the access token is
+    expired (≤1h gap if the user pauses opencode use), the chip shows
+    0% with no reset label.
+
+    On any failure (file missing, non-OAuth, network error, 401, schema
+    drift) the function returns zeroed dict and logs the exception
+    once — never raises out.
 
 Results are cached in-process for 60 seconds.
 """
@@ -248,6 +269,130 @@ def _minimax_usage() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Codex — via /backend-api/wham/usage with opencode OAuth
+# ---------------------------------------------------------------------------
+
+
+_CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+_CODEX_ZERO: dict[str, Any] = {
+    "block_pct": 0,
+    "week_pct": 0,
+    "block_reset": None,
+    "week_reset": None,
+    "plan_type": None,
+}
+
+
+def _load_openai_oauth() -> dict[str, Any] | None:
+    """Read ~/.local/share/opencode/auth.json and return the openai OAuth entry.
+
+    Returns the dict ``{access, refresh, expires, accountId}`` from the
+    ``openai`` section when ``type == "oauth"``; returns None for any
+    other shape (raw API key, missing section, malformed file, missing
+    file). Never raises.
+    """
+    try:
+        path = Path.home() / ".local/share/opencode/auth.json"
+        data: dict[str, Any] = json.loads(path.read_text())
+    except Exception:  # noqa: S110, BLE001
+        return None
+    entry = data.get("openai")
+    if not isinstance(entry, dict) or entry.get("type") != "oauth":
+        return None
+    access = entry.get("access")
+    account_id = entry.get("accountId")
+    if not isinstance(access, str) or not isinstance(account_id, str):
+        return None
+    return entry
+
+
+def _codex_window_pct(window: Any) -> int:
+    """Extract used_percent from a RateLimitWindowSnapshot dict; 0 if missing/invalid."""
+    if not isinstance(window, dict):
+        return 0
+    raw = window.get("used_percent")
+    if not isinstance(raw, (int, float)):
+        return 0
+    return min(100, max(0, round(raw)))
+
+
+def _codex_window_reset_ts(window: Any) -> int:
+    """Extract reset_at (epoch seconds) from a window dict; 0 if missing/invalid."""
+    if not isinstance(window, dict):
+        return 0
+    raw = window.get("reset_at")
+    if isinstance(raw, (int, float)) and raw > 0:
+        return int(raw)
+    return 0
+
+
+def _codex_usage_remote(access: str, account_id: str) -> dict[str, Any]:
+    """Call GET /backend-api/wham/usage and return the 5h + weekly usage dict.
+
+    Response shape per codex-backend-openapi-models RateLimitStatusPayload:
+        {
+          "plan_type": "plus"|"pro"|...,
+          "rate_limit": {
+            "primary_window":   {used_percent, limit_window_seconds, reset_after_seconds, reset_at},
+            "secondary_window": {used_percent, limit_window_seconds, reset_after_seconds, reset_at}
+          },
+          ...
+        }
+    The double-Option in the Rust contract surfaces here as missing keys or
+    explicit ``null`` values; both are handled defensively.
+    """
+    resp = httpx.get(
+        _CODEX_USAGE_URL,
+        headers={
+            "Authorization": f"Bearer {access}",
+            "ChatGPT-Account-Id": account_id,
+            "Accept": "application/json",
+            "User-Agent": "iw-ai-core/0.1 codex-usage-poller",
+        },
+        timeout=10.0,
+    )
+    resp.raise_for_status()
+
+    payload = resp.json()
+    rate_limit = payload.get("rate_limit") or {}
+    primary = rate_limit.get("primary_window") or {}
+    secondary = rate_limit.get("secondary_window") or {}
+
+    return {
+        "block_pct": _codex_window_pct(primary),
+        "week_pct": _codex_window_pct(secondary),
+        "block_reset": _format_remaining_from_ts(_codex_window_reset_ts(primary)),
+        "week_reset": _format_resets_at(_codex_window_reset_ts(secondary)),
+        "plan_type": payload.get("plan_type"),
+    }
+
+
+def _codex_usage() -> dict[str, Any]:
+    """Return Codex 5h + weekly usage; never raises.
+
+    Returns zeroed dict (``block_pct=0, week_pct=0, *_reset=None``) when:
+      - opencode auth.json is missing or has no OAuth entry for openai
+      - access token is rejected (401), endpoint moved (404),
+        upstream is unreachable, or the JSON body fails to parse.
+    Failures are logged at WARNING (auth absent — expected when the user
+    has not run ``opencode auth login`` for openai) or ERROR (any other
+    transport / decode failure).
+    """
+    entry = _load_openai_oauth()
+    if entry is None:
+        logger.warning(
+            "Codex OAuth credentials not found in opencode auth.json; usage chips will show 0%%",
+        )
+        return dict(_CODEX_ZERO)
+
+    try:
+        return _codex_usage_remote(entry["access"], entry["accountId"])
+    except Exception:
+        logger.exception("Codex usage fetch failed")
+        return dict(_CODEX_ZERO)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -271,7 +416,13 @@ def get_llm_usage() -> dict[str, Any]:
         logger.exception("MiniMax usage fetch failed")
         minimax = {"block_pct": 0, "block_reset": None}
 
-    result: dict[str, Any] = {"claude": claude, "minimax": minimax}
+    try:
+        codex = _codex_usage()
+    except Exception:
+        logger.exception("Codex usage fetch failed")
+        codex = dict(_CODEX_ZERO)
+
+    result: dict[str, Any] = {"claude": claude, "minimax": minimax, "codex": codex}
     with _cache_lock:
         _cache["ts"] = now
         _cache["data"] = result
