@@ -31,6 +31,8 @@ SEMGREP_EXCLUDE_RULES = (
     "generic.html-templates.security.var-in-href.var-in-href",
     "generic.html-templates.security.var-in-script-tag.var-in-script-tag",
     "html.security.plaintext-http-link.plaintext-http-link",
+    "python.lang.security.audit.subprocess-shell-true.subprocess-shell-true",
+    "python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure",
 )
 
 

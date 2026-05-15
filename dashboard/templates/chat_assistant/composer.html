@@ -1,0 +1,34 @@
+<form id="chat-assistant-composer"
+      class="border-t border-border p-2 flex flex-col gap-2"
+      onsubmit="return false;">
+
+  <!-- Context chip row -->
+  <div id="chat-assistant-chips" class="flex flex-wrap gap-1"></div>
+
+  <!-- Input + slash menu -->
+  <div class="relative">
+    <textarea id="chat-assistant-input"
+              rows="2"
+              class="w-full resize-y rounded-md border border-border bg-background p-2 text-sm"
+              placeholder="Ask the AI Assistant… (/ for skills)"></textarea>
+    <div id="chat-assistant-slash-menu"
+         class="hidden absolute bottom-full mb-1 w-full border border-border bg-card rounded-md shadow z-50"
+         role="listbox"
+         aria-label="Skill and command autocomplete"></div>
+  </div>
+
+  <!-- Send / Abort row -->
+  <div class="flex items-center justify-end gap-2">
+    <button id="chat-assistant-abort"
+            type="button"
+            class="hidden text-xs px-3 py-1.5 rounded border border-destructive text-destructive hover:bg-destructive/10 min-h-[44px] min-w-[44px]"
+            aria-label="Abort current run">
+      Abort
+    </button>
+    <button id="chat-assistant-send"
+            type="submit"
+            class="bg-primary text-primary-foreground text-sm px-3 py-1.5 rounded min-h-[44px] min-w-[44px]">
+      Send ↵
+    </button>
+  </div>
+</form>

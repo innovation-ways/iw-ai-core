@@ -307,4 +307,9 @@ document.body.addEventListener('htmx:afterRequest', function (e) {
   } catch (_) { /* ignore */ }
 });
 </script>
+<script>
+if (typeof window.iwChat !== 'undefined') {
+  window.iwChat.setContext({type: "batch", id: "{{ batch.id }}", title: {{ batch.id | tojson }}});
+}
+</script>
 {% endblock %}

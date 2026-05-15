@@ -1,0 +1,57 @@
+{
+  "item_id": "F-00083",
+  "bottom_line": "The worktree-compose configuration is missing the `opencode` binary, causing S18 browser verification to skip all 11 AC checks — fix that first so future OpenCode-backed features can actually verify their UX.",
+  "coverage_notes": "Read all step run logs (F-00083_S01 through S18) in full. Fix-cycle logs sampled for S10-S15 (the heaviest cycles). S14 fix logs read in full (4 cycles, ~1300 lines total). S15 fix logs sampled at 100-line intervals due to length. DB telemetry used for step list via `iw item-status --json`. No tarball extraction needed — item is active.",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "project",
+      "title": "Worktree-compose missing OpenCode binary — S18 browser verification fully skipped",
+      "recommendation": "Add the `opencode` binary to the worktree-compose bootstrap so the browser verification step can run. Document the dependency in the pre-flight checklist for S18-type steps.",
+      "evidence": [".worktrees/F-00083/ai-dev/logs/F-00083_S18_run1.log:39 — 'SPEC_MISMATCH: OpenCode runtime unavailable in E2E stack — HTTP 503 at /api/chat/config. Worktree-compose configuration is missing the OpenCode binary.'"],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Add opencode binary to worktree-compose E2E stack so S18 browser verification runs; analyzed in F-00083 (see ai-dev/work/F-00083/reports/F-00083_self_assess_report.md). Target files: orch/daemon/worktree_compose.py, docker-compose.bootstrap.yml. Effort: M."
+    },
+    {
+      "severity": "MED",
+      "class": "environment",
+      "target": "iw-ai-core",
+      "title": "S14 unit tests required 4 fix-cycles due to mock side-effect exhaustion in pre-existing cancel-service tests",
+      "recommendation": "Pre-populate mock db.execute side-effect lists with inline comments linking each mock to the production code line it satisfies. Add a shared _make_db_with_skeleton helper that provides 2 extra slots beyond the happy-path requirement.",
+      "evidence": [".worktrees/F-00083/ai-dev/logs/F-00083_S14_fix1.log:91 — 'The test shows `WorkItemStatus.failed` should be cancellable'", ".worktrees/F-00083/ai-dev/logs/F-00083_S14_fix2.log:118 — '_teardown_item_worktree makes an additional db.execute call that the mock doesn't account for'", ".worktrees/F-00083/ai-dev/logs/F-00083_S14_fix3.log:389 — 'The bug is at line 503: when item is None, the condition is False'", ".worktrees/F-00083/ai-dev/logs/F-00083_S14_fix4.log:247 — 'missing mock responses for the steps_to_skip query'"],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Reduce cancel-service test mock brittleness by adding skeleton helper with extra slots; analyzed in F-00083 (see ai-dev/work/F-00083/reports/F-00083_self_assess_report.md). Target file: tests/unit/test_cancel_service.py. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "S15 integration tests required 3 fix-cycles — semgrep exclusions drift between Makefile and test baseline",
+      "recommendation": "Extract semgrep exclusions to a shared config file (e.g., .semgrep_exclusions.txt) that both Makefile and test_security_sast_baseline.py read. Enforce parity via the assertion-scanner style gate.",
+      "evidence": [".worktrees/F-00083/ai-dev/logs/F-00083_S15_fix3.log:36 — 'Ran 308 rules on 473 files: 6 findings'", ".worktrees/F-00083/ai-dev/logs/F-00083_S15_fix3.log:89 — 'Both the Makefile and the test need the same 2 additional exclusions'"],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Extract semgrep exclusions to shared .semgrep_exclusions.txt; analyzed in F-00083 (see ai-dev/work/F-00083/reports/F-00083_self_assess_report.md). Target files: Makefile, tests/integration/test_security_sast_baseline.py. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "design",
+      "target": "iw-ai-core",
+      "title": "S02 pre-step spike: permission.asked payload used documented shape rather than wire-captured — unverified relay contract",
+      "recommendation": "Make the S02 pre-flight spike a blocking precondition: if opencode serve is unavailable, the step must fail with SPEC_MISMATCH rather than proceeding on an unverified payload shape.",
+      "evidence": [".worktrees/F-00083/ai-dev/logs/F-00083_S02_run1.log:26 — 'permission.asked payload could NOT be wire-captured (MiniMax model returned synthetic text instead of a real bash tool-call); flagged as MEDIUM-confidence gap for S08 review'", "ai-dev/active/F-00083/prompts/F-00083_S02_Backend_prompt.md:52 — 'If the spike is impossible (no opencode binary in the worktree), document this in the report and proceed using the documented shape from R-00071'"],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Make S02 pre-step spike blocking when opencode binary is unavailable; analyzed in F-00083 (see ai-dev/work/F-00083/reports/F-00083_self_assess_report.md). Target file: ai-dev/active/F-00083/prompts/F-00083_S02_Backend_prompt.md. Effort: S."
+    },
+    {
+      "severity": "LOW",
+      "class": "environment",
+      "target": "iw-ai-core",
+      "title": "S10 lint required 2 fix-cycles — password noqa comments and line-length in pre-existing test file",
+      "recommendation": "Add a project-level noqa comment for S105/S106 at the top of tests/dashboard/test_app_lifespan_opencode.py so new password-containing fixtures don't require per-instance noqa comments.",
+      "evidence": [".worktrees/F-00083/ai-dev/logs/F-00083_S10_fix1.log:100 — 'All 6 lint errors fixed: Added # noqa: S105 to password string literals'", ".worktrees/F-00083/ai-dev/logs/F-00083_S10_fix2.log:34 — 'Lint passes. The fix was wrapping the assertion message across two lines to meet the 100-char limit'"],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add S105/S106 noqa at top of test_app_lifespan_opencode.py; analyzed in F-00083 (see ai-dev/work/F-00083/reports/F-00083_self_assess_report.md). Target file: tests/dashboard/test_app_lifespan_opencode.py. Effort: S."
+    }
+  ]
+}
