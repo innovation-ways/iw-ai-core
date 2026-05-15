@@ -413,5 +413,10 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 </script>
+<script>
+if (typeof window.iwChat !== 'undefined') {
+  window.iwChat.setContext({type: "doc", id: "{{ doc.id }}", title: {{ doc.title | tojson }}});
+}
+</script>
 
 {% endblock %}

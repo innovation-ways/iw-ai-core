@@ -24,6 +24,7 @@ from dashboard.middlewares.alembic_guard import AlembicGuardMiddleware, is_db_st
 from dashboard.routers import (
     actions,
     batches,
+    chat,
     code,
     code_qa,
     code_ui,
@@ -72,6 +73,43 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
+    # ------------------------------------------------------------------
+    # F-00083: Start managed OpenCode subprocess BEFORE daemon startup.
+    # Failure is non-fatal: runtime is set to None and the chat panel
+    # renders a "runtime unavailable" banner.
+    #
+    # In test context (IW_CORE_TEST_CONTEXT=true) the lifespan skips
+    # subprocess startup and leaves app.state unchanged so tests can
+    # pre-set mock runtimes before entering the TestClient context manager.
+    # ------------------------------------------------------------------
+    _runtime = None
+    _relay_manager = None
+    if os.environ.get("IW_CORE_TEST_CONTEXT") != "true":
+        try:
+            from orch.chat import OpencodeClient, OpencodeRuntime, RelayManager
+            from orch.config import CORE_ROOT, load_config
+
+            cfg = load_config()
+            _runtime = OpencodeRuntime(
+                repo_root=CORE_ROOT,
+                port=cfg.opencode_port,
+                bin_path=cfg.opencode_bin,
+            )
+            await _runtime.start()
+            _client = OpencodeClient(base_url=_runtime.base_url, password=_runtime.password)
+            _relay_manager = RelayManager(_client)
+            app.state.opencode_runtime = _runtime
+            app.state.opencode_client = _client
+            app.state.relay_manager = _relay_manager
+            logger.info("OpenCode runtime started on port %d", cfg.opencode_port)
+        except Exception as exc:
+            logger.exception("OpenCode runtime startup failed: %s", exc)
+            app.state.opencode_runtime = None
+            app.state.opencode_client = None
+            app.state.relay_manager = None
+    else:
+        logger.debug("OpenCode runtime startup skipped in test context")
+
     try:
         count = mark_orphaned_runs()
         if count:
@@ -105,6 +143,20 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
         session.close()
 
     yield
+
+    # ------------------------------------------------------------------
+    # Shutdown: reverse order — relay_manager → runtime
+    # ------------------------------------------------------------------
+    if _relay_manager is not None:
+        try:
+            await _relay_manager.shutdown()
+        except Exception as exc:
+            logger.warning("RelayManager shutdown error: %s", exc)
+    if _runtime is not None:
+        try:
+            await _runtime.stop()
+        except Exception as exc:
+            logger.warning("OpenCode runtime stop error: %s", exc)
 
 
 def create_app() -> FastAPI:
@@ -300,6 +352,7 @@ def create_app() -> FastAPI:
     app.include_router(actions.router)
     app.include_router(runtime_overrides.router)
     app.include_router(sse.router)
+    app.include_router(chat.router)
     app.include_router(system.router)
     app.include_router(keep_alive.router)
     app.include_router(daemon_control.router)

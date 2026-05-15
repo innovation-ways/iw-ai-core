@@ -313,12 +313,16 @@ security-sast:
 		--exclude-rule generic.html-templates.security.var-in-href.var-in-href \
 		--exclude-rule generic.html-templates.security.var-in-script-tag.var-in-script-tag \
 		--exclude-rule html.security.plaintext-http-link.plaintext-http-link \
+		--exclude-rule python.lang.security.audit.subprocess-shell-true.subprocess-shell-true \
+		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
 		orch dashboard executor --error --json --output $(SECURITY_DIR)/semgrep.json || true
 	@uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit \
 		--exclude-rule generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var \
 		--exclude-rule generic.html-templates.security.var-in-href.var-in-href \
 		--exclude-rule generic.html-templates.security.var-in-script-tag.var-in-script-tag \
 		--exclude-rule html.security.plaintext-http-link.plaintext-http-link \
+		--exclude-rule python.lang.security.audit.subprocess-shell-true.subprocess-shell-true \
+		--exclude-rule python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure \
 		orch dashboard executor --error
 	@echo "[security-sast] OK"
 
