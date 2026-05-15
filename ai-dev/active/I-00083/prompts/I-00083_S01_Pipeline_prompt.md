@@ -32,26 +32,25 @@
 
 CR-00053 needed three operator-applied carry-over fixes (5 assertion-baseline
 entries, 1-line BatchStatus enum value, 1 migration-head revision constant)
-because its branch base inherited CR-00052's tests but not CR-00052's
-matching impl. This step picks one of the three implementation options
-laid out in the design doc and ships it.
+because its worktree base inherited tests for an in-flight sibling whose
+matching impl had not yet merged. The design (see "Implementation
+options — DECIDED" section) ships **two complementary changes** in this
+step:
+
+- **(b)** narrow the `iw approve` chore commit so it can never again
+  leak non-design files to `main` at approval time.
+- **Launch-time sibling-scope check** in `batch_manager.py` so the
+  daemon surfaces cross-item drift at worktree-create time (the actual
+  CR-00053 bite, which (b) alone does not fix).
 
 ## Requirements
 
-### 1. Pick one of the three options and document the choice
-
-The design doc enumerates options (a), (b), (c). Operator preference is
-**(b) — pre-commit only the design docs, not anything else under
-`ai-dev/active/<ID>/`**. If you discover a fatal flaw in (b) during
-implementation, write it up in `notes` and STOP — raise a blocker rather
-than silently switching to (a) or (c).
-
-### 2. Implement option (b)
+### 1. Narrow the `iw approve` chore commit (sub-cause 1)
 
 Find the `approve` command in `orch/cli/item_commands.py` (or wherever
 the chore commit is written). Today it likely does
-`git add ai-dev/active/<ID>/ && git commit ...`. Change it to commit only
-known design files:
+`git add ai-dev/active/<ID>/ && git commit ...`. Change it to commit
+**only** these paths:
 
 - `ai-dev/active/<ID>/<ID>_*_Design.md`
 - `ai-dev/active/<ID>/<ID>_Functional.md`
@@ -59,36 +58,63 @@ known design files:
 - `ai-dev/active/<ID>/prompts/**`
 
 Anything else under `ai-dev/active/<ID>/` (test fixtures, scripts,
-evidences) stays untracked at approval time and travels with the squash
-merge instead.
+evidences, ad-hoc notes) stays untracked at approval time and travels
+with the squash merge instead.
 
-### 3. Document the deliberate exclusion
+Add a clearly-commented allow-list block in the code naming exactly
+what is excluded and why (cite I-00083). Future contributors will want
+to "fix" this by re-adding everything; the comment exists to stop them.
 
-Add a clearly-commented block in the chore-commit code naming exactly
-what is excluded and why (cite I-00083). This is the kind of thing future
-contributors will want to "fix" by re-adding everything.
+If you discover a fatal flaw in (b) during implementation, write it up
+in `notes` and STOP — raise a blocker rather than silently switching
+to (a) or (c).
 
-### 4. Daemon log line at worktree-create time
+### 2. Launch-time sibling-scope check (sub-cause 2)
 
-In `orch/daemon/batch_manager.py` (or wherever the worktree is created),
-emit one INFO line:
+In `orch/daemon/batch_manager.py` (or wherever the worktree is created
+after `git worktree add`), implement a check that runs once per
+worktree creation:
+
+1. Load all `WorkItem`s in the **same project** whose status is one of
+   `approved` / `executing` / `merging` AND whose ID is **not** the
+   one being created.
+2. For each in-flight sibling `S`, parse `S.impacted_paths` (or
+   `workflow-manifest.json:scope.allowed_paths` if that's the
+   authoritative source — see CLAUDE.md / F-00076) into a list of
+   gitignore-style globs.
+3. For each glob, check whether B's base tree contains files matching
+   it AND those files were last modified by a commit that is NOT one
+   of `S`'s merge commits. (For v1, "modified by a commit that's not
+   `S`'s merge commit" is approximated by "S has no merge commit yet
+   and the files exist in B's base".)
+4. The set of matching paths is `sibling_paths_without_merge` for
+   sibling `S`. The total count across all siblings is the headline
+   number.
+
+Emit exactly one INFO line per worktree-create event:
 
 ```
-worktree create: item=<ID> base=<sha> in_flight_siblings=[<list>] excluded_drift_paths=[<count>]
+worktree create: item=<ID> base=<sha> in_flight_siblings=[<sib1>,<sib2>,...] sibling_paths_without_merge=<N> details=[<sib1>:<count>,<sib2>:<count>,...]
 ```
 
-Where `in_flight_siblings` is the list of other items currently in
-`approved` / `executing` / `merging` status, and `excluded_drift_paths`
-is the count of paths under their respective `ai-dev/active/<sib>/`
-directories that exist on disk but were not part of any chore commit
-(this should normally be zero after the fix; a non-zero value signals
-the next drift).
+- `in_flight_siblings` — list of sibling IDs (empty list if none).
+- `sibling_paths_without_merge` — total count (single integer).
+- `details` — per-sibling breakdown when any count is non-zero;
+  omit the bracket entirely when total is zero.
 
-### 5. Backwards compatibility
+**v1 behavior**: WARN only. Do NOT block worktree creation on
+non-zero counts. A follow-up CR can promote this to BLOCK once
+operators have lived with the WARN signal.
 
-Items already approved with the old chore-commit shape continue to work
-— do NOT retroactively rewrite history. The fix only affects items
-approved after this change lands.
+### 3. Backwards compatibility
+
+- Items already approved with the old chore-commit shape continue to
+  work — do NOT retroactively rewrite history.
+- The fix only affects items approved or worktrees created **after**
+  this change lands.
+- Solo-item runs (no in-flight siblings) must emit the log line with
+  `in_flight_siblings=[] sibling_paths_without_merge=0` and otherwise
+  behave identically to today.
 
 ## Project Conventions
 
@@ -98,10 +124,16 @@ out to raw `git` if a wrapper exists.
 
 ## TDD Requirement
 
-RED first: write the reproduction test from the design doc. Confirm it
-fails against pre-fix code (the chore commit will include extra files
-or the worktree will inherit drift). Capture the failing line in
-`tdd_red_evidence`. Then GREEN.
+RED first. Create `tests/integration/test_branch_base_drift.py` with
+**only the AC1 reproduction test** (the two-in-flight-items scenario
+from the design doc's "Test to Reproduce" section). Confirm it fails
+against pre-fix code (B's base contains sibling A's drift paths and the
+new log line is missing). Capture the failing assertion in
+`tdd_red_evidence`. Then implement the fix and confirm GREEN.
+
+**Do NOT** add the AC3 happy-path regression here, and do NOT add the
+shared fake-repo helpers as reusable utilities. Those are S03's scope.
+This step ships just enough test to prove RED → GREEN on AC1.
 
 ## Pre-flight Quality Gates (NON-NEGOTIABLE)
 

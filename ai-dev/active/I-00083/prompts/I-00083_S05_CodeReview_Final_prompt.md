@@ -27,13 +27,20 @@
 
 ### Confirm
 
-- Option chosen at S01 is justified, documented, and consistent across
-  the diff.
-- The chore-commit exclusion list is comprehensive (design docs +
-  manifest + prompts only).
-- Daemon log line matches the spec.
-- Backwards compatibility: items approved before this change still work.
-- Merge-path behaviour is untouched.
+- **Both halves of the (b) + launch-time-check decision are shipped**:
+  the chore-commit narrowing in `orch/cli/item_commands.py` AND the
+  sibling-scope check in `orch/daemon/batch_manager.py`. A diff that
+  ships only one half is `needs-fix`.
+- The chore-commit allow-list is comprehensive (design + functional +
+  manifest + prompts only) and commented with an I-00083 citation.
+- Daemon log line matches the spec exactly, including the
+  solo-item case (`in_flight_siblings=[] sibling_paths_without_merge=0`,
+  no `details=` segment).
+- The launch-time check is WARN-only — verify there is no `raise`,
+  `sys.exit`, or early-return aborting worktree creation when the
+  count is non-zero.
+- Backwards compatibility: items approved before this change still
+  work; no history rewrites; merge-path behaviour untouched.
 
 ## Verdict
 

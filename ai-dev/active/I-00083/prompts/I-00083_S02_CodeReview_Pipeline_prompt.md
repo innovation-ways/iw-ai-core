@@ -30,10 +30,18 @@
 
 ### HIGH
 
-- Option chosen + justified in S01 report.
-- Excluded path list explicit and commented in code (not implicit /
-  derived).
-- Daemon log line shape matches the spec.
+- **Chore-commit allow-list is explicit and commented** in code, citing
+  I-00083, listing exactly: `<ID>_*_Design.md`, `<ID>_Functional.md`,
+  `workflow-manifest.json`, `prompts/**`. Not derived, not implicit.
+- **Launch-time sibling-scope check** present in `batch_manager.py`:
+  queries siblings in `approved`/`executing`/`merging` for the same
+  project; intersects each sibling's `allowed_paths` against B's base
+  tree; emits one INFO line per worktree-create.
+- **Daemon log line shape** matches the spec exactly:
+  `worktree create: item=<ID> base=<sha> in_flight_siblings=[…] sibling_paths_without_merge=<N> details=[…]`.
+  Solo-item case emits `in_flight_siblings=[] sibling_paths_without_merge=0` and omits the `details=` segment when N=0.
+- **WARN, not BLOCK** — the check must not raise or abort worktree
+  creation even when the count is non-zero (v1 behavior).
 - Existing git-helper wrappers used; no ad-hoc `subprocess.run(["git", ...])`.
 
 ### MEDIUM

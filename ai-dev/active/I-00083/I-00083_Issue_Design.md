@@ -18,15 +18,28 @@
 
 ## Description
 
-When two work items are in flight concurrently, item A's
-`chore: commit <A> active files before approval` lands on `main` early
-(at approval time). Item B's worktree is later branched from a `main` SHA
-that already contains A's chore commit, so B inherits any test files
-shipped under `ai-dev/active/<A>/`. But A's *implementation* — including
-the assertion-baseline updates, expected-status-code corrections, and any
-helper changes that make A's tests pass — does NOT reach B's worktree
-until A actually merges. Result: B's QV gates fail on A's tests for
-reasons that are pure cross-item drift, not B's quality.
+When two work items are in flight concurrently, item B's worktree can
+end up containing tests whose matching implementation has not yet
+merged. Two distinct sub-causes are addressed by this incident:
+
+1. **Chore-commit leak**: `chore: commit <A> active files before approval`
+   lands at approval time and currently ships *everything* under
+   `ai-dev/active/<A>/`. If any test fixtures, scripts, or helpers were
+   placed there pre-approval, they reach `main` without the matching
+   impl. Items branched after that chore commit but before A merges see
+   half-state.
+2. **Cross-item out-of-scope test writes**: an already-merging item F
+   may have written test files outside its own `ai-dev/active/<F>/` dir
+   that exercise behavior *another* still-in-flight item C is producing.
+   F's squash merge lands those tests on `main` legitimately, but C's
+   matching impl has not merged. Item B, branched after F but before C,
+   inherits the broken state — and B's QV gates fail on tests that
+   target C's pending impl, not B's quality. (This is the CR-00053 bite.)
+
+The fix addresses both: (1) narrow the chore commit, and (2) at
+worktree-create time, detect when B's base contains files matching an
+in-flight sibling's `allowed_paths` *without* the sibling's merge commit
+yet, and surface that drift in the daemon log.
 
 ## Project Context
 
@@ -105,31 +118,38 @@ Two sub-causes are tangled here:
 
 | Step | Agent | Scope | Parallel With |
 |------|-------|-------|---------------|
-| S01 | Pipeline | Choose option (a) / (b) / (c) below in S00 design refinement, then implement: change either `iw approve` or worktree creation so B does not inherit A's partial state | — |
+| S01 | Pipeline | Implement two complementary changes: **(b)** narrow `iw approve` chore commit to design/manifest/prompts only, AND **launch-time sibling-scope check** in `batch_manager.py` that — at worktree-create time — computes `sibling_paths_without_merge` and emits an INFO log line. Write the minimal AC1 RED reproduction test as part of TDD. | — |
 | S02 | CodeReview | Per-agent review of S01 | — |
-| S03 | Tests | Reproduction test simulating two in-flight items; verify B's gates do not fail on A's drift | — |
+| S03 | Tests | Extend `tests/integration/test_branch_base_drift.py` (the file S01 created with the AC1 reproduction) with the AC3 happy-path regression, the sibling-scope-check unit tests, and reusable fake-repo helpers. | — |
 | S04 | CodeReview | Per-agent review of S03 | — |
 | S05 | CodeReview_Final | Cross-agent global review | — |
 | S06..S13 | QV Gates | lint, assertions, format, typecheck, unit-tests, integration-tests, diff-coverage, security-secrets | — |
 | S14 | SelfAssess | Self-assessment via iw-item-analyze skill | — |
 
-### Implementation options (S01 must pick one with operator sign-off in the report)
+### Implementation options (DECIDED)
 
-- **(a) Stop pre-committing `ai-dev/active/<ID>/` at approval time.**
-  Defer the commit to merge time. Simplest. Breaks the dashboard's
-  "preview design before run" feature unless the dashboard reads from
-  the worktree.
-- **(b) Pre-commit only the design docs**, not anything else under
-  `ai-dev/active/<ID>/`. Requires path discipline (test fixtures, scripts
-  must live elsewhere). Lowest dashboard impact.
+Three options were considered:
+
+- **(a) Stop pre-committing `ai-dev/active/<ID>/` at approval time** —
+  rejected; breaks the dashboard's "preview design before run" feature.
+- **(b) Pre-commit only the design docs / manifest / prompts** under
+  `ai-dev/active/<ID>/`. Anything else (test fixtures, scripts,
+  evidences) stays untracked at approval time and travels with the
+  squash merge instead.
 - **(c) On worktree create, stack pending in-flight items' impl as soft
-  rebases.** Conceptually clean but operationally complex (which items?
-  what order? what about conflicts?). Mirrors the pre-merge
-  `migration_rebase.py` logic but at create time.
+  rebases** — rejected; operationally complex (which items? what order?
+  what about conflicts?).
 
-The operator's leaning is **(b)** — least disruptive, addresses the
-recurring symptom. S01 must capture the chosen option in its report and
-justify briefly.
+**Decision**: **(b) + launch-time sibling-scope check** (i.e., a hybrid
+that addresses both sub-causes without (c)'s complexity).
+
+- (b) eliminates the chore-commit leak class of bugs.
+- The launch-time check addresses the cross-item out-of-scope test-write
+  class (the actual CR-00053 bite). At worktree-create, the daemon
+  computes `sibling_paths_without_merge` — paths present in B's base
+  that match an in-flight sibling's `allowed_paths` but where the
+  sibling has not yet merged — and emits the count + sibling list in an
+  INFO line. **WARN, not BLOCK**, for v1: operators can escalate later.
 
 ### Database Changes
 
@@ -139,11 +159,17 @@ justify briefly.
 
 ### Code Changes
 
-- **Files to modify**: `orch/cli/item_commands.py` (option b: filter what
-  the chore commit includes), or alternatively `orch/daemon/batch_manager.py`
-  + `executor/setup_worktree.sh` (option c).
-- **Nature of change**: narrow what gets pre-committed, OR stack pending
-  impl on worktree create.
+- **`orch/cli/item_commands.py`** — narrow the chore commit's file set
+  to `<ID>_*_Design.md`, `<ID>_Functional.md`, `workflow-manifest.json`,
+  `prompts/**`. Add a commented allow-list naming the exclusion and
+  citing I-00083.
+- **`orch/daemon/batch_manager.py`** — at worktree-create, query
+  `WorkItem`s in `approved` / `executing` / `merging` for the same
+  project; for each in-flight sibling, intersect its `allowed_paths`
+  with files actually present in B's base tree; emit one INFO log line
+  (see S01 prompt for shape). No blocking behavior in v1.
+- **`executor/setup_worktree.sh`** — touched only if the log emission
+  needs a hand-off; preferably left untouched.
 
 ## File Manifest
 
@@ -216,12 +242,17 @@ Then no behavioural change vs today (the chore commit / worktree creation contin
 
 ## Regression Prevention
 
-- Reproduction test pins the no-drift behaviour.
-- Daemon log line at worktree-create time enumerates which in-flight
-  sibling items were detected and how they were handled (deferred,
-  rebased, ignored).
-- Operator-readable comment in `orch/cli/item_commands.py` near the
-  chore-commit logic explaining what we deliberately do NOT include.
+- AC1 reproduction test (authored at S01, kept at S03) pins the
+  no-drift behaviour for the chore-commit path.
+- AC3 happy-path test (authored at S03) pins the solo-item flow's
+  byte-equivalence and the `sibling_paths_without_merge=0` log shape.
+- Daemon INFO log at worktree-create time emits
+  `in_flight_siblings=[…] sibling_paths_without_merge=<N> details=[…]`;
+  any non-zero `N` is an operator-visible warning that a future
+  carry-over is being set up.
+- Operator-readable allow-list comment in `orch/cli/item_commands.py`
+  near the chore-commit logic names exactly what is excluded and cites
+  I-00083 to deter "fix-it-by-re-adding" regressions.
 
 ## Dependencies
 
