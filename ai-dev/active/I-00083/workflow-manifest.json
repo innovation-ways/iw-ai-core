@@ -16,7 +16,7 @@
     {
       "step": "S01",
       "agent": "pipeline-impl",
-      "description": "Pick option (b) or (c) from the design (operator preference: b — narrow chore commit). Implement so item B's worktree does not inherit item A's partial state. Add daemon log line at worktree-create showing detected in-flight siblings and how they were handled.",
+      "description": "Ship both halves of the (b) + launch-time-check decision: (1) narrow iw approve chore commit in orch/cli/item_commands.py to design/functional/manifest/prompts only; (2) add a launch-time sibling-scope check in orch/daemon/batch_manager.py that emits one INFO line per worktree-create with in_flight_siblings and sibling_paths_without_merge. WARN-only, no blocking. Write the minimal AC1 RED reproduction test as part of TDD.",
       "prompt": "prompts/I-00083_S01_Pipeline_prompt.md"
     },
     {
@@ -27,9 +27,9 @@
       "prompt": "prompts/I-00083_S02_CodeReview_Pipeline_prompt.md"
     },
     {
+      "description": "Extend tests/integration/test_branch_base_drift.py (created at S01 with the AC1 reproduction) — DO NOT rewrite. Add AC3 happy-path regression, sibling-scope-check unit coverage, and chore-commit allow-list coverage; refactor common fake-repo setup into shared helpers.",
       "step": "S03",
       "agent": "tests-impl",
-      "description": "Author tests/integration/test_branch_base_drift.py — reproduction test (two in-flight items, B's worktree clean of A's drift) + happy-path regression (single item, no change).",
       "prompt": "prompts/I-00083_S03_Tests_prompt.md"
     },
     {
