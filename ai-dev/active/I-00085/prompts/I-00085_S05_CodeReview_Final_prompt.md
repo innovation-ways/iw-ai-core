@@ -20,7 +20,11 @@
 
 ### Independently re-verify
 
-- Reproduction + negative tests both pass locally.
+- Reproduction + control tests both pass locally with `uv run pytest
+  tests/integration/test_security_secrets_cache_independence.py -v`.
+- Run the control test in isolation and confirm it actually invokes
+  gitleaks (`-v` plus a deliberately broken bad-secret string makes it
+  fail — sanity-check the wiring, then revert).
 - `git diff --stat` shows ONLY: `.gitleaks.toml`,
   `tests/integration/test_security_secrets_cache_independence.py`. ANY
   other file is CRITICAL.
@@ -28,13 +32,17 @@
 ### Confirm
 
 - Three allowlist entries added (`.mypy_cache/`, `.ruff_cache/`,
-  `.pytest_cache/`).
+  `.pytest_cache/`); no other allowlist edits.
 - Inline comment cites I-00085.
 - Allowlist entries match existing style (`(?i)(?:^|/)`).
-- The negative test still catches real secrets (run it locally; sanity
-  check).
-- `make security-secrets` runs clean from a worktree where
-  `make type-check` was just executed.
+- The control test's bad-secret string is NOT `AKIAIOSFODNN7EXAMPLE`
+  (would be suppressed by `[allowlist].regexes`) and its path inside
+  `tmp_path` does NOT fall under any `[allowlist].paths` regex.
+- The tests do NOT shell out to `make security-secrets` or `make
+  type-check` and do NOT mutate the worktree's `.mypy_cache/`. They
+  run gitleaks against `tmp_path` only.
+- `make security-secrets` runs clean against the real worktree after
+  `make type-check` has populated `.mypy_cache/` (manual operator check).
 
 ## Verdict
 

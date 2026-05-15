@@ -115,39 +115,87 @@ change; gitleaks already skips `__pycache__/` for the same reason.
 
 ## Test to Reproduce
 
+The test is **isolated** — it runs `gitleaks` against a tmp_path
+sandbox using the project's actual `.gitleaks.toml` as `--config`. It
+does **not** mutate `.mypy_cache/` in the worktree, does not run
+`make type-check`, and does not depend on the rest of the worktree
+being gitleaks-clean.
+
 ```python
-def test_i00085_security_secrets_clean_after_type_check(tmp_path, monkeypatch):
-    """make type-check must not leave cache state that triggers
-    false-positive gitleaks findings.
+import subprocess
+from pathlib import Path
 
-    This test should FAIL before the fix and PASS after.
-    """
-    import subprocess
 
-    project_root = ...  # path to the project
-    monkeypatch.chdir(project_root)
-    # Clean baseline
-    subprocess.run(["rm", "-rf", ".mypy_cache"], check=True)
-    # Populate cache
-    subprocess.run(["make", "type-check"], check=True)
-    # Run gitleaks via the project gate
-    result = subprocess.run(
-        ["make", "security-secrets"], capture_output=True, text=True
+PROJECT_ROOT = Path(__file__).resolve().parents[2]  # tests/integration/ → repo root
+GITLEAKS_CONFIG = PROJECT_ROOT / ".gitleaks.toml"
+
+
+def _run_gitleaks(source: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            "gitleaks", "detect",
+            "--no-git",
+            "--source", str(source),
+            "--config", str(GITLEAKS_CONFIG),
+            "--report-format", "json",
+            "--report-path", str(source / "_report.json"),
+        ],
+        capture_output=True, text=True,
     )
 
-    # Assert
+
+def test_i00085_mypy_cache_does_not_trigger_false_positives(tmp_path):
+    """Synthetic .mypy_cache/ payload mirroring the CR-00053 finding
+    (`threading.local` matches the iw-internal-fqdn rule) must NOT be
+    flagged. FAILS pre-fix, PASSES post-fix.
+    """
+    cache = tmp_path / ".mypy_cache" / "3.12"
+    cache.mkdir(parents=True)
+    # Same string CR-00053's S16 flagged on .mypy_cache/3.12/threading.data.json
+    (cache / "threading.data.json").write_text('{"fullname": "threading.local"}')
+
+    result = _run_gitleaks(tmp_path)
+
     assert result.returncode == 0, (
-        f"gitleaks must not flag .mypy_cache/ contents; "
+        f"gitleaks must allowlist .mypy_cache/; "
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
-    assert "leaks found: 0" in result.stdout or "no leaks found" in result.stdout, (
-        "gitleaks output must report zero leaks"
+
+
+def test_i00085_real_secret_still_detected(tmp_path):
+    """Control test: the allowlist additions must NOT mask real secrets.
+    Place an AWS-shaped key (distinct from the AKIAIOSFODNN7EXAMPLE
+    pattern that is allowlisted in .gitleaks.toml regexes) at a
+    non-allowlisted path; gitleaks must detect it. Passes pre- and
+    post-fix — guards against over-broad allowlist edits.
+    """
+    target = tmp_path / "leak_target"
+    target.mkdir()
+    # AWS access key shape (AKIA + 16 alphanumerics) that does NOT match the
+    # documented-example regex AKIAIOSFODNN7EXAMPLE; suffix chosen to avoid the
+    # gitleaks docs-example allowlist entirely.
+    (target / "config.py").write_text('AWS_ACCESS_KEY = "AKIA1234567890ABCDEF"\n')
+
+    result = _run_gitleaks(tmp_path)
+
+    assert result.returncode != 0, (
+        "gitleaks must flag AKIA1234567890ABCDEF at leak_target/config.py"
     )
+    assert "AKIA1234567890ABCDEF" in result.stdout or "leaks found" in result.stdout
 ```
 
-This test mutates global project state (`.mypy_cache/`), so it must be
-marked appropriately (e.g., `@pytest.mark.serial` if the project has
-such a marker, or guarded so it doesn't run under `pytest -n auto`).
+Notes on the design:
+
+- `tmp_path` is the gitleaks `--source` root, so the project's path
+  allowlists like `(?:^|/)tests/fixtures/` match `<tmp>/tests/fixtures/`
+  inside the sandbox — keep the synthetic file paths outside any of
+  those prefixes (`.mypy_cache/` pre-fix is NOT allowlisted; pick a
+  fresh top-level directory like `leak_target/` for the control test).
+- No `make type-check` invocation, no `make security-secrets`, no
+  mutation of the worktree's `.mypy_cache/`. Safe under `pytest -n auto`.
+- The tests still need the `gitleaks` binary on PATH (`make security-secrets`
+  has the same dependency). If not installed, the tests should be
+  `pytest.skip(...)`-ed with a clear message rather than fail.
 
 ## Acceptance Criteria
 
@@ -167,19 +215,27 @@ When the test suite runs
 Then tests/integration/test_security_secrets_cache_independence.py passes
 ```
 
-### AC3: Real secret detection still works
+### AC3: Real secret detection still works (control test)
 
 ```
-Given a fake real secret is committed (e.g., a test fixture under tests/fixtures/)
-When `make security-secrets` runs
-Then the secret is detected (allowlist additions must NOT mask real secrets)
+Given an AWS-shaped key string AKIA1234567890ABCDEF (NOT the AKIAIOSFODNN7EXAMPLE
+  docs pattern allowlisted in regexes) is planted in a sandbox at a
+  non-allowlisted path (leak_target/config.py inside tmp_path)
+When gitleaks is invoked against the sandbox with the project's .gitleaks.toml
+Then gitleaks exits non-zero and reports the key
+  (i.e., the new cache-directory allowlist entries do NOT mask real secrets)
 ```
 
 ## Regression Prevention
 
-- The reproduction test exercises the exact S12 → S16 sequence.
-- AC3's negative test (real secret still detected) prevents over-broad
-  allowlist edits.
+- The reproduction test exercises the exact failure mode from CR-00053's
+  S16 manual run (a `.mypy_cache/3.12/...data.json` file containing a
+  `*.local` string) — using an isolated sandbox so the test is fast and
+  deterministic.
+- AC3's control test (real-secret-shaped string at a non-allowlisted
+  sandbox path) prevents over-broad allowlist edits — it passes pre- and
+  post-fix and would fail if someone replaced the three specific cache
+  globs with a catch-all like `\.cache/` or `cache/`.
 - Inline comment in `.gitleaks.toml` cites I-00085 so future contributors
   understand why the cache directories are listed.
 
@@ -195,9 +251,15 @@ Then the secret is detected (allowlist additions must NOT mask real secrets)
 
 ## TDD Approach
 
-- Reproducing test: as above. Note the global-state caveat.
+- Reproducing test (FAILS pre-fix, PASSES post-fix): the synthetic
+  `.mypy_cache/3.12/threading.data.json` sandbox above.
 - Unit tests: not applicable (config-only change).
-- Integration tests: the reproduction test + AC3's negative test.
+- Integration tests: the reproduction test + AC3's control test. Both
+  invoke the `gitleaks` binary against a tmp_path sandbox using the
+  project's `.gitleaks.toml`; neither runs `make type-check` or
+  `make security-secrets` and neither touches the worktree's
+  `.mypy_cache/`. Both must be marked to skip cleanly when `gitleaks`
+  is not installed.
 
 ## Notes
 

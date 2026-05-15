@@ -85,9 +85,18 @@ exactly — indentation, quoting, comma placement.
 
 ## TDD Requirement
 
-RED first: write the reproduction test from the design doc and confirm
-it fails against pre-fix `.gitleaks.toml` (3 leaks reported on
-`.mypy_cache/`). Capture the failing line in `tdd_red_evidence`.
+RED first: before editing `.gitleaks.toml`, run the reproduction test
+from the design doc's "Test to Reproduce" section against the **pre-fix**
+config. The test builds a synthetic `<tmp_path>/.mypy_cache/3.12/threading.data.json`
+and invokes `gitleaks detect --no-git --source <tmp> --config .gitleaks.toml`.
+Pre-fix it must report a leak (returncode != 0); post-fix it must
+report zero leaks (returncode == 0). Capture the pre-fix failing line
+in `tdd_red_evidence`.
+
+Note: this is a design-time RED check. Do NOT keep any "revert source
+to get RED" step in the test code or in this prompt's runtime steps.
+After capturing RED evidence, apply the `.gitleaks.toml` edit; the
+GREEN state is what the QV gates verify.
 
 ## Pre-flight Quality Gates (NON-NEGOTIABLE)
 
