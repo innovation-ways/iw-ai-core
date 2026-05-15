@@ -75,7 +75,6 @@ def pyproject_with_threshold(tmp_path: Path) -> Path:
 
 
 class TestLoadCoverage:
-    @pytest.mark.smoke
     def test_missing_coverage_json(
         self,
         tmp_path: Path,

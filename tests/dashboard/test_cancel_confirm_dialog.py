@@ -777,6 +777,7 @@ class TestMacroByteEquivalence:
         assert "<div" in result, "Template must produce HTML div element"
         # The form (textarea + checkbox) is always present in this template.
         assert "<textarea" in result, "Template must contain a textarea"
+        assert result.count("<textarea") == 1, "Exactly one textarea must be present"
         assert 'name="reason"' in result, "Textarea must have name='reason'"
 
 

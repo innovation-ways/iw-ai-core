@@ -537,7 +537,7 @@ def test_cancel_batch_wrong_state_returns_422(
     db_session: Any,
     test_project: Project,
 ) -> None:
-    batch = _make_batch(db_session, status=BatchStatus.executing)
+    batch = _make_batch(db_session, status=BatchStatus.completed)
 
     resp = client.post(f"/project/{test_project.id}/api/batch/{batch.id}/cancel")
     assert resp.status_code == 422

@@ -139,3 +139,19 @@ as well.
 be eliminated (or every offender registered with `@pytest.mark.order_dependent`)
 before `-p no:randomly` is removed from `addopts`. Until then, randomisation is
 opt-in only.
+
+## Smoke layer SLA (CR-00052, P1-CR-E)
+
+`make smoke` runs the curated `@pytest.mark.smoke` set. **Contract:**
+
+- **<=15 tests** total (count by `grep -rc "@pytest.mark.smoke" tests/`).
+- **<60 s** wall-clock on a clean dev environment (measured 2026-05-14: ~13s).
+- **Covers 5 critical paths**: daemon-worktree-start, dashboard-main-pages, iw-next-id, work-item-queue, /healthz.
+
+Each path has >=1 smoke test mapped to it (audit table in CR-00052's S01 report). Adding a new `@pytest.mark.smoke` decorator requires:
+
+1. Identifying which critical path it covers (or adding a new path to the contract and updating this doc).
+2. Re-auditing the count — if it would push the total over 15, **remove** a redundant existing decorator or **don't add** the new one.
+3. Re-measuring wall-clock — if it would push over 60 s, profile and trim.
+
+The contract is currently **prose-enforced** — no `make smoke-sla` command. A future follow-up may add mechanical enforcement if drift happens (see TESTS_ENHANCEMENT.md §5 / P1-CR-E-followup-sla-enforcement, not yet filed).

@@ -23,7 +23,6 @@ class TestSmokePlatformBasics:
         result = runner.invoke(cli, ["--help"])
         assert result.exit_code == 0, f"iw --help failed: {result.output}"
 
-    @pytest.mark.smoke
     def test_base_import_works(self) -> None:
         """from orch.db.models import Base works — ORM is importable."""
         assert Base is not None
@@ -90,7 +89,6 @@ class TestSmokeCredentialRedaction:
     credential redaction fix.
     """
 
-    @pytest.mark.smoke
     @pytest.mark.xfail(reason="BLOCKER F-00073-S01: raw password in get_db_url()")
     def test_db_url_construction_redacts_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """get_db_url() must not embed raw passwords in its return value."""
@@ -107,7 +105,6 @@ class TestSmokeCredentialRedaction:
         assert "SuperSecret123" not in url, f"Password leaked in get_db_url(): {url}"
         assert "postgresql+psycopg://" in url
 
-    @pytest.mark.smoke
     @pytest.mark.xfail(reason="BLOCKER F-00073-S01: raw password in get_orch_db_url()")
     def test_get_orch_db_url_redacts_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """get_orch_db_url() must not embed raw passwords in its return value."""

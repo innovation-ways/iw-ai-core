@@ -137,7 +137,7 @@ F-00062 introduced a per-worktree Postgres container for *app runtime* (started 
 | Marker | Meaning |
 |--------|---------|
 | `integration` | requires docker/testcontainer (most `tests/integration/` rely on the dir, not the marker) |
-| `smoke` | fast critical-path tests; run via `make smoke` (currently ~10; an SLA is roadmap item 1.11) |
+| `smoke` | fast critical-path tests; <=15 tests, <60s wall-clock, 5 critical paths; SLA documented in `tests/CLAUDE.md` (CR-00052, 2026-05-14); run via `make smoke` |
 | `slow` | deselected by default unless `-m slow` is passed |
 | `browser` | drives real Chromium via `playwright-cli`; **deselected by default** (`addopts` `-m 'not browser'`); run via `make test-browser` |
 | `order_dependent` | test relies on test execution order; tracked for cleanup in P1-CR-C-followup |
@@ -190,7 +190,23 @@ Coverage is reported in four formats (`term-missing`, `html`, `xml`, `json`) und
 
 - **The `fail_under` floor.** `[tool.coverage.report] fail_under` is set a few points *below* the lower of the two measured branch-coverage slices — the `make test-unit` slice (covers `tests/unit/`) and the `make test-integration` slice (covers `tests/integration/ tests/dashboard/`), which cover different code and have different totals. The floor must clear the *lower* slice, because `pytest --cov` re-checks `fail_under` at the end of *every* run that picks up `addopts` (the `unit-tests` QV gate, the CI `integration` job, and `make diff-coverage`'s intermediate runs — those last ones pass `--cov-fail-under=0` to opt out). It is a **ratchet**: raise it as coverage improves, never lower it. To re-derive it, run `make test` (note both slices' branch %) and set `fail_under` ≈ (lower slice) rounded down to the nearest 5.
 - **The `diff-coverage` gate** checks that new/changed Python lines are ≥ ~90 % covered, compared against `origin/main` — it forces *new* code to be covered without holding the repo hostage to legacy gaps. Run it locally with `make diff-coverage` (it re-runs the unit + integration + dashboard suites to build its own combined coverage, then `diff-cover`; it's the slow gate). It's the 7th daemon QV gate (after `integration-tests`, with a generous 1800 s timeout).
-- **Coverage-source caveat.** The daemon `diff-coverage` gate builds its **own combined** unit+integration+dashboard coverage (it does not reuse the `coverage.xml` a preceding step left behind — each `pytest --cov` run overwrites it, so the leftover is the integration+dashboard slice only — nor does it depend on the `integration-tests` QV gate, currently a no-op `make allure-integration` stub). The GitHub `Run diff coverage` step in `test-quality.yml`'s `unit` job is cheaper: it diffs against the **unit** `coverage.xml` already produced by `make test-unit`. So the GH PR check may flag a changed line that the daemon gate (with integration coverage folded in) considers covered — the daemon gate is the authoritative one.
+- **Coverage-source caveat.** The daemon `diff-coverage` gate builds its **own combined** unit+integration+dashboard coverage (it does not reuse the `coverage.xml` a preceding step left behind — each `pytest --cov` run overwrites it, so the leftover is the integration+dashboard slice only — nor does it depend on the `integration-tests` QV gate (`make test-integration`, flipped from the former no-op `make allure-integration` stub on 2026-05-14)). The GitHub `Run diff coverage` step in `test-quality.yml`'s `unit` job is cheaper: it diffs against the **unit** `coverage.xml` already produced by `make test-unit`. So the GH PR check may flag a changed line that the daemon gate (with integration coverage folded in) considers covered — the daemon gate is the authoritative one.
+
+### Smoke layer SLA (CR-00052, P1-CR-E)
+
+`make smoke` runs the curated `@pytest.mark.smoke` set. **Contract:**
+
+- **<=15 tests** total (count by `grep -rc "@pytest.mark.smoke" tests/`).
+- **<60 s** wall-clock on a clean dev environment (measured 2026-05-14: ~13s).
+- **Covers 5 critical paths**: daemon-worktree-start, dashboard-main-pages, iw-next-id, work-item-queue, /healthz.
+
+Each path has >=1 smoke test mapped to it (audit table in CR-00052's S01 report). Adding a new `@pytest.mark.smoke` decorator requires:
+
+1. Identifying which critical path it covers (or adding a new path to the contract and updating this doc).
+2. Re-auditing the count — if it would push the total over 15, **remove** a redundant existing decorator or **don't add** the new one.
+3. Re-measuring wall-clock — if it would push over 60 s, profile and trim.
+
+The contract is currently **prose-enforced** — no `make smoke-sla` command. A future follow-up may add mechanical enforcement if drift happens (see TESTS_ENHANCEMENT.md §5 / P1-CR-E-followup-sla-enforcement, not yet filed).
 
 ---
 
@@ -246,8 +262,8 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Secrets scanning (`gitleaks`) | ✅ (CR-00050, 2026-05-14) — pre-commit hook + GH `secrets-scan` job + `make security-secrets` daemon QV gate (1.6) |
 | Semgrep SAST | ⚠️ (CR-00050, 2026-05-14) — managed rulesets; `continue-on-error: true` burn-in; GH `semgrep` job; flip to blocking in `P1-CR-D-followup-semgrep-block` (1.9) |
 | `vulture` / `deptry` suite-health | ✅ (CR-00048, P1-CR-C, 2026-05-12) — warn-only this CR; `make dead-code` + `make dep-check` in `make quality` + GH workflow |
-| Allure reporting `make` targets | ❌ (1.8) — `allure-pytest` is a dep, targets are `.PHONY`-only stubs |
-| Curated smoke layer with SLA | ⚠️ marker exists, no SLA (1.11) |
+| Allure reporting `make` targets | ✅ (CR-00052, 2026-05-14) — 6 real Makefile recipes; `ALLURE_RESULTS`/`ALLURE_REPORT` vars; gitignored artefact dirs (1.8) |
+| Curated smoke layer with SLA | ✅ (CR-00052, 2026-05-14) — 12 tests covering all 5 critical paths; <60s wall-clock; SLA in `tests/CLAUDE.md` and this doc §5 (1.11) |
 | Testing strategy doc | ✅ this document (0.1) |
 | Agent testing skill | ✅ `skills/iw-ai-core-testing/` (0.2) |
 | TDD RED-evidence requirement | ✅ (CR-00045, 2026-05-11) — `tdd_red_evidence` field in result contract; guard test pins it |

@@ -516,6 +516,7 @@ class TestInvariant5NoStatusAssignmentsInRouter:
                 break
 
         assert cancel_batch_node is not None, "cancel_batch handler not found in actions.py"
+        assert cancel_batch_node.name == "cancel_batch"
 
         # Scan for direct status enum assignments like BatchStatus.X = ... or
         # WorkItemStatus.X = ... (not string variables like new_status = "draft")
@@ -562,6 +563,7 @@ class TestInvariant5NoStatusAssignmentsInRouter:
                 break
 
         assert cancel_item_node is not None, "cancel_item handler not found in actions.py"
+        assert cancel_item_node.name == "cancel_item"
 
         # Scan for direct status enum assignments like BatchStatus.X = ... or
         # WorkItemStatus.X = ... (not string variables like new_status = "draft")
