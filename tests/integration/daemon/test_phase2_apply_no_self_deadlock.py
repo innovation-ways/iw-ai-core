@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "a1b2c3fixmm"  # head — fix_runtime_option_model_format
-_PREV_REVISION = "e53ce8e86a3c"  # F-00077 — chat conversations memory (before I-00062)
+_HEAD_REVISION = "7ef0b420c58f"  # head — Add id_allocations table for idempotent next-id (CR-00053)
+_PREV_REVISION = "a1b2c3fixmm"  # fix_runtime_option_model_format (before id_allocations)
 
 
 # ---------------------------------------------------------------------------
