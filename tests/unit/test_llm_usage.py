@@ -943,7 +943,7 @@ class TestCacheTTL:
         yield
         llm_usage._cache.clear()
 
-    def test_within_ttl_single_call(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_within_ttl_single_call(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Call get_llm_usage() twice within TTL; second call hits cache (no httpx call)."""
 
         get_calls: list[Any] = []
@@ -966,6 +966,11 @@ class TestCacheTTL:
 
         monkeypatch.setattr("httpx.get", fake_get)
         monkeypatch.setenv("IW_MINIMAX_API_KEY", "test-key")
+        # Codex (R-00075) also flows through get_llm_usage; redirect its auth.json
+        # read to an empty tmp_path so it short-circuits to the zero-fill path and
+        # this test stays focused on MiniMax cache-hit semantics regardless of the
+        # developer's on-disk opencode credentials.
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
         import importlib
 
@@ -1104,3 +1109,559 @@ class TestNoSqliteRegressions:
         import orch.llm_usage as m
 
         assert not hasattr(m, "_MINIMAX_5H_LIMIT")
+
+
+# ---------------------------------------------------------------------------
+# Codex — via /backend-api/wham/usage with opencode OAuth (R-00075)
+# ---------------------------------------------------------------------------
+
+
+def _write_opencode_auth_oauth(tmp_path: Path, *, access: str, account_id: str) -> Path:
+    """Write a realistic opencode auth.json with an openai OAuth entry."""
+    auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+    auth_file.parent.mkdir(parents=True, exist_ok=True)
+    auth_file.write_text(
+        json.dumps(
+            {
+                "minimax": {"type": "api", "key": "mm-key"},
+                "openai": {
+                    "type": "oauth",
+                    "access": access,
+                    "refresh": "refresh-tok",
+                    "expires": 1_779_689_299_438,
+                    "accountId": account_id,
+                },
+            }
+        )
+    )
+    return auth_file
+
+
+def _codex_usage_payload(
+    *,
+    primary_pct: int = 47,
+    secondary_pct: int = 12,
+    primary_reset_at: int | None = None,
+    secondary_reset_at: int | None = None,
+    plan_type: str = "plus",
+) -> dict[str, Any]:
+    """Build a realistic /wham/usage response body."""
+    from datetime import UTC, datetime
+
+    now = int(datetime.now(UTC).timestamp())
+    return {
+        "plan_type": plan_type,
+        "rate_limit": {
+            "allowed": True,
+            "limit_reached": False,
+            "primary_window": {
+                "used_percent": primary_pct,
+                "limit_window_seconds": 18000,
+                "reset_after_seconds": 7200,
+                "reset_at": primary_reset_at or (now + 2 * 3600),
+            },
+            "secondary_window": {
+                "used_percent": secondary_pct,
+                "limit_window_seconds": 604800,
+                "reset_after_seconds": 432000,
+                "reset_at": secondary_reset_at or (now + 5 * 24 * 3600),
+            },
+        },
+    }
+
+
+class TestLoadOpenaiOauth:
+    """Tests for _load_openai_oauth() — opencode auth.json reader."""
+
+    def test_oauth_entry_returned(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """A well-formed openai.oauth entry is returned as a dict."""
+        _write_opencode_auth_oauth(
+            tmp_path,
+            access="eyJabc.def.ghi",
+            account_id="11111111-2222-3333-4444-555555555555",
+        )
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            from orch import llm_usage
+
+            entry = llm_usage._load_openai_oauth()
+            assert entry is not None
+            assert entry["type"] == "oauth"
+            assert entry["access"] == "eyJabc.def.ghi"
+            assert entry["accountId"] == "11111111-2222-3333-4444-555555555555"
+
+    def test_missing_file_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """No auth.json at all → None, no exception."""
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            from orch import llm_usage
+
+            assert llm_usage._load_openai_oauth() is None
+
+    def test_malformed_json_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Garbage in auth.json → None, no exception."""
+        auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+        auth_file.parent.mkdir(parents=True)
+        auth_file.write_text("not json")
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            from orch import llm_usage
+
+            assert llm_usage._load_openai_oauth() is None
+
+    def test_no_openai_section_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """auth.json present but lacks an `openai` key → None."""
+        auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+        auth_file.parent.mkdir(parents=True)
+        auth_file.write_text(json.dumps({"minimax": {"type": "api", "key": "k"}}))
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            from orch import llm_usage
+
+            assert llm_usage._load_openai_oauth() is None
+
+    def test_raw_api_key_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """openai entry with type=api (raw API key) → None — Codex chip suppressed."""
+        auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+        auth_file.parent.mkdir(parents=True)
+        auth_file.write_text(json.dumps({"openai": {"type": "api", "key": "sk-..."}}))
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            from orch import llm_usage
+
+            assert llm_usage._load_openai_oauth() is None
+
+    def test_oauth_missing_access_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """OAuth entry without an `access` string field → None."""
+        auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+        auth_file.parent.mkdir(parents=True)
+        auth_file.write_text(
+            json.dumps({"openai": {"type": "oauth", "accountId": "x", "refresh": "y"}})
+        )
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            from orch import llm_usage
+
+            assert llm_usage._load_openai_oauth() is None
+
+    def test_oauth_missing_account_id_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """OAuth entry without an `accountId` string field → None."""
+        auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+        auth_file.parent.mkdir(parents=True)
+        auth_file.write_text(
+            json.dumps({"openai": {"type": "oauth", "access": "tok", "refresh": "r"}})
+        )
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            from orch import llm_usage
+
+            assert llm_usage._load_openai_oauth() is None
+
+
+class TestCodexWindowExtractors:
+    """Tests for the defensive primary/secondary-window extractors."""
+
+    def test_pct_from_none(self) -> None:
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_pct(None) == 0
+
+    def test_pct_from_empty_dict(self) -> None:
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_pct({}) == 0
+
+    def test_pct_string_value_safely_zero(self) -> None:
+        """Schema drift: string in used_percent → 0, never raises."""
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_pct({"used_percent": "47"}) == 0
+
+    def test_pct_integer_value(self) -> None:
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_pct({"used_percent": 47}) == 47
+
+    def test_pct_float_rounds(self) -> None:
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_pct({"used_percent": 47.7}) == 48
+
+    def test_pct_clamps_above_100(self) -> None:
+        """Defensive: a >100 value (impossible in spec) clamps to 100."""
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_pct({"used_percent": 150}) == 100
+
+    def test_pct_clamps_below_zero(self) -> None:
+        """Defensive: a negative value clamps to 0."""
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_pct({"used_percent": -5}) == 0
+
+    def test_reset_ts_from_none(self) -> None:
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_reset_ts(None) == 0
+
+    def test_reset_ts_explicit_null(self) -> None:
+        """The Rust double-Option appears as JSON null — should be 0."""
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_reset_ts({"reset_at": None}) == 0
+
+    def test_reset_ts_zero(self) -> None:
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_reset_ts({"reset_at": 0}) == 0
+
+    def test_reset_ts_integer(self) -> None:
+        from orch import llm_usage
+
+        assert llm_usage._codex_window_reset_ts({"reset_at": 1779689299}) == 1779689299
+
+
+class TestCodexUsageRemote:
+    """Tests for _codex_usage_remote() with mocked httpx.get."""
+
+    def test_happy_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Realistic payload yields {block_pct, week_pct, *reset, plan_type}."""
+        body = _fake_response(_codex_usage_payload(primary_pct=47, secondary_pct=12))
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            return body
+
+        monkeypatch.setattr("httpx.get", fake_get)
+        from orch import llm_usage
+
+        result = llm_usage._codex_usage_remote("access-tok", "acct-uuid")
+        assert result["block_pct"] == 47
+        assert result["week_pct"] == 12
+        assert result["plan_type"] == "plus"
+        assert result["block_reset"] is not None
+        assert result["week_reset"] is not None
+        # 5h shows remaining ("Xh Ym"); weekly shows wall-clock (contains ":")
+        assert re.fullmatch(r"\d+h \d+m|\d+m", result["block_reset"])
+        assert ":" in result["week_reset"]
+
+    def test_sends_oauth_headers(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Authorization Bearer + ChatGPT-Account-Id headers are present."""
+        captured: list[dict[str, Any]] = []
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            captured.append(kwargs)
+            return _fake_response(_codex_usage_payload())
+
+        monkeypatch.setattr("httpx.get", fake_get)
+        from orch import llm_usage
+
+        llm_usage._codex_usage_remote("my-access", "my-account")
+        assert len(captured) == 1
+        headers = captured[0]["headers"]
+        assert headers["Authorization"] == "Bearer my-access"
+        assert headers["ChatGPT-Account-Id"] == "my-account"
+        assert headers["Accept"] == "application/json"
+        # User-Agent identifies our poller for OpenAI traffic auditing
+        assert "iw-ai-core" in headers["User-Agent"]
+
+    def test_calls_wham_usage_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The exact backend-api URL is requested."""
+        captured: list[str] = []
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            captured.append(url)
+            return _fake_response(_codex_usage_payload())
+
+        monkeypatch.setattr("httpx.get", fake_get)
+        from orch import llm_usage
+
+        llm_usage._codex_usage_remote("t", "a")
+        assert captured == ["https://chatgpt.com/backend-api/wham/usage"]
+
+    def test_timeout_bounded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """httpx.get is called with a bounded timeout (≤10s)."""
+        captured: list[float] = []
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            captured.append(kwargs.get("timeout"))
+            return _fake_response(_codex_usage_payload())
+
+        monkeypatch.setattr("httpx.get", fake_get)
+        from orch import llm_usage
+
+        llm_usage._codex_usage_remote("t", "a")
+        assert captured[0] is not None
+        assert captured[0] <= 10.0
+
+    def test_missing_rate_limit_section(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Payload without rate_limit → 0% both bars, no reset labels, plan_type preserved."""
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            return _fake_response({"plan_type": "plus"})
+
+        monkeypatch.setattr("httpx.get", fake_get)
+        from orch import llm_usage
+
+        result = llm_usage._codex_usage_remote("t", "a")
+        assert result["block_pct"] == 0
+        assert result["week_pct"] == 0
+        assert result["block_reset"] is None
+        assert result["week_reset"] is None
+        assert result["plan_type"] == "plus"
+
+    def test_rate_limit_explicit_null(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """rate_limit: null (Rust double-Option's outer None) → safe 0%."""
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            return _fake_response({"plan_type": "free", "rate_limit": None})
+
+        monkeypatch.setattr("httpx.get", fake_get)
+        from orch import llm_usage
+
+        result = llm_usage._codex_usage_remote("t", "a")
+        assert result["block_pct"] == 0
+        assert result["week_pct"] == 0
+
+    def test_secondary_window_null(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Only primary_window populated → 5h bar live, weekly bar 0%."""
+        payload = _codex_usage_payload(primary_pct=80, secondary_pct=0)
+        payload["rate_limit"]["secondary_window"] = None
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            return _fake_response(payload)
+
+        monkeypatch.setattr("httpx.get", fake_get)
+        from orch import llm_usage
+
+        result = llm_usage._codex_usage_remote("t", "a")
+        assert result["block_pct"] == 80
+        assert result["week_pct"] == 0
+        assert result["week_reset"] is None
+
+    def test_fully_consumed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """used_percent=100 → block_pct=100; the chip will color red downstream."""
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            return _fake_response(_codex_usage_payload(primary_pct=100))
+
+        monkeypatch.setattr("httpx.get", fake_get)
+        from orch import llm_usage
+
+        result = llm_usage._codex_usage_remote("t", "a")
+        assert result["block_pct"] == 100
+
+    def test_http_status_error_propagates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Bad bearer (401) is raised so the orchestrator can log it."""
+        import httpx
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            raise httpx.HTTPStatusError("401", request=MagicMock(), response=MagicMock())
+
+        monkeypatch.setattr("httpx.get", fake_get)
+        from orch import llm_usage
+
+        with pytest.raises(httpx.HTTPStatusError):
+            llm_usage._codex_usage_remote("t", "a")
+
+
+class TestCodexUsage:
+    """Tests for _codex_usage() orchestrator with graceful failure."""
+
+    def test_no_oauth_returns_zero_and_logs_warning(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """When _load_openai_oauth() returns None, result is fully zeroed."""
+        monkeypatch.setattr("orch.llm_usage._load_openai_oauth", lambda: None)
+        from orch import llm_usage
+
+        with caplog.at_level(logging.WARNING):
+            result = llm_usage._codex_usage()
+        assert result == {
+            "block_pct": 0,
+            "week_pct": 0,
+            "block_reset": None,
+            "week_reset": None,
+            "plan_type": None,
+        }
+        assert "Codex OAuth credentials not found" in caplog.text
+
+    def test_remote_success(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """OAuth present + valid response → result mirrors _codex_usage_remote."""
+        _write_opencode_auth_oauth(tmp_path, access="tok-abc", account_id="acct-1")
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            return _fake_response(_codex_usage_payload(primary_pct=66, secondary_pct=33))
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.get", fake_get)
+            from orch import llm_usage
+
+            result = llm_usage._codex_usage()
+            assert result["block_pct"] == 66
+            assert result["week_pct"] == 33
+            assert result["plan_type"] == "plus"
+
+    def test_handles_http_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """401 / 404 from /wham/usage → zeroed dict, logged once."""
+        import httpx
+
+        _write_opencode_auth_oauth(tmp_path, access="tok-abc", account_id="acct-1")
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            raise httpx.HTTPStatusError("401", request=MagicMock(), response=MagicMock())
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.get", fake_get)
+            from orch import llm_usage
+
+            with caplog.at_level(logging.ERROR):
+                result = llm_usage._codex_usage()
+            assert result["block_pct"] == 0
+            assert result["week_pct"] == 0
+            assert "Codex usage fetch failed" in caplog.text
+
+    def test_handles_connect_timeout(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Network timeout → zeroed dict, logged."""
+        import httpx
+
+        _write_opencode_auth_oauth(tmp_path, access="t", account_id="a")
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            raise httpx.ConnectTimeout("connection refused")
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.get", fake_get)
+            from orch import llm_usage
+
+            with caplog.at_level(logging.ERROR):
+                result = llm_usage._codex_usage()
+            assert result["block_pct"] == 0
+            assert "Codex usage fetch failed" in caplog.text
+
+    def test_no_token_leaks_in_logs(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Critical: no access/refresh/accountId material may appear in log output."""
+        import httpx
+
+        # S105 false positives: these are fixture sentinels used to assert that
+        # NO token material reaches log output — the test would be meaningless
+        # if it didn't contain a distinctive string to grep the log for.
+        secret_access = "eyJSECRETACCESSTOKENVALUE.payload.signature"  # noqa: S105
+        secret_account = "11111111-2222-3333-4444-555555555555"  # noqa: S105
+        _write_opencode_auth_oauth(tmp_path, access=secret_access, account_id=secret_account)
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            raise httpx.HTTPStatusError("auth failed", request=MagicMock(), response=MagicMock())
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.get", fake_get)
+            from orch import llm_usage
+
+            with caplog.at_level(logging.DEBUG):
+                llm_usage._codex_usage()
+            log_text = caplog.text
+            assert secret_access not in log_text
+            assert secret_account not in log_text
+            assert "eyJSECRET" not in log_text
+
+
+class TestGetLlmUsageCodexIntegration:
+    """get_llm_usage() always includes a structurally-sound codex key."""
+
+    @pytest.fixture(autouse=True)
+    def clear_cache(self) -> None:
+        from orch import llm_usage
+
+        llm_usage._cache.clear()
+        yield
+        llm_usage._cache.clear()
+
+    def test_codex_key_present_with_all_subkeys(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """get_llm_usage()["codex"] has the full template-required key set."""
+        # No oauth → graceful zero, but the key set must still match.
+        monkeypatch.setattr("orch.llm_usage._load_openai_oauth", lambda: None)
+        monkeypatch.setattr("orch.llm_usage._load_minimax_key", lambda: None)
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            import importlib
+
+            import orch.llm_usage as llm_usage_mod
+
+            importlib.reload(llm_usage_mod)
+            result = llm_usage_mod.get_llm_usage()
+
+        assert "codex" in result
+        codex = result["codex"]
+        for key in ("block_pct", "week_pct", "block_reset", "week_reset", "plan_type"):
+            assert key in codex, f"codex missing key {key!r}"
+        # All zero / None on the no-auth path
+        assert codex["block_pct"] == 0
+        assert codex["week_pct"] == 0
+        assert codex["block_reset"] is None
+        assert codex["week_reset"] is None
+
+    def test_codex_failure_does_not_break_other_providers(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A Codex network failure must not stop Claude/MiniMax data from coming back."""
+
+        # _codex_usage already catches everything internally — confirm the outer
+        # try/except in get_llm_usage doesn't swallow other providers' data either.
+        def boom() -> dict[str, Any]:
+            raise RuntimeError("codex blew up after returning")
+
+        monkeypatch.setattr("orch.llm_usage._codex_usage", boom)
+        monkeypatch.setattr("orch.llm_usage._load_minimax_key", lambda: None)
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            import importlib
+
+            import orch.llm_usage as llm_usage_mod
+
+            importlib.reload(llm_usage_mod)
+            # Re-apply patches after reload (importlib.reload reloads the module's
+            # globals so monkeypatches done before the reload are wiped).
+            monkeypatch.setattr("orch.llm_usage._codex_usage", boom)
+            monkeypatch.setattr("orch.llm_usage._load_minimax_key", lambda: None)
+
+            result = llm_usage_mod.get_llm_usage()
+
+        assert "claude" in result
+        assert "minimax" in result
+        assert "codex" in result
+        # Codex zeroed by the outer fallback
+        assert result["codex"]["block_pct"] == 0
+        assert result["codex"]["week_pct"] == 0
