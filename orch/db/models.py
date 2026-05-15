@@ -448,6 +448,50 @@ class IdSequence(Base):
     __table_args__ = ({"comment": "Global atomic sequential ID allocation per prefix"},)
 
 
+class IdAllocation(Base):
+    """Audit log of keyed ID allocations for idempotent iw next-id (CR-00053)."""
+
+    __tablename__ = "id_allocations"
+
+    prefix: Mapped[str] = mapped_column(
+        Text,
+        primary_key=True,
+        comment="ID prefix: 'F' (Feature), 'I' (Issue), 'CR' (ChangeRequest), 'BATCH'",
+    )
+    number: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        comment="Allocated sequence number",
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Client-supplied idempotency key (NULL when no key provided)",
+    )
+    project_id: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Project that requested this allocation",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        comment="UTC timestamp of allocation",
+    )
+
+    __table_args__ = (
+        Index(
+            "idx_id_allocations_key",
+            "prefix",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+        {"comment": "Audit log of keyed ID allocations for idempotent iw next-id (CR-00053)"},
+    )
+
+
 class WorkItem(Base):
     """Features, Incidents, and Change Requests across all projects."""
 

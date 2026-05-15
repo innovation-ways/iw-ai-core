@@ -25,40 +25,115 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def allocate_next_id(session: Session, project_id: str, prefix: str) -> tuple[int, str]:  # noqa: ARG001
+def allocate_next_id(
+    session: Session,
+    project_id: str,
+    prefix: str,
+    *,
+    idempotency_key: str | None = None,
+) -> tuple[int, str]:  # noqa: ARG001
     """Atomically allocate the next sequential ID for *prefix*.
 
     Uses INSERT … ON CONFLICT DO NOTHING to initialise the row, then
     SELECT … FOR UPDATE to lock-and-increment atomically.  Safe under
     concurrent callers — only one transaction can hold the row lock at a time.
 
-    *project_id* is accepted for call-site compatibility but is no longer
-    stored — id_sequences is now a global (prefix-only) table.
+    When *idempotency_key* is provided and a row already exists for
+    (prefix, idempotency_key) in id_allocations, the previously-allocated
+    number is returned without touching id_sequences.  Otherwise (key is new),
+    id_sequences is incremented AND a row is written to id_allocations inside
+    a SAVEPOINT so that a concurrent UniqueViolation on the INSERT can be
+    recovered by rolling back the speculative id_sequences increment and
+    retrying the SELECT.
+
+    *project_id* is stored in id_allocations for audit purposes.
 
     Returns (number, formatted_id).
     """
     from sqlalchemy import select
     from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.exc import IntegrityError
 
-    from orch.db.models import IdSequence
+    from orch.db.models import IdAllocation, IdSequence
 
-    # Initialise the row if it doesn't exist yet (handles first-time creation
-    # and concurrent first-time callers — only one INSERT wins).
-    session.execute(
-        pg_insert(IdSequence).values(prefix=prefix, next_number=1).on_conflict_do_nothing()
+    # --- No idempotency key: original behaviour, no id_allocations written ---
+    if idempotency_key is None:
+        session.execute(
+            pg_insert(IdSequence).values(prefix=prefix, next_number=1).on_conflict_do_nothing()
+        )
+        session.flush()
+
+        row = session.execute(
+            select(IdSequence).where(IdSequence.prefix == prefix).with_for_update()
+        ).scalar_one()
+
+        number = row.next_number
+        row.next_number = number + 1
+        session.flush()
+
+        return number, format_id(prefix, number)
+
+    # --- Idempotency key provided: check for existing allocation first ---
+    existing = (
+        session.execute(
+            select(IdAllocation).where(
+                IdAllocation.prefix == prefix,
+                IdAllocation.idempotency_key == idempotency_key,
+            )
+        )
+        .scalars()
+        .first()
     )
-    session.flush()  # make the new row visible within this transaction
 
-    # Lock the row to prevent concurrent increments.
-    row = session.execute(
-        select(IdSequence).where(IdSequence.prefix == prefix).with_for_update()
-    ).scalar_one()
+    if existing is not None:
+        return existing.number, format_id(prefix, existing.number)
 
-    number = row.next_number
-    row.next_number = number + 1
-    session.flush()  # write the increment so subsequent calls in the same session see it
+    # New key: increment id_sequences AND insert into id_allocations inside
+    # a SAVEPOINT so that a concurrent INSERT UniqueViolation can be recovered.
+    for attempt in range(3):
+        try:
+            with session.begin_nested():
+                # Increment id_sequences (same lock-and-increment pattern as no-key path)
+                session.execute(
+                    pg_insert(IdSequence)
+                    .values(prefix=prefix, next_number=1)
+                    .on_conflict_do_nothing()
+                )
+                session.flush()
 
-    return number, format_id(prefix, number)
+                seq_row = session.execute(
+                    select(IdSequence).where(IdSequence.prefix == prefix).with_for_update()
+                ).scalar_one()
+
+                number = seq_row.next_number
+                seq_row.next_number = number + 1
+                session.flush()
+
+                # Insert into id_allocations to record this keyed allocation
+                session.add(
+                    IdAllocation(
+                        prefix=prefix,
+                        number=number,
+                        idempotency_key=idempotency_key,
+                        project_id=project_id,
+                    )
+                )
+                session.flush()
+
+            # Success — commit the nested transaction and return
+            return number, format_id(prefix, number)
+
+        except IntegrityError:
+            # Concurrent INSERT with the same (prefix, idempotency_key) won the race.
+            # Rollback the SAVEPOINT (already done by context manager on exit if
+            # exception propagates) and retry from the SELECT at the top of the loop.
+            # The savepoint rollback also undoes the speculative id_sequences increment.
+            if attempt == 2:
+                raise
+            # Fall through to retry
+
+    # Unreachable: the loop exhausts 3 attempts then raises IntegrityError.
+    raise RuntimeError("idempotent key allocation failed after 3 retries")  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
@@ -90,8 +165,17 @@ def current_project(ctx: click.Context) -> None:
     type=click.Choice(["feature", "incident", "cr", "batch", "research"]),
     help="Work item type",
 )
+@click.option(
+    "--idempotency-key",
+    "idempotency_key",
+    required=False,
+    default=None,
+    type=str,
+    help="If provided, return the previously-allocated ID for this "
+    "(type, key) pair instead of allocating a new one.",
+)
 @click.pass_context
-def next_id(ctx: click.Context, item_type: str) -> None:
+def next_id(ctx: click.Context, item_type: str, idempotency_key: str | None) -> None:
     """Atomically allocate the next sequential ID for a work item type."""
     project_id = resolve_project(ctx)
     prefix = TYPE_TO_PREFIX[item_type]
@@ -99,7 +183,9 @@ def next_id(ctx: click.Context, item_type: str) -> None:
     get_session = ctx.obj["get_session"]
     try:
         with get_session() as session:
-            number, formatted_id = allocate_next_id(session, project_id, prefix)
+            number, formatted_id = allocate_next_id(
+                session, project_id, prefix, idempotency_key=idempotency_key
+            )
     except Exception as exc:  # noqa: BLE001
         output_error(ctx, f"Database error: {exc}", 3)
 
