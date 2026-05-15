@@ -6,6 +6,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+import pytest
 from click.testing import CliRunner
 from sqlalchemy.orm import Session as SASession
 
@@ -53,6 +54,7 @@ def invoke(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.smoke
 def test_next_id_sequential(
     db_session: Any,
     test_project: Project,

@@ -173,6 +173,60 @@ daemon-stop:
 dashboard-start:
 	uv run uvicorn dashboard.app:create_app --factory --host 0.0.0.0 --port 9900 --reload
 
+# --- Allure ---
+ALLURE_RESULTS := tests/output/allure-results
+ALLURE_REPORT  := tests/output/allure-report
+
+allure-unit:
+	@command -v uv >/dev/null 2>&1 || { echo "ERROR: 'uv' not found. Install: see uv docs"; exit 1; }
+	@rm -rf $(ALLURE_RESULTS)
+	@mkdir -p $(ALLURE_RESULTS)
+	@echo "[allure-unit] Running unit tests with Allure reporting..."
+	@uv run pytest tests/unit/ -v --alluredir=$(ALLURE_RESULTS)
+	@echo "[allure-unit] Run 'make allure-serve' to view report"
+
+allure-integration:
+	@command -v uv >/dev/null 2>&1 || { echo "ERROR: 'uv' not found."; exit 1; }
+	@rm -rf $(ALLURE_RESULTS)
+	@mkdir -p $(ALLURE_RESULTS)
+	@echo "[allure-integration] Running integration tests with Allure reporting..."
+	@uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser -v --alluredir=$(ALLURE_RESULTS)
+	@echo "[allure-integration] Run 'make allure-serve' to view report"
+
+allure-all:
+	@command -v uv >/dev/null 2>&1 || { echo "ERROR: 'uv' not found."; exit 1; }
+	@rm -rf $(ALLURE_RESULTS)
+	@mkdir -p $(ALLURE_RESULTS)
+	@echo "[allure-all] Running all tests with Allure reporting..."
+	@uv run pytest tests/unit/ -v --alluredir=$(ALLURE_RESULTS)
+	@uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser -v --alluredir=$(ALLURE_RESULTS)
+	@echo "[allure-all] Run 'make allure-serve' to view report"
+
+allure-report:
+	@command -v allure >/dev/null 2>&1 || { \
+		echo "ERROR: 'allure' CLI not found."; \
+		echo "Install: brew install allure   (or)   see https://allurereport.org/docs/install/"; \
+		exit 1; \
+	}
+	@mkdir -p $(ALLURE_REPORT)
+	@echo "[allure-report] Generating HTML report..."
+	@allure generate $(ALLURE_RESULTS) -o $(ALLURE_REPORT) --clean
+	@echo "[allure-report] Report written to $(ALLURE_REPORT)/"
+
+allure-serve:
+	@command -v allure >/dev/null 2>&1 || { \
+		echo "ERROR: 'allure' CLI not found."; \
+		echo "Install: brew install allure   (or)   see https://allurereport.org/docs/install/"; \
+		exit 1; \
+	}
+	@echo "[allure-serve] Starting Allure dashboard (press Ctrl+C to stop)..."
+	@allure serve $(ALLURE_RESULTS)
+
+allure-clean:
+	@echo "[allure-clean] Cleaning Allure artefacts..."
+	@rm -rf $(ALLURE_RESULTS) $(ALLURE_REPORT)
+	@echo "[allure-clean] Done"
+
 # --- Security ---
 SECURITY_DIR := tests/output/security
 

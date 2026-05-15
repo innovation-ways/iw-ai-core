@@ -70,6 +70,7 @@ def test_confirm_dialog_macro_renders_form_when_form_html_set():
     assert 'name="to_draft"' in rendered, "Checkbox for to_draft must be in the form"
     # Confirm button label must be present
     assert "Cancel Item" in rendered
+    assert rendered.count("<form") == 1, "Exactly one form element expected"
 
 
 def test_confirm_dialog_macro_byte_identical_when_form_html_empty():
@@ -127,6 +128,7 @@ def test_batch_detail_header_renders_cancel_button_for_executing_batch():
     # Must NOT have the old if/elif chain that only showed cancel for 'planning'/'approved'
     # (executing is now included)
     assert "executing" in rendered  # cancel button appears for executing
+    assert rendered.count("api/confirm-batch/cancel/BATCH-1") >= 1
 
 
 # ---------------------------------------------------------------------------

@@ -32,6 +32,8 @@ coverage.xml
 allure-results/
 allure-report-*/
 allure-report/
+tests/output/allure-results/
+tests/output/allure-report/
 
 
 # Git worktrees (parallel AI agent isolation)
