@@ -47,6 +47,7 @@ CANCELLABLE_WORK_ITEM_STATUSES: frozenset[WorkItemStatus] = frozenset(
     {
         WorkItemStatus.approved,
         WorkItemStatus.in_progress,
+        WorkItemStatus.failed,
         WorkItemStatus.paused,
     }
 )
@@ -88,6 +89,53 @@ _TERMINAL_BATCH_ITEM_STATUSES: frozenset[BatchItemStatus] = frozenset(
         BatchItemStatus.setup_failed,
     }
 )
+
+# Step statuses that should be flipped to 'skipped' on cancel (terminal ones —
+# completed/failed/skipped — are kept untouched so history is preserved).
+_NON_TERMINAL_STEP_STATUSES: frozenset[StepStatus] = frozenset(
+    {StepStatus.pending, StepStatus.in_progress, StepStatus.needs_fix}
+)
+
+
+# ---------------------------------------------------------------------------
+# Pure validators (no DB) — used by both the service layer below and unit
+# tests that need to lock the transition contract at unit-test speed.
+# ---------------------------------------------------------------------------
+
+
+def validate_batch_cancel_transition(status: BatchStatus) -> str | None:
+    """Return None when a batch in ``status`` may be cancelled, else the error message.
+
+    The message is the exact string surfaced to the operator by the CLI
+    (``iw batch-cancel``) and the dashboard's HTTP 409 response.
+    """
+    if status not in CANCELLABLE_BATCH_STATUSES:
+        return f"Cannot cancel batch: current status is '{status.value}'"
+    return None
+
+
+def validate_item_cancel_transition(
+    status: WorkItemStatus,
+    active_batch_id: str | None,
+) -> str | None:
+    """Return None when a work item may be cancelled, else the error message.
+
+    The status guard runs *before* the active-batch guard so a draft item in
+    an active batch reports the status error (which is the more actionable
+    one) rather than the batch hint.
+
+    When the item belongs to an active batch the message names the batch
+    and prompts the operator to use ``iw batch-cancel`` — both substrings
+    are part of the public contract checked by the CLI integration test.
+    """
+    if status not in CANCELLABLE_WORK_ITEM_STATUSES:
+        return f"Cannot cancel work item: current status is '{status.value}'"
+    if active_batch_id is not None:
+        return (
+            f"Cannot cancel work item: belongs to active batch {active_batch_id}. "
+            f"Use 'iw batch-cancel {active_batch_id}' instead."
+        )
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -150,9 +198,11 @@ def cancel_work_item(
     if item is None:
         raise LookupError(f"Work item {item_id} not found in project {project_id}")
 
-    # Status guard
-    if item.status not in CANCELLABLE_WORK_ITEM_STATUSES:
-        raise ValueError(f"Cannot cancel work item: current status is '{item.status.value}'")
+    # Status guard (runs before the active-batch lookup so the more
+    # actionable error wins when both rules would fire).
+    status_error = validate_item_cancel_transition(item.status, active_batch_id=None)
+    if status_error is not None:
+        raise ValueError(status_error)
 
     # Active-batch guard — block cancel if item belongs to a non-terminal batch
     active_batch_item = db.execute(
@@ -166,9 +216,14 @@ def cancel_work_item(
     ).scalar_one_or_none()
 
     if active_batch_item is not None:
-        raise ValueError(
-            f"Cannot cancel work item: belongs to active batch {active_batch_item.batch_id}"
+        batch_error = validate_item_cancel_transition(
+            item.status,
+            active_batch_id=active_batch_item.batch_id,
         )
+        # batch_error is always non-None here: status has already been
+        # validated above (cancellable) and active_batch_id is non-None,
+        # so the validator's batch-membership branch must fire.
+        raise ValueError(batch_error or "in active batch")
 
     # Determine target status
     new_status = WorkItemStatus.draft if to_draft else WorkItemStatus.cancelled
@@ -188,44 +243,51 @@ def cancel_work_item(
         )
         for step in steps_to_reset:
             step.status = StepStatus.pending
+            step.started_at = None
+            step.completed_at = None
 
-    # Kill running step processes for this item
-    running_steps = (
-        db.execute(
-            select(WorkflowStep).where(
-                WorkflowStep.project_id == project_id,
-                WorkflowStep.work_item_id == item_id,
-                WorkflowStep.status == StepStatus.in_progress,
+    # All non-terminal steps (pending / in_progress / needs_fix) are flipped to
+    # 'skipped' so the work item's downstream pipeline doesn't try to run them
+    # again. Already-terminal steps (completed / failed / skipped) are left
+    # alone — the cancel must preserve history, not rewrite it.
+    if not to_draft:
+        non_terminal_steps = (
+            db.execute(
+                select(WorkflowStep).where(
+                    WorkflowStep.project_id == project_id,
+                    WorkflowStep.work_item_id == item_id,
+                    WorkflowStep.status.in_(_NON_TERMINAL_STEP_STATUSES),
+                )
             )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
 
-    for step in running_steps:
-        run = db.execute(
-            select(StepRun)
-            .where(
-                StepRun.step_id == step.id,
-                StepRun.status.in_(["running"]),
-            )
-            .order_by(StepRun.run_number.desc())
-            .limit(1)
-        ).scalar_one_or_none()
+        for step in non_terminal_steps:
+            # If this step is currently running, kill its latest StepRun.
+            if step.status == StepStatus.in_progress:
+                run = db.execute(
+                    select(StepRun)
+                    .where(
+                        StepRun.step_id == step.id,
+                        StepRun.status == RunStatus.running,
+                    )
+                    .order_by(StepRun.run_number.desc())
+                    .limit(1)
+                ).scalar_one_or_none()
 
-        if run is not None and run.pid is not None:
-            try:
-                os.kill(run.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass  # already dead
-            except OSError as exc:
-                teardown_errors.append(f"failed to kill PID {run.pid}: {exc}")
+                if run is not None and run.pid is not None:
+                    try:
+                        os.kill(run.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass  # already dead
+                    except OSError as exc:
+                        teardown_errors.append(f"failed to kill PID {run.pid}: {exc}")
 
-            # Mark the step run as killed
-            run.status = RunStatus.killed
-            run.completed_at = datetime.now(UTC)
+                    run.status = RunStatus.killed
+                    run.completed_at = datetime.now(UTC)
 
-        step.status = StepStatus.skipped
+            step.status = StepStatus.skipped
 
     # Teardown worktree via git worktree remove (best-effort)
     _teardown_item_worktree(db, project_id, item_id, teardown_errors)
@@ -368,8 +430,9 @@ def cancel_batch(
     if batch is None:
         raise LookupError(f"Batch {batch_id} not found in project {project_id}")
 
-    if batch.status not in CANCELLABLE_BATCH_STATUSES:
-        raise ValueError(f"Cannot cancel batch: current status is '{batch.status.value}'")
+    status_error = validate_batch_cancel_transition(batch.status)
+    if status_error is not None:
+        raise ValueError(status_error)
 
     cancelled_batch_items: list[str] = []
     reset_to_draft: list[str] = []
@@ -377,6 +440,7 @@ def cancel_batch(
     teardown_errors: list[str] = []
 
     new_batch_status = BatchStatus.cancelled
+    target_item_status = WorkItemStatus.draft if reset_items else WorkItemStatus.cancelled
 
     # Iterate over non-terminal batch items
     batch_items = (
@@ -391,10 +455,46 @@ def cancel_batch(
         .all()
     )
 
+    # Imported lazily so unit tests can monkeypatch
+    # `orch.daemon.step_monitor.kill_process_group` without dragging the
+    # full daemon package into the cancel module's import graph.
+    from orch.daemon import step_monitor  # noqa: PLC0415
+
     for bi in batch_items:
         item_id = bi.work_item_id
 
-        # Kill running process
+        # Kill any running StepRuns owned by this work item — these are the
+        # actual agent processes spawned by the daemon. We use
+        # `kill_process_group` so the whole agent session (script -qec + the
+        # inner CLI) receives SIGTERM, not just the shell wrapper.
+        running_runs = (
+            db.execute(
+                select(StepRun)
+                .join(WorkflowStep, StepRun.step_id == WorkflowStep.id)
+                .where(
+                    WorkflowStep.project_id == project_id,
+                    WorkflowStep.work_item_id == item_id,
+                    StepRun.status == RunStatus.running,
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        for run in running_runs:
+            if run.pid is not None:
+                try:
+                    step_monitor.kill_process_group(run.pid)
+                    killed_pids.append(run.pid)
+                except OSError as exc:
+                    teardown_errors.append(f"failed to kill PID {run.pid}: {exc}")
+            run.status = RunStatus.killed
+            run.pid_alive = False
+            run.completed_at = datetime.now(UTC)
+
+        # Back-compat: some early daemons recorded the launcher PID on the
+        # BatchItem itself. Honour it when present so a re-run against an
+        # older row still tears down cleanly.
         if bi.pid is not None:
             try:
                 os.kill(bi.pid, signal.SIGTERM)
@@ -427,6 +527,26 @@ def cancel_batch(
             except OSError as exc:
                 teardown_errors.append(f"git worktree remove failed for {worktree_path}: {exc}")
 
+        # Update workflow step statuses. Already-terminal steps
+        # (completed/failed/skipped) are left untouched.
+        steps = (
+            db.execute(
+                select(WorkflowStep).where(
+                    WorkflowStep.project_id == project_id,
+                    WorkflowStep.work_item_id == item_id,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for step in steps:
+            if reset_items:
+                step.status = StepStatus.pending
+                step.started_at = None
+                step.completed_at = None
+            elif step.status in _NON_TERMINAL_STEP_STATUSES:
+                step.status = StepStatus.skipped
+
         # Update work item status
         item = db.execute(
             select(WorkItem).where(
@@ -435,43 +555,32 @@ def cancel_batch(
             )
         ).scalar_one_or_none()
 
-        if item is not None:
-            # Reset steps if going to draft
-            if reset_items:
-                steps_to_reset = (
-                    db.execute(
-                        select(WorkflowStep).where(
-                            WorkflowStep.project_id == project_id,
-                            WorkflowStep.work_item_id == item_id,
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-                for step in steps_to_reset:
-                    step.status = StepStatus.pending
-            item.status = WorkItemStatus.draft
+        # Don't regress a work item that already reached a happy terminal
+        # state (e.g. a completed item still on the batch as a historical
+        # row) — only flip items that are still in flight.
+        if item is not None and item.status not in (
+            WorkItemStatus.completed,
+            WorkItemStatus.cancelled,
+        ):
+            item.status = target_item_status
             item.updated_at = datetime.now(UTC)
-            reset_to_draft.append(item_id)
-        else:
-            item = db.execute(
-                select(WorkItem).where(
-                    WorkItem.project_id == project_id,
-                    WorkItem.id == item_id,
-                )
-            ).scalar_one_or_none()
-            if item is not None:
-                item.status = WorkItemStatus.cancelled
-                item.updated_at = datetime.now(UTC)
+            if reset_items:
+                reset_to_draft.append(item_id)
+            else:
                 cancelled_batch_items.append(item_id)
 
-        # Mark batch item as skipped
+        # Mark batch item as skipped and record a cancellation breadcrumb in
+        # notes so a reader scanning batch_items can tell *why* it stopped
+        # without joining DaemonEvent.
         bi.status = BatchItemStatus.skipped
+        bi.notes = f"Cancelled by batch-cancel of {batch_id}: {reason}"
 
     batch.status = new_batch_status
     batch.updated_at = datetime.now(UTC)
-    db.commit()
 
+    # Emit the audit event *before* commit so it lands in the same
+    # transaction as the status/item updates — a partial commit (status
+    # changed but no event) would mask cancellations from the audit log.
     _emit(
         db,
         "batch_cancelled",
@@ -487,6 +596,8 @@ def cancel_batch(
             "killed_pids": killed_pids,
         },
     )
+
+    db.commit()
 
     return CancelBatchResult(
         new_batch_status=new_batch_status,

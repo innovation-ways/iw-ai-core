@@ -311,13 +311,25 @@ class TestCancelBatchLoopPaths:
         wi.updated_at = None
         return wi
 
-    def _make_db(self, batch, batch_items, work_item):
+    def _make_db(self, batch, batch_items, work_item, running_runs=None, steps=None):
+        """Build a mock Session matching cancel_batch's query order.
+
+        Per batch_item, cancel_batch issues three reads:
+        1. running StepRun rows (scalars list — joined with WorkflowStep)
+        2. all WorkflowStep rows for the item (scalars list)
+        3. the WorkItem row (scalar)
+        """
+        running_runs = running_runs if running_runs is not None else []
+        steps = steps if steps is not None else []
+
         db = MagicMock()
         calls = [
             _exec_scalar(batch),
             _exec_scalars(batch_items),
         ]
         for _ in batch_items:
+            calls.append(_exec_scalars(running_runs))
+            calls.append(_exec_scalars(steps))
             calls.append(_exec_scalar(work_item))
         db.execute.side_effect = calls
         return db
@@ -410,24 +422,59 @@ class TestCancelBatchLoopPaths:
 
         assert any("failed" in e for e in result.teardown_errors)
 
-    def test_batch_item_work_item_not_found_uses_else_branch(self):
-        """When work item is None, the else branch re-queries and sets cancelled."""
+    def test_batch_item_work_item_missing_skips_status_update(self):
+        """When the WorkItem row is missing the batch item is still tidied up.
+
+        In practice the FK on batch_items.(project_id, work_item_id) makes this
+        path very rare, but cancel_batch must not crash or count a phantom
+        cancellation. The BatchItem is still marked skipped and its notes are
+        populated so an operator can see what happened.
+        """
         batch = self._make_batch()
         bi = self._make_batch_item()
-        # Work item returned None first time, then found on re-query
-        wi = self._make_work_item()
         db = MagicMock()
         db.execute.side_effect = [
             _exec_scalar(batch),
             _exec_scalars([bi]),
-            _exec_scalar(None),  # first WorkItem lookup → None → else branch
-            _exec_scalar(wi),  # second WorkItem lookup (re-query) → found
+            _exec_scalars([]),  # running_runs for this bi
+            _exec_scalars([]),  # workflow_steps for this bi
+            _exec_scalar(None),  # WorkItem lookup → None
         ]
 
         result = cancel_batch(db, "proj", "B-001")
 
-        assert wi.status == WorkItemStatus.cancelled
-        assert "I-001" in result.cancelled_batch_items
+        assert result.cancelled_batch_items == []
+        assert result.reset_to_draft == []
+        assert bi.status == BatchItemStatus.skipped
+        assert bi.notes is not None
+        assert "B-001" in bi.notes
+
+    def test_reset_items_flag_routes_to_draft(self):
+        """--reset-items must push the work item to draft, not cancelled."""
+        batch = self._make_batch()
+        bi = self._make_batch_item()
+        wi = self._make_work_item()
+        db = self._make_db(batch, [bi], wi)
+
+        result = cancel_batch(db, "proj", "B-001", reset_items=True)
+
+        assert wi.status == WorkItemStatus.draft
+        assert result.reset_to_draft == ["I-001"]
+        assert result.cancelled_batch_items == []
+
+    def test_completed_work_item_status_not_regressed(self):
+        """A completed historical item on the batch must NOT regress to cancelled."""
+        batch = self._make_batch()
+        bi = self._make_batch_item()
+        wi = self._make_work_item()
+        wi.status = WorkItemStatus.completed
+        db = self._make_db(batch, [bi], wi)
+
+        result = cancel_batch(db, "proj", "B-001")
+
+        assert wi.status == WorkItemStatus.completed
+        # Item not counted because nothing was changed.
+        assert result.cancelled_batch_items == []
 
     def test_empty_batch_no_items_returns_empty_result(self):
         batch = self._make_batch()
@@ -440,3 +487,55 @@ class TestCancelBatchLoopPaths:
         assert result.cancelled_batch_items == []
         assert result.killed_pids == []
         assert result.teardown_errors == []
+
+    def test_running_step_run_killed_via_kill_process_group(self):
+        """Running StepRuns owned by batch items are SIGTERM'd via step_monitor.
+
+        Production agents are launched in their own session — only
+        ``kill_process_group`` reaches the inner CLI; a plain ``os.kill``
+        on the wrapper PID leaks the agent. Locking that choice here means
+        a regression that switches back to ``os.kill`` would fail the test.
+        """
+        from orch.db.models import RunStatus
+
+        batch = self._make_batch()
+        bi = self._make_batch_item()
+        wi = self._make_work_item()
+        run = MagicMock()
+        run.pid = 99999
+        run.status = RunStatus.running
+        run.pid_alive = True
+        run.completed_at = None
+        db = self._make_db(batch, [bi], wi, running_runs=[run])
+
+        with patch("orch.daemon.step_monitor.kill_process_group") as mock_kpg:
+            mock_kpg.return_value = True
+            result = cancel_batch(db, "proj", "B-001")
+
+        mock_kpg.assert_called_once_with(99999)
+        assert result.killed_pids == [99999]
+        assert run.status == RunStatus.killed
+        assert run.pid_alive is False
+        assert run.completed_at is not None
+
+    def test_running_step_run_with_no_pid_still_marked_killed(self):
+        """A running StepRun row with NULL pid still gets its status flipped."""
+        from orch.db.models import RunStatus
+
+        batch = self._make_batch()
+        bi = self._make_batch_item()
+        wi = self._make_work_item()
+        run = MagicMock()
+        run.pid = None
+        run.status = RunStatus.running
+        run.pid_alive = True
+        run.completed_at = None
+        db = self._make_db(batch, [bi], wi, running_runs=[run])
+
+        with patch("orch.daemon.step_monitor.kill_process_group") as mock_kpg:
+            result = cancel_batch(db, "proj", "B-001")
+
+        mock_kpg.assert_not_called()
+        assert result.killed_pids == []
+        assert run.status == RunStatus.killed
+        assert run.pid_alive is False
