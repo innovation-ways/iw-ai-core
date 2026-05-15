@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FastAPI Dashboard</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 24px;
+         color: #0F172A; line-height: 1.6; }
+  h1,h2,h3 { color: #1E293B; } h2 { border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; }
+   table { border-collapse: collapse; width: 100%; }
+   th,td { border: 1px solid #E2E8F0; padding: 8px 12px; }
+  th { background: #F1F5F9; } img { max-width: 100%; }
+  code { background: #F1F5F9; padding: 2px 5px; border-radius: 3px; font-size: 0.875em; }
+  pre { background: #F1F5F9; padding: 16px; border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+</style>
+</head>
+<body><h1>FastAPI Dashboard</h1>
+<p>The dashboard is a FastAPI web UI (port 9900) providing real-time visibility and manual controls for the IW AI Core orchestration platform. It is the primary human interface for managing projects, work items, batches, documentation, code understanding, and background jobs.</p>
+<h2>Purpose</h2>
+<p>The dashboard surfaces everything the daemon writes to PostgreSQL in a browsable, interactive UI. Agents run in git worktrees and report results via <code>iw</code> CLI commands; the dashboard reads that same state and renders it. No business logic lives in the dashboard routers — they only validate inputs and delegate to the <code>orch/</code> layer.</p>
+<h2>Key Components</h2>
+<h3>Application Factory</h3>
+<p><code>dashboard/app.py</code> — <code>create_app()</code> bootstraps the FastAPI application:</p>
+<ul>
+<li><strong>Lifespan</strong>: On startup, <code>mark_orphaned_runs()</code> flips crashed TestRuns to <code>error</code>, then <code>verify_instance_identity()</code> confirms the DB fingerprint matches (CR-00014). Failures are suppressed in test/operator contexts but propagate in production.</li>
+<li><strong>Session cookie</strong>: Sets an <code>iw_chat_session</code> HttpOnly cookie (readable by JS for localStorage scoping) if absent.</li>
+<li><strong>Alembic guard middleware</strong>: Throttles DB-schema-behind warnings at most once per 10 seconds.</li>
+<li><strong>Schema-mismatch handler</strong>: Catches SQLAlchemy <code>ProgrammingError</code> / <code>UndefinedColumn</code> and returns a clear 503 with remediation steps (F-00079).</li>
+<li><strong>Jinja2 templates</strong>: Registered on <code>app.state.templates</code> with custom filters: <code>intcomma</code>, <code>timeago</code>, <code>fmt_ts_time</code>, <code>localdt</code>. The <code>is_db_stale</code> global is also attached.</li>
+<li><strong>Health endpoint</strong>: <code>GET /health</code> — used by browser_verification steps.</li>
+</ul>
+<h3>Routers</h3>
+<p>All routers are registered in <code>app.py:277–308</code>. Business logic stays in <code>orch/</code>; routers are thin.</p>
+<p><strong>Core navigation &amp; project selection</strong></p>
+<table>
+<thead>
+<tr>
+<th>Router</th>
+<th>Prefix</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>projects.py</code></td>
+<td><code>/projects</code></td>
+<td>Project list, creation modal, nav fragment</td>
+</tr>
+<tr>
+<td><code>project_dashboard.py</code></td>
+<td><code>/project/{id}</code></td>
+<td>Per-project home</td>
+</tr>
+<tr>
+<td><code>project_pages.py</code></td>
+<td><code>/project/{id}</code></td>
+<td>Per-project queue and history pages</td>
+</tr>
+<tr>
+<td><code>running.py</code></td>
+<td><code>/running</code></td>
+<td>System-wide running items view</td>
+</tr>
+<tr>
+<td><code>system.py</code></td>
+<td><code>/system</code></td>
+<td>Status, config, all-active</td>
+</tr>
+<tr>
+<td><code>healthz.py</code></td>
+<td><code>/healthz</code></td>
+<td>DB identity probe, unauthenticated</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Work items, batches, actions</strong></p>
+<table>
+<thead>
+<tr>
+<th>Router</th>
+<th>Prefix</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>items.py</code></td>
+<td><code>/project/{id}/items/{item_id}</code></td>
+<td>Item detail tabs: overview, design-doc, reports, artifacts, logs, fix cycles, execution report, evidences</td>
+</tr>
+<tr>
+<td><code>batches.py</code></td>
+<td><code>/project/{id}/batches</code></td>
+<td>Batch list, batch detail, batch diagram (PNG/.drawio)</td>
+</tr>
+<tr>
+<td><code>actions.py</code></td>
+<td><code>/actions/*</code></td>
+<td>htmx endpoints: approve, cancel, pause, resume, restart, create batch, etc.</td>
+</tr>
+<tr>
+<td><code>search.py</code></td>
+<td><code>/project/{id}/search</code></td>
+<td>Project-scoped FTS search</td>
+</tr>
+<tr>
+<td><code>sse.py</code></td>
+<td><code>/api/stream</code></td>
+<td><code>GET /api/stream/events</code> — SSE for live updates</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Code view</strong> (backed by <code>orch/rag/</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Router</th>
+<th>Prefix</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>code_ui.py</code></td>
+<td><code>/project/{id}/code</code></td>
+<td>Code browser page, index status, architecture map, index/reindex/regen-map/delete-index actions, SSE for index progress</td>
+</tr>
+<tr>
+<td><code>code.py</code></td>
+<td><code>/api/projects/{id}/code</code></td>
+<td>Module listing, module detail, symbol explainer</td>
+</tr>
+<tr>
+<td><code>code_qa.py</code></td>
+<td><code>/api/projects/{id}/code/qa</code></td>
+<td>SSE streaming RAG Q&amp;A with citations</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Docs view</strong> (backed by <code>orch/doc_service.py</code>, <code>orch/doc_sections.py</code>, <code>orch/doc_diff.py</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Router</th>
+<th>Prefix</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>docs.py</code></td>
+<td><code>/project/{id}/docs</code></td>
+<td>Library, detail, HTML/PDF view, versions, diffs, stale detection, link validation, lint warnings, IDE tab, editorial guides, DocGenerationJob lifecycle</td>
+</tr>
+<tr>
+<td><code>docs_global.py</code></td>
+<td><code>/docs</code></td>
+<td>Cross-project doc search</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Research view</strong></p>
+<table>
+<thead>
+<tr>
+<th>Router</th>
+<th>Prefix</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>research.py</code></td>
+<td><code>/project/{id}/research</code></td>
+<td>List, detail, HTML view, search (filters <code>doc_type=research</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Frontend-triggered runs</strong></p>
+<table>
+<thead>
+<tr>
+<th>Router</th>
+<th>Prefix</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tests.py</code></td>
+<td><code>/project/{id}/tests</code></td>
+<td>Launch per category, live log, Allure results, kill run</td>
+</tr>
+<tr>
+<td><code>quality.py</code></td>
+<td><code>/project/{id}/quality</code></td>
+<td>Static analysis / quality gates (same shape as tests)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Operations</strong></p>
+<table>
+<thead>
+<tr>
+<th>Router</th>
+<th>Prefix</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jobs_ui.py</code></td>
+<td><code>/project/{id}/jobs</code></td>
+<td>Unified job table via <code>orch/jobs/aggregator.py</code></td>
+</tr>
+<tr>
+<td><code>worktrees.py</code></td>
+<td><code>/system/worktrees</code></td>
+<td>Git status of active agent worktrees</td>
+</tr>
+<tr>
+<td><code>daemon_control.py</code></td>
+<td><code>/system/daemon</code></td>
+<td>Daemon lifecycle from UI</td>
+</tr>
+<tr>
+<td><code>_run_helpers.py</code></td>
+<td>—</td>
+<td>Shared helpers for tests/quality routers</td>
+</tr>
+</tbody>
+</table>
+<h3>Dependencies</h3>
+<p><code>dashboard/dependencies.py</code> — <code>get_db()</code> yields a SQLAlchemy <code>Session</code> per request using <code>SessionLocal</code> from <code>orch.db.session</code> (same sync ORM as the daemon).</p>
+<h3>Static Assets</h3>
+<p><code>dashboard/static/</code> — prebuilt Tailwind CSS (<code>styles.css</code>), JS, and other assets. Regenerated via <code>make css</code>.</p>
+<h3>Templates</h3>
+<table>
+<thead>
+<tr>
+<th>Directory</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>templates/pages/</code></td>
+<td>Full-page templates (extend <code>base.html</code>)</td>
+</tr>
+<tr>
+<td><code>templates/components/</code></td>
+<td>Reusable Jinja2 macros/includes</td>
+</tr>
+<tr>
+<td><code>templates/fragments/</code></td>
+<td>htmx partial responses — <strong>do NOT extend <code>base.html</code></strong></td>
+</tr>
+<tr>
+<td><code>templates/pdf/</code></td>
+<td>PDF rendering templates for WeasyPrint</td>
+</tr>
+</tbody>
+</table>
+<h2>Data Flow</h2>
+<h2>```mermaid</h2>
+<p>config:<br/>
+  layout: elk</p>
+<hr/>
+<p>flowchart TB<br/>
+    Browser["Browser (htmx / SSE)"]<br/>
+    Dashboard["FastAPI Dashboard :9900"]<br/>
+    OrchDB["PostgreSQL :5433"]<br/>
+    DocService["orch/doc_service.py"]<br/>
+    DocDiff["orch/doc_diff.py"]<br/>
+    DocSections["orch/doc_sections.py"]<br/>
+    DocJob["DocGenerationJob (DB table)"]<br/>
+    DocJobPoller["orch/daemon/doc_job_poller.py"]<br/>
+    Agent["AI Agent (iw-doc-generator)"]</p>
+<pre><code>Browser --&gt;|"htmx POST / SSE stream"| Dashboard
+Dashboard --&gt;|"SQLAlchemy sync"| OrchDB
+Dashboard --&gt; DocService
+Dashboard --&gt; DocDiff
+Dashboard --&gt; DocSections
+
+DocJob --&gt; DocJobPoller
+DocJobPoller --&gt; Agent
+Agent --&gt;|"iw doc-update"| DocService
+Agent --&gt;|"iw doc-job-done"| DocJob
+</code></pre></body>
+</html>

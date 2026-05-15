@@ -1,0 +1,114 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00082",
+  "type": "Issue",
+  "title": "Fix-cycle agent has no allowed_paths enforcement — drifts or reverts",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/fix_cycle.py",
+      "tests/integration/test_fix_cycle_scope_enforcement.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "pipeline-impl",
+      "description": "Inject scope.allowed_paths into the fix-cycle prompt (operator-readable block at the top); after each cycle, run scope_gate matching against the working-tree diff; on any out-of-scope edit, set the cycle outcome to escalate-to-operator without auto-reverting the agent's edits and without advancing the step. Add a daemon log line per cycle: 'fix_cycle scope: allowed=N in_scope=K out_of_scope=M'.",
+      "prompt": "prompts/I-00082_S01_Pipeline_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S01: confirm prompt injection, scope-match logic, no auto-revert behaviour, escalation path is clean, log line present.",
+      "prompt": "prompts/I-00082_S02_CodeReview_Pipeline_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Author tests/integration/test_fix_cycle_scope_enforcement.py — reproduction test (out-of-scope edit triggers escalate-to-operator, agent's edits are preserved verbatim), happy-path regression (in-scope edits advance normally), and operator-pre-edit preservation test.",
+      "prompt": "prompts/I-00082_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S03 tests: assertion strength (semantic, not shape), reproduction test would fail pre-fix, regression coverage of all three AC paths.",
+      "prompt": "prompts/I-00082_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Cross-agent final review of S01..S04: all three ACs covered, no scope creep, prompt+behaviour parity, daemon log line shape matches.",
+      "prompt": "prompts/I-00082_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid vacuous tests)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scan (gitleaks)",
+      "timeout": 300
+    },
+    {
+      "step": "S14",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill — focus on whether the new escalation path itself produced any agent thrash, and whether the prompt-injected allowed_paths block survived all cycles.",
+      "prompt": "prompts/I-00082_S14_SelfAssess_prompt.md"
+    }
+  ]
+}

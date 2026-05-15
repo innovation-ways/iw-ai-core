@@ -523,6 +523,45 @@ iw batch-resume <batch_id> [--project <id>] [--json]
 
 ---
 
+#### `iw batch-cancel`
+
+Cancel a batch and fan out to its non-terminal items. Allowed from
+`planning, approved, executing, paused, blocked, publish_failed`.
+
+```
+iw batch-cancel <batch_id> [--reset-items] [--reason <text>] [--project <id>] [--json]
+```
+
+**Behaviour:**
+1. For every `batch_item` not already in a terminal state:
+   - Send SIGTERM to any running `step_runs.pid` and mark those rows `killed` (append-only).
+   - Mark any pending / in-progress `workflow_steps` rows as `skipped`.
+   - Best-effort: `worktree_compose.down` and `git worktree remove --force` for the per-item stack.
+   - Set `batch_items.status = 'skipped'` with a note pointing to the batch.
+2. For every member `WorkItem`:
+   - **Default**: push to `cancelled` (terminal, never overwrites `completed`).
+   - **`--reset-items`**: push back to `draft` and reset every `workflow_steps` row to `pending` (timestamps cleared). `step_runs` history is preserved.
+3. Set `batches.status = 'cancelled'`, emit `daemon_events(event_type='batch_cancelled')` with the reason, killed PIDs, and reset list in `metadata`.
+
+Side-effects are best-effort: a failed compose-down or worktree-remove is recorded in the `teardown_errors` JSON field and does not block the DB transition.
+
+---
+
+#### `iw item-cancel`
+
+Cancel a single work item that is **not** in an active batch. Refuses with exit 4 if the item is in a non-terminal batch — the operator must run `iw batch-cancel` instead so the cross-batch scope-overlap gate stays consistent.
+
+```
+iw item-cancel <item_id> [--to-draft] [--reason <text>] [--project <id>] [--json]
+```
+
+- **Default**: pushes to `cancelled` (terminal).
+- **`--to-draft`**: also resets all `workflow_steps` to `pending` so the item can be redesigned and re-approved.
+
+Allowed from `approved, in_progress, failed, paused`.
+
+---
+
 ### 3.5. Migration Lock
 
 Controls which work item can create Alembic migrations (one at a time per project).
@@ -796,6 +835,7 @@ iw
 ├── register            Register a new work item
 ├── approve             Approve work item for execution
 ├── unapprove           Revert approved item to draft
+├── item-cancel         Cancel a single non-batched work item
 ├── archive             Archive completed work item (Tier 1 + Tier 2)
 ├── item-status         Show work item status
 ├── step-start          Mark step as started (agent use)
@@ -806,6 +846,7 @@ iw
 ├── batch-status        Show batch status
 ├── batch-pause         Pause a running batch
 ├── batch-resume        Resume a paused batch
+├── batch-cancel        Cancel a batch and its non-terminal items
 ├── migration-lock
 │   ├── acquire         Acquire migration lock
 │   ├── release         Release migration lock

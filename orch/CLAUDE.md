@@ -58,9 +58,9 @@ Entry point: `iw` (defined in `pyproject.toml`). Composed from:
 |--------|----------|
 | `id_commands.py` | `next-id`, `current-project` |
 | `project_commands.py` | `register`, `projects list` |
-| `item_commands.py` | `approve`, `item-status` |
+| `item_commands.py` | `approve`, `unapprove`, `item-cancel`, `item-status`, `item-report`, `approve-merge`, `archive`, `register` |
 | `step_commands.py` | `step-start`, `step-done`, `step-fail` |
-| `batch_commands.py` | `batch-create`, `batch-approve`, `batch-status`, `batch-pause`, `batch-resume` |
+| `batch_commands.py` | `batch-create`, `batch-approve`, `batch-status`, `batch-pause`, `batch-resume`, `batch-cancel` |
 | `lock_commands.py` | `migration-lock` |
 | `search_commands.py` | `search` |
 | `skills_commands.py` | `skills sync`, `init-project` |
