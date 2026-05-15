@@ -270,5 +270,10 @@ document.body.addEventListener('docJobCreated', function(e) {
   setTimeout(function() { document.body.dispatchEvent(new CustomEvent('runningJobsReload')); }, 8000);
 });
 </script>
+<script>
+if (typeof window.iwChat !== 'undefined') {
+  window.iwChat.setContext({type: "docs_library", id: "{{ current_project.id }}", title: "Docs library"});
+}
+</script>
 
 {% endblock %}

@@ -154,3 +154,11 @@
 </div>
 
 {% endblock %}
+
+{% block scripts %}
+<script>
+if (typeof window.iwChat !== 'undefined') {
+  window.iwChat.setContext({type: "research_library", id: "{{ current_project.id }}", title: "Research library"});
+}
+</script>
+{% endblock %}

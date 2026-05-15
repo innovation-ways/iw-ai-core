@@ -171,4 +171,9 @@ document.body.addEventListener('htmx:afterRequest', function(e) {
   } catch(_) {}
 });
 </script>
+<script>
+if (typeof window.iwChat !== 'undefined') {
+  window.iwChat.setContext({type: "{{ item.type }}", id: "{{ item.id }}", title: {{ item.title | tojson }}});
+}
+</script>
 {% endblock %}

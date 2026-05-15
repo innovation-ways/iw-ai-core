@@ -50,7 +50,7 @@ def count_tokens(text: str, model_name: str | None = None) -> int:
             _tokenizer_cache[model_name] = encoding
         except Exception:
             if model_name not in _warned_models:
-                logger.warning(  # noqa: B701  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure — false positive: only a tiktoken model identifier is logged, never a credential
+                logger.warning(
                     "tiktoken does not support model '%s', using heuristic fallback", model_name
                 )
                 _warned_models.add(model_name)
@@ -60,7 +60,7 @@ def count_tokens(text: str, model_name: str | None = None) -> int:
         return len(encoding.encode(text))
     except Exception:
         if model_name not in _warned_models:
-            logger.warning(  # noqa: B701  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure — false positive: only a tiktoken model identifier is logged, never a credential
+            logger.warning(
                 "tiktoken encode failed for model '%s', using heuristic fallback", model_name
             )
             _warned_models.add(model_name)

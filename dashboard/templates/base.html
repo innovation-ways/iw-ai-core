@@ -15,6 +15,9 @@
   <!-- Prebuilt Tailwind CSS -->
   <link rel="stylesheet" href="/static/styles.css" />
 
+  <!-- AI Assistant panel CSS -->
+  <link rel="stylesheet" href="/static/chat_assistant/chat.css" />
+
   <!-- Dark mode: apply saved preference before paint to avoid flash -->
   <script>
     (function () {
@@ -68,8 +71,11 @@
 <!-- Confirmation dialog overlay (htmx loads content here) -->
 <div id="confirm-dialog"></div>
 
-<!-- App shell: sidebar + main -->
+<!-- App shell: AI Assistant panel + sidebar + main -->
 <div class="flex flex-1 overflow-hidden">
+
+  <!-- ===== Dashboard AI Assistant panel (left sidebar, collapsed by default) ===== -->
+  {% include "chat_assistant/panel.html" %}
 
   <!-- ===== Sidebar backdrop (mobile only) ===== -->
   <div id="sidebar-backdrop"
@@ -158,6 +164,16 @@
 
     <!-- Global search bar -->
     <div class="flex-shrink-0 border-b border-border bg-card px-3 sm:px-6 py-2 relative flex items-center gap-3">
+      <!-- AI Assistant toggle (all screen sizes) -->
+      <button id="chat-assistant-nav-toggle"
+              class="p-1.5 -ml-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-accent transition-colors"
+              title="AI Assistant (Ctrl+/)"
+              aria-label="Toggle AI Assistant panel (Ctrl+/)">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+        </svg>
+      </button>
+
       <!-- Hamburger menu (mobile only) -->
       <button id="sidebar-toggle"
               class="lg:hidden p-1.5 -ml-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-accent transition-colors"
@@ -266,6 +282,7 @@
   })();
 </script>
 <script src="{{ url_for('static', path='/sse-client.js') }}"></script>
+<script src="/static/chat_assistant/chat.js" defer></script>
 {% block scripts %}{% endblock %}
 
 </body>

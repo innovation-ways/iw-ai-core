@@ -1139,6 +1139,15 @@ wheels = [
 ]
 
 [[package]]
+name = "httpx-sse"
+version = "0.4.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/4c/751061ffa58615a32c31b2d82e8482be8dd4a89154f003147acee90f2be9/httpx_sse-0.4.3.tar.gz", hash = "sha256:9b1ed0127459a66014aec3c56bebd93da3c1bc8bb6618c8082039a44889a755d", size = 15943, upload-time = "2025-10-10T21:48:22.271Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/fd/6668e5aec43ab844de6fc74927e155a3b37bf40d7c3790e49fc0406b6578/httpx_sse-0.4.3-py3-none-any.whl", hash = "sha256:0ac1c9fe3c0afad2e0ebb25a934a59f4c7823b60792691f779fad2c5568830fc", size = 8960, upload-time = "2025-10-10T21:48:21.158Z" },
+]
+
+[[package]]
 name = "identify"
 version = "2.6.18"
 source = { registry = "https://pypi.org/simple" }
@@ -1173,6 +1182,8 @@ dependencies = [
     { name = "alembic" },
     { name = "click" },
     { name = "fastapi" },
+    { name = "httpx" },
+    { name = "httpx-sse" },
     { name = "jinja2" },
     { name = "lancedb" },
     { name = "llama-index-core" },
@@ -1232,6 +1243,7 @@ dev = [
     { name = "pytest-randomly" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
+    { name = "respx" },
     { name = "ruff" },
     { name = "testcontainers" },
     { name = "types-freezegun" },
@@ -1246,7 +1258,9 @@ requires-dist = [
     { name = "factory-boy", marker = "extra == 'dev'", specifier = ">=3.3" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "freezegun", marker = "extra == 'dev'", specifier = ">=1.4" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
+    { name = "httpx-sse", specifier = ">=0.4,<0.5" },
     { name = "jinja2", specifier = ">=3.1" },
     { name = "lancedb", specifier = ">=0.30.2" },
     { name = "llama-index-core", specifier = ">=0.14.20" },
@@ -1301,6 +1315,7 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.3.0" },
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.5.0" },
+    { name = "respx", specifier = ">=0.21,<0.23" },
     { name = "ruff", specifier = ">=0.8" },
     { name = "testcontainers", extras = ["postgres"], specifier = ">=4.0" },
     { name = "types-freezegun" },
@@ -2867,6 +2882,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/95/96/fb6dbfebb524d5601d359a47c78fe7ba1eef90fc4096404aa60c9a906fbb/requirements_parser-0.13.0.tar.gz", hash = "sha256:0843119ca2cb2331de4eb31b10d70462e39ace698fd660a915c247d2301a4418", size = 22630, upload-time = "2025-05-21T13:42:05.464Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bd/60/50fbb6ffb35f733654466f1a90d162bcbea358adc3b0871339254fbc37b2/requirements_parser-0.13.0-py3-none-any.whl", hash = "sha256:2b3173faecf19ec5501971b7222d38f04cb45bb9d87d0ad629ca71e2e62ded14", size = 14782, upload-time = "2025-05-21T13:42:04.007Z" },
+]
+
+[[package]]
+name = "respx"
+version = "0.22.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f4/7c/96bd0bc759cf009675ad1ee1f96535edcb11e9666b985717eb8c87192a95/respx-0.22.0.tar.gz", hash = "sha256:3c8924caa2a50bd71aefc07aa812f2466ff489f1848c96e954a5362d17095d91", size = 28439, upload-time = "2024-12-19T22:33:59.374Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8e/67/afbb0978d5399bc9ea200f1d4489a23c9a1dad4eee6376242b8182389c79/respx-0.22.0-py2.py3-none-any.whl", hash = "sha256:631128d4c9aba15e56903fb5f66fb1eff412ce28dd387ca3a81339e52dbd3ad0", size = 25127, upload-time = "2024-12-19T22:33:57.837Z" },
 ]
 
 [[package]]

@@ -162,6 +162,10 @@ class DaemonConfig:
     # Baseline QV gates (F-00061)
     baseline_qv_enabled: bool = True
 
+    # Dashboard AI Assistant — managed `opencode serve` subprocess (F-00083)
+    opencode_port: int = 4096
+    opencode_bin: str = "opencode"
+
 
 def _parse_truthy(value: str) -> bool:
     """Return True for truthy env-var values, False otherwise."""
@@ -203,4 +207,6 @@ def load_config() -> DaemonConfig:
         db_max_overflow=int(os.environ.get("IW_CORE_DB_MAX_OVERFLOW", "20")),
         baseline_qv_enabled=_parse_truthy(os.environ.get("IW_CORE_BASELINE_QV", "true")),
         evidence_max_bytes=int(os.environ.get("IW_CORE_EVIDENCE_MAX_BYTES", str(5 * 1024 * 1024))),
+        opencode_port=int(os.environ.get("IW_CORE_OPENCODE_PORT", "4096")),
+        opencode_bin=os.environ.get("IW_CORE_OPENCODE_BIN", "opencode"),
     )
