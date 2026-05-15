@@ -339,15 +339,14 @@ class TestItemCancelRealDB:
             .order_by(WorkflowStep.step_number)
             .all()
         )
-        # Service layer only marks in_progress steps as skipped; pending steps remain pending.
-        # This is a known service layer gap (pending steps should also be skipped per AC2).
-        assert steps[0].status == StepStatus.skipped, (
-            f"Step 1 (in_progress) must be skipped after cancel, got {steps[0].status.value}"
-        )
-        for step in steps[1:]:
-            assert step.status == StepStatus.pending, (
-                f"Step {step.step_id} stays pending (service only skips in_progress), "
-                f"got {step.status.value}"
+        # Cancel must flip ALL non-terminal steps (pending + in_progress +
+        # needs_fix) to 'skipped' so the work item's pipeline doesn't pick
+        # them up again. Terminal steps (completed/failed/skipped) are kept
+        # untouched — but this fixture seeds none of those, so every step
+        # must end up skipped.
+        for step in steps:
+            assert step.status == StepStatus.skipped, (
+                f"Step {step.step_id} must be skipped after cancel (was {step.status.value})"
             )
 
     def test_item_cancel_standalone_approved_with_to_draft(

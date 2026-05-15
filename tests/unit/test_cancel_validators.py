@@ -51,8 +51,9 @@ def test_batch_cancel_allowed_from_pre_terminal(status: BatchStatus) -> None:
 def test_batch_cancel_rejected_from_terminal(status: BatchStatus) -> None:
     """Terminal / published / publishing / archived states refuse re-cancellation."""
     error = validate_batch_cancel_transition(status)
-    assert error is not None
-    assert status.value in error
+    # Lock the *exact* operator-facing message — any drift (capitalisation,
+    # quoting, wording) is a public-contract change that should fail the test.
+    assert error == f"Cannot cancel batch: current status is '{status.value}'"
 
 
 def test_batch_cancel_set_matches_published_doc() -> None:
@@ -101,8 +102,8 @@ def test_item_cancel_allowed_from_post_draft(status: WorkItemStatus) -> None:
 )
 def test_item_cancel_rejected_from_non_cancellable(status: WorkItemStatus) -> None:
     error = validate_item_cancel_transition(status, active_batch_id=None)
-    assert error is not None
-    assert status.value in error
+    # Lock the full error message — both the prefix and the quoted status.
+    assert error == f"Cannot cancel work item: current status is '{status.value}'"
 
 
 def test_item_cancel_rejected_when_in_active_batch() -> None:
@@ -111,9 +112,13 @@ def test_item_cancel_rejected_when_in_active_batch() -> None:
         WorkItemStatus.in_progress,
         active_batch_id="BATCH-00099",
     )
-    assert error is not None
-    assert "BATCH-00099" in error
-    assert "batch-cancel" in error
+    # Lock the full operator-facing message — the batch ID appears twice
+    # (once in the diagnosis, once in the suggested command), and the
+    # "Use 'iw batch-cancel ...' instead." hint is part of the CLI contract.
+    assert error == (
+        "Cannot cancel work item: belongs to active batch BATCH-00099. "
+        "Use 'iw batch-cancel BATCH-00099' instead."
+    )
 
 
 def test_item_cancel_status_check_runs_before_batch_check() -> None:
