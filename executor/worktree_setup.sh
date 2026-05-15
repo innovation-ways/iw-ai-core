@@ -84,6 +84,11 @@ BASE_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo "Creating worktree: $WORKTREE_DIR (branch: $BRANCH, base: $BASE_BRANCH)" >&2
 git worktree add -b "$BRANCH" "$WORKTREE_DIR" HEAD >&2
 
+# I-00084: Sync origin/main ref to local main so diff-cover, scope_gate,
+# and any other compare-vs-origin tools see the right base. This setup is
+# local-only — origin/main never advances on its own.
+git -C "$WORKTREE_DIR" fetch . main:refs/remotes/origin/main 2>/dev/null || true
+
 # ---------------------------------------------------------------------------
 # Step 4: Install Python dependencies
 # ---------------------------------------------------------------------------

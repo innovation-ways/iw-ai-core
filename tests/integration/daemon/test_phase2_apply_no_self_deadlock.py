@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "7ef0b420c58f"  # head — Add id_allocations table for idempotent next-id (CR-00053)
+_HEAD_REVISION = "d1e2f3gpt53c"  # head — Add gpt-5.3-codex runtime option (snapshot WIP)
 _PREV_REVISION = "a1b2c3fixmm"  # fix_runtime_option_model_format (before id_allocations)
 
 
