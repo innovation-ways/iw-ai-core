@@ -149,7 +149,7 @@ testpaths = ["tests"]
 addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser' --strict-markers -p no:randomly"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
-    "smoke: fast critical-path tests; ~10 covering core flows; run via `make smoke`",
+    "smoke: fast critical-path tests; <=15 tests, <=5 critical paths, <60s wall-clock; documented in tests/CLAUDE.md; run via `make smoke`",
     "slow: marks tests as slow (deselected by default unless -m slow is passed)",
     "browser: marks tests that drive a real Chromium via playwright-cli; deselected by default — run with `-m browser` against a live dashboard the test data is visible to (e.g. iw-ai-core's existing data or an E2E stack)",
     "order_dependent: test relies on test order; tracked for cleanup in P1-CR-C-followup",

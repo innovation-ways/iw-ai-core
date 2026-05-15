@@ -108,17 +108,30 @@ class TestF00073SmokeGate:
 
         This guards against accidental marker removal.
         """
-        import subprocess
+        import ast
+        import os
 
-        result = subprocess.run(
-            ["uv", "run", "pytest", "tests", "-m", "smoke", "--collect-only", "-q"],
-            capture_output=True,
-            text=True,
-            cwd=REPO_ROOT,
-        )
-        test_ids = [
-            line for line in result.stdout.splitlines() if "::" in line and not line.startswith("=")
-        ]
-        assert len(test_ids) >= 10, (
-            f"Expected ≥10 smoke tests; found {len(test_ids)}.\nOutput:\n{result.stdout}"
-        )
+        smoke_marker = "pytest.mark.smoke"
+        count = 0
+
+        # Walk test files and count actual decorator usages via AST.
+        # AST parsing avoids false positives from docstrings or comments and
+        # does not depend on IW_CORE_TEST_CONTEXT (no imports are executed).
+        for root, _dirs, files in os.walk(REPO_ROOT / "tests"):
+            for fname in files:
+                if not fname.endswith(".py"):
+                    continue
+                fpath = Path(root) / fname
+                try:
+                    tree = ast.parse(fpath.read_text())
+                except SyntaxError:
+                    continue
+                for node in ast.walk(tree):
+                    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        continue
+                    for deco in node.decorator_list:
+                        deco_str = ast.unparse(deco)
+                        if deco_str == smoke_marker or deco_str.startswith(smoke_marker + "("):
+                            count += 1
+
+        assert count >= 10, f"Expected >=10 tests decorated with @pytest.mark.smoke; found {count}."
