@@ -25,6 +25,15 @@ def llm_usage_fragment(request: Request) -> Any:
     usage = get_llm_usage()
     claude = usage["claude"]
     minimax = usage["minimax"]
+    # Codex was added after the original Claude+MiniMax pair (R-00075); fall back
+    # to a zeroed snapshot if a stale in-process cache predates the upgrade.
+    codex = usage.get("codex") or {
+        "block_pct": 0,
+        "week_pct": 0,
+        "block_reset": None,
+        "week_reset": None,
+        "plan_type": None,
+    }
     return request.app.state.templates.TemplateResponse(
         request,
         "fragments/llm_usage_footer.html",
@@ -40,5 +49,12 @@ def llm_usage_fragment(request: Request) -> Any:
             "minimax_reset": minimax.get("block_reset"),
             "minimax_5h_used": minimax.get("used"),
             "minimax_5h_total": minimax.get("total"),
+            "codex_5h_pct": codex["block_pct"],
+            "codex_7d_pct": codex["week_pct"],
+            "codex_5h_reset": codex.get("block_reset"),
+            "codex_7d_reset": codex.get("week_reset"),
+            "codex_5h_color": _bar_color(codex["block_pct"]),
+            "codex_7d_color": _bar_color(codex["week_pct"]),
+            "codex_plan_type": codex.get("plan_type"),
         },
     )
