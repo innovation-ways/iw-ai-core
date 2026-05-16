@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 @pytest.fixture
 def seed_agent_runtime_options(db_session):
-    """Insert the 5 seed rows before each test.
+    """Insert the runtime option seed rows before each test.
 
     Uses ON CONFLICT DO NOTHING so this fixture is idempotent whether
     or not the Alembic migration already seeded the table.
@@ -20,13 +20,24 @@ def seed_agent_runtime_options(db_session):
         {
             "id": 1,
             "cli_tool": "opencode",
-            "model": "minimax",
+            "model": "minimax/MiniMax-M2.7",
             "cli_label": "OpenCode",
             "model_label": "MiniMax 2.7",
             "display_name": "OpenCode + MiniMax 2.7",
             "is_default": True,
             "enabled": True,
             "sort_order": 10,
+        },
+        {
+            "id": 6,
+            "cli_tool": "opencode",
+            "model": "openai/gpt-5.3-codex",
+            "cli_label": "OpenCode",
+            "model_label": "GPT-5.3 Codex",
+            "display_name": "OpenCode + GPT-5.3 Codex",
+            "is_default": False,
+            "enabled": True,
+            "sort_order": 15,
         },
         {
             "id": 2,
@@ -121,7 +132,7 @@ class TestAgentRuntimeOptionsTable:
         assert required.issubset(col_names), f"Missing columns: {required - col_names}"
 
     def test_seed_rows_present(self, db_session, seed_agent_runtime_options) -> None:
-        """All 5 seed rows are present with correct values."""
+        """All seed rows are present with correct values."""
         rows = db_session.execute(
             text("""
                 SELECT cli_tool, model, is_default, sort_order
@@ -129,7 +140,6 @@ class TestAgentRuntimeOptionsTable:
                 ORDER BY sort_order
             """)
         ).fetchall()
-        # d1e2f3gpt53c added openai/gpt-5.3-codex (sort_order=15) as a 6th row
         assert len(rows) == 6, f"Expected 6 rows, got {len(rows)}"
         assert rows[0] == ("opencode", "minimax/MiniMax-M2.7", True, 10)
         assert rows[1] == ("opencode", "openai/gpt-5.3-codex", False, 15)
@@ -142,7 +152,6 @@ class TestAgentRuntimeOptionsTable:
         self, db_session, seed_agent_runtime_options
     ) -> None:
         """Uniqueness on (cli_tool, model) is enforced."""
-        # a1b2c3fixmm renamed 'minimax' → 'minimax/MiniMax-M2.7'; use the current value
         stmt = text("""
             INSERT INTO agent_runtime_options
             (cli_tool, model, cli_label, model_label, display_name,
@@ -183,7 +192,7 @@ class TestAgentRuntimeOptionsTable:
             """)
         ).fetchall()
         db_session.commit()
-        assert len(result) == 5  # 5 non-default rows (d1e2f3gpt53c added a 6th row)
+        assert len(result) == 5  # 5 non-default rows
 
 
 class TestAgentRuntimeOptionFKColumns:

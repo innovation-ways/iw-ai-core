@@ -691,7 +691,8 @@ class TestI00076PatchStepOverride:
             f"/project/{project.id}/api/item/{wi.id}/step/S01/runtime-override",
             data={"option_id": "5"},
         )
-        assert resp.status_code == 204, resp.text
+        assert resp.status_code == 200, resp.text
+        assert 'id="item-steps-table"' in resp.text
 
         db_session.expire_all()
         db_session.refresh(step)
@@ -723,7 +724,8 @@ class TestI00076PatchStepOverride:
             f"/project/{project.id}/api/item/{wi.id}/step/S01/runtime-override",
             data={"option_id": ""},
         )
-        assert resp.status_code == 204, resp.text
+        assert resp.status_code == 200, resp.text
+        assert 'id="item-steps-table"' in resp.text
 
         db_session.expire_all()
         db_session.refresh(step)

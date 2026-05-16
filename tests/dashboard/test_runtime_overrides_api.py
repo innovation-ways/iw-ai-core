@@ -198,11 +198,19 @@ class TestGetRuntimeOptions:
         assert resp.status_code == 200
 
         data = resp.json()
-        # Row 5 (id=5) is enabled=False — should be excluded
-        # d1e2f3gpt53c added id=6 (openai/gpt-5.3-codex, sort_order=15, enabled=True)
-        assert len(data) == 5
+        # Disabled options must be excluded.
         ids = [r["id"] for r in data]
-        assert ids == [1, 6, 2, 3, 4]  # sort_order 10, 15, 20, 30, 40
+        assert 5 not in ids
+
+        expected_ids = [
+            row.id
+            for row in db_session.scalars(
+                select(AgentRuntimeOption)
+                .where(AgentRuntimeOption.enabled.is_(True))
+                .order_by(AgentRuntimeOption.sort_order, AgentRuntimeOption.id)
+            ).all()
+        ]
+        assert ids == expected_ids
 
         # Check shape of first row
         row = data[0]
@@ -420,7 +428,8 @@ class TestPatchStepRuntimeOverride:
             f"/project/{test_project.id}/api/item/{item.id}/step/S01/runtime-override",
             data={"option_id": "3"},
         )
-        assert resp.status_code == 204, resp.text
+        assert resp.status_code == 200, resp.text
+        assert 'id="item-steps-table"' in resp.text
 
         db_session.expire_all()
         step = db_session.scalar(
@@ -453,7 +462,8 @@ class TestPatchStepRuntimeOverride:
             f"/project/{test_project.id}/api/item/{item.id}/step/S01/runtime-override",
             data={"option_id": ""},
         )
-        assert resp.status_code == 204, resp.text
+        assert resp.status_code == 200, resp.text
+        assert 'id="item-steps-table"' in resp.text
 
         db_session.expire_all()
         step = db_session.scalar(
@@ -596,7 +606,8 @@ class TestPatchBulkRuntimeOverride:
             f"/project/{test_project.id}/api/item/{item.id}/runtime-override/bulk",
             data={"option_id": "2"},
         )
-        assert resp.status_code == 204, resp.text
+        assert resp.status_code == 200, resp.text
+        assert 'id="item-steps-table"' in resp.text
 
         db_session.expire_all()
         steps = list(
@@ -631,7 +642,8 @@ class TestPatchBulkRuntimeOverride:
             f"/project/{test_project.id}/api/item/{item.id}/runtime-override/bulk",
             data={"option_id": "2"},
         )
-        assert resp.status_code == 204, resp.text
+        assert resp.status_code == 200, resp.text
+        assert 'id="item-steps-table"' in resp.text
 
         db_session.expire_all()
         steps = {
@@ -672,7 +684,8 @@ class TestPatchBulkRuntimeOverride:
             f"/project/{test_project.id}/api/item/{item.id}/runtime-override/bulk",
             data={"option_id": ""},
         )
-        assert resp.status_code == 204, resp.text
+        assert resp.status_code == 200, resp.text
+        assert 'id="item-steps-table"' in resp.text
 
         db_session.expire_all()
         steps = list(
@@ -745,7 +758,8 @@ class TestPatchBulkRuntimeOverride:
             f"/project/{test_project.id}/api/item/{item.id}/runtime-override/bulk",
             data={"option_id": "2"},
         )
-        assert resp.status_code == 204, resp.text
+        assert resp.status_code == 200, resp.text
+        assert 'id="item-steps-table"' in resp.text
 
         after = db_session.query(DaemonEvent).count()
         assert after == before  # no new event

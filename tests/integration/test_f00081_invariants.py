@@ -457,7 +457,8 @@ class TestInvariantOneEventPerCall:
             f"/project/{test_project.id}/api/item/{item.id}/runtime-override/bulk",
             data={"option_id": "3"},
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        assert 'id="item-steps-table"' in resp.text
 
         after = db_session.query(DaemonEvent).count()
         assert after == before + 1
@@ -512,7 +513,8 @@ class TestInvariantOneEventPerCall:
             f"/project/{test_project.id}/api/item/{item.id}/runtime-override/bulk",
             data={"option_id": "2"},
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        assert 'id="item-steps-table"' in resp.text
 
         after = db_session.query(DaemonEvent).count()
         assert after == before  # no new event
