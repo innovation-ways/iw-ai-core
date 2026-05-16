@@ -6,7 +6,7 @@
 > **Tracking ticket**: F-00084 (Phase 0 + Phase 1)
 > **Purpose**: the single place we track *what* we want to ship for LLM-assisted merge conflict resolution, *why*, and *how* — and the running status of each phase. Same convention as `TESTS_ENHANCEMENT.md`: one item at a time, vehicle (CR / Feature / direct change) decided when we pick it up.
 >
-> **Current status (2026-05-16)**: F-00084 merged (`9ba69891`); deployed config flipped to `phase = 1` (OP-2 + OP-3 closed). **Phase 1 dry-run is now live** — runtime falls back to project default (id=1, opencode + MiniMax-M2.7). Audit window started 2026-05-16; minimum two weeks before evaluating Phase 2 entry criteria (§6a). **Next gating action: wait for natural merge-conflict events to accumulate (OP-4), then review them (OP-5).** Phase 3 (broader allowlist) is gated by Phase 2 stability.
+> **Current status (2026-05-16)**: F-00084 merged (`9ba69891`); deployed config flipped to `phase = 1` (OP-2 + OP-3 closed). **Phase 1 dry-run is now live** — runtime falls back to project default (id=1, opencode + MiniMax-M2.7). Audit window started 2026-05-16; minimum two weeks before evaluating Phase 2 entry criteria (§6a). **Two parallel tracks active now**: (a) wait for natural merge-conflict events to accumulate (OP-4 → OP-5) — passive, no work required; (b) build the **Observability Feature** (sub-phase 1b, §5b — Tier 1+2+3) so OP-4 monitoring is sustainable and Phase 2 entry criteria are auto-computed. Phase 3 (broader allowlist) is gated by Phase 2 stability.
 
 ---
 
@@ -49,7 +49,8 @@ On 2026-05-16 we hit the same merge-queue failure twice in one afternoon — **I
 | Phase | Theme | One-line goal | Major gain | Vehicle | Status |
 |-------|-------|---------------|------------|---------|--------|
 | **0 — Plumbing** | Wire the decision tree | New TOML config, refuse-list / allowlist, marker emission, daemon-side parser — no LLM call, no behaviour change | Safe-by-default surface area; future phases just flip a flag | F-00084 (combined with Phase 1) | **DONE 2026-05-16** (merge `9ba69891`) |
-| **1 — Dry-run audit** | Collect what the LLM would do | Per-file LLM invocation; proposed resolutions captured in `DaemonEvent.event_metadata`; rebase always aborted | Two weeks of real data on how often the model would have been right; spec input for Phase 2 | F-00084 (Phase 0 + Phase 1 combined) | **AWAITING OPERATOR** — implementation merged; deployed config still `phase = 0`. See §5a runbook OP-1..OP-7. |
+| **1 — Dry-run audit** | Collect what the LLM would do | Per-file LLM invocation; proposed resolutions captured in `DaemonEvent.event_metadata`; rebase always aborted | Two weeks of real data on how often the model would have been right; spec input for Phase 2 | F-00084 (Phase 0 + Phase 1 combined) | **LIVE** — `phase = 1` deployed 2026-05-16; audit window open. See §5a runbook OP-4..OP-7. |
+| **1b — Observability** | Make Phase 1 visible | Dashboard page + status chip + activity log + diff viewer + verdict capture + accuracy/cost rollup + health alerts + refuse-list breakdown | Sustainable OP-4 monitoring; Phase 2 entry criteria auto-computed; operator confidence | Feature (TBD F-NNNNN — Tier 1+2+3) | **TODO** — see §5b for the 9-row scope table |
 | **2 — Auto-apply with verification gate** | Make it actually resolve | Apply LLM output; run scoped QV (lint + type-check + targeted tests + assertion scanner); only `git rebase --continue` on green; narrow allowlist `tests/**`, `docs/**`, `ai-dev/active/**/reports/**` | Today's recurring failures (I-00085-style) merge automatically; zero operator action | Feature (likely F-NNNNN — TBD) | **NOT STARTED** (gated by Phase 1 audit) |
 | **3 — Broader allowlist** | Expand beyond test files | Allowlist extended to source files; possibly multi-file prompt context; possibly model upgrade | Source-file conflicts also auto-resolve | CR or Feature (TBD per audit) | **NOT STARTED** (gated by Phase 2 stability) |
 
@@ -106,6 +107,47 @@ On 2026-05-16 we hit the same merge-queue failure twice in one afternoon — **I
 | OP-5 | Review accuracy on each captured event | Continuous during the audit window | For each `merge_auto_resolved` event: compare proposed resolution to what the operator ultimately wrote when resolving manually. Tally correct / wrong / would-have-been-caught-by-verification. |
 | OP-6 | Tally cost | End of audit window | Sum `llm_calls[*].input_tokens + output_tokens` × model pricing. Confirm < $20/month projection. |
 | OP-7 | Decide Phase 2 spec | After audit data | If accuracy ≥ 4/5 conflicts correct → proceed to Phase 2 with confidence. If lower → Phase 2 still viable (the verification gate catches failures) but plan for more abstentions. |
+
+---
+
+### 5b. Phase 1 — Observability sub-phase (in flight)
+
+**Why now**: Phase 1 dry-run is invisible without UI. The 2-week audit window is friction-heavy if the operator has to run SQL to know whether anything has happened. R-00076 §3.5 parked dashboard UI in Phase 3, but that ordering is wrong — visibility is an *enabler* of the Phase 1 audit, not a Phase 3 nice-to-have. Identified 2026-05-16 after F-00084 deployment.
+
+**Major gains**: operator confidence ("the resolver is live and ready"); sustainable monitoring without SQL-on-demand; per-event verdict capture that feeds Phase 2 entry criteria (≥ 50 % accuracy) automatically; refuse-list safety net visible as a positive signal; health alerting when failure rate spikes.
+
+**Vehicle**: Feature (TBD F-NNNNN). Three-tier scope: Tier 1 (status + activity log) + Tier 2 (diff viewer + verdict + accuracy stats) + Tier 3 (health alerts + refuse-list breakdown).
+
+| # | Item | Why | How / approach | Tier | Vehicle | Status | Link |
+|---|------|-----|----------------|------|---------|--------|------|
+| 1.10 | `/<project>/auto-merge` dashboard page + header status chip | Make the resolver's deployed state visible at a glance | New FastAPI route + Jinja2 template; reads `executor/auto_merge.toml` + project default `agent_runtime_options` row + a `daemon_events` aggregate query | Tier 1 | Feature (TBD) | **TODO** | — |
+| 1.11 | Filtered events table for `merge_auto_*` rows | Replace on-demand SQL with a browsable view; expandable JSONB metadata | htmx fragment; pagination; per-event-type filter; click-to-expand `event_metadata` JSON | Tier 1 | Feature (TBD) | **TODO** | — |
+| 1.12 | Explicit refuse-list counter | Confirm the safety net is being exercised even when phase=1 dry-run never resolves | Aggregate of `merge_auto_resolution_skipped` rows grouped by `event_metadata.reason`; rendered as a small "Safety net activity" widget | Tier 1 + 3 hybrid | Feature (TBD) | **TODO** | — |
+| 1.13 | Side-by-side diff viewer for `merge_auto_resolved` events | Make OP-5 (proposed-vs-actual review) tractable; replaces JSONB-spelunking | Per-event detail modal; left pane = LLM-proposed file content from `event_metadata`; right pane = file's current state on main; line-level diff highlighting | Tier 2 | Feature (TBD) | **TODO** | — |
+| 1.14 | Operator-verdict capture | Drive Phase 2 entry criteria automatically | NEW table `merge_auto_verdicts` (or new field on a sidecar table — DaemonEvent is append-only); buttons "correct / wrong / partial / pending"; verdict persisted per event | Tier 2 | Feature (TBD) | **TODO** | — |
+| 1.15 | Rolling accuracy + token-cost rollup | Phase 2 entry criteria (≥ 50 % accuracy, < $20/mo) become a single SQL aggregate | Materialised view or query over `daemon_events` + `merge_auto_verdicts`; 7-day and 30-day windows; rendered as a small stats widget | Tier 2 | Feature (TBD) | **TODO** | — |
+| 1.16 | Health: resolver-runtime reachability check | Surface silent breakage (e.g., LLM API down) without waiting for a conflict | New `daemon_events` row type `auto_merge_health_probe` emitted by daemon poll loop; recent value rendered in status chip; configurable interval | Tier 3 | Feature (TBD) | **TODO** | — |
+| 1.17 | Failure-rate alerting | Catch a degradation in LLM behaviour before Phase 2 ships | Threshold (configurable, default 3/24h) on `merge_auto_resolution_failed` events; warning badge on status chip; no email/webhook yet (dashboard-only signal) | Tier 3 | Feature (TBD) | **TODO** | — |
+| 1.18 | Refuse-list activity breakdown | Show the safety net's exact pattern (refuse_list / binary / oversized / not_allowlisted / phase_0) | Aggregate query grouped by `event_metadata.reason`; rendered as Tier 3 of the status page | Tier 3 | Feature (TBD) | **TODO** | — |
+
+### 5b.1. Entry criteria for the Observability feature
+
+Open the Feature design doc when:
+
+- The F-00084 Phase 0/1 plumbing has been on main for at least 24 hours without daemon errors (verify via `uv run iw daemon status` + `grep ERROR` in daemon logs). ✅ as of 2026-05-16.
+- At least one of the operator workflows below is the gating use case for the design:
+  - "I'm about to run a multi-batch overnight job and want to confirm the resolver is ready" → Tier 1 chip.
+  - "I want to evaluate the last 5 resolutions for accuracy before opening the Phase 2 design doc" → Tier 2 diff + verdict.
+  - "I want to know if the resolver has been silently broken for the past 3 days" → Tier 3 health probe.
+
+If none of these is yet a real workflow concern, defer — visibility-without-workflow is YAGNI.
+
+### 5b.2. Out of scope for this sub-phase
+
+- Auto-applying resolutions (that's still Phase 2).
+- Push notifications / email / Slack alerts (Tier 3 stops at dashboard-visible signal).
+- Verdict-via-LLM-as-judge automation (Phase 3 maybe).
+- Cross-project aggregation (per-project for now; the dashboard's routing already scopes by project).
 
 ---
 
@@ -181,6 +223,8 @@ If any of these fail, revise Phase 1 (e.g., prompt iteration, model swap) before
 | Subprocess startup overhead per LLM call (~3-5s) makes Phase 2 merge-queue latency unacceptable | MEDIUM | Phase 1 audit captures wall-clock per `merge_auto_resolved` event; if > 60s p95, evaluate direct SDK integration in Phase 3 | **OPEN** — gated by Phase 1 audit data |
 | Phase 1 audit produces too few real conflicts to validate Phase 2 | MEDIUM | If < 5 conflicts in 2 weeks, extend window OR seed with replays of historical conflicts via a new `iw auto-merge replay <ID>` operator command | **OPEN** — revisit at audit-data review |
 | Operator forgets the feature is deployed and is surprised by audit events | LOW | Phase 0 default produces ZERO audit events (Phase 0 short-circuits before event emission for `attempted` / `resolved`); only `merge_auto_resolution_skipped` fires with `reason="phase_0"`; documented in `F-00084_Functional.md` | Mitigated by Phase 0 design |
+| Phase 1 dry-run is invisible without UI; operator gives up on OP-4 monitoring | MEDIUM | Sub-phase 1b (Observability Feature) is the mitigation; until it ships, the on-demand SQL in OP-4 row is the fallback | **OPEN** — Sub-phase 1b TODO; see §5b |
+| `auto_merge.toml` shipped with invalid `runtime_option_id = null` (TOML lacks `null` keyword); strict pre-commit TOML validator rejects it | LOW | Loader at `orch/daemon/auto_merge.py:184` regex-strips `key = null` lines for back-compat, so runtime is unaffected. Fix applied 2026-05-16 (commit `1856cf8b`): commented out the line. Follow-up: add a strict-TOML test to the F-00084 design template; consider filing I-NNNNN to harden the loader's expected schema | **MITIGATED 2026-05-16** — committed fix; follow-up incident not yet filed |
 
 ---
 
@@ -201,3 +245,4 @@ If any of these fail, revise Phase 1 (e.g., prompt iteration, model swap) before
 | 2026-05-16 | v1.0 | Initial plan written after R-00076 filed and F-00084 packaged (draft). Phase 0 + Phase 1 in F-00084; Phase 2 + Phase 3 not yet started. |
 | 2026-05-16 | v1.1 | F-00084 merged (`9ba69891`); all Phase 0 + Phase 1 implementation rows flipped to DONE; OP-1 closed. Phase 1 status → **AWAITING OPERATOR** (deployed config still `phase = 0`). Next action: pick a `runtime_option_id` and flip to `phase = 1` to start the audit window (OP-2..OP-7). |
 | 2026-05-16 | v1.2 | OP-2 + OP-3 closed: `executor/auto_merge.toml` set to `phase = 1`, `runtime_option_id = null` (falls back to project default id=1 — opencode + MiniMax-M2.7); SIGHUP sent. Phase 1 dry-run is now live; audit window started 2026-05-16. Next: OP-4 monitoring (0 events so far). |
+| 2026-05-16 | v1.3 | Added Sub-phase 1b — Observability Feature scope (§5b, 9 rows across Tier 1+2+3) — to surface the resolver's state in the dashboard and make OP-4 monitoring sustainable. Added at-a-glance row "1b — Observability". Filed risk for invisible Phase 1 (open) + TOML `null` fix (mitigated, commit `1856cf8b`). |
