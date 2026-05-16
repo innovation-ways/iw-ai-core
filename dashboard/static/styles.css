@@ -431,3 +431,31 @@ div.mermaid-diagram span {
     transparent 6px
   );
 }
+
+/* ===== F-00085 Auto-Merge dashboard ===== */
+.auto-merge-chip{display:inline-flex;gap:.5rem;align-items:center;border:1px solid var(--border);border-radius:999px;padding:.25rem .6rem;font-size:.75rem;background:var(--card)}
+.auto-merge-chip--rich{display:block;border-radius:.5rem}
+.auto-merge-chip__health{font-weight:600}
+.auto-merge-health--healthy{border-color:#16a34a;color:#166534}
+.auto-merge-health--degraded{border-color:#f59e0b;color:#92400e}
+.auto-merge-health--down{border-color:#dc2626;color:#991b1b}
+.auto-merge-health--unknown{border-color:#9ca3af;color:#4b5563}
+
+.auto-merge-settings select,.auto-merge-settings textarea{max-width:100%}
+.auto-merge-verdict-group{display:flex;flex-wrap:wrap;gap:.35rem}
+.auto-merge-verdict{border:1px solid var(--border);border-radius:.375rem;padding:.2rem .45rem;font-size:.75rem;text-transform:capitalize;background:var(--muted);color:var(--foreground)}
+.auto-merge-verdict input{display:none}
+.auto-merge-verdict.is-active{outline:2px solid var(--ring);outline-offset:1px}
+.auto-merge-verdict--pending.is-active{background:#9ca3af;color:#111827}
+.auto-merge-verdict--correct.is-active{background:#22c55e;color:#052e16}
+.auto-merge-verdict--wrong.is-active{background:#ef4444;color:#450a0a}
+.auto-merge-verdict--partial.is-active{background:#f59e0b;color:#451a03}
+
+.auto-merge-refuse-widget{min-height:100%}
+.auto-merge-refuse-bar{display:flex;flex-wrap:wrap;gap:.35rem}
+.auto-merge-refuse-pill{padding:.2rem .45rem;border-radius:999px;background:var(--muted);font-size:.75rem}
+
+.auto-merge-modal-backdrop{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:1rem}
+.auto-merge-modal{width:min(1100px,96vw);background:var(--card);border:1px solid var(--border);border-radius:.5rem;overflow:hidden}
+.diff-viewer{overflow:auto;border:1px solid var(--border);border-radius:.375rem;background:var(--background)}
+.diff-viewer table.diff{width:100%;font-size:.75rem}
