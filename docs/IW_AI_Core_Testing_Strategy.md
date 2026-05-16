@@ -76,6 +76,40 @@ Real Chromium via **`playwright-cli` only** (never `agent-browser`, never `chrom
 
 > **Not yet a layer**: there is no structured browser/E2E *journey* suite (auth/session, queue→batch→merge, Docs export) and no isolated E2E compose stack — that's roadmap item 3.1. The current browser tests are a handful of smoke checks.
 
+## E2E browser-verification stack
+
+### E2E OpenCode stub (CR-00054)
+
+The chat features in F-00083 introduced a managed `opencode serve` subprocess that the production daemon spawns on the dashboard host. The per-worktree e2e stack does **not** install the real `opencode` binary because it would balloon the image with ~100 MB and an LLM-provider config the stack does not own. Instead the e2e image ships a thin shim at `/usr/local/bin/opencode` that execs a Python stub server (`scripts/e2e_opencode_stub.py`) implementing opencode v1.15.0's HTTP+SSE wire protocol.
+
+The pattern mirrors the existing `e2e-ollama` stub: a focused, deterministic in-process server that replaces a heavier runtime for browser_verification.
+
+**Surface implemented**
+
+| Path | Behaviour |
+|------|-----------|
+| `GET /global/health` | Unauthenticated 200 (used by OpencodeRuntime's startup poll) |
+| `GET /config` | Returns one stub model (`stub/echo`) + default model + default agent |
+| `POST /session` · `GET /session` · `GET /session/{sid}` · `GET /session/{sid}/messages` | Process-local session CRUD |
+| `POST /session/{sid}/prompt_async` | Emits a deterministic event sequence on `/event` (message → message → permission.asked → pause → message/idle) |
+| `POST /session/{sid}/abort` | Emits `session.idle` with `aborted: true` |
+| `POST /session/{sid}/permissions/{rid}` | Forwards the allow/deny response and emits a follow-up event |
+| `GET /event` | Long-lived SSE; ring buffer (`deque(maxlen=256)`) supports `Last-Event-ID` replay |
+
+**Auth**: HTTP Basic with username `opencode` and the per-startup `OPENCODE_SERVER_PASSWORD` env var, matching the real runtime.
+
+**Determinism**: The stub's event sequence is a fixture, not a behaviour spec. Tests that need a richer agent surface (real tool calls reading files, multi-turn planning, etc.) must either extend the stub OR run against a real local `opencode serve` outside the e2e stack.
+
+**Extending the stub**
+
+When a new chat-related qv-browser step needs richer events:
+1. Add the new event shape to `scripts/e2e_opencode_stub.py`'s synthetic sequence.
+2. Add a matching integration test in `tests/integration/test_e2e_opencode_stub.py`.
+3. Update this section's "Surface implemented" table.
+4. If the wire-protocol bumps (opencode v1.16+, etc.), update both the stub and the host `opencode` binary's pinned version in the developer-docs README.
+
+**Why a stub, not the real binary**: same trade-offs as the `e2e-ollama` stub — image size, build time, no LLM-provider config in CI, deterministic outputs for assertions.
+
 ---
 
 ## 3. Test infrastructure & isolation (NON-NEGOTIABLE)

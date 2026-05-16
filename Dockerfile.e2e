@@ -31,6 +31,24 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# ----------------------------------------------------------------------
+# OpenCode stub shim (CR-00054)
+#
+# The production daemon runs against the real `opencode` binary on the
+# host's PATH. The per-worktree e2e stack does NOT install the real
+# binary because it would balloon the image with ~100 MB plus an
+# LLM-provider config that the stack does not own. Instead we install
+# a shim at /usr/local/bin/opencode that execs a Python stub
+# (scripts/e2e_opencode_stub.py) implementing opencode v1.15.0's
+# HTTP+SSE wire protocol.
+#
+# When v1.15.0's protocol bumps, update both:
+#   - scripts/e2e_opencode_stub.py (event shapes / endpoint payloads)
+#   - this Dockerfile (shim path / wrapper invocation, if changed)
+# ----------------------------------------------------------------------
+RUN printf '%s\n' '#!/bin/sh' 'exec uv run python /app/scripts/e2e_opencode_stub.py "$@"' > /usr/local/bin/opencode \
+    && chmod 755 /usr/local/bin/opencode
+
 ENV IW_PLAYWRIGHT_CHROME_PATH=/usr/bin/chromium
 
 # Run as a non-root user (Trivy AVD-DS-0002). /app is the user's home so
@@ -46,10 +64,19 @@ COPY --chown=app:app pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Bring in the source tree.
+# NOTE: this COPY must include project-root .opencode/config.json so the
+# runtime permission policy is available inside the E2E container.
 COPY --chown=app:app . .
 
 # Reinstall to register the project entry points against the source.
 RUN uv sync --frozen --no-dev
+
+# Build-time sanity: shim resolves, script imports cleanly.
+# (We rely on a tiny --selftest entrypoint in scripts/e2e_opencode_stub.py
+# that imports the FastAPI app and exits 0 without binding a port. If S01
+# did not add --selftest, fall back to `--help` and drop the `|| true` only
+# once that succeeds end-to-end locally.)
+RUN /usr/local/bin/opencode --selftest
 
 # Initialise /app as a git repo at image build time so browser_verification
 # agents can `git -C /app status --short` to confirm that fix recipes wrote
