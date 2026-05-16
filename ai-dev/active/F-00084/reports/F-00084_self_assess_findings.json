@@ -1,6 +1,0 @@
-{
-  "item_id": "F-00084",
-  "bottom_line": "No actionable patterns detected. Workflow ran cleanly with TDD discipline observed (genuine ImportError RED evidence), no real LLM calls, and Phase 0 invariant maintained. The most notable observation is that S05's cross-review found 14 issues with no fix cycle generated — a workflow design gap, not execution thrash.",
-  "coverage_notes": "No run logs available (.worktrees/F-00084/ai-dev/logs/ empty — item ran in main worktree context). All analysis based on 16 step self-reports, 3 fix-cycle prompts, workflow manifest, and DB telemetry. Agent self-reports used as primary evidence (skill note: biased, but no contradicting signal available). Full reads of all reports; no log spelunking required.",
-  "findings": []
-}
