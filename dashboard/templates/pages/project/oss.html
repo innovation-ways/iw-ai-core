@@ -4,12 +4,6 @@
 
 {% block content %}
 <div id="oss-content">
-  {# Header #}
-  <div class="mb-6">
-    <h1 class="text-2xl font-semibold text-foreground">OSS Compliance</h1>
-    <p class="text-muted-foreground text-sm mt-1">Open source license compliance and vulnerability scanning</p>
-  </div>
-
   {# Stale banner #}
   {% if scan_summary and scan_summary.is_stale %}
     <div class="flex items-center gap-2 mb-4 px-3 py-2 bg-warning/10 border border-warning/30 rounded-lg text-sm">

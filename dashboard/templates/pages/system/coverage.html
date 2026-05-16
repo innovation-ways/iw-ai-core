@@ -4,11 +4,6 @@
 
 {% block content %}
 <div class="space-y-6">
-  <div class="mb-6">
-    <h1 class="text-2xl font-semibold text-foreground">Test Coverage</h1>
-    <p class="text-muted-foreground text-sm mt-1">pytest-cov results across all packages</p>
-  </div>
-
   {% if not view.available %}
     <div role="status"
          class="rounded-lg border border-dashed border-border p-8 text-center bg-card">
