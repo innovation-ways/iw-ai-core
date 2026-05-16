@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from orch.daemon import worktree_compose
+from orch.daemon import auto_merge, worktree_compose
 from orch.daemon.migration_pipeline import (
     is_merge_queue_frozen,
     run_post_merge_apply,
@@ -336,7 +336,6 @@ def _merge_item(
         # Done after the main commit releases locks; re-queried WorkItem is fresh.
         # Must NOT roll back the merge if capture fails (Invariant 5).
         try:
-            from orch.db.models import WorkItem
             from orch.diff_service import (
                 _git_diff_merge_commit,
                 _git_rev_parse_head,
@@ -458,6 +457,100 @@ def _merge_item(
         batch_item.merge_info = {
             "conflict_files": conflict_files,
         }
+
+        # F-00084: parse new auto-resolve markers emitted by worktree_commit.sh.
+        # Event order: attempted → (per-file LLM) → resolved|failed|skipped → merge_conflict.
+        # Invariants:
+        #   - merge_conflict event MUST still fire (below).
+        #   - BatchItem.status = merge_failed MUST still execute (already set above).
+        #   - All new code is wrapped in try/except so failures never block the merge path.
+        if result is not None:
+            _output = result.stdout + result.stderr
+            _auto_resolve_request = auto_merge.parse_auto_resolve_marker(_output)
+            _auto_skip = auto_merge.parse_auto_skip_marker(_output)
+
+            if _auto_skip is not None:
+                try:
+                    auto_merge.emit_skipped_event(db, project_id, item_id, _auto_skip)
+                except Exception as _exc:
+                    logger.exception(
+                        "[%s] auto_merge emit_skipped_event error for %s: %s",
+                        project_id,
+                        item_id,
+                        _exc,
+                    )
+            elif _auto_resolve_request is not None:
+                try:
+                    _orch_root = Path(__file__).resolve().parent.parent.parent
+                    _config, _parse_error = auto_merge.AutoMergeConfig.load(
+                        str(_orch_root / "executor" / "auto_merge.toml")
+                    )
+                    if _parse_error:
+                        auto_merge.emit_config_invalid_event(db, project_id, item_id, _parse_error)
+
+                    _classification = auto_merge.classify_conflicts(
+                        worktree_path=Path(worktree_path),
+                        conflict_files=list(_auto_resolve_request.get("eligible_files", [])),
+                        config=_config,
+                    )
+
+                    if _classification.skipped_reason is not None:
+                        auto_merge.emit_skipped_event(
+                            db,
+                            project_id,
+                            item_id,
+                            {
+                                "reason": _classification.skipped_reason,
+                                "eligible_files": list(
+                                    _auto_resolve_request.get("eligible_files", [])
+                                ),
+                                "refuse_files": list(_classification.refuse_files),
+                                "binary_files": list(_classification.binary_files),
+                                "oversized_files": list(_classification.oversized_files),
+                                "oversized_hunks": list(_classification.oversized_hunks),
+                            },
+                        )
+                    else:
+                        # Fetch work item title/description for the prompt
+                        _wi = (
+                            db.query(WorkItem)
+                            .filter_by(project_id=project_id, id=item_id)
+                            .one_or_none()
+                        )
+                        _wi_title = (_wi.title if _wi is not None else "") or ""
+                        _wi_desc = (_wi.design_doc_content if _wi is not None else "") or ""
+                        _branch_name = _auto_resolve_request.get("branch", "")
+                        _main_sha = _auto_resolve_request.get("main_sha", "")
+
+                        auto_merge.attempt_resolution(
+                            db=db,
+                            project_id=project_id,
+                            item_id=item_id,
+                            item_title=_wi_title,
+                            item_description=_wi_desc,
+                            worktree_path=str(worktree_path),
+                            main_sha=_main_sha,
+                            branch_name=_branch_name,
+                            eligible_files=list(_classification.eligible_files),
+                            config=_config,
+                        )
+                        # Phase 1: result.success is always False — fall through to merge_failed.
+                except Exception as _exc:
+                    logger.exception(
+                        "[%s] auto_merge attempt_resolution error for %s: %s",
+                        project_id,
+                        item_id,
+                        _exc,
+                    )
+                    with suppress(Exception):
+                        auto_merge.emit_event(
+                            db,
+                            project_id,
+                            item_id,
+                            auto_merge.EVENT_AUTO_RESOLUTION_FAILED,
+                            {"reason": "internal_error", "error": str(_exc)},
+                        )
+
         db.commit()
         worktree_compose.down(
             str(batch_item.id),

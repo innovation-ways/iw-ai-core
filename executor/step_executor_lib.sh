@@ -594,3 +594,59 @@ VERDICT
         return 1
     fi
 }
+
+# =============================================================================
+# F-00084: LLM One-Shot Agent Invocation
+# =============================================================================
+# Used by orch/daemon/auto_merge.py (Phase 1 dry-run) to call the configured
+# LLM with a prompt on stdin and return the raw output on stdout.
+#
+# No DB writes. No iw step-done call. No worktree mutation.
+# This is a pure stdin→stdout pipe to the agent CLI.
+# =============================================================================
+
+# Invoke an agent in one-shot mode: read prompt from stdin, write output to stdout.
+# Usage: _run_agent_oneshot <agent> <model>
+_run_agent_oneshot() {
+    local agent="$1"
+    local model="$2"
+    local prompt
+    prompt=$(cat)  # read stdin
+
+    case "$agent" in
+        claude | claude-code)
+            echo "$prompt" | claude --print --model "$model"
+            ;;
+        opencode)
+            echo "$prompt" | opencode run -p "$model"
+            ;;
+        *)
+            echo "ERROR: unknown agent: $agent" >&2
+            exit 1
+            ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# Direct invocation dispatch (when called as: bash step_executor_lib.sh <step_type> ...)
+# Allows auto_merge.py to invoke: bash step_executor_lib.sh auto_merge_resolve <agent> <model>
+# ---------------------------------------------------------------------------
+# Only runs when this script is executed directly, not when sourced.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    _direct_step_type="${1:-}"
+    case "$_direct_step_type" in
+        auto_merge_resolve)
+            # F-00084: invoke the configured agent runtime in one-shot mode.
+            # Prompt comes from stdin. Output goes to stdout.
+            # No DB writes. No step-done call.
+            _direct_agent="${2:?Usage: step_executor_lib.sh auto_merge_resolve <agent> <model>}"
+            _direct_model="${3:?model is required}"
+            _run_agent_oneshot "$_direct_agent" "$_direct_model"
+            ;;
+        *)
+            echo "ERROR: step_executor_lib.sh direct invocation: unknown step_type: $_direct_step_type" >&2
+            echo "       Supported: auto_merge_resolve <agent> <model>" >&2
+            exit 1
+            ;;
+    esac
+fi
