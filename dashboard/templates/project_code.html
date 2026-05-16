@@ -237,7 +237,7 @@ document.body.addEventListener('htmx:responseError', function(e) {
 
 {% block scripts %}
 <script>
-if (typeof window.iwChat !== 'undefined') {
+if (window.iwChat && typeof window.iwChat.setContext === 'function') {
   window.iwChat.setContext({type: "code", id: "{{ current_project.id }}", title: "Code view"});
 }
 </script>

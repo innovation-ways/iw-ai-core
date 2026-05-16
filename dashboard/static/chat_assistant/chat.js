@@ -185,7 +185,7 @@
     };
     // Named events from the relay
     var namedEvents = [
-      'message.part', 'message.snapshot', 'message.complete',
+      'message.part', 'message.snapshot', 'message.complete', 'message.updated',
       'tool.call', 'tool.result', 'permission.asked',
       'session.idle', 'error', 'gap', 'reconnecting'
     ];
@@ -238,6 +238,13 @@
       _streaming = false;
       _stopContextPoll();
       _updateSendAbortButtons();
+      if (data && data.permission_denied) {
+        _appendSystemMessage('Run aborted (permission denied).', 'info');
+      } else if (data && data.aborted) {
+        _appendSystemMessage('Run aborted.', 'info');
+      } else {
+        _appendSystemMessage('Session idle.', 'info');
+      }
       return;
     }
     if (evName === 'permission.asked') {
@@ -269,6 +276,24 @@
     if (evName === 'message.snapshot') {
       var snapshotText = (data && (data.text || data.content)) || '';
       _appendOrUpdateAssistantMessage(eid, snapshotText, false);
+      return;
+    }
+    if (evName === 'message.updated') {
+      var status = data && data.status;
+      var updatedText = (data && (data.text || data.content || '')) || '';
+      var isComplete = status === 'complete';
+      _appendOrUpdateAssistantMessage(eid, updatedText, isComplete);
+      if (status === 'streaming' && !_streaming) {
+        _streaming = true;
+        _updateSendAbortButtons();
+        _startContextPoll();
+      }
+      if (isComplete) {
+        _streaming = false;
+        _stopContextPoll();
+        _updateSendAbortButtons();
+        _finaliseLastAssistantMessage();
+      }
       return;
     }
     if (evName === 'message.complete') {

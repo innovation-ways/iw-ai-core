@@ -699,6 +699,30 @@ def up(cfg: WorktreeStackConfig) -> UpResult:
             seed_stderr_tail=None,
         )
 
+    if is_alive(cfg.batch_item_id):
+        logger.info(
+            "compose stack already running for %s; re-attaching without compose up",
+            cfg.batch_item_id,
+        )
+        _emit_daemon_event(
+            "worktree_compose",
+            {
+                "phase": "reattach",
+                "batch_item_id": cfg.batch_item_id,
+                "success": True,
+            },
+            message=f"worktree_compose re-attached for {cfg.batch_item_id}",
+            project_id=cfg.project_id,
+        )
+        return UpResult(
+            success=True,
+            rendered_compose_path=cfg.rendered_compose_path,
+            discovered_ports={},
+            discovered_db_credentials=_read_db_credentials_from_toml(cfg.env_toml_path),
+            error_message=None,
+            seed_stderr_tail=None,
+        )
+
     try:
         compose_path = render_compose(cfg)
     except Exception as exc:
