@@ -218,7 +218,13 @@ def fake_llm(monkeypatch) -> FakeLLM:
 
 Tests are the deliverable here. There is no production code in this step. **RED phase is structurally satisfied** by writing tests against the existing (S03-delivered) module; the GREEN phase is making your assertions strong enough that they would fail if S03 had skipped a contract.
 
-**`tdd_red_evidence`** in your report should be a 1-3 line snippet showing that at least one of your new tests would have FAILED against a deliberately-broken version of S03 (e.g., comment out the Phase-0 short-circuit and run `test_ac5_phase_0_default_behaviour` to confirm it fails; then restore and confirm it passes).
+**`tdd_red_evidence`** in your report should be a 1-3 line snippet showing that at least one of your new tests proves a contract — without modifying S03's production code. Use ONE of these acceptable techniques:
+
+  1. **Monkeypatch the config**: in a side test, monkeypatch `AutoMergeConfig.load` to return a config with `phase=1` (i.e., violate the Phase-0 default invariant) and confirm `test_ac5_phase_0_default_behaviour` then fails because subprocess.run was called. Restore via the fixture's automatic teardown.
+  2. **Mock-target inversion**: replace the FakeLLM with one that records ALL invocations and assert call-count expectations would change if the Phase-0 short-circuit were absent.
+  3. **Stub-driven contradiction**: write a temporary unit test that stubs `attempt_resolution` to call `subprocess.run` and confirm the integration test catches it.
+
+**You MUST NOT** edit or revert any file in `orch/`, `executor/`, or any production source to produce RED evidence. Runtime source-revert RED checks are forbidden by the IW workflow (causes thrash and drift). Pick whichever monkeypatch/mock technique cleanly demonstrates that the test would fail if the contract were broken at the Python boundary.
 
 ## Pre-flight Quality Gates (NON-NEGOTIABLE)
 
