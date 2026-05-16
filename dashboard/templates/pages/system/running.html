@@ -19,20 +19,13 @@
 {% endblock %}
 
 {% block content %}
-<div class="mb-6 flex items-center justify-between">
-  <div>
-    <h1 class="text-2xl font-semibold text-foreground">Running Tasks</h1>
-    <p class="text-muted-foreground text-sm mt-1">
-      Live view of all active steps across
-      {% if current_project %}{{ current_project.display_name }}{% else %}all projects{% endif %}.
-    </p>
-  </div>
-  {% if running_count > 0 %}
+{% if running_count > 0 %}
+  <div class="mb-4 flex justify-end">
     <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary text-primary-foreground">
       {{ running_count }} active
     </span>
-  {% endif %}
-</div>
+  </div>
+{% endif %}
 
 <!-- =====================================================================
      Section 1: Running Now
