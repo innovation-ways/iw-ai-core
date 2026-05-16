@@ -34,8 +34,9 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "d1e2f3gpt53c"  # head — Add gpt-5.3-codex runtime option (snapshot WIP)
-_PREV_REVISION = "a1b2c3fixmm"  # fix_runtime_option_model_format (before id_allocations)
+_HEAD_REVISION = "d1e2f3gpt53c"  # head — add_gpt_5_3_codex_runtime_option
+_PREV_REVISION = "7ef0b420c58f"  # Add id_allocations table for idempotent next-id
+# (before current head)
 
 
 # ---------------------------------------------------------------------------
