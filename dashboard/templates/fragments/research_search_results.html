@@ -3,7 +3,7 @@
 {% set next_dir = 'desc' if (is_active and sort_dir == 'asc') else 'asc' %}
 <th class="text-left px-4 py-3 font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors"
     hx-get="/project/{{ current_project.id }}/api/research/search"
-    hx-include="#research-state, [name='q']"
+    hx-include="#research-state"
     hx-vals='{"sort": "{{ field }}", "sort_dir": "{{ next_dir }}"}'
     hx-target="#research-grid"
     hx-swap="innerHTML">
@@ -20,6 +20,7 @@
 
 {# Hidden form — persists current filter + sort state across partial swaps #}
 <form id="research-state" class="hidden">
+  <input type="hidden" name="q"        value="{{ current_q }}">
   <input type="hidden" name="status"   value="{{ current_status }}">
   <input type="hidden" name="category" value="{{ current_category }}">
   <input type="hidden" name="sort"     value="{{ sort }}">
