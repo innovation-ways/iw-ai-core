@@ -586,6 +586,13 @@ class BatchManager:
 
         worktree_path = Path(worktree_info["path"])
 
+        # I-00083: Launch-time sibling-scope check (WARN only — v1).
+        # Query in-flight siblings and compute how many of their declared
+        # impacted_paths globs match files present in B's base tree without
+        # the sibling having a merge_commit_sha yet. Emits exactly one INFO
+        # line per worktree-create event so operators can detect drift early.
+        self._emit_sibling_drift_log(db, item_id, worktree_path)
+
         # Phase 1b: Compose lifecycle (opt-in per worktree)
         if not worktree_compose.has_iw_config(worktree_path):
             batch_item.worktree_db_port = None
@@ -729,6 +736,185 @@ class BatchManager:
             "branch": f"agent/{item_id}",
             "created_at": datetime.now(UTC).isoformat(),
         }
+
+    # ------------------------------------------------------------------
+    # I-00083: Launch-time sibling-scope drift check
+    # ------------------------------------------------------------------
+
+    def _list_worktree_files(self, worktree_path: Path) -> frozenset[str]:
+        """Return all git-tracked files in the worktree as a frozenset of paths.
+
+        Uses `git ls-tree -r --name-only HEAD` which lists the files in the
+        commit tree (not the working directory), so untracked files are excluded.
+        Falls back to an empty set if git is unavailable or the path is not a
+        git repo.
+        """
+        try:
+            result = subprocess.run(  # noqa: S603
+                ["git", "ls-tree", "-r", "--name-only", "HEAD"],  # noqa: S607
+                cwd=str(worktree_path),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                return frozenset(result.stdout.splitlines())
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "[I-00083] git ls-tree failed for worktree %s — treating as empty",
+                worktree_path,
+                exc_info=True,
+            )
+        return frozenset()
+
+    def _glob_matches_any(self, glob_pattern: str, file_paths: frozenset[str]) -> list[str]:
+        """Return the subset of file_paths that match the gitignore-style glob_pattern.
+
+        Supports:
+          - Exact paths: "orch/foo.py" → matches only that exact path
+          - Single-star globs: "orch/*.py" → matches one path segment
+          - Double-star globs: "tests/**" → matches any depth under tests/
+
+        Uses pathlib.PurePath.match() for simple patterns and fnmatch for
+        glob-style matching with **. This is intentionally a v1 approximation;
+        full gitignore semantics are out of scope.
+        """
+        import fnmatch
+        from pathlib import PurePath
+
+        matched: list[str] = []
+        for fp in file_paths:
+            # PurePath.match() handles "**" and single-segment patterns correctly
+            # when matching against the full path.
+            try:
+                if PurePath(fp).match(glob_pattern):
+                    matched.append(fp)
+                    continue
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "[I-00083] PurePath.match failed for pattern=%r path=%r",
+                    glob_pattern,
+                    fp,
+                    exc_info=True,
+                )
+            # Fallback: plain fnmatch (handles ** as wildcard across segments)
+            try:
+                if fnmatch.fnmatch(fp, glob_pattern):
+                    matched.append(fp)
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "[I-00083] fnmatch failed for pattern=%r path=%r",
+                    glob_pattern,
+                    fp,
+                    exc_info=True,
+                )
+        return matched
+
+    def _collect_in_flight_sibling_items(self, db: Session, current_item_id: str) -> list[WorkItem]:
+        """Return WorkItems that are actively in-flight (via BatchItem) for this project.
+
+        In-flight is defined as BatchItem.status in {setting_up, executing, merging}.
+        Excludes the current item being launched (current_item_id).
+
+        Used by the I-00083 sibling-scope drift check.
+        """
+        in_flight_statuses = (
+            BatchItemStatus.setting_up,
+            BatchItemStatus.executing,
+            BatchItemStatus.merging,
+        )
+        rows = (
+            db.query(WorkItem)
+            .join(BatchItem, BatchItem.work_item_id == WorkItem.id)
+            .filter(
+                WorkItem.project_id == self.project_id,
+                BatchItem.project_id == self.project_id,
+                BatchItem.status.in_(in_flight_statuses),
+                WorkItem.id != current_item_id,
+            )
+            .distinct()
+            .all()
+        )
+        return list(rows)
+
+    def _emit_sibling_drift_log(self, db: Session, item_id: str, worktree_path: Path) -> None:
+        """Emit exactly one INFO line per worktree-create event (I-00083).
+
+        Format:
+          worktree create: item=<ID> base=<sha> in_flight_siblings=[<sib1>,...]
+          sibling_paths_without_merge=<N> details=[<sib1>:<count>,...]
+
+        v1 approximation: a sibling contributes to the drift count when it has
+        no merge_commit_sha (not yet merged) AND its impacted_paths globs match
+        at least one file present in the new worktree's HEAD tree.
+
+        Behaviour: WARN only. Worktree creation is never blocked.
+        """
+        # Resolve the worktree's HEAD SHA (best-effort; falls back to "unknown")
+        base_sha = self._resolve_worktree_base_sha(str(worktree_path)) or "unknown"
+
+        # Gather in-flight siblings from the DB
+        siblings = self._collect_in_flight_sibling_items(db, item_id)
+        sibling_ids = [s.id for s in siblings]
+
+        if not siblings:
+            logger.info(
+                "worktree create: item=%s base=%s in_flight_siblings=[] "
+                "sibling_paths_without_merge=0",
+                item_id,
+                base_sha,
+            )
+            return
+
+        # List all git-tracked files in the new worktree's HEAD tree
+        worktree_files = self._list_worktree_files(worktree_path)
+
+        # For each sibling with no merge_commit_sha, count matching files
+        details: list[tuple[str, int]] = []
+        total_drift = 0
+        for sibling in siblings:
+            # v1 approximation: sibling contributes when it has no merge_commit_sha
+            if sibling.merge_commit_sha is not None:
+                # Sibling already merged — its files are legitimately in main
+                details.append((sibling.id, 0))
+                continue
+
+            globs = list(sibling.impacted_paths or [])
+            matched_files: set[str] = set()
+            for glob_pat in globs:
+                matched_files.update(self._glob_matches_any(glob_pat, worktree_files))
+
+            count = len(matched_files)
+            details.append((sibling.id, count))
+            total_drift += count
+
+        if total_drift > 0:
+            detail_str = "[" + ",".join(f"{sid}:{cnt}" for sid, cnt in details if cnt > 0) + "]"
+            logger.info(
+                "worktree create: item=%s base=%s in_flight_siblings=%s "
+                "sibling_paths_without_merge=%d details=%s",
+                item_id,
+                base_sha,
+                sibling_ids,
+                total_drift,
+                detail_str,
+            )
+            logger.warning(
+                "[I-00083] Drift detected: item=%s base tree contains %d file(s) "
+                "from un-merged sibling(s) %s — these files may be in a broken "
+                "pre-impl state. Review before running QV gates.",
+                item_id,
+                total_drift,
+                [sid for sid, cnt in details if cnt > 0],
+            )
+        else:
+            logger.info(
+                "worktree create: item=%s base=%s in_flight_siblings=%s "
+                "sibling_paths_without_merge=0",
+                item_id,
+                base_sha,
+                sibling_ids,
+            )
 
     def _compute_qv_baselines(
         self, db: Session, batch_item: BatchItem, worktree_info: dict[str, Any]
