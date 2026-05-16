@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from orch.auto_merge_aggregator import resolve_project_config
 from orch.daemon import auto_merge, worktree_compose
 from orch.daemon.migration_pipeline import (
     is_merge_queue_frozen,
@@ -487,6 +488,20 @@ def _merge_item(
                     )
                     if _parse_error:
                         auto_merge.emit_config_invalid_event(db, project_id, item_id, _parse_error)
+                    _resolved_cfg = resolve_project_config(db, project_id, _config)
+                    _config = auto_merge.AutoMergeConfig(
+                        phase=_resolved_cfg.phase,
+                        runtime_option_id=_resolved_cfg.runtime_option_id,
+                        allowlist_patterns=_config.allowlist_patterns,
+                        refuselist_patterns=_config.refuselist_patterns,
+                        max_conflict_hunk_lines=_config.max_conflict_hunk_lines,
+                        max_conflicted_files_per_merge=_config.max_conflicted_files_per_merge,
+                        max_file_size_bytes=_config.max_file_size_bytes,
+                        max_event_metadata_bytes=_config.max_event_metadata_bytes,
+                        llm_call_timeout_seconds=_config.llm_call_timeout_seconds,
+                        health_probe_interval_seconds=_config.health_probe_interval_seconds,
+                        health_failure_rate_threshold_per_day=_config.health_failure_rate_threshold_per_day,
+                    )
 
                     _classification = auto_merge.classify_conflicts(
                         worktree_path=Path(worktree_path),

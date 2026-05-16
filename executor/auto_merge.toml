@@ -81,3 +81,17 @@ max_file_size_bytes = 256000
 max_event_metadata_bytes = 262144
 # LLM call timeout per file.
 llm_call_timeout_seconds = 120
+
+[health]
+# F-00085: daemon-scheduled health-probe knobs.
+# The probe is a no-op LLM call ("Reply with the single word OK") issued
+# via the configured runtime, once per probe_interval_seconds per enabled
+# project. The result is recorded as an auto_merge_health_probe DaemonEvent.
+# Cost ≈ 50 tokens / probe × 288 probes/day at default interval.
+
+# Seconds between probe attempts per project. Increase to reduce idle cost.
+probe_interval_seconds = 300
+
+# If more than this many auto_merge_resolution_failed events fire in a
+# rolling 24h window, the status chip turns yellow ⚠. Default 3.
+failure_rate_threshold_per_day = 3

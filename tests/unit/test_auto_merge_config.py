@@ -77,33 +77,18 @@ def test_load_phase_1(tmp_path: Path) -> None:
     assert config.phase == 1
 
 
-def test_load_phase_2_reserved_consumer_rejects(tmp_path: Path) -> None:
-    """phase=2 loaded successfully by loader; consumer (attempt_resolution) raises ValueError."""
-    from orch.daemon.auto_merge import AutoMergeConfig, attempt_resolution
+def test_load_phase_2_reserved_rejected_by_loader(tmp_path: Path) -> None:
+    """phase=2 is rejected directly by loader and falls back to defaults."""
+    from orch.daemon.auto_merge import PHASE_DISABLED, AutoMergeConfig
 
     toml_file = tmp_path / "auto_merge.toml"
     toml_file.write_text("phase = 2\n")
 
     config, error = AutoMergeConfig.load(str(toml_file))
 
-    # Loader itself succeeds — no error
-    assert error is None
-    assert config.phase == 2
-
-    # Consumer must reject phase>=2 with ValueError
-    with pytest.raises(ValueError, match="reserved"):
-        attempt_resolution(
-            db=None,  # type: ignore[arg-type]
-            project_id="test-proj",
-            item_id="F-00001",
-            item_title="title",
-            item_description="desc",
-            worktree_path="/tmp/fake",
-            main_sha="abc",
-            branch_name="agent/F-00001",
-            eligible_files=["tests/test_foo.py"],
-            config=config,
-        )
+    assert error is not None
+    assert "reserved" in error
+    assert config.phase == PHASE_DISABLED
 
 
 def test_load_malformed_toml(tmp_path: Path) -> None:
@@ -206,6 +191,20 @@ def test_load_limits_defaults() -> None:
     assert config.llm_call_timeout_seconds == 120
 
 
+def test_load_health_section_defaults(tmp_path: Path) -> None:
+    """Missing [health] section falls back to default health probe knobs."""
+    from orch.daemon.auto_merge import AutoMergeConfig
+
+    toml_file = tmp_path / "auto_merge.toml"
+    toml_file.write_text("phase = 1\n")
+
+    config, error = AutoMergeConfig.load(str(toml_file))
+
+    assert error is None
+    assert config.health_probe_interval_seconds == 300
+    assert config.health_failure_rate_threshold_per_day == 3
+
+
 def test_load_from_valid_toml(tmp_path: Path) -> None:
     """Loading a valid TOML returns a correctly-populated AutoMergeConfig."""
     from orch.daemon.auto_merge import AutoMergeConfig
@@ -294,10 +293,10 @@ def test_load_toml_null_runtime_option(tmp_path: Path) -> None:
 
 
 def test_load_actual_auto_merge_toml() -> None:
-    """Loading the actual executor/auto_merge.toml succeeds with phase=0."""
+    """Loading the actual executor/auto_merge.toml succeeds with phase=1."""
     from pathlib import Path
 
-    from orch.daemon.auto_merge import PHASE_DISABLED, AutoMergeConfig
+    from orch.daemon.auto_merge import PHASE_DRY_RUN, AutoMergeConfig
 
     toml_path = Path(__file__).resolve().parent.parent.parent / "executor" / "auto_merge.toml"
     if not toml_path.exists():
@@ -306,7 +305,7 @@ def test_load_actual_auto_merge_toml() -> None:
     config, error = AutoMergeConfig.load(str(toml_path))
 
     assert error is None
-    assert config.phase == PHASE_DISABLED
+    assert config.phase == PHASE_DRY_RUN
     assert config.runtime_option_id is None
     assert len(config.allowlist_patterns) > 0
     assert len(config.refuselist_patterns) > 0

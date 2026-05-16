@@ -1,0 +1,23 @@
+# F-00085 S17 QvGate Report
+
+## Gate
+
+| Field        | Value                  |
+|--------------|------------------------|
+| Gate         | assertions             |
+| Command      | `make test-assertions` |
+| Exit code    | 0                      |
+| Result       | PASS                   |
+
+## Output (tail)
+
+```
+uv run python scripts/check_test_assertions.py --baseline tests/assertion_free_baseline.txt tests/
+No new assertion-scanner violations (461 files scanned).
+```
+
+## Verdict
+
+```
+pass
+```

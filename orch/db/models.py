@@ -26,6 +26,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    PrimaryKeyConstraint,
     SmallInteger,
     String,
     Text,
@@ -1309,6 +1310,67 @@ class DaemonEvent(Base):
                 "Audit trail of orchestration events. "
                 "Append-only. Powers notifications and analytics."
             )
+        },
+    )
+
+
+class MergeAutoVerdict(Base):
+    """Operator verdicts for auto-merge outcomes per daemon event."""
+
+    __tablename__ = "merge_auto_verdicts"
+
+    project_id: Mapped[str] = mapped_column(Text, nullable=False)
+    daemon_event_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    verdict: Mapped[str] = mapped_column(Text, nullable=False)
+    verdict_notes: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("''"),
+    )
+    verdicted_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verdicted_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        PrimaryKeyConstraint("project_id", "daemon_event_id"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["daemon_event_id"], ["daemon_events.id"], ondelete="CASCADE"),
+        CheckConstraint(
+            "verdict IN ('pending','correct','wrong','partial')",
+            name="ck_merge_auto_verdicts_verdict",
+        ),
+        {
+            "comment": "Operator verdicts for auto-merge outcomes per daemon event",
+        },
+    )
+
+
+class AutoMergeProjectConfig(Base):
+    """Per-project operator overrides for auto-merge behavior."""
+
+    __tablename__ = "auto_merge_project_config"
+
+    project_id: Mapped[str] = mapped_column(Text, nullable=False)
+    phase: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    runtime_option_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ, nullable=False, server_default=func.now()
+    )
+    updated_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("project_id"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(
+            ["runtime_option_id"], ["agent_runtime_options.id"], ondelete="SET NULL"
+        ),
+        CheckConstraint(
+            "phase IS NULL OR phase IN (0, 1)",
+            name="ck_auto_merge_project_config_phase",
+        ),
+        {
+            "comment": "Per-project operator overrides for auto-merge behavior",
         },
     )
 

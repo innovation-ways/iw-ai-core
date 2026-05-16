@@ -1,0 +1,28 @@
+{% if row %}
+<tr id="auto-merge-event-row-{{ row.id }}" class="border-b border-border last:border-0">
+  <td class="px-3 py-2 text-xs text-muted-foreground">{{ row.created_at | localdt('%Y-%m-%d %H:%M:%S') }}</td>
+  <td class="px-3 py-2 text-xs">{{ row.event_type }}</td>
+  <td class="px-3 py-2 text-xs font-mono">{{ row.entity_id or '—' }}</td>
+  <td class="px-3 py-2 text-xs" title="{{ row.message or '' }}">{{ (row.message or '—')[:120] }}{% if row.message and row.message|length > 120 %}…{% endif %}</td>
+  <td class="px-3 py-2 text-xs">
+    {% if row.event_type == 'merge_auto_resolved' %}
+      {% set active = row.verdict or 'pending' %}
+      <div class="auto-merge-verdict-group">
+        {% for v in ['pending', 'correct', 'wrong', 'partial'] %}
+          <button class="auto-merge-verdict auto-merge-verdict--{{ v }} {% if active == v %}is-active{% endif %}"
+                  hx-post="/project/{{ request.path_params.project_id }}/auto-merge/events/{{ row.id }}/verdict"
+                  hx-ext="json-enc"
+                  hx-vals='{"verdict": "{{ v }}"}'
+                  hx-target="#auto-merge-event-row-{{ row.id }}"
+                  hx-swap="outerHTML">{{ v }}</button>
+        {% endfor %}
+      </div>
+    {% else %}
+      —
+    {% endif %}
+  </td>
+  <td class="px-3 py-2 text-xs">
+    <a hx-get="/project/{{ request.path_params.project_id }}/auto-merge/events/{{ row.id }}" hx-target="#modal-root" hx-swap="innerHTML" class="text-primary hover:underline">(view)</a>
+  </td>
+</tr>
+{% endif %}

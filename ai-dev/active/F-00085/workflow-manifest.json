@@ -1,0 +1,211 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "F-00085",
+  "type": "Feature",
+  "title": "Auto-Merge Resolver — Observability + Per-Project Control",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**",
+      "orch/auto_merge_aggregator.py",
+      "orch/daemon/auto_merge.py",
+      "orch/daemon/auto_merge_health.py",
+      "orch/daemon/merge_queue.py",
+      "orch/daemon/main.py",
+      "executor/auto_merge.toml",
+      "dashboard/routers/auto_merge_ui.py",
+      "dashboard/app.py",
+      "dashboard/templates/base.html",
+      "dashboard/templates/pages/project/auto_merge.html",
+      "dashboard/templates/fragments/auto_merge_status_chip.html",
+      "dashboard/templates/fragments/auto_merge_events_table.html",
+      "dashboard/templates/fragments/auto_merge_event_detail.html",
+      "dashboard/templates/fragments/auto_merge_rollup.html",
+      "dashboard/templates/fragments/auto_merge_refuse_list.html",
+      "dashboard/templates/fragments/auto_merge_settings.html",
+      "dashboard/static/styles.css",
+      "tests/unit/test_auto_merge_aggregator.py",
+      "tests/unit/test_auto_merge_config_resolution.py",
+      "tests/unit/test_auto_merge_health.py",
+      "tests/unit/test_auto_merge_pricing.py",
+      "tests/integration/test_auto_merge_observability.py",
+      "tests/integration/test_auto_merge_control_surface.py",
+      "tests/dashboard/test_auto_merge_routes.py",
+      "tests/fixtures/auto_merge_observability/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Database: alembic migration creating merge_auto_verdicts (composite PK, verdict CHECK constraint) + auto_merge_project_config (per-project phase + runtime override); ORM models in orch/db/models.py.",
+      "prompt": "prompts/F-00085_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S01: schema correctness, append-only invariant (existing daemon_events still append-only), FK targets, CHECK constraints, ORM model fidelity.",
+      "prompt": "prompts/F-00085_S02_CodeReview_Database_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "qv-gate",
+      "gate": "migration-check",
+      "command": "make migration-check",
+      "description": "QV: Alembic migration round-trip + drift check"
+    },
+    {
+      "step": "S04",
+      "agent": "pipeline-impl",
+      "description": "Pipeline: executor/auto_merge.toml [health] section (probe_interval_seconds, failure_rate_threshold_per_day); orch/daemon/auto_merge.py AutoMergeConfig extended with HealthConfig fields and back-compat defaults.",
+      "prompt": "prompts/F-00085_S04_Pipeline_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S04: TOML schema, loader extension, defaults-when-section-absent, no regression on Phase 0/1 plumbing.",
+      "prompt": "prompts/F-00085_S05_CodeReview_Pipeline_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "backend-impl",
+      "description": "Backend: new orch/auto_merge_aggregator.py (8 queries + MODEL_PRICING + resolve_project_config); new orch/daemon/auto_merge_health.py (daemon probe task); update orch/daemon/auto_merge.py + orch/daemon/merge_queue.py to use resolve_project_config(); wire probe into daemon main loop.",
+      "prompt": "prompts/F-00085_S06_Backend_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S06: config resolution determinism (Inv 2), per-project override semantics, MODEL_PRICING coverage, daemon health-probe non-blocking (Inv 7), no UPDATE/DELETE on daemon_events (Inv 1).",
+      "prompt": "prompts/F-00085_S07_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "api-impl",
+      "description": "API: new dashboard/routers/auto_merge_ui.py with 7 endpoints (page, status fragment, events fragment, event detail modal, verdict POST, config POST, rollup fragment); register router in dashboard/app.py.",
+      "prompt": "prompts/F-00085_S08_API_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S08: endpoint contracts, request/response shapes, validation (phase∈{0,1}, runtime enabled), 400/413 error paths, htmx fragment vs full page responses.",
+      "prompt": "prompts/F-00085_S09_CodeReview_API_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "frontend-impl",
+      "description": "Frontend: page template + 6 fragments; status chip include from base.html; sidebar nav entry; CSS additions to dashboard/static/styles.css (CR-00033 fallback rule); diff viewer uses difflib.HtmlDiff side-by-side; Settings panel form.",
+      "prompt": "prompts/F-00085_S10_Frontend_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S10: chip visibility gating on phase>=1 (Inv 6); template-render correctness; htmx swap targets; CSS additions append-only; no Jinja %-format vs .format mismatch (I-00075 lesson).",
+      "prompt": "prompts/F-00085_S11_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Cross-agent final review of S01..S11 (implementation cross-cut): config resolution chain end-to-end, marker handoff intact, append-only invariant respected, F-00081 pattern reuse correct.",
+      "prompt": "prompts/F-00085_S12_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S13",
+      "agent": "tests-impl",
+      "description": "Tests: unit tests (aggregator, config_resolution, health, pricing); integration tests (observability AC1-9, control_surface AC10-14); dashboard TestClient tests for each endpoint; AC9 regression sweep on adjacent pages.",
+      "prompt": "prompts/F-00085_S13_Tests_prompt.md"
+    },
+    {
+      "step": "S14",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S13: AC coverage matrix, assertion strength (event_type AND specific metadata), isolation rules, no real LLM calls, FakeLLM at Python boundary.",
+      "prompt": "prompts/F-00085_S14_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S15",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Final cross-agent review including tests: implementation × tests round-trip, every AC + Invariant + Boundary mapped to at least one test, production-readiness for Phase 1 audit.",
+      "prompt": "prompts/F-00085_S15_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S16",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S17",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner"
+    },
+    {
+      "step": "S18",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S19",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S20",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S21",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S22",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S23",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scan",
+      "timeout": 300
+    },
+    {
+      "step": "S24",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — chip on header, page render empty + seeded, diff viewer modal, inline + modal verdict persistence, Settings panel writes (phase + runtime), phase=0 hides chip, no regressions on adjacent project pages.",
+      "prompt": "prompts/F-00085_S24_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S25",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill (focus on multi-layer cross-cut between DB, daemon, dashboard).",
+      "prompt": "prompts/F-00085_S25_SelfAssess_prompt.md"
+    }
+  ]
+}

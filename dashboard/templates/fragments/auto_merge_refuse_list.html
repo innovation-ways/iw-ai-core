@@ -1,0 +1,11 @@
+{% set total_refuse = refuse_list_breakdown | map(attribute='count') | sum %}
+{% if total_refuse > 0 %}
+<section class="auto-merge-refuse-widget bg-card border border-border rounded-lg p-4">
+  <h3 class="text-sm font-semibold mb-2">Refuse-list activity</h3>
+  <div class="auto-merge-refuse-bar">
+    {% for row in refuse_list_breakdown %}
+      <span class="auto-merge-refuse-pill">{{ row.reason }}: {{ row.count }}</span>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
