@@ -15,13 +15,15 @@ PATCH /project/{project_id}/api/item/{item_id}/runtime-override/bulk
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Response
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
+from dashboard.routers import items as items_router
 from orch.agent_runtime.audit import emit_runtime_override_changed
 from orch.db.models import (
     AgentRuntimeOption,
@@ -145,6 +147,47 @@ def _item_has_editable_steps(db: Session, item: WorkItem) -> bool:
     return count is not None
 
 
+def _render_steps_fragment(request: Request, db: Session, project_id: str, item_id: str) -> str:
+    """Render the swappable steps-table fragment for runtime-override PATCH responses."""
+    project = items_router._get_project_or_404(project_id, db)  # noqa: SLF001
+    item = _get_item_or_404(db, project_id, item_id)
+    steps = items_router._get_steps(project_id, item_id, db, project)  # noqa: SLF001
+    step_run_counts: dict[str, int] = {s.step_id: s.run_count for s in steps if not s.is_synthetic}
+
+    runtime_options = list(
+        db.scalars(
+            select(AgentRuntimeOption)
+            .where(AgentRuntimeOption.enabled.is_(True))
+            .order_by(AgentRuntimeOption.sort_order, AgentRuntimeOption.id)
+        ).all()
+    )
+    runtime_options_list = [
+        {
+            "id": r.id,
+            "cli_tool": r.cli_tool,
+            "model": r.model,
+            "cli_label": r.cli_label,
+            "model_label": r.model_label,
+            "display_name": r.display_name,
+            "is_default": r.is_default,
+        }
+        for r in runtime_options
+    ]
+
+    templates = request.app.state.templates
+    response = templates.TemplateResponse(
+        request,
+        "fragments/item_steps_table.html",
+        {
+            "item": item,
+            "steps": steps,
+            "step_run_counts": step_run_counts,
+            "runtime_options": runtime_options_list,
+        },
+    )
+    return bytes(response.body).decode("utf-8")
+
+
 @router.patch("/item/{item_id}/runtime-override", response_class=Response)
 def patch_item_runtime_override(
     project_id: str,
@@ -191,11 +234,12 @@ def patch_item_runtime_override(
 # ---------------------------------------------------------------------------
 
 
-@router.patch("/item/{item_id}/step/{step_id}/runtime-override", response_class=Response)
+@router.patch("/item/{item_id}/step/{step_id}/runtime-override", response_class=HTMLResponse)
 def patch_step_runtime_override(
     project_id: str,
     item_id: str,
     step_id: str,
+    request: Request,
     option_id: int | None = Form(default=None),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -233,7 +277,15 @@ def patch_step_runtime_override(
         actor=_ACTOR,
     )
 
-    return Response(status_code=204)
+    fragment_html = _render_steps_fragment(request, db, project_id, item_id)
+    # Contract: return the steps fragment; HX-Trigger.showToast provides user feedback.
+    return HTMLResponse(
+        content=fragment_html,
+        status_code=200,
+        headers={
+            "HX-Trigger": json.dumps({"showToast": {"message": "Model updated", "type": "success"}})
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -241,10 +293,11 @@ def patch_step_runtime_override(
 # ---------------------------------------------------------------------------
 
 
-@router.patch("/item/{item_id}/runtime-override/bulk", response_class=Response)
+@router.patch("/item/{item_id}/runtime-override/bulk", response_class=HTMLResponse)
 def patch_bulk_runtime_override(
     project_id: str,
     item_id: str,
+    request: Request,
     option_id: int | None = Form(default=None),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -271,10 +324,14 @@ def patch_bulk_runtime_override(
             )
         ).all()
     )
+    changed_steps = [
+        step for step in editable_steps if step.agent_runtime_option_id != new_option_id
+    ]
+    updated_count = len(changed_steps)
 
-    if editable_steps:
-        old_option_id = editable_steps[0].agent_runtime_option_id  # any is fine for audit
-        for step in editable_steps:
+    if updated_count >= 1:
+        old_option_id = changed_steps[0].agent_runtime_option_id
+        for step in changed_steps:
             step.agent_runtime_option_id = new_option_id
 
         emit_runtime_override_changed(
@@ -282,11 +339,24 @@ def patch_bulk_runtime_override(
             project_id=project_id,
             item_id=item_id,
             scope="bulk",
-            step_ids=[s.step_id for s in editable_steps],
+            step_ids=[s.step_id for s in changed_steps],
             old_option_id=old_option_id,
             new_option_id=new_option_id,
             actor=_ACTOR,
         )
-    # else: zero editable steps → no event, no changes
+        toast_message = f"Model updated for {updated_count} step(s)"
+        toast_type = "success"
+    else:
+        # zero editable steps → no event, no changes
+        toast_message = "No editable steps to update"
+        toast_type = "info"
 
-    return Response(status_code=204)
+    fragment_html = _render_steps_fragment(request, db, project_id, item_id)
+    # Contract: return the steps fragment; HX-Trigger.showToast provides user feedback.
+    return HTMLResponse(
+        content=fragment_html,
+        status_code=200,
+        headers={
+            "HX-Trigger": json.dumps({"showToast": {"message": toast_message, "type": toast_type}})
+        },
+    )

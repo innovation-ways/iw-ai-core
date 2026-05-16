@@ -204,7 +204,8 @@ class TestAuditSingleStepPatch:
             f"/project/{test_project.id}/api/item/{item.id}/step/{step.step_id}/runtime-override",
             data={"option_id": "3"},
         )
-        assert resp.status_code == 204, resp.text
+        assert resp.status_code == 200, resp.text
+        assert 'id="item-steps-table"' in resp.text
 
         after = db_session.query(DaemonEvent).count()
         assert after == before + 1
@@ -265,7 +266,8 @@ class TestAuditSingleStepPatch:
             f"/project/{test_project.id}/api/item/{item.id}/step/{step.step_id}/runtime-override",
             data={"option_id": ""},
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        assert 'id="item-steps-table"' in resp.text
 
         after = db_session.query(DaemonEvent).count()
         assert after == before + 1
@@ -304,7 +306,8 @@ class TestAuditBulkPatch:
             f"/project/{test_project.id}/api/item/{item.id}/runtime-override/bulk",
             data={"option_id": "3"},
         )
-        assert resp.status_code == 204, resp.text
+        assert resp.status_code == 200, resp.text
+        assert 'id="item-steps-table"' in resp.text
 
         after = db_session.query(DaemonEvent).count()
         assert after == before + 1
@@ -345,7 +348,8 @@ class TestAuditBulkPatch:
             f"/project/{test_project.id}/api/item/{item.id}/runtime-override/bulk",
             data={"option_id": "4"},
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        assert 'id="item-steps-table"' in resp.text
 
         event = db_session.scalar(
             select(DaemonEvent).where(
@@ -376,7 +380,8 @@ class TestAuditBulkPatch:
             f"/project/{test_project.id}/api/item/{item.id}/runtime-override/bulk",
             data={"option_id": "2"},
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        assert 'id="item-steps-table"' in resp.text
 
         event = db_session.scalar(
             select(DaemonEvent).where(

@@ -106,8 +106,8 @@ Any file outside this set is a **CRITICAL** finding (scope violation).
 Run ONLY the targeted tests that exercise the modified surface area:
 
 ```bash
-uv run pytest tests/dashboard/test_runtime_override_response.py -v --no-cov
-uv run pytest tests/ -k runtime_override -v --no-cov
+uv run pytest tests/dashboard/test_runtime_override_response.py -v
+uv run pytest tests/ -k runtime_override -v
 ```
 
 Report results. Any failure is a **CRITICAL** finding.
