@@ -42,6 +42,13 @@
 
 set -euo pipefail
 
+# F-00084: --resume-rebase is reserved for Phase 2 (auto-apply path).
+# Phase 1 is dry-run only — this flag must never be passed in Phase 0 or 1.
+if [[ "${1:-}" == "--resume-rebase" ]]; then
+    echo "[worktree_commit] ERROR: --resume-rebase is reserved for Phase 2 (auto-apply path). Phase 1 is dry-run only." >&2
+    exit 2
+fi
+
 ITEM_ID="${1:?Usage: worktree_commit.sh <item_id> <project_repo_root>}"
 PROJECT_REPO_ROOT="${2:?project_repo_root is required}"
 
@@ -346,6 +353,126 @@ else
         done <<< "$conflicting"
 
         if [[ -n "$_blocking" ]]; then
+            # F-00084: LLM-assisted merge resolution — Phase 0/1 plumbing.
+            # Reference: docs/research/R-00076-llm-automated-merge-resolution.md §5.2-§5.3.
+            #
+            # This script's job in F-00084 is purely classification + stdout marker emission.
+            # The Python merge_queue.py reads AUTO_RESOLVE_REQUESTED and decides whether to
+            # invoke the LLM (per executor/auto_merge.toml's phase). In Phase 0 and Phase 1,
+            # this script always aborts the rebase — never resolves.
+
+            # Read phase from auto_merge.toml (bash reads phase value only; Python does full TOML parsing).
+            _TOML_FILE="$(dirname "$0")/auto_merge.toml"
+            AUTO_MERGE_PHASE=0
+            if [[ -f "$_TOML_FILE" ]]; then
+                _phase_raw="$(grep -E '^phase = ' "$_TOML_FILE" | awk -F= '{print $2}' | tr -d ' ')"
+                if [[ -n "$_phase_raw" ]]; then
+                    AUTO_MERGE_PHASE="$_phase_raw"
+                fi
+            fi
+
+            # Convert space-separated _blocking string to an array for classification.
+            # shellcheck disable=SC2206
+            _blocking_files=($_blocking)
+
+            # Bash refuse-list (coarse path-prefix and suffix matching).
+            # Defence-in-depth: Python side does rich-glob classification.
+            # Refuse-list always wins over allowlist.
+            _REFUSE_PREFIXES=(
+                "orch/db/migrations/versions/"
+                "executor/"
+                ".env"
+                ".gitleaks.toml"
+                ".gitignore"
+                "orch/db/identity.py"
+                "orch/config.py"
+                "uv.lock"
+            )
+            _REFUSE_SUFFIXES=(
+                ".png" ".jpg" ".jpeg" ".gif" ".zst" ".tar.gz" ".db" ".sqlite" ".parquet"
+            )
+
+            _refuse_files=()
+            _eligible_files=()
+
+            for _f in "${_blocking_files[@]}"; do
+                _refused=0
+
+                # Check prefix match
+                for _prefix in "${_REFUSE_PREFIXES[@]}"; do
+                    if [[ "$_f" == "$_prefix"* ]]; then
+                        _refused=1
+                        break
+                    fi
+                done
+
+                # Check suffix match (only if not already refused)
+                if [[ "$_refused" -eq 0 ]]; then
+                    for _suffix in "${_REFUSE_SUFFIXES[@]}"; do
+                        if [[ "$_f" == *"$_suffix" ]]; then
+                            _refused=1
+                            break
+                        fi
+                    done
+                fi
+
+                if [[ "$_refused" -eq 1 ]]; then
+                    _refuse_files+=("$_f")
+                else
+                    _eligible_files+=("$_f")
+                fi
+            done
+
+            # Build JSON arrays for markers (use jq if available, bash fallback).
+            # Handles empty arrays safely.
+            _build_json_array() {
+                local -n _arr=$1
+                if [[ "${#_arr[@]}" -eq 0 ]]; then
+                    echo "[]"
+                    return
+                fi
+                if command -v jq >/dev/null 2>&1; then
+                    printf '%s\n' "${_arr[@]}" | jq -Rc . | jq -cs .
+                else
+                    local _out="["
+                    local _first=1
+                    for _item in "${_arr[@]}"; do
+                        local _escaped="${_item//\\/\\\\}"
+                        _escaped="${_escaped//\"/\\\"}"
+                        if [[ "$_first" -eq 1 ]]; then
+                            _out+="\"${_escaped}\""
+                            _first=0
+                        else
+                            _out+=",\"${_escaped}\""
+                        fi
+                    done
+                    _out+="]"
+                    echo "$_out"
+                fi
+            }
+
+            _refuse_json="$(_build_json_array _refuse_files)"
+            _eligible_json="$(_build_json_array _eligible_files)"
+
+            if [[ "${#_refuse_files[@]}" -gt 0 && "${#_eligible_files[@]}" -eq 0 ]]; then
+                # All blocking files are refuse-listed — standard abort path.
+                echo "AUTO_RESOLVE_SKIPPED={\"reason\": \"refuse_list\", \"refuse_files\": ${_refuse_json}, \"eligible_files\": []}"
+                # Fall through to existing abort logic below.
+
+            elif [[ "${#_refuse_files[@]}" -gt 0 && "${#_eligible_files[@]}" -gt 0 ]]; then
+                # Mixed: refuse-list wins (defence-in-depth).
+                echo "AUTO_RESOLVE_SKIPPED={\"reason\": \"mixed_refuse_list\", \"refuse_files\": ${_refuse_json}, \"eligible_files\": ${_eligible_json}}"
+                # Fall through to existing abort logic below.
+
+            elif [[ "${#_refuse_files[@]}" -eq 0 && "${#_eligible_files[@]}" -gt 0 ]]; then
+                # All blocking files are eligible for LLM resolution.
+                # Emit REQUEST marker for Python merge_queue.py to consume.
+                # Note: bash ALWAYS aborts here; Python decides whether to call LLM.
+                echo "AUTO_RESOLVE_REQUESTED={\"eligible_files\": ${_eligible_json}, \"branch\": \"${BRANCH_NAME}\", \"main_sha\": \"${MAIN_SHA}\"}"
+                # Also emit existing CONFLICT_FILES marker so today's parser still works.
+            fi
+            # (If both arrays are empty, no blocking files remain — should not reach here.)
+
             echo "[worktree_commit] ERROR: Rebase conflict in implementation files — manual resolution required:" >&2
             for _bf in $_blocking; do
                 echo "[worktree_commit]   - $_bf" >&2
