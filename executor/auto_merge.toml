@@ -12,14 +12,23 @@
 #   2 = tests-only auto-apply — RESERVED for follow-up CR. Refuse if set.
 #   3 = broader allowlist — RESERVED for follow-up CR. Refuse if set.
 
-phase = 0
+# 2026-05-16: advanced to Phase 1 dry-run (operator OP-2).
+# Tracker: ai-dev/active/AUTO_MERGE_RESOLUTION.md
+# Runtime: null → falls back to project default (id=1, opencode + MiniMax-M2.7).
+# Worktree is NEVER mutated in Phase 1 — proposals captured in DaemonEvent metadata only.
+phase = 1
 
 # runtime_option_id picks WHICH cli_tool + model the resolver invokes.
 # This is an integer FK into agent_runtime_options.id (see F-00081).
-# If null OR points to a missing/disabled row, fall back to the project's
-# default agent_runtime_options row (is_default = true).
+# Leave commented out (or set to a missing/disabled row id) to fall back
+# to the project's default agent_runtime_options row (is_default = true).
 # Operators: list available options with `uv run iw projects show <project>`.
-runtime_option_id = null
+#
+# NOTE: TOML does not support `null` as a value. The loader at
+# orch/daemon/auto_merge.py:184 historically pre-stripped `key = null` lines
+# for back-compat, but strict TOML validators (pre-commit) reject them.
+# Use commented-out lines instead.
+# runtime_option_id = 4   # claude + claude-sonnet-4-6 (example override)
 
 [allowlist]
 # Conflicts whose ALL files match these globs are eligible for LLM resolution.
