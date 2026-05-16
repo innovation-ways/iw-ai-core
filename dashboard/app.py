@@ -23,6 +23,7 @@ from fastapi.templating import Jinja2Templates
 from dashboard.middlewares.alembic_guard import AlembicGuardMiddleware, is_db_stale
 from dashboard.routers import (
     actions,
+    auto_merge_ui,
     batches,
     chat,
     code,
@@ -208,6 +209,41 @@ def create_app() -> FastAPI:
         request.state.session_id = cookie_value
         return await call_next(request)
 
+    # Auto-merge chip middleware (AC6 / Invariant 6).
+    # On every per-project page, resolve the project's auto-merge phase and
+    # attach it to request.state so base.html can gate the header chip without
+    # an htmx round-trip.  Fully defensive: any error defaults to phase=0.
+    @app.middleware("http")
+    async def _auto_merge_chip_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        import re as _re  # noqa: PLC0415
+
+        m = _re.match(r"^/project/([^/]+)/", str(request.url.path))
+        if m:
+            try:
+                from orch.auto_merge_aggregator import get_status_snapshot  # noqa: PLC0415
+                from orch.daemon.auto_merge import AutoMergeConfig  # noqa: PLC0415
+                from orch.db.session import SessionLocal  # noqa: PLC0415
+
+                _project_id = m.group(1)
+                _executor_toml = (
+                    Path(__file__).resolve().parents[1] / "executor" / "auto_merge.toml"
+                )
+                _toml_config, _ = AutoMergeConfig.load(str(_executor_toml))
+                _session = SessionLocal()
+                try:
+                    _snapshot = get_status_snapshot(_session, _project_id, _toml_config)
+                    request.state.auto_merge_phase_for_chip = _snapshot.config.phase
+                    request.state.auto_merge_status_for_chip = _snapshot
+                finally:
+                    _session.close()
+            except Exception:  # noqa: BLE001
+                request.state.auto_merge_phase_for_chip = 0
+                request.state.auto_merge_status_for_chip = None
+        return await call_next(request)
+
     # Initial alembic guard check at app construction (R3).
     # Suppress failures: if the DB is unreachable at boot, the middleware
     # will retry on each request (with the same suppress) and the banner
@@ -351,6 +387,7 @@ def create_app() -> FastAPI:
     app.include_router(running.router)
     app.include_router(actions.router)
     app.include_router(runtime_overrides.router)
+    app.include_router(auto_merge_ui.router)
     app.include_router(sse.router)
     app.include_router(chat.router)
     app.include_router(system.router)

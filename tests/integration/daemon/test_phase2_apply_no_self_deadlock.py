@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "d1e2f3gpt53c"  # head — add_gpt_5_3_codex_runtime_option
-_PREV_REVISION = "7ef0b420c58f"  # Add id_allocations table for idempotent next-id
+_HEAD_REVISION = "678ac4dd44b7"  # head — F-00085 auto merge verdicts and project config
+_PREV_REVISION = "d1e2f3gpt53c"  # add_gpt_5_3_codex_runtime_option (before F-00085)
 # (before current head)
 
 

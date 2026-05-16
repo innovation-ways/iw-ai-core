@@ -1,0 +1,53 @@
+{% set type_filter = request.query_params.get('type', 'all') %}
+{% set filters = [
+  ('all', 'all', None),
+  ('resolved', 'resolved', 'merge_auto_resolved'),
+  ('attempted', 'attempted', 'merge_auto_resolution_attempted'),
+  ('failed', 'failed', 'merge_auto_resolution_failed'),
+  ('skipped', 'skipped', 'merge_auto_resolution_skipped'),
+  ('health_probe', 'health_probe', 'auto_merge_health_probe'),
+  ('config_updated', 'config_updated', 'auto_merge_config_updated')
+] %}
+
+<div class="space-y-3">
+  <div class="flex flex-wrap gap-2">
+    {% for key, label, mapped in filters %}
+      {% set href = '/project/' ~ request.path_params.project_id ~ '/auto-merge/events?page=0&page_size=' ~ page_size ~ ('' if mapped is none else '&type=' ~ mapped) %}
+      <a hx-get="{{ href }}" hx-target="#auto-merge-events" hx-swap="innerHTML"
+         class="px-2 py-1 rounded border text-xs {% if type_filter == key or (key == 'all' and not request.query_params.get('type')) %}bg-primary text-primary-foreground border-primary{% else %}border-border text-muted-foreground{% endif %}">
+        {{ label }}
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="overflow-x-auto border border-border rounded-lg">
+    <table class="w-full text-sm min-w-[820px]">
+      <thead>
+        <tr class="border-b border-border bg-muted/30 text-xs text-muted-foreground">
+          <th class="px-3 py-2 text-left">timestamp</th><th class="px-3 py-2 text-left">event_type</th><th class="px-3 py-2 text-left">entity_id</th><th class="px-3 py-2 text-left">message</th><th class="px-3 py-2 text-left">verdict</th><th class="px-3 py-2 text-left">actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in rows %}
+        {% include "fragments/auto_merge_event_row.html" %}
+      {% else %}
+        <tr><td colspan="6" class="px-3 py-8 text-center text-sm text-muted-foreground">No auto-merge events yet — Phase 1 only fires on merge-queue conflicts in tests/**, docs/**, ai-dev/active/**/reports/**</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if total > 0 %}
+  <div class="flex items-center justify-between text-xs text-muted-foreground">
+    <span>Showing {{ page * page_size + 1 }}-{{ [((page + 1) * page_size), total] | min }} of {{ total }}</span>
+    <div class="flex gap-2">
+      {% if page > 0 %}
+      <a hx-get="/project/{{ request.path_params.project_id }}/auto-merge/events?page={{ page - 1 }}&page_size={{ page_size }}{% if request.query_params.get('type') %}&type={{ request.query_params.get('type') }}{% endif %}" hx-target="#auto-merge-events" hx-swap="innerHTML" class="px-2 py-1 border border-border rounded">Prev</a>
+      {% endif %}
+      {% if has_more %}
+      <a hx-get="/project/{{ request.path_params.project_id }}/auto-merge/events?page={{ page + 1 }}&page_size={{ page_size }}{% if request.query_params.get('type') %}&type={{ request.query_params.get('type') }}{% endif %}" hx-target="#auto-merge-events" hx-swap="innerHTML" class="px-2 py-1 border border-border rounded">Next</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>

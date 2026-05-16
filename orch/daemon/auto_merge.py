@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from orch.auto_merge_aggregator import resolve_project_config
 from orch.db.models import AgentRuntimeOption, DaemonEvent
 
 if TYPE_CHECKING:
@@ -48,6 +49,8 @@ EVENT_AUTO_RESOLVED = "merge_auto_resolved"
 EVENT_AUTO_RESOLUTION_FAILED = "merge_auto_resolution_failed"
 EVENT_AUTO_RESOLUTION_SKIPPED = "merge_auto_resolution_skipped"
 EVENT_AUTO_MERGE_CONFIG_INVALID = "auto_merge_config_invalid"
+EVENT_AUTO_MERGE_HEALTH_PROBE = "auto_merge_health_probe"
+EVENT_AUTO_MERGE_CONFIG_UPDATED = "auto_merge_config_updated"
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -139,6 +142,8 @@ class AutoMergeConfig:
     max_file_size_bytes: int
     max_event_metadata_bytes: int
     llm_call_timeout_seconds: int
+    health_probe_interval_seconds: int = 300
+    health_failure_rate_threshold_per_day: int = 3
 
     @classmethod
     def defaults(cls) -> AutoMergeConfig:
@@ -153,6 +158,8 @@ class AutoMergeConfig:
             max_file_size_bytes=256_000,
             max_event_metadata_bytes=262_144,
             llm_call_timeout_seconds=120,
+            health_probe_interval_seconds=300,
+            health_failure_rate_threshold_per_day=3,
         )
 
     @classmethod
@@ -205,6 +212,7 @@ class AutoMergeConfig:
                 data.get("refuselist", {}).get("patterns", list(_DEFAULT_REFUSELIST))
             )
             limits = data.get("limits", {})
+            health = data.get("health", {})
 
             # runtime_option_id: explicit null → None; missing → None; integer → int
             runtime_option_id: int | None = None
@@ -212,8 +220,17 @@ class AutoMergeConfig:
                 raw_rid = data.get("runtime_option_id")
                 runtime_option_id = int(raw_rid) if raw_rid is not None else None
 
+            phase = int(data.get("phase", PHASE_DISABLED))
+            if phase not in (PHASE_DISABLED, PHASE_DRY_RUN):
+                error_str = (
+                    f"auto_merge.toml value error in {path}: "
+                    f"phase={phase} is reserved for future CRs (allowed: 0, 1)"
+                )
+                logger.error(error_str)
+                return cls.defaults(), error_str
+
             config = cls(
-                phase=int(data.get("phase", PHASE_DISABLED)),
+                phase=phase,
                 runtime_option_id=runtime_option_id,
                 allowlist_patterns=allowlist_patterns,
                 refuselist_patterns=refuselist_patterns,
@@ -222,6 +239,10 @@ class AutoMergeConfig:
                 max_file_size_bytes=int(limits.get("max_file_size_bytes", 256_000)),
                 max_event_metadata_bytes=int(limits.get("max_event_metadata_bytes", 262_144)),
                 llm_call_timeout_seconds=int(limits.get("llm_call_timeout_seconds", 120)),
+                health_probe_interval_seconds=int(health.get("probe_interval_seconds", 300)),
+                health_failure_rate_threshold_per_day=int(
+                    health.get("failure_rate_threshold_per_day", 3)
+                ),
             )
         except (KeyError, TypeError, ValueError) as exc:
             error_str = f"auto_merge.toml value error in {path}: {exc}"
@@ -626,20 +647,18 @@ def _resolve_runtime_option(
     2. Project default: AgentRuntimeOption where is_default=True AND enabled=True.
     3. Return None.
     """
+    resolved = resolve_project_config(db, project_id, config)
     logger.info(
-        "_resolve_runtime_option: project_id=%s runtime_option_id=%s",
+        "_resolve_runtime_option: project_id=%s runtime_option_id=%s source=%s",
         project_id,
-        config.runtime_option_id,
+        resolved.runtime_option_id,
+        resolved.source,
     )
 
-    if config.runtime_option_id is not None:
-        row = db.get(AgentRuntimeOption, config.runtime_option_id)
+    if resolved.runtime_option_id is not None:
+        row = db.get(AgentRuntimeOption, resolved.runtime_option_id)
         if row is not None and row.enabled:
             return row
-        logger.warning(
-            "_resolve_runtime_option: runtime_option_id=%d not found or disabled — falling through",
-            config.runtime_option_id,
-        )
 
     # Fall back to project default (global singleton — no project_id FK on this table)
     return (
@@ -833,17 +852,18 @@ def attempt_resolution(
     Phase 1: calls LLM; captures proposals in DaemonEvents; NEVER modifies worktree.
     Phase >= 2: raises ValueError (reserved).
     """
-    logger.info(
-        "attempt_resolution: item_id=%s phase=%d eligible_files=%s",
-        item_id,
-        config.phase,
-        eligible_files,
-    )
-
     if config.phase >= PHASE_TESTS_ONLY:
         raise ValueError(f"phase {config.phase} reserved for follow-up CR")
 
-    if config.phase == PHASE_DISABLED:
+    resolved_cfg = resolve_project_config(db, project_id, config)
+    logger.info(
+        "attempt_resolution: item_id=%s phase=%d eligible_files=%s",
+        item_id,
+        resolved_cfg.phase,
+        eligible_files,
+    )
+
+    if resolved_cfg.phase == PHASE_DISABLED:
         # Phase 0: emit skip event, zero subprocess calls
         _emit_event(
             db,

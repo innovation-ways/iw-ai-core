@@ -28,6 +28,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from orch.daemon.auto_merge import AutoMergeConfig
+from orch.daemon.auto_merge_health import maybe_run_probe
 from orch.daemon.batch_manager import BatchManager
 from orch.daemon.chat_summarization_poller import poll_chat_summarization_jobs
 from orch.daemon.doc_index_poller import DocIndexPoller, recover_orphaned_doc_index_jobs
@@ -543,6 +545,15 @@ class Daemon:
                 manager.process_batches()
                 manager.process_merge_queue()
                 manager.check_auto_publish()
+                try:
+                    orch_root = Path(__file__).resolve().parent.parent.parent
+                    toml_cfg, _ = AutoMergeConfig.load(
+                        str(orch_root / "executor" / "auto_merge.toml")
+                    )
+                    with self._session_factory() as db:
+                        maybe_run_probe(db, project_id, toml_cfg)
+                except Exception:
+                    logger.exception("Auto-merge health probe failed for %r", project_id)
             except Exception:
                 logger.exception("Error processing project %r — skipping", project_id)
                 try:
