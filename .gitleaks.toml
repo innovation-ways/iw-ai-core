@@ -55,6 +55,12 @@ paths = [
   '''(?i)(?:^|/)dist/''',
   '''(?i)(?:^|/)build/''',
   '''(?i)(?:^|/)__pycache__/''',
+  # I-00085: tool-managed cache directories — same rationale as __pycache__/
+  # above. .mypy_cache/ in particular contains vendored type-stub strings
+  # (e.g., *.local) that match the iw-internal-fqdn rule.
+  '''(?i)(?:^|/)\.mypy_cache/''',
+  '''(?i)(?:^|/)\.ruff_cache/''',
+  '''(?i)(?:^|/)\.pytest_cache/''',
   '''(?i)(?:^|/)logs?/''',
   '''(?i)(?:^|/)allure-report/''',
   '''(?i)(?:^|/)allure-results/''',
