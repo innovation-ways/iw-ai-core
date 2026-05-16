@@ -8,6 +8,8 @@ Loops up to fix_cycle_max (default 5) times before giving up.
 
 from __future__ import annotations
 
+import fnmatch
+import json
 import logging
 import re
 import subprocess
@@ -41,6 +43,226 @@ if TYPE_CHECKING:
     from orch.daemon.qv_baseline import Fingerprint
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Scope enforcement helpers (I-00082)
+# ---------------------------------------------------------------------------
+
+
+def _scope_match(path: str, pattern: str) -> bool:
+    """Mirror of executor/scope_gate.py:_matches().
+
+    Do NOT import from executor/ — that script must remain self-contained.
+    Pattern syntax:
+      - "path/to/file.py"  — exact match
+      - "dir/**"           — directory itself or any path below
+      - "dir/*.py"         — fnmatch single-level wildcard
+    """
+    if pattern.endswith("/**"):
+        prefix = pattern[:-3]
+        return path == prefix or path.startswith(prefix + "/")
+    return fnmatch.fnmatch(path, pattern)
+
+
+def _implicit_allows(item_id: str) -> list[str]:
+    """Return the three implicit glob patterns always allowed for an item.
+
+    Mirrors the implicit-allow list in executor/scope_gate.py plus the
+    ai-dev/work/<ID>/** directory used for reports and intermediate outputs.
+    """
+    return [
+        f"ai-dev/active/{item_id}/**",
+        f"ai-dev/archive/{item_id}/**",
+        f"ai-dev/work/{item_id}/**",
+    ]
+
+
+def _captured_paths(worktree: Path) -> set[str]:
+    """Return the set of all paths modified or untracked in the worktree.
+
+    Combines:
+    - ``git diff --name-only HEAD`` — tracked files with uncommitted changes
+    - ``git ls-files --others --exclude-standard`` — untracked files
+    """
+    tracked = subprocess.run(  # noqa: S603
+        ["git", "diff", "--name-only", "HEAD"],  # noqa: S607
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    untracked = subprocess.run(  # noqa: S603
+        ["git", "ls-files", "--others", "--exclude-standard"],  # noqa: S607
+        cwd=worktree,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    return {p for p in tracked + untracked if p.strip()}
+
+
+def _load_allowed_paths(worktree_path: Path, item_id: str) -> list[str]:
+    """Read scope.allowed_paths from the item's workflow-manifest.json.
+
+    Checks the canonical path first (``ai-dev/active/<item_id>/workflow-manifest.json``),
+    then falls back to a root-level ``workflow-manifest.json`` in the worktree
+    (used by tests and minimal fixture worktrees).
+
+    Returns an empty list when the manifest is missing, unreadable, or
+    has no scope.allowed_paths declaration (legacy items).
+    """
+    candidates = [
+        worktree_path / "ai-dev" / "active" / item_id / "workflow-manifest.json",
+        worktree_path / "workflow-manifest.json",
+    ]
+    for manifest_path in candidates:
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        return list((manifest.get("scope") or {}).get("allowed_paths") or [])
+    return []
+
+
+def _build_scope_block(allowed: list[str]) -> str:
+    """Return the scope section to inject into fix-cycle prompts.
+
+    Returns an empty string when allowed_paths is empty (scope enforcement
+    disabled for this item — legacy mode).
+    """
+    if not allowed:
+        return (
+            "## Scope (allowed_paths from workflow-manifest.json)\n\n"
+            "(none declared — scope enforcement disabled for this item)\n\n"
+        )
+    path_lines = "\n".join(f"  {p}" for p in allowed)
+    return (
+        "## Scope (allowed_paths from workflow-manifest.json)\n\n"
+        "You MAY only modify files matching these globs:\n\n"
+        f"{path_lines}\n\n"
+        "Edits to files outside this list will block the cycle. If the failing gate\n"
+        "appears to require an out-of-scope edit, do NOT make it — instead document\n"
+        'the required out-of-scope path(s) under "blockers" in your result contract,\n'
+        "and the operator will amend allowed_paths.\n\n"
+    )
+
+
+def run_llm_agent(prompt: str, cwd: Path) -> dict[str, Any]:
+    """Run the LLM agent with the given prompt in the given working directory.
+
+    This function exists as a module-level injectable seam so tests can
+    monkeypatch it with a fake agent that simulates out-of-scope edits
+    without actually spawning a subprocess.
+
+    In production this is NOT called — the daemon uses ``_launch_fix_agent``
+    directly (which manages the full subprocess + DB tracking lifecycle).
+    This entry point is only for the lightweight ``run_fix_cycle`` integration
+    path used by tests and future automation hooks.
+    """
+    raise NotImplementedError(  # pragma: no cover — only used via monkeypatch
+        "run_llm_agent is a test seam; in production use attempt_fix_cycle / _launch_fix_agent"
+    )
+
+
+class FixCycleResult:
+    """Lightweight result object returned by ``run_fix_cycle``.
+
+    Decoupled from the ORM FixCycle model so tests can operate without a
+    database connection.
+    """
+
+    def __init__(
+        self,
+        status: FixStatus,
+        fix_metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self.status = status
+        self.fix_metadata: dict[str, Any] = fix_metadata or {}
+
+
+def run_fix_cycle(
+    worktree_path: Path,
+    item_id: str,
+    step_id: str,
+    cycle_number: int,
+    gate_failure: str,
+) -> FixCycleResult:
+    """Run a single fix cycle for the given work item step.
+
+    This is the lightweight, DB-free entry point used by tests and by any
+    caller that wants to run scope enforcement in isolation.  The daemon's
+    full orchestration path (``attempt_fix_cycle`` + ``check_active_fix_cycles``)
+    continues to use ``_launch_fix_agent`` directly.
+
+    Scope enforcement (I-00082):
+    1. Load ``scope.allowed_paths`` from the workflow-manifest.
+    2. Snapshot the working tree before launching the agent.
+    3. Build a scope-aware prompt and pass it to ``run_llm_agent`` (injectable).
+    4. Snapshot the working tree after the agent exits.
+    5. Compute violations = (new_paths) - (allowed + implicit).
+    6. If violations exist: return ``FixCycleResult(FixStatus.escalated, ...)``.
+    7. If no violations: return ``FixCycleResult(FixStatus.completed)``.
+    """
+    allowed = _load_allowed_paths(worktree_path, item_id)
+    scope_block = _build_scope_block(allowed)
+
+    prompt = (
+        f"# {item_id} {step_id} Fix Cycle {cycle_number}\n\n"
+        f"{scope_block}"
+        f"## Errors to Address\n\n{gate_failure}\n"
+    )
+
+    # Snapshot working tree BEFORE agent runs
+    pre_cycle_paths = _captured_paths(worktree_path)
+
+    # Run the agent (injectable for testing)
+    run_llm_agent(prompt, worktree_path)
+
+    # Snapshot working tree AFTER agent exits
+    post_cycle_paths = _captured_paths(worktree_path)
+
+    # Reconcile: detect out-of-scope edits
+    agent_touched = post_cycle_paths - pre_cycle_paths
+
+    if allowed:
+        implicit = _implicit_allows(item_id)
+        violations = [
+            p for p in agent_touched if not any(_scope_match(p, pat) for pat in allowed + implicit)
+        ]
+    else:
+        # No scope declared — skip reconciliation (legacy mode)
+        violations = []
+
+    if violations:
+        logger.info(
+            "fix_cycle scope: item=%s step=%s cycle=%d allowed=%d "
+            "in_scope=%d out_of_scope=%d violations=%r",
+            item_id,
+            step_id,
+            cycle_number,
+            len(allowed),
+            len(agent_touched) - len(violations),
+            len(violations),
+            violations,
+        )
+        return FixCycleResult(
+            status=FixStatus.escalated,
+            fix_metadata={"scope_violations": violations},
+        )
+
+    logger.info(
+        "fix_cycle scope: item=%s step=%s cycle=%d allowed=%d in_scope=%d out_of_scope=0",
+        item_id,
+        step_id,
+        cycle_number,
+        len(allowed),
+        len(agent_touched),
+    )
+    return FixCycleResult(status=FixStatus.completed)
+
 
 # Step types that can trigger fix cycles.
 # browser_verification is fixable because V1..V(n) failures are real code
@@ -526,6 +748,21 @@ def attempt_fix_cycle(
             exc,
         )
 
+    # I-00082: Snapshot pre-cycle working-tree paths so scope reconciliation
+    # can identify exactly which files the agent touched (new or modified).
+    # Defensive: failure is non-fatal.
+    pre_cycle_paths_list: list[str] = []
+    try:
+        pre_cycle_paths_list = sorted(_captured_paths(Path(worktree_path)))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[%s] Could not capture pre_cycle_paths for fix cycle %d/%d: %s",
+            project_id,
+            cycle_number,
+            max_cycles,
+            exc,
+        )
+
     now = datetime.now(UTC)
     fix_cycle.status = FixStatus.in_progress
     fix_cycle.started_at = now
@@ -535,6 +772,7 @@ def attempt_fix_cycle(
         "timeout_secs": timeout,
         "worktree_path": worktree_path,
         "start_sha": start_sha,
+        "pre_cycle_paths": pre_cycle_paths_list,
     }
 
     db.commit()
@@ -782,13 +1020,15 @@ def _complete_fix_cycle(
 ) -> None:
     """Mark fix cycle as completed and reset the review step to pending.
 
+    I-00082: Before marking completed, run scope reconciliation. If the fix
+    agent touched files outside scope.allowed_paths, mark escalated instead
+    and emit a scope_violation_escalation event. The agent's edits are NOT
+    reverted — the operator decides whether to amend allowed_paths.
+
     ``project_config`` is optional for backwards compatibility with callers
     that pre-date the thrashing detector (B.2). When None the thrashing check
     is skipped (safe default — never raises).
     """
-    cycle.status = FixStatus.completed
-    cycle.completed_at = now
-
     step = db.get(WorkflowStep, cycle.step_id)
     if step is not None and step.project_id != project_id:
         logger.error(
@@ -798,6 +1038,92 @@ def _complete_fix_cycle(
             project_id,
         )
         return
+
+    # I-00082: Scope reconciliation — check for out-of-scope edits before
+    # deciding cycle outcome. Only runs when allowed_paths is non-empty.
+    worktree_path_str = (cycle.fix_metadata or {}).get("worktree_path", "")
+    if worktree_path_str and step is not None:
+        item_id = step.work_item_id
+        step_id = step.step_id
+        worktree_path = Path(worktree_path_str)
+        allowed = _load_allowed_paths(worktree_path, item_id)
+        if allowed:
+            agent_touched: set[str] = set()
+            violations: list[str] = []
+            try:
+                post_cycle = _captured_paths(worktree_path)
+                # Use the pre-cycle snapshot stored in fix_metadata (captured
+                # at attempt_fix_cycle time before the agent was launched).
+                pre_cycle_list = (cycle.fix_metadata or {}).get("pre_cycle_paths", [])
+                pre_cycle = set(pre_cycle_list)
+                agent_touched = post_cycle - pre_cycle
+                implicit = _implicit_allows(item_id)
+                violations = [
+                    p
+                    for p in agent_touched
+                    if not any(_scope_match(p, pat) for pat in allowed + implicit)
+                ]
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "[%s] Scope reconciliation failed for %s/%s cycle %d: %s",
+                    project_id,
+                    item_id,
+                    step_id,
+                    cycle.cycle_number,
+                    exc,
+                )
+
+            logger.info(
+                "fix_cycle scope: item=%s step=%s cycle=%d allowed=%d "
+                "in_scope=%d out_of_scope=%d violations=%r",
+                item_id,
+                step_id,
+                cycle.cycle_number,
+                len(allowed),
+                len(agent_touched) - len(violations),
+                len(violations),
+                violations,
+            )
+
+            if violations:
+                cycle.status = FixStatus.escalated
+                cycle.completed_at = now
+                meta = dict(cycle.fix_metadata or {})
+                meta["scope_violations"] = violations
+                cycle.fix_metadata = meta
+
+                _emit_event(
+                    db,
+                    project_id,
+                    "scope_violation_escalation",
+                    item_id,
+                    "work_item",
+                    (
+                        f"Fix cycle {cycle.cycle_number} on {step_id} touched "
+                        f"{len(violations)} out-of-scope file(s): "
+                        f"{violations}. Operator must amend allowed_paths or revert."
+                    ),
+                    {
+                        "step_id": step_id,
+                        "cycle_number": cycle.cycle_number,
+                        "scope_violations": violations,
+                        "allowed_paths": allowed,
+                    },
+                )
+                db.commit()
+                logger.warning(
+                    "[%s] Scope violation escalation for %s/%s cycle %d: %r",
+                    project_id,
+                    item_id,
+                    step_id,
+                    cycle.cycle_number,
+                    violations,
+                )
+                return  # Do NOT advance the step — operator must intervene
+
+    cycle.status = FixStatus.completed
+    cycle.completed_at = now
+
     if step is not None and step.status == StepStatus.needs_fix:
         step.status = StepStatus.pending
         step.started_at = None
@@ -882,8 +1208,6 @@ def _complete_fix_cycle(
             # Change 2: re-run layer-specific code reviews for files touched by the fix.
             worktree_path = (cycle.fix_metadata or {}).get("worktree_path", "")
             if worktree_path:
-                from pathlib import Path  # noqa: PLC0415
-
                 from orch.daemon import review_mapping  # noqa: PLC0415
 
                 changed_files = _files_changed_by_fix_cycle(cycle, worktree_path)
@@ -1548,6 +1872,10 @@ def _generate_fix_prompt(
     # the step type. Empty string = no doc found (legacy or partial worktree).
     design_doc_block = _build_design_doc_block(worktree_path, item_id, step_id)
 
+    # I-00082: load scope.allowed_paths and build the scope block to inject.
+    allowed = _load_allowed_paths(Path(worktree_path), item_id)
+    scope_block = _build_scope_block(allowed)
+
     # Build the prompt content — QV and browser steps get step-specific prompts
     if step.step_type == StepType.quality_validation:
         gate_command = _get_gate_command(step, worktree_path)
@@ -1559,6 +1887,7 @@ def _generate_fix_prompt(
             max_cycles,
             gate_command,
             design_doc_block=design_doc_block,
+            scope_block=scope_block,
         )
     elif step.step_type == StepType.browser_verification:
         prompt = _build_browser_fix_prompt_content(
@@ -1569,6 +1898,7 @@ def _generate_fix_prompt(
             max_cycles,
             prior_failure_reason=prior_failure_reason,
             design_doc_block=design_doc_block,
+            scope_block=scope_block,
         )
     else:
         prompt = _build_fix_prompt_content(
@@ -1578,6 +1908,7 @@ def _generate_fix_prompt(
             findings,
             max_cycles,
             design_doc_block=design_doc_block,
+            scope_block=scope_block,
         )
 
     # Write to a separate fix-cycles directory (NOT prompts/ — review agents scan that)
@@ -1613,6 +1944,7 @@ def _build_qv_fix_prompt_content(
     gate_command: str,
     *,
     design_doc_block: str = "",
+    scope_block: str = "",
 ) -> str:
     """Build a fix prompt for a quality validation failure."""
     escalation = ""
@@ -1639,6 +1971,7 @@ def _build_qv_fix_prompt_content(
         f"# {item_id} {step_id} QV Fix Cycle {cycle_number}/{max_cycles}\n\n"
         f"Quality gate {step_id} for work item {item_id} failed. "
         f"Fix the issues below so the gate passes on re-run.\n\n"
+        f"{scope_block}"
         f"{design_section}"
         f"## Diagnostic Hypothesis — Errors to Address\n\n"
         f"The block below is **one hypothesis** generated from the failed gate. "
@@ -1676,6 +2009,7 @@ def _build_browser_fix_prompt_content(
     prior_failure_reason: str | None = None,
     *,
     design_doc_block: str = "",
+    scope_block: str = "",
 ) -> str:
     """Build a fix prompt for a browser_verification failure.
 
@@ -1746,6 +2080,7 @@ def _build_browser_fix_prompt_content(
         f"reported code defects. Apply the minimum patch to make every failing "
         f"V pass; the daemon will rebuild the E2E stack and re-run the browser "
         f"checks.\n\n"
+        f"{scope_block}"
         f"{design_section}"
         f"## Diagnostic Hypothesis — Browser Verification Report\n\n"
         f"The report below is **one hypothesis** about what's broken. The "
@@ -1810,6 +2145,7 @@ def _build_fix_prompt_content(
     max_cycles: int,
     *,
     design_doc_block: str = "",
+    scope_block: str = "",
 ) -> str:
     """Build the fix prompt content."""
     escalation = ""
@@ -1828,6 +2164,7 @@ def _build_fix_prompt_content(
         f"# {item_id} {step_id} Fix Cycle {cycle_number}/{max_cycles}\n\n"
         f"The code review for step {step_id} of work item {item_id} found issues "
         f"that must be fixed.\n\n"
+        f"{scope_block}"
         f"{design_section}"
         f"## Diagnostic Hypothesis — Findings to Address\n\n"
         f"The findings below are **one hypothesis** generated by a reviewer agent. "
