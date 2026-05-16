@@ -1,0 +1,145 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "F-00084",
+  "type": "Feature",
+  "title": "LLM-Assisted Merge Conflict Resolution (Phase 0 plumbing + Phase 1 dry-run)",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "executor/auto_merge.toml",
+      "executor/worktree_commit.sh",
+      "executor/step_executor_lib.sh",
+      "orch/daemon/auto_merge.py",
+      "orch/daemon/merge_queue.py",
+      "tests/integration/test_auto_merge_phase1.py",
+      "tests/integration/test_auto_merge_refuse_list.py",
+      "tests/integration/auto_merge_fixtures.py",
+      "tests/unit/test_auto_merge_config.py",
+      "tests/unit/test_auto_merge_classifier.py",
+      "tests/unit/test_auto_merge_prompt.py",
+      "tests/unit/test_auto_merge_marker.py",
+      "tests/fixtures/auto_merge/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "pipeline-impl",
+      "description": "Pipeline: new executor/auto_merge.toml (default phase=0) + edits to executor/worktree_commit.sh to classify conflict files against refuse-list/allowlist and emit AUTO_RESOLVE_REQUESTED / AUTO_RESOLVE_SKIPPED stdout markers. Add --resume-rebase flag stub (refuses in Phase 1).",
+      "prompt": "prompts/F-00084_S01_Pipeline_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S01: marker schema, refuse-list completeness, stdout/stderr separation, phase=0 default safe-by-construction.",
+      "prompt": "prompts/F-00084_S02_CodeReview_Pipeline_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Backend: new orch/daemon/auto_merge.py (TOML loader, classifier, prompt builder, LLM invocation via step_executor.sh, 4 new DaemonEvent types) + edits to orch/daemon/merge_queue.py (marker parsing + dispatch + safety try/except). Minimal extension to executor/step_executor_lib.sh for the auto_merge_resolve step type.",
+      "prompt": "prompts/F-00084_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S03: phase=0 short-circuit, dry-run never-applies invariant, refuse-list precedence, prompt-builder determinism, agent_runtime_options lookup, event ordering, metadata size cap.",
+      "prompt": "prompts/F-00084_S04_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Cross-agent final review of S01..S04: bash↔Python marker round-trip, phase=0 default behaviour, refuse-list defence-in-depth, operator UX preservation, decision-tree consistency.",
+      "prompt": "prompts/F-00084_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "tests-impl",
+      "description": "Tests: unit tests for config/classifier/prompt/marker; fixture-based integration tests for AC1 (I-00085 shape), AC2 (I-00086 shape), AC3 (refuse-list), AC4 (operator UX), AC5 (phase 0), AC6 (hot reload); Invariant 3/5/8 coverage; FakeLLM mock at Python boundary.",
+      "prompt": "prompts/F-00084_S06_Tests_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent review of S06 tests: AC coverage, Invariant coverage, assertion strength, isolation rules, LLM-mock hygiene, no real LLM calls in CI.",
+      "prompt": "prompts/F-00084_S07_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Final cross-agent review including tests: implementation × tests round-trip, AC/Invariant final sign-off, holistic safety (phase 0 provably no-op, phase 1 provably non-destructive), operator UX preservation, Phase 0 production-readiness.",
+      "prompt": "prompts/F-00084_S08_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S16",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scan",
+      "timeout": 300
+    },
+    {
+      "step": "S17",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill (focus on dry-run discipline invariants and bash↔Python marker round-trip).",
+      "prompt": "prompts/F-00084_S17_SelfAssess_prompt.md"
+    }
+  ]
+}
