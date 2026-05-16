@@ -250,10 +250,12 @@ Each invariant maps to a test in S06.
 
 - `executor/auto_merge.toml`
 - `executor/worktree_commit.sh`
+- `executor/step_executor_lib.sh`
 - `orch/daemon/auto_merge.py`
 - `orch/daemon/merge_queue.py`
 - `tests/integration/test_auto_merge_phase1.py`
 - `tests/integration/test_auto_merge_refuse_list.py`
+- `tests/integration/auto_merge_fixtures.py`
 - `tests/unit/test_auto_merge_config.py`
 - `tests/unit/test_auto_merge_classifier.py`
 - `tests/unit/test_auto_merge_prompt.py`
