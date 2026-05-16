@@ -1,0 +1,111 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00055",
+  "type": "ChangeRequest",
+  "title": "Re-enable pytest-randomly by default — per-test PostgreSQL template-clone (P1-CR-C-followup-randomly-v2)",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "pyproject.toml",
+      "uv.lock",
+      "tests/integration/conftest.py",
+      "tests/dashboard/conftest.py",
+      "tests/integration/test_oss_migration.py",
+      "tests/integration/test_project_oss_job_migration.py",
+      "tests/integration/test_db_identity_integration.py",
+      "tests/integration/test_pending_migration_log_migration.py",
+      "tests/integration/db/test_i_00062_migration.py",
+      "tests/CLAUDE.md",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "skills/iw-ai-core-testing/**",
+      ".claude/skills/iw-ai-core-testing/**",
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "RED-first: capture the unfixed-state seed-12345 sweep counts as tdd_red_evidence (the design's Current Behavior section quotes 271 failed + 12 errors). Then crib the working code from branch `spike/pgtestdbpy-isolation` (`git diff main..spike/pgtestdbpy-isolation -- pyproject.toml uv.lock tests/integration/conftest.py tests/dashboard/conftest.py tests/integration/test_oss_migration.py tests/integration/test_project_oss_job_migration.py tests/integration/test_db_identity_integration.py tests/integration/test_pending_migration_log_migration.py tests/integration/db/test_i_00062_migration.py`). Deliverables: (1) add `pgtestdbpy>=0.0.1` to `[dependency-groups] dev` in pyproject.toml + `uv lock`; (2) rewrite `tests/integration/conftest.py` fixture chain — add `_migrate_template` callable, session-scoped `_pgtestdb_setup` (CRITICAL: override `pgtestdbpy.QRY_DB_CLONE` to drop the `STRATEGY=FILE_COPY` suffix BEFORE entering `templates()` — WAL_LOG is ~10x faster on this schema; the spike measured 10m54s vs 28m), function-scoped `db_engine` that clones + monkeypatches `IW_CORE_DB_*`, simplified `_db_test_connection` (no outer tx needed); (3) re-export `_pgtestdb_setup` from `tests/dashboard/conftest.py` (without this, every dashboard test errors with `fixture '_pgtestdb_setup' not found` — 549 such errors in the spike's v1 sweep); (4) module-level autouse `_restore_iw_core_instance_row` in `tests/integration/test_db_identity_integration.py`; (5) 2 class teardowns re-applying `MIGRATION_SQL` after `test_downgrade_drops_tables` (oss_migration) and `test_downgrade_drops_table` (project_oss_job_migration); (6) 3 quarantines with `@pytest.mark.order_dependent` + `@pytest.mark.xfail(strict=False, reason='...')` + `# NOTE(P1-CR-C-followup-randomly):` tracking comments — `test_db_identity_integration.py::TestMigrationRoundtrip::test_downgrade_drops_table_and_upgrade_recreates_with_new_uuid`, `test_pending_migration_log_migration.py::test_valid_enum_values_accepted`, `test_i_00062_migration.py::TestI00062MigrationRoundTrip::test_re_upgrade_after_downgrade`; (7) remove `-p no:randomly` from `[tool.pytest.ini_options] addopts` + rewrite comment block with default-on prose + preserve CR-00048 fallback as a brief 'Earlier fallback' historical note (keep `--strict-markers`); (8) flip 4 doc locations: `tests/CLAUDE.md` §7, `docs/IW_AI_Core_Testing_Strategy.md` §3 + §9 row, `skills/iw-ai-core-testing/SKILL.md` §2 — historical-note pattern; (9) run `uv run iw sync-skills --force iw-ai-core-testing`; (10) update `ai-dev/work/TESTS_ENHANCEMENT.md` §5 row + item 1.4 + §11 changelog. Verify with the 4-seed sweep recipe (12345 / 67890 / 11111 / 42424) using `--no-cov` — all 4 must exit 0 with ~2520 passed + 0 failures + ~5 xfailed/xpassed per seed. Do NOT run make check / make test-integration / make diff-coverage / extra full-suite runs — that's S08/S09/S10's job. 4800s timeout. Reference: `docs/research/R-00077-pytest-randomly-isolation-strategy.md` Appendix A contains the full implementation outline.",
+      "prompt": "prompts/CR-00055_S01_Backend_prompt.md",
+      "timeout": 4800
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: (1) `-p no:randomly` genuinely removed from pyproject.toml addopts (`grep -n 'no:randomly' pyproject.toml` returns nothing); `--strict-markers` still present; `pgtestdbpy>=0.0.1` in [dependency-groups] dev; uv.lock regenerated. (2) `tests/integration/conftest.py` contains `_pgtestdb_setup` (session-scoped), `db_engine` (function-scoped) cloning via `pgtestdbpy.clone`, and monkeypatches all 5 `IW_CORE_DB_*` env vars. (3) CRITICAL: the WAL_LOG override is present — grep for `pgtestdbpy.QRY_DB_CLONE` and verify the override drops the `STRATEGY=FILE_COPY` suffix (without this, the suite is ~28 min instead of ~10 min). (4) `tests/dashboard/conftest.py` re-exports `_pgtestdb_setup` (without this, every dashboard test errors with fixture-not-found). (5) The autouse `_restore_iw_core_instance_row` fixture is in `tests/integration/test_db_identity_integration.py` at module scope. (6) The 2 class teardowns in `TestOssMigrationDowngrade` and `TestProjectOssJobMigrationDowngrade` re-apply `MIGRATION_SQL`. (7) Exactly 3 quarantines with the registered triad (`order_dependent` + `xfail(strict=False)` + tracking comment); `reason` strings name the leak (not just 'order-dependent'); no `@pytest.mark.skip`, no comment-outs; the `order_dependent` marker is NOT re-registered. (8) `.claude/skills/iw-ai-core-testing/SKILL.md` matches its master byte-for-byte (`diff -q skills/iw-ai-core-testing/SKILL.md .claude/skills/iw-ai-core-testing/SKILL.md` returns nothing) — verifies `iw sync-skills --force` ran. (9) All 4 doc locations flipped consistently with the historical-note pattern preserved (not silently deleted). (10) TESTS_ENHANCEMENT.md §5 row + item 1.4 + §11 changelog all DONE (CR-00055). (11) No production code touched (orch/, dashboard/ outside dashboard/conftest.py, executor/). No scope creep beyond allowed_paths. Pre-review gate (`make lint` + `make format-check`) must show zero new violations.",
+      "prompt": "prompts/CR-00055_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review. AC1 (no:randomly removed) verified by grep. AC2 (4-seed sweep green) verified by independently re-running the design's recipe with --no-cov for seeds 12345 + 67890 (the 2 fastest from the spike) — both must exit 0 with ~2520 passed + 0 failures. AC3 (wall-clock ≤ 12 min) verified by `time` on seed 12345 alone (no parallel contention). AC4 (docs flipped consistently across all 4 locations + historical 'Earlier fallback (CR-00048)' note preserved in all 4 — MEDIUM-fixable if missing). AC5 (plan + changelog updated; counts internally consistent — §11 changelog claims match §5 row claims match item 1.4 claims). AC6 (.claude skill matches master). Quarantine quality audit: each new marker has substantive `reason` naming the leak, `strict=False`, tracking comment. Verify the WAL_LOG override is present (this is the perf-cliff hinge — without it the suite is 3x slower and S09 will timeout). No scope creep (no production code, no new tests, no Makefile/.github changes, no migrations). make quality passes (warn-only steps don't fail). make check / make test-integration / make diff-coverage NOT run here — those are S08-S10.",
+      "prompt": "prompts/CR-00055_S03_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests (first run with pytest-randomly default-on; will print 'Using --randomly-seed=<N>')"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests (first run with pytest-randomly default-on; spike measured 10m54s — within the 1200s budget). This is the gate that proves the per-test template-clone strategy holds under the QV pipeline.",
+      "timeout": 1200
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage — the gate that previously burned 5 fix cycles on CR-00048; passing here is the definitive proof randomisation cleanup landed",
+      "timeout": 1800
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secrets scan (gitleaks)"
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Cross-reference patterns with CR-00048's saga + the cancelled CR-00049: did the spike-reference + R-00077 outline keep S01 inside its budget? Did the implementing agent remember the WAL_LOG override (the perf-cliff hinge)? Did the implementing agent remember the `_pgtestdb_setup` re-export in tests/dashboard/conftest.py? Did any seed surface a new offender beyond the 3 known quarantines? Was the S09 wall-clock close to the 1200s budget — if so, recommend bumping for future randomisation work.",
+      "prompt": "prompts/CR-00055_S12_SelfAssess_prompt.md"
+    }
+  ]
+}
