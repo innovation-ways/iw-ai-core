@@ -1,0 +1,91 @@
+{
+  "item_id": "I-00083",
+  "step_id": "S14",
+  "verdict": "pass",
+  "summary": "I-00083's own run did not require any cross-item carry-over fixes; the two fix cycles (S06 lint, S07 assertions) are own-file polish on the newly authored test. The new daemon log line was not emitted on this CR's worktree-create event by design — the daemon is still running pre-fix main code; first emission will occur post-merge after daemon restart. No pre-existing tests were modified under the old chore-commit shape; the new test file is authored under the new (narrow) allow-list. CR-00053's three carry-over fixes (assertion_free_baseline.txt, BatchStatus.executing→completed, _HEAD_REVISION) did not recur in this run.",
+  "focus_areas": [
+    {
+      "id": "F1",
+      "question": "Did this CR's own run need any carry-over fixes?",
+      "result": "no",
+      "fix_cycles_observed": [
+        {"step": "S06", "gate": "lint", "cause": "PT018 compound assertion in own test file", "carry_over_class": false},
+        {"step": "S07", "gate": "assertions", "cause": "tautological assertion in own test file", "carry_over_class": false}
+      ],
+      "carry_over_fixes_count": 0,
+      "explanation": "Both fix cycles were scoped to tests/integration/test_branch_base_drift.py — the newly authored regression suite — and exercised this CR's own quality polish, not cross-item drift. The run was clean because no in-flight sibling in BATCH-00104 was concurrently writing into orch/active_files.py or orch/daemon/batch_manager.py."
+    },
+    {
+      "id": "F2",
+      "question": "Was the daemon log line emitted on every worktree-create event, including this CR's?",
+      "result": "no_by_design",
+      "evidence": "grep -E 'worktree create:|sibling_paths_without_merge|in_flight_siblings' logs/daemon.log returned zero matches for I-00083",
+      "explanation": "The daemon process that created I-00083's worktree at 2026-05-16 05:13 was still running pre-fix main code; the new _emit_sibling_drift_log method only exists in this worktree's working tree. First live emission will occur after the CR merges and the daemon reloads. Same self-bootstrap caveat as CR-00021. S03's TestI00083HappyPathSoloItem + TestI00083SiblingScopeUnit unit tests cover the emission shape in lieu of live evidence."
+    },
+    {
+      "id": "F3",
+      "question": "Backwards-compat sanity: were any tests modified that were authored under the old chore-commit shape?",
+      "result": "no",
+      "modified_test_files": [],
+      "new_test_files": ["tests/integration/test_branch_base_drift.py"],
+      "explanation": "Only a new file was added. The new file's _simulate_chore_commit helper unconditionally creates all four allow-listed pathspecs because the production allow-list now hard-fails git-add when any pathspec is absent (a real constraint flagged in S03 report L117-124 and S05 H1)."
+    },
+    {
+      "id": "F4",
+      "question": "Cross-CR pattern vs CR-00053's three concrete carry-over fixes",
+      "result": "pattern_not_observed",
+      "cr00053_carry_overs": [
+        {"file": "tests/assertion_free_baseline.txt", "kind": "5 entries appended", "recurred_in_i00083": false},
+        {"file": "tests/integration/test_dashboard_actions.py", "kind": "BatchStatus.executing -> completed", "recurred_in_i00083": false},
+        {"file": "(constant)", "kind": "_HEAD_REVISION alignment", "recurred_in_i00083": false}
+      ],
+      "explanation": "None of CR-00053's carry-overs were needed in I-00083's run. The three BatchStatus.executing references in tests/integration/test_branch_base_drift.py (lines 225, 350, 467) are the test's own Batch factory and are unrelated to CR-00053's executing→completed flip in test_dashboard_actions.py. The validating bite remains CR-00053's hand-rescue, referenced in the design doc Notes section."
+    }
+  ],
+  "outstanding_review_findings": [
+    {
+      "id": "C1",
+      "severity": "critical",
+      "source": "S05",
+      "summary": "orch/active_files.py modified but not in workflow-manifest.json::scope.allowed_paths",
+      "addressed": false,
+      "recommended_fix": "Add 'orch/active_files.py' to scope.allowed_paths in the manifest (S05's preferred resolution).",
+      "blocking_s14": false,
+      "blocking_merge": true
+    },
+    {
+      "id": "H1",
+      "severity": "high",
+      "source": "S02 + S05",
+      "summary": "git add -- <pathspec> exits 128 when an allow-listed pathspec resolves to nothing; iw approve will regress for any item missing <ID>_Functional.md / workflow-manifest.json / etc.",
+      "addressed": false,
+      "recommended_fix": "Pre-filter the four pathspecs via Path.glob/is_file/is_dir before passing to git add. The dirty_check already guarantees a non-empty filtered list.",
+      "blocking_s14": false,
+      "blocking_merge": true,
+      "follow_up": "File as a new incident — this is a production-side regression introduced by I-00083."
+    },
+    {
+      "id": "H2",
+      "severity": "high",
+      "source": "S02 + S05",
+      "summary": "_emit_sibling_drift_log body has no outer try/except; a transient DB error in _collect_in_flight_sibling_items can abort _launch_item after the worktree exists on disk but before BatchItemStatus.executing is set, contradicting the v1 WARN-only contract.",
+      "addressed": false,
+      "recommended_fix": "Wrap the entire _emit_sibling_drift_log body in try/except Exception with logger.warning(..., exc_info=True). One-indent change.",
+      "blocking_s14": false,
+      "blocking_merge": true
+    }
+  ],
+  "deferred_verifications": [
+    {
+      "id": "DV1",
+      "what": "First live emission of 'worktree create: ...' INFO log line",
+      "when": "Post-merge, after daemon reload, on the next worktree the daemon creates",
+      "verification_step": "grep -E 'worktree create:|sibling_paths_without_merge' logs/daemon.log"
+    }
+  ],
+  "ac_status": {
+    "AC1_no_inheritance": "covered_by_S01_test_passing",
+    "AC2_regression_test_exists": "satisfied — tests/integration/test_branch_base_drift.py, 7 passing",
+    "AC3_happy_path_preserved": "covered_by_TestI00083HappyPathSoloItem_passing"
+  }
+}
