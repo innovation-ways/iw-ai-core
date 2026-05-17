@@ -1,0 +1,57 @@
+{
+  "item_id": "I-00087",
+  "bottom_line": "Item converged with no code defects; the main signal is S02 review agents hitting rate-limit ceiling before they could apply the stale `_currentAssistantEl` fix, wasting 6 retry attempts.",
+  "coverage_notes": "All logs read in full. S09 (377KB runs) sampled tail-100; S10 fix logs full; S11 fix logs full. DB telemetry confirmed step statuses. No sampling needed for logs under 50KB.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "S02 review agents hit rate-limit ceiling preventing fix application",
+      "recommendation": "Track rate-limit exhaustion as a step-level retry trigger. When the agent hits the limit mid-fix-cycle, the platform should automatically re-queue the step with a delay rather than letting it exhaust all remaining attempts. Alternatively, increase the daily limit for review-agent steps resolving known fixes.",
+      "evidence": [
+        "I-00087_S02_fix1.log:1 — \"You've hit your limit · resets 6pm (Europe/Lisbon)\"",
+        "I-00087_S02_fix2.log:1 — \"You've hit your limit · resets 6pm (Europe/Lisbon)\"",
+        "I-00087_S02_fix3.log:1 — \"You've hit your limit · resets 6pm (Europe/Lisbon)\"",
+        "I-00087_S02_fix4.log:1 — \"You've hit your limit · resets 6pm (Europe/Lisbon)\"",
+        "I-00087_S02_fix5.log:1 — \"You've hit your limit · resets 6pm (Europe/Lisbon)\"",
+        "I-00087_S02_run4.log:1 — \"You've hit your limit · resets 6pm (Europe/Lisbon)\"",
+        "I-00087_S02_run6.log:1 — \"You've hit your limit · resets 6pm (Europe/Lisbon)\"",
+        "I-00087_S02_run8.log:1 — \"You've hit your limit · resets 6pm (Europe/Lisbon)\""
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Add rate-limit-aware retry backoff to step execution so review agents don't exhaust retry budget on rate-limit hits; analyzed in I-00087 (see ai-dev/active/I-00087/reports/I-00087_self_assess_report.md). Target file: orch/daemon/worktree_launch.py or orch/step_manager.py. Effort: M."
+    },
+    {
+      "severity": "MED",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S10 integration-test fix cycle (4 attempts) signals flaky or under-spec'd test",
+      "recommendation": "Investigate whether the integration test in S10 has ordering dependencies or external DB state requirements that cause flakiness. The empty run files (run1, run3, run5, run7 at 0 bytes) suggest the test framework may be failing to collect tests on certain runs.",
+      "evidence": [
+        "I-00087_S10_fix1.log:1 — 1.9KB fix attempt",
+        "I-00087_S10_fix2.log:1 — 22KB fix attempt",
+        "I-00087_S10_fix3.log:1 — 44KB fix attempt",
+        "I-00087_S10_fix4.log:1 — 59KB fix attempt (escalating size suggests evolving fix)",
+        "I-00087_S10_run1.log:1 — 0 bytes (empty run)",
+        "I-00087_S10_run3.log:1 — 0 bytes (empty run)",
+        "I-00087_S10_run5.log:1 — 0 bytes (empty run)",
+        "I-00087_S10_run9.log:1 — 360KB (successful run after 4 failed attempts)"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Investigate integration test flakiness in S10 — empty run files and 4 fix cycles suggest test collection failures or ordering dependencies; analyzed in I-00087 (see ai-dev/active/I-00087/reports/I-00087_self_assess_report.md). Target file: orch/test_runner.py or tests/integration/conftest.py. Effort: M."
+    },
+    {
+      "severity": "LOW",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "TDD RED evidence correctly captured in S03",
+      "recommendation": "Document in the iw-item-analyze skill that behaviour-implementing steps should verify RED evidence via the dedicated tests-impl step pattern. This item confirmed S03's RED test is valid (PRE_FIX_NAMED_EVENTS fixture missing 6 INTERESTING_EVENTS), and S01 correctly delegated RED to S03 as the prompt recommended.",
+      "evidence": [
+        "I-00087_S03_run1.log:9 — \"test_starter_listener_set_would_have_failed_protocol_check: PRE_FIX_NAMED_EVENTS fixture proves the pre-S01 set missed 6 events from INTERESTING_EVENTS\""
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Document TDD RED verification pattern in iw-item-analyze: S03 (tests-impl) provides RED evidence for behaviour-implementing steps; analyzed in I-00087 (see ai-dev/active/I-00087/reports/I-00087_self_assess_report.md). Target file: skills/iw-item-analyze/SKILL.md. Effort: S."
+    }
+  ]
+}

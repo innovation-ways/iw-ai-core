@@ -183,11 +183,30 @@
     _es.onmessage = function (e) {
       _handleEvent('message', e);
     };
-    // Named events from the relay
+    // Named events — canonical set from orch/chat/filters.py:INTERESTING_EVENTS
+    // plus additional opencode SDK events and relay-synthesised events.
+    // Source of truth for opencode wire names: orch/chat/filters.py INTERESTING_EVENTS.
     var namedEvents = [
-      'message.part', 'message.snapshot', 'message.complete', 'message.updated',
-      'tool.call', 'tool.result', 'permission.asked',
-      'session.idle', 'error', 'gap', 'reconnecting'
+      // opencode SDK events (orch/chat/filters.py INTERESTING_EVENTS)
+      'message.part.updated',
+      'tool.execute.before',
+      'tool.execute.after',
+      'permission.asked',
+      'permission.replied',
+      'session.idle',
+      'session.updated',
+      'session.error',
+      // additional opencode SDK events
+      'message.part.delta',
+      'message.updated',
+      'message.part.removed',
+      'message.removed',
+      'session.status',
+      // relay-synthesised events (flat {event, data, id} shape — no properties wrapper)
+      'gap',
+      'reconnecting',
+      'error',
+      'relay.error'
     ];
     namedEvents.forEach(function (evName) {
       _es.addEventListener(evName, function (e) {
@@ -207,6 +226,16 @@
   }
 
   function _handleEvent(evName, e) {
+    // ── Payload asymmetry note ────────────────────────────────────────────────
+    // Opencode-native events (everything except gap/reconnecting/error/relay.error)
+    // wrap their payload under `properties` inside the JSON data:
+    //   e.data = JSON.stringify({ type, id, properties: { ... } })
+    // Relay-synthesised events (gap, reconnecting, error, relay.error) use a flat
+    // {event, data, id} shape at the relay layer — the data field itself contains
+    // the relevant fields, with no `properties` wrapper.
+    // Source of truth: orch/chat/filters.py (normalise function + INTERESTING_EVENTS).
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Track last-event-id for reconnect
     if (e.lastEventId) {
       _lastSeenId = e.lastEventId;
@@ -226,6 +255,10 @@
       data = { text: e.data };
     }
 
+    // Extract opencode `properties` (undefined for relay-synthesised events).
+    var props = (data && data.properties) || null;
+
+    // ── relay-synthesised events (flat data shape, no properties) ─────────────
     if (evName === 'gap') {
       _appendGapWarning();
       return;
@@ -234,28 +267,7 @@
       _showReconnecting();
       return;
     }
-    if (evName === 'session.idle') {
-      _streaming = false;
-      _stopContextPoll();
-      _updateSendAbortButtons();
-      if (data && data.permission_denied) {
-        _appendSystemMessage('Run aborted (permission denied).', 'info');
-      } else if (data && data.aborted) {
-        _appendSystemMessage('Run aborted.', 'info');
-      } else {
-        _appendSystemMessage('Session idle.', 'info');
-      }
-      return;
-    }
-    if (evName === 'permission.asked') {
-      var rid = data && data.request_id;
-      if (rid) {
-        _pendingPermissions[rid] = data;
-        _showApprovalModal(data);
-      }
-      return;
-    }
-    if (evName === 'error') {
+    if (evName === 'error' || evName === 'relay.error') {
       var msg = (data && data.message) || 'An error occurred.';
       _appendSystemMessage(msg, 'error');
       _streaming = false;
@@ -263,60 +275,158 @@
       _updateSendAbortButtons();
       return;
     }
-    if (evName === 'message.part' || evName === 'message') {
+
+    // ── opencode-native events (payload under properties) ─────────────────────
+
+    if (evName === 'message.part.delta') {
+      // Streaming text delta: properties.delta is the incremental text chunk.
       if (!_streaming) {
         _streaming = true;
         _updateSendAbortButtons();
         _startContextPoll();
       }
-      var text = (data && (data.text || data.content || data.delta)) || '';
-      _appendOrUpdateAssistantMessage(eid, text, false);
+      var deltaText = (props && props.delta) || '';
+      var deltaKey = (props && props.messageID) || eid;
+      _appendOrUpdateAssistantMessage(deltaKey, deltaText, false);
       return;
     }
-    if (evName === 'message.snapshot') {
-      var snapshotText = (data && (data.text || data.content)) || '';
-      _appendOrUpdateAssistantMessage(eid, snapshotText, false);
-      return;
-    }
-    if (evName === 'message.updated') {
-      var status = data && data.status;
-      var updatedText = (data && (data.text || data.content || '')) || '';
-      var isComplete = status === 'complete';
-      _appendOrUpdateAssistantMessage(eid, updatedText, isComplete);
-      if (status === 'streaming' && !_streaming) {
+
+    if (evName === 'message.part.updated') {
+      // Full part snapshot: properties.part is a Part object.
+      // properties.part.type === 'text' for text parts.
+      if (!_streaming) {
         _streaming = true;
         _updateSendAbortButtons();
         _startContextPoll();
       }
-      if (isComplete) {
-        _streaming = false;
-        _stopContextPoll();
-        _updateSendAbortButtons();
-        _finaliseLastAssistantMessage();
+      // Prefer delta (incremental) if present, fall back to full part text.
+      var partText = (props && props.delta) ||
+                     (props && props.part && props.part.text) || '';
+      var partKey = (props && props.part && props.part.messageID) ||
+                    (props && props.messageID) || eid;
+      _appendOrUpdateAssistantMessage(partKey, partText, false);
+      return;
+    }
+
+    if (evName === 'message.part.removed') {
+      // Remove the corresponding part DOM node if rendered.
+      // Parts are accumulated into assistant message bubbles by messageID,
+      // so there is no individual part-level DOM node to remove in this
+      // implementation. No-op is safe here.
+      return;
+    }
+
+    if (evName === 'message.updated') {
+      // Full Message snapshot: properties.info is a Message (UserMessage | AssistantMessage).
+      var info = props && props.info;
+      if (!info) return;
+      if (info.role === 'assistant') {
+        if (info.time && info.time.completed) {
+          // Message is finalised — mark any in-flight bubble complete.
+          _finaliseLastAssistantMessage();
+          _streaming = false;
+          _stopContextPoll();
+          _updateSendAbortButtons();
+        }
+        if (info.error) {
+          var errMsg = (info.error && info.error.message) || 'Assistant error.';
+          _appendSystemMessage(errMsg, 'error');
+          _streaming = false;
+          _stopContextPoll();
+          _updateSendAbortButtons();
+        }
       }
       return;
     }
-    if (evName === 'message.complete') {
+
+    if (evName === 'message.removed') {
+      // Remove the message bubble by messageID.
+      // In this implementation bubbles are not individually keyed in the DOM
+      // in a way that supports targeted removal. No-op is safe.
+      return;
+    }
+
+    if (evName === 'tool.execute.before') {
+      // Append a one-line system bubble with the tool name.
+      var toolName = (props && props.tool) || 'unknown';
+      _appendToolCall(toolName, {});
+      return;
+    }
+
+    if (evName === 'tool.execute.after') {
+      // Mark the matching tool bubble complete.
+      var doneToolName = (props && props.tool) || '';
+      _appendToolResult('✓ ' + doneToolName + (props && props.duration ? ' (' + props.duration + 'ms)' : ''));
+      return;
+    }
+
+    if (evName === 'permission.asked') {
+      // properties is a PermissionRequest: { id, sessionID, permission, patterns, ... }
+      var permData = props || data;
+      var rid = (permData && permData.id) || (permData && permData.request_id);
+      if (rid) {
+        _pendingPermissions[rid] = permData;
+        _showApprovalModal(permData);
+      }
+      return;
+    }
+
+    if (evName === 'permission.replied') {
+      // Dismiss the approval modal when a reply is recorded.
+      var repliedRoot = document.getElementById('chat-assistant-approval-root');
+      if (repliedRoot) repliedRoot.innerHTML = '';
+      return;
+    }
+
+    if (evName === 'session.idle') {
       _streaming = false;
       _stopContextPoll();
       _updateSendAbortButtons();
-      var finalText = (data && (data.text || data.content)) || null;
-      if (finalText) {
-        _appendOrUpdateAssistantMessage(eid, finalText, true);
+      // EventSessionIdle.properties = { sessionID } — no permission_denied/aborted.
+      // Fall back to data-level flags for backwards compat with relay-shaped events.
+      var idleProps = props || data;
+      if (idleProps && idleProps.permission_denied) {
+        _appendSystemMessage('Run aborted (permission denied).', 'info');
+      } else if (idleProps && idleProps.aborted) {
+        _appendSystemMessage('Run aborted.', 'info');
       } else {
-        _finaliseLastAssistantMessage();
+        _appendSystemMessage('Session idle.', 'info');
       }
       return;
     }
-    if (evName === 'tool.call') {
-      var tname = (data && data.tool) || 'unknown';
-      var targs = (data && data.args) || {};
-      _appendToolCall(tname, targs);
+
+    if (evName === 'session.status') {
+      // Update streaming indicators. EventSessionStatus.properties.status is
+      // { type: 'idle' | 'busy' | 'retry', ... }. No visible bubble needed.
+      var status = props && props.status;
+      if (status && status.type === 'busy' && !_streaming) {
+        _streaming = true;
+        _updateSendAbortButtons();
+        _startContextPoll();
+      } else if (status && status.type === 'idle' && _streaming) {
+        // session.idle event should fire separately; this is a safety net.
+        _streaming = false;
+        _stopContextPoll();
+        _updateSendAbortButtons();
+      }
       return;
     }
-    if (evName === 'tool.result') {
-      var tresult = (data && (data.result || data.output)) || '';
-      _appendToolResult(tresult);
+
+    if (evName === 'session.error') {
+      // properties.error is a union of typed error objects.
+      var sessErr = (props && props.error) || null;
+      var sessErrMsg = (sessErr && sessErr.message) ||
+                       (sessErr && sessErr.data && sessErr.data.message) ||
+                       'Session error.';
+      _appendSystemMessage(sessErrMsg, 'error');
+      _streaming = false;
+      _stopContextPoll();
+      _updateSendAbortButtons();
+      return;
+    }
+
+    if (evName === 'session.updated') {
+      // No-op — session metadata refresh; no visible bubble needed.
       return;
     }
   }
@@ -327,8 +437,10 @@
     if (!root) return;
 
     // Build the modal HTML
-    var toolName = data.tool || data.tool_name || 'unknown';
-    var args = data.args || data.arguments || {};
+    // data is a PermissionRequest: { id, sessionID, permission, patterns, metadata, tool }
+    // Fallback to legacy keys for backwards compat.
+    var toolName = data.permission || data.tool || data.tool_name || 'unknown';
+    var args = data.patterns || data.args || data.arguments || [];
     var argsStr = '';
     try {
       argsStr = typeof args === 'string' ? args : JSON.stringify(args, null, 2);
@@ -336,7 +448,7 @@
       argsStr = String(args);
     }
     var rationale = data.rationale || data.reason || '';
-    var rid = data.request_id || data.rid || '';
+    var rid = data.id || data.request_id || data.rid || '';
 
     var html = '<div id="chat-assistant-approval-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="chat-assistant-approval-title">';
     html += '<div class="bg-card border border-border rounded-lg shadow-lg max-w-lg w-full mx-4 p-5">';
@@ -517,17 +629,33 @@
         return r.json();
       })
       .then(function (data) {
+        // GET /api/chat/sessions/{sid} returns { session, messages }.
+        // messages is Array<{ info: Message, parts: Array<Part> }>
+        // (opencode SDK SessionMessagesResponses shape — see types.gen.d.ts).
+        // Message.role lives on info.role, not on the outer object.
+        // Text content lives in parts[].text for TextPart (parts[].type === 'text').
         if (!data || !data.messages) return;
         _clearMessages();
-        data.messages.forEach(function (m) {
-          if (m.role === 'user') {
-            var text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+        data.messages.forEach(function (entry) {
+          var info = entry && entry.info;
+          var parts = (entry && entry.parts) || [];
+          if (!info) return;
+          // Concatenate every TextPart's text for the rendered bubble.
+          var text = parts
+            .filter(function (p) { return p && p.type === 'text' && typeof p.text === 'string'; })
+            .map(function (p) { return p.text; })
+            .join('');
+          if (info.role === 'user') {
             _appendUserMessage(text);
-          } else if (m.role === 'assistant') {
-            var atext = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-            _appendOrUpdateAssistantMessage(null, atext, true);
+          } else if (info.role === 'assistant') {
+            // Pass info.id as dedup key so an in-flight stream doesn't double-render.
+            _appendOrUpdateAssistantMessage(info.id, text, true);
           }
         });
+        // Reset so the first delta of the next prompt creates a new bubble
+        // instead of appending to the last history bubble. (See I-00087 S02.)
+        _currentAssistantEl = null;
+        _currentAssistantId = null;
       })
       .catch(function () { /* silently ignore history load failures */ });
   }
