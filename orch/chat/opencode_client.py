@@ -24,6 +24,25 @@ if TYPE_CHECKING:
 _DEFAULT_USERNAME = "opencode"
 
 
+def _split_provider_model(model: str) -> dict[str, str]:
+    """Split a ``"providerId/modelId"`` string into opencode's structured form.
+
+    Opencode's wire format uses ``{providerID, modelID}``. The dashboard
+    surfaces a flat ``"providerId/modelId"`` string in its model selector so
+    the front-end can treat it as a single value; this helper does the
+    translation at the wire boundary.
+
+    Only the first ``/`` is treated as the separator — model IDs that
+    themselves contain ``/`` (e.g. ``openai/gpt-5.5/pro``) survive intact.
+    Inputs without a ``/`` are sent with an empty ``providerID`` so opencode
+    surfaces a clear 400 instead of silently picking a provider.
+    """
+    provider_id, sep, model_id = model.partition("/")
+    if not sep:
+        return {"providerID": "", "modelID": model}
+    return {"providerID": provider_id, "modelID": model_id}
+
+
 class OpencodeClient:
     """Thin async wrapper around `opencode serve`'s HTTP+SSE API.
 
@@ -121,10 +140,19 @@ class OpencodeClient:
         model: str | None = None,
         system: str | None = None,
     ) -> None:
-        """Forward a user prompt to OpenCode (kicks off async streaming)."""
+        """Forward a user prompt to OpenCode (kicks off async streaming).
+
+        The ``model`` argument is a ``"<providerId>/<modelId>"`` string (the
+        shape exposed by ``/api/chat/config``). Opencode's
+        ``/session/{id}/prompt_async`` requires the structured form
+        ``{providerID, modelID}`` — the slash split happens here so callers can
+        keep using a single string. Only the first ``/`` is treated as the
+        separator, so model IDs that themselves contain a ``/`` (e.g.
+        ``openai/gpt-5.5/pro``) survive intact.
+        """
         body: dict[str, Any] = {"parts": [{"type": "text", "text": text}]}
         if model is not None:
-            body["model"] = model
+            body["model"] = _split_provider_model(model)
         if system is not None:
             body["system"] = system
         resp = await self._client.post(f"/session/{sid}/prompt_async", json=body)
@@ -148,6 +176,18 @@ class OpencodeClient:
 
     async def get_config(self) -> dict[str, Any]:
         resp = await self._client.get("/config")
+        resp.raise_for_status()
+        data: dict[str, Any] = resp.json()
+        return data
+
+    async def get_providers(self) -> dict[str, Any]:
+        """Fetch ``/config/providers`` — returns ``{providers: [...], default: {...}}``.
+
+        Unlike ``/config``, this endpoint enumerates every configured provider
+        and the model catalogue each one exposes. The dashboard merges both
+        endpoints to populate the model selector.
+        """
+        resp = await self._client.get("/config/providers")
         resp.raise_for_status()
         data: dict[str, Any] = resp.json()
         return data
