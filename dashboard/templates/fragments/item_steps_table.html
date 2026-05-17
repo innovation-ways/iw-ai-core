@@ -9,6 +9,7 @@
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Agent</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">CLI</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Model</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Prompt</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Started</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
@@ -92,6 +93,21 @@
               <span class="text-xs text-muted-foreground">{{ opt_model if opt_model else '—' }}</span>
             {% endif %}
           </td>
+          <td class="px-4 py-2">
+            {% if step.is_synthetic or not step.has_prompt %}
+              <span class="text-xs text-muted-foreground">—</span>
+            {% else %}
+              <button
+                type="button"
+                class="prompt-view-trigger text-xs px-2 py-0.5 rounded border border-border bg-background hover:bg-muted/40 transition-colors"
+                aria-label="View prompt for step {{ step.step_id }}"
+                hx-get="/project/{{ item.project_id }}/item/{{ item.id }}/step/{{ step.step_id }}/prompt-modal"
+                hx-target="#prompt-modal-mount"
+                hx-swap="innerHTML">
+                View
+              </button>
+            {% endif %}
+          </td>
           <td class="px-4 py-2">{{ status_badge(step.status) }}</td>
           <td class="px-4 py-2 font-mono text-xs text-muted-foreground hidden sm:table-cell">
             {% if step.started_at %}
@@ -154,7 +170,7 @@
       {% endfor %}
       {% if not steps %}
         <tr>
-          <td colspan="8" class="px-4 py-8 text-center text-muted-foreground text-sm">
+          <td colspan="11" class="px-4 py-8 text-center text-muted-foreground text-sm">
             No steps found.
           </td>
         </tr>
@@ -181,4 +197,5 @@
       Apply
     </button>
   </div>
+  <div id="prompt-modal-mount"></div>
 </div>

@@ -75,6 +75,9 @@ execution_brief.json
 # Per-worktree seed completion sentinel (host writes, app container polls)
 .iw-seed-done
 
+# SQLite garbage from tests that pass ":memory:" as a positional filename
+:memory:*
+
 # iw-oss-publish: secret hygiene
 *.pem
 *.key

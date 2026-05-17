@@ -1,0 +1,45 @@
+{
+  "item_id": "CR-00056",
+  "bottom_line": "QV gates caught 5 minor issues (lint/mypy/stale assertion) that should have been self-resolved before submission; one HIGH colspan fix was a legitimate finding that S08/S09 should have caught with a template render smoke test.",
+  "coverage_notes": "Sampled tail (last 200 lines) of S02-S09 logs; read S10 fix, S14 fix2, S17 fix1, S18 fix1 (partial), S19 fix1 (partial) logs in full; S03-S04 logs in full. DB telemetry: full via db-identity check (DB:UP). No tarball extraction needed — item is active.",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "QV gate caught frontend colspan layout error instead of self-check preventing it",
+      "recommendation": "Add a template render smoke test to the frontend-impl prompt: grep for colspan= in modified templates before declaring done, or run a minimal pytest tests/dashboard/ to catch simple layout issues before QV gate submission.",
+      "evidence": [
+        ".worktrees/CR-00056/ai-dev/logs/CR-00056_S09_run1.log:tail — S09 CodeReview: colspan=9 but table has 11 columns (empty-state row)",
+        ".worktrees/CR-00056/ai-dev/logs/CR-00056_S10_fix1.log:8 — S10 fix-cycle applies one-line colspan fix"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add a template render smoke test (grep colspan= in modified files) to frontend-impl prompts; analyzed in CR-00056 (see ai-dev/work/CR-00056/reports/CR-00056_self_assess_report.md). Target: skills/iw-execute/SKILL.md or frontend prompt template. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "Stale test assertion for auto_merge.toml phase advance (phase 0→1) caused S18 QV fix cycle",
+      "recommendation": "When advancing a config constant that has a corresponding test assertion, grep for that constant in test files during the step and update the assertion before submission.",
+      "evidence": [
+        ".worktrees/CR-00056/ai-dev/logs/CR-00056_S18_fix1.log:13 — 'The test expects phase=0 (PHASE_DISABLED) but executor/auto_merge.toml has phase=1 (PHASE_DRY_RUN)'",
+        "tests/unit/test_auto_merge_config.py:48 — stale assertion `assert config.phase == PHASE_DISABLED`"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Update CLAUDE.md to require agents to grep test files for stale config constant assertions when updating config files; analyzed in CR-00056 (see ai-dev/work/CR-00056/reports/CR-00056_self_assess_report.md). Target: CLAUDE.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "Unusual `dir()` sentinel in batch_manager.py instead of explicit parameter",
+      "recommendation": "Replace `if 'prompt' in dir()` with an explicit `prompt: str | None = None` parameter; cleaner and mypy-friendly.",
+      "evidence": [
+        ".worktrees/CR-00056/ai-dev/logs/CR-00056_S05_run1.log:457 — S05 CodeReview: 'batch_manager.py line 1503: if \"prompt\" in dir() is an unusual pattern'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Refactor batch_manager.py dir() sentinel to explicit parameter; analyzed in CR-00056 (see ai-dev/work/CR-00056/reports/CR-00056_self_assess_report.md). Target: orch/daemon/batch_manager.py. Effort: S."
+    }
+  ]
+}
