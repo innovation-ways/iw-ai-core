@@ -8,11 +8,12 @@ import uuid
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
 
+    from sqlalchemy.orm import Session
     from starlette.requests import Request  # noqa: TC002
     from starlette.responses import Response  # noqa: TC002
 
@@ -70,6 +71,37 @@ _STATIC_DIR = _HERE / "static"
 _TEMPLATES_DIR = _HERE / "templates"
 
 logger = logging.getLogger(__name__)
+
+
+def _open_middleware_session(app: FastAPI) -> tuple[Session, bool]:
+    """Open a DB session for middleware use, honoring `app.dependency_overrides[get_db]`.
+
+    Returns ``(session, owns)`` — when ``owns`` is True the caller must close
+    the session; when False the override (typically a test fixture) owns the
+    lifecycle.
+
+    Why this exists: the chip middleware previously called ``SessionLocal()``
+    directly. Because the test module imports ``from dashboard.app import
+    create_app`` at top level, pytest collection triggers the module-level
+    ``from orch.db.session import SessionLocal, engine`` BEFORE the
+    session-autouse ``_arm_live_db_guard`` fixture runs — so the cached
+    ``_engine`` ends up bound to whatever ``.env`` configures (production
+    ``localhost:5433``). Tests that override ``get_db`` for the request layer
+    then see the middleware silently reading from production, and any
+    per-test ``AutoMergeProjectConfig`` overrides become invisible.
+    """
+    from dashboard.dependencies import get_db  # noqa: PLC0415
+
+    override = app.dependency_overrides.get(get_db)
+    if override is None:
+        return SessionLocal(), True
+    result = override()
+    # FastAPI accepts both generator-style (yield) and plain callables as
+    # dependencies. Handle both shapes so we work with any override.
+    if hasattr(result, "__next__"):
+        session = next(result)
+        return cast("Session", session), False  # generator owns its own cleanup
+    return cast("Session", result), False  # raw session — fixture owns lifecycle
 
 
 @asynccontextmanager
@@ -225,20 +257,23 @@ def create_app() -> FastAPI:
             try:
                 from orch.auto_merge_aggregator import get_status_snapshot  # noqa: PLC0415
                 from orch.daemon.auto_merge import AutoMergeConfig  # noqa: PLC0415
-                from orch.db.session import SessionLocal  # noqa: PLC0415
 
                 _project_id = m.group(1)
                 _executor_toml = (
                     Path(__file__).resolve().parents[1] / "executor" / "auto_merge.toml"
                 )
                 _toml_config, _ = AutoMergeConfig.load(str(_executor_toml))
-                _session = SessionLocal()
+                # Honor app.dependency_overrides[get_db] so test fixtures that
+                # swap the request DB also swap the middleware DB. See the
+                # docstring on _open_middleware_session for the full rationale.
+                _session, _owns_session = _open_middleware_session(app)
                 try:
                     _snapshot = get_status_snapshot(_session, _project_id, _toml_config)
                     request.state.auto_merge_phase_for_chip = _snapshot.config.phase
                     request.state.auto_merge_status_for_chip = _snapshot
                 finally:
-                    _session.close()
+                    if _owns_session:
+                        _session.close()
             except Exception:  # noqa: BLE001
                 request.state.auto_merge_phase_for_chip = 0
                 request.state.auto_merge_status_for_chip = None
