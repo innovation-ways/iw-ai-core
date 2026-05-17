@@ -166,7 +166,13 @@ def test_messages_empty_for_new_session(stub: tuple[str, str]) -> None:
     assert resp.json() == []
 
 
+_PROMPT_EVENT_COUNT = 6  # 4 message.part.updated + message.updated + session.idle
+
+
 def test_prompt_async_returns_200_then_event_stream_emits_sequence(stub: tuple[str, str]) -> None:
+    """The new (opencode-1.15-shaped) flow streams 4 delta events, finalises
+    with message.updated (info.time.completed), then session.idle. Every
+    payload carries the {type, id, properties} envelope chat.js consumes."""
     base_url, password = stub
     sid = _create_session(base_url, password)
     auth = httpx.BasicAuth("opencode", password)
@@ -181,18 +187,94 @@ def test_prompt_async_returns_200_then_event_stream_emits_sequence(stub: tuple[s
             json={"parts": [{"type": "text", "text": "run ls"}]},
         )
         assert prompt.status_code == 200
-        events = _collect_events(event_iter, count=3)
+        events = _collect_events(event_iter, count=_PROMPT_EVENT_COUNT)
 
-    assert [event.event for event in events] == [
+    assert [ev.event for ev in events] == [
+        "message.part.updated",
+        "message.part.updated",
+        "message.part.updated",
+        "message.part.updated",
         "message.updated",
-        "message.updated",
-        "permission.asked",
+        "session.idle",
     ]
-    ids = [int(str(event.id)) for event in events]
-    assert ids[0] < ids[1] < ids[2]
+    ids = [int(str(ev.id)) for ev in events]
+    assert ids == sorted(ids), "event ids must be monotonically increasing"
+
+    # Wire-shape contract: every native event payload is {type, id, properties}.
+    for ev in events:
+        body = ev.json()
+        assert body["type"] == ev.event
+        assert isinstance(body.get("properties"), dict), f"{ev.event} missing properties wrapper"
+
+    # Delta accumulation: concatenated deltas equal the final part text and
+    # match the stub's hardcoded reply.
+    deltas = [ev.json()["properties"]["delta"] for ev in events[:4]]
+    assert "".join(deltas) == "ok — running ls"
+    final_part_text = events[3].json()["properties"]["part"]["text"]
+    assert final_part_text == "ok — running ls"
+
+    # message.updated finalisation: info.role=assistant, info.time.completed
+    # populated, no error.
+    final = events[4].json()["properties"]
+    assert final["info"]["role"] == "assistant"
+    assert "completed" in final["info"]["time"]
+    assert final["info"]["error"] is None
+    assert final["info"]["sessionID"] == sid
+
+    # session.idle: properties.sessionID identifies the closed session.
+    idle = events[5].json()["properties"]
+    assert idle["sessionID"] == sid
 
 
-def test_permissions_allow_resumes_stream(stub: tuple[str, str]) -> None:
+def test_permissions_endpoint_acks_with_permission_replied_event(stub: tuple[str, str]) -> None:
+    """The default _process_prompt no longer asks for permission, so the
+    permissions endpoint is idempotent: it returns 200 and emits a
+    permission.replied event so a future variant that re-enables the
+    permission gate can resume against the same wire shape."""
+    base_url, password = stub
+    sid = _create_session(base_url, password)
+    auth = httpx.BasicAuth("opencode", password)
+
+    for response_value in ("allow", "deny"):
+        rid = f"req_test_{response_value}"
+        with (
+            httpx.Client(base_url=base_url, auth=auth, timeout=3.0) as client,
+            connect_sse(client, "GET", "/event") as event_source,
+        ):
+            event_iter = event_source.iter_sse()
+            reply = client.post(
+                f"/session/{sid}/permissions/{rid}",
+                json={"response": response_value},
+            )
+            assert reply.status_code == 200, response_value
+            replied = _collect_events(event_iter, count=1)[0]
+
+        assert replied.event == "permission.replied"
+        body = replied.json()
+        assert body["type"] == "permission.replied"
+        props = body["properties"]
+        assert props["id"] == rid
+        assert props["sessionID"] == sid
+        assert props["response"] == response_value
+
+
+def test_permissions_endpoint_rejects_invalid_response(stub: tuple[str, str]) -> None:
+    base_url, password = stub
+    sid = _create_session(base_url, password)
+    auth = httpx.BasicAuth("opencode", password)
+
+    with httpx.Client(base_url=base_url, auth=auth, timeout=3.0) as client:
+        bad = client.post(
+            f"/session/{sid}/permissions/req_bad",
+            json={"response": "maybe"},
+        )
+    assert bad.status_code == 400
+
+
+def test_abort_emits_session_idle_with_aborted_flag(stub: tuple[str, str]) -> None:
+    """Posting /session/{sid}/abort emits a session.idle whose
+    properties.aborted is True, separate from the session.idle the prompt
+    flow already emitted."""
     base_url, password = stub
     sid = _create_session(base_url, password)
     auth = httpx.BasicAuth("opencode", password)
@@ -207,72 +289,18 @@ def test_permissions_allow_resumes_stream(stub: tuple[str, str]) -> None:
             json={"parts": [{"type": "text", "text": "run ls"}]},
         )
         assert prompt.status_code == 200
-        events = _collect_events(event_iter, count=3)
-        permission = events[2].json()
-        rid = str(permission["request_id"])
+        # Drain the 6 events of the prompt flow so the next event we observe
+        # is the one abort produced.
+        _collect_events(event_iter, count=_PROMPT_EVENT_COUNT)
 
-        allow = client.post(f"/session/{sid}/permissions/{rid}", json={"response": "allow"})
-        assert allow.status_code == 200
-        resumed = _collect_events(event_iter, count=3)
-
-    assert resumed[0].event == "message.updated"
-    assert resumed[0].json()["tool_continued"] is True
-    assert resumed[1].event == "message.updated"
-    assert resumed[1].json()["status"] == "complete"
-    assert resumed[2].event == "session.idle"
-    assert resumed[2].json() == {"session_id": sid}
-
-
-def test_permissions_deny_terminates_stream(stub: tuple[str, str]) -> None:
-    base_url, password = stub
-    sid = _create_session(base_url, password)
-    auth = httpx.BasicAuth("opencode", password)
-
-    with (
-        httpx.Client(base_url=base_url, auth=auth, timeout=3.0) as client,
-        connect_sse(client, "GET", "/event") as event_source,
-    ):
-        event_iter = event_source.iter_sse()
-        prompt = client.post(
-            f"/session/{sid}/prompt_async",
-            json={"parts": [{"type": "text", "text": "run ls"}]},
-        )
-        assert prompt.status_code == 200
-        events = _collect_events(event_iter, count=3)
-        rid = str(events[2].json()["request_id"])
-
-        deny = client.post(f"/session/{sid}/permissions/{rid}", json={"response": "deny"})
-        assert deny.status_code == 200
-        post_deny = _collect_events(event_iter, count=2)
-
-    assert post_deny[0].event == "message.updated"
-    assert post_deny[0].json()["tool_blocked"] is True
-    assert post_deny[1].event == "session.idle"
-    assert post_deny[1].json() == {"session_id": sid, "permission_denied": True}
-
-
-def test_abort_emits_session_idle_immediately(stub: tuple[str, str]) -> None:
-    base_url, password = stub
-    sid = _create_session(base_url, password)
-    auth = httpx.BasicAuth("opencode", password)
-
-    with (
-        httpx.Client(base_url=base_url, auth=auth, timeout=3.0) as client,
-        connect_sse(client, "GET", "/event") as event_source,
-    ):
-        event_iter = event_source.iter_sse()
-        prompt = client.post(
-            f"/session/{sid}/prompt_async",
-            json={"parts": [{"type": "text", "text": "run ls"}]},
-        )
-        assert prompt.status_code == 200
-        _collect_events(event_iter, count=3)
         aborted = client.post(f"/session/{sid}/abort")
         assert aborted.status_code == 200
         next_event = _collect_events(event_iter, count=1)[0]
 
     assert next_event.event == "session.idle"
-    assert next_event.json() == {"session_id": sid, "aborted": True}
+    props = next_event.json()["properties"]
+    assert props["sessionID"] == sid
+    assert props["aborted"] is True
 
 
 def test_last_event_id_replay_from_ring_buffer(stub: tuple[str, str]) -> None:
@@ -288,19 +316,19 @@ def test_last_event_id_replay_from_ring_buffer(stub: tuple[str, str]) -> None:
                 json={"parts": [{"type": "text", "text": "run ls"}]},
             )
             assert prompt.status_code == 200
-            first_three = _collect_events(event_iter, count=3)
-            checkpoint = str(first_three[0].id)
-            rid = str(first_three[2].json()["request_id"])
-            allow = client.post(f"/session/{sid}/permissions/{rid}", json={"response": "allow"})
-            assert allow.status_code == 200
+            initial = _collect_events(event_iter, count=_PROMPT_EVENT_COUNT)
+            checkpoint = str(initial[0].id)
 
         with connect_sse(client, "GET", "/event", headers={"Last-Event-ID": checkpoint}) as replay:
             replay_iter = replay.iter_sse()
-            replay_events = _collect_events(replay_iter, count=4)
+            # Ring buffer must replay every event strictly after the
+            # checkpoint — the remaining 5 of the 6-event prompt sequence.
+            replay_events = _collect_events(replay_iter, count=_PROMPT_EVENT_COUNT - 1)
 
     replay_ids = [int(str(ev.id)) for ev in replay_events]
     assert replay_ids == sorted(replay_ids)
     assert replay_ids[0] > int(checkpoint)
+    assert [ev.event for ev in replay_events] == [ev.event for ev in initial[1:]]
 
 
 def test_invalid_argv_exits_with_code_2() -> None:
@@ -346,11 +374,15 @@ def test_no_password_in_stub_stderr() -> None:
                 json={"parts": [{"type": "text", "text": "run ls"}]},
             )
             assert prompt.status_code == 200
-            events = _collect_events(event_iter, count=3)
-            rid = str(events[2].json()["request_id"])
-            allow = client.post(f"/session/{sid}/permissions/{rid}", json={"response": "allow"})
+            # Exercise the full prompt sequence and the permissions endpoint
+            # so the stub has logged enough to make a leak detectable.
+            _collect_events(event_iter, count=_PROMPT_EVENT_COUNT)
+            allow = client.post(
+                f"/session/{sid}/permissions/req_leakcheck",
+                json={"response": "allow"},
+            )
             assert allow.status_code == 200
-            _collect_events(event_iter, count=2)
+            _collect_events(event_iter, count=1)
     finally:
         proc.terminate()
         try:
