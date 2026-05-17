@@ -146,8 +146,70 @@ async def test_prompt_request_shape() -> None:
         body = json.loads(route.calls.last.request.content.decode())
         # The wire shape mirrors OpenCode's expected parts-array.
         assert body["parts"] == [{"type": "text", "text": "hello agent"}]
-        assert body["model"] == "anthropic/claude-3-5"
+        # Opencode expects the structured `{providerID, modelID}` form, not
+        # the slash-separated string the dashboard surfaces in its selector.
+        assert body["model"] == {
+            "providerID": "anthropic",
+            "modelID": "claude-3-5",
+        }
         assert body["system"] == "be terse"
+
+
+@pytest.mark.asyncio
+async def test_prompt_splits_provider_model_into_object() -> None:
+    """When ``model`` is a ``"providerId/modelId"`` string the client must
+    send it to opencode as ``{"providerID": ..., "modelID": ...}``.
+
+    Regression: opencode 1.15 `/session/{id}/prompt_async` rejects
+    ``"model": "<str>"`` with HTTP 400 — the OpenAPI schema requires the
+    structured form. See `.opencode/node_modules/@opencode-ai/sdk` for the
+    canonical type.
+    """
+    async with respx.mock(base_url=BASE_URL) as mock:
+        route = mock.post("/session/sid/prompt_async").respond(204)
+        client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)
+        try:
+            await client.prompt("sid", "hi", model="minimax/MiniMax-M2.7")
+        finally:
+            await client.aclose()
+        body = json.loads(route.calls.last.request.content.decode())
+        assert body["model"] == {
+            "providerID": "minimax",
+            "modelID": "MiniMax-M2.7",
+        }, f"expected object model, got {body['model']!r}"
+        # The text part still rides along untouched.
+        assert body["parts"] == [{"type": "text", "text": "hi"}]
+
+
+@pytest.mark.asyncio
+async def test_prompt_handles_model_with_slash_in_model_id() -> None:
+    """A model ID can contain '/' (rare but valid). Split only the FIRST '/'."""
+    async with respx.mock(base_url=BASE_URL) as mock:
+        route = mock.post("/session/sid/prompt_async").respond(204)
+        client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)
+        try:
+            await client.prompt("sid", "hi", model="openai/gpt-5.5/pro")
+        finally:
+            await client.aclose()
+        body = json.loads(route.calls.last.request.content.decode())
+        assert body["model"] == {
+            "providerID": "openai",
+            "modelID": "gpt-5.5/pro",
+        }
+
+
+@pytest.mark.asyncio
+async def test_prompt_omits_model_when_none() -> None:
+    """Calling prompt without a model must NOT include a model field."""
+    async with respx.mock(base_url=BASE_URL) as mock:
+        route = mock.post("/session/sid/prompt_async").respond(204)
+        client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)
+        try:
+            await client.prompt("sid", "hi", model=None)
+        finally:
+            await client.aclose()
+        body = json.loads(route.calls.last.request.content.decode())
+        assert "model" not in body, f"unexpected model field: {body!r}"
 
 
 @pytest.mark.asyncio
@@ -203,6 +265,34 @@ async def test_get_config_request_shape() -> None:
             await client.aclose()
         assert out == cfg
         assert route.called
+
+
+@pytest.mark.asyncio
+async def test_get_providers_request_shape() -> None:
+    """`get_providers` GETs /config/providers and returns the raw dict."""
+    providers_payload = {
+        "providers": [
+            {
+                "id": "minimax",
+                "name": "MiniMax",
+                "models": {
+                    "MiniMax-M2.7": {"id": "MiniMax-M2.7"},
+                    "MiniMax-M2.5": {"id": "MiniMax-M2.5"},
+                },
+            },
+        ],
+        "default": {"minimax": "MiniMax-M2.7"},
+    }
+    async with respx.mock(base_url=BASE_URL) as mock:
+        route = mock.get("/config/providers").respond(json=providers_payload)
+        client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)
+        try:
+            out = await client.get_providers()
+        finally:
+            await client.aclose()
+        assert out == providers_payload
+        assert route.called
+        assert route.calls.last.request.headers["Authorization"] == _expected_basic_auth_header()
 
 
 # ---------------------------------------------------------------------------
