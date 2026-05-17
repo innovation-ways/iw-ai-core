@@ -1,0 +1,37 @@
+{
+  "item_id": "I-00088",
+  "bottom_line": "Fix prompt-template report paths first (active vs work); this is the highest-frequency low-effort source of retries in this item.",
+  "coverage_notes": "DB telemetry available (iw db-identity check: UP). Reviewed workflow manifest and item-status JSON. All step logs were <= 1 MB, so full files were inspected selectively with targeted reads and global error-pattern search (rg) across ai-dev/logs/I-00088_*.log; deep context reads were taken around S01 RED evidence and S10 failure/pass boundaries.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Prompt templates reference ai-dev/work reports while runtime reports live under ai-dev/active",
+      "recommendation": "Update prompt/design templates to reference ai-dev/active/<ID>/reports for step reports, or instruct agents to probe active/work paths before failing reads.",
+      "evidence": [
+        "ai-dev/active/I-00088/prompts/I-00088_S02_CodeReview_Backend_prompt.md:25 - 'ai-dev/work/I-00088/reports/I-00088_S01_Backend_report.md'",
+        "ai-dev/logs/I-00088_S02_run1.log:9 - 'Error: File not found: .../ai-dev/work/I-00088/reports/I-00088_S01_Backend_report.md'",
+        "ai-dev/active/I-00088/prompts/I-00088_S04_CodeReview_Tests_prompt.md:22 - 'ai-dev/work/I-00088/reports/I-00088_S03_Tests_report.md'",
+        "ai-dev/logs/I-00088_S04_run3.log:22 - 'Error: File not found: .../ai-dev/work/I-00088/reports/I-00088_S03_Tests_report.md'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Update prompt templates to use ai-dev/active/<ID>/reports for runtime step reports (instead of ai-dev/work) to reduce code-review retry thrash; analyzed in I-00088 (see ai-dev/work/I-00088/reports/I-00088_self_assess_report.md)."
+    },
+    {
+      "severity": "HIGH",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Integration QV gate failed once on e2e SSE request_id ordering, then passed on rerun",
+      "recommendation": "Stabilize test_e2e_opencode_stub SSE sequencing assertions by waiting for request_id-bearing events deterministically instead of fixed-position assumptions.",
+      "evidence": [
+        "ai-dev/logs/I-00088_S10_run3.log:2710 - \"KeyError: 'request_id'\"",
+        "ai-dev/logs/I-00088_S10_run3.log:3186 - '6 failed, 2613 passed ... in 909.99s'",
+        "ai-dev/logs/I-00088_S10_run3.log:3188 - 'Failed I-00088 step S10: integration-tests failed: exit=2'",
+        "ai-dev/logs/I-00088_S10_run5.log:2995 - 'Completed I-00088 step S10'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Harden tests/integration/test_e2e_opencode_stub.py against SSE event ordering flake that raised request_id KeyError and caused a failed integration gate rerun in I-00088 (see ai-dev/work/I-00088/reports/I-00088_self_assess_report.md)."
+    }
+  ]
+}
