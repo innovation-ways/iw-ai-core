@@ -7,7 +7,6 @@ Follows the DocJobPoller pattern: stateless, fresh session per poll().
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 from orch.db.session import SessionLocal
 from orch.keep_alive_service import (
@@ -16,9 +15,6 @@ from orch.keep_alive_service import (
     log_run,
     pick_message,
 )
-
-if TYPE_CHECKING:
-    from orch.db.models import KeepAliveSlot
 
 logger = logging.getLogger("orch.keep_alive")
 
@@ -40,26 +36,32 @@ class KeepAlivePoller:
              - Retry success → log_run(status='retried_success').
              - Retry failure → log_run(status='retried_failed', error=combined_errors).
         Each slot is processed independently; one slot's failure does NOT stop others.
-        Open a fresh DB session per poll() call (use SessionLocal() context manager).
-        Log outcomes via stdlib logging (logger name: 'orch.keep_alive').
+
+        Slots are snapshotted to primitive (id, time_hhmm) tuples while their
+        session is still open. Passing the ORM instance forward would detach it
+        when the session closes — and SessionLocal's default expire_on_commit=True
+        means any subsequent attribute access triggers a refresh that fails with
+        DetachedInstanceError, masking every fire_claude success as an "unexpected
+        error" and preventing the run from ever being logged.
         """
         with SessionLocal() as db:
             due_slots = get_due_slots(db)
+            slot_snapshots = [(slot.id, slot.time_hhmm) for slot in due_slots]
             db.commit()
 
-        for slot in due_slots:
+        for slot_id, slot_time in slot_snapshots:
             try:
-                self._fire_slot(slot)
+                self._fire_slot(slot_id, slot_time)
             except Exception:
-                logger.exception("Unexpected error processing keep-alive slot %s", slot.id)
+                logger.exception("Unexpected error processing keep-alive slot %s", slot_id)
 
-    def _fire_slot(self, slot: KeepAliveSlot) -> None:
+    def _fire_slot(self, slot_id: int, slot_time: str) -> None:
         """Fire a single slot: attempt + optional retry, then log result."""
         message_1 = pick_message()
         success_1, error_1 = fire_claude(message_1)
 
         if success_1:
-            self._log_run(slot, status="success")
+            self._log_run(slot_id, slot_time, status="success")
             return
 
         # Retry once with a new message
@@ -67,14 +69,15 @@ class KeepAlivePoller:
         success_2, error_2 = fire_claude(message_2)
 
         if success_2:
-            self._log_run(slot, status="retried_success")
+            self._log_run(slot_id, slot_time, status="retried_success")
         else:
             combined_error = f"{error_1 or 'unknown'}; retry error: {error_2 or 'unknown'}"
-            self._log_run(slot, status="retried_failed", error=combined_error)
+            self._log_run(slot_id, slot_time, status="retried_failed", error=combined_error)
 
     def _log_run(
         self,
-        slot: KeepAliveSlot,
+        slot_id: int,
+        slot_time: str,
         status: str,
         error: str | None = None,
     ) -> None:
@@ -82,16 +85,16 @@ class KeepAlivePoller:
         with SessionLocal() as db:
             log_run(
                 db,
-                slot_id=slot.id,
-                slot_time=slot.time_hhmm,
+                slot_id=slot_id,
+                slot_time=slot_time,
                 status=status,
                 error=error,
             )
             db.commit()
         logger.info(
             "KeepAlive slot=%s time=%s status=%s error=%s",
-            slot.id,
-            slot.time_hhmm,
+            slot_id,
+            slot_time,
             status,
             error,
         )
