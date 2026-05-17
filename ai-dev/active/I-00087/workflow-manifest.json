@@ -1,0 +1,94 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00087",
+  "type": "Incident",
+  "title": "AI Assistant chat panel does not render model responses (wire-protocol drift)",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/static/chat_assistant/chat.js",
+      "tests/dashboard/test_chat_panel_event_protocol.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "frontend-impl",
+      "description": "Align chat.js event listeners + _handleEvent payload extraction + _loadHistory with opencode 1.15 wire shape (properties.*; {info, parts}); preserve all six session-continuity invariants",
+      "prompt": "prompts/I-00087_S01_Frontend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: wire-protocol alignment with INTERESTING_EVENTS, payload accessors, history reload, session-continuity invariants",
+      "prompt": "prompts/I-00087_S02_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Add tests/dashboard/test_chat_panel_event_protocol.py: contract test pinned to INTERESTING_EVENTS; payload-accessor regression; _loadHistory shape regression; six continuity invariants",
+      "prompt": "prompts/I-00087_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: assertion strength (I003 lesson), RED evidence, coverage of every design TDD test name",
+      "prompt": "prompts/I-00087_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Cross-step global review: AC traceability matrix, cross-file consistency between chat.js accessors and test assertions, session-continuity audit",
+      "prompt": "prompts/I-00087_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S11",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — send a prompt and confirm assistant reply renders; refresh and confirm history reloads; multi-turn session continuity; no console errors",
+      "prompt": "prompts/I-00087_S11_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00087_S12_SelfAssess_prompt.md"
+    }
+  ]
+}
