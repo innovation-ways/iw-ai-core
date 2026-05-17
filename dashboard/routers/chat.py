@@ -35,7 +35,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -62,10 +62,12 @@ _SKILLS_TTL = 30.0  # seconds
 _config_cache: dict[str, Any] = {}
 _skills_cache: dict[str, Any] = {}
 
-# Root used for scanning .opencode/skills/ and .opencode/commands/; patched in
-# tests via ``patch.object(chat_mod, "_OPENCODE_ROOT", tmp_path)``.
+# Repo root used to scan `.opencode/{skills,commands}` and
+# `.claude/{skills,commands}`. From this file's location two parents up reaches
+# the iw-ai-core repo root (which holds CLAUDE.md). Tests patch via
+# ``patch.object(chat_mod, "_OPENCODE_ROOT", tmp_path)``.
 _OPENCODE_ROOT: Path = Path(
-    os.environ.get("IW_CORE_REPO_ROOT", Path(__file__).resolve().parents[3])
+    os.environ.get("IW_CORE_REPO_ROOT", Path(__file__).resolve().parents[2])
 )
 
 # ---------------------------------------------------------------------------
@@ -313,6 +315,12 @@ async def get_config(
 ) -> Any:
     """Return ``{models, default_model, default_agent}`` with 30 s TTL cache.
 
+    The opencode ``/config`` endpoint does not expose the available models —
+    those live under ``/config/providers``. This handler calls both and
+    flattens the providers into a sorted, de-duplicated list of
+    ``"<providerId>/<modelId>"`` strings (the shape the front-end model
+    selector consumes).
+
     Unlike the other endpoints, if a cached value exists it is served even
     when the runtime is temporarily unhealthy.
     """
@@ -330,14 +338,69 @@ async def get_config(
         return _503_unavailable()
 
     raw = await client.get_config()
+    providers_raw = await client.get_providers()
+
+    models = _flatten_provider_models(providers_raw)
+    default_model = _pick_default_model(raw, providers_raw, models)
     result = {
-        "models": raw.get("models", []),
-        "default_model": raw.get("default_model", ""),
+        "models": models,
+        "default_model": default_model,
         "default_agent": raw.get("default_agent", ""),
     }
     _config_cache["data"] = result
     _config_cache["at"] = now
     return result
+
+
+def _flatten_provider_models(providers_raw: dict[str, Any]) -> list[str]:
+    """Flatten ``/config/providers`` into sorted ``"providerId/modelId"`` strings."""
+    out: set[str] = set()
+    providers = providers_raw.get("providers", [])
+    if not isinstance(providers, list):
+        return []
+    for p in providers:
+        if not isinstance(p, dict):
+            continue
+        pid = p.get("id")
+        models = p.get("models", {})
+        if not isinstance(pid, str) or not pid:
+            continue
+        if not isinstance(models, dict):
+            continue
+        for model_id in models:
+            if isinstance(model_id, str) and model_id:
+                out.add(f"{pid}/{model_id}")
+    return sorted(out)
+
+
+def _pick_default_model(
+    raw_config: dict[str, Any],
+    providers_raw: dict[str, Any],
+    models: list[str],
+) -> str:
+    """Choose a default model string.
+
+    Preference order:
+      1. ``raw_config["model"]`` if it appears in the flattened ``models`` list.
+      2. First ``"<providerId>/<defaultModelId>"`` from ``providers_raw["default"]``
+         that matches an entry in ``models``.
+      3. First entry in ``models``.
+      4. Empty string when no models are configured.
+    """
+    candidate = raw_config.get("model")
+    if isinstance(candidate, str) and candidate in models:
+        return candidate
+
+    defaults = providers_raw.get("default", {})
+    if isinstance(defaults, dict):
+        for pid, mid in defaults.items():
+            if not isinstance(pid, str) or not isinstance(mid, str):
+                continue
+            combo = f"{pid}/{mid}"
+            if combo in models:
+                return combo
+
+    return models[0] if models else ""
 
 
 @router.get("/skills")
@@ -377,13 +440,19 @@ async def get_skills(
 # ---------------------------------------------------------------------------
 
 
+_SKILL_ROOTS: Final[tuple[str, ...]] = (".opencode", ".claude")
+_SKILL_KINDS: Final[tuple[tuple[str, str], ...]] = (("skill", "skills"), ("command", "commands"))
+
+
 def _scan_opencode_mtime() -> float:
-    """Return max mtime across all files in .opencode/skills/ and .opencode/commands/."""
+    """Return max mtime across every skill/command file under .opencode/ and .claude/."""
     root = _OPENCODE_ROOT
     max_mtime = 0.0
-    for subdir in ("skills", "commands"):
-        d = root / ".opencode" / subdir
-        if d.is_dir():
+    for parent in _SKILL_ROOTS:
+        for _, subdir in _SKILL_KINDS:
+            d = root / parent / subdir
+            if not d.is_dir():
+                continue
             for p in d.rglob("*"):
                 if p.is_file():
                     with contextlib.suppress(OSError):
@@ -394,29 +463,63 @@ def _scan_opencode_mtime() -> float:
 
 
 def _load_skills() -> list[dict[str, str]]:
-    """Walk .opencode/skills/ and .opencode/commands/ and return skill metadata."""
+    """Walk skill/command roots and return entries.
+
+    Two layouts are accepted under each ``<root>/<kind>/`` directory:
+
+    1. **Subdirectory** — ``<name>/SKILL.md`` | ``<name>/<name>.md`` |
+       ``<name>/README.md`` (Claude-style skills).
+    2. **Flat file** — ``<name>.md`` (the actual layout of
+       ``.opencode/commands/``).
+
+    Both ``.opencode/`` and ``.claude/`` roots are scanned. When the same
+    ``(kind, name)`` appears in multiple roots the first one wins (preference
+    follows ``_SKILL_ROOTS`` order).
+    """
     root = _OPENCODE_ROOT
-    results: list[dict[str, str]] = []
+    seen: dict[tuple[str, str], dict[str, str]] = {}
 
-    for kind, subdir in (("skill", "skills"), ("command", "commands")):
-        d = root / ".opencode" / subdir
-        if not d.is_dir():
-            continue
-        for skill_dir in sorted(d.iterdir()):
-            if not skill_dir.is_dir():
+    for parent in _SKILL_ROOTS:
+        for kind, subdir in _SKILL_KINDS:
+            d = root / parent / subdir
+            if not d.is_dir():
                 continue
-            name = skill_dir.name
-            description = ""
-            # Try SKILL.md or <name>.md for a description line
-            for candidate in ("SKILL.md", f"{name}.md", "README.md"):
-                md = skill_dir / candidate
-                if md.is_file():
-                    with contextlib.suppress(OSError):
-                        description = _extract_description(md.read_text(encoding="utf-8"))
-                    break
-            results.append({"kind": kind, "name": name, "description": description})
+            for entry in sorted(d.iterdir()):
+                meta = _read_skill_entry(entry, kind)
+                if meta is None:
+                    continue
+                key = (meta["kind"], meta["name"])
+                if key not in seen:
+                    seen[key] = meta
 
-    return results
+    return list(seen.values())
+
+
+def _read_skill_entry(entry: Path, kind: str) -> dict[str, str] | None:
+    """Build a metadata dict for a skill/command entry, or None to skip.
+
+    Handles both the subdirectory layout (``<name>/SKILL.md`` etc.) and the
+    flat-file layout (``<name>.md``).
+    """
+    if entry.is_dir():
+        name = entry.name
+        description = ""
+        for candidate in ("SKILL.md", f"{name}.md", "README.md"):
+            md = entry / candidate
+            if md.is_file():
+                with contextlib.suppress(OSError):
+                    description = _extract_description(md.read_text(encoding="utf-8"))
+                break
+        return {"kind": kind, "name": name, "description": description}
+
+    if entry.is_file() and entry.suffix.lower() == ".md":
+        name = entry.stem
+        description = ""
+        with contextlib.suppress(OSError):
+            description = _extract_description(entry.read_text(encoding="utf-8"))
+        return {"kind": kind, "name": name, "description": description}
+
+    return None
 
 
 def _extract_description(content: str) -> str:

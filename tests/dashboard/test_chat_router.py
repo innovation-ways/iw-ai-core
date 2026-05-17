@@ -58,11 +58,24 @@ def _make_client() -> Any:
     c.prompt = AsyncMock(return_value=None)
     c.abort = AsyncMock(return_value=None)
     c.reply_permission = AsyncMock(return_value=None)
+    # /config returns top-level config (model, agent, mode, etc.) — NOT models list.
     c.get_config = AsyncMock(
         return_value={
-            "models": ["model-a", "model-b"],
-            "default_model": "model-a",
+            "model": "prov-a/model-a",
             "default_agent": "default",
+        }
+    )
+    # /config/providers is where the model catalogue actually lives.
+    c.get_providers = AsyncMock(
+        return_value={
+            "providers": [
+                {
+                    "id": "prov-a",
+                    "name": "Provider A",
+                    "models": {"model-a": {}, "model-b": {}},
+                },
+            ],
+            "default": {"prov-a": "model-a"},
         }
     )
     return c
@@ -255,7 +268,7 @@ class TestRuntimeUnavailable:
 
 class TestConfigCache:
     def test_config_cache_30s(self, db_session: Session) -> None:
-        """Second request within 30s does NOT call get_config() again."""
+        """Second request within 30s does NOT call upstream endpoints again."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             call_count = 0
@@ -263,14 +276,19 @@ class TestConfigCache:
             async def _get_config() -> dict[str, Any]:
                 nonlocal call_count
                 call_count += 1
+                return {"model": "prov-a/model-a"}
+
+            async def _get_providers() -> dict[str, Any]:
+                nonlocal call_count
+                call_count += 1
                 return {
-                    "models": ["model-a"],
-                    "default_model": "model-a",
-                    "default_agent": "default",
+                    "providers": [{"id": "prov-a", "models": {"model-a": {}}}],
+                    "default": {"prov-a": "model-a"},
                 }
 
             mock_client = _make_client()
             mock_client.get_config = _get_config
+            mock_client.get_providers = _get_providers
 
             # Clear any stale cache from previous tests
             chat_mod._config_cache.clear()
@@ -283,12 +301,15 @@ class TestConfigCache:
             tc = TestClient(app, raise_server_exceptions=False)
             resp1 = tc.get("/api/chat/config")
             assert resp1.status_code == 200
-            assert call_count == 1
+            # First request: both get_config + get_providers fired once each.
+            assert call_count == 2
 
             resp2 = tc.get("/api/chat/config")
             assert resp2.status_code == 200
-            # Second call must NOT have hit get_config again
-            assert call_count == 1, "get_config() was called more than once within 30s TTL"
+            # Second call must NOT have hit upstream endpoints again.
+            assert call_count == 2, (
+                f"upstream endpoints were re-called within 30s TTL (count={call_count})"
+            )
         finally:
             app.dependency_overrides.clear()
             if original is not None:
@@ -301,6 +322,185 @@ class TestConfigCache:
         data = resp.json()
         assert "models" in data
         assert "default_model" in data
+
+
+# ---------------------------------------------------------------------------
+# TC3b — /config flattens /config/providers into a model list
+#
+# Regression: opencode `/config` does NOT return `models`/`default_model`;
+# those live under `/config/providers`. The router must merge both endpoints
+# into the shape the front-end (chat.js:661) expects.
+# ---------------------------------------------------------------------------
+
+
+def _providers_payload(
+    providers: list[dict[str, Any]] | None = None,
+    default: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "providers": providers or [],
+        "default": default or {},
+    }
+
+
+class TestConfigFlattensProviders:
+    def test_config_flattens_provider_models_into_string_list(self, db_session: Session) -> None:
+        """`/api/chat/config` flattens `/config/providers` into
+        ``models = ['<providerId>/<modelId>', ...]``."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            mock_client = _make_client()
+            # Opencode /config: only the singular `model` field is meaningful here.
+            mock_client.get_config = AsyncMock(
+                return_value={
+                    "model": "minimax/MiniMax-M2.7",
+                    "agent": {},
+                }
+            )
+            mock_client.get_providers = AsyncMock(
+                return_value=_providers_payload(
+                    providers=[
+                        {
+                            "id": "minimax",
+                            "name": "MiniMax",
+                            "models": {
+                                "MiniMax-M2.7": {"id": "MiniMax-M2.7"},
+                                "MiniMax-M2.5": {"id": "MiniMax-M2.5"},
+                            },
+                        },
+                        {
+                            "id": "openai",
+                            "name": "OpenAI",
+                            "models": {
+                                "gpt-5.5-pro": {"id": "gpt-5.5-pro"},
+                            },
+                        },
+                    ],
+                    default={"minimax": "MiniMax-M2.7", "openai": "gpt-5.5-pro"},
+                )
+            )
+
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            resp = tc.get("/api/chat/config")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert isinstance(data["models"], list)
+            assert set(data["models"]) == {
+                "minimax/MiniMax-M2.7",
+                "minimax/MiniMax-M2.5",
+                "openai/gpt-5.5-pro",
+            }, f"unexpected models: {data['models']}"
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_config_default_model_prefers_config_model_field(self, db_session: Session) -> None:
+        """When `/config.model` is a known `provider/model` string, use it."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            mock_client = _make_client()
+            mock_client.get_config = AsyncMock(return_value={"model": "minimax/MiniMax-M2.5"})
+            mock_client.get_providers = AsyncMock(
+                return_value=_providers_payload(
+                    providers=[
+                        {
+                            "id": "minimax",
+                            "models": {
+                                "MiniMax-M2.7": {},
+                                "MiniMax-M2.5": {},
+                            },
+                        },
+                    ],
+                    default={"minimax": "MiniMax-M2.7"},
+                )
+            )
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+            resp = tc.get("/api/chat/config")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["default_model"] == "minimax/MiniMax-M2.5"
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_config_default_model_falls_back_to_providers_default(
+        self, db_session: Session
+    ) -> None:
+        """When `/config.model` is missing or unknown, derive default from
+        the first matching `(providerId, default[providerId])` pair."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            mock_client = _make_client()
+            # No `model` field at all on /config.
+            mock_client.get_config = AsyncMock(return_value={})
+            mock_client.get_providers = AsyncMock(
+                return_value=_providers_payload(
+                    providers=[
+                        {"id": "minimax", "models": {"MiniMax-M2.7": {}}},
+                    ],
+                    default={"minimax": "MiniMax-M2.7"},
+                )
+            )
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+            resp = tc.get("/api/chat/config")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["default_model"] == "minimax/MiniMax-M2.7"
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_config_empty_providers_returns_empty_models(self, db_session: Session) -> None:
+        """No providers → empty models list, empty default_model."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            mock_client = _make_client()
+            mock_client.get_config = AsyncMock(return_value={})
+            mock_client.get_providers = AsyncMock(
+                return_value=_providers_payload(providers=[], default={})
+            )
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+            resp = tc.get("/api/chat/config")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["models"] == []
+            assert data["default_model"] == ""
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +539,101 @@ class TestSkillsCache:
         resp = chat_client.get("/api/chat/skills")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
+
+
+# ---------------------------------------------------------------------------
+# TC4b — _load_skills layout support
+#
+# Regression: the existing loader only accepted `<root>/.opencode/<kind>/<name>/SKILL.md`
+# subdirectory layouts, but `.opencode/commands/` actually contains flat `.md`
+# files (e.g. `iw-new-cr.md`), and Claude-style skills live under
+# `.claude/skills/<name>/SKILL.md`. The loader must accept both layouts AND
+# both root dirs.
+# ---------------------------------------------------------------------------
+
+
+class TestSkillsLayoutSupport:
+    def test_skills_includes_flat_md_files_under_opencode_commands(
+        self, tmp_path: Any, chat_client: TestClient
+    ) -> None:
+        """A `.opencode/commands/<name>.md` flat file becomes a command entry."""
+        chat_mod._skills_cache.clear()
+
+        cmds = tmp_path / ".opencode" / "commands"
+        cmds.mkdir(parents=True)
+        (cmds / "iw-new-cr.md").write_text(
+            "# Create New Change Request\ndescription: Create a change request.\n"
+        )
+
+        with patch.object(chat_mod, "_OPENCODE_ROOT", tmp_path):
+            resp = chat_client.get("/api/chat/skills")
+            assert resp.status_code == 200
+            entries = resp.json()
+            names = {(e["kind"], e["name"]) for e in entries}
+            assert ("command", "iw-new-cr") in names, f"flat .md command not surfaced; got {names}"
+
+    def test_skills_scans_claude_skills_subdirectories(
+        self, tmp_path: Any, chat_client: TestClient
+    ) -> None:
+        """`.claude/skills/<name>/SKILL.md` becomes a skill entry."""
+        chat_mod._skills_cache.clear()
+
+        skill_dir = tmp_path / ".claude" / "skills" / "iw-research"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\ndescription: Conducts online research.\n---\n# iw-research\n"
+        )
+
+        with patch.object(chat_mod, "_OPENCODE_ROOT", tmp_path):
+            resp = chat_client.get("/api/chat/skills")
+            assert resp.status_code == 200
+            entries = resp.json()
+            names = {(e["kind"], e["name"]) for e in entries}
+            assert ("skill", "iw-research") in names, (
+                f".claude/skills/ subdir not surfaced; got {names}"
+            )
+
+    def test_default_opencode_root_resolves_to_repo_root(self) -> None:
+        """The default ``_OPENCODE_ROOT`` must be the repo containing CLAUDE.md.
+
+        Regression: a previous off-by-one in ``Path(__file__).resolve().parents[N]``
+        resolved one level too high, so ``.opencode/`` / ``.claude/`` lookups
+        silently found nothing in production while tests (which patch
+        ``_OPENCODE_ROOT`` to a tmp_path) kept passing.
+        """
+        from pathlib import Path
+
+        default = Path(__file__).resolve().parents[2]
+        # Re-derive the default the same way the module would, ignoring the
+        # IW_CORE_REPO_ROOT override (which would mask the bug).
+        module_default = Path(chat_mod.__file__).resolve().parents[2]
+        assert (module_default / "CLAUDE.md").is_file(), (
+            f"_OPENCODE_ROOT default does not contain CLAUDE.md: {module_default}"
+        )
+        assert module_default == default, (
+            f"chat module default root {module_default} != tests root {default}"
+        )
+
+    def test_skills_dedupes_same_kind_name_across_roots(
+        self, tmp_path: Any, chat_client: TestClient
+    ) -> None:
+        """Same (kind, name) defined in both .opencode and .claude → one entry."""
+        chat_mod._skills_cache.clear()
+
+        oc_cmds = tmp_path / ".opencode" / "commands"
+        oc_cmds.mkdir(parents=True)
+        (oc_cmds / "fix-bug.md").write_text("description: From opencode.\n")
+
+        cl_cmds = tmp_path / ".claude" / "commands"
+        cl_cmds.mkdir(parents=True)
+        (cl_cmds / "fix-bug.md").write_text("description: From claude.\n")
+
+        with patch.object(chat_mod, "_OPENCODE_ROOT", tmp_path):
+            resp = chat_client.get("/api/chat/skills")
+            assert resp.status_code == 200
+            entries = resp.json()
+            matches = [e for e in entries if e["kind"] == "command" and e["name"] == "fix-bug"]
+            assert len(matches) == 1, f"expected single dedup'd entry, got {matches}"
 
 
 # ---------------------------------------------------------------------------
