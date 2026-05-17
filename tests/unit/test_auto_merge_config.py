@@ -293,7 +293,7 @@ def test_load_toml_null_runtime_option(tmp_path: Path) -> None:
 
 
 def test_load_actual_auto_merge_toml() -> None:
-    """Loading the actual executor/auto_merge.toml succeeds with phase=1."""
+    """Loading the actual executor/auto_merge.toml succeeds with phase=1 (dry-run)."""
     from pathlib import Path
 
     from orch.daemon.auto_merge import PHASE_DRY_RUN, AutoMergeConfig

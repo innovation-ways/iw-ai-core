@@ -14,6 +14,7 @@ from __future__ import annotations
 # Import fixtures from integration conftest so pytest can discover them
 from tests.integration.conftest import (  # noqa: F401
     _db_test_connection,
+    _pgtestdb_setup,
     db_engine,
     db_session,
     db_session_factory,

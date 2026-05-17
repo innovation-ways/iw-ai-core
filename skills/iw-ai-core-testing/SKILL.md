@@ -126,27 +126,24 @@ with pytest.raises(FixCycleExhausted):
 
 Unit tests that just need to *mock* DB calls get a `MagicMock` `db_session` from `tests/unit/conftest.py`.
 
-### pytest-randomly — test-order randomisation (currently OFF-by-default)
+### pytest-randomly — test-order randomisation (CR-00055, 2026-05-16 — default-on)
 
-`pytest-randomly` is installed but **currently OFF by default** via `-p no:randomly` in `pyproject.toml` `[tool.pytest.ini_options] addopts` — the design's explicit fallback (CR-00048 AC1 / Desired Behavior). S01's bounded unit sweep was green, but `make diff-coverage` (full `tests/integration/` + `tests/dashboard/` in one invocation) surfaced ~50 order-dependent fixture failures (`sqla…` collection errors) that 5 fix cycles could not converge. Follow-up `P1-CR-C-followup-randomly` (see `ai-dev/work/TESTS_ENHANCEMENT.md`) tracks the cleanup and re-enables randomisation by default.
+`pytest-randomly` is **ON by default** (CR-00055, 2026-05-16). The integration + dashboard suite is robust to randomisation via per-test PostgreSQL template-clone (`pgtestdbpy>=0.0.1`): a session-scoped template DB is migrated once; each test gets its own fresh clone (~25 ms via `CREATE DATABASE … TEMPLATE …` with WAL_LOG strategy override); `IW_CORE_DB_*` env vars are monkeypatched per-test so `iw` CLI subprocesses inherit the isolated clone. 3 module-scoped `migrated_engine` tests are quarantined `@pytest.mark.xfail(strict=False)` as carry-forward. Verified green across 4 reference seeds (12345/67890/11111/42424).
 
-**Opt in manually** (cleanup work, or surfacing order-dependence ad-hoc):
+The seed is printed at the top of every run: `Using --randomly-seed=<N>`.
+
+**Reproduce a specific seed:**
 
 ```bash
-# Re-enable randomisation (overrides `-p no:randomly` from addopts)
-pytest -p randomly ...
-
-# Reproduce a specific seed
-pytest -p randomly --randomly-seed=<N> ...
-
-# Surface order-dependence with different seeds
-pytest tests/unit/ -p randomly --randomly-seed=12345 -q
-pytest tests/unit/ -p randomly --randomly-seed=67890 -q
+uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser \
+  -p randomly --randomly-seed=<N> -q --no-cov
 ```
 
-The seed is printed at the top of every randomised run (e.g. `Using --randomly-seed=770868803`).
+**If a test fails under random order but passes in fixed order**, it is **order-dependent** — a test isolation bug. Fix the leaking side effect or quarantine it with `@pytest.mark.order_dependent` (registered in `pyproject.toml`) + a tracking comment. A quarantined test that genuinely cannot pass under random order must also carry `@pytest.mark.xfail(strict=False, ...)` and a `# NOTE(P1-CR-C-followup-randomly):` tracking comment.
 
-**If a test fails under random order but passes in fixed order**, it is **order-dependent** — a test isolation bug. Fix it (remove the leaking side effect) or quarantine it with `@pytest.mark.order_dependent` (registered in `pyproject.toml`) + a tracking comment. A test that is quarantined must still pass under random order when it runs; if it genuinely can't, mark it `@pytest.mark.xfail(strict=False, ...)` as well. The cleanup contract: integration-suite order-dependence must be eliminated (or every offender registered with `@pytest.mark.order_dependent`) before `-p no:randomly` is removed from `addopts`.
+**Quarantine policy:** The 3 known quarantines are module-scoped `migrated_engine` tests. A follow-up CR (`P1-CR-C-followup-randomly-quarantine-cleanup`) will scope those engines down to function level.
+
+**Earlier fallback (CR-00048):** `-p no:randomly` was in `addopts` 2026-05-13 → 2026-05-16; superseded by CR-00055's per-test template-clone strategy.
 
 ### Hard rules (also in `tests/CLAUDE.md`)
 
