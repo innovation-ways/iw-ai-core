@@ -5,8 +5,9 @@ All DB configuration comes exclusively from the testcontainer (random port).
 
 Fixture scopes:
 - pg_container: session — one PostgreSQL container per pytest run (~2s startup)
-- db_engine: session — schema created once, reused across all tests
-- db_session: function — each test runs in a transaction that is rolled back
+- _pgtestdb_setup: session — builds the migrated template DB once via pgtestdbpy
+- db_engine: function — clones the template (~10 ms) and yields per-test engine
+- db_session: function — each test runs in its own clone that is dropped at teardown
 - test_project: function — a Project row inside the db_session transaction
 - cli_get_session: function — get_session factory that yields db_session
 """
@@ -20,7 +21,9 @@ from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
+import pgtestdbpy
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -189,68 +192,124 @@ def pg_container() -> Generator[PostgresContainer, None, None]:
         yield pg
 
 
-@pytest.fixture(scope="session")
-def db_engine(pg_container: PostgresContainer) -> Engine:
-    """Create a SQLAlchemy engine connected to the test container.
+def _migrate_template(url: str) -> None:
+    """Apply OSS enums + alembic upgrade head + Base.metadata.create_all to the template DB.
 
-    Creates all tables via Base.metadata.create_all() and installs the
-    FTS trigger (which Alembic would add but metadata.create_all() skips).
+    Called once by ``pgtestdbpy.templates()``; the resulting template is then
+    cloned per-test by ``db_engine`` below.
     """
-    # testcontainers returns a psycopg2 URL; replace with psycopg (v3) driver
-    url = pg_container.get_connection_url().replace(
-        "postgresql+psycopg2://", "postgresql+psycopg://"
+    # urlparse normalises the URL; create_engine accepts the postgresql+psycopg form.
+    parsed = urlparse(url)
+    assert parsed.scheme in {"postgres", "postgresql"}, f"unexpected scheme: {parsed.scheme}"
+    sa_url = f"postgresql+psycopg://{parsed.netloc}{parsed.path}"
+    template_engine = create_engine(sa_url, pool_pre_ping=True)
+    try:
+        with template_engine.connect() as conn:
+            conn.execute(text(OSS_ENUMS_SQL))
+            conn.execute(text(BATCH_ITEM_STATUS_SQL))
+            conn.commit()
+        cfg = _build_alembic_config(sa_url)
+        _run_alembic_upgrade(cfg)
+        Base.metadata.create_all(template_engine)
+    finally:
+        template_engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def _pgtestdb_setup(pg_container: PostgresContainer) -> Generator[tuple, None, None]:
+    """Build the template database once via pgtestdbpy.
+
+    Yields ``(config, migrator)``; the per-test ``db_engine`` fixture uses
+    these to ``CREATE DATABASE … TEMPLATE …`` a fresh clone (~10 ms) for
+    each test. The template is dropped at session teardown.
+    """
+    raw_url = pg_container.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
+    parsed = urlparse(raw_url)
+    host = str(parsed.hostname)
+    port = int(parsed.port or 5432)
+
+    config = pgtestdbpy.Config(
+        user=str(parsed.username),
+        password=str(parsed.password),
+        host=host,
+        port=port,
+        db_name=parsed.path.lstrip("/"),
     )
-    engine = create_engine(url, pool_pre_ping=True)
+    migrator = pgtestdbpy.Migrator(
+        migrate=_migrate_template,
+        db_name="iwcore_template",
+        user="iwcore_test",
+        password="iwcore_test",  # noqa: S106 — testcontainer-local; not a real secret
+        host=host,
+        port=port,
+    )
+    # pgtestdbpy hardcodes `STRATEGY=FILE_COPY` in its CLONE query, but on
+    # PostgreSQL 15+ with IW AI Core's schema size that path is ~10x slower
+    # than the default `WAL_LOG` strategy (~310 ms vs ~25 ms per clone in
+    # the spike measurement). Override the module-level constant before
+    # opening the `templates` context manager — `clone` reads it on every
+    # call. (See `docs/research/R-00077-pytest-randomly-isolation-strategy.md`
+    # appendix for the FILE_COPY-vs-WAL_LOG benchmark on this codebase.)
+    pgtestdbpy.QRY_DB_CLONE = (
+        'CREATE DATABASE "{db_name}" WITH TEMPLATE "{template}" OWNER "{user}"'
+    )
 
-    # Pre-create OSS ENUM types. SQLAlchemy's create_all() would also create
-    # them (create_type=True on the ORM columns), but pre-creating with
-    # DROP TYPE IF EXISTS … CASCADE guarantees a clean slate and avoids
-    # collisions if a previous session left stale types behind.
-    with engine.connect() as conn:
-        conn.execute(text(OSS_ENUMS_SQL))
-        conn.execute(text(BATCH_ITEM_STATUS_SQL))
-        conn.commit()
+    with pgtestdbpy.templates(config, migrator):
+        yield (config, migrator)
 
-    # Run Alembic migrations FIRST (before create_all):
-    # The agent_runtime_options table (F-00081), seed rows, partial-index
-    # constraints, and all other migration-created artefacts exist only
-    # in Alembic, not in SQLAlchemy Base.metadata. Running alembic first also
-    # creates all the core tables, so create_all below is a no-op for them
-    # (SQLAlchemy is idempotent — existing tables are skipped).
-    # Alembic's env.py also runs create_all() and FTS trigger installation, so
-    # those steps are intentionally skipped here to avoid duplicates.
-    cfg = _build_alembic_config(url)
-    _run_alembic_upgrade(cfg)
 
-    # create_all() is now a no-op for existing tables; it only ensures tables
-    # that may exist purely in SQLAlchemy (not in alembic) are present.
-    Base.metadata.create_all(engine)
+@pytest.fixture
+def db_engine(
+    _pgtestdb_setup: tuple, monkeypatch: pytest.MonkeyPatch
+) -> Generator[Engine, None, None]:
+    """Per-test PostgreSQL clone (CR-00055 strategy, R-00077 recommendation).
 
-    return engine
+    Each test gets its own ephemeral database cloned from the session-scoped
+    template (~10 ms via ``CREATE DATABASE … TEMPLATE …``). The clone's
+    connection URL is exported via ``IW_CORE_DB_*`` env vars so any ``iw``
+    CLI subprocess spawned by the test connects to THIS clone — closing the
+    isolation gap that defeated savepoint mode + per-module TRUNCATE in
+    CR-00049 (see ``docs/research/R-00077-pytest-randomly-isolation-strategy.md``).
+    """
+    config, migrator = _pgtestdb_setup
+    with pgtestdbpy.clone(config, migrator) as raw_url:
+        parsed = urlparse(raw_url)
+        sa_url = f"postgresql+psycopg://{parsed.netloc}{parsed.path}"
+        # Subprocesses spawned by tests must inherit the per-test clone's URL —
+        # this is the core of the R-00077 recommendation.
+        monkeypatch.setenv("IW_CORE_DB_HOST", str(parsed.hostname))
+        monkeypatch.setenv("IW_CORE_DB_PORT", str(parsed.port))
+        monkeypatch.setenv("IW_CORE_DB_NAME", parsed.path.lstrip("/"))
+        monkeypatch.setenv("IW_CORE_DB_USER", str(parsed.username))
+        monkeypatch.setenv("IW_CORE_DB_PASSWORD", str(parsed.password or ""))
+        engine = create_engine(sa_url, pool_pre_ping=True)
+        try:
+            yield engine
+        finally:
+            engine.dispose()
 
 
 @pytest.fixture
 def _db_test_connection(db_engine: Engine):
-    """Open a connection on db_engine and start an outer transaction.
+    """Open a connection on the per-test clone (no outer transaction needed).
 
-    This connection is shared between db_session and db_session_factory so that
-    rows flushed by the test fixture are visible to background services that
-    look up sessions through the factory, and the whole transaction is rolled
-    back on teardown so each test starts from a clean slate.
+    With per-test template-clone (R-00077), each test has its own database
+    that is dropped at teardown — there is no cross-test state to rollback.
+    The connection is shared between ``db_session`` and ``db_session_factory``
+    so writes through the fixture session are visible to factory-created
+    sessions (e.g. background poller threads).
     """
     connection = db_engine.connect()
-    transaction = connection.begin()
     yield connection
-    transaction.rollback()
     connection.close()
 
 
 @pytest.fixture
 def db_session(_db_test_connection) -> Generator[Session, None, None]:
-    """Provide a transactional DB session that rolls back after each test.
+    """Provide a DB session bound to the per-test clone.
 
-    Each test gets a clean database state without needing to truncate tables.
-    The transaction wraps the entire test body and is rolled back on teardown.
+    Each test gets a clean database state without needing to truncate tables —
+    the entire clone is dropped at teardown.
     """
     session_factory = sessionmaker(bind=_db_test_connection, autocommit=False, autoflush=False)
     session: Session = session_factory()
@@ -262,12 +321,12 @@ def db_session(_db_test_connection) -> Generator[Session, None, None]:
 
 @pytest.fixture
 def db_session_factory(_db_test_connection):
-    """Return a sessionmaker that produces sessions sharing the test transaction.
+    """Return a sessionmaker that produces sessions sharing the test's clone connection.
 
     Sessions handed out by this factory bind to the same connection as
     db_session, so writes done in the test are visible to code that opens its
-    own session via the factory (e.g. background poller threads). The outer
-    transaction is rolled back at teardown via _db_test_connection.
+    own session via the factory (e.g. background poller threads). The clone
+    is dropped at teardown via db_engine's context manager.
     """
     return sessionmaker(bind=_db_test_connection, autocommit=False, autoflush=False)
 

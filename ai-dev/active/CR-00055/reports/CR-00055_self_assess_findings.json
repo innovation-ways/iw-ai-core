@@ -1,0 +1,47 @@
+{
+  "item_id": "CR-00055",
+  "bottom_line": "Add test_pending_migration_log_migration.py::test_downgrade_drops_table to the S01 deliverable list — the two-teardown spec missed the third migration file and caused a fix cycle at S09.",
+  "coverage_notes": "S01–S03 logs read in full (< 2 KB each). S04–S07 first-run logs read in full (< 200 B); runs 2–4 are byte-identical. S08 run1: tail-50 + grep FAILED (362 KB); fix1 read in full; runs 3–5 tail-20. S09 run1: tail-30 + grep FAILED (360 KB); fix1 read in full; runs 3–4 tail-20. S10 run1: head-20 + tail-20 + grep errors (78 KB); fix1 is 0 bytes; run3 tail-10. S11 read in full. All logs under 1 MB. DB telemetry: full (iw item-status --json).",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "S01 prompt named two migration teardowns but test_pending_migration_log_migration.py needed a third",
+      "recommendation": "Extend S01 deliverable (5) to name all three migration files with a downgrade step that need a post-downgrade upgrade call: test_oss_migration.py, test_project_oss_job_migration.py, and test_pending_migration_log_migration.py. The 4-seed spike missed this because no tested seed reordered test_downgrade_drops_table before the column/constraint tests.",
+      "evidence": [
+        "ai-dev/logs/CR-00055_S09_run1.log (tail) — 'FAILED tests/integration/test_pending_migration_log_migration.py::test_direction_check_constraint / test_phase_check_constraint / test_table_exists_with_columns … 3 failed'",
+        "ai-dev/logs/CR-00055_S09_fix1.log:1 — 'adding command.upgrade(alembic_cfg, \"head\") after the downgrade assertion … the two sibling migration test files [had the same pattern]'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add test_pending_migration_log_migration.py::test_downgrade_drops_table to the S01 deliverable teardown list — missed in CR-00055 S01 prompt, caused S09 fix cycle; see ai-dev/active/CR-00055/reports/CR-00055_self_assess_report.md [1]. Target: CR_Design_Template or R-00077 Appendix A. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "design",
+      "target": "iw-ai-core",
+      "title": "Live config file (executor/auto_merge.toml) in a unit test broke S08 due to parallel-initiative commit on the branch",
+      "recommendation": "Add a 'Pre-conditions / Branch State' note to the CR design template instructing authors to list any non-CR commits on the branch that modify live config files exercised by unit tests (e.g., executor/auto_merge.toml). Alternatively add a pre-S01 checklist item: 'Run git log --oneline to identify any config-file commits from parallel initiatives that may render existing assertions stale.'",
+      "evidence": [
+        "ai-dev/logs/CR-00055_S08_run1.log (tail) — 'FAILED tests/unit/test_auto_merge_config.py::test_load_actual_auto_merge_toml … 1 failed, 3005 passed … exit=2'",
+        "ai-dev/logs/CR-00055_S08_fix1.log:1 — 'test was asserting config.phase == PHASE_DISABLED (0), but executor/auto_merge.toml was advanced to phase = 1 (PHASE_DRY_RUN) via commit 1856cf8b'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add 'Pre-conditions / Branch State' section to CR design template to flag parallel-initiative commits that change live config files; diagnosed in CR-00055 S08 fix cycle; see ai-dev/active/CR-00055/reports/CR-00055_self_assess_report.md [2]. Target: templates/design/CR_Design_Template.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Flaky docker-startup test in diff-coverage gate (S10) triggered empty fix cycle",
+      "recommendation": "Add startup-retry logic to test_two_parallel_iw_ai_core_worktrees_do_not_interfere, or quarantine it with @pytest.mark.flaky(reruns=2), or open an Incident to track this known flaky docker-stack test. The S10/fix1 log is 0 bytes — no code change was applied — confirming the failure was transient.",
+      "evidence": [
+        "ai-dev/logs/CR-00055_S10_run1.log:477 — 'AssertionError: assert False … tests/integration/test_per_worktree_isolation.py::test_two_parallel_iw_ai_core_worktrees_do_not_interfere:243'",
+        "ai-dev/logs/CR-00055_S10_fix1.log — 0 bytes (empty; no code change applied)",
+        "ai-dev/logs/CR-00055_S10_run3.log (tail) — '2522 passed … Completed CR-00055 step S10' (passed without any fix)"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident test_two_parallel_iw_ai_core_worktrees_do_not_interfere is flaky on docker-stack startup and blocked CR-00055 S10 diff-coverage gate; fix cycle was empty; test passed on retry. Add startup retry or flaky marker. Target: tests/integration/test_per_worktree_isolation.py. Effort: S."
+    }
+  ]
+}

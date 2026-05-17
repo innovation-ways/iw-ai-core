@@ -828,3 +828,10 @@ class TestOssMigrationDowngrade:
                 )
             )
         assert result.fetchone() is None
+
+        # CR-00055 / R-00077: this module shares a session-scoped oss_engine.
+        # Re-apply the migration SQL so the schema is restored for any test
+        # that runs after this one under -p randomly.
+        with oss_engine.connect() as conn:
+            conn.execute(text(MIGRATION_SQL))
+            conn.commit()

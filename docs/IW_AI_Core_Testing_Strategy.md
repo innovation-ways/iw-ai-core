@@ -128,28 +128,27 @@ IW AI Core's most important test-safety mechanism. `tests/conftest.py` arms it f
 - `test_project` — **function-scoped**, a `Project` row inside the `db_session` transaction; tests that create work items/batches/docs must use this project's `id`.
 - `cli_get_session` — a `get_session` factory yielding `db_session`, for CLI-command tests.
 
-### pytest-randomly — test-order randomisation (CR-00048, P1-CR-C — fallback)
+### pytest-randomly — test-order randomisation (CR-00055, 2026-05-16 — default-on)
 
-`pytest-randomly` is installed as a dev dependency but is **currently OFF by default** via `-p no:randomly` in `pyproject.toml` `[tool.pytest.ini_options] addopts` — the design's explicit fallback (CR-00048 AC1 / Desired Behavior). S01's bounded unit-suite sweep was green across 3 seeds, but `make diff-coverage` — which runs `tests/integration/` + `tests/dashboard/` together in one `pytest` invocation — surfaced order-dependent fixture failures across ~50 integration tests (truncated `sqla…` collection errors in `test_cli_steps`, `test_dashboard_fragments`, `test_history_sorting`, `test_code_qa_routes`, `test_doc_job_log_endpoints`, `test_step_monitor_lifecycle`, `test_register_persists_dependencies`, `test_invariants_f00060`, `test_phantom_gate_auto_skip`, `test_project_onboarding_api`, `test_batch_manager_scope_gate`). 5 fix cycles could not converge within budget; follow-up `P1-CR-C-followup-randomly` tracks the cleanup that re-enables randomisation by default.
+`pytest-randomly` is **ON by default** (CR-00055, 2026-05-16). The integration + dashboard suite is robust to randomisation via per-test PostgreSQL template-clone (`pgtestdbpy>=0.0.1`): a session-scoped template database is migrated once; each test gets its own fresh clone (~25 ms via `CREATE DATABASE … TEMPLATE …` with WAL_LOG strategy override — ~10× faster than the library's default `FILE_COPY`); `IW_CORE_DB_*` env vars are monkeypatched per-test so `iw` CLI subprocesses inherit the isolated clone — closing the gap that defeated savepoint-only and per-module-TRUNCATE designs in CR-00049 (see `docs/research/R-00077-pytest-randomly-isolation-strategy.md`). 3 module-scoped `migrated_engine` tests are quarantined `@pytest.mark.xfail(strict=False)` as a carry-forward follow-up. Verified green across 4 reference seeds (12345 / 67890 / 11111 / 42424) in ~10–13 min wall-clock (≤ 12 min budget).
 
-**Opt in manually** (during the follow-up cleanup, or to surface order-dependence ad-hoc):
-
-```bash
-# Re-enable randomisation (overrides `-p no:randomly` from addopts)
-pytest -p randomly ...
-
-# Reproduce a specific seed
-pytest -p randomly --randomly-seed=<N> ...
-
-# Surface order-dependence across multiple seeds (the bounded-sweep recipe)
-pytest tests/unit/ -p randomly --randomly-seed=12345 -q
-pytest tests/unit/ -p randomly --randomly-seed=67890 -q
-pytest tests/unit/ -p randomly --randomly-seed=11111 -q
+The per-run seed is printed at the top of every run:
+```
+Using --randomly-seed=<N>
 ```
 
-The seed is printed at the top of every randomised run (e.g. `Using --randomly-seed=770868803`).
+**Reproduce a specific seed:**
 
-**Cleanup contract** (for the follow-up): integration-suite order-dependence must be eliminated (or every offender registered with `@pytest.mark.order_dependent`) before `-p no:randomly` is removed from `addopts`. Until then, randomisation is opt-in only.
+```bash
+uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser \
+  -p randomly --randomly-seed=<N> -q --no-cov
+```
+
+**If a test fails under random order but passes in fixed order**, it is **order-dependent** — a test isolation bug. Fix the leaking side effect or quarantine it with `@pytest.mark.order_dependent` (registered in `pyproject.toml`) + a tracking comment. A quarantined test that genuinely cannot pass under random order must also carry `@pytest.mark.xfail(strict=False, ...)` and a `# NOTE(P1-CR-C-followup-randomly):` tracking comment.
+
+**Quarantine policy (from CR-00055):** The 3 known quarantines are module-scoped `migrated_engine` tests where the per-test clone cannot help (the engine is shared across the whole module). Each carries `@pytest.mark.order_dependent` + `@pytest.mark.xfail(strict=False)` + a `# NOTE(P1-CR-C-followup-randomly):` comment. A follow-up CR (`P1-CR-C-followup-randomly-quarantine-cleanup`) will scope those engines down to function level.
+
+**Earlier fallback (CR-00048):** `-p no:randomly` was in `addopts` from 2026-05-13 to 2026-05-16 after 5 fix cycles could not converge; superseded by CR-00055's per-test template-clone strategy.
 
 Hard rules (full list in `tests/CLAUDE.md`):
 
@@ -292,7 +291,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Diff/patch coverage on PRs | ✅ (CR-00047, 2026-05-12) — `diff-cover` dev dep + `make diff-coverage` daemon QV gate + `pull_request` step in `test-quality.yml`'s `unit` job (1.3) |
 | AST assertion scanner | ✅ (CR-00046, 2026-05-11) — `make test-assertions` + baseline `tests/assertion_free_baseline.txt` |
 | `ruff` PT rules | ✅ enabled |
-| Test-order randomisation (`pytest-randomly`) | ⚠️ (CR-00048, P1-CR-C, 2026-05-12) — dep installed but **off by default** via `-p no:randomly` (the design's named fallback); ~50 integration-fixture order-dependences surfaced; follow-up `P1-CR-C-followup-randomly` (§5) cleans them up and flips it back on. Opt-in recipe in §3 and `tests/CLAUDE.md`. |
+| Test-order randomisation (`pytest-randomly`) | ✅ (CR-00055, 2026-05-16) — default-on; integration suite robust to randomisation via per-test PostgreSQL template-clone (`pgtestdbpy>=0.0.1`; WAL_LOG strategy override ~10× faster than library default); `IW_CORE_DB_*` monkeypatched per-test for subprocess isolation; 4-seed sweep green (12345/67890/11111/42424); 3 module-scoped quarantines carried forward as `xfail(strict=False)`. Earlier fallback (CR-00048, 2026-05-12): dep installed, off by default via `-p no:randomly`; superseded by CR-00055. |
 | Secrets scanning (`gitleaks`) | ✅ (CR-00050, 2026-05-14) — pre-commit hook + GH `secrets-scan` job + `make security-secrets` daemon QV gate (1.6) |
 | Semgrep SAST | ⚠️ (CR-00050, 2026-05-14) — managed rulesets; `continue-on-error: true` burn-in; GH `semgrep` job; flip to blocking in `P1-CR-D-followup-semgrep-block` (1.9) |
 | `vulture` / `deptry` suite-health | ✅ (CR-00048, P1-CR-C, 2026-05-12) — warn-only this CR; `make dead-code` + `make dep-check` in `make quality` + GH workflow |

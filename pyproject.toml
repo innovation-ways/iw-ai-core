@@ -98,6 +98,7 @@ dev = [
     "diff-cover>=9",
     "vulture>=2.11",
     "deptry>=0.20",
+    "pgtestdbpy>=0.0.1",
 ]
 
 # --- Ruff ---
@@ -140,17 +141,19 @@ testpaths = ["tests"]
 # xdist is opt-in only via `make test-parallel` which passes `-n auto --dist=loadfile`.
 # Do NOT add xdist defaults here — that would change `make test-unit` / `make test-integration` semantics.
 #
-# `pytest-randomly` is installed (S01) and `--strict-markers` is enforced.  Randomisation
-# is currently **off by default** via `-p no:randomly` — the design's explicit fallback
-# (CR-00048 AC1 / Desired Behavior).  Reason: S01's bounded sweep declared the unit suite
-# green, but `make diff-coverage` (which runs the full `tests/integration/` + `tests/dashboard/`
-# suites under a fresh `pytest` invocation, with randomisation active) surfaced order-dependent
-# fixture failures across ~50 integration tests (`sqla…` collection errors) that 5 fix cycles
-# could not converge within budget — see TESTS_ENHANCEMENT.md follow-up `P1-CR-C-followup-randomly`.
-# Reproduce / opt in once the follow-up lands:
-#     uv run pytest tests/unit/ -p randomly                 # re-enable (overrides `-p no:randomly`)
-#     uv run pytest tests/unit/ -p randomly --randomly-seed=<N>   # reproduce a specific seed
-addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser' --strict-markers -p no:randomly"
+# `pytest-randomly` is **ON by default** (CR-00055, 2026-05-16). The integration +
+# dashboard suite is robust to randomisation via per-test PostgreSQL template-clone
+# (pgtestdbpy>=0.0.1): a session-scoped template DB is migrated once; each test gets
+# its own fresh clone (~25 ms via CREATE DATABASE … TEMPLATE … with WAL_LOG strategy);
+# IW_CORE_DB_* env vars are monkeypatched per-test so `iw` CLI subprocesses inherit
+# the isolated clone — closing the gap that defeated savepoint-only and per-module-TRUNCATE
+# designs in CR-00049 (see docs/research/R-00077-pytest-randomly-isolation-strategy.md).
+# The per-run seed is printed at the top of every run: "Using --randomly-seed=<N>".
+# Reproduce a specific seed:
+#     uv run pytest tests/integration/ -p randomly --randomly-seed=<N> -q
+# Earlier fallback (CR-00048): `-p no:randomly` was in addopts 2026-05-13 → 2026-05-16
+# after 5 fix cycles could not converge; superseded by CR-00055's template-clone strategy.
+addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser' --strict-markers"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
     "smoke: fast critical-path tests; <=15 tests, <=5 critical paths, <60s wall-clock; documented in tests/CLAUDE.md; run via `make smoke`",
