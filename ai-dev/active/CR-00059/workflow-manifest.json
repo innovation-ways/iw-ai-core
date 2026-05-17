@@ -1,0 +1,105 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00059",
+  "type": "ChangeRequest",
+  "title": "Mutation testing spike + setup on orch/daemon/ (P2-CR-A)",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "pyproject.toml",
+      "uv.lock",
+      "Makefile",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "ai-dev/work/TESTS_ENHANCEMENT.md",
+      "tests/unit/test_mutmut_setup.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "RED-first: write tests/unit/test_mutmut_setup.py that pins (a) [tool.mutmut] presence + the three expected keys (paths_to_mutate=orch/daemon/, tests_dir, runner), and (b) the 4 Makefile targets parseable via `make -n mutation-check MODULE=orch/daemon/auto_merge.py`, `make -n mutation-audit`, `make -n mutation-results`, `make -n mutation-show ID=1`. Run it; confirm AssertionError (not ImportError); capture RED evidence (test id + failure line) for tdd_red_evidence. Then: add `mutmut>=2.5,<3.0` to [dependency-groups] dev in pyproject.toml; run `uv lock` (regenerates uv.lock); add [tool.mutmut] block (paths_to_mutate=\"orch/daemon/\", tests_dir=\"tests/unit/daemon/ tests/integration/daemon/\", runner=\"uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q\") to pyproject.toml after [tool.deptry]; add 4 Makefile recipes (mutation-check MODULE=path, mutation-audit walking orch/daemon/, mutation-results, mutation-show ID=n) ported from iw-doc-plan/main/iw-doc-plan/Makefile:444–500 (adapt: replace src/innoforge/services/ with orch/daemon/; replace VENV/bin/* with `uv run`; replace tests/unit/ with `tests/unit/daemon/ tests/integration/daemon/`); add the 4 target names to the .PHONY list. Re-run the guard test → GREEN. THEN spike: run `make mutation-audit` once against orch/daemon/ with 3600s budget; capture measurement table (Total mutants, Killed, Survived, Timeout, Suspicious, Mutation score = K/(K+S), Wall-clock, Modules covered, Top 5 surviving mutants file:line+diff, Infrastructure blockers encountered) to ai-dev/active/CR-00059/evidences/pre/cr-00059-spike-measurements.txt AND inline in step report. Update docs/IW_AI_Core_Testing_Strategy.md: §5 add 'Mutation testing' row labelled on-demand; §8 rewrite with spike numbers + 4 commands + named follow-up P2-CR-A-followup-mutation-block; §9 'Mutation testing' row flip ❌→⚠️ with CR number. Update ai-dev/work/TESTS_ENHANCEMENT.md: §6 item 2.1 → IN PROGRESS with one-liner; §5 new row P2-CR-A-followup-mutation-block; §11 dated changelog entry with spike summary. Pre-flight: `make format` + `make typecheck` + `make lint`. Do NOT run `make check` / `make test-integration` / `make diff-coverage` — that's S08/S09/S10's job. Do NOT add a daemon QV gate to skills/iw-workflow/SKILL.md. Do NOT add a GH workflow step. Do NOT widen paths_to_mutate beyond orch/daemon/. 3600s timeout.",
+      "prompt": "prompts/CR-00059_S01_Backend_prompt.md",
+      "timeout": 3600
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: [tool.mutmut] config has the three expected keys with the expected values (paths_to_mutate='orch/daemon/' exact; tests_dir matches; runner uses -x --tb=no -q convention); mutmut version pin matches InnoForge precedent (>=2.5,<3.0); uv.lock contains a mutmut entry; 4 Makefile recipes parse via `make -n`; mutation-check fails fast with usage message when MODULE unset; mutation-show fails fast with usage message when ID unset; .PHONY line lists the 4 new targets; the measurement table in evidences/pre/cr-00059-spike-measurements.txt has REAL numbers (CRITICAL if any TBD/—/$VAR placeholder); arithmetic Mutation score == K/(K+S) holds (HIGH on >0.5% drift); strategy doc §8 numbers match evidence-file numbers (HIGH on mismatch); §5 has the new Mutation testing row labelled on-demand (not blocking); §9 row flipped to ⚠️ with CR number; TESTS_ENHANCEMENT.md §5/§6/§11 updated and §5 includes the P2-CR-A-followup-mutation-block row; the RED-first test tests/unit/test_mutmut_setup.py is in the diff and tdd_red_evidence in S01's contract names it with a real failure line (CRITICAL if missing/n-a); NO files under orch/, dashboard/, executor/, skills/, .claude/, .github/, .pre-commit-config.yaml are modified (CRITICAL on any scope creep); no Alembic migration; no daemon QV gate added; no GH workflow step.",
+      "prompt": "prompts/CR-00059_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review: independently run `make mutation-check MODULE=orch/daemon/container_info.py` (or any small daemon file) end-to-end and confirm it completes and prints a results line; independently run `make mutation-results` and confirm cache reads back; independently run `make mutation-show ID=<n>` against one of S01's reported surviving mutants and confirm the file:line:diff renders; verify Mutation score arithmetic in the spike table (K/(K+S)×100, ±0.5%); cross-doc consistency triangle (mutation score + wall-clock + mutant count must match across S01 evidence file ↔ strategy §8 ↔ TESTS_ENHANCEMENT §11; CRITICAL on any inconsistency); confirm strategy §9 ⚠️ entry includes CR-00059 number; confirm TESTS_ENHANCEMENT §5 has the P2-CR-A-followup-mutation-block row; run `make quality` and confirm pass (mutmut added means deptry should not flag — verify); run `make test-unit` to confirm test_mutmut_setup.py passes (sanity, not duplicating S08's gate); scope-creep audit: NO production code, NO sibling-repo skill sync, NO daemon QV gate canon edit, NO GH workflow change, NO widening of paths_to_mutate. Timeout 1800s to accommodate the independent mutmut re-run on one file.",
+      "prompt": "prompts/CR-00059_S03_CodeReview_Final_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests (includes new tests/unit/test_mutmut_setup.py)"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 900
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scan (gitleaks, CR-00050)",
+      "timeout": 300
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment via iw-item-analyze skill. Phase-2 inaugural CR — surface findings about: (a) did the 3600s S01 timeout hold (spike runtime calibration for future Phase-2 CRs); (b) did mutmut hit any infrastructure blockers not anticipated in the design notes (testcontainer per-mutant cost, FTS replay, live-DB guard); (c) is the surviving-mutant queue actionable (sample IDs from S01 report) — does it suggest individual tests worth strengthening before P2-CR-A-followup-mutation-block lands; (d) should P2-CR-B (Hypothesis property tests) follow the same spike-then-setup shape, or go straight to full setup; (e) what process improvements from Phase 1 (audit-table-as-deliverable from CR-00052, measurement-table-as-deliverable here) should bake into the Phase-2 CR template.",
+      "prompt": "prompts/CR-00059_S12_SelfAssess_prompt.md"
+    }
+  ]
+}
