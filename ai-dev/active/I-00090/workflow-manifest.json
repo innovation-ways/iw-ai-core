@@ -1,0 +1,108 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00090",
+  "type": "Incident",
+  "title": "/system/running 'Failed / Needs Attention' and 'Recently Completed' tables show steps from inactive work items",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/routers/running.py",
+      "tests/dashboard/test_running_router_active_filter.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Add active-item predicate (archived_at IS NULL AND status NOT IN (completed, cancelled)) to _query_failed_steps() and _query_recent_completions() in dashboard/routers/running.py; do not touch the running-now helpers or the template",
+      "prompt": "prompts/I-00090_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: predicate correctness (is_(None), correct enum set), scope adherence (no template/running-now/migration), SQLAlchemy 2.0 idiom, lint/format gate",
+      "prompt": "prompts/I-00090_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Create tests/dashboard/test_running_router_active_filter.py with 16 tests: 8 helper-level for _query_failed_steps (in_progress, completed, cancelled, archived, failed, paused, needs_fix step-status, project filter), 6 helper-level for _query_recent_completions, 2 route-level smoke tests; semantic-strength assertions on specific item IDs only",
+      "prompt": "prompts/I-00090_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: all 16 tests present and named per design, RED reasoning recorded, assertion strength (no shape-only checks), test isolation under pytest-randomly, no live-DB connections",
+      "prompt": "prompts/I-00090_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Cross-step global review: AC1/AC2/AC3/AC4 traceability, predicate ↔ test enum consistency, scope verification (only dashboard/routers/running.py and the new test file changed), TDD RED evidence audit",
+      "prompt": "prompts/I-00090_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — confirm /system/running and /project/iw-ai-core/running no longer show CR-00023/49/52/54 in the Failed table, no regression to Running Now",
+      "prompt": "prompts/I-00090_S13_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S14",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00090_S14_SelfAssess_prompt.md"
+    }
+  ]
+}
