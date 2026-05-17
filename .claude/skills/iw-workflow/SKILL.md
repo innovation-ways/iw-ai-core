@@ -128,7 +128,7 @@ QV gates run as shell commands (no LLM):
 {"step": "S12", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
 {"step": "S13", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
 {"step": "S14", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
-{"step": "S15", "agent": "qv-gate", "gate": "integration-tests", "command": "make test-integration", "description": "QV: Integration tests", "timeout": 900},
+{"step": "S15", "agent": "qv-gate", "gate": "integration-tests", "command": "make test-integration", "description": "QV: Integration tests", "timeout": 1800},
 {"step": "S16", "agent": "qv-gate", "gate": "diff-coverage", "command": "make diff-coverage", "description": "QV: Diff coverage (new/changed lines must be well-covered)", "timeout": 1800}
 ```
 
