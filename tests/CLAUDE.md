@@ -97,48 +97,54 @@ This is separate from `make test-integration`'s testcontainers.
 
 ## pytest-randomly — test-order randomisation
 
-`pytest-randomly` is installed as a dev dependency but is **currently OFF by default**
-via `-p no:randomly` in `pyproject.toml` `[tool.pytest.ini_options] addopts` — the
-design's explicit fallback (CR-00048 AC1 / Desired Behavior). S01's bounded unit-suite
-sweep was green, but `make diff-coverage` (which runs `tests/integration/` +
-`tests/dashboard/` together under a fresh `pytest` invocation) surfaced order-dependent
-fixture failures across ~50 integration tests that 5 fix cycles could not converge.
-Follow-up `P1-CR-C-followup-randomly` tracks the cleanup that re-enables randomisation
-by default.
+`pytest-randomly` is **ON by default** (CR-00055, 2026-05-16). The integration +
+dashboard suite is robust to randomisation via per-test PostgreSQL template-clone
+(`pgtestdbpy>=0.0.1`): a session-scoped template DB is migrated once; each test
+gets its own fresh clone (~25 ms via `CREATE DATABASE … TEMPLATE …` with WAL_LOG
+strategy override — ~10× faster than the library's default `FILE_COPY`);
+`IW_CORE_DB_*` env vars are monkeypatched per-test so `iw` CLI subprocesses
+inherit the isolated clone — closing the gap that defeated savepoint-only and
+per-module-TRUNCATE designs in CR-00049. See
+`docs/research/R-00077-pytest-randomly-isolation-strategy.md`.
 
-**Opt in manually** (for the follow-up cleanup, or to surface order-dependence
-ad-hoc):
+The per-run seed is printed at the top of every run:
+
+```
+Using --randomly-seed=<N>
+```
+
+**Reproduce a specific seed:**
 
 ```bash
-# Re-enable randomisation (overrides `-p no:randomly` from addopts)
-uv run pytest tests/unit/ -p randomly -q
-
-# Reproduce a specific seed
-uv run pytest tests/unit/ -p randomly --randomly-seed=<N> -q
-
-# Surface order-dependence across multiple seeds (the bounded-sweep recipe)
-uv run pytest tests/unit/ -p randomly --randomly-seed=12345 -q
-uv run pytest tests/unit/ -p randomly --randomly-seed=67890 -q
-uv run pytest tests/unit/ -p randomly --randomly-seed=11111 -q
+uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser \
+  -p randomly --randomly-seed=<N> -q --no-cov
 ```
 
-When randomisation is active, the per-run seed is printed at the top:
+**4-seed sweep (verified green on 2026-05-16):**
 
-```
-Using --randomly-seed=770868803
+```bash
+for seed in 12345 67890 11111 42424; do
+  echo "=== seed $seed ==="
+  uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser \
+    -p randomly --randomly-seed=$seed -q --no-cov 2>&1 | tail -3
+done
 ```
 
 **If a test fails under random order but passes in fixed order**, it is
 **order-dependent** — a test isolation bug (state leaking between tests).
 Fix the leaking side effect (or quarantine it with `@pytest.mark.order_dependent`
-+ a tracking comment). A quarantined test must still pass when it runs under
-random order; if it genuinely cannot, mark it `@pytest.mark.xfail(strict=False, ...)`
-as well.
++ a tracking comment). A quarantined test that genuinely cannot pass under
+random order must also carry `@pytest.mark.xfail(strict=False, ...)` and a
+`# NOTE(P1-CR-C-followup-randomly):` tracking comment.
 
-**Cleanup contract** (for the follow-up): integration-suite order-dependence must
-be eliminated (or every offender registered with `@pytest.mark.order_dependent`)
-before `-p no:randomly` is removed from `addopts`. Until then, randomisation is
-opt-in only.
+**Quarantine policy:** The 3 known quarantines are module-scoped `migrated_engine`
+tests in `test_db_identity_integration.py`, `test_pending_migration_log_migration.py`,
+and `test_i_00062_migration.py`. A follow-up CR (`P1-CR-C-followup-randomly-quarantine-cleanup`)
+will scope those engines down to function level.
+
+**Earlier fallback (CR-00048):** `-p no:randomly` was in `addopts` from 2026-05-13
+to 2026-05-16 after 5 fix cycles could not converge; superseded by CR-00055's
+per-test template-clone strategy.
 
 ## Smoke layer SLA (CR-00052, P1-CR-E)
 

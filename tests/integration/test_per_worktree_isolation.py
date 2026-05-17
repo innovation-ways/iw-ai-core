@@ -9,6 +9,7 @@ Prerequisites:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -138,6 +139,16 @@ def test_two_parallel_iw_ai_core_worktrees_do_not_interfere(
     4. Verifies each DB only has its own column
     5. Verifies the global orch DB (if reachable) shows neither column
     """
+    # Skipped in pytest-xdist workers: Docker compose stacks compete with the
+    # testcontainer PostgreSQL workers started by DB-fixture tests in parallel,
+    # causing intermittent Docker daemon resource contention timeouts.
+    # The test still runs in `make test-integration` (no -n auto).
+    if os.environ.get("PYTEST_XDIST_WORKER"):
+        pytest.skip(
+            "Docker compose isolation test skipped in xdist workers "
+            "(Docker daemon resource contention under 32-worker parallel load)"
+        )
+
     wt_a = tmp_path / "wt_A"
     wt_b = tmp_path / "wt_B"
     wt_a.mkdir()
