@@ -2332,6 +2332,27 @@ def _launch_fix_agent(
     # Persist step_runs row with agent_runtime_option_id
     now = datetime.now(UTC)
     run_number = _next_run_number(db, step)
+
+    # AC3 (CR-00056): snapshot fix_prompt_text AND base prompt_text.
+    # fix_prompt_text: the fix-cycle prompt (already in memory as prompt_text
+    # from the read_text call above).
+    # prompt_text (base): from step.prompt_file on disk — backwards-traceability.
+    fix_prompt_text_val: str | None = prompt_text
+
+    base_prompt_text_val: str | None = None
+    if step.prompt_file:
+        base_prompt_path = Path(worktree_path) / "ai-dev" / "active" / item_id / step.prompt_file
+        try:
+            base_prompt_text_val = base_prompt_path.read_text()
+        except (OSError, UnicodeDecodeError):
+            logger.warning(
+                "[%s] Could not read base prompt file for fix-cycle step %s/%s: %s",
+                project_config.id,
+                item_id,
+                step_id,
+                str(base_prompt_path),
+            )
+
     step_run = StepRun(
         step_id=step.id,
         run_number=run_number,
@@ -2346,6 +2367,8 @@ def _launch_fix_agent(
         started_at=now,
         last_heartbeat=now,
         timeout_secs=timeout,
+        prompt_text=base_prompt_text_val,
+        fix_prompt_text=fix_prompt_text_val,
     )
     db.add(step_run)
     db.commit()

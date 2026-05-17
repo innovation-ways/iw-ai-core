@@ -61,7 +61,14 @@ logger = logging.getLogger(__name__)
 
 MIGRATIONS_SCRIPT_LOCATION = str(Path(__file__).parent / "migrations")
 
-_RELEVANT_TABLES = ("batch_items", "batches", "projects", "work_items", "daemon_events")
+_RELEVANT_TABLES = (
+    "batch_items",
+    "batches",
+    "daemon_events",
+    "projects",
+    "step_runs",
+    "work_items",
+)
 
 
 def _is_test_context_active() -> bool:
@@ -471,8 +478,7 @@ def _assert_no_self_blockers(apply_engine: Engine) -> None:
                         if table in doc.lower():
                             tables_to_check.add(table)
 
-            if not tables_to_check:
-                tables_to_check = set(_RELEVANT_TABLES)
+            tables_to_check.update(_RELEVANT_TABLES)
 
             for table in tables_to_check:
                 result = apply_conn.execute(
