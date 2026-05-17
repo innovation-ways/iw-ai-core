@@ -49,10 +49,16 @@ class StubState:
         self.subscribers: set[asyncio.Queue[dict[str, Any]]] = set()
         self.lock = asyncio.Lock()
 
-    async def emit(self, event_name: str, data: dict[str, Any]) -> dict[str, Any]:
+    async def emit(self, event_name: str, properties: dict[str, Any]) -> dict[str, Any]:
+        # Opencode 1.15 wire shape: the JSON in the SSE `data:` field has
+        # `type`, `id`, and `properties` keys. The relay (orch/chat/filters.py
+        # :normalise) reads `type` to set the event name and forwards
+        # `properties` to the browser via chat.js's `data.properties` accessor.
         async with self.lock:
             self.event_id += 1
-            event = {"id": str(self.event_id), "event": event_name, "data": data}
+            eid = str(self.event_id)
+            payload = {"type": event_name, "id": eid, "properties": properties}
+            event = {"id": eid, "event": event_name, "data": payload}
             self.events.append(event)
             for q in list(self.subscribers):
                 q.put_nowait(event)
@@ -85,75 +91,107 @@ def create_app(password: str) -> FastAPI:
         if creds != ("opencode", state.password):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
-    async def emit_message(
+    def _append_history(
         session: SessionState,
         *,
+        message_id: str,
         sid: str,
-        status: str,
+        role: str,
         text: str,
-        extra: dict[str, Any] | None = None,
     ) -> None:
-        payload: dict[str, Any] = {
-            "session_id": sid,
-            "role": "assistant",
-            "status": status,
-            "text": text,
-        }
-        if extra:
-            payload.update(extra)
-        if session.messages and session.messages[-1].get("role") == "assistant":
-            session.messages[-1] = payload
-        else:
-            session.messages.append(payload)
-        await state.emit("message.updated", payload)
-
-    async def _finish_idle(sid: str, payload: dict[str, Any] | None = None) -> None:
-        idle_payload = {"session_id": sid}
-        if payload:
-            idle_payload.update(payload)
-        await state.emit("session.idle", idle_payload)
-
-    async def _process_prompt(sid: str, prompt_text: str) -> None:
-        session = state.sessions[sid]
-        session.messages.append({"session_id": sid, "role": "user", "text": prompt_text})
-        await emit_message(session, sid=sid, status="streaming", text="")
-        await emit_message(session, sid=sid, status="streaming", text="ok — running ls")
-
-        rid = f"req_{secrets.token_hex(4)}"
-        fut: asyncio.Future[str] = asyncio.get_running_loop().create_future()
-        session.current_permission_id = rid
-        session.permission_future = fut
-        await state.emit(
-            "permission.asked",
+        # Persist in the SDK SessionMessagesResponses shape so the dashboard's
+        # GET /api/chat/sessions/{sid} (which proxies opencode's
+        # /session/{sid}/messages) yields entries with info+parts that
+        # chat.js's _loadHistory expects.
+        session.messages.append(
             {
-                "session_id": sid,
-                "request_id": rid,
-                "tool": "bash",
-                "command": "ls -la",
+                "info": {
+                    "id": message_id,
+                    "sessionID": sid,
+                    "role": role,
+                    "time": {"created": datetime.now(UTC).timestamp()},
+                },
+                "parts": [{"type": "text", "text": text, "messageID": message_id}],
+            }
+        )
+
+    async def emit_message_part_updated(
+        *,
+        message_id: str,
+        delta: str,
+        accumulated_text: str,
+    ) -> None:
+        # Opencode 1.15: message.part.updated carries a delta plus a full
+        # Part snapshot. chat.js (_handleEvent) prefers `delta` and falls
+        # back to `part.text` for the full-snapshot accumulator path.
+        await state.emit(
+            "message.part.updated",
+            {
+                "messageID": message_id,
+                "delta": delta,
+                "part": {
+                    "type": "text",
+                    "text": accumulated_text,
+                    "messageID": message_id,
+                },
             },
         )
 
-        try:
-            decision = await asyncio.wait_for(fut, timeout=PERMISSION_TIMEOUT_SECONDS)
-        except TimeoutError:
-            await _finish_idle(sid, {"permission_timeout": True})
-            return
-        finally:
-            session.current_permission_id = None
-            session.permission_future = None
+    async def emit_message_finalised(
+        *,
+        sid: str,
+        message_id: str,
+        role: str = "assistant",
+        error: Any = None,
+    ) -> None:
+        # message.updated with info.time.completed signals "stream done" to
+        # chat.js — it flips _streaming off and finalises the last bubble.
+        info: dict[str, Any] = {
+            "id": message_id,
+            "sessionID": sid,
+            "role": role,
+            "time": {
+                "created": datetime.now(UTC).timestamp(),
+                "completed": datetime.now(UTC).timestamp(),
+            },
+            "error": error,
+        }
+        await state.emit("message.updated", {"info": info})
 
-        if decision == "allow":
-            await emit_message(
-                session,
-                sid=sid,
-                status="complete",
-                text="ok — running ls\nCONTENTS",
+    async def _finish_idle(sid: str, extra: dict[str, Any] | None = None) -> None:
+        props: dict[str, Any] = {"sessionID": sid}
+        if extra:
+            props.update(extra)
+        await state.emit("session.idle", props)
+
+    async def _process_prompt(sid: str, prompt_text: str) -> None:
+        session = state.sessions[sid]
+        # Persist user turn in info+parts shape.
+        user_mid = f"msg_{secrets.token_hex(4)}"
+        _append_history(session, message_id=user_mid, sid=sid, role="user", text=prompt_text)
+
+        # Stream the assistant reply as a series of delta events so chat.js
+        # exercises its accumulation guard, then finalise with message.updated.
+        assistant_mid = f"msg_{secrets.token_hex(4)}"
+        reply_chunks = ["ok", " — ", "running", " ls"]
+        accumulated = ""
+        for chunk in reply_chunks:
+            accumulated += chunk
+            await emit_message_part_updated(
+                message_id=assistant_mid,
+                delta=chunk,
+                accumulated_text=accumulated,
             )
-            await _finish_idle(sid)
-        elif decision == "deny":
-            await _finish_idle(sid, {"permission_denied": True})
-        elif decision == "abort":
-            await _finish_idle(sid, {"aborted": True})
+
+        _append_history(
+            session,
+            message_id=assistant_mid,
+            sid=sid,
+            role="assistant",
+            text=accumulated,
+        )
+        await emit_message_finalised(sid=sid, message_id=assistant_mid)
+        await _finish_idle(sid)
 
     @app.get("/global/health")
     async def health() -> PlainTextResponse:
@@ -167,6 +205,28 @@ def create_app(password: str) -> FastAPI:
                 "models": [{"id": MODEL_ID, "name": "Stub Echo"}],
                 "default_model": MODEL_ID,
                 "default_agent": "build",
+            }
+        )
+
+    @app.get("/config/providers")
+    async def config_providers(request: Request) -> JSONResponse:
+        # Mirrors the real opencode 1.15 shape consumed by
+        # dashboard/routers/chat.py:_flatten_provider_models — providers is a
+        # list of {id, models:{modelId:{...}}} (models is a DICT keyed by
+        # model id, not a list), and default is a {providerId: modelId}
+        # dict the dashboard merges into the model selector.
+        _model_part = MODEL_ID.split("/", 1)[1] if "/" in MODEL_ID else MODEL_ID
+        await require_auth(request)
+        return JSONResponse(
+            {
+                "providers": [
+                    {
+                        "id": "stub",
+                        "name": "Stub",
+                        "models": {_model_part: {"id": _model_part, "name": "Stub Echo"}},
+                    }
+                ],
+                "default": {"stub": _model_part},
             }
         )
 
@@ -246,6 +306,12 @@ def create_app(password: str) -> FastAPI:
 
     @app.post("/session/{sid}/permissions/{rid}")
     async def permissions(sid: str, rid: str, request: Request) -> JSONResponse:
+        # The default prompt flow no longer asks for permission, so this
+        # endpoint just acknowledges the reply (and resolves any pending
+        # permission future if a future variant of _process_prompt re-enables
+        # the permission dance). Kept as a 200-returning route so the
+        # dashboard's /api/chat/sessions/{sid}/permissions/{rid} pass-through
+        # never sees a 404.
         await require_auth(request)
         session = state.sessions.get(sid)
         if session is None:
@@ -254,25 +320,13 @@ def create_app(password: str) -> FastAPI:
         response = body.get("response") if isinstance(body, dict) else None
         if response not in {"allow", "deny"}:
             raise HTTPException(status_code=400, detail="response must be allow|deny")
-        if rid == session.current_permission_id:
-            if response == "allow":
-                await emit_message(
-                    session,
-                    sid=sid,
-                    status="streaming",
-                    text="ok — running ls",
-                    extra={"tool_continued": True},
-                )
-            else:
-                await emit_message(
-                    session,
-                    sid=sid,
-                    status="streaming",
-                    text="ok — running ls",
-                    extra={"tool_blocked": True},
-                )
-            if session.permission_future is not None and not session.permission_future.done():
-                session.permission_future.set_result(response)
+        if (
+            rid == session.current_permission_id
+            and session.permission_future is not None
+            and not session.permission_future.done()
+        ):
+            session.permission_future.set_result(response)
+        await state.emit("permission.replied", {"id": rid, "sessionID": sid, "response": response})
         return JSONResponse({})
 
     @app.get("/event")

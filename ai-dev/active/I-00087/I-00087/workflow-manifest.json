@@ -7,8 +7,7 @@
   "scope": {
     "allowed_paths": [
       "dashboard/static/chat_assistant/chat.js",
-      "tests/dashboard/test_chat_panel_event_protocol.py",
-      "scripts/e2e_opencode_stub.py"
+      "tests/dashboard/test_chat_panel_event_protocol.py"
     ]
   },
   "steps": [
