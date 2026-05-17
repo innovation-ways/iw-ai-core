@@ -73,6 +73,8 @@ class StepDetail:
     runtime_option_id: int | None = None
     # F-00081: step-level override (explicitly set on workflow_step row)
     step_runtime_option_id: int | None = None
+    # CR-00056 S06: True if any StepRun for this step has prompt_text or fix_prompt_text
+    has_prompt: bool = False
 
 
 @dataclass
@@ -402,12 +404,15 @@ def _get_steps(
 
     last_run_map: dict[int, StepRun] = {}
     run_count_map: dict[int, int] = {}
+    has_prompt_map: dict[int, bool] = {}
     if step_db_ids:
         last_run_sub2 = (
             select(
                 StepRun.step_id,
                 StepRun.id.label("run_id"),
                 StepRun.error_message,
+                StepRun.prompt_text,
+                StepRun.fix_prompt_text,
                 func.row_number()
                 .over(
                     partition_by=StepRun.step_id,
@@ -424,6 +429,8 @@ def _get_steps(
                 last_run_sub2.c.step_id,
                 last_run_sub2.c.run_id,
                 last_run_sub2.c.error_message,
+                last_run_sub2.c.prompt_text,
+                last_run_sub2.c.fix_prompt_text,
                 last_run_sub2.c.rc,
             ).where(last_run_sub2.c.rn == 1)
         ).all()
@@ -437,6 +444,9 @@ def _get_steps(
             )
             last_run_map[row.step_id] = run
             run_count_map[row.step_id] = row.rc
+            has_prompt_map[row.step_id] = bool(
+                row.prompt_text is not None or row.fix_prompt_text is not None
+            )
 
     # F-00081: item-level runtime override
     item = db.scalar(
@@ -486,6 +496,7 @@ def _get_steps(
                 if run_opt_id is not None
                 else (step_opt_id or item_runtime_option_id),
                 step_runtime_option_id=step_opt_id,
+                has_prompt=has_prompt_map.get(step.id, False),
             )
         )
     result.append(_synthetic_merge_step(bi))
@@ -543,7 +554,13 @@ def _get_batch_status(project_id: str, batch_id: str | None, db: Session) -> str
     if not batch_id:
         return None
     batch = db.get(Batch, (project_id, batch_id))
-    return batch.status.value if batch else None
+    if batch is None:
+        return None
+    # Handle both enum and plain-str status (graceful for testcontainer variance)
+    status = batch.status
+    if hasattr(status, "value"):
+        return str(status.value)
+    return str(status)
 
 
 def _get_batch_item_error(project_id: str, item_id: str, db: Session) -> str | None:
@@ -1141,6 +1158,8 @@ def item_detail(
     ]
     item_runtime_option_id = item.agent_runtime_option_id
 
+    item_type_val = item.type
+    item_status_val = item.status
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -1149,8 +1168,10 @@ def item_detail(
             "current_project": project,
             "running_count": 0,
             "item": item,
-            "item_type": item.type.value,
-            "item_status": item.status.value,
+            "item_type": item_type_val.value if hasattr(item_type_val, "value") else item_type_val,
+            "item_status": item_status_val.value
+            if hasattr(item_status_val, "value")
+            else item_status_val,
             "steps": steps,
             "metrics": metrics,
             "batch_ref": batch_ref,
@@ -1298,6 +1319,70 @@ def item_step_runs(
         {
             "step_id": step_id,
             "runs": run_rows,
+        },
+    )
+
+
+@router.get("/item/{item_id}/step/{step_id}/prompt-modal", response_class=HTMLResponse)
+def get_prompt_modal(
+    request: Request,
+    project_id: str,
+    item_id: str,
+    step_id: str,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """htmx endpoint: render the prompt-text modal for a step (CR-00056 S06)."""
+    # 404 if item does not exist
+    work_item = db.scalar(
+        select(WorkItem).where(
+            WorkItem.project_id == project_id,
+            WorkItem.id == item_id,
+        )
+    )
+    if work_item is None:
+        raise HTTPException(status_code=404, detail=f"Work item {item_id!r} not found")
+
+    # 404 if step is not part of that item
+    workflow_step = db.scalar(
+        select(WorkflowStep).where(
+            WorkflowStep.project_id == project_id,
+            WorkflowStep.work_item_id == item_id,
+            WorkflowStep.step_id == step_id,
+        )
+    )
+    if workflow_step is None:
+        raise HTTPException(status_code=404, detail=f"Step {step_id!r} not found")
+
+    # Fetch all runs ordered by run_number
+    runs = list(
+        db.scalars(
+            select(StepRun).where(StepRun.step_id == workflow_step.id).order_by(StepRun.run_number)
+        ).all()
+    )
+
+    # Build sections for the template
+    sections: list[dict[str, str]] = []
+    for r in runs:
+        if r.prompt_text is not None:
+            sections.append({"label": "Initial Prompt", "text": r.prompt_text})
+        if r.fix_prompt_text is not None:
+            sections.append(
+                {"label": f"Fix Prompt (cycle {r.run_number - 1})", "text": r.fix_prompt_text}
+            )
+
+    if not sections:
+        raise HTTPException(status_code=404, detail="No prompt text found for this step")
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/prompt_text_modal.html",
+        {
+            "request": request,
+            "item": work_item,
+            "step": workflow_step,
+            "prompt_file_display": workflow_step.prompt_file or "",
+            "sections": sections,
         },
     )
 

@@ -1,0 +1,38 @@
+{# Modal fragment returned by /item/{item_id}/step/{step_id}/prompt-modal — adapted from activity_text_modal.html #}
+<div id="prompt-modal-overlay" class="activity-modal-backdrop" aria-hidden="false"></div>
+<div id="prompt-modal" class="activity-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-modal-title" aria-hidden="false" tabindex="-1">
+  <div class="activity-modal-inner">
+    <header class="activity-modal-header">
+      <div>
+        <h3 id="prompt-modal-title" class="activity-modal-title">
+          Step {{ step.step_id }} · {{ step.agent_label }}
+        </h3>
+        {% if prompt_file_display %}
+          <p class="text-xs text-muted-foreground">{{ prompt_file_display }}</p>
+        {% endif %}
+      </div>
+      <button type="button" class="modal-close" aria-label="Close modal">×</button>
+    </header>
+    <div class="activity-modal-body">
+      {% for section in sections %}
+        <section class="prompt-modal-section">
+          <div class="prompt-modal-section-header">
+            <h4 class="prompt-modal-section-title">{{ section.label }}</h4>
+            <button
+              type="button"
+              class="prompt-modal-copy text-xs px-2 py-0.5 rounded border border-border bg-background hover:bg-muted/40"
+              data-prompt-copy-section="{{ loop.index0 }}">
+              Copy
+            </button>
+          </div>
+          <pre class="prompt-modal-pre" data-prompt-section-body="{{ loop.index0 }}">{{ section.text }}</pre>
+        </section>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    if (window.__promptModalInit) { window.__promptModalInit(); return; }
+  })();
+</script>

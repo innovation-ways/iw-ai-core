@@ -871,6 +871,25 @@ class StepRun(Base):
         nullable=True,
         comment="The resolved (cli_tool, model) pair used for this run. F-00081.",
     )
+    # CR-00056 — prompt snapshots captured at step launch
+    prompt_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "Snapshot of the prompt content captured at step launch. "
+            "Set by the daemon when this StepRun is created. NULL for pre-CR-00056 rows. "
+            "Append-only — never updated after creation. (CR-00056)"
+        ),
+    )
+    fix_prompt_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "Snapshot of the fix-cycle prompt content for retry runs. "
+            "Set by the daemon when a fix-cycle StepRun is created. NULL for "
+            "non-fix-cycle runs and pre-CR-00056 rows. Append-only. (CR-00056)"
+        ),
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(["step_id"], ["workflow_steps.id"], ondelete="CASCADE"),

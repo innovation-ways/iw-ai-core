@@ -1370,6 +1370,7 @@ class BatchManager:
         # via `iw step-done` / `iw step-fail`, preserving the existing StepRun
         # lifecycle. Legacy items registered before CR-00023 (no step.command)
         # fall through to the LLM path below.
+        prompt_file: Path | None = None
         if step.step_type == StepType.quality_validation and step.command:
             command = _build_qv_direct_command(
                 item_id=step.work_item_id,
@@ -1494,6 +1495,25 @@ class BatchManager:
             )
 
         now = datetime.now(UTC)
+
+        # AC2 (CR-00056): snapshot the prompt content into StepRun.prompt_text.
+        # None for QV-gate steps (direct-command path, no prompt_file).
+        # IO errors are swallowed — the column stays NULL and the step proceeds.
+        prompt_text_val: str | None = None
+        if "prompt" in dir() and prompt:
+            prompt_text_val = prompt
+        elif prompt_file is not None and prompt_file.exists():
+            try:
+                prompt_text_val = prompt_file.read_text()
+            except (OSError, UnicodeDecodeError):
+                logger.warning(
+                    "[%s] Could not read prompt file for %s/%s: %s",
+                    self.project_id,
+                    step.work_item_id,
+                    step.step_id,
+                    str(prompt_file),
+                )
+
         run = StepRun(
             step_id=step.id,
             run_number=run_number,
@@ -1508,6 +1528,7 @@ class BatchManager:
             started_at=now,
             last_heartbeat=now,
             timeout_secs=timeout,
+            prompt_text=prompt_text_val,
         )
         db.add(run)
 

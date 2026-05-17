@@ -34,9 +34,8 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "678ac4dd44b7"  # head — F-00085 auto merge verdicts and project config
-_PREV_REVISION = "d1e2f3gpt53c"  # add_gpt_5_3_codex_runtime_option (before F-00085)
-# (before current head)
+_HEAD_REVISION = "21de61b41cec"  # head — CR-00056 add prompt_text and fix_prompt_text
+_PREV_REVISION = "678ac4dd44b7"  # F-00085 auto merge verdicts and project config (before head)
 
 
 # ---------------------------------------------------------------------------
