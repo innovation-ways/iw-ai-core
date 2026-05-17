@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import time
 from datetime import UTC, datetime, timedelta
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 PROBE_PROMPT = "Reply with the single word OK."
-_EXECUTOR_PATH = Path(__file__).resolve().parent.parent.parent / "executor"
+_EXECUTOR_DIR = Path(__file__).resolve().parent.parent.parent / "executor"
 
 
 def maybe_run_probe(db: Session, project_id: str, toml_config: AutoMergeConfig) -> None:
@@ -45,20 +46,21 @@ def maybe_run_probe(db: Session, project_id: str, toml_config: AutoMergeConfig) 
     reachable = False
     try:
         result = subprocess.run(  # noqa: S603
-            [
-                "/bin/bash",
-                str(_EXECUTOR_PATH / "step_executor.sh"),
-                "--step-type",
+            [  # noqa: S607
+                "bash",
+                str(_EXECUTOR_DIR / "step_executor_lib.sh"),
                 "auto_merge_resolve",
-                "--agent",
                 resolved.cli_tool,
-                "--model",
                 resolved.model,
             ],
             input=PROBE_PROMPT,
             text=True,
             capture_output=True,
             timeout=max(15, toml_config.health_probe_interval_seconds // 4),
+            env={
+                "WORKTREE_PATH": str(_EXECUTOR_DIR),
+                "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+            },
         )
         if result.returncode == 0 and "OK" in result.stdout:
             reachable = True
