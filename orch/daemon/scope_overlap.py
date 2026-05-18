@@ -3,6 +3,24 @@
 Pure functions — no DB, no logging beyond local imports. Imported by
 batch_manager._process_batch() to decide whether a candidate item conflicts
 with any in-flight item in the same project.
+
+Conflict detection is solely via ``globs_intersect`` — exact-file matches,
+fnmatch wildcards, and glob-anchor containment. The sibling-directory rule
+was removed in I-00099 (2026-05-18) after it generated false-positive holds
+on large dirs like ``docs/``, ``orch/daemon/``, and ``dashboard/routers/``.
+The remaining safety nets are:
+
+  (a) ``globs_intersect`` still catches exact-file matches and glob-anchor
+      containment;
+  (b) items that genuinely need module-level exclusion declare ``dir/**``
+      explicitly;
+  (c) git merge resolves real text conflicts.
+
+Two concrete cases motivated the removal: ``docs/IW_AI_Core_Testing_Strategy.md``
+vs ``docs/IW_AI_Core_AI_Assistant_Models.md`` (CR-00060 ↔ CR-00057) and
+``orch/daemon/batch_manager.py`` vs ``orch/daemon/project_registry.py``
+(same two items) — both produced sibling-directory false positives in
+production before the fix.
 """
 
 from __future__ import annotations
@@ -122,6 +140,16 @@ def globs_intersect(a: list[str], b: list[str]) -> list[str]:
                     seen.add(pattern)
                 continue
 
+            # Reverse anchor containment: a's anchor (directory) contains b_path.
+            # This handles the case where b is a dir-glob (e.g. "dir/**") and a
+            # is a concrete file under that same directory.
+            b_anchor = _pattern_to_anchor(b_path)
+            if b_anchor and b_anchor != "**" and _is_under_dir(pattern, b_anchor):
+                if pattern not in seen:
+                    conflicting.append(pattern)
+                    seen.add(pattern)
+                continue
+
     return conflicting
 
 
@@ -133,13 +161,9 @@ def find_blocking_items(
     with `candidate_paths`. The second element of each result tuple is the
     list of conflicting globs (intersection from candidate's side).
 
-    Conflict semantics: only exact path / glob intersection (via
-    `globs_intersect`). Two items that merely touch sibling files under the
-    same parent directory do NOT block each other — that policy proved too
-    coarse and serialised batches whose planner-assigned execution_group had
-    already declared them parallel-safe. This keeps the runtime gate aligned
-    with `orch/batch_planner.py`'s intra-batch overlap detection (strict set
-    intersection on impacted_paths).
+    Conflict is determined solely by ``globs_intersect``: exact-file matches,
+    fnmatch wildcards, and anchor-directory containment. No sibling-directory
+    fallback is applied.
     """
     if not candidate_paths or not in_flight:
         return []
