@@ -26,10 +26,28 @@ production before the fix.
 from __future__ import annotations
 
 import fnmatch
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+logger = logging.getLogger(__name__)
+
+# Default allow patterns for test paths — mirrors the historical implicit
+# is_test_path strip. These are factored into DEFAULT_BLOCK_PATTERNS
+# so that projects with no .iw-orch.json overlap_gate block get the same
+# behaviour as before (tests/**, conftest, *.test.*, *.spec.* etc. are
+# allowed through the gate by default).
+DEFAULT_ALLOW_PATTERNS: tuple[str, ...] = (
+    "tests/**",
+    "test/**",
+    "__tests__/**",
+    "**/*conftest*",
+    "**/*.test.*",
+    "**/*.spec.*",
+)
+DEFAULT_BLOCK_PATTERNS: tuple[str, ...] = ("**/*",)
 
 _TEST_PATH_MARKERS = (
     "/tests/",
@@ -89,9 +107,30 @@ def _is_under_dir(path: str, directory: str) -> bool:
     return path == directory or path.startswith(directory + "/")
 
 
+def _matches(glob: str, pattern: str) -> bool:
+    """Return True when `glob` matches `pattern` via fnmatch + anchor-containment.
+
+    Anchor-containment means a pattern like ``dashboard/**`` matches
+    ``dashboard/static/chat_assistant/chat.js`` even though plain fnmatch
+    would not (because the literal ``/`` between ``dashboard`` and ``static``
+    does not satisfy ``**`` in fnmatch semantics).
+    """
+    # Fast path: direct fnmatch
+    try:
+        if fnmatch.fnmatch(glob, pattern):
+            return True
+    except Exception:  # noqa: BLE001
+        logger.warning("fnmatch error on glob=%r pattern=%r — treated as no match", glob, pattern)
+        return False
+
+    # Anchor-containment: check whether the glob is under the pattern's anchor.
+    anchor = _pattern_to_anchor(pattern)
+    return bool(anchor and anchor != "**" and _is_under_dir(glob, anchor))
+
+
 def globs_intersect(a: list[str], b: list[str]) -> list[str]:
     """Return globs from `a` that share at least one matching path with any
-    glob in `b`, after stripping test-path globs from both sides.
+    glob in `b`.
 
     Implementation:
     - Exact path match: pattern == b_path
@@ -106,10 +145,7 @@ def globs_intersect(a: list[str], b: list[str]) -> list[str]:
     Returns the conflicting globs from `a` (deduped, original order
     preserved). Empty list when there is no overlap.
     """
-    a = _strip_test_globs(a)
-    b_stripped = _strip_test_globs(b)
-
-    if not a or not b_stripped:
+    if not a or not b:
         return []
 
     conflicting: list[str] = []
@@ -118,7 +154,7 @@ def globs_intersect(a: list[str], b: list[str]) -> list[str]:
     for pattern in a:
         anchor = _pattern_to_anchor(pattern)
 
-        for b_path in b_stripped:
+        for b_path in b:
             # Exact match
             if pattern == b_path:
                 if pattern not in seen:
@@ -156,28 +192,89 @@ def globs_intersect(a: list[str], b: list[str]) -> list[str]:
 def find_blocking_items(
     candidate_paths: list[str],
     in_flight: list[tuple[str, list[str]]],
+    *,
+    block_patterns: list[str],
+    allow_patterns: list[str],
 ) -> list[tuple[str, list[str]]]:
     """For each (item_id, paths) in `in_flight`, return those that conflict
     with `candidate_paths`. The second element of each result tuple is the
-    list of conflicting globs (intersection from candidate's side).
+    list of conflicting globs (from the candidate's side) after applying
+    the per-project block/allow policy.
 
-    Conflict is determined solely by ``globs_intersect``: exact-file matches,
-    fnmatch wildcards, and anchor-directory containment. No sibling-directory
-    fallback is applied.
+    Policy evaluation (per conflicting glob):
+      1. If no block_patterns are given, the gate is off — never blocks.
+      2. The glob is checked against each block_pattern via
+         ``_matches(glob, pattern)`` + anchor-containment. If it matches
+         any block_pattern it is in-scope for gating.
+      3. If the glob also matches any allow_pattern it is dropped from the
+         intersecting list.
+      4. If the filtered list for an in-flight item is empty, that item
+         does not appear in the result.
+
+    Args:
+        candidate_paths: impacted_paths from the candidate work item.
+        in_flight: list of (work_item_id, impacted_paths) for in-flight items.
+        block_patterns: glob patterns that define in-scope overlap. An empty
+            list means the gate is disabled — nothing will be considered
+            blocking.
+        allow_patterns: glob patterns that exempt a conflicting glob from
+            blocking. Applied per-glob (not all-or-nothing).
+
+    Returns:
+        list[tuple[item_id, conflicting_globs]] in original order.
     """
     if not candidate_paths or not in_flight:
         return []
 
-    result: list[tuple[str, list[str]]] = []
-
-    candidate_paths = _strip_test_globs(candidate_paths)
-    if not candidate_paths:
+    # Gate off: empty block_patterns means never block.
+    if not block_patterns:
         return []
 
+    result: list[tuple[str, list[str]]] = []
+
     for item_id, in_flight_paths in in_flight:
-        in_flight_paths = _strip_test_globs(in_flight_paths)
         intersecting = globs_intersect(candidate_paths, in_flight_paths)
-        if intersecting:
-            result.append((item_id, intersecting))
+        if not intersecting:
+            continue
+
+        # Filter: keep only globs that are in-scope (match a block_pattern).
+        in_scope: list[str] = []
+        for g in intersecting:
+            matched_block = False
+            for bp in block_patterns:
+                try:
+                    if _matches(g, bp):
+                        matched_block = True
+                        break
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "find_blocking_items: unparseable block pattern %r — skipping", bp
+                    )
+                    break
+            if matched_block:
+                in_scope.append(g)
+
+        if not in_scope:
+            continue
+
+        # Allow filter: per-glob exemption.
+        allowed: list[str] = []
+        for g in in_scope:
+            matched_allow = False
+            for ap in allow_patterns:
+                try:
+                    if _matches(g, ap):
+                        matched_allow = True
+                        break
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "find_blocking_items: unparseable allow pattern %r — skipping", ap
+                    )
+                    break
+            if not matched_allow:
+                allowed.append(g)
+
+        if allowed:
+            result.append((item_id, allowed))
 
     return result

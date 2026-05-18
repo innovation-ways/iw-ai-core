@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import exists, select
 
 from dashboard.dependencies import get_db
+from dashboard.routers.batches import _get_scope_statuses
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -47,6 +48,7 @@ class QueueItem:
     title: str
     status: str
     created_at: datetime
+    scope_status: Any = None
 
 
 _ACTIVE_BATCH_STATUSES = (
@@ -84,6 +86,8 @@ def _queue_items(project_id: str, db: Session) -> tuple[list[QueueItem], list[Qu
         .order_by(WorkItem.created_at.desc())
     )
     rows = list(db.scalars(stmt))
+    approved_ids = [r.id for r in rows if r.status == WorkItemStatus.approved]
+    scope_statuses = _get_scope_statuses(project_id, approved_ids, db)
     approved = [
         QueueItem(
             id=r.id,
@@ -91,6 +95,7 @@ def _queue_items(project_id: str, db: Session) -> tuple[list[QueueItem], list[Qu
             title=r.title,
             status=r.status.value,
             created_at=r.created_at,
+            scope_status=scope_statuses.get(r.id),
         )
         for r in rows
         if r.status == WorkItemStatus.approved

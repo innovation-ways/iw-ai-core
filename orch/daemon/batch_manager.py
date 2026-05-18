@@ -282,6 +282,64 @@ class BatchManager:
                 )
 
     # ------------------------------------------------------------------
+    # F-00076: policy-allowed event helper
+    # ------------------------------------------------------------------
+
+    def _emit_overlap_allowed_by_policy_if_needed(
+        self,
+        db: Session,
+        item: BatchItem,
+        candidate_paths: list[str],
+        in_flight_scopes: list[tuple[str, list[str]]],
+    ) -> None:
+        """Emit ``item_overlap_allowed_by_policy`` if the launch was released by a
+        non-default policy that the strict default would have blocked.
+
+        Called exactly once per launch decision — i.e. only when the candidate
+        actually transitions to launching (setting_up → executing).
+        """
+        cfg = self.project_config
+        # Only run the expensive double-check when the project actually
+        # customised its policy (avoids redundant work for the common case).
+        if list(cfg.overlap_block_patterns) != list(scope_overlap.DEFAULT_BLOCK_PATTERNS) or list(
+            cfg.overlap_allow_patterns
+        ) != list(scope_overlap.DEFAULT_ALLOW_PATTERNS):
+            default_blocked = scope_overlap.find_blocking_items(
+                candidate_paths,
+                in_flight_scopes,
+                block_patterns=list(scope_overlap.DEFAULT_BLOCK_PATTERNS),
+                allow_patterns=list(scope_overlap.DEFAULT_ALLOW_PATTERNS),
+            )
+            if default_blocked:
+                _emit_event(
+                    db,
+                    self.project_id,
+                    "item_overlap_allowed_by_policy",
+                    item.work_item_id,
+                    "work_item",
+                    f"Allowed: {item.work_item_id} overlapped with "
+                    f"{', '.join(bid for bid, _ in default_blocked)} but policy released it",
+                    {
+                        "candidate_item_id": item.work_item_id,
+                        "in_flight_item_ids": [bid for bid, _ in default_blocked],
+                        "dropped_block_globs": sorted(
+                            {g for _, globs in default_blocked for g in globs}
+                        ),
+                        "matched_allow_patterns": sorted(
+                            {
+                                p
+                                for p in cfg.overlap_allow_patterns
+                                if any(
+                                    scope_overlap._matches(g, p)  # noqa: SLF001
+                                    for _, globs in default_blocked
+                                    for g in globs
+                                )
+                            }
+                        ),
+                    },
+                )
+
+    # ------------------------------------------------------------------
     # Batch processing
     # ------------------------------------------------------------------
 
@@ -392,11 +450,15 @@ class BatchManager:
             work_item = db.get(WorkItem, (self.project_id, item.work_item_id))
             if work_item is None:
                 continue
+            candidate_paths: list[str] = []
             if work_item.type != WorkItemType.Research:
                 candidate_paths = list(work_item.impacted_paths or [])
+                cfg = self.project_config
                 blocked_by = scope_overlap.find_blocking_items(
                     candidate_paths,
                     in_flight_scopes,
+                    block_patterns=cfg.overlap_block_patterns,
+                    allow_patterns=cfg.overlap_allow_patterns,
                 )
                 if blocked_by:
                     for blocking_id, conflicting_globs in blocked_by:
@@ -419,6 +481,11 @@ class BatchManager:
 
             if executing_count >= batch.max_parallel:
                 break
+            # Launch decision made — emit policy-allowed event if the project
+            # customised its policy AND the strict default would have blocked.
+            self._emit_overlap_allowed_by_policy_if_needed(
+                db, item, candidate_paths, in_flight_scopes
+            )
             self._launch_item(db, item)
             executing_count += 1
             # F-00076: append this item's scope so subsequent items in the same

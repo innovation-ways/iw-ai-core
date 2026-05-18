@@ -22,7 +22,11 @@ import pytest
 from orch.config import DaemonConfig
 from orch.daemon.batch_manager import BatchManager
 from orch.daemon.project_registry import ProjectConfig
-from orch.daemon.scope_overlap import find_blocking_items
+from orch.daemon.scope_overlap import (
+    DEFAULT_ALLOW_PATTERNS,
+    DEFAULT_BLOCK_PATTERNS,
+    find_blocking_items,
+)
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -158,7 +162,12 @@ class TestFindBlockingItemsIntegration:
         # find_blocking_items only checks paths, not status. The caller
         # (_collect_in_flight_scopes) is responsible for only returning
         # non-terminal statuses. This test documents the contract.
-        result = find_blocking_items(candidate, in_flight)
+        result = find_blocking_items(
+            candidate,
+            in_flight,
+            block_patterns=list(DEFAULT_BLOCK_PATTERNS),
+            allow_patterns=list(DEFAULT_ALLOW_PATTERNS),
+        )
         # The function IS designed to return a blocking result for same paths.
         # It's the caller's job to exclude merged items from in_flight.
         assert len(result) == 1

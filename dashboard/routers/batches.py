@@ -8,7 +8,7 @@ from datetime import (  # noqa: N811  UTC used at runtime in _get_held_reasons; 
     UTC,
     datetime,
 )
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -71,8 +71,8 @@ class BatchItemRow:
     started_at: datetime | None = None
     started_at_ts: float | None = None
     ended_at_ts: float | None = None
-    # F-00076: held-reason for pending items with a recent item_held_for_scope event.
-    held_reason: str | None = None
+    # CR-00058: scope-gate status — held or policy_allowed (replaces held_reason)
+    scope_status: ScopeStatus | None = None
     # F-00081: item-level runtime override (None = default)
     runtime_option_id: int | None = None
     runtime_option_cli_label: str | None = None
@@ -82,22 +82,46 @@ class BatchItemRow:
 
 
 @dataclass
-class HeldReason:
-    """F-00076: why a pending batch item is held (cross-batch conflict)."""
+class ScopeStatus:
+    """CR-00058: scope-gate status for a batch item — either held or policy_allowed."""
 
-    blocking_item_id: str
-    conflicting_globs: list[str]
+    status: Literal["held", "policy_allowed"]
+    message: str
+    matched_globs: list[str]
+    matched_allow_patterns: list[str]  # only populated for policy_allowed
+    blocking_item_ids: list[str]
 
     @property
-    def glob_summary(self) -> str:
-        """First 2 globs joined by comma, +N if more."""
-        if not self.conflicting_globs:
-            return ""
-        if len(self.conflicting_globs) == 1:
-            return self.conflicting_globs[0]
-        first_two = ", ".join(self.conflicting_globs[:2])
-        extra = len(self.conflicting_globs) - 2
-        return f"{first_two}+{extra}" if extra > 0 else first_two
+    def pill_text(self) -> str:
+        """Short text for the pill label."""
+        if self.status == "held":
+            globs = self.matched_globs
+            if len(globs) >= 2:
+                glob_summary = f"{globs[0]}, {globs[1]}+{len(globs) - 2}"
+            elif len(globs) == 1:
+                glob_summary = globs[0]
+            else:
+                glob_summary = "overlap"
+            blockers = ", ".join(self.blocking_item_ids)
+            return f"Held: overlaps with {blockers} on `{glob_summary}`"
+        patterns = self.matched_allow_patterns
+        if len(patterns) > 3:
+            shown = ", ".join(patterns[:3]) + f"+{len(patterns) - 3} more"
+        else:
+            shown = ", ".join(patterns)
+        return f"policy allowed ({shown})"
+
+    @property
+    def pill_tooltip(self) -> str:
+        """Full tooltip text listing all patterns and blocking items."""
+        parts = []
+        if self.matched_allow_patterns:
+            parts.append(f"Matched allow patterns: {', '.join(self.matched_allow_patterns)}")
+        if self.matched_globs:
+            parts.append(f"Conflicting globs: {', '.join(self.matched_globs)}")
+        if self.blocking_item_ids:
+            parts.append(f"Blocking items: {', '.join(self.blocking_item_ids)}")
+        return " | ".join(parts)
 
 
 @dataclass
@@ -120,18 +144,24 @@ class BatchRow:
 # ---------------------------------------------------------------------------
 
 
-def _get_held_reasons(
+def _get_scope_statuses(
     project_id: str,
     item_ids: list[str],
     db: Session,
     window_secs: int = 300,
-) -> dict[str, str]:
-    """F-00076: for each given work_item_id in project, return the most recent
-    item_held_for_scope DaemonEvent (within window_secs) as a human-readable
-    "Held: overlaps with I-NNNNN on <glob_summary>" string.
+) -> dict[str, ScopeStatus]:
+    """CR-00058: for each given work_item_id in project, return the most recent
+    scope-gate DaemonEvent (within window_secs) as a ScopeStatus record.
 
-    Returns a dict {work_item_id: reason_str} for items that are pending with
-    a recent hold event. Items with no hold event are absent from the dict.
+    Queries both event types in a single combined query:
+    - item_held_for_scope → status='held'
+    - item_overlap_allowed_by_policy → status='policy_allowed'
+
+    Held takes precedence over policy_allowed when both exist within the window
+    for the same item.
+
+    Returns a dict {work_item_id: ScopeStatus} for items with a recent event.
+    Items with no event are absent from the dict (scope_status=None in rows).
     """
     from datetime import timedelta
 
@@ -146,7 +176,9 @@ def _get_held_reasons(
             select(DaemonEvent)
             .where(
                 DaemonEvent.project_id == project_id,
-                DaemonEvent.event_type == "item_held_for_scope",
+                DaemonEvent.event_type.in_(
+                    ("item_held_for_scope", "item_overlap_allowed_by_policy")
+                ),
                 DaemonEvent.entity_id.in_(item_ids),
                 DaemonEvent.entity_type == "work_item",
                 DaemonEvent.created_at >= cutoff,
@@ -157,29 +189,62 @@ def _get_held_reasons(
         .all()
     )
 
-    # Keep only the most recent per entity_id
-    result: dict[str, str] = {}
-    seen: set[str] = set()
-    for ev in rows:
+    # Build per-item status: held takes precedence over policy_allowed
+    # Scan in reverse (oldest first) so that when we encounter a held event
+    # for an item that already has a policy_allowed, we replace it.
+    item_statuses: dict[str, ScopeStatus] = {}
+    for ev in reversed(rows):
         entity_id = ev.entity_id
-        if entity_id is None or entity_id in seen:
+        if entity_id is None:
             continue
-        seen.add(entity_id)
         meta = ev.event_metadata or {}
-        blocking = meta.get("blocking", "")
-        globs: list[str] = list(meta.get("conflicting_globs", []))
-        if not globs:
-            continue
-        # glob_summary: first 2, +N if more
-        extra = max(0, len(globs) - 2)
-        if extra:
-            glob_summary = f"{globs[0]}, {globs[1]}+{extra}"
-        elif len(globs) == 2:
-            glob_summary = f"{globs[0]}, {globs[1]}"
-        else:
-            glob_summary = globs[0]
-        result[entity_id] = f"Held: overlaps with {blocking} on `{glob_summary}`"
-    return result
+        if ev.event_type == "item_held_for_scope":
+            blocking = meta.get("blocking_item_id", "")
+            globs: list[str] = list(meta.get("conflicting_globs", []))
+            if not globs:
+                continue
+            status = ScopeStatus(
+                status="held",
+                message=ev.message or "",
+                matched_globs=globs,
+                matched_allow_patterns=[],
+                blocking_item_ids=[blocking] if blocking else [],
+            )
+            item_statuses[entity_id] = status
+        elif ev.event_type == "item_overlap_allowed_by_policy":
+            # Only set if item doesn't already have a held status
+            if entity_id in item_statuses:
+                continue
+            in_flight_ids: list[str] = list(meta.get("in_flight_item_ids", []))
+            allow_patterns: list[str] = list(meta.get("matched_allow_patterns", []))
+            dropped: list[str] = list(meta.get("dropped_block_globs", []))
+            # Build message
+            blockers = ", ".join(in_flight_ids) if in_flight_ids else "overlap"
+            patterns_str = ", ".join(allow_patterns[:3])
+            if len(allow_patterns) > 3:
+                patterns_str += f"+{len(allow_patterns) - 3} more"
+            message = f"Released by allow pattern {patterns_str} — overlapped with {blockers}"
+            status = ScopeStatus(
+                status="policy_allowed",
+                message=message,
+                matched_globs=dropped,
+                matched_allow_patterns=allow_patterns,
+                blocking_item_ids=in_flight_ids,
+            )
+            item_statuses[entity_id] = status
+    return item_statuses
+
+
+def _get_held_reasons(
+    project_id: str,
+    item_ids: list[str],
+    db: Session,
+    window_secs: int = 300,
+) -> dict[str, str]:
+    """F-00076 (backwards compat): wraps _get_scope_statuses, returns the
+    old {work_item_id: reason_str} dict for existing call sites."""
+    statuses = _get_scope_statuses(project_id, item_ids, db, window_secs)
+    return {item_id: s.pill_text for item_id, s in statuses.items() if s.status == "held"}
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
@@ -213,7 +278,8 @@ def _batch_item_rows(
     project_id: str,
     batch_id: str,
     db: Session,
-    held_reasons: dict[str, str] | None = None,
+    scope_statuses: dict[str, ScopeStatus] | None = None,
+    _held_reasons: dict[str, str] | None = None,
 ) -> list[BatchItemRow]:
     """Load all BatchItems for a batch, enriched with work item + step data (C3 fix)."""
     from sqlalchemy import tuple_ as tuple_fn
@@ -334,7 +400,7 @@ def _batch_item_rows(
                 started_at=bi.started_at,
                 started_at_ts=bi.started_at.timestamp() if bi.started_at else None,
                 ended_at_ts=bi.merged_at.timestamp() if bi.merged_at else None,
-                held_reason=(held_reasons or {}).get(bi.work_item_id),
+                scope_status=(scope_statuses or {}).get(bi.work_item_id),
                 runtime_option_id=opt_id,
                 runtime_option_cli_label=opt.cli_label if opt else None,
                 runtime_option_model_label=opt.model_label if opt else None,
@@ -476,8 +542,8 @@ def batch_detail(
             )
         ).all()
     ]
-    held_reasons = _get_held_reasons(project_id, item_ids, db)
-    items = _batch_item_rows(project_id, batch_id, db, held_reasons=held_reasons)
+    scope_statuses = _get_scope_statuses(project_id, item_ids, db)
+    items = _batch_item_rows(project_id, batch_id, db, scope_statuses=scope_statuses)
 
     dur: float | None = None
     if batch.created_at and batch.completed_at:
@@ -600,8 +666,8 @@ def batch_items_fragment(
             )
         ).all()
     ]
-    held_reasons = _get_held_reasons(project_id, item_ids, db)
-    items = _batch_item_rows(project_id, batch_id, db, held_reasons=held_reasons)
+    scope_statuses = _get_scope_statuses(project_id, item_ids, db)
+    items = _batch_item_rows(project_id, batch_id, db, scope_statuses=scope_statuses)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -631,8 +697,8 @@ def batch_detail_header_fragment(
             )
         ).all()
     ]
-    held_reasons = _get_held_reasons(project_id, item_ids, db)
-    items = _batch_item_rows(project_id, batch_id, db, held_reasons=held_reasons)
+    scope_statuses = _get_scope_statuses(project_id, item_ids, db)
+    items = _batch_item_rows(project_id, batch_id, db, scope_statuses=scope_statuses)
 
     dur: float | None = None
     if batch.created_at and batch.completed_at:

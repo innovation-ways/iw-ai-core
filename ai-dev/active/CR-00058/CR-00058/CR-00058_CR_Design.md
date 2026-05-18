@@ -242,9 +242,7 @@ The cross-batch gate enforces these as `WorkItem.impacted_paths`; the merge-time
 - `orch/daemon/batch_manager.py`
 - `orch/daemon/project_registry.py`
 - `dashboard/routers/batches.py`
-- `dashboard/routers/project_pages.py`
 - `dashboard/templates/fragments/batch_items_rows.html`
-- `dashboard/templates/pages/project/queue.html`
 - `dashboard/templates/_partials/help/batches.html`
 - `dashboard/templates/_partials/help/queue.html`
 - `dashboard/templates/_partials/help/batch_detail.html`
