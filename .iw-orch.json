@@ -2,6 +2,17 @@
   "project_id": "iw-ai-core",
   "cli_tool": "opencode",
   "max_parallel": 4,
+  "overlap_gate": {
+    "block_on_overlap": ["**/*"],
+    "allow_on_overlap": [
+      "tests/**",
+      "test/**",
+      "__tests__/**",
+      "**/*conftest*",
+      "**/*.test.*",
+      "**/*.spec.*"
+    ]
+  },
   "auto_publish": false,
   "browser_verification": {
     "env_up_command": "scripts/e2e_up.sh",

@@ -585,6 +585,7 @@ class MultiProjectDaemon:
 - Worktrees are in each project's own repo (naturally isolated)
 - ID allocation is per-project (no cross-project collisions)
 - LLM quota is shared (it's the same Claude account) — the quota monitor tracks this globally
+- **Per-project overlap gate**: each project's `.iw-orch.json` controls which overlapping items the daemon holds vs. releases, via the configurable `overlap_gate` block. See [Daemon Design §4.9](docs/IW_AI_Core_Daemon_Design.md#49-cross-batch-overlap-gate-configurable).
 
 ### 4.5. Cross-Project Data Flow
 

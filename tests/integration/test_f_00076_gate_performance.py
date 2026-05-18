@@ -15,7 +15,11 @@ import random
 import time
 import uuid
 
-from orch.daemon.scope_overlap import find_blocking_items
+from orch.daemon.scope_overlap import (
+    DEFAULT_ALLOW_PATTERNS,
+    DEFAULT_BLOCK_PATTERNS,
+    find_blocking_items,
+)
 
 # ---------------------------------------------------------------------------
 # Glob generation helpers
@@ -86,7 +90,12 @@ class TestGatePerformance:
         candidate = _random_globs(rng, 3)
 
         start = time.perf_counter()
-        result = find_blocking_items(candidate, in_flight)
+        result = find_blocking_items(
+            candidate,
+            in_flight,
+            block_patterns=list(DEFAULT_BLOCK_PATTERNS),
+            allow_patterns=list(DEFAULT_ALLOW_PATTERNS),
+        )
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         assert elapsed_ms < 100, (
@@ -101,7 +110,12 @@ class TestGatePerformance:
         candidate = _random_globs(rng, 5)
 
         start = time.perf_counter()
-        result = find_blocking_items(candidate, in_flight)
+        result = find_blocking_items(
+            candidate,
+            in_flight,
+            block_patterns=list(DEFAULT_BLOCK_PATTERNS),
+            allow_patterns=list(DEFAULT_ALLOW_PATTERNS),
+        )
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         assert elapsed_ms < 200, (
@@ -115,7 +129,12 @@ class TestGatePerformance:
         candidate = ["completely/different/path.py"]
 
         start = time.perf_counter()
-        result = find_blocking_items(candidate, in_flight)
+        result = find_blocking_items(
+            candidate,
+            in_flight,
+            block_patterns=list(DEFAULT_BLOCK_PATTERNS),
+            allow_patterns=list(DEFAULT_ALLOW_PATTERNS),
+        )
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         assert result == []

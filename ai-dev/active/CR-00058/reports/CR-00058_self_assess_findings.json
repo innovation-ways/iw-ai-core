@@ -1,0 +1,112 @@
+{
+  "item_id": "CR-00058",
+  "bottom_line": "S02 agent (tests-impl) crashed twice requiring manual test authoring — the highest-impact finding is agent stability on long tasks, not a code defect.",
+  "coverage_notes": "S01 run1 (23KB) read in full; S01 run2 (92KB) sampled via grep tail. S02 both runs (2KB + 15KB) read in full. S03 (104KB) sampled via grep for Error/FAILED lines. S04-S08 all grep-passed or small-file-read. S13 run1 (372KB) sampled via grep for Error/FAILED. DB: full (DB:UP confirmed).",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "HIGH",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S02 agent (tests-impl) crashed twice in succession — operator wrote integration tests manually",
+      "recommendation": "Investigate opencode + minimax/MiniMax-M2.7 stability for long test-authoring tasks. Check whether the LLM API client's streaming or timeout handling causes PID death during active tool-use sequences. Also consider whether the tests-impl prompt could be shortened to reduce context scope.",
+      "evidence": [
+        ".worktrees/CR-00058/ai-dev/logs/CR-00058_S02_run1.log — 'Process exited without reporting completion (PID dead)' after ~180s, agent still in directory-read phase",
+        ".worktrees/CR-00058/ai-dev/logs/CR-00058_S02_run2.log — same crash pattern, PID dead before producing any test file",
+        "ai-dev/active/CR-00058/reports/CR-00058_S02_Tests_report.md:12 — 'Both run logs show the agent still in the read context / list directory phase when it crashed; no test file was created'"
+      ],
+      "effort": "M",
+      "recurring": false,
+      "systemic": false,
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-incident Investigate and mitigate opencode agent crash on long test-authoring steps (CR-00058 S02 crashed twice, PID dead mid-task); analyzed in ai-dev/active/CR-00058/reports/CR-00058_self_assess_report.md. Target: agents/opencode/tests-impl.py or skills/iw-execute/SKILL.md. Effort: M."
+    },
+    {
+      "id": "F2",
+      "severity": "MED",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S01 path typo on first run — wasted one agent run",
+      "recommendation": "Ensure agents use provided paths verbatim from prompts rather than retyping from memory. Add explicit guidance to iw-execute skill.",
+      "evidence": [
+        ".worktrees/CR-00058/ai-dev/logs/CR-00058_S01_run1.log:11 — 'Error: File not found: /home/sgeriog/dev/...' (missing 's' in 'sergiog')"
+      ],
+      "effort": "S",
+      "recurring": false,
+      "systemic": false,
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-incident Prevent agent path typos causing unnecessary retries (S01 of CR-00058 typed wrong path on first run); analyzed in ai-dev/active/CR-00058/reports/CR-00058_self_assess_report.md. Target: skills/iw-execute/SKILL.md. Effort: S."
+    },
+    {
+      "id": "F3",
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "S03 Frontend step had 4 runs due to import/name errors and Edit mismatches that self-resolved",
+      "recommendation": "Add explicit function-name lookup guidance to S03 prompt (or generic frontend-impl skill) so the agent finds the correct function name before attempting edits.",
+      "evidence": [
+        ".worktrees/CR-00058/ai-dev/logs/CR-00058_S03_run1.log:45 — ImportError: cannot import name 'ScopeStatus'",
+        ".worktrees/CR-00058/ai-dev/logs/CR-00058_S03_run1.log:957 — ImportError: cannot import name '_get_held_reasons'",
+        "CR-00058_S03_run1.log:68 — 'Error: Could not find oldString in the file'",
+        "CR-00058_S03_run1.log:319 — 'Error: Found multiple matches for oldString'"
+      ],
+      "effort": "S",
+      "recurring": false,
+      "systemic": false,
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-incident Reduce S03-style import/name Edit thrash (CR-00058 S03 ran 4 times with NameError on '_get_held_reasons'); analyzed in ai-dev/active/CR-00058/reports/CR-00058_self_assess_report.md. Target: prompts/CR-00058_S03_Frontend_prompt.md. Effort: S."
+    },
+    {
+      "id": "F4",
+      "severity": "MED",
+      "class": "environment",
+      "target": "iw-ai-core",
+      "title": "S13 integration tests hit PostgreSQL auth errors on first run requiring fix cycle",
+      "recommendation": "Add a testcontainer health-check (wait for postgres to be fully ready) before running integration tests in `make allure-integration`.",
+      "evidence": [
+        ".worktrees/CR-00058/ai-dev/logs/CR-00058_S13_run1.log:368 — psql: error: connection to server... FATAL: role 'iw_ai_core' does not exist",
+        ".worktrees/CR-00058/ai-dev/logs/CR-00058_S13_run1.log:376 — psql: error: FATAL: role 'postgres' does not exist",
+        ".worktrees/CR-00058/ai-dev/logs/CR-00058_S13_fix1.log — fix cycle log (10KB)"
+      ],
+      "effort": "M",
+      "recurring": false,
+      "systemic": false,
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-incident Add testcontainer health-check to integration test runner to prevent DB auth failures (CR-00058 S13 had psql role errors on first run); analyzed in ai-dev/active/CR-00058/reports/CR-00058_self_assess_report.md. Target: Makefile or executor/run_integration_tests.sh. Effort: M."
+    },
+    {
+      "id": "F5",
+      "severity": "HIGH",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "S05 CodeReview caught CRITICAL event metadata key mismatch (dropped_globs vs dropped_block_globs) — UI would have silently shown empty tooltips",
+      "recommendation": "Add an integration-level test that verifies event metadata keys between emit side (daemon) and read side (router) are consistent, so this class of bug is caught by QV gates rather than only by manual code review.",
+      "evidence": [
+        "ai-dev/active/CR-00058/reports/CR-00058_S05_CodeReview_findings.json:14 — F1 CRITICAL: 'dropped_globs' vs 'dropped_block_globs' mismatch",
+        "ai-dev/active/CR-00058/reports/CR-00058_S06_CodeReviewFix_report.md:22 — 'matched_globs field on ScopeStatus for policy_allowed items was always empty'"
+      ],
+      "effort": "M",
+      "recurring": false,
+      "systemic": true,
+      "frequency": "systemic",
+      "paste_prompt": "/iw-new-incident Add automated test for event metadata key consistency between emit and read sides (CR-00058 S05 caught dropped_globs mismatch via manual code review); analyzed in ai-dev/active/CR-00058/reports/CR-00058_self_assess_report.md. Target: tests/integration/daemon/test_event_metadata_contract.py (new). Effort: M."
+    },
+    {
+      "id": "F6",
+      "severity": "MED",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "TDD RED evidence for S02 integration tests was behavioral description, not direct pytest output",
+      "recommendation": "Add explicit guidance to tests-impl prompt template requiring agents to capture exact pytest AssertionError output when tests fail before implementation, not just behavioral descriptions.",
+      "evidence": [
+        "ai-dev/active/CR-00058/reports/CR-00058_S05_CodeReview_findings.json:23 — F2 MEDIUM: 'TDD RED evidence is behavioral description rather than direct pytest output'",
+        "ai-dev/active/CR-00058/reports/CR-00058_S02_Tests_report.md:55-63 — RED evidence recorded as 'pre-S01 behaviour' descriptions"
+      ],
+      "effort": "S",
+      "recurring": false,
+      "systemic": false,
+      "frequency": "systemic",
+      "paste_prompt": "/iw-new-incident Enforce direct pytest RED evidence capture in tests-impl steps (CR-00058 S02 had behavioral-only RED description); analyzed in ai-dev/active/CR-00058/reports/CR-00058_self_assess_report.md. Target: skills/iw-execute/SKILL.md. Effort: S."
+    }
+  ]
+}

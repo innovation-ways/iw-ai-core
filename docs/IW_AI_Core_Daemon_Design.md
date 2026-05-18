@@ -760,6 +760,123 @@ def _check_batch_completion(self, batch: Batch, items: list[BatchItem]):
 
 ---
 
+## 4.9. Cross-batch Overlap Gate (Configurable)
+
+The daemon prevents two items in different batches from running concurrently when their `impacted_paths` overlap on non-test source files (F-00076). The gate is unconditional by default. `overlap_gate` makes it per-project configurable.
+
+### Role
+
+When a candidate item is about to launch, `scope_overlap.find_blocking_items()` computes the set of in-flight items whose `impacted_paths` intersect the candidate's. If overlaps exist, the candidate is held — it does not consume a `max_parallel` slot — until the blockers complete or the operator changes the policy.
+
+### `.iw-orch.json` Schema
+
+```json
+{
+  "overlap_gate": {
+    "block_on_overlap": ["**/*"],
+    "allow_on_overlap": [
+      "tests/**",
+      "test/**",
+      "__tests__/**",
+      "**/*conftest*",
+      "**/*.test.*",
+      "**/*.spec.*"
+    ]
+  }
+}
+```
+
+| Field | Type | Default | Effect |
+|-------|------|---------|--------|
+| `block_on_overlap` | `list[glob]` | `["**/*"]` | Item is held when any glob matches an in-flight item's `impacted_paths`. Empty list disables the gate entirely. |
+| `allow_on_overlap` | `list[glob]` | test-pattern list above | Applied **per conflicting glob** after the intersection step. A glob matched by any allow pattern is dropped. |
+
+**Allow precedence semantics**: after `find_blocking_items` returns the list of conflicting globs (from the candidate's side), each glob is filtered against `allow_on_overlap`. A glob that matches any allow pattern is dropped. If the filtered list is empty, the candidate launches.
+
+### Decision Tree
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Candidate item ready to launch                             │
+└──────────────────────┬──────────────────────────────────────┘
+                       ▼
+        find_blocking_items(candidate, in_flight,
+                            block_patterns, allow_patterns)
+                       │
+                       ▼
+        Overlapping globs list ──► Filter against allow_on_overlap
+                       │                    │
+                       ▼                    ▼
+              ┌───────────────┐    ┌───────────────────────┐
+              │ non-empty?    │    │  glob matched by any  │
+              │               │    │  allow pattern → drop │
+              └───────┬───────┘    └───────────────────────┘
+                      │                      │
+                      ▼                      ▼
+          ┌───────────────────┐    ┌──────────────────┐
+          │ HOLD candidate    │    │ Dropped globs    │
+          │ Emit              │    │ removed from list│
+          │ item_held_for_    │    └────────┬─────────┘
+          │ scope (per        │             ▼
+          │  blocking item)   │    ┌──────────────────┐
+          └───────────────────┘    │ Remaining non-   │
+                                  │ empty?            │
+                                  └───────┬──────────┘
+                                          │          │
+                              ┌───────────┘          └──────────┐
+                              ▼                                      ▼
+                    ┌──────────────────┐              ┌────────────────────────┐
+                    │ HOLD candidate   │              │ LAUNCH candidate       │
+                    │ Emit item_held_   │              │ Emit                   │
+                    │ for_scope        │              │ item_overlap_allowed_  │
+                    │                  │              │ by_policy (once)       │
+                    └──────────────────┘              └────────────────────────┘
+```
+
+### Events
+
+**`item_held_for_scope`** — emitted per blocking item per poll cycle while the candidate is held.
+
+```python
+DaemonEvent(
+    project_id=project_id,
+    event_type='item_held_for_scope',
+    entity_id=candidate_item_id,
+    message="Item held: overlapping scope with {blocking_item_id}",
+    metadata={
+        'blocking_item_id': blocking_item_id,
+        'conflicting_globs': ['dashboard/**/*.js', 'orch/daemon/*.py']
+    }
+)
+```
+
+**`item_overlap_allowed_by_policy`** — emitted once when a launch decision is reached and the filtered-overlap list is empty but the default-strict policy (block everything) would have held the item. Does not fire when the default policy would also have allowed the item.
+
+```python
+DaemonEvent(
+    project_id=project_id,
+    event_type='item_overlap_allowed_by_policy',
+    entity_id=candidate_item_id,
+    message="Item launched despite overlap by policy",
+    metadata={
+        'candidate_item_id': candidate_item_id,
+        'in_flight_item_ids': ['I-00087', 'I-00088'],
+        'matched_allow_patterns': ['docs/**'],
+        'dropped_block_globs': ['docs/Foo.md', 'docs/Bar.md']
+    }
+)
+```
+
+### SIGHUP Reload
+
+Operator edits `.iw-orch.json`, runs `./ai-core.sh daemon reload`. The daemon receives SIGHUP, re-reads the file, and the next poll cycle uses the new `overlap_gate` policy. In-flight items (already launched) are unaffected — the policy is evaluated only at launch decision time.
+
+### Operator Guidance
+
+If you relax `overlap_gate` for a directory, consider enabling `scope_gate_enabled` to catch divergence at merge time. The two flags are independent today; they may be coupled in a future CR. See [`ai-dev/active/AUTO_MERGE_RESOLUTION.md`](ai-dev/active/AUTO_MERGE_RESOLUTION.md) for the motivation behind relaxing the cross-batch gate.
+
+---
+
 ## 5. Dashboard Action Handlers
 
 These are called when the user clicks action buttons in the dashboard. They mutate DB state; the daemon picks up changes on the next poll cycle.

@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
-from dashboard.routers.batches import _batch_item_rows, _get_held_reasons
+from dashboard.routers.batches import _batch_item_rows, _get_scope_statuses
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -112,7 +112,7 @@ class TestGetHeldReasons:
         db_session.add(project)
         db_session.flush()
 
-        result = _get_held_reasons(project_id, ["WI-001", "WI-002"], db_session)
+        result = _get_scope_statuses(project_id, ["WI-001", "WI-002"], db_session)
         assert result == {}
 
     def test_held_event_returns_reason_string(self, db_session: Session) -> None:
@@ -138,17 +138,17 @@ class TestGetHeldReasons:
             message="Held: overlaps with I-00001 on `orch/daemon/**`",
             event_metadata={
                 "candidate": "WI-HELD-EVENT",
-                "blocking": "I-00001",
+                "blocking_item_id": "I-00001",
                 "conflicting_globs": ["orch/daemon/**"],
             },
         )
         db_session.add(ev)
         db_session.flush()
 
-        result = _get_held_reasons(project_id, ["WI-HELD-EVENT"], db_session)
+        result = _get_scope_statuses(project_id, ["WI-HELD-EVENT"], db_session)
         assert "WI-HELD-EVENT" in result
-        assert "I-00001" in result["WI-HELD-EVENT"]
-        assert "Held:" in result["WI-HELD-EVENT"]
+        assert result["WI-HELD-EVENT"].status == "held"
+        assert "I-00001" in result["WI-HELD-EVENT"].blocking_item_ids
 
     def test_multiple_globs_shows_glob_summary(self, db_session: Session) -> None:
         """3+ conflicting globs → glob_summary with first 2 + '+N'."""
@@ -173,15 +173,15 @@ class TestGetHeldReasons:
             message="Held",
             event_metadata={
                 "candidate": "WI-MULTI-GLOB",
-                "blocking": "I-00002",
+                "blocking_item_id": "I-00002",
                 "conflicting_globs": ["a.py", "b.py", "c.py", "d.py"],
             },
         )
         db_session.add(ev)
         db_session.flush()
 
-        result = _get_held_reasons(project_id, ["WI-MULTI-GLOB"], db_session)
-        summary = result["WI-MULTI-GLOB"]
+        result = _get_scope_statuses(project_id, ["WI-MULTI-GLOB"], db_session)
+        summary = result["WI-MULTI-GLOB"].pill_text
         # Should contain "a.py, b.py+2" style summary
         assert "a.py" in summary
         assert "b.py" in summary
@@ -199,7 +199,7 @@ class TestGetHeldReasons:
             message="Held",
             event_metadata={
                 "candidate": "WI-OLD-EVENT",
-                "blocking": "I-00003",
+                "blocking_item_id": "I-00003",
                 "conflicting_globs": ["old.py"],
             },
             created_at=datetime.now(UTC) - timedelta(seconds=600),
@@ -208,7 +208,7 @@ class TestGetHeldReasons:
         db_session.flush()
 
         # window_secs=300 (default), event is 600s old → ignored
-        result = _get_held_reasons(project_id, ["WI-OLD-EVENT"], db_session)
+        result = _get_scope_statuses(project_id, ["WI-OLD-EVENT"], db_session)
         assert "WI-OLD-EVENT" not in result
 
     def test_non_pending_item_not_returned(self, db_session: Session) -> None:
@@ -238,14 +238,14 @@ class TestGetHeldReasons:
             message="Held",
             event_metadata={
                 "candidate": "WI-NOT-PENDING",
-                "blocking": "I-00004",
+                "blocking_item_id": "I-00004",
                 "conflicting_globs": ["x.py"],
             },
         )
         db_session.add(ev)
         db_session.flush()
 
-        result = _get_held_reasons(project_id, ["WI-NOT-PENDING"], db_session)
+        result = _get_scope_statuses(project_id, ["WI-NOT-PENDING"], db_session)
         assert "WI-NOT-PENDING" in result
 
 
@@ -281,22 +281,23 @@ class TestBatchItemRowsHeldReason:
             message="Held: overlaps with I-99999 on `foo.py`",
             event_metadata={
                 "candidate": "WI-HR-PENDING",
-                "blocking": "I-99999",
+                "blocking_item_id": "I-99999",
                 "conflicting_globs": ["foo.py"],
             },
         )
         db_session.add(ev)
         db_session.flush()
 
-        held_reasons = _get_held_reasons(project_id, ["WI-HR-PENDING"], db_session)
+        scope_statuses = _get_scope_statuses(project_id, ["WI-HR-PENDING"], db_session)
         rows = _batch_item_rows(
-            project_id, "batch-hr-pending", db_session, held_reasons=held_reasons
+            project_id, "batch-hr-pending", db_session, scope_statuses=scope_statuses
         )
 
         assert len(rows) == 1
         assert rows[0].item_id == "WI-HR-PENDING"
-        assert rows[0].held_reason is not None
-        assert "I-99999" in rows[0].held_reason
+        assert rows[0].scope_status is not None
+        assert rows[0].scope_status.status == "held"
+        assert "I-99999" in rows[0].scope_status.blocking_item_ids
 
     def test_held_reason_is_none_when_no_hold_event(self, db_session: Session) -> None:
         """pending item with no hold event → held_reason is None."""
@@ -314,9 +315,9 @@ class TestBatchItemRowsHeldReason:
         db_session.add(bi)
         db_session.flush()
 
-        rows = _batch_item_rows(project_id, "batch-hr-none", db_session, held_reasons={})
+        rows = _batch_item_rows(project_id, "batch-hr-none", db_session, scope_statuses={})
         assert len(rows) == 1
-        assert rows[0].held_reason is None
+        assert rows[0].scope_status is None
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +352,7 @@ class TestHttpHeldIndicator:
             message="Held",
             event_metadata={
                 "candidate": "WI-HTTP-HELD",
-                "blocking": "I-BLOCKER",
+                "blocking_item_id": "I-BLOCKER",
                 "conflicting_globs": ["bar.py", "baz.py"],
             },
         )
