@@ -1,0 +1,6 @@
+{
+  "item_id": "I-00096",
+  "bottom_line": "Workflow ran cleanly. No actionable process improvements identified.",
+  "coverage_notes": "Analyzed run logs for S01, S03, S05, S07, S08, S15, S16 in full. S14 (382KB) sampled via grep for errors only. QV gate logs (S10–S13) read in full.",
+  "findings": []
+}
