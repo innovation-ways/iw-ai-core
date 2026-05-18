@@ -5,6 +5,7 @@
 .PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
           test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
           test-assertions diff-coverage \
+          test-properties test-properties-deep \
           mutation-check mutation-audit mutation-results mutation-show \
           db-up db-down db-migrate db-revision \
           daemon-start daemon-stop dashboard-start css \
@@ -152,6 +153,24 @@ diff-coverage:
 	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser --cov-append --cov-fail-under=0 -q -n auto
 	uv run coverage xml -o tests/output/coverage/coverage-combined.xml
 	uv run diff-cover tests/output/coverage/coverage-combined.xml --compare-branch=origin/main --fail-under=90
+
+# =============================================================================
+# PROPERTY-BASED TESTS (CR-00060, P2-CR-B) — CI gate + on-demand deep sweep
+# =============================================================================
+# Property-based tests (CR-00060, P2-CR-B) — runs tests/unit/properties/
+# at the selected Hypothesis profile (ci | dev | deep).
+# The `ci` profile runs as part of `make test-unit` automatically
+# (the properties conftest defaults to ci); this target is just the
+# explicit invocation.
+test-properties:
+	IW_HYPOTHESIS_PROFILE=ci uv run pytest tests/unit/properties/ -v --no-cov -p no:randomly
+
+# Deep property-test sweep — on-demand only, NOT a CI gate yet.
+# Runs each @given/RuleBasedStateMachine with max_examples=1000 and
+# full shrinking. Use to find bugs the ci profile misses (e.g. before
+# a release, after a refactor of any of the 5 state-machine targets).
+test-properties-deep:
+	IW_HYPOTHESIS_PROFILE=deep uv run pytest tests/unit/properties/ -v --no-cov
 
 # =============================================================================
 # MUTATION TESTING (CR-00059, P2-CR-A) — on-demand, NOT a CI gate yet
