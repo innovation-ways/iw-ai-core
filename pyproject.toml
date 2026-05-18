@@ -97,6 +97,7 @@ dev = [
     "pip-audit>=2.7",
     "bandit[toml]>=1.7",
     "pytest-timeout>=2.4.0",
+    "pytest-rerunfailures>=14.0,<16",
     "diff-cover>=9",
     "vulture>=2.11",
     "deptry>=0.20",
@@ -155,7 +156,7 @@ testpaths = ["tests"]
 #     uv run pytest tests/integration/ -p randomly --randomly-seed=<N> -q
 # Earlier fallback (CR-00048): `-p no:randomly` was in addopts 2026-05-13 → 2026-05-16
 # after 5 fix cycles could not converge; superseded by CR-00055's template-clone strategy.
-addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser' --strict-markers"
+addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser and not quarantine' --strict-markers"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
     "smoke: fast critical-path tests; <=15 tests, <=5 critical paths, <60s wall-clock; documented in tests/CLAUDE.md; run via `make smoke`",
@@ -163,6 +164,7 @@ markers = [
     "browser: marks tests that drive a real Chromium via playwright-cli; deselected by default — run with `-m browser` against a live dashboard the test data is visible to (e.g. iw-ai-core's existing data or an E2E stack)",
     "order_dependent: test relies on test order; tracked for cleanup in P1-CR-C-followup",
     "properties: Hypothesis property-based tests (CR-00060, P2-CR-B); auto-applied to tests/unit/properties/",
+    "quarantine: test is intermittently failing or order-dependent in a way we haven't root-caused; excluded from the merge gate; tracked via an Incident (ID in the marker reason). Recovery signal: passes consistently in `make test-quarantine` for >=3 consecutive runs.",
 ]
 
 [tool.coverage.run]

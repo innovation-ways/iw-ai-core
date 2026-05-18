@@ -145,6 +145,35 @@ uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/brows
 
 **Earlier fallback (CR-00048):** `-p no:randomly` was in `addopts` 2026-05-13 → 2026-05-16; superseded by CR-00055's per-test template-clone strategy.
 
+### Quarantine workflow (CR-00061, P2-CR-C)
+
+A test is quarantined when it intermittently fails for a reason we haven't root-caused,
+**OR** when it requires a specific test ordering we haven't fixed. **Quarantining a test
+is not free**: it removes the test's signal from the merge gate.
+
+**The rules:**
+
+1. Before adding `@pytest.mark.quarantine`, run `/iw-new-incident` and file an Incident
+   describing the suspected cause and the test name(s). Use the Incident ID in the
+   marker's `reason` argument.
+2. The marker MUST carry a `reason` string of the form `"I-NNNNN: <one-liner — suspected
+   cause + when added>"`. Example:
+   ```python
+   @pytest.mark.quarantine(reason="I-00099: race in foo() when bar is concurrent; added 2026-05-18")
+   ```
+3. The Incident's `Description` field must name the test(s) verbatim so a `git grep`
+   from the test name finds the tracking ticket.
+4. To remove the marker: run `make test-quarantine` for 3 consecutive runs (or 7 calendar
+   days, whichever is more); if the test passed all of them, the marker can come off and
+   the Incident can be closed with `verdict: not-reproducible`. (If it failed any run,
+   root-cause it first.)
+5. The existing `@pytest.mark.order_dependent` is a narrower flavour of `quarantine` —
+   both are excluded from the merge gate; pre-existing `order_dependent`-marked tests
+   are NOT migrated by CR-00061 (they carry their own tracking from CR-00048/55); new
+   quarantines default to `quarantine`.
+
+The three surfaces: (a) `addopts` deselects `quarantine` on the merge gate; (b) `make test-quarantine` runs only quarantined tests with `--reruns 1`; (c) `make test-flake-detect` runs the full suite 3× and reports any test whose outcome disagreed across runs (a flake).
+
 ### Hard rules (also in `tests/CLAUDE.md`)
 
 1. **NEVER** connect to the live DB (port 5433) — testcontainers only, random ports.

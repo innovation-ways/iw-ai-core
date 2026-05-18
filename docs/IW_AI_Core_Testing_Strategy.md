@@ -161,6 +161,26 @@ Hard rules (full list in `tests/CLAUDE.md`):
 7. **MUST** run `FTS_FUNCTION_SQL` + `FTS_TRIGGER_SQL` after `Base.metadata.create_all()` — the FTS trigger is raw SQL not captured by SQLAlchemy.
 8. **CRITICAL**: `DaemonEvent.metadata` is `event_metadata` in Python (SQLAlchemy reserves `metadata`).
 
+### Flaky/quarantine workflow (CR-00061, P2-CR-C)
+
+A test is quarantined when it intermittently fails for a reason that hasn't been root-caused, or when it requires a specific test ordering that hasn't been fixed. **Quarantining a test is not free**: it removes the test's signal from the merge gate, so the bug it was guarding for can land unnoticed. Three surfaces exist:
+
+1. **Merge gate deselection** — `addopts` in `pyproject.toml` contains `-m 'not browser and not quarantine'`; `--strict-markers` ensures the marker must be registered. Quarantined tests are **never run** in `make test-unit` / `make test-integration` unless `-m quarantine` is explicitly passed.
+
+2. **`make test-quarantine`** — runs *only* quarantined tests with `pytest --reruns 1`. The single retry lets a genuinely-flaky test recover in a given run without masking the flake signal. **Recovery signal**: a quarantined test that passes `make test-quarantine` for **3 consecutive runs** (or 7 calendar days, whichever is longer) can have its marker removed.
+
+3. **`make test-flake-detect`** — runs the **full suite 3×** and aggregates per-test outcomes; any test that disagreed across runs (some PASSED, some FAILED) is a flake. Operator-on-demand or nightly cron. Uses `pytest-rerunfailures` as a **detector**, never as an auto-fix on the merge path.
+
+**The quarantine-requires-incident rule** (enforced in `tests/CLAUDE.md`):
+
+Adding `@pytest.mark.quarantine` to a test requires:
+1. Filing an Incident via `/iw-new-incident` before adding the marker.
+2. The marker `reason` must be of the form `"I-NNNNN: <one-liner — suspected cause + date>"`.
+3. The Incident's description must name the test(s) verbatim.
+4. Removal: 3 consecutive `make test-quarantine` passes (or 7 days), whichever is longer.
+
+The `quarantine` marker is the **general-purpose** flavour. `@pytest.mark.order_dependent` (CR-00055's existing narrower flavour for module-scoped `migrated_engine` issues) coexists: both are excluded from the merge gate; new entries default to `quarantine`.
+
 ### Per-worktree DB vs testcontainers
 
 F-00062 introduced a per-worktree Postgres container for *app runtime* (started by the daemon when a project ships `ai-dev/iw-config/`). This is **separate** from `make test-integration`'s testcontainers. Tests must never assume the per-worktree DB exists — they spin up their own testcontainer. The agent's `IW_CORE_DB_*` env vars point at the per-worktree DB; `IW_CORE_ORCH_DB_*` always points at the global orch DB on 5433.
@@ -198,6 +218,7 @@ The `properties` marker is **auto-applied** to every test in `tests/unit/propert
 | `slow` | deselected by default unless `-m slow` is passed |
 | `browser` | drives real Chromium via `playwright-cli`; **deselected by default** (`addopts` `-m 'not browser'`); run via `make test-browser` |
 | `order_dependent` | test relies on test execution order; tracked for cleanup in P1-CR-C-followup |
+| `quarantine` | test intermittently failing or order-dependent without root cause; excluded from merge gate; tracked via Incident (ID in marker's `reason`); recovery = 3 consecutive `make test-quarantine` passes or 7 days (CR-00061, P2-CR-C) |
 | `--strict-markers` | **default in `addopts`** — any unregistered/typo'd marker raises an error at collection time |
 
 > `--strict-markers` is enabled by default (`pyproject.toml` `addopts`). All markers above are registered. Any new marker must be added to the `markers` list in `pyproject.toml` before use.
@@ -243,6 +264,8 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Mutation testing | `mutmut>=2.5,<3.0` | on-demand only (NOT in CI); spike score on `orch/daemon/` = 0.00% (CR-00059); follow-up CR will wire blocking PR gate | `make mutation-check MODULE=...` / `make mutation-audit` |
 | Property tests (ci profile) | hypothesis | included in `make test-unit` via `tests/unit/properties/` conftest default; `--strict-markers` via `pyproject.toml`; deterministic via `derandomize=True` | `make test-properties` (explicit); also via `make test-unit` |
 | Property tests (deep profile) | hypothesis | NOT in CI; on-demand | `make test-properties-deep` |
+| Quarantine deselection | `addopts` extends `-m` filter | `--strict-markers` ensures quarantine marker is registered; `quarantine` tests excluded from merge gate | automatic via `pyproject.toml` `addopts` (part of `make test-unit` / `make test-integration`) |
+| Flake detector (on-demand / nightly) | `pytest-rerunfailures` + aggregator script | runs full suite 3×; any test with disagreeing outcomes across runs is a flake; NOT a CI gate | `make test-flake-detect` |
 
 Coverage is reported in four formats (`term-missing`, `html`, `xml`, `json`) under `tests/output/coverage/`. The dashboard has a coverage page that surfaces it.
 
@@ -331,7 +354,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | TDD RED-evidence requirement | ✅ (CR-00045, 2026-05-11) — `tdd_red_evidence` field in result contract; guard test pins it |
 | Mutation testing | ⚠️ (CR-00059, 2026-05-18) — foundation + spike landed; broader scope + blocking PR gate deferred to P2-CR-A-followup-mutation-block |
 | Property-based tests (Hypothesis) on state machines | ✅ (CR-00060, 2026-05-18) — five modules under `tests/unit/properties/`; ci profile in `make test-unit`; deep profile on-demand via `make test-properties-deep` |
-| Flaky/quarantine workflow | ❌ (2.3) |
+| Flaky/quarantine workflow | ✅ (CR-00061, 2026-05-18) — quarantine marker; addopts deselection; make test-quarantine / make test-flake-detect; quarantining requires filing an Incident (rule in tests/CLAUDE.md) |
 | Structured dashboard E2E layer | ❌ (3.1) — only ad-hoc `-m browser` tests today |
 | Contract / no-5xx route sweep + `schemathesis` | ❌ (3.2) |
 | `iw` CLI-contract layer | ⚠️ piecemeal in `tests/integration/cli/` (3.3) |
