@@ -124,9 +124,21 @@ def test_config_returns_models_array(stub: tuple[str, str]) -> None:
     resp = httpx.get(f"{base_url}/config", headers=_auth_headers(password), timeout=2.0)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["models"] == [{"id": "stub/echo", "name": "Stub Echo"}]
+    # CR-00057: the stub advertises a realistic catalog (curated 5 + extras
+    # + legacy stub/echo) so the chat allowlist intersection has something
+    # non-trivial to filter. The shape stays {id, name} list; the only
+    # invariants the dashboard relies on are the legacy stub/echo entry
+    # remaining present (default_model fallback) and default_model showing
+    # up in the models list.
+    model_ids = {row["id"] for row in data["models"]}
+    assert "stub/echo" in model_ids
+    assert "anthropic/claude-opus-4-7" in model_ids
+    assert "anthropic/claude-sonnet-4-6" in model_ids
+    assert "minimax/MiniMax-M2.7" in model_ids
+    assert "openai/gpt-5.3-codex" in model_ids
+    assert "ollama/gemma4:26b" in model_ids
     assert data["default_model"] == "stub/echo"
-    assert data["default_model"] in {row["id"] for row in data["models"]}
+    assert data["default_model"] in model_ids
 
 
 def test_session_create_returns_id(stub: tuple[str, str]) -> None:

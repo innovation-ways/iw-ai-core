@@ -25,6 +25,67 @@ MODEL_ID = "stub/echo"
 EVENT_BUFFER_MAX = 256
 PERMISSION_TIMEOUT_SECONDS = 10.0
 
+# CR-00057: the stub advertises a realistic provider catalog so the chat
+# allowlist round-trip (projects.toml -> Project.config["ai_assistant"] ->
+# /api/chat/config intersection) has something non-trivial to filter
+# against. The curated 5 below match `[projects.iw-ai-core.ai_assistant]`
+# in projects.toml verbatim — the V1/V2 browser checks expect exactly
+# those entries (in that order) after the intersection. The extras (and
+# the legacy `stub/echo`) widen the fail-open list so V3 ("many more than
+# 5 entries on /system/status") can pass without project_id.
+ADVERTISED_PROVIDERS: list[dict[str, Any]] = [
+    {
+        "id": "anthropic",
+        "name": "Anthropic",
+        "models": {
+            "claude-opus-4-7": {"id": "claude-opus-4-7", "name": "Claude Opus 4.7"},
+            "claude-sonnet-4-6": {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6"},
+            "claude-haiku-4-5": {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5"},
+        },
+    },
+    {
+        "id": "minimax",
+        "name": "MiniMax",
+        "models": {
+            "MiniMax-M2.7": {"id": "MiniMax-M2.7", "name": "MiniMax M2.7"},
+            "MiniMax-M2.5": {"id": "MiniMax-M2.5", "name": "MiniMax M2.5"},
+            "MiniMax-M2": {"id": "MiniMax-M2", "name": "MiniMax M2"},
+        },
+    },
+    {
+        "id": "openai",
+        "name": "OpenAI",
+        "models": {
+            "gpt-5.3-codex": {"id": "gpt-5.3-codex", "name": "GPT-5.3 Codex"},
+            "gpt-5.2": {"id": "gpt-5.2", "name": "GPT-5.2"},
+            "gpt-4o": {"id": "gpt-4o", "name": "GPT-4o"},
+        },
+    },
+    {
+        "id": "ollama",
+        "name": "Ollama",
+        "models": {
+            "gemma4:26b": {"id": "gemma4:26b", "name": "Gemma4 26B"},
+            "llama4:70b": {"id": "llama4:70b", "name": "Llama4 70B"},
+            "qwen3:32b": {"id": "qwen3:32b", "name": "Qwen3 32B"},
+        },
+    },
+    {
+        "id": "stub",
+        "name": "Stub",
+        "models": {"echo": {"id": "echo", "name": "Stub Echo"}},
+    },
+]
+ADVERTISED_DEFAULT = {"anthropic": "claude-opus-4-7"}
+
+# Flat list of "providerId/modelId" strings — used by the legacy /config
+# response which exposes a denormalised model array.
+ADVERTISED_FLAT: list[dict[str, str]] = [
+    {"id": f"{p['id']}/{mid}", "name": entry["name"]}
+    for p in ADVERTISED_PROVIDERS
+    for mid, entry in p["models"].items()
+]
+
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -202,7 +263,7 @@ def create_app(password: str) -> FastAPI:
         await require_auth(request)
         return JSONResponse(
             {
-                "models": [{"id": MODEL_ID, "name": "Stub Echo"}],
+                "models": ADVERTISED_FLAT,
                 "default_model": MODEL_ID,
                 "default_agent": "build",
             }
@@ -215,20 +276,8 @@ def create_app(password: str) -> FastAPI:
         # list of {id, models:{modelId:{...}}} (models is a DICT keyed by
         # model id, not a list), and default is a {providerId: modelId}
         # dict the dashboard merges into the model selector.
-        _model_part = MODEL_ID.split("/", 1)[1] if "/" in MODEL_ID else MODEL_ID
         await require_auth(request)
-        return JSONResponse(
-            {
-                "providers": [
-                    {
-                        "id": "stub",
-                        "name": "Stub",
-                        "models": {_model_part: {"id": _model_part, "name": "Stub Echo"}},
-                    }
-                ],
-                "default": {"stub": _model_part},
-            }
-        )
+        return JSONResponse({"providers": ADVERTISED_PROVIDERS, "default": ADVERTISED_DEFAULT})
 
     @app.post("/session")
     async def create_session(request: Request) -> JSONResponse:
