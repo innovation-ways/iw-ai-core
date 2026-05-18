@@ -92,6 +92,7 @@ def auto_merge_page(
     request.state.auto_merge_phase_for_chip = status.config.phase
     request.state.auto_merge_status = status
     request.state.auto_merge_status_for_chip = status
+    request.state.suppress_topbar_auto_merge_chip = True
     rows = db.scalars(
         select(AgentRuntimeOption)
         .where(AgentRuntimeOption.enabled.is_(True))
@@ -143,10 +144,16 @@ def auto_merge_events(
     page: int = Query(default=0, ge=0),
     type: str | None = Query(default=None),  # noqa: A002
     page_size: int = Query(default=50, ge=1, le=200),
+    all: bool = Query(default=False, alias="all"),  # noqa: A002 — shadowing builtin
 ) -> HTMLResponse:
     _get_project_or_404(db, project_id)
     rows, total = agg.list_recent_events(
-        db, project_id, page=page, page_size=page_size, event_type_filter=type
+        db,
+        project_id,
+        page=page,
+        page_size=page_size,
+        event_type_filter=type,
+        include_non_auto_merge=all,
     )
     has_more = (page + 1) * page_size < total
     return _render_fragment(
@@ -159,6 +166,7 @@ def auto_merge_events(
             "page": page,
             "page_size": page_size,
             "has_more": has_more,
+            "show_all": all,
         },
     )
 

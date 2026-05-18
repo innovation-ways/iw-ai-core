@@ -667,3 +667,152 @@ def test_entity_id_renders_dash_when_null(client: TestClient, test_project, db_s
     assert re.search(r"<td[^>]*\bfont-mono\b[^>]*>\s*—\s*</td>", html), (
         "entity_id cell should render '—' for null; got:\n" + html[:2000]
     )
+
+
+# ---------------------------------------------------------------------------
+# I-00096 — chip dedup + auto-merge-only default filter regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_auto_merge_page_renders_exactly_one_chip(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC1 / I-00096: /project/{id}/auto-merge must render exactly one status chip.
+
+    The rich chip (id=auto-merge-status-chip) appears once in the page header.
+    The compact chip (auto-merge-chip--compact) must NOT appear in the topbar
+    on this page — suppressing it is the fix for the chip-duplication defect.
+    """
+    _runtime(db_session)
+    response = client.get(f"/project/{test_project.id}/auto-merge")
+    assert response.status_code == 200
+    html = response.text
+    assert html.count('id="auto-merge-status-chip"') == 1, (
+        f"Expected exactly one chip; found {html.count('id="auto-merge-status-chip"')}"
+    )
+
+
+def test_topbar_chip_appears_on_non_auto_merge_page(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC2 / I-00096: other pages (e.g. /queue) still show the compact topbar chip
+    when the project's auto-merge phase >= 1.
+
+    The compact chip is suppressed only on the auto-merge page itself.
+    """
+    db_session.merge(
+        AutoMergeProjectConfig(
+            project_id=test_project.id,
+            phase=1,
+            runtime_option_id=None,
+            updated_by="test-fixture",
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/queue")
+    assert response.status_code == 200
+    # The compact chip uses auto-merge-chip--compact class
+    assert re.search(
+        r'class\s*=\s*"[^"]*\bauto-merge-chip--compact\b[^"]*"',
+        response.text,
+    ), "Topbar compact chip should appear on /queue"
+
+
+def test_default_events_view_excludes_non_auto_merge(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC3 / I-00096: /auto-merge/events default view excludes non-auto-merge
+    events (step_launched, etc.) and shows only events whose type starts with
+    auto_merge_* or merge_auto_*."""
+    # Seed both an auto-merge event and a non-auto-merge event
+    db_session.add(
+        DaemonEvent(
+            project_id=test_project.id,
+            event_type="auto_merge_health_probe",
+            entity_id=None,
+            entity_type=None,
+            message="probe-y",
+            event_metadata={},
+        )
+    )
+    db_session.add(
+        DaemonEvent(
+            project_id=test_project.id,
+            event_type="step_launched",
+            entity_id="W-1",
+            entity_type="work_item",
+            message="step-x",
+            event_metadata={},
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=50")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "probe-y" in html, "auto-merge event should appear in default view"
+    assert "step-x" not in html, "non-auto-merge event must NOT appear in default view"
+
+
+def test_show_all_toggle_includes_non_auto_merge_events(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC4 / I-00096: ?all=1 includes both auto-merge and non-auto-merge events."""
+    db_session.add(
+        DaemonEvent(
+            project_id=test_project.id,
+            event_type="auto_merge_health_probe",
+            entity_id=None,
+            entity_type=None,
+            message="probe-y",
+            event_metadata={},
+        )
+    )
+    db_session.add(
+        DaemonEvent(
+            project_id=test_project.id,
+            event_type="step_launched",
+            entity_id="W-1",
+            entity_type="work_item",
+            message="step-x",
+            event_metadata={},
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=50&all=1")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "probe-y" in html, "auto-merge event should appear with ?all=1"
+    assert "step-x" in html, "non-auto-merge event should appear with ?all=1"
+
+
+def test_show_all_toggle_button_renders_with_correct_aria_pressed(
+    client: TestClient, test_project
+) -> None:
+    """AC5 / I-00096: the show-all toggle button is present and its
+    aria-pressed state reflects the current ?all= param."""
+    # Default — no all param
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=50")
+    assert response.status_code == 200
+    btn = re.search(
+        r'<button\b[^>]*\bclass="[^"]*\bauto-merge-show-all-toggle\b[^"]*"[^>]*>',
+        response.text,
+    )
+    assert btn, "show-all toggle button must render"
+    assert 'aria-pressed="false"' in btn.group(0), (
+        "aria-pressed should be false when ?all is absent"
+    )
+
+    # With all=1 — button text changes and aria-pressed becomes true
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=50&all=1")
+    assert response.status_code == 200
+    btn = re.search(
+        r'<button\b[^>]*\bclass="[^"]*\bauto-merge-show-all-toggle\b[^"]*"[^>]*>',
+        response.text,
+    )
+    assert btn, "show-all toggle button must render with ?all=1"
+    assert 'aria-pressed="true"' in btn.group(0), "aria-pressed should be true when ?all=1"

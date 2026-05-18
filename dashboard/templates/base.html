@@ -193,7 +193,7 @@
                     text-foreground placeholder:text-muted-foreground
                     focus:outline-none focus:ring-2 focus:ring-ring" />
       <div id="global-search-results" class="absolute left-3 sm:left-6 top-full z-50 w-full max-w-md"></div>
-      {% if current_project and (request.state.auto_merge_phase_for_chip is defined) and (request.state.auto_merge_phase_for_chip is integer) and (request.state.auto_merge_phase_for_chip >= 1) and (request.state.auto_merge_status_for_chip is defined) and (request.state.auto_merge_status_for_chip is not none) %}
+      {% if not request.state.suppress_topbar_auto_merge_chip and current_project and (request.state.auto_merge_phase_for_chip is defined) and (request.state.auto_merge_phase_for_chip is integer) and (request.state.auto_merge_phase_for_chip >= 1) and (request.state.auto_merge_status_for_chip is defined) and (request.state.auto_merge_status_for_chip is not none) %}
         {% set compact = true %}
         {% set status = request.state.auto_merge_status_for_chip %}
         <div id="auto-merge-chip-header">{% include "fragments/auto_merge_status_chip.html" %}</div>
