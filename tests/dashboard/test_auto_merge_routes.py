@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,7 +15,11 @@ from orch.db.models import (
     AutoMergeProjectConfig,
     DaemonEvent,
     MergeAutoVerdict,
+    Project,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
 def _extract_filter_chip_blocks(html: str) -> dict[str, str]:
@@ -525,3 +530,140 @@ def test_settings_form_clears_back_to_global(client: TestClient, test_project, d
     # Footer reads "Using global default"
     assert "Using global default" in html
     assert "Last changed:" not in html
+
+
+# ---------------------------------------------------------------------------
+# I-00097 — Auto-merge polish regression tests
+# Token cost zero formatting + entity_id linkification
+# ---------------------------------------------------------------------------
+
+
+def test_token_cost_zero_renders_as_dollar_zero(client: TestClient, test_project) -> None:
+    """AC1: exact-zero cost must NOT render with 6 decimal places — renders as '$0'."""
+    response = client.get(f"/project/{test_project.id}/auto-merge/rollup?window=7d")
+    assert response.status_code == 200
+    html = response.text
+    # The noisy form must not appear
+    assert "$0.000000" not in html, "exact zero must not render with 6 decimal places"
+    # The cost line format is: in: N · out: N · $VALUE
+    cost_line = re.search(r"<p\b[^>]*>\s*in:\s*\d+\s*·\s*out:\s*\d+\s*·\s*\$(\S+)\s*</p>", html)
+    assert cost_line, f"cost line not found in:\n{html[:1000]}"
+    assert cost_line.group(1) == "0", f"expected '$0'; got '${cost_line.group(1)}'"
+
+
+def test_token_cost_nonzero_keeps_precision(client: TestClient, test_project, db_session) -> None:
+    """AC2: small non-zero cost keeps meaningful precision — no trailing zeros."""
+    # Seed an event with llm_calls metadata that produces a small non-zero cost.
+    # MODEL_PRICING includes claude-sonnet-4-6 at $3/M in, $15/M out.
+    # 1000 input + 100 output tokens of sonnet → cost = 0.003 + 0.0015 = 0.0045
+    e = DaemonEvent(
+        project_id=test_project.id,
+        event_type="merge_auto_resolved",
+        entity_id="W",
+        entity_type="work_item",
+        message="x",
+        event_metadata={
+            "llm_calls": [
+                {"model": "claude-sonnet-4-6", "input_tokens": 1000, "output_tokens": 100}
+            ]
+        },
+    )
+    db_session.add(e)
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge/rollup?window=7d")
+    assert response.status_code == 200
+    html = response.text
+    cost_line = re.search(r"in:\s*\d+\s*·\s*out:\s*\d+\s*·\s*\$(\S+)\s*</p>", html)
+    assert cost_line, f"cost line not found in:\n{html[:1000]}"
+    val = cost_line.group(1)
+    # The value must be non-zero and not have 6 trailing zeros (no spurious precision)
+    assert val != "0", f"expected non-zero cost; got '${val}'"
+    assert not val.endswith("000000"), f"trailing zeros not trimmed; got '${val}'"
+
+
+def test_entity_id_renders_as_link_for_work_item_ids(
+    client: TestClient, db_session: Session
+) -> None:
+    """AC3: entity_id matching work-item ID pattern is a link to /project/{id}/item/{eid}."""
+    # Use project_id='iw-ai-core' to match the URL pattern used in the template
+    project = db_session.merge(
+        Project(id="iw-ai-core", display_name="IW Core", repo_root="/x", config={})
+    )
+    db_session.flush()
+
+    e = DaemonEvent(
+        project_id=project.id,
+        event_type="merge_auto_resolved",
+        entity_id="CR-00057",
+        entity_type="work_item",
+        message="step launched",
+        event_metadata={},
+    )
+    db_session.add(e)
+    db_session.flush()
+
+    response = client.get(f"/project/{project.id}/auto-merge/events?page=0&page_size=10")
+    assert response.status_code == 200
+    html = response.text
+
+    # The entity_id cell must contain a link to /project/iw-ai-core/item/CR-00057
+    # (singular 'item' — matches dashboard/routers/items.py route convention)
+    assert re.search(
+        r'<a\b[^>]*\bhref="/project/iw-ai-core/item/CR-00057"[^>]*>\s*CR-00057\s*</a>',
+        html,
+    ), f"entity_id should be a link; got snippet:\n{html[:2000]}"
+
+
+def test_entity_id_renders_plain_when_not_work_item_id(
+    client: TestClient, db_session: Session
+) -> None:
+    """AC4: entity_id that is not a work-item ID renders as plain text (no /item/ link)."""
+    project = db_session.merge(
+        Project(id="iw-ai-core", display_name="IW Core", repo_root="/x", config={})
+    )
+    db_session.flush()
+
+    e = DaemonEvent(
+        project_id=project.id,
+        event_type="auto_merge_config_updated",
+        entity_id="iw-ai-core",  # project_id — not a work item
+        entity_type="project",
+        message="config updated",
+        event_metadata={},
+    )
+    db_session.add(e)
+    db_session.flush()
+
+    response = client.get(f"/project/{project.id}/auto-merge/events?page=0&page_size=10")
+    assert response.status_code == 200
+    html = response.text
+
+    # 'iw-ai-core' must appear as text
+    assert "iw-ai-core" in html
+    # But it must NOT be wrapped in an /item/ link
+    assert not re.search(r'href="/project/[^"]+/item/iw-ai-core"', html)
+
+
+def test_entity_id_renders_dash_when_null(client: TestClient, test_project, db_session) -> None:
+    """AC5: null entity_id renders as '—' (preserved existing behaviour)."""
+    e = DaemonEvent(
+        project_id=test_project.id,
+        event_type="auto_merge_health_probe",
+        entity_id=None,
+        entity_type=None,
+        message="probe",
+        event_metadata={},
+    )
+    db_session.add(e)
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10")
+    assert response.status_code == 200
+    html = response.text
+
+    # The entity_id cell must show '—' for null entity_id.
+    # Scope to the font-mono td (the entity_id column) to avoid matching other cells.
+    assert re.search(r"<td[^>]*\bfont-mono\b[^>]*>\s*—\s*</td>", html), (
+        "entity_id cell should render '—' for null; got:\n" + html[:2000]
+    )
