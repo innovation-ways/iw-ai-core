@@ -9,9 +9,8 @@ from __future__ import annotations
 import logging
 import random
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session  # noqa: TC002  same pattern as rest of orch package
 
 from orch.db.models import KeepAliveConfig, KeepAliveRun, KeepAliveSlot
@@ -131,13 +130,17 @@ def get_due_slots(db: Session) -> list[KeepAliveSlot]:
     A slot is due when ALL of:
     1. slot.enabled is True
     2. slot.time_hhmm parsed as today's local datetime falls within [now - 30min, now]
-    3. No KeepAliveRun exists for today (calendar day, local time) with this slot's
-       time_hhmm AND status in ('success', 'retried_success')
+    3. No KeepAliveRun exists for today's local calendar day (as a tz-aware half-open
+       range [today_start_local, tomorrow_start_local)) with this slot's time_hhmm
+       AND status in ('success', 'retried_success')
 
     Uses datetime.now() (no timezone — local time, matching user's schedule intent).
     """
     now = datetime.now()  # noqa: DTZ005 local time per design intent
     today_date = now.date()
+    local_tz = now.astimezone().tzinfo
+    today_start_local = datetime.combine(today_date, time.min).replace(tzinfo=local_tz)
+    tomorrow_start_local = today_start_local + timedelta(days=1)
 
     # Parse enabled slots and filter to those within the 30-min window
     enabled_slots = db.query(KeepAliveSlot).filter(KeepAliveSlot.enabled == True).all()  # noqa: E712
@@ -162,7 +165,8 @@ def get_due_slots(db: Session) -> list[KeepAliveSlot]:
             db.query(KeepAliveRun)
             .filter(
                 KeepAliveRun.slot_time == slot.time_hhmm,
-                func.date(KeepAliveRun.fired_at) == today_date,
+                KeepAliveRun.fired_at >= today_start_local,
+                KeepAliveRun.fired_at < tomorrow_start_local,
                 KeepAliveRun.status.in_(("success", "retried_success")),
             )
             .first()
