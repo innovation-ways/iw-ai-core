@@ -25,6 +25,9 @@
   var _lastSeenId = null;    // most recent event id received
   var _contextPollTimer = null;
   var _modelRefreshTimer = null;
+  var _lastProjectId = null;
+  var _projectDirectory = '';
+  var _projectDirectoryProjectId = null;
   var _context = null;       // {type, id, title} from setContext / null
   var _chipDismissed = false;
   var _skills = [];          // cached skills list for slash menu
@@ -37,6 +40,12 @@
 
   function _getCookie(name) {
     var m = document.cookie.match('(?:^|; )' + name + '=([^;]*)');
+    return m ? m[1] : null;
+  }
+
+  function _currentProjectId() {
+    // /project/{id}/... → id; everything else → null
+    var m = /^\/project\/([^\/]+)\//.exec(window.location.pathname);
     return m ? m[1] : null;
   }
 
@@ -144,8 +153,31 @@
 
   function _createSession() {
     var model = _getSelectedModel();
+    var projectId = _currentProjectId();
+    if (projectId && _projectDirectoryProjectId !== projectId) {
+      var url = '/api/chat/config?' + new URLSearchParams({ project_id: projectId }).toString();
+      fetch(url)
+        .then(function (r) {
+          if (!r.ok) return null;
+          return r.json();
+        })
+        .then(function (data) {
+          _projectDirectoryProjectId = projectId;
+          if (data && typeof data.project_directory === 'string') {
+            _projectDirectory = data.project_directory;
+          }
+          _createSession();
+        })
+        .catch(function () {
+          _projectDirectoryProjectId = projectId;
+          _createSession();
+        });
+      return;
+    }
+
     var body = {};
     if (model) body.model = model;
+    if (projectId && _projectDirectory) body.directory = _projectDirectory;
     fetch('/api/chat/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -774,13 +806,22 @@
   }
 
   function _refreshModels() {
-    fetch('/api/chat/config')
+    var projectId = _currentProjectId();
+    _lastProjectId = projectId;
+    var url = '/api/chat/config';
+    if (projectId) {
+      var params = new URLSearchParams({ project_id: projectId });
+      url += '?' + params.toString();
+    }
+    fetch(url)
       .then(function (r) {
         if (!r.ok) return null;
         return r.json();
       })
       .then(function (data) {
         if (!data) return;
+        _projectDirectoryProjectId = projectId;
+        _projectDirectory = typeof data.project_directory === 'string' ? data.project_directory : '';
         var sel = document.getElementById('chat-assistant-model');
         if (!sel) return;
         sel.classList.remove('hidden');
@@ -805,7 +846,15 @@
   function _scheduleModelRefresh() {
     if (_modelRefreshTimer) clearInterval(_modelRefreshTimer);
     _modelRefreshTimer = setInterval(function () {
-      if (_isOpen()) _refreshModels();
+      if (!_isOpen()) return;
+      var projectId = _currentProjectId();
+      if (projectId !== _lastProjectId) {
+        var sel = document.getElementById('chat-assistant-model');
+        if (sel) sel.innerHTML = '';
+        _projectDirectory = '';
+        _projectDirectoryProjectId = null;
+      }
+      _refreshModels();
     }, 30000);
   }
 

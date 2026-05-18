@@ -41,8 +41,13 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from dashboard.dependencies import get_db
+from orch.db.models import Project
+
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator
+
+    from sqlalchemy.orm import Session
 
     from orch.chat.opencode_client import OpencodeClient
     from orch.chat.opencode_runtime import OpencodeRuntime
@@ -59,7 +64,7 @@ router = APIRouter(prefix="/api/chat")
 _CONFIG_TTL = 30.0  # seconds
 _SKILLS_TTL = 30.0  # seconds
 
-_config_cache: dict[str, Any] = {}
+_config_cache: dict[str, dict[str, Any]] = {}
 _skills_cache: dict[str, Any] = {}
 
 # Repo root used to scan `.opencode/{skills,commands}` and
@@ -310,6 +315,8 @@ async def reply_permission(
 
 @router.get("/config")
 async def get_config(
+    project_id: str | None = None,
+    db: Session = Depends(get_db),
     client: OpencodeClient | None = Depends(_get_client),
     healthy: bool = Depends(_check_runtime_healthy),
 ) -> Any:
@@ -325,8 +332,11 @@ async def get_config(
     when the runtime is temporarily unhealthy.
     """
     now = time.monotonic()
-    cached = _config_cache.get("data")
-    cached_at = _config_cache.get("at", 0.0)
+    project_key = (project_id or "").strip()
+    cache_key = project_key or "__none__"
+    cache_slot = _config_cache.get(cache_key, {})
+    cached = cache_slot.get("data")
+    cached_at = cache_slot.get("at", 0.0)
 
     if cached is not None and (now - cached_at) < _CONFIG_TTL:
         return cached
@@ -340,15 +350,76 @@ async def get_config(
     raw = await client.get_config()
     providers_raw = await client.get_providers()
 
-    models = _flatten_provider_models(providers_raw)
-    default_model = _pick_default_model(raw, providers_raw, models)
-    result = {
-        "models": models,
-        "default_model": default_model,
-        "default_agent": raw.get("default_agent", ""),
-    }
-    _config_cache["data"] = result
-    _config_cache["at"] = now
+    available_models = _flatten_provider_models(providers_raw)
+
+    def _fail_open_result() -> dict[str, Any]:
+        return {
+            "models": available_models,
+            "default_model": _pick_default_model(raw, providers_raw, available_models),
+            "default_agent": raw.get("default_agent", ""),
+            "project_directory": "",
+        }
+
+    if not project_key:
+        logger.info("Chat config fallback: no project_id supplied — returning full provider list")
+        result = _fail_open_result()
+    else:
+        project = db.get(Project, project_key)
+        ai_assistant = project.config.get("ai_assistant") if project is not None else None
+        project_directory = project.repo_root if project is not None else ""
+        if not isinstance(project_directory, str):
+            project_directory = ""
+        if not isinstance(ai_assistant, dict):
+            logger.info(
+                "Chat config fallback: project=%s has no ai_assistant allowlist "
+                "— returning full provider list",
+                project_key,
+            )
+            result = _fail_open_result()
+            result["project_directory"] = project_directory
+        else:
+            allowlist_raw = ai_assistant.get("models")
+            allowlist = (
+                [m for m in allowlist_raw if isinstance(m, str)]
+                if isinstance(allowlist_raw, list)
+                else []
+            )
+            allow_default = ai_assistant.get("default_model")
+
+            available_set = set(available_models)
+            filtered = [m for m in allowlist if m in available_set]
+            dropped = [m for m in allowlist if m not in available_set]
+            if dropped:
+                logger.warning(
+                    "Chat config allowlist dropped unreachable models for project=%s: %s",
+                    project_key,
+                    ",".join(dropped),
+                )
+
+            if not filtered:
+                logger.info(
+                    "Chat config allowlist empty after intersection for project=%s "
+                    "— returning full provider list",
+                    project_key,
+                )
+                result = _fail_open_result()
+            else:
+                default_model = (
+                    allow_default
+                    if isinstance(allow_default, str) and allow_default in filtered
+                    else filtered[0]
+                )
+                result = {
+                    "models": filtered,
+                    "default_model": default_model,
+                    "default_agent": raw.get("default_agent", ""),
+                    "project_directory": project_directory,
+                }
+
+            if "project_directory" not in result:
+                result["project_directory"] = project_directory
+
+    _config_cache[cache_key] = {"data": result, "at": now}
     return result
 
 

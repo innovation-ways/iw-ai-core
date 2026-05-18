@@ -31,6 +31,7 @@ from fastapi.testclient import TestClient
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
 from dashboard.routers import chat as chat_mod
+from orch.db.models import Project
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -397,6 +398,381 @@ class TestConfigFlattensProviders:
                 "minimax/MiniMax-M2.5",
                 "openai/gpt-5.5-pro",
             }, f"unexpected models: {data['models']}"
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+
+class TestConfigProjectAllowlist:
+    @staticmethod
+    def _seed_project(db_session: Session, pid: str, config: dict[str, Any]) -> None:
+        db_session.add(
+            Project(
+                id=pid,
+                display_name=pid,
+                repo_root=f"/tmp/{pid}",
+                config=config,
+            )
+        )
+        db_session.commit()
+
+    def test_get_config_no_project_id_returns_full_list(self, db_session: Session) -> None:
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            mock_client = _make_client()
+            mock_client.get_config = AsyncMock(return_value={"model": "openai/gpt-5.3-codex"})
+            mock_client.get_providers = AsyncMock(
+                return_value=_providers_payload(
+                    providers=[
+                        {"id": "openai", "models": {"gpt-5.3-codex": {}, "gpt-5-mini": {}}},
+                        {"id": "anthropic", "models": {"claude-sonnet-4-6": {}}},
+                    ],
+                    default={"openai": "gpt-5.3-codex"},
+                )
+            )
+            chat_mod._config_cache.clear()
+
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            resp = tc.get("/api/chat/config")
+            assert resp.status_code == 200
+            assert resp.json()["models"] == [
+                "anthropic/claude-sonnet-4-6",
+                "openai/gpt-5-mini",
+                "openai/gpt-5.3-codex",
+            ]
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_get_config_with_project_id_filters_to_allowlist(self, db_session: Session) -> None:
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            self._seed_project(
+                db_session,
+                "proj-allow",
+                {
+                    "ai_assistant": {
+                        "models": [
+                            "anthropic/claude-opus-4-7",
+                            "openai/gpt-5.3-codex",
+                            "ollama/gemma4:26b",
+                            "minimax/unreachable-m2",
+                            "openai/unreachable-mini",
+                        ]
+                    }
+                },
+            )
+
+            mock_client = _make_client()
+            mock_client.get_config = AsyncMock(return_value={})
+            mock_client.get_providers = AsyncMock(
+                return_value=_providers_payload(
+                    providers=[
+                        {
+                            "id": "anthropic",
+                            "models": {
+                                "claude-opus-4-7": {},
+                                "claude-sonnet-4-6": {},
+                            },
+                        },
+                        {
+                            "id": "openai",
+                            "models": {
+                                "gpt-5.3-codex": {},
+                                "gpt-5-mini": {},
+                            },
+                        },
+                        {"id": "ollama", "models": {"gemma4:26b": {}, "phi4": {}}},
+                        {"id": "minimax", "models": {"MiniMax-M2.7": {}, "MiniMax-M2.5": {}}},
+                    ],
+                    default={"anthropic": "claude-opus-4-7"},
+                )
+            )
+            chat_mod._config_cache.clear()
+
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            resp = tc.get("/api/chat/config?project_id=proj-allow")
+            assert resp.status_code == 200
+            assert resp.json()["models"] == [
+                "anthropic/claude-opus-4-7",
+                "openai/gpt-5.3-codex",
+                "ollama/gemma4:26b",
+            ]
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_get_config_project_without_allowlist_falls_back(
+        self, db_session: Session, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            self._seed_project(db_session, "proj-no-allow", {"quality_config": {"enabled": True}})
+            mock_client = _make_client()
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            with caplog.at_level("INFO"):
+                resp = tc.get("/api/chat/config?project_id=proj-no-allow")
+
+            assert resp.status_code == 200
+            assert resp.json()["models"] == ["prov-a/model-a", "prov-a/model-b"]
+            assert "has no ai_assistant allowlist" in caplog.text
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_get_config_unknown_project_id_falls_back(
+        self, db_session: Session, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            mock_client = _make_client()
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            with caplog.at_level("INFO"):
+                resp = tc.get("/api/chat/config?project_id=missing-project")
+
+            assert resp.status_code == 200
+            assert resp.json()["models"] == ["prov-a/model-a", "prov-a/model-b"]
+            assert "project=missing-project has no ai_assistant allowlist" in caplog.text
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_get_config_without_project_id_falls_back_with_info_log(
+        self, db_session: Session, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            mock_client = _make_client()
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            with caplog.at_level("INFO"):
+                resp = tc.get("/api/chat/config")
+
+            assert resp.status_code == 200
+            assert resp.json()["models"] == ["prov-a/model-a", "prov-a/model-b"]
+            assert "no project_id supplied" in caplog.text
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_get_config_filter_drops_unreachable_with_warning(
+        self, db_session: Session, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            self._seed_project(
+                db_session,
+                "proj-drop",
+                {
+                    "ai_assistant": {
+                        "models": [
+                            "prov-a/model-a",
+                            "ghost/missing-a",
+                            "ghost/missing-b",
+                        ]
+                    }
+                },
+            )
+            mock_client = _make_client()
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            with caplog.at_level("WARNING"):
+                resp = tc.get("/api/chat/config?project_id=proj-drop")
+
+            assert resp.status_code == 200
+            assert resp.json()["models"] == ["prov-a/model-a"]
+            assert "ghost/missing-a,ghost/missing-b" in caplog.text
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_get_config_default_model_preserved_when_in_filter(self, db_session: Session) -> None:
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            self._seed_project(
+                db_session,
+                "proj-default-ok",
+                {
+                    "ai_assistant": {
+                        "models": ["prov-a/model-b", "prov-a/model-a"],
+                        "default_model": "prov-a/model-a",
+                    }
+                },
+            )
+            mock_client = _make_client()
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            resp = tc.get("/api/chat/config?project_id=proj-default-ok")
+            assert resp.status_code == 200
+            assert resp.json()["default_model"] == "prov-a/model-a"
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_get_config_default_model_dropped_falls_to_first_filtered(
+        self, db_session: Session
+    ) -> None:
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            self._seed_project(
+                db_session,
+                "proj-default-drop",
+                {
+                    "ai_assistant": {
+                        "models": ["prov-a/model-b", "prov-a/model-a"],
+                        "default_model": "ghost/missing",
+                    }
+                },
+            )
+            mock_client = _make_client()
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            resp = tc.get("/api/chat/config?project_id=proj-default-drop")
+            assert resp.status_code == 200
+            assert resp.json()["models"] == ["prov-a/model-b", "prov-a/model-a"]
+            assert resp.json()["default_model"] == "prov-a/model-b"
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_get_config_empty_filter_falls_open_with_info_log(
+        self, db_session: Session, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            self._seed_project(
+                db_session,
+                "proj-empty",
+                {
+                    "ai_assistant": {
+                        "models": ["ghost/missing-a", "ghost/missing-b"],
+                        "default_model": "ghost/missing-a",
+                    }
+                },
+            )
+            mock_client = _make_client()
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            with caplog.at_level("INFO"):
+                resp = tc.get("/api/chat/config?project_id=proj-empty")
+
+            assert resp.status_code == 200
+            assert resp.json()["models"] == ["prov-a/model-a", "prov-a/model-b"]
+            assert "allowlist empty after intersection" in caplog.text
+        finally:
+            app.dependency_overrides.clear()
+            chat_mod._config_cache.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_get_config_cache_keyed_per_project(self, db_session: Session) -> None:
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            self._seed_project(
+                db_session,
+                "proj-a",
+                {"ai_assistant": {"models": ["prov-a/model-a"]}},
+            )
+            self._seed_project(
+                db_session,
+                "proj-b",
+                {"ai_assistant": {"models": ["prov-a/model-b"]}},
+            )
+            mock_client = _make_client()
+            chat_mod._config_cache.clear()
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            resp_a = tc.get("/api/chat/config?project_id=proj-a")
+            resp_b = tc.get("/api/chat/config?project_id=proj-b")
+            assert resp_a.status_code == 200
+            assert resp_b.status_code == 200
+            assert resp_a.json()["models"] == ["prov-a/model-a"]
+            assert resp_b.json()["models"] == ["prov-a/model-b"]
+            assert set(chat_mod._config_cache) >= {"proj-a", "proj-b"}
+
+            # mutate one cache slot and confirm it doesn't affect the other slot
+            chat_mod._config_cache["proj-a"]["data"]["models"] = ["poisoned/model"]
+            resp_b_again = tc.get("/api/chat/config?project_id=proj-b")
+            assert resp_b_again.json()["models"] == ["prov-a/model-b"]
         finally:
             app.dependency_overrides.clear()
             chat_mod._config_cache.clear()

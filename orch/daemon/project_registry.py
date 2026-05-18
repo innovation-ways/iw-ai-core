@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,6 +32,8 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+_AI_ASSISTANT_MODEL_PATTERN = re.compile(r"^[a-z0-9._-]+/[A-Za-z0-9._:/-]+$")
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +154,12 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
     # Sanity-validate staleness config if present (log warning and continue — do NOT
     # skip the project; staleness config is optional and read on demand at compute time).
     _validate_staleness_config(project_id, entry)
+
+    parsed_ai_assistant = _parse_ai_assistant_block(project_id, entry.get("ai_assistant"))
+    if parsed_ai_assistant is not None:
+        iw_config["ai_assistant"] = parsed_ai_assistant
+    else:
+        iw_config.pop("ai_assistant", None)
 
     scope_gate_enabled: bool = bool(iw_config.get("scope_gate_enabled", False))
 
@@ -287,6 +296,64 @@ def _validate_staleness_config(project_id: str, entry: dict[str, Any]) -> None:
             project_id,
             exc,
         )
+
+
+def _parse_ai_assistant_block(project_id: str, raw: object) -> dict[str, Any] | None:
+    """Validate and normalize the optional ai_assistant config block."""
+    if raw is None:
+        return None
+
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Project %r ai_assistant block missing or invalid `models` — ignoring", project_id
+        )
+        return None
+
+    models_raw = raw.get("models")
+    if not isinstance(models_raw, list) or len(models_raw) == 0:
+        logger.warning(
+            "Project %r ai_assistant block missing or invalid `models` — ignoring", project_id
+        )
+        return None
+
+    valid_models: list[str] = []
+    seen: set[str] = set()
+    for model in models_raw:
+        if isinstance(model, str) and _AI_ASSISTANT_MODEL_PATTERN.fullmatch(model):
+            if model not in seen:
+                valid_models.append(model)
+                seen.add(model)
+            continue
+
+        logger.warning(
+            "Project %r invalid ai_assistant model entry %r — ignoring",
+            project_id,
+            model,
+        )
+
+    if not valid_models:
+        logger.warning(
+            "Project %r ai_assistant block has no valid models after filtering — ignoring",
+            project_id,
+        )
+        return None
+
+    parsed: dict[str, Any] = {"models": valid_models}
+    default_model = raw.get("default_model")
+    if default_model is None:
+        return parsed
+
+    if isinstance(default_model, str) and default_model in valid_models:
+        parsed["default_model"] = default_model
+    else:
+        logger.warning(
+            "Project %r ai_assistant default_model %r not present "
+            "in filtered models — ignoring default_model",
+            project_id,
+            default_model,
+        )
+
+    return parsed
 
 
 def load_projects_toml(path: Path) -> dict[str, ProjectConfig]:
