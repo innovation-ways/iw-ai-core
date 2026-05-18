@@ -17,7 +17,7 @@
   </a>
   {% endif %}
 {% else %}
-<section id="auto-merge-status-chip" class="auto-merge-chip auto-merge-chip--rich {{ health_class }} bg-card border border-border rounded-lg p-4">
+<section id="auto-merge-status-chip" class="auto-merge-chip auto-merge-chip--rich {{ health_class }} bg-card border border-border rounded-lg p-4"{% if oob %} hx-swap-oob="outerHTML:#auto-merge-status-chip"{% endif %}>
   <div class="flex flex-wrap items-center justify-between gap-3">
     <h2 class="text-sm font-semibold text-foreground">Resolver status</h2>
     <span class="text-xs auto-merge-chip__health">{{ health }}</span>
@@ -29,7 +29,8 @@
     <div><dt class="text-muted-foreground">Events since deploy</dt> <dd class="text-foreground">{{ status.counts_by_event_type.values() | sum }}</dd></div>
   </dl>
   <p class="mt-2 text-xs text-muted-foreground">
-    Source: {{ status.config.source }}{% if status.config.source == 'per_project_db' %} (Per-project override){% endif %}
+    Phase source: {{ status.config.phase_source }}{% if status.config.phase_source == 'per_project_db' %} (Per-project override){% endif %}
+    · Runtime source: {{ status.config.runtime_source }}{% if status.config.runtime_source == 'per_project_db' %} (Per-project override){% endif %}
   </p>
 </section>
 {% endif %}
