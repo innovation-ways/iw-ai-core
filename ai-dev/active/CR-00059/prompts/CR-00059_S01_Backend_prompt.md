@@ -98,11 +98,17 @@ def test_pyproject_tool_mutmut_block_pins_orch_daemon_target():
     assert block["paths_to_mutate"] == "orch/daemon/", (
         f"paths_to_mutate must be 'orch/daemon/' (spike scope per CR-00059); got {block['paths_to_mutate']!r}"
     )
-    assert block["tests_dir"] == "tests/unit/daemon/ tests/integration/daemon/", (
-        f"tests_dir must scope to daemon test dirs; got {block['tests_dir']!r}"
+    assert block["tests_dir"] == "tests/", (
+        f"tests_dir must be the single existing directory 'tests/' — "
+        f"mutmut 2.5.1 rejects space-joined multi-path strings with FileNotFoundError; "
+        f"test-scope narrowing happens in `runner`. Got {block['tests_dir']!r}"
     )
     assert "pytest" in block["runner"] and "-x" in block["runner"], (
         f"runner must invoke pytest with -x (stop-on-first-fail per mutmut convention); got {block['runner']!r}"
+    )
+    assert "tests/unit/daemon/" in block["runner"] and "tests/integration/daemon/" in block["runner"], (
+        f"runner must scope to daemon test dirs (mutmut runs this verbatim — this is the actual test-scope narrowing); "
+        f"got {block['runner']!r}"
     )
 
 
@@ -172,7 +178,10 @@ Edit `pyproject.toml`. After the `[tool.deptry]` block (ends around line 213), a
 #        make mutation-audit (currently scoped to orch/daemon/; expand in follow-up CR P2-CR-A-followup-mutation-block)
 [tool.mutmut]
 paths_to_mutate = "orch/daemon/"
-tests_dir = "tests/unit/daemon/ tests/integration/daemon/"
+# tests_dir must be a single existing directory — mutmut 2.5.1 rejects space-joined
+# multi-path strings with FileNotFoundError. Test-scope narrowing happens in `runner`
+# (which mutmut invokes verbatim and DOES accept multiple paths).
+tests_dir = "tests/"
 runner = "uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q"
 ```
 
@@ -236,7 +245,7 @@ mutation-check: ## Mutation test a single daemon module (usage: make mutation-ch
 	uv run mutmut run \
 		--paths-to-mutate $(MODULE) \
 		--runner "uv run pytest $$TARGETS -x --tb=no -q" \
-		--tests-dir "tests/unit/daemon/ tests/integration/daemon/" \
+		--tests-dir tests/ \
 		--simple-output
 	@echo ""
 	@echo "Results:"
@@ -254,7 +263,7 @@ mutation-audit: ## Mutation test all daemon modules (slow — spike target)
 		uv run mutmut run \
 			--paths-to-mutate "$$MODULE" \
 			--runner "uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q" \
-			--tests-dir "tests/unit/daemon/ tests/integration/daemon/" \
+			--tests-dir tests/ \
 			--simple-output --no-progress 2>&1 | tail -5; \
 		uv run mutmut results 2>/dev/null; \
 	done
