@@ -164,7 +164,7 @@ class TestGlobsIntersect:
         """Results preserve original order from a, deduped."""
         a = ["src/app/main.py", "src/app/main.py", "src/lib/utils.py"]
         b = ["src/app/main.py", "src/lib/utils.py"]
-        # First two are exact overlap; third is sibling overlap (same parent)
+        # Both unique a-entries are exact matches in b; duplicate is deduped.
         result = globs_intersect(a, b)
         assert result == ["src/app/main.py", "src/lib/utils.py"]
 
@@ -203,11 +203,11 @@ class TestFindBlockingItems:
         assert "src/app/main.py" in result[0][1]
 
     def test_blocks_multiple_in_flight(self) -> None:
-        """Candidate overlaps with multiple in-flight items."""
-        candidate = ["src/app/main.py"]
+        """Candidate overlaps with multiple in-flight items on exact paths."""
+        candidate = ["src/app/main.py", "src/app/config.py"]
         in_flight = [
-            ("F-00001", ["src/app/main.py"]),  # exact overlap
-            ("F-00002", ["src/app/**/*.py"]),  # glob anchor contains candidate
+            ("F-00001", ["src/app/main.py"]),
+            ("F-00002", ["src/app/config.py"]),  # exact-path overlap
             ("F-00003", ["src/lib/utils.py"]),
         ]
         result = find_blocking_items(candidate, in_flight)
@@ -215,6 +215,20 @@ class TestFindBlockingItems:
         assert "F-00001" in result_ids
         assert "F-00002" in result_ids
         assert "F-00003" not in result_ids
+
+    def test_same_parent_dir_alone_does_not_block(self) -> None:
+        """Two items touching different files under the same parent must
+        not block each other — the parent-directory 'sibling' rule was
+        relaxed (2026-05-18) to keep the runtime gate aligned with the
+        batch planner's strict-overlap semantics. Otherwise the planner
+        groups items as parallel-safe but the daemon serialises them."""
+        candidate = ["src/app/main.py"]
+        in_flight = [("F-00001", ["src/app/config.py"])]  # same dir, different file
+        result = find_blocking_items(candidate, in_flight)
+        assert result == [], (
+            f"Files in the same directory must not block each other unless "
+            f"they have an exact-path or glob overlap. Was: {result!r}"
+        )
 
     def test_empty_in_flight(self) -> None:
         """No in-flight items means nothing is blocking."""
@@ -230,25 +244,18 @@ class TestFindBlockingItems:
 
 
 class TestI00071RegressionBatch00078:
-    """I-00071 regression — test-path stripping in find_blocking_items.
+    """I-00071 regression — BATCH-00078 reproduction.
 
-    Test-path globs (tests/, conftest, *.test.*, *.spec.*, …) are stripped
-    from both sides BEFORE globs_intersect runs, so two items whose ONLY
-    declared paths are test files cannot block each other even when they
-    name the same file or share a glob anchor.
-
-    Originally added (I-00071) to protect against the sibling-directory
-    rule firing on tests/dashboard/* paths. The sibling rule was removed
-    in I-00099 (2026-05-18); _strip_test_globs is still meaningful as a
-    guard against test-file overlap registering as a launch-time block —
-    test agents legitimately edit each other's files (fixture refactors,
-    shared conftest tweaks) and shouldn't serialise on that.
+    Both candidate and in-flight declare ONLY test files under tests/dashboard/.
+    The runtime gate must not block them. Originally this exercised the
+    test-path stripping that ran before the sibling-directory check; the
+    sibling check itself was relaxed on 2026-05-18 (planner/runtime
+    alignment) but these scenarios remain valid regression coverage for
+    test-path handling.
     """
 
     def test_two_items_both_only_test_files_under_same_dir_do_not_block(self) -> None:
-        """Both items declare only test files under tests/dashboard/ — no sibling block."""
-        # Both candidate and in-flight have ONLY test paths under tests/dashboard/.
-        # After _strip_test_globs, both sides become empty → no sibling overlap possible.
+        """Both items declare only test files under tests/dashboard/ — no block."""
         candidate_paths = ["tests/dashboard/test_i00067_recent_activity_truncation.py"]
         in_flight = [
             ("I-00069", ["tests/dashboard/test_live_db_guard_log_level.py"]),
@@ -256,92 +263,34 @@ class TestI00071RegressionBatch00078:
         result = find_blocking_items(candidate_paths, in_flight)
         assert result == [], (
             "Two items declaring only test files under tests/dashboard/ must not "
-            f"block each other via sibling-directory check. Was: {result!r}"
+            f"block each other. Was: {result!r}"
         )
 
     def test_mixed_test_and_prod_paths_test_only_candidate_still_not_blocked(self) -> None:
         """Candidate has only test paths; in-flight has both test and prod paths.
 
-        The test path in the in-flight item must be stripped before sibling
-        comparison, so the remaining prod path (dashboard/app.py) does NOT share
-        a parent with the candidate's test path (tests/dashboard/test_x.py).
+        After test paths are stripped, the only remaining in-flight path is
+        dashboard/app.py — which is not in the candidate's set, so no block.
         """
         candidate_paths = ["tests/dashboard/test_i00067_recent_activity_truncation.py"]
         in_flight = [
             ("I-00069", ["dashboard/app.py", "tests/dashboard/test_live_db_guard_log_level.py"]),
         ]
         result = find_blocking_items(candidate_paths, in_flight)
-        # dashboard/app.py (prod, stripped nothing) vs tests/dashboard/test_x.py
-        # -> different parents, no sibling overlap
         assert result == [], (
-            "Test-path candidate with mixed in-flight must not be blocked when "
-            f"prod paths don't share a parent with the test path. Was: {result!r}"
+            "Test-path candidate must not be blocked when no exact-path overlap "
+            f"exists with the in-flight item's prod paths. Was: {result!r}"
         )
 
-
-class TestI00099SiblingDirNoLongerBlocks:
-    """I-00099 regression — sibling-directory false-positive holds.
-
-    Two items that each touch a different file in a shared parent directory
-    must not block each other. The pre-fix code's _same_parent fallback
-    fired for any two files sharing a parent dir; this is now removed.
-    Items that genuinely need module-level exclusion must declare an
-    explicit glob (dir/**) or the exact same file.
-    """
-
-    def test_two_different_docs_in_same_dir_do_not_block(self) -> None:
-        """Real CR-00057↔CR-00060 case: docs/A.md and docs/B.md must not block."""
-        candidate_paths = ["docs/IW_AI_Core_Testing_Strategy.md"]
-        in_flight = [
-            ("CR-00057", ["docs/IW_AI_Core_AI_Assistant_Models.md"]),
-        ]
-        result = find_blocking_items(candidate_paths, in_flight)
-        assert result == [], (
-            "Two items declaring different files under docs/ must not block "
-            f"each other via the sibling-directory heuristic. Was: {result!r}"
-        )
-
-    def test_two_different_daemon_modules_do_not_block(self) -> None:
-        """Real CR-00057↔CR-00060 case: orch/daemon/A.py and orch/daemon/B.py must not block."""
-        candidate_paths = ["orch/daemon/batch_manager.py"]
-        in_flight = [
-            ("CR-00057", ["orch/daemon/project_registry.py"]),
-        ]
-        result = find_blocking_items(candidate_paths, in_flight)
-        assert result == [], (
-            "Two items declaring different files under orch/daemon/ must not "
-            f"block each other via the sibling-directory heuristic. Was: {result!r}"
-        )
-
-    def test_exact_file_match_still_blocks(self) -> None:
-        """Sanity: when two items declare the EXACT same file, they still block."""
+    def test_non_test_sibling_does_not_block(self) -> None:
+        """Production files in the same parent directory do NOT block each
+        other unless they have an exact-path or glob overlap. The
+        parent-dir sibling rule was relaxed 2026-05-18; siblings are the
+        planner's responsibility, not the runtime gate's."""
         candidate_paths = ["dashboard/CLAUDE.md"]
-        in_flight = [
-            ("I-00069", ["dashboard/CLAUDE.md"]),
-        ]
+        in_flight = [("I-00069", ["dashboard/app.py"])]
         result = find_blocking_items(candidate_paths, in_flight)
-        assert len(result) == 1
-        assert result[0][0] == "I-00069"
-        assert "dashboard/CLAUDE.md" in result[0][1]
-
-    def test_glob_anchor_still_blocks_file_under_anchor(self) -> None:
-        """Sanity: an in-flight item declaring 'orch/daemon/**' blocks a candidate
-        touching any file under that anchor. globs_intersect must still catch this."""
-        candidate_paths = ["orch/daemon/batch_manager.py"]
-        in_flight = [
-            ("I-00070", ["orch/daemon/**"]),
-        ]
-        result = find_blocking_items(candidate_paths, in_flight)
-        assert len(result) == 1
-        assert result[0][0] == "I-00070"
-
-    def test_glob_anchor_other_direction_still_blocks(self) -> None:
-        """Sanity: candidate declares 'orch/daemon/**' and in-flight names a specific
-        file in that tree. Must still block."""
-        candidate_paths = ["orch/daemon/**"]
-        in_flight = [
-            ("I-00071", ["orch/daemon/batch_manager.py"]),
-        ]
-        result = find_blocking_items(candidate_paths, in_flight)
-        assert len(result) == 1
-        assert result[0][0] == "I-00071"
+        assert result == [], (
+            f"Sibling files under the same parent directory must not block "
+            f"each other without an exact-path overlap. Was: {result!r}"
+        )

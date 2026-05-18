@@ -331,14 +331,12 @@ And S08 (make test-unit) includes the 5 new property modules at the ci profile
 - `Makefile`
 - `tests/unit/properties/**`
 - `tests/unit/test_hypothesis_setup.py`
-- `docs/IW_AI_Core_Testing_Strategy.md`
 - `tests/CLAUDE.md`
 - `skills/iw-ai-core-testing/**`
 - `.claude/skills/iw-ai-core-testing/**`
 - `ai-dev/work/TESTS_ENHANCEMENT.md`
-- `orch/daemon/batch_manager.py`
 
-(The `orch/daemon/batch_manager.py` entry is only exercised if a pure-helper extraction is needed — see Notes — but the path is declared up-front so scope enforcement doesn't block the helper extraction at merge time.)
+(`orch/daemon/batch_manager.py` was previously declared here for the optional pure-helper extraction — see Notes. Removed 2026-05-18 to release a sibling-dir overlap with in-flight CR-00057's `orch/daemon/project_registry.py`. Project-level merge-time `scope_gate` is off, so this does not block the edit at merge time; if S01 finds the helper extraction is actually needed, follow the Notes contingency — raise a blocker and file `P2-CR-B-followup-batch-helper-extraction` rather than expanding scope here.)
 
 ## TDD Approach
 
