@@ -1,0 +1,20 @@
+{
+  "item_id": "I-00090",
+  "bottom_line": "Item executed cleanly with one MED process finding: S12 integration test triggered a fix cycle due to a pre-existing flaky test unrelated to I-00090 changes.",
+  "coverage_notes": "Sampled fix-cycle prompt (S12), S01/S03/S05/S11/S12/S13 reports in full. DB used for step status confirmation. No raw run logs found in worktree directory (logs dir absent). Coverage is sufficient for process-level findings.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "S12 Integration Test — Pre-existing flaky test triggered fix cycle",
+      "recommendation": "Investigate test_keep_alive_poller_integration.py::test_poll_skips_slot_already_run_today for a possible time-dependent or random-seed dependency. If reproducible, fix the test. If non-reproducible, mark it @pytest.mark.flaky(reruns=2) per the project's test-quality policy.",
+      "evidence": [
+        "ai-dev/active/I-00090/fix-cycles/I-00090_S12_FIX_cycle1_prompt.md:58 — \"FAILED tests/integration/test_keep_alive_poller_integration.py::TestKeepAlivePollerEndToEnd::test_poll_skips_slot_already_run_today\"",
+        "ai-dev/active/I-00090/reports/I-00090_S12_QvGate_report.md — final PASS: 2634 passed, 33 skipped, 4 xfailed, 2 xpassed (exit code 0)"
+      ],
+      "effort": "M (~5 lines + investigation)",
+      "paste_prompt": "/iw-new-incident Investigate and fix test_keep_alive_poller_integration.py::test_poll_skips_slot_already_run_today for time/random-seed dependency; analyzed in I-00090 (see ai-dev/active/I-00090/reports/I-00090_self_assess_report.md). Target file: tests/integration/test_keep_alive_poller_integration.py. Effort: M."
+    }
+  ]
+}

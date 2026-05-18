@@ -18,6 +18,7 @@ from orch.db.models import (
     StepStatus,
     WorkflowStep,
     WorkItem,
+    WorkItemStatus,
 )
 
 if TYPE_CHECKING:
@@ -140,6 +141,8 @@ def _query_failed_steps(db: Session, project_id: str | None = None) -> list[Fail
         )
         .join(Project, WorkItem.project_id == Project.id)
         .where(WorkflowStep.status.in_([StepStatus.failed, StepStatus.needs_fix]))
+        .where(WorkItem.archived_at.is_(None))
+        .where(WorkItem.status.notin_([WorkItemStatus.completed, WorkItemStatus.cancelled]))
         .order_by(WorkflowStep.project_id, WorkItem.id, WorkflowStep.step_number)
     )
     if project_id is not None:
@@ -204,6 +207,8 @@ def _query_recent_completions(db: Session, project_id: str | None = None) -> lis
         .where(
             StepRun.status == RunStatus.completed,
             StepRun.completed_at >= cutoff,
+            WorkItem.archived_at.is_(None),
+            WorkItem.status.notin_([WorkItemStatus.completed, WorkItemStatus.cancelled]),
         )
         .order_by(StepRun.completed_at.desc())
         .limit(50)

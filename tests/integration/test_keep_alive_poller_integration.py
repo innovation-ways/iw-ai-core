@@ -18,13 +18,15 @@ implementation.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+from freezegun import freeze_time
+
 from orch.daemon.keep_alive_poller import KeepAlivePoller
 from orch.db.models import KeepAliveRun, KeepAliveSlot
-from orch.keep_alive_service import add_slot, get_config, log_run
+from orch.keep_alive_service import add_slot, get_config
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
@@ -150,16 +152,35 @@ class TestKeepAlivePollerEndToEnd:
 
         Indirectly proves run logging closes the loop: with the bug, runs never
         landed, so get_due_slots kept returning the same slot every cycle.
-        """
-        slot = _seed_slot(db_session)
-        log_run(db_session, slot.id, slot.time_hhmm, "success")
-        db_session.commit()
 
-        with (
-            patch("orch.daemon.keep_alive_poller.SessionLocal", db_session_factory),
-            patch("orch.daemon.keep_alive_poller.fire_claude") as mock_fire,
-        ):
-            KeepAlivePoller().poll()
+        Time is frozen at local-noon and ``fired_at`` is stamped at the same
+        instant in UTC so the test is wall-clock independent. The previous
+        version relied on the server default (``fired_at = now()`` in UTC) and
+        compared it against ``today_date`` from naïve ``datetime.now()`` in
+        local time. Around UTC midnight (e.g., 00:35 WEST CI run on
+        2026-05-18) the two dates differ by one day, ``func.date(fired_at)``
+        in ``get_due_slots`` misses the seeded run, and the slot appears due.
+        """
+        frozen_now = datetime(2026, 5, 18, 12, 0, 0)  # noqa: DTZ001 — frozen local-time anchor
+        with freeze_time(frozen_now):
+            slot = _seed_slot(db_session)
+            run = KeepAliveRun(
+                slot_id=slot.id,
+                slot_time=slot.time_hhmm,
+                status="success",
+                fired_at=frozen_now.replace(tzinfo=UTC),
+            )
+            db_session.add(run)
+            db_session.commit()
+
+            with (
+                patch("orch.daemon.keep_alive_poller.SessionLocal", db_session_factory),
+                patch(
+                    "orch.daemon.keep_alive_poller.fire_claude",
+                    return_value=(False, None),
+                ) as mock_fire,
+            ):
+                KeepAlivePoller().poll()
 
         mock_fire.assert_not_called()
 
