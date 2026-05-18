@@ -283,3 +283,83 @@ def test_list_recent_events_includes_verdict_fields() -> None:
     assert len(rows) == 1
     assert rows[0].id == 1
     assert rows[0].verdict == "pending"
+
+
+def test_list_recent_events_default_excludes_non_auto_merge() -> None:
+    """By default list_recent_events only returns events whose type starts with
+    auto_merge_* or merge_auto_* prefixes; non-auto-merge events like
+    step_launched are excluded."""
+    from orch.auto_merge_aggregator import list_recent_events
+
+    db = MagicMock()
+    # Simulate the SQL query: the WHERE clause filters to only auto_merge_*
+    # events, so the mocked all() return reflects that filtered result.
+    auto_event = MagicMock()
+    auto_event.id = 2
+    auto_event.event_type = "auto_merge_health_probe"
+    auto_event.entity_id = None
+    auto_event.message = "probe"
+    auto_event.event_metadata = {}
+    auto_event.created_at = datetime.now(UTC)
+
+    # Only auto_merge_health_probe passes the prefix filter
+    db.execute.return_value.all.return_value = [(auto_event, None)]
+    db.execute.return_value.scalar_one.return_value = 1
+
+    rows, _ = list_recent_events(db, "proj-1")
+    types = {r.event_type for r in rows}
+    assert "step_launched" not in types
+    assert "auto_merge_health_probe" in types
+
+
+def test_list_recent_events_include_non_auto_merge_shows_everything() -> None:
+    """When include_non_auto_merge=True the prefix filter is disabled and all
+    event types are returned."""
+    from orch.auto_merge_aggregator import list_recent_events
+
+    db = MagicMock()
+    non_auto_event = MagicMock()
+    non_auto_event.id = 1
+    non_auto_event.event_type = "step_launched"
+    non_auto_event.entity_id = None
+    non_auto_event.message = "x"
+    non_auto_event.event_metadata = {}
+    non_auto_event.created_at = datetime.now(UTC)
+
+    auto_event = MagicMock()
+    auto_event.id = 2
+    auto_event.event_type = "auto_merge_health_probe"
+    auto_event.entity_id = None
+    auto_event.message = "probe"
+    auto_event.event_metadata = {}
+    auto_event.created_at = datetime.now(UTC)
+
+    # With include_non_auto_merge=True the prefix filter is bypassed,
+    # so all events are returned
+    db.execute.return_value.all.return_value = [(non_auto_event, None), (auto_event, None)]
+    db.execute.return_value.scalar_one.return_value = 2
+
+    rows, _ = list_recent_events(db, "proj-1", include_non_auto_merge=True)
+    types = {r.event_type for r in rows}
+    assert "step_launched" in types
+    assert "auto_merge_health_probe" in types
+
+
+def test_list_recent_events_event_type_filter_takes_precedence() -> None:
+    """When event_type_filter is explicitly set it overrides the prefix default."""
+    from orch.auto_merge_aggregator import list_recent_events
+
+    db = MagicMock()
+    targeted = MagicMock()
+    targeted.id = 1
+    targeted.event_type = "step_launched"
+    targeted.entity_id = None
+    targeted.message = "x"
+    targeted.event_metadata = {}
+    targeted.created_at = datetime.now(UTC)
+
+    db.execute.return_value.all.return_value = [(targeted, None)]
+    db.execute.return_value.scalar_one.return_value = 1
+
+    rows, _ = list_recent_events(db, "proj-1", event_type_filter="step_launched")
+    assert rows[0].event_type == "step_launched"

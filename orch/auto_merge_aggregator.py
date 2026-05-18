@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from orch.db.models import AgentRuntimeOption, AutoMergeProjectConfig, DaemonEvent, MergeAutoVerdict
 
@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from orch.daemon.auto_merge import AutoMergeConfig
 
 logger = logging.getLogger(__name__)
+
+AUTO_MERGE_EVENT_PREFIXES: tuple[str, ...] = ("auto_merge_", "merge_auto_")
 
 EVENT_AUTO_MERGE_CONFIG_INVALID = "auto_merge_config_invalid"
 EVENT_AUTO_MERGE_HEALTH_PROBE = "auto_merge_health_probe"
@@ -268,6 +270,7 @@ def list_recent_events(
     page: int = 0,
     page_size: int = 50,
     event_type_filter: str | None = None,
+    include_non_auto_merge: bool = False,
 ) -> tuple[list[EventRow], int]:
     stmt = (
         select(DaemonEvent, MergeAutoVerdict)
@@ -280,6 +283,10 @@ def list_recent_events(
     )
     if event_type_filter:
         stmt = stmt.where(DaemonEvent.event_type == event_type_filter)
+    elif not include_non_auto_merge:
+        stmt = stmt.where(
+            or_(*(DaemonEvent.event_type.like(p + "%") for p in AUTO_MERGE_EVENT_PREFIXES))
+        )
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
     rows = db.execute(
         stmt.order_by(DaemonEvent.created_at.desc()).offset(page * page_size).limit(page_size)

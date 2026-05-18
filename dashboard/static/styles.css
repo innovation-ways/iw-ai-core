@@ -495,3 +495,6 @@ div.mermaid-diagram span {
 .auto-merge-save-indicator.htmx-request,.htmx-request .auto-merge-save-indicator{display:inline}
 .auto-merge-save-indicator--saved{display:inline;color:var(--primary);animation:auto-merge-fade 2s ease-out forwards}
 @keyframes auto-merge-fade{0%{opacity:1}80%{opacity:1}100%{opacity:0}}
+
+.auto-merge-show-all-toggle{border:1px solid var(--border);border-radius:.25rem;padding:.2rem .5rem;background:var(--card);cursor:pointer}
+.auto-merge-show-all-toggle.is-active{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
