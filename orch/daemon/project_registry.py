@@ -31,6 +31,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+from orch.daemon.scope_overlap import DEFAULT_ALLOW_PATTERNS, DEFAULT_BLOCK_PATTERNS
+
 logger = logging.getLogger(__name__)
 
 _AI_ASSISTANT_MODEL_PATTERN = re.compile(r"^[a-z0-9._-]+/[A-Za-z0-9._:/-]+$")
@@ -88,6 +90,13 @@ class ProjectConfig:
     # caps. Prevents pathological cascades from burning unbounded total cycles.
     # Default 25. Read from projects.toml: [projects.<id>] aggregate_fix_cycle_max = 25.
     aggregate_fix_cycle_max: int = 25
+    # Per-project overlap gate policy. block_patterns and allow_patterns are
+    # glob lists passed to scope_overlap.find_blocking_items. When
+    # overlap_gate is absent from .iw-orch.json the daemon synthesises the
+    # DEFAULT_BLOCK_PATTERNS / DEFAULT_ALLOW_PATTERNS constants, which
+    # preserves the previous behaviour (tests/** etc. allowed, everything else blocked).
+    overlap_block_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_BLOCK_PATTERNS))
+    overlap_allow_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_ALLOW_PATTERNS))
 
     @property
     def working_dir(self) -> str:
@@ -162,6 +171,11 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         iw_config.pop("ai_assistant", None)
 
     scope_gate_enabled: bool = bool(iw_config.get("scope_gate_enabled", False))
+
+    # overlap_gate policy — parsed from .iw-orch.json (not projects.toml).
+    overlap_block_patterns, overlap_allow_patterns = _parse_overlap_gate(
+        project_id, iw_config.get("overlap_gate")
+    )
 
     # self_assess flag — read from projects.toml entry, not .iw-orch.json
     raw_self_assess = entry.get("self_assess", False)
@@ -267,6 +281,8 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         cascade_thrashing_threshold=cascade_thrashing_threshold,
         cascade_thrashing_jaccard_min=cascade_thrashing_jaccard_min,
         aggregate_fix_cycle_max=aggregate_fix_cycle_max,
+        overlap_block_patterns=overlap_block_patterns,
+        overlap_allow_patterns=overlap_allow_patterns,
     )
 
 
@@ -296,6 +312,75 @@ def _validate_staleness_config(project_id: str, entry: dict[str, Any]) -> None:
             project_id,
             exc,
         )
+
+
+def _parse_overlap_gate(project_id: str, raw: object) -> tuple[list[str], list[str]]:
+    """Parse the optional overlap_gate block from .iw-orch.json.
+
+    Returns (block_patterns, allow_patterns). On any malformed entry logs
+    a warning and falls back to the default for that side only.
+
+    Validation rules:
+      - raw is None/absent → return defaults for both sides.
+      - raw is not a dict  → warn, return defaults.
+      - block_on_overlap / allow_on_overlap must be lists of strings.
+        Non-list → warn and skip that side (keep its default).
+        Non-string entries → drop with per-entry warning.
+        Empty list is honoured (e.g. block_on_overlap=[] means "never block").
+    """
+    if raw is None:
+        return list(DEFAULT_BLOCK_PATTERNS), list(DEFAULT_ALLOW_PATTERNS)
+
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Project %r overlap_gate is not a dict — synthesising default policy", project_id
+        )
+        return list(DEFAULT_BLOCK_PATTERNS), list(DEFAULT_ALLOW_PATTERNS)
+
+    block_patterns: list[str] = list(DEFAULT_BLOCK_PATTERNS)
+    allow_patterns: list[str] = list(DEFAULT_ALLOW_PATTERNS)
+
+    raw_block = raw.get("block_on_overlap")
+    if raw_block is not None:
+        if not isinstance(raw_block, list):
+            logger.warning(
+                "Project %r overlap_gate.block_on_overlap is not a list — using default",
+                project_id,
+            )
+        else:
+            filtered: list[str] = []
+            for entry in raw_block:
+                if isinstance(entry, str):
+                    filtered.append(entry)
+                else:
+                    logger.warning(
+                        "Project %r overlap_gate.block_on_overlap entry %r is not a str — dropped",
+                        project_id,
+                        entry,
+                    )
+            block_patterns = filtered  # empty list is honoured
+
+    raw_allow = raw.get("allow_on_overlap")
+    if raw_allow is not None:
+        if not isinstance(raw_allow, list):
+            logger.warning(
+                "Project %r overlap_gate.allow_on_overlap is not a list — using default",
+                project_id,
+            )
+        else:
+            allow_filtered: list[str] = []
+            for entry in raw_allow:
+                if isinstance(entry, str):
+                    allow_filtered.append(entry)
+                else:
+                    logger.warning(
+                        "Project %r overlap_gate.allow_on_overlap entry %r is not a str — dropped",
+                        project_id,
+                        entry,
+                    )
+            allow_patterns = allow_filtered  # empty list is honoured
+
+    return block_patterns, allow_patterns
 
 
 def _parse_ai_assistant_block(project_id: str, raw: object) -> dict[str, Any] | None:
