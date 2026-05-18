@@ -55,7 +55,7 @@
     {
       "step": "S05",
       "agent": "code-review-impl",
-      "description": "Per-agent review of S01..S04 — allow-precedence correctness, default-equivalence with old is_test_path strip, event de-duplication semantics, dashboard pill accessibility, doc/code consistency, scope discipline",
+      "description": "Per-agent review of S01..S04 \u2014 allow-precedence correctness, default-equivalence with old is_test_path strip, event de-duplication semantics, dashboard pill accessibility, doc/code consistency, scope discipline",
       "prompt": "prompts/CR-00058_S05_CodeReview_prompt.md"
     },
     {
@@ -67,7 +67,7 @@
     {
       "step": "S07",
       "agent": "code-review-final-impl",
-      "description": "Cross-agent review of end-to-end policy round-trip (json → registry → ProjectConfig → batch_manager → scope_overlap → DaemonEvent → router → template), default-preservation invariant, event audit-trail completeness, no regression of F-00076 contract tests",
+      "description": "Cross-agent review of end-to-end policy round-trip (json \u2192 registry \u2192 ProjectConfig \u2192 batch_manager \u2192 scope_overlap \u2192 DaemonEvent \u2192 router \u2192 template), default-preservation invariant, event audit-trail completeness, no regression of F-00076 contract tests",
       "prompt": "prompts/CR-00058_S07_CodeReview_Final_prompt.md"
     },
     {
@@ -110,12 +110,12 @@
       "gate": "integration-tests",
       "command": "make allure-integration",
       "description": "QV: Integration tests",
-      "timeout": 900
+      "timeout": 1800
     },
     {
       "step": "S14",
       "agent": "qv-browser",
-      "description": "QV: Browser verification — held-reason pill, allowed-by-policy pill, default-config no regression on existing batch/queue rendering",
+      "description": "QV: Browser verification \u2014 held-reason pill, allowed-by-policy pill, default-config no regression on existing batch/queue rendering",
       "prompt": "prompts/CR-00058_S14_BrowserVerification_prompt.md"
     },
     {

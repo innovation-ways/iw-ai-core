@@ -1,0 +1,144 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00101",
+  "type": "Issue",
+  "title": "Scope-violation escalations strand work items with no UI surface or remedy",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/fix_cycle.py",
+      "orch/daemon/scope_amendment.py",
+      "dashboard/routers/actions.py",
+      "dashboard/routers/items.py",
+      "dashboard/routers/running.py",
+      "dashboard/templates/components/status_badge.html",
+      "dashboard/templates/components/scope_amend_modal.html",
+      "dashboard/templates/fragments/item_steps_table.html",
+      "dashboard/static/styles.css",
+      "tests/unit/daemon/test_fix_cycle_budget_exemption.py",
+      "tests/unit/daemon/test_scope_amendment.py",
+      "tests/dashboard/test_scope_blocked_badge.py",
+      "tests/integration/test_scope_amend_endpoints.py",
+      "ai-dev/active/I-00101/e2e_fixtures/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Backend: (a) In orch/daemon/fix_cycle.py, change the .count() calls in `_max_cycles_for` (line ~482) AND the aggregate-budget check (lines ~498-504) so scope-escalated cycles are NOT counted. A scope-escalated cycle is one with status=FixStatus.escalated AND fix_metadata->'scope_violations' present (non-empty JSONB array). Use a filtered query via SQLAlchemy `func.jsonb_array_length(...)` or a `case()` expression — do NOT iterate in Python. (b) Create new module `orch/daemon/scope_amendment.py` with three pure helpers: `amend_allowed_paths(worktree_path: Path, item_id: str, paths_to_add: list[str]) -> AmendResult` (loads both `<worktree>/ai-dev/active/<id>/workflow-manifest.json` and the parent design-time copy via the same path under the parent repo root resolved from `IW_CORE_PARENT_REPO_ROOT` env var or computed by walking up from worktree_path's `.git` file; appends unique new paths to `scope.allowed_paths`; writes both files atomically; returns paths actually added + which manifest files were updated); `revert_paths_in_worktree(worktree_path: Path, paths_to_revert: list[str]) -> RevertResult` (runs `git -C <worktree> checkout -- <path>` for each path; returns list of reverted paths + any failures); `latest_scope_violation(db: Session, step_id: int) -> list[str] | None` (returns the latest FixCycle's scope_violations list for the step, or None if no scope escalation). (c) Both `amend_allowed_paths` and `revert_paths_in_worktree` MUST be pure helpers with no DB side effects — the dashboard endpoint composes them with the DB write + event emit + step-restart in a single transaction. (d) Update orch/daemon/fix_cycle.py's module docstring section that describes scope reconciliation to record the I-00101 budget-exemption decision. Pre-flight: make format + make typecheck + make lint on touched files. Targeted verification: `uv run pytest tests/unit/daemon/ -v -k 'fix_cycle or scope_amendment' --no-cov` (the test files don't exist yet from this step's POV — that's S05's job — so this targeted command may run zero matches; that's acceptable). Do NOT run make test-unit or make test-integration. 1800s timeout.",
+      "prompt": "prompts/I-00101_S01_Backend_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: confirm the .count() filter excludes ONLY (status=escalated AND scope_violations non-empty) — a vanilla escalated cycle without scope_violations metadata (e.g., from another future cause) MUST still count (CRITICAL on overbroad filter); confirm both per-step and aggregate budgets are exempted; confirm scope_amendment.py has zero DB writes (helpers are pure); confirm `amend_allowed_paths` writes BOTH manifest files (worktree + parent — HIGH on single-file write); confirm `revert_paths_in_worktree` uses `git -C <worktree>` (NOT cwd-dependent); confirm `latest_scope_violation` returns the LATEST cycle's violations (`ORDER BY cycle_number DESC LIMIT 1`), not the first; confirm no scope creep outside the two backend files; confirm the fix_cycle.py docstring note is present.",
+      "prompt": "prompts/I-00101_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "frontend-impl",
+      "description": "Frontend: (a) Add a new variant to `dashboard/templates/components/status_badge.html` keyed on the value `scope_blocked` (NOT a real WorkflowStep.status value — a synthetic UI-only label) — amber background with a warning glyph to differentiate from generic `needs_fix`. Reuse Tailwind utilities already in the template; if Tailwind toolchain is broken in the worktree, append the plain CSS rule directly to `dashboard/static/styles.css` (per the project's I-00067 mitigation rule in CLAUDE.md). (b) Update `dashboard/routers/items.py` to call `orch.daemon.scope_amendment.latest_scope_violation(db, step.id)` for every step in status `needs_fix` and pass `step.scope_violations: list[str] | None` to the render context. (c) Update `dashboard/templates/fragments/item_steps_table.html`: for steps in `needs_fix` with `step.scope_violations`, render the new `scope_blocked` badge variant instead of the default status badge; add an aria-label / title attribute listing the offending paths; add two new buttons next to existing Restart/Skip — \"Amend scope & restart\" (opens modal via `hx-get=\"/project/{project_id}/actions/item/{item_id}/scope/amend-modal/{step_id}\"`) and \"Revert & restart\" (opens a small inline confirmation). (d) Create new partial `dashboard/templates/components/scope_amend_modal.html` — fragment template (NOT extending base.html); renders a list of checkboxes (one per violated path, pre-checked) + a read-only `<ul>` of current allowed_paths + Submit button posting to `/project/{project_id}/actions/item/{item_id}/scope/amend-and-restart/{step_id}`. (e) In `dashboard/routers/actions.py`, add three new endpoints: GET `/item/{item_id}/scope/amend-modal/{step_id}` (returns the modal fragment), POST `/item/{item_id}/scope/amend-and-restart/{step_id}` (validates the latest cycle IS a scope escalation — HTTP 422 otherwise; calls `amend_allowed_paths`; emits `scope_amended_by_operator` event with metadata {step_id, added_paths}; performs the same DB mutations as the existing `restart_step` endpoint at actions.py:323 — flips step.status to pending, clears timestamps, appends a new StepRun row with run_number = last.run_number + 1, status=pending; commits; returns `_action_response`), POST `/item/{item_id}/scope/revert-and-restart/{step_id}` (same validation + the restart mutation, but invokes `revert_paths_in_worktree` instead of amending manifests; emits `scope_reverted_by_operator`). (f) Update `dashboard/routers/running.py::_query_failed_steps` to also load latest_scope_violation for each row; pass through to the global needs-attention template so the same badge appears there. Pre-flight: make format + make typecheck + make lint on touched files. Run `make css` if any Tailwind classes were added; if `make css` fails or reports nothing-to-do, append plain CSS to styles.css per the CLAUDE.md mitigation. Targeted verification: `uv run pytest tests/dashboard/ -v -k 'scope' --no-cov` (test files don't exist yet — that's S05). Do NOT run make test-unit or make test-integration. 1800s timeout.",
+      "prompt": "prompts/I-00101_S03_Frontend_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: confirm the scope_blocked badge variant is keyed correctly and does NOT regress the existing badge mapping for real StepStatus values (CRITICAL on missing case); confirm the modal is a fragment template (does NOT extend base.html — fragment templates must not, per dashboard/CLAUDE.md); confirm both POST endpoints validate `latest_scope_violation IS NOT None` and return HTTP 422 with a specific message when called on a non-scope-blocked step (HIGH on missing guard); confirm the amend endpoint emits `scope_amended_by_operator` with the metadata {item_id, step_id, added_paths} and the revert endpoint emits `scope_reverted_by_operator` with {item_id, step_id, reverted_paths}; confirm the new StepRun row uses run_number = last.run_number + 1 (matches restart_step at actions.py:344); confirm `running.py` change passes the violation list through to the global table (HIGH on missing surface); confirm all CSS class assertions in any inline tests use the attribute-scoped form (per CLAUDE.md I-00067); confirm clipboard-copy buttons (if any) use the shared helper (per dashboard/CLAUDE.md); confirm no scope creep outside the listed paths.",
+      "prompt": "prompts/I-00101_S04_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Tests: write four new test files. (a) `tests/unit/daemon/test_fix_cycle_budget_exemption.py` — at least three tests: a scope-escalated cycle is exempt from per-step budget count; a scope-escalated cycle is exempt from aggregate budget count; a non-scope-escalated cycle (status=escalated but no scope_violations metadata) IS counted (proves the filter is narrow, not overbroad). (b) `tests/unit/daemon/test_scope_amendment.py` — tests for: amend writes both manifest files; amend is idempotent on duplicate paths (no double-append); amend handles missing parent manifest gracefully (logs + writes worktree only); revert runs `git checkout` for each path; `latest_scope_violation` returns latest violations (not first when multiple cycles exist) and None when no scope cycle exists. Use a tmp_path fixture for filesystem helpers — do NOT use the real worktree. (c) `tests/dashboard/test_scope_blocked_badge.py` — uses the `client` fixture (from tests/dashboard/conftest.py); seeds a synthetic work item with a workflow_step in needs_fix and a FixCycle with status=escalated + scope_violations=['.gitleaks.toml']; GETs the item detail page; asserts the rendered HTML contains the attribute-scoped `class=\"badge-scope-blocked\"` (per the CSS class assertion note in the Issue_Design_Template) AND does NOT contain the generic needs_fix badge for that step; asserts the modal-trigger button is present with the correct hx-get URL. (d) `tests/integration/test_scope_amend_endpoints.py` — end-to-end test that creates the full DB state, calls the amend endpoint via the test client, then asserts: both manifest JSON files have the new path appended; one new daemon_events row of type 'scope_amended_by_operator' exists with the correct metadata; workflow_step.status flipped to 'pending'; one new step_runs row exists with run_number incremented; the modal-guard endpoints return 422 when called on a step that's not scope-blocked. CRITICAL: every test asserts SPECIFIC VALUES, not response shape — e.g., `assert '.gitleaks.toml' in manifest['scope']['allowed_paths']` not `assert 'allowed_paths' in manifest['scope']`. Targeted verification: run ONLY the four new test files you wrote (`uv run pytest tests/unit/daemon/test_fix_cycle_budget_exemption.py tests/unit/daemon/test_scope_amendment.py tests/dashboard/test_scope_blocked_badge.py tests/integration/test_scope_amend_endpoints.py -v --no-cov`). Do NOT run make test-unit or make test-integration. 1800s timeout.",
+      "prompt": "prompts/I-00101_S05_Tests_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05: confirm all four test files exist; confirm each RuleBasedStateMachine-class is absent (these are NOT property tests — they are example-based regression tests); confirm SEMANTIC assertions (specific values), NOT shape-only (CRITICAL on shape-only); confirm CSS class assertions use the `class=\"…\"` attribute-scoped form (per I-00067); confirm the dashboard test is in `tests/dashboard/` (not tests/unit/ — `client` fixture only registered there per I-00067); confirm the integration test seeds an actual FixCycle row with `fix_metadata={'scope_violations': [...]}` so it exercises the real JSONB filter from S01; confirm at least one test asserts the negative-case guard (calling amend on a non-scope-blocked step returns 422); confirm test names follow `test_<bug_id>_<scenario>` style (e.g., `test_i00101_amend_writes_both_manifests`); confirm no scope creep outside the four test files.",
+      "prompt": "prompts/I-00101_S06_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review. (a) Independently run the four new test files end-to-end (`uv run pytest tests/unit/daemon/test_fix_cycle_budget_exemption.py tests/unit/daemon/test_scope_amendment.py tests/dashboard/test_scope_blocked_badge.py tests/integration/test_scope_amend_endpoints.py -v --no-cov`) and confirm all pass. (b) Independently run `make test-unit` to confirm no regression in the broader unit suite — particularly the existing tests under tests/unit/daemon/ and tests/dashboard/ (the new badge logic must not break the existing status_badge rendering for the other StepStatus values). (c) Verify the design's AC1..AC5 are all satisfied: AC1 (badge surfaces) ↔ tests/dashboard test; AC2 (amend end-to-end) ↔ tests/integration amend test; AC3 (revert end-to-end) ↔ tests/integration revert test; AC4 (budget exemption) ↔ tests/unit fix_cycle budget exemption test; AC5 (regression tests exist) ↔ all four files present. (d) Confirm the cross-doc-square: design doc, functional doc, manifest, prompts all name the same files and same endpoints (drift = HIGH). (e) Confirm the new endpoints' URL paths are consistent with existing actions.py conventions (singular item_id segment, no batch segment). (f) Confirm the scope_amend_modal.html template does NOT extend base.html. Timeout 1800s.",
+      "prompt": "prompts/I-00101_S07_CodeReview_Final_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Linting",
+      "command": "make lint",
+      "gate": "lint"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Formatting",
+      "command": "make format-check",
+      "gate": "format"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Type checking",
+      "command": "make type-check",
+      "gate": "typecheck"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Assertion scanner",
+      "command": "make test-assertions",
+      "gate": "assertions"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Unit tests",
+      "command": "make test-unit",
+      "gate": "unit-tests"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Integration tests",
+      "command": "make test-integration",
+      "gate": "integration-tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Secret scan",
+      "command": "make security-secrets",
+      "gate": "security-secrets"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-browser",
+      "step_type": "browser_verification",
+      "description": "QV Browser: seed an e2e fixture creating a synthetic work item + workflow_step in needs_fix + escalated FixCycle with scope_violations=['.test-target.toml']; verify the Scope-blocked badge renders, the Amend modal opens with the offending path pre-checked, submission writes the manifest + emits the event + restarts the step; verify Revert flow as a no-regression check on an adjacent flow.",
+      "prompt": "prompts/I-00101_S15_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S16",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Surface: (a) did any fix cycle in this very item burn its own scope-escalation budget exemption (would be ironic and a strong positive signal); (b) was the synthetic e2e fixture for S15 the right pattern, or should we add a longer-term test-fixture helper for seeding escalated FixCycle rows; (c) cross-layer drift between badge HTML, modal endpoint, and event metadata names — any surprises during review?",
+      "prompt": "prompts/I-00101_S16_SelfAssess_prompt.md"
+    }
+  ]
+}
