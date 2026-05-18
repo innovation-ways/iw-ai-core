@@ -1,6 +1,0 @@
-{
-  "item_id": "I-00089",
-  "bottom_line": "No process improvements warranted — item executed cleanly with two fix cycles that self-resolved on retry (one flaky unrelated test, one environmental misclassification with correct self-correction).",
-  "coverage_notes": "No run logs present in .worktrees/I-00089/ai-dev/logs/ (directory empty). Analysis based on step reports (S01–S05, S06–S11 gate reports), fix-cycle prompts, workflow-manifest.json, browser verification report with DOM evidence and screenshots, and DB telemetry via iw item-status --json. DB signal: full (DB:UP at analysis time).",
-  "findings": []
-}
