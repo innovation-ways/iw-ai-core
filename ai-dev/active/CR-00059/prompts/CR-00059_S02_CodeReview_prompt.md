@@ -73,8 +73,8 @@ python -c "import tomllib; b = tomllib.load(open('pyproject.toml','rb'))['tool']
 ```
 
 - `paths_to_mutate == "orch/daemon/"` exactly (AC2). Any other value (e.g. `"orch/"`, `"orch/daemon"`) = CRITICAL — scope creep.
-- `tests_dir == "tests/unit/daemon/ tests/integration/daemon/"` (AC2). Different scope = HIGH.
-- `runner` contains `pytest`, `-x`, `--tb=no`, `-q` (the mutmut convention; CR design §Notes). Missing any of these = HIGH (changes mutmut runtime behaviour).
+- `tests_dir == "tests/"` (AC2). mutmut 2.5.1 only accepts a single existing directory here; space-joined multi-path strings fail with `FileNotFoundError: No test folders found in current folder`. Different value = HIGH (likely the same bug class that blocked the first attempt).
+- `runner` contains `pytest`, `-x`, `--tb=no`, `-q` AND both `tests/unit/daemon/` and `tests/integration/daemon/` (the mutmut convention; CR design §Notes). Test-scope narrowing happens in `runner`, not in `tests_dir`. Missing any of these = HIGH (changes mutmut runtime behaviour).
 
 ### 2. Four `make` targets parse and behave per spec
 

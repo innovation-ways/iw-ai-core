@@ -47,11 +47,11 @@ Read the project's `CLAUDE.md` for architecture, conventions, and hard rules. Re
   #        make mutation-audit (currently scoped to orch/daemon/; expand in follow-up CR)
   [tool.mutmut]
   paths_to_mutate = "orch/daemon/"
-  tests_dir = "tests/unit/daemon/ tests/integration/daemon/"
+  tests_dir = "tests/"
   runner = "uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q"
   ```
   - `paths_to_mutate` scoped to `orch/daemon/` — the spike target and the default `mutation-audit` scope. Follow-up CR widens to all of `orch/` after the spike informs cost.
-  - `tests_dir` scoped to the matching test directories so mutmut doesn't run the entire ~4,420-test suite per mutant.
+  - `tests_dir` is `"tests/"` (a single existing directory — mutmut 2.5.1 rejects space-joined multi-path strings with `FileNotFoundError`). Test-scope narrowing happens in `runner`, which mutmut invokes verbatim and DOES accept multiple paths.
   - `runner` uses `-x --tb=no -q` (mutmut convention: stop on first failure, no traceback, quiet — each mutant only needs a binary "killed/survived" verdict, not full output).
   - `mutate_only_covered_lines = true` is set per-target on the `mutmut run` invocations in the Makefile (mutmut respects it via the `--simple-output` + cache interaction; the explicit flag goes on the CLI, not in `[tool.mutmut]`, because the InnoForge reference pattern controls it at recipe time).
 
@@ -63,7 +63,7 @@ Four new targets, all added to the existing `.PHONY` line:
   ```
   make mutation-check MODULE=orch/daemon/auto_merge.py
   ```
-  Recipe: validates `MODULE` is set; auto-derives a matching test path (`tests/unit/daemon/test_auto_merge.py` and `tests/integration/daemon/test_auto_merge.py` — try unit first, fall back to broader `tests/unit/daemon/ tests/integration/daemon/` if no matching file found); deletes `.mutmut-cache`; runs `uv run mutmut run --paths-to-mutate $(MODULE) --runner "<resolved test path>" --tests-dir tests/unit/daemon/ tests/integration/daemon/ --simple-output`; prints results.
+  Recipe: validates `MODULE` is set; auto-derives a matching test path (`tests/unit/daemon/test_auto_merge.py` and `tests/integration/daemon/test_auto_merge.py` — try unit first, fall back to broader `tests/unit/daemon/ tests/integration/daemon/` if no matching file found); deletes `.mutmut-cache`; runs `uv run mutmut run --paths-to-mutate $(MODULE) --runner "<resolved test path>" --tests-dir tests/ --simple-output`; prints results. (`--tests-dir` must be a single existing directory — see AC2 notes.)
 - `mutation-audit` — bulk audit (currently scoped to `orch/daemon/`):
   ```
   make mutation-audit
@@ -206,7 +206,8 @@ Given the patched pyproject.toml
 When `python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['mutmut'])"` is run
 Then it prints a dict containing keys `paths_to_mutate`, `tests_dir`, `runner`
 And `paths_to_mutate` equals "orch/daemon/"
-And `tests_dir` equals "tests/unit/daemon/ tests/integration/daemon/"
+And `tests_dir` equals "tests/"
+And `runner` contains "tests/unit/daemon/" and "tests/integration/daemon/" (the actual test-scope narrowing — mutmut runs the runner verbatim)
 ```
 
 ### AC3: Four `make mutation-*` targets exist and parse
