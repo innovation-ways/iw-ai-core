@@ -19,7 +19,9 @@
       "tests/unit/daemon/test_scope_amendment.py",
       "tests/dashboard/test_scope_blocked_badge.py",
       "tests/integration/test_scope_amend_endpoints.py",
-      "ai-dev/active/I-00101/e2e_fixtures/**"
+      "ai-dev/active/I-00101/e2e_fixtures/**",
+      "orch/daemon/scope_overlap.py",
+      "tests/unit/daemon/test_scope_overlap.py"
     ]
   },
   "steps": [

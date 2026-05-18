@@ -4,6 +4,12 @@ When a code_review or code_review_final step fails (agent found mandatory
 findings), the daemon creates a FixCycle, launches a fix agent, and after
 completion resets the review step to pending so it re-runs automatically.
 Loops up to fix_cycle_max (default 5) times before giving up.
+
+2026-05-18 (I-00101): Scope-violation escalations no longer count against
+per-step or aggregate fix-cycle budgets. They are an operator-decidable scope
+decision, not a real failed retry attempt. The filter excludes only
+status=escalated AND fix_metadata.scope_violations non-empty — other
+escalation causes (e.g. spec_mismatch) still consume budget.
 """
 
 from __future__ import annotations
@@ -17,7 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, not_, select
 
 from orch.db.models import (
     DaemonEvent,
@@ -326,6 +332,22 @@ _DEFAULT_QV_GATE_BUDGETS: dict[str, int] = {
 # ---------------------------------------------------------------------------
 
 
+def _is_scope_escalation():  # type: ignore[no-untyped-def]
+    """Predicate: True when the FixCycle is an escalation caused by scope violations.
+
+    A vanilla ``escalated`` cycle without ``scope_violations`` metadata
+    (e.g. from a future different cause) still counts toward budgets.
+    Only ``status=escalated`` AND ``fix_metadata.scope_violations`` non-empty
+    is exempt.
+    """
+    return and_(
+        FixCycle.status == FixStatus.escalated,
+        FixCycle.fix_metadata.is_not(None),
+        FixCycle.fix_metadata.op("->")("scope_violations").is_not(None),
+        func.jsonb_array_length(FixCycle.fix_metadata.op("->")("scope_violations")) > 0,
+    )
+
+
 def _max_cycles_for(
     step_type: StepType,
     project_config: ProjectConfig,
@@ -479,7 +501,12 @@ def should_attempt_fix(
         return False
 
     max_cycles = _max_cycles_for(step.step_type, project_config, step=step)
-    existing = db.query(FixCycle).filter(FixCycle.step_id == step.id).count()
+    existing = (
+        db.query(FixCycle)
+        .filter(FixCycle.step_id == step.id)
+        .filter(not_(_is_scope_escalation()))  # type: ignore[no-untyped-call]
+        .count()
+    )
 
     if existing >= max_cycles:
         logger.warning(
@@ -500,6 +527,7 @@ def should_attempt_fix(
         .join(WorkflowStep, FixCycle.step_id == WorkflowStep.id)
         .filter(WorkflowStep.work_item_id == step.work_item_id)
         .filter(WorkflowStep.project_id == step.project_id)
+        .filter(not_(_is_scope_escalation()))  # type: ignore[no-untyped-call]
         .count()
     )
     if aggregate_used >= aggregate_max:

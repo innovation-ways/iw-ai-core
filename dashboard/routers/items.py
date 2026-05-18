@@ -32,6 +32,7 @@ from orch.db.models import (
     Project,
     RunStatus,
     StepRun,
+    StepStatus,
     WorkflowStep,
     WorkItem,
     WorkItemEvidence,
@@ -75,6 +76,8 @@ class StepDetail:
     step_runtime_option_id: int | None = None
     # CR-00056 S06: True if any StepRun for this step has prompt_text or fix_prompt_text
     has_prompt: bool = False
+    # I-00101: scope-violation paths from the latest escalated FixCycle on this step
+    scope_violations: list[str] | None = None
 
 
 @dataclass
@@ -458,6 +461,18 @@ def _get_steps(
     item_runtime_option_id = item.agent_runtime_option_id if item else None
 
     result: list[StepDetail] = [_synthetic_setup_step(bi, [s.status.value for s in workflow_steps])]
+
+    # I-00101: bulk-fetch scope_violations for all needs_fix steps (single query, N+1-safe)
+    needs_fix_ids = [s.id for s in workflow_steps if s.status == StepStatus.needs_fix]
+    scope_violations_map: dict[int, list[str]] = {}
+    if needs_fix_ids:
+        from orch.daemon.scope_amendment import latest_scope_violation
+
+        for step_db_id in needs_fix_ids:
+            violations = latest_scope_violation(db, step_db_id)
+            if violations:
+                scope_violations_map[step_db_id] = violations
+
     for step in workflow_steps:
         last_run = last_run_map.get(step.id)
         error_msg = last_run.error_message if last_run else None
@@ -497,6 +512,7 @@ def _get_steps(
                 else (step_opt_id or item_runtime_option_id),
                 step_runtime_option_id=step_opt_id,
                 has_prompt=has_prompt_map.get(step.id, False),
+                scope_violations=scope_violations_map.get(step.id),
             )
         )
     result.append(_synthetic_merge_step(bi))
