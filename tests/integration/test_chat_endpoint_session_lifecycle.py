@@ -405,3 +405,51 @@ async def test_session_error_event_surfaces_to_sse_stream(db_session: Session) -
             await relay_manager.shutdown()
             await client.aclose()
             app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_create_session_forwards_directory_to_opencode(
+    db_session: Session,
+) -> None:
+    """CR-00057: when the frontend sends ``directory`` on session creation,
+    the dashboard must forward it verbatim to opencode's ``POST /session``.
+
+    The directory scopes the OpenCode session to the project's repo root so
+    the assistant operates against the correct working tree.
+    """
+    project_dir = "/srv/projects/iw-ai-core"
+    with fake_opencode_server() as fake:
+        app, client, relay_manager = await _build_chat_app(fake, db_session)
+        transport = ASGITransport(app=app)
+        try:
+            async with AsyncClient(transport=transport, base_url="http://test") as http:
+                resp = await http.post(
+                    "/api/chat/sessions",
+                    json={"directory": project_dir},
+                )
+                assert resp.status_code == 200, resp.text
+
+                create_posts = fake.control.posts_matching_path("/session")
+                assert len(create_posts) == 1
+                body = create_posts[0].body
+                assert isinstance(body, dict), f"expected JSON body, got {body!r}"
+                assert body.get("directory") == project_dir, (
+                    f"directory not forwarded to opencode; got body={body!r}"
+                )
+
+                # Sanity: when the frontend OMITS directory (e.g. on /system/*
+                # pages), it must NOT be sent — opencode treats absent vs empty
+                # very differently and we want strict fail-open semantics.
+                resp_no_dir = await http.post("/api/chat/sessions", json={})
+                assert resp_no_dir.status_code == 200, resp_no_dir.text
+                create_posts = fake.control.posts_matching_path("/session")
+                assert len(create_posts) == 2
+                body_no_dir = create_posts[1].body
+                assert isinstance(body_no_dir, dict)
+                assert "directory" not in body_no_dir, (
+                    f"directory key leaked when client sent none; body={body_no_dir!r}"
+                )
+        finally:
+            await relay_manager.shutdown()
+            await client.aclose()
+            app.dependency_overrides.clear()

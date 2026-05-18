@@ -21,6 +21,7 @@ AI orchestration platform that drives AI-assisted development across multiple pr
 | Testing enhancement plan | `ai-dev/work/TESTS_ENHANCEMENT.md` · research `docs/research/R-00068-ai-core-test-quality-strategy.md` |
 | Auto-merge resolution plan | `ai-dev/active/AUTO_MERGE_RESOLUTION.md` · research `docs/research/R-00076-llm-automated-merge-resolution.md` · tracking F-00084 |
 | Configuration | `orch/config.py` (reads `.env`) · `projects.toml` |
+| AI Assistant model allowlist | `projects.toml` `[projects.X.ai_assistant]` · `docs/IW_AI_Core_AI_Assistant_Models.md` |
 | Evidences ingestion (CR-00025) | `orch/evidences.py` · hooks in `orch/cli/item_commands.py` (approve) and `orch/cli/step_commands.py` (step-done) |
 | Migrations | `orch/db/migrations/versions/` |
 | Pre-merge migration rebase (CR-00021) | `orch/daemon/migration_rebase.py` · `docs/IW_AI_Core_Daemon_Design.md` |
