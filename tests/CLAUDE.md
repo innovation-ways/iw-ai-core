@@ -146,6 +146,34 @@ will scope those engines down to function level.
 to 2026-05-16 after 5 fix cycles could not converge; superseded by CR-00055's
 per-test template-clone strategy.
 
+## Quarantine workflow (CR-00061, P2-CR-C)
+
+A test is quarantined when it intermittently fails for a reason we haven't root-caused,
+**OR** when it requires a specific test ordering we haven't fixed. **Quarantining a test
+is not free**: it removes the test's signal from the merge gate, so the bug it was
+guarding for can land unnoticed.
+
+**The rules:**
+
+1. Before adding `@pytest.mark.quarantine`, run `/iw-new-incident` and file an Incident
+   describing the suspected cause and the test name(s). Use the Incident ID in the
+   marker's `reason` argument.
+2. The marker MUST carry a `reason` string of the form `"I-NNNNN: <one-liner — suspected
+   cause + when added>"`. Example:
+   ```python
+   @pytest.mark.quarantine(reason="I-00099: race in foo() when bar is concurrent; added 2026-05-18")
+   ```
+3. The Incident's `Description` field must name the test(s) verbatim so a `git grep`
+   from the test name finds the tracking ticket.
+4. To remove the marker: run `make test-quarantine` for 3 consecutive runs (or 7 calendar
+   days, whichever is more); if the test passed all of them, the marker can come off and
+   the Incident can be closed with `verdict: not-reproducible`. (If it failed any run,
+   root-cause it first.)
+5. The existing `@pytest.mark.order_dependent` is a narrower flavour of `quarantine` —
+   both are excluded from the merge gate; pre-existing `order_dependent`-marked tests
+   are NOT migrated by CR-00061 (they carry their own tracking from CR-00048/55); new
+   quarantines default to `quarantine`.
+
 ## Property tests (CR-00060, P2-CR-B)
 
 Five Hypothesis property-based test modules live under `tests/unit/properties/`:
