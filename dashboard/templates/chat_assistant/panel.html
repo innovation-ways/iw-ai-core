@@ -9,6 +9,7 @@
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-skills-tray,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-history-dropdown,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-composer-wrap { display: none; }
+  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-collapse-btn { display: none; }
   #chat-assistant-panel:not([data-collapsed="true"]) #chat-assistant-expand-rail { display: none; }
 </style>
 
@@ -63,9 +64,10 @@
     </button>
 
     <button id="chat-assistant-collapse-btn"
-            class="tap inline-flex items-center justify-center p-1 rounded hover:bg-muted"
-            aria-label="Collapse AI Assistant panel (Ctrl+/)">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            class="tap inline-flex items-center justify-center p-1 rounded hover:bg-muted chat-assistant-collapse-btn-distinct ml-1"
+            aria-label="Collapse AI Assistant panel (Ctrl+/)"
+            title="Collapse panel">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
       </svg>
     </button>
