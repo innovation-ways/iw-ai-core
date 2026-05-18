@@ -68,6 +68,8 @@ class FailedRow:
     agent_label: str
     status: str  # step status value string
     error_message: str | None
+    # I-00101: scope-violation paths if this is a scope-blocked step
+    scope_violations: list[str] | None = None
 
 
 @dataclass
@@ -177,6 +179,17 @@ def _query_failed_steps(db: Session, project_id: str | None = None) -> list[Fail
         for row in bulk_runs:
             last_error_map[row.step_id] = row.error_message
 
+    # I-00101: bulk-fetch scope_violations for all needs_fix steps (single query, N+1 safe)
+    needs_fix_ids = [step.id for step, _, _ in step_rows if step.status == StepStatus.needs_fix]
+    scope_violations_map: dict[int, list[str]] = {}
+    if needs_fix_ids:
+        from orch.daemon.scope_amendment import latest_scope_violation
+
+        for step_db_id in needs_fix_ids:
+            violations = latest_scope_violation(db, step_db_id)
+            if violations:
+                scope_violations_map[step_db_id] = violations
+
     rows = []
     for step, item, project in step_rows:
         rows.append(
@@ -188,6 +201,7 @@ def _query_failed_steps(db: Session, project_id: str | None = None) -> list[Fail
                 agent_label=step.agent_label,
                 status=step.status.value,
                 error_message=last_error_map.get(step.id),
+                scope_violations=scope_violations_map.get(step.id),
             )
         )
     return rows

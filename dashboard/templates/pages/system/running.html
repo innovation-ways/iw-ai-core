@@ -111,26 +111,71 @@
               <span class="text-muted-foreground ml-1 text-xs">{{ row.agent_label }}</span>
             </td>
             <td class="px-4 py-2">
-              {{ status_badge(row.status) }}
+              {% if row.scope_violations %}
+                {# I-00101: scope-blocked badge #}
+                <span
+                  class="badge-scope-blocked inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-amber-200 text-amber-900 border border-amber-400"
+                  title="Out-of-scope paths: {{ row.scope_violations | join(', ') }}"
+                  aria-label="Scope blocked: {{ row.scope_violations | join(', ') }}">
+                  Scope blocked
+                </span>
+              {% else %}
+                {{ status_badge(row.status) }}
+              {% endif %}
             </td>
             <td class="px-4 py-2 text-xs text-muted-foreground max-w-xs truncate hidden sm:table-cell"
                 title="{{ row.error_message or '' }}">
               {{ row.error_message or '—' }}
             </td>
             <td class="px-4 py-2 text-right">
-              <div class="flex items-center justify-end gap-1">
-                {{ restart_button(row.project_id, row.item_id, row.step_id) }}
-                {{ skip_button(row.project_id, row.item_id, row.step_id) }}
-                <button
-                  hx-post="/project/{{ row.project_id }}/api/item/{{ row.item_id }}/restart-from/{{ row.step_id }}"
-                  hx-swap="none"
-                  hx-confirm="Reset this and all downstream steps to pending?"
-                  class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
-                  title="Restart from this step (resets all downstream steps)"
-                  {{ write_button_attrs(request) }}>
-                  ↺ from here
-                </button>
-              </div>
+              {% if row.scope_violations %}
+                {# I-00101: scope-blocked — Amend + Revert + Skip #}
+                <div class="flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    class="px-2 py-1 bg-warning text-warning-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+                    hx-get="/project/{{ row.project_id }}/api/item/{{ row.item_id }}/scope/amend-modal/{{ row.step_id }}"
+                    hx-target="#modal-root"
+                    hx-swap="beforeend"
+                    title="Amend scope and restart"
+                    {{ write_button_attrs(request) }}>
+                    ✎ Amend scope
+                  </button>
+                  <button
+                    type="button"
+                    class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+                    hx-post="/project/{{ row.project_id }}/api/item/{{ row.item_id }}/scope/revert-and-restart/{{ row.step_id }}"
+                    hx-confirm="Revert the agent's out-of-scope edits for {{ row.scope_violations | join(', ') }} and restart the step?"
+                    hx-swap="none"
+                    title="Revert and restart"
+                    {{ write_button_attrs(request) }}>
+                    ↩ Revert
+                  </button>
+                  <button
+                    hx-get="/project/{{ row.project_id }}/api/confirm/skip-step/{{ row.item_id }}/{{ row.step_id }}"
+                    hx-target="#confirm-dialog"
+                    hx-swap="innerHTML"
+                    class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+                    title="Skip step"
+                    {{ write_button_attrs(request) }}>
+                    ⏭
+                  </button>
+                </div>
+              {% else %}
+                <div class="flex items-center justify-end gap-1">
+                  {{ restart_button(row.project_id, row.item_id, row.step_id) }}
+                  {{ skip_button(row.project_id, row.item_id, row.step_id) }}
+                  <button
+                    hx-post="/project/{{ row.project_id }}/api/item/{{ row.item_id }}/restart-from/{{ row.step_id }}"
+                    hx-swap="none"
+                    hx-confirm="Reset this and all downstream steps to pending?"
+                    class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+                    title="Restart from this step (resets all downstream steps)"
+                    {{ write_button_attrs(request) }}>
+                    ↺ from here
+                  </button>
+                </div>
+              {% endif %}
             </td>
           </tr>
         {% endfor %}

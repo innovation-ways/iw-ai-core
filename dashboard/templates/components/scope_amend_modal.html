@@ -1,0 +1,72 @@
+{# Scope amend modal — returned by GET /item/{item_id}/scope/amend-modal/{step_id} #}
+<div id="scope-amend-overlay" class="activity-modal-backdrop" aria-hidden="false"></div>
+<div id="scope-amend-modal" class="activity-modal" role="dialog" aria-modal="true" aria-labelledby="scope-amend-title" aria-hidden="false" tabindex="-1">
+  <div class="activity-modal-inner">
+    <header class="activity-modal-header">
+      <div>
+        <h3 id="scope-amend-title" class="activity-modal-title">
+          Amend scope for {{ item.id }} / {{ step.step_id }}
+        </h3>
+        <p class="text-xs text-muted-foreground mt-0.5">
+          The selected paths will be added to this work item's <code>scope.allowed_paths</code>
+          in both the worktree's manifest and the parent design-time copy.
+          The step will then be re-queued.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="modal-close"
+        aria-label="Close modal"
+        hx-target="#scope-amend-overlay"
+        hx-swap="delete"
+        onclick="document.getElementById('scope-amend-modal').remove(); this.closest('#scope-amend-overlay').remove();">
+        ×
+      </button>
+    </header>
+    <div class="activity-modal-body">
+      {# Current allowed paths (read-only list) #}
+      {% if current_allowed_paths %}
+        <div class="mb-4">
+          <p class="text-xs font-medium text-muted-foreground mb-1">Current allowed paths:</p>
+          <ul class="list-disc list-inside text-xs text-muted-foreground bg-muted rounded px-2 py-1 max-h-32 overflow-y-auto">
+            {% for p in current_allowed_paths %}
+              <li><code>{{ p }}</code></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      {# Checkboxes for each offending path (pre-checked) #}
+      <form
+        hx-post="/project/{{ item.project_id }}/api/item/{{ item.id }}/scope/amend-and-restart/{{ step.step_id }}">
+        <p class="text-xs font-medium text-muted-foreground mb-2">Paths to add to scope:</p>
+        <div class="space-y-1 mb-4">
+          {% for path in violations %}
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                name="paths"
+                value="{{ path }}"
+                checked
+                class="rounded border-border text-primary focus:ring-primary" />
+              <code class="text-xs">{{ path }}</code>
+            </label>
+          {% endfor %}
+        </div>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="px-3 py-1.5 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+            onclick="document.getElementById('scope-amend-modal').remove(); document.getElementById('scope-amend-overlay').remove();">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+            Amend &amp; restart
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

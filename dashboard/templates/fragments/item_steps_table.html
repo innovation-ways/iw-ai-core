@@ -108,7 +108,19 @@
               </button>
             {% endif %}
           </td>
-          <td class="px-4 py-2">{{ status_badge(step.status) }}</td>
+          <td class="px-4 py-2">
+              {% if step.scope_violations %}
+                {# I-00101: scope-blocked badge with accessible path list #}
+                <span
+                  class="badge-scope-blocked inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-amber-200 text-amber-900 border border-amber-400"
+                  title="Out-of-scope paths: {{ step.scope_violations | join(', ') }}"
+                  aria-label="Scope blocked: {{ step.scope_violations | join(', ') }}">
+                  Scope blocked
+                </span>
+              {% else %}
+                {{ status_badge(step.status) }}
+              {% endif %}
+            </td>
           <td class="px-4 py-2 font-mono text-xs text-muted-foreground hidden sm:table-cell">
             {% if step.started_at %}
               {{ step.started_at | localdt('%H:%M:%S') }}
@@ -155,10 +167,37 @@
               </div>
             {% elif not step.is_synthetic %}
               {% if step.status in ('failed', 'needs_fix') %}
-                <div class="flex items-center justify-end gap-1">
-                  {{ restart_button(item.project_id, item.id, step.step_id) }}
-                  {{ skip_button(item.project_id, item.id, step.step_id) }}
-                </div>
+                {% if step.scope_violations %}
+                  {# I-00101: scope-blocked — show Amend + Revert + Skip #}
+                  <div class="flex items-center justify-end gap-1">
+                    <button
+                      type="button"
+                      class="px-2 py-1 bg-warning text-warning-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+                      hx-get="/project/{{ item.project_id }}/api/item/{{ item.id }}/scope/amend-modal/{{ step.step_id }}"
+                      hx-target="#modal-root"
+                      hx-swap="beforeend"
+                      title="Amend scope and restart"
+                      {{ write_button_attrs(request) }}>
+                      ✎ Amend scope
+                    </button>
+                    <button
+                      type="button"
+                      class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+                      hx-post="/project/{{ item.project_id }}/api/item/{{ item.id }}/scope/revert-and-restart/{{ step.step_id }}"
+                      hx-confirm="Revert the agent's out-of-scope edits for {{ step.scope_violations | join(', ') }} and restart the step?"
+                      hx-swap="none"
+                      title="Revert and restart"
+                      {{ write_button_attrs(request) }}>
+                      ↩ Revert
+                    </button>
+                    {{ skip_button(item.project_id, item.id, step.step_id) }}
+                  </div>
+                {% else %}
+                  <div class="flex items-center justify-end gap-1">
+                    {{ restart_button(item.project_id, item.id, step.step_id) }}
+                    {{ skip_button(item.project_id, item.id, step.step_id) }}
+                  </div>
+                {% endif %}
               {% elif step.status == 'in_progress' %}
                 <div class="flex items-center justify-end gap-1">
                   {{ kill_button(item.project_id, item.id, step.step_id) }}
