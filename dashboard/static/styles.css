@@ -490,3 +490,8 @@ div.mermaid-diagram span {
   border-radius: 0.375rem;
   border: 1px solid var(--border, #e5e7eb);
 }
+
+.auto-merge-save-indicator{display:none;margin-left:.5rem;font-size:.75rem;color:var(--muted-foreground)}
+.auto-merge-save-indicator.htmx-request,.htmx-request .auto-merge-save-indicator{display:inline}
+.auto-merge-save-indicator--saved{display:inline;color:var(--primary);animation:auto-merge-fade 2s ease-out forwards}
+@keyframes auto-merge-fade{0%{opacity:1}80%{opacity:1}100%{opacity:0}}

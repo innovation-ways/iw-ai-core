@@ -376,3 +376,152 @@ def test_filter_chip_title_tooltips_match_event_types(
     assert 'title="auto_merge_health_probe"' in chips["health_probe"]
     assert 'title="auto_merge_config_updated"' in chips["config_updated"]
     assert 'title="all event types"' in chips["all"]
+
+
+# ---------------------------------------------------------------------------
+# I-00091 — settings form sync regression tests
+# ---------------------------------------------------------------------------
+
+
+def _extract_select_block(html: str, name: str) -> str:
+    """Return the inner HTML of <select name=\"{name}\">...</select>.
+
+    Raises AssertionError if the select is missing — that itself is a useful failure.
+    """
+    pattern = re.compile(
+        rf"<select\b[^>]*\bname=\"{re.escape(name)}\"[^>]*>(.*?)</select>",
+        re.DOTALL,
+    )
+    match = pattern.search(html)
+    assert match is not None, f'<select name="{name}"> not found in response'
+    return match.group(1)
+
+
+def test_settings_form_reflects_phase_only_override(
+    client: TestClient, test_project, db_session
+) -> None:
+    """Phase-only override: Phase=1 selected, Runtime stays on global.
+
+    DB row: phase=1, runtime_option_id=NULL
+    Expected: Phase block has value="1" selected; Runtime block has value="global" selected.
+    """
+    db_session.merge(
+        AutoMergeProjectConfig(
+            project_id=test_project.id,
+            phase=1,
+            runtime_option_id=None,
+            updated_by="test-fixture",
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge")
+    assert response.status_code == 200
+    html = response.text
+
+    phase_block = _extract_select_block(html, name="phase")
+    assert 'value="1" selected' in phase_block, f"Phase should be 1; got:\n{phase_block}"
+    assert 'value="global" selected' not in phase_block
+
+    runtime_block = _extract_select_block(html, name="runtime_option_id")
+    assert 'value="global" selected' in runtime_block
+
+    # Footer shows "Last changed" (not "Using global default")
+    assert "Last changed:" in html
+    assert "Using global default" not in html
+
+
+def test_settings_form_reflects_runtime_only_override(
+    client: TestClient, test_project, db_session
+) -> None:
+    """Runtime-only override: Runtime=<id> selected, Phase stays on global.
+
+    DB row: phase=NULL, runtime_option_id=<enabled row>
+    Expected: Phase block has value="global" selected; Runtime block has that id selected.
+    """
+    _runtime(db_session, rid=5, enabled=True)
+    db_session.merge(
+        AutoMergeProjectConfig(
+            project_id=test_project.id,
+            phase=None,
+            runtime_option_id=5,
+            updated_by="test-fixture",
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge")
+    assert response.status_code == 200
+    html = response.text
+
+    phase_block = _extract_select_block(html, name="phase")
+    assert 'value="global" selected' in phase_block
+    assert 'value="1" selected' not in phase_block
+
+    runtime_block = _extract_select_block(html, name="runtime_option_id")
+    assert 'value="5" selected' in runtime_block, f"Runtime should be 5; got:\n{runtime_block}"
+    assert 'value="global" selected' not in runtime_block
+
+    # Footer shows "Last changed"
+    assert "Last changed:" in html
+    assert "Using global default" not in html
+
+
+def test_settings_form_reflects_both_axes_override(
+    client: TestClient, test_project, db_session
+) -> None:
+    """Both axes overridden: Phase=1 and Runtime=<id> both selected.
+
+    DB row: phase=1, runtime_option_id=<enabled>
+    Expected: Phase block has value="1" selected; Runtime block has that id selected.
+    """
+    _runtime(db_session, rid=6, enabled=True)
+    db_session.merge(
+        AutoMergeProjectConfig(
+            project_id=test_project.id,
+            phase=1,
+            runtime_option_id=6,
+            updated_by="test-fixture",
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge")
+    assert response.status_code == 200
+    html = response.text
+
+    phase_block = _extract_select_block(html, name="phase")
+    assert 'value="1" selected' in phase_block, f"Phase should be 1; got:\n{phase_block}"
+    assert 'value="global" selected' not in phase_block
+
+    runtime_block = _extract_select_block(html, name="runtime_option_id")
+    assert 'value="6" selected' in runtime_block, f"Runtime should be 6; got:\n{runtime_block}"
+    assert 'value="global" selected' not in runtime_block
+
+    # Footer shows "Last changed"
+    assert "Last changed:" in html
+    assert "Using global default" not in html
+
+
+def test_settings_form_clears_back_to_global(client: TestClient, test_project, db_session) -> None:
+    """No DB row: both dropdowns render as 'Use global default'.
+
+    No AutoMergeProjectConfig row.
+    Expected: Phase block has value="global" selected; Runtime block has value="global" selected.
+    Footer reads 'Using global default'.
+    """
+    response = client.get(f"/project/{test_project.id}/auto-merge")
+    assert response.status_code == 200
+    html = response.text
+
+    phase_block = _extract_select_block(html, name="phase")
+    assert 'value="global" selected' in phase_block
+    assert 'value="1" selected' not in phase_block
+    assert 'value="0" selected' not in phase_block
+
+    runtime_block = _extract_select_block(html, name="runtime_option_id")
+    assert 'value="global" selected' in runtime_block
+
+    # Footer reads "Using global default"
+    assert "Using global default" in html
+    assert "Last changed:" not in html

@@ -375,11 +375,37 @@ def auto_merge_set_config(
         )
 
     status = _load_status(db, project_id)
-    return _render_fragment(
+    runtime_rows = db.scalars(
+        select(AgentRuntimeOption)
+        .where(AgentRuntimeOption.enabled.is_(True))
+        .order_by(AgentRuntimeOption.cli_tool, AgentRuntimeOption.sort_order, AgentRuntimeOption.id)
+    ).all()
+    runtime_options: dict[str, list[AgentRuntimeOption]] = {}
+    for row in runtime_rows:
+        runtime_options.setdefault(row.cli_tool, []).append(row)
+    project = _get_project_or_404(db, project_id)
+    settings_html = _render_fragment(
+        request,
+        "fragments/auto_merge_settings.html",
+        {
+            "request": request,
+            "current_project": project,
+            "status": status,
+            "runtime_options": runtime_options,
+            "just_saved": True,
+        },
+    ).body.decode()  # type: ignore[union-attr]
+    chip_html = _render_fragment(
         request,
         "fragments/auto_merge_status_chip.html",
-        {"request": request, "status": status, "project_id": project_id},
-    )
+        {
+            "request": request,
+            "status": status,
+            "project_id": project_id,
+            "oob": True,
+        },
+    ).body.decode()  # type: ignore[union-attr]
+    return HTMLResponse(settings_html + chip_html)
 
 
 @router.get("/auto-merge/rollup", response_class=HTMLResponse)
