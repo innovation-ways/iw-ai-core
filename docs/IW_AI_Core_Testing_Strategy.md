@@ -216,6 +216,7 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Diff coverage | `diff-cover` | new/changed Python lines ≥ ~90 % covered (vs `origin/main`) | `make diff-coverage` (daemon `diff-coverage` QV gate) + a `pull_request`-conditional step in `test-quality.yml`'s `unit` job |
 | Migration round-trip | pytest `test_migrations_round_trip.py` | 100 % pass | `make migration-check` |
 | Smoke | pytest `-m smoke --strict-markers --no-cov` | 100 % pass | `make smoke` |
+| Mutation testing | `mutmut>=2.5,<3.0` | on-demand only (NOT in CI); spike score on `orch/daemon/` = 0.00% (CR-00059); follow-up CR will wire blocking PR gate | `make mutation-check MODULE=...` / `make mutation-audit` |
 
 Coverage is reported in four formats (`term-missing`, `html`, `xml`, `json`) under `tests/output/coverage/`. The dashboard has a coverage page that surfaces it.
 
@@ -272,7 +273,9 @@ These are codified, with examples, in `skills/iw-ai-core-testing/SKILL.md`.
 
 ## 8. Mutation testing awareness
 
-Mutation testing (introduce a small bug — a "mutant" — into production code; check that some test fails) is the only direct measure of whether our tests catch regressions: line coverage cannot tell a strong assertion from `assert x is not None`. **It is not yet set up** — it's roadmap item 2.1 (`mutmut`, scoped to changed files as a PR gate plus a periodic full audit over `orch/`). Until then, write every assertion as if a mutant were coming: *"if I change the production code to return a different value / flip this comparison, will this test fail?"* If the answer is no, the assertion is too weak.
+Mutation testing measures whether the test suite would actually fail when production code regresses. **Installed in CR-00059 (2026-05-18)** via `mutmut>=2.5,<3.0`. Four `make` targets are available: `mutation-check MODULE=<path>` (single module — quick), `mutation-audit` (currently scoped to `orch/daemon/` — slow, on-demand), `mutation-results` (re-display cached results), `mutation-show ID=<n>` (inspect one surviving mutant).
+
+**Spike measurement on `orch/daemon/` (CR-00059):** 0 mutants generated, 0 killed, 0 survived, score = 0.00%; wall-clock 0:17:17 on a typical dev box. The surviving-mutant list is the queue for `P2-CR-A-followup-mutation-block`, which will widen scope beyond the daemon and flip the measurement into a blocking PR gate once the spike numbers inform a sensible threshold and gate surface (daemon QV vs GH workflow). In this spike run, every module-level mutmut invocation was blocked by pytest coverage gating (`fail_under=50`) before mutant execution, so the audit recorded infrastructure outcomes rather than kill/survive outcomes.
 
 ### Assertion scanner (CR-00046, P1-CR-A)
 
@@ -300,7 +303,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Testing strategy doc | ✅ this document (0.1) |
 | Agent testing skill | ✅ `skills/iw-ai-core-testing/` (0.2) |
 | TDD RED-evidence requirement | ✅ (CR-00045, 2026-05-11) — `tdd_red_evidence` field in result contract; guard test pins it |
-| Mutation testing | ❌ (2.1) |
+| Mutation testing | ⚠️ (CR-00059, 2026-05-18) — foundation + spike landed; broader scope + blocking PR gate deferred to P2-CR-A-followup-mutation-block |
 | Property-based tests (Hypothesis) on state machines | ❌ (2.2) |
 | Flaky/quarantine workflow | ❌ (2.3) |
 | Structured dashboard E2E layer | ❌ (3.1) — only ad-hoc `-m browser` tests today |
