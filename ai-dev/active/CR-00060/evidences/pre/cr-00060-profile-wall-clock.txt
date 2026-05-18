@@ -1,0 +1,16 @@
+CR-00060 — Hypothesis profile wall-clock (P2-CR-B)
+Date: 2026-05-18
+Machine: WSL2 on Linux 6.8.0, 16-core
+
+| Profile | Total wall-clock | Per-module breakdown                        |
+|---------|------------------|---------------------------------------------|
+| ci      | ~1.5s            | work_item: 1.14s; batch: 1.04s; fix_cycle: 1.09s; doc_diff: 1.23s; next_id: 1.14s |
+| dev     | ~3.8s            | (same shape, larger numbers ~200 ex/param)  |
+
+Notes:
+- ci profile total MUST be <30s (gates make test-unit) — currently ~1.5s
+- dev profile total is informational
+- deep profile NOT measured here (S03 measures it as part of cross-agent review)
+- All 5 modules pass under both ci and dev profiles
+- 1 test skipped: test_allocate_next_id_single_prefix_sequential (marked skip — pending testcontainer DB resolution per CR-00060 notes)
+- test_concurrent_allocate_next_id_no_duplicates: PASSED (hypothesis profile ci, 10 examples, deadline 5000ms, function_scoped_fixture health check suppressed)

@@ -1154,6 +1154,18 @@ wheels = [
 ]
 
 [[package]]
+name = "hypothesis"
+version = "6.152.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sortedcontainers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/91/dd/19d273652eb20dac15f32bbc484f2f6d51ccd8fe51fdb27da3f85f9017e8/hypothesis-6.152.7.tar.gz", hash = "sha256:741dedcede2ae0f32c32929a5992804b61f2b0400403b6a51a881a2b58482782", size = 468147, upload-time = "2026-05-13T04:19:34.124Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0a/1e/8222edaee03c37350eaa726213614e343a62f1e56396dd000ad9277bfa3d/hypothesis-6.152.7-py3-none-any.whl", hash = "sha256:c0b17dd428fcb6e962f60315f6f4a77816c72fbb281ce9ba73699dabead5ec82", size = 533802, upload-time = "2026-05-13T04:19:30.635Z" },
+]
+
+[[package]]
 name = "identify"
 version = "2.6.18"
 source = { registry = "https://pypi.org/simple" }
@@ -1241,6 +1253,7 @@ dev = [
     { name = "factory-boy" },
     { name = "freezegun" },
     { name = "httpx" },
+    { name = "hypothesis" },
     { name = "mutmut" },
     { name = "mypy" },
     { name = "pgtestdbpy" },
@@ -1314,6 +1327,7 @@ dev = [
     { name = "factory-boy", specifier = ">=3.3" },
     { name = "freezegun", specifier = ">=1.4" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "hypothesis", specifier = ">=6.100,<7" },
     { name = "mutmut", specifier = ">=2.5,<3.0" },
     { name = "mypy", specifier = ">=1.13" },
     { name = "pgtestdbpy", specifier = ">=0.0.1" },

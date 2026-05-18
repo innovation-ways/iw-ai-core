@@ -146,6 +146,28 @@ will scope those engines down to function level.
 to 2026-05-16 after 5 fix cycles could not converge; superseded by CR-00055's
 per-test template-clone strategy.
 
+## Property tests (CR-00060, P2-CR-B)
+
+Five Hypothesis property-based test modules live under `tests/unit/properties/`:
+
+| Module | Target | Pattern |
+|--------|--------|---------|
+| `test_work_item_lifecycle_properties.py` | WorkItem lifecycle invariants | `RuleBasedStateMachine` |
+| `test_batch_lifecycle_properties.py` | Batch status pure-function properties | `@given` |
+| `test_fix_cycle_cap_properties.py` | Fix-cycle cap enforcement | `RuleBasedStateMachine` |
+| `test_doc_diff_round_trip_properties.py` | Doc diff round-trip | `@given` |
+| `test_iw_next_id_atomicity_properties.py` | `allocate_next_id` concurrency | `RuleBasedStateMachine` + `ThreadPoolExecutor` |
+
+**When to add a new property test:** when the class of bug is an *invariant violation* across a state space too large to enumerate exhaustively with example tests (e.g. "a merged work item never transitions back to in-progress"). If a property test already exists for the same target, add cases to it rather than creating a new file.
+
+**RuleBasedStateMachine vs `@given`:** use `RuleBasedStateMachine` when modelling a multi-step state machine (the work item and fix-cycle modules); use `@given` when testing a pure function with arbitrary inputs (the batch status and doc-diff modules). Use `assume()` inside a `@given` to skip pathological inputs — never silently pass.
+
+**The `properties` marker is auto-applied** to every test in `tests/unit/properties/` by a `pytest_collection_modifyitems` hook in `tests/unit/properties/conftest.py` — no per-test `@pytest.mark.properties` decorator is needed.
+
+**CI profile (`ci`):** runs as part of `make test-unit` via the conftest default (`IW_HYPOTHESIS_PROFILE=ci`). Must be <30 s wall-clock. `derandomize=True` makes it deterministic.
+
+**Deep profile:** `make test-properties-deep` for on-demand thorough sweeps (1000 examples, full shrinking).
+
 ## Smoke layer SLA (CR-00052, P1-CR-E)
 
 `make smoke` runs the curated `@pytest.mark.smoke` set. **Contract:**

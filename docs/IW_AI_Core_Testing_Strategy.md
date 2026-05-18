@@ -165,6 +165,30 @@ Hard rules (full list in `tests/CLAUDE.md`):
 
 F-00062 introduced a per-worktree Postgres container for *app runtime* (started by the daemon when a project ships `ai-dev/iw-config/`). This is **separate** from `make test-integration`'s testcontainers. Tests must never assume the per-worktree DB exists — they spin up their own testcontainer. The agent's `IW_CORE_DB_*` env vars point at the per-worktree DB; `IW_CORE_ORCH_DB_*` always points at the global orch DB on 5433.
 
+### Property-based tests (Hypothesis — CR-00060, P2-CR-B)
+
+Five property-test modules under `tests/unit/properties/` exercise the core state machines via **Hypothesis** (property-based testing):
+
+| Module | Target | Strategy |
+|--------|--------|----------|
+| `test_work_item_lifecycle_properties.py` | WorkItem lifecycle | `RuleBasedStateMachine` + 4 invariants |
+| `test_batch_lifecycle_properties.py` | Batch status computation | `@given` pure-function properties |
+| `test_fix_cycle_cap_properties.py` | Fix-cycle cap enforcement | `RuleBasedStateMachine` + cap invariant |
+| `test_doc_diff_round_trip_properties.py` | Doc diff round-trip | `@given` parse/serialise invariants |
+| `test_iw_next_id_atomicity_properties.py` | `allocate_next_id` atomicity | `RuleBasedStateMachine` + `ThreadPoolExecutor` |
+
+**Profiles** — selected via `$IW_HYPOTHESIS_PROFILE`:
+
+| Profile | `max_examples` | `deadline` | `derandomize` | Use |
+|---------|---------------|------------|---------------|-----|
+| `ci` | 20 | 2000 ms | `True` | Merge-gate default (runs as part of `make test-unit`) |
+| `dev` | 200 | 5000 ms | `False` | Local development default |
+| `deep` | 1000 | `None` | `False` | On-demand deep sweep (`make test-properties-deep`) |
+
+The **`ci` profile is the merge-gate** — `derandomize=True` makes it deterministic (same seed every run); wall-clock budget is <30 s for all 5 modules combined.
+
+The `properties` marker is **auto-applied** to every test in `tests/unit/properties/` via a `pytest_collection_modifyitems` hook in `tests/unit/properties/conftest.py` — no per-test decorator needed. The marker is registered in `pyproject.toml` `[tool.pytest.ini_options].markers`.
+
 ### Markers (`pyproject.toml`)
 
 | Marker | Meaning |
@@ -217,6 +241,8 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Migration round-trip | pytest `test_migrations_round_trip.py` | 100 % pass | `make migration-check` |
 | Smoke | pytest `-m smoke --strict-markers --no-cov` | 100 % pass | `make smoke` |
 | Mutation testing | `mutmut>=2.5,<3.0` | on-demand only (NOT in CI); spike score on `orch/daemon/` = 0.00% (CR-00059); follow-up CR will wire blocking PR gate | `make mutation-check MODULE=...` / `make mutation-audit` |
+| Property tests (ci profile) | hypothesis | included in `make test-unit` via `tests/unit/properties/` conftest default; `--strict-markers` via `pyproject.toml`; deterministic via `derandomize=True` | `make test-properties` (explicit); also via `make test-unit` |
+| Property tests (deep profile) | hypothesis | NOT in CI; on-demand | `make test-properties-deep` |
 
 Coverage is reported in four formats (`term-missing`, `html`, `xml`, `json`) under `tests/output/coverage/`. The dashboard has a coverage page that surfaces it.
 
@@ -304,7 +330,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Agent testing skill | ✅ `skills/iw-ai-core-testing/` (0.2) |
 | TDD RED-evidence requirement | ✅ (CR-00045, 2026-05-11) — `tdd_red_evidence` field in result contract; guard test pins it |
 | Mutation testing | ⚠️ (CR-00059, 2026-05-18) — foundation + spike landed; broader scope + blocking PR gate deferred to P2-CR-A-followup-mutation-block |
-| Property-based tests (Hypothesis) on state machines | ❌ (2.2) |
+| Property-based tests (Hypothesis) on state machines | ✅ (CR-00060, 2026-05-18) — five modules under `tests/unit/properties/`; ci profile in `make test-unit`; deep profile on-demand via `make test-properties-deep` |
 | Flaky/quarantine workflow | ❌ (2.3) |
 | Structured dashboard E2E layer | ❌ (3.1) — only ad-hoc `-m browser` tests today |
 | Contract / no-5xx route sweep + `schemathesis` | ❌ (3.2) |
