@@ -1,11 +1,28 @@
 from __future__ import annotations
 
+import re
+
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
 from orch.db.models import AgentRuntimeOption, AutoMergeProjectConfig, DaemonEvent
+
+
+def _extract_select_block(html: str, name: str) -> str:
+    """Return the inner HTML of <select name=\"{name}\">...</select>.
+
+    Raises AssertionError if the select is missing — that itself is a useful failure.
+    Shared with tests/dashboard/test_auto_merge_routes.py for consistent assertion form.
+    """
+    pattern = re.compile(
+        rf"<select\b[^>]*\bname=\"{re.escape(name)}\"[^>]*>(.*?)</select>",
+        re.DOTALL,
+    )
+    match = pattern.search(html)
+    assert match is not None, f'<select name="{name}"> not found in response'
+    return match.group(1)
 
 
 def _seed_runtime(db, rid: int, enabled: bool = True, model: str | None = None) -> None:
@@ -289,3 +306,44 @@ def test_ac5_health_probe_state_transitions(db_session, test_project) -> None:
     down = get_health_summary(db_session, test_project.id, toml_config)
     assert down.state == "down"
     assert down.failures_last_24h > threshold
+
+
+def test_save_config_returns_combined_fragment(db_session, test_project) -> None:
+    """HTML POST response contains both the settings form AND the OOB chip."""
+    _seed_runtime(db_session, 1, enabled=True)
+    with _client(db_session) as c:
+        response = c.post(
+            f"/project/{test_project.id}/auto-merge/config",
+            json={"phase": 1, "runtime_option_id": 1},
+            headers={"Accept": "text/html"},
+        )
+
+    assert response.status_code == 200
+    html = response.text
+
+    # Settings form fragment present (NOT just the chip).
+    assert 'id="auto-merge-settings"' in html, "settings fragment must be returned"
+    phase_block = _extract_select_block(html, name="phase")
+    assert 'value="1" selected' in phase_block
+
+    # Chip is also present and marked as out-of-band swap (hx-swap-oob).
+    assert 'id="auto-merge-status-chip"' in html
+    assert "hx-swap-oob" in html, "chip must be hx-swap-oob so it updates alongside the form"
+
+
+def test_save_config_json_response_unchanged(db_session, test_project) -> None:
+    """JSON POST response remains unchanged (ok + fields)."""
+    with _client(db_session) as c:
+        response = c.post(
+            f"/project/{test_project.id}/auto-merge/config",
+            json={"phase": 1, "runtime_option_id": None},
+            headers={"Accept": "application/json"},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {
+        "ok": True,
+        "project_id": test_project.id,
+        "phase": 1,
+        "runtime_option_id": None,
+    }

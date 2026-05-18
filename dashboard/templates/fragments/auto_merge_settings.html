@@ -1,28 +1,30 @@
-<section class="auto-merge-settings bg-card border border-border rounded-lg p-4">
+<section id="auto-merge-settings" class="auto-merge-settings bg-card border border-border rounded-lg p-4">
   <h2 class="text-sm font-semibold text-foreground mb-3">Settings</h2>
-  {% set _is_override = status.config.source == 'per_project_db' %}
+  {% set _phase_override = status.config.phase_source == 'per_project_db' %}
+  {% set _runtime_override = status.config.runtime_source == 'per_project_db' %}
   <form hx-post="/project/{{ current_project.id }}/auto-merge/config"
         hx-ext="json-enc"
-        hx-target="#auto-merge-status-chip"
+        hx-target="#auto-merge-settings"
         hx-swap="outerHTML"
+        hx-indicator="#auto-merge-saving"
         class="space-y-4">
     <div>
       <label class="block text-xs text-muted-foreground mb-1">Phase</label>
       <select name="phase" class="w-full md:w-auto px-3 py-1.5 bg-input border border-border rounded text-sm">
-        <option value="global" {% if not _is_override %}selected{% endif %}>Use global default</option>
-        <option value="0" {% if _is_override and status.config.phase == 0 %}selected{% endif %}>0 — disabled</option>
-        <option value="1" {% if _is_override and status.config.phase == 1 %}selected{% endif %}>1 — dry-run</option>
+        <option value="global" {% if not _phase_override %}selected{% endif %}>Use global default</option>
+        <option value="0" {% if _phase_override and status.config.phase == 0 %}selected{% endif %}>0 — disabled</option>
+        <option value="1" {% if _phase_override and status.config.phase == 1 %}selected{% endif %}>1 — dry-run</option>
       </select>
     </div>
 
     <div>
       <label class="block text-xs text-muted-foreground mb-1">Runtime</label>
       <select name="runtime_option_id" class="w-full md:w-auto px-3 py-1.5 bg-input border border-border rounded text-sm">
-        <option value="global" {% if not _is_override or status.config.runtime_option_id is none %}selected{% endif %}>Use global default</option>
+        <option value="global" {% if not _runtime_override or status.config.runtime_option_id is none %}selected{% endif %}>Use global default</option>
         {% for cli_tool, options in runtime_options.items() %}
           <optgroup label="{{ cli_tool }}">
             {% for opt in options %}
-              <option value="{{ opt.id }}" {% if _is_override and status.config.runtime_option_id == opt.id %}selected{% endif %}>{{ opt.model_label }}</option>
+              <option value="{{ opt.id }}" {% if _runtime_override and status.config.runtime_option_id == opt.id %}selected{% endif %}>{{ opt.model_label }}</option>
             {% endfor %}
           </optgroup>
         {% endfor %}
@@ -30,10 +32,14 @@
     </div>
 
     <button type="submit" class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm">Save</button>
+    <span id="auto-merge-saving" class="auto-merge-save-indicator htmx-indicator">Saving…</span>
+    {% if just_saved %}
+    <span class="auto-merge-save-indicator auto-merge-save-indicator--saved">Saved</span>
+    {% endif %}
   </form>
 
   <p class="mt-3 text-xs text-muted-foreground">
-    {% if status.config.source == 'per_project_db' %}
+    {% if _phase_override or _runtime_override %}
       Last changed: {{ status.deployed_since | localdt('%Y-%m-%d %H:%M:%S') }} by dashboard
     {% else %}
       Using global default

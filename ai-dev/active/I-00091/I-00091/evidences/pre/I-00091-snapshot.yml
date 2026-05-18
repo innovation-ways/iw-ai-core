@@ -1,0 +1,539 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - region "AI Assistant chat" [ref=e3]:
+      - button "Collapse AI Assistant panel (Ctrl+/)" [ref=e5] [cursor=pointer]:
+        - img [ref=e6]
+      - button "Expand AI Assistant panel (Ctrl+/)" [ref=e8] [cursor=pointer]:
+        - img [ref=e9]
+        - generic [ref=e11]: AI Assistant
+        - img [ref=e12]
+    - complementary [ref=e14]:
+      - link "IW AI Core IW AI Core" [ref=e15] [cursor=pointer]:
+        - /url: /
+        - img "IW AI Core" [ref=e16]
+        - generic [ref=e17]: IW AI Core
+      - navigation [ref=e18]:
+        - group [ref=e19]:
+          - generic "Projects" [ref=e20] [cursor=pointer]:
+            - generic [ref=e21]: Projects
+            - img [ref=e22]
+          - generic [ref=e24]:
+            - group [ref=e25]:
+              - generic "Curriculum Vitae" [ref=e26] [cursor=pointer]:
+                - generic [ref=e27]: Curriculum Vitae
+                - img [ref=e28]
+            - group [ref=e30]:
+              - generic "IW AI Core Platform" [ref=e31] [cursor=pointer]:
+                - generic [ref=e32]: IW AI Core Platform
+                - img [ref=e33]
+              - generic [ref=e35]:
+                - link "Dashboard" [ref=e36] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/
+                - link "Batches" [ref=e37] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/batches
+                - link "Queue" [ref=e38] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/queue
+                - link "Jobs" [ref=e39] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/jobs
+                - link "Auto-Merge" [ref=e40] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/auto-merge
+                - link "History" [ref=e41] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/history
+                - link "Tests" [ref=e42] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/tests
+                - link "Quality" [ref=e43] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/quality
+                - link "Docs" [ref=e44] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/docs
+                - link "Research" [ref=e45] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/research
+                - link "Code" [ref=e46] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/code
+                - link "OSS" [ref=e47] [cursor=pointer]:
+                  - /url: /project/iw-ai-core/oss
+            - group [ref=e48]:
+              - generic "InnoForge Document Platform" [ref=e49] [cursor=pointer]:
+                - generic [ref=e50]: InnoForge Document Platform
+                - img [ref=e51]
+            - group [ref=e53]:
+              - generic "Podforger" [ref=e54] [cursor=pointer]:
+                - generic [ref=e55]: Podforger
+                - img [ref=e56]
+        - group [ref=e58]:
+          - generic "System" [ref=e59] [cursor=pointer]:
+            - generic [ref=e60]: System
+            - img [ref=e61]
+          - link "Running Tasks" [ref=e63] [cursor=pointer]:
+            - /url: /system/running
+            - generic [ref=e64]: Running Tasks
+          - link "Worktree Health 1 dirty worktree" [ref=e65] [cursor=pointer]:
+            - /url: /system/worktrees
+            - generic [ref=e66]: Worktree Health
+            - generic "1 dirty worktree" [ref=e67]
+          - link "Container Health" [ref=e68] [cursor=pointer]:
+            - /url: /system/containers
+            - generic [ref=e69]: Container Health
+          - link "System Status" [ref=e70] [cursor=pointer]:
+            - /url: /system/status
+            - generic [ref=e71]: System Status
+          - link "Test Coverage" [ref=e72] [cursor=pointer]:
+            - /url: /system/coverage
+            - generic [ref=e73]: Test Coverage
+          - link "Keep-Alive" [ref=e74] [cursor=pointer]:
+            - /url: /system/keep-alive
+            - generic [ref=e75]: Keep-Alive
+          - link "All Active Work" [ref=e76] [cursor=pointer]:
+            - /url: /system/all-active
+            - generic [ref=e77]: All Active Work
+          - link "Configuration" [ref=e78] [cursor=pointer]:
+            - /url: /system/config
+            - generic [ref=e79]: Configuration
+    - generic [ref=e80]:
+      - generic [ref=e81]:
+        - button "Toggle AI Assistant panel (Ctrl+/)" [ref=e82] [cursor=pointer]:
+          - img [ref=e83]
+        - searchbox "Search work items… (Ctrl+K)" [ref=e85]
+        - link "P1 opencode/minimax/MiniMax-M2.7 0 attempts ● down" [ref=e87] [cursor=pointer]:
+          - /url: /project/iw-ai-core/auto-merge
+          - generic [ref=e88]: P1
+          - generic [ref=e89]: opencode/minimax/MiniMax-M2.7
+          - generic [ref=e90]: 0 attempts
+          - generic [ref=e91]: ● down
+      - main [ref=e92]:
+        - generic [ref=e93]:
+          - generic [ref=e95]:
+            - generic [ref=e96]:
+              - heading "Auto-Merge Resolver" [level=1] [ref=e97]
+              - paragraph [ref=e98]: IW AI Core Platform
+            - link "P1 opencode/minimax/MiniMax-M2.7 0 attempts ● down" [ref=e99] [cursor=pointer]:
+              - /url: /project/iw-ai-core/auto-merge
+              - generic [ref=e100]: P1
+              - generic [ref=e101]: opencode/minimax/MiniMax-M2.7
+              - generic [ref=e102]: 0 attempts
+              - generic [ref=e103]: ● down
+          - generic [ref=e104]:
+            - heading "Settings" [level=2] [ref=e105]
+            - generic [ref=e106]:
+              - generic [ref=e107]:
+                - generic [ref=e108]: Phase
+                - combobox [ref=e109]:
+                  - option "Use global default" [selected]
+                  - option "0 — disabled"
+                  - option "1 — dry-run"
+              - generic [ref=e110]:
+                - generic [ref=e111]: Runtime
+                - combobox [ref=e112]:
+                  - option "Use global default" [selected]
+                  - option "Sonnet 4.6"
+                  - option "Opus 4.7"
+                  - option "MiniMax 2.7"
+                  - option "GPT-5.3 Codex"
+              - button "Save" [ref=e113] [cursor=pointer]
+            - paragraph [ref=e114]: Using global default
+          - generic [ref=e116]:
+            - generic [ref=e117]:
+              - generic [ref=e118]:
+                - heading "Verdict rollup" [level=3] [ref=e119]
+                - generic [ref=e120]:
+                  - generic [ref=e121]: 7d
+                  - generic [ref=e122]: 30d
+              - list [ref=e123]:
+                - listitem [ref=e124]: "pending: 0"
+                - listitem [ref=e125]: "correct: 0"
+                - listitem [ref=e126]: "wrong: 0"
+                - listitem [ref=e127]: "partial: 0"
+              - paragraph [ref=e128]: "Accuracy: 0.0%"
+            - generic [ref=e129]:
+              - heading "Token cost rollup" [level=3] [ref=e130]
+              - paragraph [ref=e131]: "in: 0 · out: 0 · $0.000000"
+              - table [ref=e132]:
+                - rowgroup [ref=e133]:
+                  - row "model input output $" [ref=e134]:
+                    - columnheader "model" [ref=e135]
+                    - columnheader "input" [ref=e136]
+                    - columnheader "output" [ref=e137]
+                    - columnheader "$" [ref=e138]
+                - rowgroup [ref=e139]:
+                  - row "No token usage in window." [ref=e140]:
+                    - cell "No token usage in window." [ref=e141]
+          - generic [ref=e144]:
+            - generic [ref=e145]:
+              - generic [ref=e146]: all
+              - generic [ref=e147]: resolved
+              - generic [ref=e148]: attempted
+              - generic [ref=e149]: failed
+              - generic [ref=e150]: skipped
+              - generic [ref=e151]: health_probe
+              - generic [ref=e152]: config_updated
+            - table [ref=e154]:
+              - rowgroup [ref=e155]:
+                - row "timestamp event_type entity_id message verdict actions" [ref=e156]:
+                  - columnheader "timestamp" [ref=e157]
+                  - columnheader "event_type" [ref=e158]
+                  - columnheader "entity_id" [ref=e159]
+                  - columnheader "message" [ref=e160]
+                  - columnheader "verdict" [ref=e161]
+                  - columnheader "actions" [ref=e162]
+              - rowgroup [ref=e163]:
+                - row "2026-05-17 23:19:17 auto_merge_config_updated iw-ai-core auto-merge config updated from dashboard — (view)" [ref=e164]:
+                  - cell "2026-05-17 23:19:17" [ref=e165]
+                  - cell "auto_merge_config_updated" [ref=e166]
+                  - cell "iw-ai-core" [ref=e167]
+                  - cell "auto-merge config updated from dashboard" [ref=e168]
+                  - cell "—" [ref=e169]
+                  - cell "(view)" [ref=e170]
+                - row "2026-05-17 23:16:17 auto_merge_health_probe — — — (view)" [ref=e171]:
+                  - cell "2026-05-17 23:16:17" [ref=e172]
+                  - cell "auto_merge_health_probe" [ref=e173]
+                  - cell "—" [ref=e174]
+                  - cell "—" [ref=e175]
+                  - cell "—" [ref=e176]
+                  - cell "(view)" [ref=e177]
+                - row "2026-05-17 23:14:17 step_warning_50pct CR-00057 Step is past 50% of its timeout budget (480s of 900s, ~53%) — (view)" [ref=e178]:
+                  - cell "2026-05-17 23:14:17" [ref=e179]
+                  - cell "step_warning_50pct" [ref=e180]
+                  - cell "CR-00057" [ref=e181]
+                  - cell "Step is past 50% of its timeout budget (480s of 900s, ~53%)" [ref=e182]
+                  - cell "—" [ref=e183]
+                  - cell "(view)" [ref=e184]
+                - row "2026-05-17 23:13:55 auto_merge_config_updated iw-ai-core auto-merge config updated from dashboard — (view)" [ref=e185]:
+                  - cell "2026-05-17 23:13:55" [ref=e186]
+                  - cell "auto_merge_config_updated" [ref=e187]
+                  - cell "iw-ai-core" [ref=e188]
+                  - cell "auto-merge config updated from dashboard" [ref=e189]
+                  - cell "—" [ref=e190]
+                  - cell "(view)" [ref=e191]
+                - row "2026-05-17 23:13:45 auto_merge_config_updated iw-ai-core auto-merge config updated from dashboard — (view)" [ref=e192]:
+                  - cell "2026-05-17 23:13:45" [ref=e193]
+                  - cell "auto_merge_config_updated" [ref=e194]
+                  - cell "iw-ai-core" [ref=e195]
+                  - cell "auto-merge config updated from dashboard" [ref=e196]
+                  - cell "—" [ref=e197]
+                  - cell "(view)" [ref=e198]
+                - row "2026-05-17 23:13:38 auto_merge_config_updated iw-ai-core auto-merge config updated from dashboard — (view)" [ref=e199]:
+                  - cell "2026-05-17 23:13:38" [ref=e200]
+                  - cell "auto_merge_config_updated" [ref=e201]
+                  - cell "iw-ai-core" [ref=e202]
+                  - cell "auto-merge config updated from dashboard" [ref=e203]
+                  - cell "—" [ref=e204]
+                  - cell "(view)" [ref=e205]
+                - row "2026-05-17 23:13:17 auto_merge_config_updated iw-ai-core auto-merge config updated from dashboard — (view)" [ref=e206]:
+                  - cell "2026-05-17 23:13:17" [ref=e207]
+                  - cell "auto_merge_config_updated" [ref=e208]
+                  - cell "iw-ai-core" [ref=e209]
+                  - cell "auto-merge config updated from dashboard" [ref=e210]
+                  - cell "—" [ref=e211]
+                  - cell "(view)" [ref=e212]
+                - row "2026-05-17 23:11:16 auto_merge_health_probe — — — (view)" [ref=e213]:
+                  - cell "2026-05-17 23:11:16" [ref=e214]
+                  - cell "auto_merge_health_probe" [ref=e215]
+                  - cell "—" [ref=e216]
+                  - cell "—" [ref=e217]
+                  - cell "—" [ref=e218]
+                  - cell "(view)" [ref=e219]
+                - row "2026-05-17 23:06:16 auto_merge_health_probe — — — (view)" [ref=e220]:
+                  - cell "2026-05-17 23:06:16" [ref=e221]
+                  - cell "auto_merge_health_probe" [ref=e222]
+                  - cell "—" [ref=e223]
+                  - cell "—" [ref=e224]
+                  - cell "—" [ref=e225]
+                  - cell "(view)" [ref=e226]
+                - row "2026-05-17 23:06:16 step_launched CR-00057 Step S14 launched (PID 2751263) — (view)" [ref=e227]:
+                  - cell "2026-05-17 23:06:16" [ref=e228]
+                  - cell "step_launched" [ref=e229]
+                  - cell "CR-00057" [ref=e230]
+                  - cell "Step S14 launched (PID 2751263)" [ref=e231]
+                  - cell "—" [ref=e232]
+                  - cell "(view)" [ref=e233]
+                - row "2026-05-17 23:05:27 step_completed CR-00057 Step S13 completed — (view)" [ref=e234]:
+                  - cell "2026-05-17 23:05:27" [ref=e235]
+                  - cell "step_completed" [ref=e236]
+                  - cell "CR-00057" [ref=e237]
+                  - cell "Step S13 completed" [ref=e238]
+                  - cell "—" [ref=e239]
+                  - cell "(view)" [ref=e240]
+                - row "2026-05-17 23:04:18 item_approved CR-00060 Item CR-00060 approved by user — (view)" [ref=e241]:
+                  - cell "2026-05-17 23:04:18" [ref=e242]
+                  - cell "item_approved" [ref=e243]
+                  - cell "CR-00060" [ref=e244]
+                  - cell "Item CR-00060 approved by user" [ref=e245]
+                  - cell "—" [ref=e246]
+                  - cell "(view)" [ref=e247]
+                - row "2026-05-17 23:04:16 step_launched CR-00057 Step S13 launched (PID 2742514) — (view)" [ref=e248]:
+                  - cell "2026-05-17 23:04:16" [ref=e249]
+                  - cell "step_launched" [ref=e250]
+                  - cell "CR-00057" [ref=e251]
+                  - cell "Step S13 launched (PID 2742514)" [ref=e252]
+                  - cell "—" [ref=e253]
+                  - cell "(view)" [ref=e254]
+                - row "2026-05-17 23:03:17 step_completed CR-00057 Step S12 completed — (view)" [ref=e255]:
+                  - cell "2026-05-17 23:03:17" [ref=e256]
+                  - cell "step_completed" [ref=e257]
+                  - cell "CR-00057" [ref=e258]
+                  - cell "Step S12 completed" [ref=e259]
+                  - cell "—" [ref=e260]
+                  - cell "(view)" [ref=e261]
+                - row "2026-05-17 23:03:16 step_launched CR-00057 Step S12 launched (PID 2740879) — (view)" [ref=e262]:
+                  - cell "2026-05-17 23:03:16" [ref=e263]
+                  - cell "step_launched" [ref=e264]
+                  - cell "CR-00057" [ref=e265]
+                  - cell "Step S12 launched (PID 2740879)" [ref=e266]
+                  - cell "—" [ref=e267]
+                  - cell "(view)" [ref=e268]
+                - row "2026-05-17 23:02:16 step_completed CR-00057 Step S11 completed — (view)" [ref=e269]:
+                  - cell "2026-05-17 23:02:16" [ref=e270]
+                  - cell "step_completed" [ref=e271]
+                  - cell "CR-00057" [ref=e272]
+                  - cell "Step S11 completed" [ref=e273]
+                  - cell "—" [ref=e274]
+                  - cell "(view)" [ref=e275]
+                - row "2026-05-17 23:02:16 step_launched CR-00057 Step S11 launched (PID 2738996) — (view)" [ref=e276]:
+                  - cell "2026-05-17 23:02:16" [ref=e277]
+                  - cell "step_launched" [ref=e278]
+                  - cell "CR-00057" [ref=e279]
+                  - cell "Step S11 launched (PID 2738996)" [ref=e280]
+                  - cell "—" [ref=e281]
+                  - cell "(view)" [ref=e282]
+                - row "2026-05-17 23:01:16 step_completed CR-00057 Step S10 completed — (view)" [ref=e283]:
+                  - cell "2026-05-17 23:01:16" [ref=e284]
+                  - cell "step_completed" [ref=e285]
+                  - cell "CR-00057" [ref=e286]
+                  - cell "Step S10 completed" [ref=e287]
+                  - cell "—" [ref=e288]
+                  - cell "(view)" [ref=e289]
+                - row "2026-05-17 23:01:16 auto_merge_health_probe — — — (view)" [ref=e290]:
+                  - cell "2026-05-17 23:01:16" [ref=e291]
+                  - cell "auto_merge_health_probe" [ref=e292]
+                  - cell "—" [ref=e293]
+                  - cell "—" [ref=e294]
+                  - cell "—" [ref=e295]
+                  - cell "(view)" [ref=e296]
+                - row "2026-05-17 23:01:16 step_launched CR-00057 Step S10 launched (PID 2737125) — (view)" [ref=e297]:
+                  - cell "2026-05-17 23:01:16" [ref=e298]
+                  - cell "step_launched" [ref=e299]
+                  - cell "CR-00057" [ref=e300]
+                  - cell "Step S10 launched (PID 2737125)" [ref=e301]
+                  - cell "—" [ref=e302]
+                  - cell "(view)" [ref=e303]
+                - row "2026-05-17 23:01:02 step_completed CR-00057 Step S09 completed — (view)" [ref=e304]:
+                  - cell "2026-05-17 23:01:02" [ref=e305]
+                  - cell "step_completed" [ref=e306]
+                  - cell "CR-00057" [ref=e307]
+                  - cell "Step S09 completed" [ref=e308]
+                  - cell "—" [ref=e309]
+                  - cell "(view)" [ref=e310]
+                - row "2026-05-17 22:58:16 step_launched CR-00057 Step S09 launched (PID 2727982) — (view)" [ref=e311]:
+                  - cell "2026-05-17 22:58:16" [ref=e312]
+                  - cell "step_launched" [ref=e313]
+                  - cell "CR-00057" [ref=e314]
+                  - cell "Step S09 launched (PID 2727982)" [ref=e315]
+                  - cell "—" [ref=e316]
+                  - cell "(view)" [ref=e317]
+                - row "2026-05-17 22:58:01 step_completed CR-00057 Step S08 completed — (view)" [ref=e318]:
+                  - cell "2026-05-17 22:58:01" [ref=e319]
+                  - cell "step_completed" [ref=e320]
+                  - cell "CR-00057" [ref=e321]
+                  - cell "Step S08 completed" [ref=e322]
+                  - cell "—" [ref=e323]
+                  - cell "(view)" [ref=e324]
+                - row "2026-05-17 22:56:15 auto_merge_health_probe — — — (view)" [ref=e325]:
+                  - cell "2026-05-17 22:56:15" [ref=e326]
+                  - cell "auto_merge_health_probe" [ref=e327]
+                  - cell "—" [ref=e328]
+                  - cell "—" [ref=e329]
+                  - cell "—" [ref=e330]
+                  - cell "(view)" [ref=e331]
+                - row "2026-05-17 22:53:22 item_approved CR-00059 Item CR-00059 approved by user — (view)" [ref=e332]:
+                  - cell "2026-05-17 22:53:22" [ref=e333]
+                  - cell "item_approved" [ref=e334]
+                  - cell "CR-00059" [ref=e335]
+                  - cell "Item CR-00059 approved by user" [ref=e336]
+                  - cell "—" [ref=e337]
+                  - cell "(view)" [ref=e338]
+                - row "2026-05-17 22:51:15 auto_merge_health_probe — — — (view)" [ref=e339]:
+                  - cell "2026-05-17 22:51:15" [ref=e340]
+                  - cell "auto_merge_health_probe" [ref=e341]
+                  - cell "—" [ref=e342]
+                  - cell "—" [ref=e343]
+                  - cell "—" [ref=e344]
+                  - cell "(view)" [ref=e345]
+                - row "2026-05-17 22:46:15 auto_merge_health_probe — — — (view)" [ref=e346]:
+                  - cell "2026-05-17 22:46:15" [ref=e347]
+                  - cell "auto_merge_health_probe" [ref=e348]
+                  - cell "—" [ref=e349]
+                  - cell "—" [ref=e350]
+                  - cell "—" [ref=e351]
+                  - cell "(view)" [ref=e352]
+                - row "2026-05-17 22:43:15 step_launched CR-00057 Step S08 launched (PID 2652108) — (view)" [ref=e353]:
+                  - cell "2026-05-17 22:43:15" [ref=e354]
+                  - cell "step_launched" [ref=e355]
+                  - cell "CR-00057" [ref=e356]
+                  - cell "Step S08 launched (PID 2652108)" [ref=e357]
+                  - cell "—" [ref=e358]
+                  - cell "(view)" [ref=e359]
+                - row "2026-05-17 22:43:15 fix_cycle_completed CR-00057 Fix cycle 2 completed — re-running review — (view)" [ref=e360]:
+                  - cell "2026-05-17 22:43:15" [ref=e361]
+                  - cell "fix_cycle_completed" [ref=e362]
+                  - cell "CR-00057" [ref=e363]
+                  - cell "Fix cycle 2 completed — re-running review" [ref=e364]
+                  - cell "—" [ref=e365]
+                  - cell "(view)" [ref=e366]
+                - row "2026-05-17 22:43:15 step_crashed CR-00057 Process exited without reporting completion (PID dead) — (view)" [ref=e367]:
+                  - cell "2026-05-17 22:43:15" [ref=e368]
+                  - cell "step_crashed" [ref=e369]
+                  - cell "CR-00057" [ref=e370]
+                  - cell "Process exited without reporting completion (PID dead)" [ref=e371]
+                  - cell "—" [ref=e372]
+                  - cell "(view)" [ref=e373]
+                - row "2026-05-17 22:41:15 auto_merge_health_probe — — — (view)" [ref=e374]:
+                  - cell "2026-05-17 22:41:15" [ref=e375]
+                  - cell "auto_merge_health_probe" [ref=e376]
+                  - cell "—" [ref=e377]
+                  - cell "—" [ref=e378]
+                  - cell "—" [ref=e379]
+                  - cell "(view)" [ref=e380]
+                - row "2026-05-17 22:40:14 fix_cycle_started CR-00057 Fix cycle 2/5 for S08 (PID 2643639) — (view)" [ref=e381]:
+                  - cell "2026-05-17 22:40:14" [ref=e382]
+                  - cell "fix_cycle_started" [ref=e383]
+                  - cell "CR-00057" [ref=e384]
+                  - cell "Fix cycle 2/5 for S08 (PID 2643639)" [ref=e385]
+                  - cell "—" [ref=e386]
+                  - cell "(view)" [ref=e387]
+                - row "2026-05-17 22:40:14 step_crashed CR-00057 Process exited without reporting completion (PID dead) — (view)" [ref=e388]:
+                  - cell "2026-05-17 22:40:14" [ref=e389]
+                  - cell "step_crashed" [ref=e390]
+                  - cell "CR-00057" [ref=e391]
+                  - cell "Process exited without reporting completion (PID dead)" [ref=e392]
+                  - cell "—" [ref=e393]
+                  - cell "(view)" [ref=e394]
+                - row "2026-05-17 22:36:14 auto_merge_health_probe — — — (view)" [ref=e395]:
+                  - cell "2026-05-17 22:36:14" [ref=e396]
+                  - cell "auto_merge_health_probe" [ref=e397]
+                  - cell "—" [ref=e398]
+                  - cell "—" [ref=e399]
+                  - cell "—" [ref=e400]
+                  - cell "(view)" [ref=e401]
+                - row "2026-05-17 22:31:14 auto_merge_health_probe — — — (view)" [ref=e402]:
+                  - cell "2026-05-17 22:31:14" [ref=e403]
+                  - cell "auto_merge_health_probe" [ref=e404]
+                  - cell "—" [ref=e405]
+                  - cell "—" [ref=e406]
+                  - cell "—" [ref=e407]
+                  - cell "(view)" [ref=e408]
+                - row "2026-05-17 22:26:14 auto_merge_health_probe — — — (view)" [ref=e409]:
+                  - cell "2026-05-17 22:26:14" [ref=e410]
+                  - cell "auto_merge_health_probe" [ref=e411]
+                  - cell "—" [ref=e412]
+                  - cell "—" [ref=e413]
+                  - cell "—" [ref=e414]
+                  - cell "(view)" [ref=e415]
+                - row "2026-05-17 22:21:13 auto_merge_health_probe — — — (view)" [ref=e416]:
+                  - cell "2026-05-17 22:21:13" [ref=e417]
+                  - cell "auto_merge_health_probe" [ref=e418]
+                  - cell "—" [ref=e419]
+                  - cell "—" [ref=e420]
+                  - cell "—" [ref=e421]
+                  - cell "(view)" [ref=e422]
+                - row "2026-05-17 22:21:13 step_launched CR-00057 Step S08 launched (PID 2560453) — (view)" [ref=e423]:
+                  - cell "2026-05-17 22:21:13" [ref=e424]
+                  - cell "step_launched" [ref=e425]
+                  - cell "CR-00057" [ref=e426]
+                  - cell "Step S08 launched (PID 2560453)" [ref=e427]
+                  - cell "—" [ref=e428]
+                  - cell "(view)" [ref=e429]
+                - row "2026-05-17 22:21:13 fix_cycle_completed CR-00057 Fix cycle 1 completed — re-running review — (view)" [ref=e430]:
+                  - cell "2026-05-17 22:21:13" [ref=e431]
+                  - cell "fix_cycle_completed" [ref=e432]
+                  - cell "CR-00057" [ref=e433]
+                  - cell "Fix cycle 1 completed — re-running review" [ref=e434]
+                  - cell "—" [ref=e435]
+                  - cell "(view)" [ref=e436]
+                - row "2026-05-17 22:21:13 step_crashed CR-00057 Process exited without reporting completion (PID dead) — (view)" [ref=e437]:
+                  - cell "2026-05-17 22:21:13" [ref=e438]
+                  - cell "step_crashed" [ref=e439]
+                  - cell "CR-00057" [ref=e440]
+                  - cell "Process exited without reporting completion (PID dead)" [ref=e441]
+                  - cell "—" [ref=e442]
+                  - cell "(view)" [ref=e443]
+                - row "2026-05-17 22:19:59 item_approved I-00090 Item I-00090 approved by user — (view)" [ref=e444]:
+                  - cell "2026-05-17 22:19:59" [ref=e445]
+                  - cell "item_approved" [ref=e446]
+                  - cell "I-00090" [ref=e447]
+                  - cell "Item I-00090 approved by user" [ref=e448]
+                  - cell "—" [ref=e449]
+                  - cell "(view)" [ref=e450]
+                - row "2026-05-17 22:19:28 item_approved CR-00058 Item CR-00058 approved by user — (view)" [ref=e451]:
+                  - cell "2026-05-17 22:19:28" [ref=e452]
+                  - cell "item_approved" [ref=e453]
+                  - cell "CR-00058" [ref=e454]
+                  - cell "Item CR-00058 approved by user" [ref=e455]
+                  - cell "—" [ref=e456]
+                  - cell "(view)" [ref=e457]
+                - row "2026-05-17 22:18:13 fix_cycle_started CR-00057 Fix cycle 1/5 for S08 (PID 2552214) — (view)" [ref=e458]:
+                  - cell "2026-05-17 22:18:13" [ref=e459]
+                  - cell "fix_cycle_started" [ref=e460]
+                  - cell "CR-00057" [ref=e461]
+                  - cell "Fix cycle 1/5 for S08 (PID 2552214)" [ref=e462]
+                  - cell "—" [ref=e463]
+                  - cell "(view)" [ref=e464]
+                - row "2026-05-17 22:18:13 step_crashed CR-00057 Process exited without reporting completion (PID dead) — (view)" [ref=e465]:
+                  - cell "2026-05-17 22:18:13" [ref=e466]
+                  - cell "step_crashed" [ref=e467]
+                  - cell "CR-00057" [ref=e468]
+                  - cell "Process exited without reporting completion (PID dead)" [ref=e469]
+                  - cell "—" [ref=e470]
+                  - cell "(view)" [ref=e471]
+                - row "2026-05-17 22:16:13 auto_merge_health_probe — — — (view)" [ref=e472]:
+                  - cell "2026-05-17 22:16:13" [ref=e473]
+                  - cell "auto_merge_health_probe" [ref=e474]
+                  - cell "—" [ref=e475]
+                  - cell "—" [ref=e476]
+                  - cell "—" [ref=e477]
+                  - cell "(view)" [ref=e478]
+                - row "2026-05-17 22:16:13 step_launched CR-00057 Step S08 launched (PID 2548093) — (view)" [ref=e479]:
+                  - cell "2026-05-17 22:16:13" [ref=e480]
+                  - cell "step_launched" [ref=e481]
+                  - cell "CR-00057" [ref=e482]
+                  - cell "Step S08 launched (PID 2548093)" [ref=e483]
+                  - cell "—" [ref=e484]
+                  - cell "(view)" [ref=e485]
+                - row "2026-05-17 22:15:35 step_completed CR-00057 Step S07 completed — (view)" [ref=e486]:
+                  - cell "2026-05-17 22:15:35" [ref=e487]
+                  - cell "step_completed" [ref=e488]
+                  - cell "CR-00057" [ref=e489]
+                  - cell "Step S07 completed" [ref=e490]
+                  - cell "—" [ref=e491]
+                  - cell "(view)" [ref=e492]
+                - row "2026-05-17 22:14:04 item_approved I-00089 Item I-00089 approved by user — (view)" [ref=e493]:
+                  - cell "2026-05-17 22:14:04" [ref=e494]
+                  - cell "item_approved" [ref=e495]
+                  - cell "I-00089" [ref=e496]
+                  - cell "Item I-00089 approved by user" [ref=e497]
+                  - cell "—" [ref=e498]
+                  - cell "(view)" [ref=e499]
+                - row "2026-05-17 22:12:13 step_launched CR-00057 Step S07 launched (PID 2536879) — (view)" [ref=e500]:
+                  - cell "2026-05-17 22:12:13" [ref=e501]
+                  - cell "step_launched" [ref=e502]
+                  - cell "CR-00057" [ref=e503]
+                  - cell "Step S07 launched (PID 2536879)" [ref=e504]
+                  - cell "—" [ref=e505]
+                  - cell "(view)" [ref=e506]
+                - row "2026-05-17 22:11:25 step_completed CR-00057 Step S06 completed — (view)" [ref=e507]:
+                  - cell "2026-05-17 22:11:25" [ref=e508]
+                  - cell "step_completed" [ref=e509]
+                  - cell "CR-00057" [ref=e510]
+                  - cell "Step S06 completed" [ref=e511]
+                  - cell "—" [ref=e512]
+                  - cell "(view)" [ref=e513]
+            - generic [ref=e514]:
+              - generic [ref=e515]: Showing 1-50 of 16097
+              - generic [ref=e517]: Next
+  - contentinfo [ref=e518]:
+    - button "Toggle theme" [ref=e519] [cursor=pointer]:
+      - generic [ref=e520]: ☾
+      - generic [ref=e521]: Theme
+    - generic [ref=e522]: ·
+    - generic [ref=e523]:
+      - generic [ref=e524]: Claude
+      - generic [ref=e525]: —
+      - generic [ref=e526]: IW AI Core v0.1

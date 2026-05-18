@@ -26,7 +26,21 @@ class ResolvedConfig:
     runtime_option_id: int | None
     cli_tool: str
     model: str
-    source: Literal["per_project_db", "toml", "hardcoded"]
+    phase_source: Literal["per_project_db", "toml", "hardcoded"]
+    runtime_source: Literal["per_project_db", "toml", "hardcoded"]
+
+    @property
+    def source(self) -> Literal["per_project_db", "toml", "hardcoded"]:
+        """Derived single-axis source for backwards compatibility.
+
+        Returns ``per_project_db`` if either axis resolved from the DB;
+        otherwise falls back to the runtime axis's source. This preserves
+        existing chip rendering until the frontend step (S03) migrates the
+        chip template to use the per-axis fields independently.
+        """
+        if self.phase_source == "per_project_db" or self.runtime_source == "per_project_db":
+            return "per_project_db"
+        return self.runtime_source
 
 
 @dataclass(frozen=True)
@@ -153,13 +167,22 @@ def resolve_project_config(
     db: Session, project_id: str, toml_config: AutoMergeConfig
 ) -> ResolvedConfig:
     db_row = db.get(AutoMergeProjectConfig, project_id)
+
+    # Determine phase source before any fallback
+    if db_row is not None and db_row.phase is not None:
+        phase_source: Literal["per_project_db", "toml", "hardcoded"] = "per_project_db"
+    else:
+        phase_source = "toml"
+
     phase = db_row.phase if db_row is not None and db_row.phase is not None else toml_config.phase
     if phase not in (0, 1):
+        # phase_source is preserved so a CR/test can verify this warning fires
+        # when phase_source=='per_project_db' and the value fell back to 0.
         logger.warning(
             "[auto_merge_config] project=%s invalid phase=%s from %s — falling back to 0",
             project_id,
             phase,
-            "per_project_db" if db_row is not None and db_row.phase is not None else "toml",
+            phase_source,
         )
         phase = 0
 
@@ -169,10 +192,10 @@ def resolve_project_config(
     runtime_layers.append(("toml", toml_config.runtime_option_id))
     runtime_layers.append(("hardcoded", None))
 
-    for source, runtime_id in runtime_layers:
+    for runtime_source, runtime_id in runtime_layers:
         runtime = _runtime_by_id(db, runtime_id) if runtime_id is not None else None
         if runtime_id is not None and (runtime is None or not runtime.enabled):
-            if source == "per_project_db":
+            if runtime_source == "per_project_db":
                 logger.warning(
                     "[auto_merge_config] project=%s runtime_option_id=%s disabled — falling back",
                     project_id,
@@ -188,14 +211,16 @@ def resolve_project_config(
                 runtime_option_id=None,
                 cli_tool="opencode",
                 model="openai/gpt-5.3-codex",
-                source=source,
+                phase_source=phase_source,
+                runtime_source=runtime_source,
             )
         return ResolvedConfig(
             phase=phase,
             runtime_option_id=runtime.id,
             cli_tool=runtime.cli_tool,
             model=runtime.model,
-            source=source,
+            phase_source=phase_source,
+            runtime_source=runtime_source,
         )
 
     fallback = _default_runtime(db)
@@ -204,7 +229,8 @@ def resolve_project_config(
         runtime_option_id=fallback.id if fallback else None,
         cli_tool=fallback.cli_tool if fallback else "opencode",
         model=fallback.model if fallback else "openai/gpt-5.3-codex",
-        source="hardcoded",
+        phase_source="hardcoded",
+        runtime_source="hardcoded",
     )
 
 
