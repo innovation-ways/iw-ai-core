@@ -19,7 +19,7 @@
     "tailwindcss": "^3.4.19"
   },
   "dependencies": {
-    "@jridgewell/gen-mapping": "^0.1.1",
+    "@jridgewell/gen-mapping": "^0.3.13",
     "sucrase": "^3.35.0"
   }
 }
