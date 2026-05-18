@@ -346,10 +346,18 @@ def create_app() -> FastAPI:
         years = int(months / 12)
         return f"{years}y ago"
 
+    import re as _re
+
+    _work_item_re = _re.compile(r"^(F|I|CR)-\d{5}$")
+
+    def _is_work_item_id(value: str | None) -> bool:
+        return bool(value and _work_item_re.match(value))
+
     templates.env.filters["intcomma"] = lambda n: f"{n:,}" if isinstance(n, int) else str(n)
     templates.env.filters["timeago"] = _timeago
     templates.env.filters["fmt_ts_time"] = _fmt_ts_time
     templates.env.filters["localdt"] = _localdt
+    templates.env.filters["work_item_id"] = _is_work_item_id
 
     def _is_db_stale(request: Request) -> bool:
         return is_db_stale(request)

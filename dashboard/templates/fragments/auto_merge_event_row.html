@@ -2,7 +2,16 @@
 <tr id="auto-merge-event-row-{{ row.id }}" class="border-b border-border last:border-0">
   <td class="px-3 py-2 text-xs text-muted-foreground">{{ row.created_at | localdt('%Y-%m-%d %H:%M:%S') }}</td>
   <td class="px-3 py-2 text-xs">{{ row.event_type }}</td>
-  <td class="px-3 py-2 text-xs font-mono">{{ row.entity_id or '—' }}</td>
+  <td class="px-3 py-2 text-xs font-mono">
+    {% set _eid = row.entity_id %}
+    {% if _eid and (_eid | work_item_id) %}
+    <a href="/project/{{ request.path_params.project_id }}/item/{{ _eid }}" class="text-primary hover:underline">{{ _eid }}</a>
+    {% elif _eid %}
+    {{ _eid }}
+    {% else %}
+    —
+    {% endif %}
+  </td>
   <td class="px-3 py-2 text-xs" title="{{ row.message or '' }}">{{ (row.message or '—')[:120] }}{% if row.message and row.message|length > 120 %}…{% endif %}</td>
   <td class="px-3 py-2 text-xs">
     {% if row.event_type == 'merge_auto_resolved' %}
