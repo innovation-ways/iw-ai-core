@@ -1,8 +1,0 @@
-{
-    "models": [
-        "stub/echo"
-    ],
-    "default_model": "stub/echo",
-    "default_agent": "build",
-    "project_directory": ""
-}
