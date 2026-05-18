@@ -498,3 +498,16 @@ div.mermaid-diagram span {
 
 .auto-merge-show-all-toggle{border:1px solid var(--border);border-radius:.25rem;padding:.2rem .5rem;background:var(--card);cursor:pointer}
 .auto-merge-show-all-toggle.is-active{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+
+/* I-00101: scope-blocked badge (used in item_steps_table.html and running.html) */
+.badge-scope-blocked {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.125rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background-color: #fde68a;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+}

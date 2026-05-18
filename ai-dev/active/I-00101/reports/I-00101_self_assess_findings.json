@@ -1,0 +1,43 @@
+{
+  "item_id": "I-00101",
+  "bottom_line": "I-00101 shipped cleanly with no agent thrash, no fix-cycle budget burning, and all UI surfaces verified end-to-end by S15. The main actionable follow-up is a per-agent review check to confirm manifest coverage of touched files (would have caught the running.html drift before S07), plus a shared fixture helper for future scope-escalation seeding.",
+  "coverage_notes": "Sampled reports for S01-S15. No raw run logs at .worktrees/I-00101/ai-dev/logs/ — used step reports as primary evidence per skill protocol. Fix-cycle prompt at ai-dev/active/I-00101/fix-cycles/I-00101_S13_FIX_cycle1_prompt.md reviewed in full. S15 browser-verification evidence (evidences/post/) confirms first-pass success. S07 cross-doc-square used as primary cross-layer drift source.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "design",
+      "target": "iw-ai-core",
+      "title": "E2E scope-escalation seed fixture has no shared helper",
+      "recommendation": "Extract a reusable fixture helper to tests/integration/fixtures/scope_escalation.py that accepts (db, item_id, step_id, violations_list) and seeds the full synthetic state (project, work item, step in needs_fix, StepRun, escalated FixCycle with scope_violations, worktree manifest).",
+      "evidence": [
+        "ai-dev/active/I-00101/e2e_fixtures/001_scope_blocked_seed.py:1 — 'E2E seed for I-00101 scope-blocked UI verification (S15)'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Extract a shared scope_escalation fixture helper at tests/integration/fixtures/scope_escalation.py for seeding escalated FixCycle rows in future incidents; analyzed in I-00101 (see ai-dev/active/I-00101/reports/I-00101_self_assess_report.md). Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "templates/design/Issue_Design_Template.md",
+      "title": "Per-agent reviews missed running.html not in manifest allowed_paths",
+      "recommendation": "Add to per-agent review prompts (S02, S04, S06) a 1-line cross-doc check: 'Confirm every file touched in this step appears in workflow-manifest.json:scope.allowed_paths.'",
+      "evidence": [
+        "ai-dev/active/I-00101/reports/I-00101_S07_CodeReviewFinal_report.md:180 — 'dashboard/templates/pages/system/running.html was modified but is not listed in workflow-manifest.json:scope.allowed_paths'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Strengthen per-agent review prompts to check manifest allowed_paths coverage of all touched files; analyzed in I-00101 (see ai-dev/active/I-00101/reports/I-00101_self_assess_report.md). Effort: S."
+    },
+    {
+      "severity": "LOW",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Restart-mutation duplication across three actions.py endpoints",
+      "recommendation": "Extract a _perform_step_restart(step, item, db) -> StepRun helper in actions.py to consolidate the shared DB mutation block (new StepRun, run_number+1, status=pending, clear timestamps, item.status flip, commit); have restart_step, scope_amend_and_restart, and scope_revert_and_restart all call it.",
+      "evidence": [
+        "ai-dev/active/I-00101/reports/I-00101_S07_CodeReviewFinal_report.md:137-149 — restart-mutation parity table shows identical duplication across all three endpoints"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Extract _perform_step_restart helper in actions.py to consolidate restart mutation duplication; analyzed in I-00101 (see ai-dev/active/I-00101/reports/I-00101_self_assess_report.md). Effort: M (~15 lines extracted)."
+    }
+  ]
+}

@@ -22,6 +22,11 @@ from dashboard.middlewares.alembic_guard import require_db_at_head
 from orch.active_files import ensure_active_files_committed
 from orch.archive.batch_archiver import archive_batch
 from orch.daemon.merge_queue import OPERATOR_RECOVERABLE_MERGE_STATUSES
+from orch.daemon.scope_amendment import (
+    amend_allowed_paths,
+    latest_scope_violation,
+    revert_paths_in_worktree,
+)
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -369,6 +374,203 @@ def restart_step(
     db.commit()
 
     return _action_response(f"Step {step_id} queued for restart.", toast_type="success")
+
+
+# ---------------------------------------------------------------------------
+# Scope amend modal (GET — returns HTML fragment)
+# ---------------------------------------------------------------------------
+
+
+def _load_current_allowed_paths(last_run: StepRun | None, item_id: str) -> list[str]:
+    """Load scope.allowed_paths from the worktree's manifest, or [] if unavailable."""
+    if last_run is None or not last_run.worktree_path:
+        return []
+    import json
+
+    manifest_path = (
+        Path(last_run.worktree_path) / "ai-dev" / "active" / item_id / "workflow-manifest.json"
+    )
+    if not manifest_path.exists():
+        return []
+    try:
+        data = json.loads(manifest_path.read_text())
+        return list((data.get("scope") or {}).get("allowed_paths") or [])
+    except Exception:
+        return []
+
+
+@router.get(
+    "/item/{item_id}/scope/amend-modal/{step_id}",
+    response_class=HTMLResponse,
+)
+def scope_amend_modal(
+    project_id: str,
+    item_id: str,
+    step_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    step = _get_step(db, project_id, item_id, step_id)
+    violations = latest_scope_violation(db, step.id)
+    if not violations:
+        raise HTTPException(status_code=422, detail="Step is not scope-blocked")
+    item = _get_item(db, project_id, item_id)
+    last_run = _get_last_run(db, step.id)
+    current_allowed = _load_current_allowed_paths(last_run, item_id)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "components/scope_amend_modal.html",
+        {
+            "item": item,
+            "step": step,
+            "violations": violations,
+            "current_allowed_paths": current_allowed,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Amend scope & restart step (POST)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/item/{item_id}/scope/amend-and-restart/{step_id}",
+    response_class=Response,
+)
+def scope_amend_and_restart(
+    project_id: str,
+    item_id: str,
+    step_id: str,
+    paths: list[str] = Form(default=[]),
+    db: Session = Depends(get_db),
+) -> Any:
+    step = _get_step(db, project_id, item_id, step_id)
+    violations = latest_scope_violation(db, step.id)
+    if not violations:
+        raise HTTPException(
+            status_code=422,
+            detail="Step is not scope-blocked; amend-scope is not applicable.",
+        )
+    bad = [p for p in paths if p not in violations]
+    if bad:
+        raise HTTPException(status_code=422, detail=f"Paths not in violation set: {bad}")
+
+    item = _get_item(db, project_id, item_id)
+    last_run = _get_last_run(db, step.id)
+    if last_run is None or not last_run.worktree_path:
+        raise HTTPException(status_code=422, detail="No worktree path recorded for this step")
+    worktree = Path(last_run.worktree_path)
+    result = amend_allowed_paths(worktree, item_id, paths)
+
+    _emit(
+        db,
+        "scope_amended_by_operator",
+        project_id,
+        item_id,
+        "work_item",
+        f"Amended scope.allowed_paths for {step_id}: added {result.paths_added}",
+        {
+            "step_id": step_id,
+            "added_paths": result.paths_added,
+            "manifests_updated": [str(p) for p in result.manifests_updated],
+        },
+    )
+
+    # Same DB mutations as restart_step
+    last_run = _get_last_run(db, step.id)
+    new_run = StepRun(
+        step_id=step.id,
+        run_number=(last_run.run_number + 1) if last_run else 1,
+        status=RunStatus.pending,
+        command=last_run.command if last_run else None,
+        worktree_path=last_run.worktree_path if last_run else None,
+        cli_tool=last_run.cli_tool if last_run else None,
+        timeout_secs=last_run.timeout_secs if last_run else None,
+    )
+    db.add(new_run)
+    step.status = StepStatus.pending
+    step.started_at = None
+    step.completed_at = None
+    if item.status == WorkItemStatus.failed:
+        item.status = WorkItemStatus.in_progress
+    db.commit()
+
+    return _action_response(
+        f"Step {step_id} scope amended ({len(result.paths_added)} path(s)) and queued for restart.",
+        toast_type="success",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Revert scope & restart step (POST)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/item/{item_id}/scope/revert-and-restart/{step_id}",
+    response_class=Response,
+)
+def scope_revert_and_restart(
+    project_id: str,
+    item_id: str,
+    step_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    step = _get_step(db, project_id, item_id, step_id)
+    violations = latest_scope_violation(db, step.id)
+    if not violations:
+        raise HTTPException(
+            status_code=422,
+            detail="Step is not scope-blocked; revert-scope is not applicable.",
+        )
+
+    item = _get_item(db, project_id, item_id)
+    last_run = _get_last_run(db, step.id)
+    if last_run is None or not last_run.worktree_path:
+        raise HTTPException(status_code=422, detail="No worktree path recorded for this step")
+    worktree = Path(last_run.worktree_path)
+
+    result = revert_paths_in_worktree(worktree, violations)
+
+    _emit(
+        db,
+        "scope_reverted_by_operator",
+        project_id,
+        item_id,
+        "work_item",
+        f"Reverted out-of-scope edits for {step_id}: {result.reverted}",
+        {
+            "step_id": step_id,
+            "reverted_paths": result.reverted,
+            "failed_paths": result.failed,
+        },
+    )
+
+    # Same DB mutations as restart_step
+    last_run = _get_last_run(db, step.id)
+    new_run = StepRun(
+        step_id=step.id,
+        run_number=(last_run.run_number + 1) if last_run else 1,
+        status=RunStatus.pending,
+        command=last_run.command if last_run else None,
+        worktree_path=last_run.worktree_path if last_run else None,
+        cli_tool=last_run.cli_tool if last_run else None,
+        timeout_secs=last_run.timeout_secs if last_run else None,
+    )
+    db.add(new_run)
+    step.status = StepStatus.pending
+    step.started_at = None
+    step.completed_at = None
+    if item.status == WorkItemStatus.failed:
+        item.status = WorkItemStatus.in_progress
+    db.commit()
+
+    return _action_response(
+        f"Step {step_id} out-of-scope edits reverted and queued for restart.",
+        toast_type="success",
+    )
 
 
 # ---------------------------------------------------------------------------
