@@ -5,10 +5,13 @@ All DB operations use the real database — no mocking.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import time
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
+from freezegun import freeze_time
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from orch.db.models import KeepAliveConfig, KeepAliveSlot
@@ -73,6 +76,97 @@ class TestGetDueSlotsIntegration:
 
         due = get_due_slots(db_session)
         assert len(due) == 0
+
+    @pytest.mark.parametrize(
+        ("tz_offset_hours", "freeze_local_dt", "slot_hhmm", "expected_due"),
+        [
+            # UTC host: local date == UTC date always — no mismatch window.
+            # Slot should be skipped (non-regression control — passes pre-fix too).
+            pytest.param(0, datetime(2026, 5, 18, 0, 30), "00:15", False, id="UTC"),
+            # +01:00 WEST: 00:30 local = 23:30 UTC prev day — the original failing case.
+            pytest.param(1, datetime(2026, 5, 18, 0, 30), "00:15", False, id="WEST"),
+            # +02:00 CEST: 00:30 local = 22:30 UTC prev day — wider mismatch window.
+            pytest.param(2, datetime(2026, 5, 18, 0, 30), "00:15", False, id="CEST"),
+            # -05:00 EST: local 00:30 = 05:30 UTC same day (no prev-day mismatch).
+            # Test that the positive case still works — slot is correctly skipped.
+            pytest.param(-5, datetime(2026, 5, 18, 0, 30), "00:15", False, id="EST"),
+        ],
+    )
+    def test_get_due_slots_skips_already_run_slot_across_utc_midnight(
+        self,
+        db_session: Session,
+        monkeypatch: pytest.MonkeyPatch,
+        tz_offset_hours: int,
+        freeze_local_dt: datetime,
+        slot_hhmm: str,
+        expected_due: bool,
+    ) -> None:
+        """Regression for I-00098: slot leaked through during local-midnight UTC mismatch.
+
+        Pre-fix: get_due_slots returned the slot because func.date(fired_at) was UTC
+        and today_date was local — they disagreed during the mismatch window and the
+        successful-run filter didn't match.
+
+        Post-fix: get_due_slots returns [] because fired_at (restamped to a
+        yesterday-UTC instant) falls inside the tz-aware half-open range
+        [today_start_local, tomorrow_start_local).
+        """
+        # Set the host's simulated local timezone so datetime.now().astimezone()
+        # returns a tz with the desired offset. freezegun does not propagate its
+        # fake time to astimezone() — we need to set TZ env var and call tzset().
+        # Note: Etc/GMT naming is opposite of the standard UTC offset sign:
+        #   Etc/GMT-1 == UTC+1 WEST, Etc/GMT-2 == UTC+2 CEST, Etc/GMT+5 == UTC-5 EST
+        tz_name = f"Etc/GMT{'-' if tz_offset_hours > 0 else '+'}{abs(tz_offset_hours)}"
+        monkeypatch.setenv("TZ", tz_name)
+        time.tzset()
+
+        # Freeze Python's clock to the local instant.
+        # The tz-aware local time at offset_hours will compute the UTC equivalent.
+        with freeze_time(freeze_local_dt):
+            get_config(db_session)
+            db_session.flush()
+            slot = add_slot(db_session, slot_hhmm)
+            db_session.flush()
+
+            # Log a successful run via the production path (server-side func.now()
+            # stamps fired_at). Then re-stamp fired_at to a deterministic instant
+            # that lives in the previous UTC calendar day — this is what triggers
+            # the bug pre-fix: func.date(fired_at) UTC != today_date local.
+            run = log_run(db_session, slot.id, slot_hhmm, "success")
+            db_session.flush()
+
+            # Compute the UTC instant that corresponds to "30 minutes before the
+            # frozen local time" — i.e. 00:00 local on a +01:00 host = 23:00 UTC prev
+            # day. This becomes fired_at in the DB.
+            offset_delta = timedelta(hours=tz_offset_hours)
+            local_dt = freeze_local_dt.replace(tzinfo=None)  # naive version
+            fired_at_utc = local_dt - offset_delta  # UTC equivalent of 00:30 local
+
+            db_session.execute(
+                text("UPDATE keep_alive_runs SET fired_at = :ts WHERE id = :id"),
+                {"ts": fired_at_utc.replace(tzinfo=UTC), "id": run.id},
+            )
+            db_session.commit()
+
+            due = get_due_slots(db_session)
+            if expected_due:
+                assert len(due) == 1, f"expected slot to be due; got {due}"
+                assert due[0].id == slot.id
+            else:
+                assert due == [], f"expected slot to be skipped; got {due}"
+
+    def test_get_due_slots_returns_slot_when_no_prior_run_exists(self, db_session: Session) -> None:
+        """Slots with no prior successful run are returned regardless of TZ."""
+        # Use UTC to keep things simple — this tests the positive path.
+        with freeze_time(datetime(2026, 5, 18, 12, 0)):
+            get_config(db_session)
+            db_session.flush()
+            slot = add_slot(db_session, "12:00")
+            db_session.commit()
+
+            due = get_due_slots(db_session)
+            assert len(due) == 1
+            assert due[0].id == slot.id
 
 
 # ---------------------------------------------------------------------------
