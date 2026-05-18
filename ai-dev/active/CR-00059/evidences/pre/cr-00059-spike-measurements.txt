@@ -1,0 +1,60 @@
+CR-00059 — Mutation testing spike (P2-CR-A)
+Date: 2026-05-18
+Scope: orch/daemon/ (audit via `make mutation-audit`)
+
+| Metric                          | Value           |
+|---------------------------------|-----------------|
+| Total mutants generated         | 0               |
+| Killed                          | 0               |
+| Survived                        | 0               |
+| Timeout                         | 0               |
+| Suspicious                      | 0               |
+| Mutation score (K / (K+S) × 100)| 0.00%           |
+| Wall-clock (total)              | 0:17:17         |
+| Modules covered                 | 25 of 25        |
+
+Modules covered (list):
+- orch/daemon/__main__.py
+- orch/daemon/auto_merge.py
+- orch/daemon/auto_merge_health.py
+- orch/daemon/batch_manager.py
+- orch/daemon/batch_merge_hooks.py
+- orch/daemon/browser_env.py
+- orch/daemon/chat_summarization_poller.py
+- orch/daemon/container_info.py
+- orch/daemon/doc_index_poller.py
+- orch/daemon/doc_job_poller.py
+- orch/daemon/execution_report.py
+- orch/daemon/fix_cycle.py
+- orch/daemon/keep_alive_poller.py
+- orch/daemon/main.py
+- orch/daemon/merge_queue.py
+- orch/daemon/migration_pipeline.py
+- orch/daemon/migration_rebase.py
+- orch/daemon/project_registry.py
+- orch/daemon/qv_baseline.py
+- orch/daemon/review_mapping.py
+- orch/daemon/scope_overlap.py
+- orch/daemon/state_machine.py
+- orch/daemon/step_monitor.py
+- orch/daemon/worktree_compose.py
+- orch/daemon/worktree_reaper.py
+
+Top 5 surviving mutants (queue for P2-CR-A-followup):
+| ID  | File:Line                          | Mutation (brief)               |
+|-----|------------------------------------|--------------------------------|
+| n/a | n/a                                | n/a                            |
+| n/a | n/a                                | n/a                            |
+| n/a | n/a                                | n/a                            |
+| n/a | n/a                                | n/a                            |
+| n/a | n/a                                | n/a                            |
+
+Infrastructure blockers encountered:
+- Every module-level `mutmut run` subprocess exited through pytest's coverage floor before mutant execution: `FAIL Required test coverage of 50.0% not reached. Total coverage: 12.28%`.
+- live-DB write guard did not misfire; failures were consistent coverage-gate exits, not DB-guard or FTS-trigger errors.
+- Because mutant execution never began, kill/survive metrics are blocked in this spike run and require follow-up runner handling.
+
+Notes for follow-up CR (P2-CR-A-followup-mutation-block):
+- Keep the on-demand surface landed in CR-00059, but adjust the mutation runner path so the coverage floor does not preempt mutant execution during audits.
+- Re-run the audit after runner handling to produce actionable surviving-mutant IDs and derive a real blocking threshold.
+- Current wall-clock (~17m for 25 module invocations) mostly reflects repeated pytest startup + collection overhead under coverage-gate exits.
