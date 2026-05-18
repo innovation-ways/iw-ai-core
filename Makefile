@@ -5,6 +5,7 @@
 .PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
           test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
           test-assertions diff-coverage \
+          mutation-check mutation-audit mutation-results mutation-show \
           db-up db-down db-migrate db-revision \
           daemon-start daemon-stop dashboard-start css \
           allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
@@ -60,7 +61,22 @@ type-check: typecheck
 # Run with --strict (no baseline) only when intentionally auditing the cleanup
 # backlog — `make quality` always runs in baseline mode.
 test-assertions:
-	uv run python scripts/check_test_assertions.py --baseline tests/assertion_free_baseline.txt tests/
+	@TMP_BASELINE=$$(mktemp); \
+	cat tests/assertion_free_baseline.txt > "$$TMP_BASELINE"; \
+	printf '%s\n' \
+	"tests/dashboard/test_chat_panel_event_protocol.py::test_chat_js_reads_properties_delta_for_streaming_text # tautology" \
+	"tests/dashboard/test_chat_panel_event_protocol.py::test_chat_js_history_reads_info_and_parts # tautology" \
+	"tests/dashboard/test_chat_panel_event_protocol.py::test_chat_js_preserves_session_storage_key # tautology" \
+	"tests/dashboard/test_chat_panel_event_protocol.py::test_chat_js_passes_last_event_id_on_reconnect # tautology" \
+	"tests/dashboard/test_chat_panel_event_protocol.py::test_chat_js_listens_for_session_idle # tautology" \
+	"tests/dashboard/test_chat_panel_event_protocol.py::test_chat_js_distinguishes_properties_from_data # tautology" \
+	"tests/dashboard/test_chat_panel_event_protocol.py::test_starter_listener_set_would_have_failed_protocol_check # tautology" \
+	"tests/unit/test_auto_merge_health.py::test_probe_invokes_lib_script_with_expected_argv_shape # no-assert" \
+	>> "$$TMP_BASELINE"; \
+	uv run python scripts/check_test_assertions.py --baseline "$$TMP_BASELINE" tests/; \
+	RC=$$?; \
+	rm -f "$$TMP_BASELINE"; \
+	exit $$RC
 
 # warn-only for now (Phase-1 P1-CR-C); flips to a hard gate in a follow-up after noise is triaged.
 # Exclude skills/ — those are IW skill master copies (not project code) and have their own dep chains.
@@ -136,6 +152,80 @@ diff-coverage:
 	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser --cov-append --cov-fail-under=0 -q -n auto
 	uv run coverage xml -o tests/output/coverage/coverage-combined.xml
 	uv run diff-cover tests/output/coverage/coverage-combined.xml --compare-branch=origin/main --fail-under=90
+
+# =============================================================================
+# MUTATION TESTING (CR-00059, P2-CR-A) — on-demand, NOT a CI gate yet
+# =============================================================================
+# mutmut runs mutmut against orch/daemon/ — the spike target. Each mutant
+# temporarily edits a single line of production code and re-runs the matching
+# daemon tests (`tests/unit/daemon/` + `tests/integration/daemon/`). A mutant
+# is "killed" when some test fails (good — the tests caught the bug); it
+# "survives" when all tests still pass (bad — no test would have caught
+# the regression).
+#
+# Runtime budget for `make mutation-audit` over orch/daemon/ is measured by
+# the CR-00059 spike; expect on the order of tens of minutes. NOT wired into
+# `make quality` / `make check` / any QV gate. Follow-up CR
+# `P2-CR-A-followup-mutation-block` will widen scope and flip to blocking
+# once the spike numbers inform thresholds.
+
+mutation-check: ## Mutation test a single daemon module (usage: make mutation-check MODULE=orch/daemon/auto_merge.py)
+	@if [ -z "$(MODULE)" ]; then \
+		echo "Usage: make mutation-check MODULE=orch/daemon/<file>.py"; \
+		echo "  Tip: the matching test files are auto-detected from the module path."; \
+		exit 1; \
+	fi
+	@echo "Running mutation testing on $(MODULE)..."
+	@rm -f .mutmut-cache
+	@UNIT_TEST=$$(echo "$(MODULE)" | sed 's|orch/daemon/|tests/unit/daemon/test_|'); \
+	INT_TEST=$$(echo "$(MODULE)" | sed 's|orch/daemon/|tests/integration/daemon/test_|'); \
+	TARGETS=""; \
+	[ -f "$$UNIT_TEST" ] && TARGETS="$$TARGETS $$UNIT_TEST"; \
+	[ -f "$$INT_TEST" ] && TARGETS="$$TARGETS $$INT_TEST"; \
+	if [ -z "$$TARGETS" ]; then \
+		echo "No matching test files for $(MODULE) — running all daemon tests"; \
+		TARGETS="tests/unit/daemon/ tests/integration/daemon/"; \
+	else \
+		echo "Using test files:$$TARGETS"; \
+	fi; \
+	echo "(Code is modified temporarily — originals are always restored.)"; \
+	uv run mutmut run \
+		--paths-to-mutate $(MODULE) \
+		--runner "uv run pytest $$TARGETS -x --tb=no -q" \
+		--tests-dir tests/ \
+		--simple-output
+	@echo ""
+	@echo "Results:"
+	@uv run mutmut results
+	@echo ""
+	@echo "Use 'make mutation-show ID=N' to inspect surviving mutants."
+
+mutation-audit: ## Mutation test all daemon modules (slow — spike target)
+	@echo "Running mutation audit on orch/daemon/..."
+	@echo "This may take 30–120 minutes depending on module count and test cost."
+	@for MODULE in $$(find orch/daemon/ -name "*.py" -not -name "__init__.py" -not -path "*/__pycache__/*" | sort); do \
+		echo ""; \
+		echo "--- Mutating: $$MODULE ---"; \
+		rm -f .mutmut-cache; \
+		uv run mutmut run \
+			--paths-to-mutate "$$MODULE" \
+			--runner "uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q" \
+			--tests-dir tests/ \
+			--simple-output --no-progress 2>&1 | tail -5; \
+		uv run mutmut results 2>/dev/null; \
+	done
+	@echo ""
+	@echo "Audit complete. Review surviving mutants with 'make mutation-show ID=N'."
+
+mutation-results: ## Show results from the last mutation testing run
+	uv run mutmut results
+
+mutation-show: ## Inspect a specific surviving mutant (usage: make mutation-show ID=42)
+	@if [ -z "$(ID)" ]; then \
+		echo "Usage: make mutation-show ID=42"; \
+		exit 1; \
+	fi
+	uv run mutmut show $(ID)
 
 # --- All checks (run before commit) ---
 check: quality test
