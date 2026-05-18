@@ -250,3 +250,13 @@
   min-height: 44px;
   min-width: 44px;
 }
+
+/* ── Collapse button distinct affordance (I-00089) ── */
+#chat-assistant-panel:not([data-collapsed="true"]) #chat-assistant-collapse-btn.chat-assistant-collapse-btn-distinct {
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+#chat-assistant-panel:not([data-collapsed="true"]) #chat-assistant-collapse-btn.chat-assistant-collapse-btn-distinct:hover {
+  background: var(--muted-foreground);
+  color: var(--background);
+}
