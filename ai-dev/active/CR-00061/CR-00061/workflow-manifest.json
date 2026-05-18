@@ -1,0 +1,108 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00061",
+  "type": "ChangeRequest",
+  "title": "Flaky test quarantine workflow (P2-CR-C)",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "pyproject.toml",
+      "uv.lock",
+      "Makefile",
+      "scripts/flake_detect_aggregate.py",
+      "tests/unit/test_quarantine_marker_setup.py",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "tests/CLAUDE.md",
+      "skills/iw-ai-core-testing/**",
+      ".claude/skills/iw-ai-core-testing/**",
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "RED-first: write tests/unit/test_quarantine_marker_setup.py pinning (a) `quarantine` marker registered in [tool.pytest.ini_options].markers, (b) addopts contains 'not browser and not quarantine' (NOT a separate 'not browser'), (c) `import pytest_rerunfailures` succeeds, (d) `make -n test-quarantine` and `make -n test-flake-detect` parse, (e) scripts/flake_detect_aggregate.py exists and is valid Python. Run; confirm RED; capture failure for tdd_red_evidence. Then: add `pytest-rerunfailures>=14.0,<16` to [dependency-groups] dev; `uv lock`. Register `quarantine` marker with the design's prose. Modify addopts: replace `-m 'not browser'` with `-m 'not browser and not quarantine'` (single edit; --strict-markers stays). Add 2 Makefile recipes per design: `test-quarantine` (`pytest tests/ -m quarantine --reruns 1 --reruns-delay 1 -v --no-cov`) and `test-flake-detect` (loops 3\u00d7 pytest into tests/output/flake-detect-{1,2,3}.log, then runs the aggregator). Add both target names to .PHONY. Write scripts/flake_detect_aggregate.py: \u2264120 SLoC; stdlib-only (re, sys, pathlib, collections); accepts log paths as argv; parses pytest's PASSED/FAILED per-test lines; aggregates by test id; if any test disagreed across runs, prints a report naming each flake with its per-run outcome + exits 1; else prints 'No flakes detected.' + exits 0. Confirm no pre-existing `@pytest.mark.quarantine` in tests/ (`grep -rn '@pytest.mark.quarantine' tests/` returns nothing). Re-run RED test \u2192 GREEN. SMOKE TEST the marker deselection: temporarily decorate one tests/unit/test_smoke.py test with `@pytest.mark.quarantine(reason='smoke-test-cr-00061')`; run `uv run pytest tests/unit/test_smoke.py -v --no-cov 2>&1 | head -30` and confirm the test is deselected (or absent from collection); run `uv run pytest tests/unit/test_smoke.py -m quarantine -v --no-cov 2>&1 | head -10` and confirm it IS collected; CAPTURE BOTH OUTPUTS to step report; REVERT the temporary marker before completing S01 (`git diff tests/unit/test_smoke.py` must be empty at S01 completion). SMOKE TEST the aggregator: create 3 fabricated log files (echo with one test PASSED in run 1, FAILED in run 2, PASSED in run 3) and run `uv run python scripts/flake_detect_aggregate.py <three temp log paths>`; confirm exit 1 + the test is named in the report; capture output to step report. Update docs: docs/IW_AI_Core_Testing_Strategy.md \u00a73 add 'Flaky/quarantine workflow' sub-section; \u00a75 add 2 rows (quarantine deselection; flake-detect on-demand); \u00a79 row 'Flaky/quarantine workflow' flip \u274c\u2192\u2705 with CR-00061 number. tests/CLAUDE.md: new 'Quarantine workflow' sub-section with the 5-rule list verbatim from design (file incident; reason has I-NNNNN; incident names test; recovery=3 consecutive or 7 days; order_dependent stays separate). skills/iw-ai-core-testing/SKILL.md: extend conventions with same 5-rule sub-section; run `iw sync-skills --force iw-ai-core-testing`. ai-dev/work/TESTS_ENHANCEMENT.md: \u00a76 item 2.3 \u2192 DONE \u2014 CR-00061; \u00a711 new dated changelog entry. Pre-flight: `make format` + `make typecheck` + `make lint`. Do NOT run `make check` / `make test-integration` / `make diff-coverage`. Do NOT run `make test-flake-detect` on the full suite (it's a 30+min nightly operation \u2014 operator runs it later). 1800s timeout.",
+      "prompt": "prompts/CR-00061_S01_Backend_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: pytest-rerunfailures>=14.0,<16 in dev deps (other pin = HIGH); uv.lock contains it; `quarantine` marker registered with the design's prose (CRITICAL on missing/different wording \u2014 the prose is the workflow-rule reference); addopts is EXACTLY `-m 'not browser and not quarantine' --strict-markers` (or equivalent merged in) \u2014 CRITICAL if the old `-m 'not browser'` is duplicated (two -m filters means the second overrides) OR if `not quarantine` is missing OR if `--strict-markers` was dropped; 2 Makefile recipes parse via `make -n`; `test-quarantine` uses `--reruns 1` (NOT --reruns 3 \u2014 CRITICAL because 3 would mask flakes); `test-flake-detect` runs the suite 3\u00d7 then invokes the aggregator (verify by `make -n test-flake-detect | head -20`); scripts/flake_detect_aggregate.py is \u2264120 SLoC + stdlib-only (HIGH on `import pytest`, `import requests`, etc.); the script's logic spot-check: read it end-to-end, verify it parses PASSED/FAILED lines and exits 1 only when a test disagreed across runs; the SMOKE TEST evidence in S01's report shows the deselection actually worked (deselected test absent from default run, present in -m quarantine run); the SMOKE TEST evidence shows the aggregator correctly identifies the fabricated flake; `git diff tests/unit/test_smoke.py` is empty at S01 completion (CRITICAL on stray marker left in); no pre-existing @pytest.mark.quarantine in the codebase (S01 should have confirmed); tests/CLAUDE.md has the 5-rule sub-section verbatim (CRITICAL on missing rules); strategy doc \u00a73/\u00a75/\u00a79 updated; skill master + .claude sync byte-identical; \u00a76 item 2.3 = DONE; \u00a711 entry includes addopts change + 3 targets + the file-an-incident rule; scope-creep audit: no production code touched; no test bodies modified (the smoke-test in S01 was temp + reverted \u2014 verify diff); no migration; no new daemon QV gate.",
+      "prompt": "prompts/CR-00061_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review: independently run `make test-quarantine` and confirm exit 0 with no tests collected (there are zero @pytest.mark.quarantine in the codebase at S01 end \u2014 anything else CRITICAL); independently run `make -n test-flake-detect | head -30` and verify the recipe shape; independently exercise the aggregator: create 3 fabricated log files (write a small shell snippet inline; one log has `tests/foo::bar PASSED`, another has `tests/foo::bar FAILED`, third has `tests/foo::bar PASSED`) and run `uv run python scripts/flake_detect_aggregate.py <paths>`; confirm exit 1 + report names `tests/foo::bar` as flaky; run the same with all 3 logs agreeing (all PASSED) and confirm exit 0 + 'No flakes' output; independently verify the addopts deselection: `uv run pytest tests/unit/test_smoke.py --collect-only -m quarantine 2>&1 | tail -5` should report `0 tests collected` (the marker is registered AND no tests carry it AND --strict-markers accepts the unused-but-registered marker \u2014 if it errors with 'unknown marker', the marker registration is broken); cross-doc-square: strategy \u00a73 sub-section + \u00a75 rows + \u00a79 row + tests/CLAUDE.md sub-section + skill sub-section name the SAME 5 rules verbatim (drift = HIGH); `diff skills/iw-ai-core-testing/SKILL.md .claude/skills/iw-ai-core-testing/SKILL.md` is empty (sync); `make quality` + `make test-unit` pass; deptry must NOT flag pytest-rerunfailures as unused (it's a pytest plugin loaded via pyproject; verify); scope-creep audit; Phase-2 cumulative readiness: this CR closes Phase 2 (CR-00059 + CR-00060 + CR-00061 = all 3 Phase-2 items) \u2014 note in report whether all 3 CRs landed cleanly and what's left in TESTS_ENHANCEMENT.md (P2-CR-A-followup, P1-CR-A-followup, all of Phase 3 + Phase 4). Timeout 1800s.",
+      "prompt": "prompts/CR-00061_S03_CodeReview_Final_prompt.md",
+      "timeout": 1800
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests (now deselects @pytest.mark.quarantine via the extended addopts \u2014 count should be unchanged at S01 completion since no tests carry the marker)"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests (same deselection)",
+      "timeout": 1800
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage (the new aggregator script should be \u226590% covered if a follow-up adds tests; for this CR it is verified manually per AC4 \u2014 diff-cover may flag the script \u2014 that's expected and OK if the only missed lines are CLI argv handling)",
+      "timeout": 1800
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scan"
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment via iw-item-analyze. Phase-2 closing CR (item 2.3, the third and final Phase-2 item). Phase-2-specific findings: (a) did the SMOKE TEST in S01 (temporarily-marked test gets deselected; aggregator catches fabricated flake) work first try or did it surface real friction (informs whether the marker+addopts pattern is foolproof); (b) did `make test-flake-detect` actually find a flake when S03 ran it on the small synthetic data set (sanity check of the aggregator under real-data shapes); (c) cumulative Phase-2 cost (sum CR-00059 + CR-00060 + CR-00061 wall-clocks \u2014 informs Phase-3 sizing); (d) which of the 3 Phase-2 CRs (mutation, hypothesis, quarantine) delivered the highest perceived value \u2014 operator + reviewer impressions; (e) Phase-3 readiness \u2014 which Phase-3 item (3.1 structured E2E layer; 3.2 contract sweep + schemathesis; 3.3 iw CLI contract layer; 3.4 cross-project isolation matrix; 3.5 security test module; 3.6 data-layer module) should be picked first given the lessons from Phase 2; (f) did the file-an-incident rule from this CR feel enforceable, or does it need a future automated check (an iw CLI command that scans for `@pytest.mark.quarantine` without an I-NNNNN reason \u2014 possible follow-up).",
+      "prompt": "prompts/CR-00061_S12_SelfAssess_prompt.md"
+    }
+  ]
+}

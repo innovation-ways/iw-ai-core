@@ -6,6 +6,7 @@
           test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
           test-assertions diff-coverage \
           test-properties test-properties-deep \
+          test-quarantine test-flake-detect \
           mutation-check mutation-audit mutation-results mutation-show \
           db-up db-down db-migrate db-revision \
           daemon-start daemon-stop dashboard-start css \
@@ -171,6 +172,37 @@ test-properties:
 # a release, after a refactor of any of the 5 state-machine targets).
 test-properties-deep:
 	IW_HYPOTHESIS_PROFILE=deep uv run pytest tests/unit/properties/ -v --no-cov
+
+# =============================================================================
+# QUARANTINE & FLAKE DETECTION (CR-00061, P2-CR-C) — on-demand, NOT a CI gate
+# =============================================================================
+# The `quarantine` marker is auto-deselected by `addopts` on the merge path
+# (see pyproject.toml). These targets are for inspecting/recovering quarantined
+# tests and for detecting NEW flakes that should be quarantined.
+
+# Run ONLY quarantined tests; --reruns 1 lets a genuine flake recover.
+# DELIBERATELY --reruns 1 (not 3): we want to surface flakes, not mask them.
+test-quarantine:
+	uv run pytest tests/ -m quarantine --reruns 1 --reruns-delay 1 -v --no-cov
+
+# Run the FULL suite 3x and aggregate per-test outcomes; any test that
+# disagreed across runs is a flake. Operator-on-demand or nightly cron.
+# Wall-clock budget: ~30+ minutes (3x full integration suite).
+# IMPORTANT: use `-v` (not `-q`) so each test emits a `<test_id> <OUTCOME>`
+# line that the aggregator's regex can match. `-q` only prints dots, and
+# the default failure summary uses `<OUTCOME> <test_id>` order which the
+# aggregator does NOT match — `-v` is the version that actually works.
+test-flake-detect:
+	@mkdir -p tests/output
+	@rm -f tests/output/flake-detect-*.log
+	@for i in 1 2 3; do \
+		echo "=== flake-detect run $$i/3 ==="; \
+		uv run pytest tests/unit tests/integration tests/dashboard --ignore=tests/dashboard/browser \
+			--no-cov -v --tb=no 2>&1 | tee tests/output/flake-detect-$$i.log || true; \
+	done
+	@echo ""
+	@echo "=== aggregating ==="
+	@uv run python scripts/flake_detect_aggregate.py tests/output/flake-detect-1.log tests/output/flake-detect-2.log tests/output/flake-detect-3.log
 
 # =============================================================================
 # MUTATION TESTING (CR-00059, P2-CR-A) — on-demand, NOT a CI gate yet
