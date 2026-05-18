@@ -14,7 +14,9 @@
     {% for key, label, mapped in filters %}
       {% set href = '/project/' ~ request.path_params.project_id ~ '/auto-merge/events?page=0&page_size=' ~ page_size ~ ('' if mapped is none else '&type=' ~ mapped) %}
       <a hx-get="{{ href }}" hx-target="#auto-merge-events" hx-swap="innerHTML"
-         class="px-2 py-1 rounded border text-xs {% if type_filter == key or (key == 'all' and not request.query_params.get('type')) %}bg-primary text-primary-foreground border-primary{% else %}border-border text-muted-foreground{% endif %}">
+         class="px-2 py-1 rounded border text-xs {% set _is_active = (mapped is none and not request.query_params.get('type')) or (mapped is not none and type_filter == mapped) %}{% if _is_active %}bg-primary text-primary-foreground border-primary{% else %}border-border text-muted-foreground{% endif %}"
+         title="{{ mapped or 'all event types' }}"
+         aria-pressed="{{ 'true' if _is_active else 'false' }}">
         {{ label }}
       </a>
     {% endfor %}
