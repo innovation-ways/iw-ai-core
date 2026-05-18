@@ -1,0 +1,120 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "item_id": "I-00091",
+  "title": "Auto-merge settings form stays \"Use global default\" after partial-axis override",
+  "type": "incident",
+  "severity": "high",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/auto_merge_aggregator.py",
+      "dashboard/templates/fragments/auto_merge_settings.html",
+      "dashboard/templates/fragments/auto_merge_status_chip.html",
+      "dashboard/routers/auto_merge_ui.py",
+      "dashboard/static/styles.css",
+      "tests/unit/test_auto_merge_config_resolution.py",
+      "tests/dashboard/test_auto_merge_routes.py",
+      "tests/integration/test_auto_merge_control_surface.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Add phase_source + runtime_source to ResolvedConfig; populate independently in resolve_project_config. Keep back-compat for the existing single `source` consumer or migrate it.",
+      "prompt": "prompts/I-00091_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01 (Backend)",
+      "prompt": "prompts/I-00091_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "frontend-impl",
+      "description": "Update auto_merge_settings.html per-axis; wrap section in id; switch hx-target; update auto_merge_set_config response to include settings fragment + hx-swap-oob chip; update status chip's source line; add 'Saved' indicator + hx-indicator.",
+      "prompt": "prompts/I-00091_S03_Frontend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S03 (Frontend + Router)",
+      "prompt": "prompts/I-00091_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Reproduction tests + four-cell matrix regression coverage across unit / dashboard / integration test suites.",
+      "prompt": "prompts/I-00091_S05_Tests_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S05 (Tests)",
+      "prompt": "prompts/I-00091_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review of S01..S06",
+      "prompt": "prompts/I-00091_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S14",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — verify settings form sync end-to-end in isolated worktree stack",
+      "prompt": "prompts/I-00091_S14_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S15",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00091_S15_SelfAssess_prompt.md"
+    }
+  ]
+}
