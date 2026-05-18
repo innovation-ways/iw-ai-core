@@ -1,0 +1,130 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "item_id": "I-00096",
+  "title": "Auto-merge view duplicates the status chip and \"all\" filter shows non-auto-merge events",
+  "type": "incident",
+  "severity": "medium",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/templates/base.html",
+      "dashboard/templates/fragments/auto_merge_events_table.html",
+      "dashboard/routers/auto_merge_ui.py",
+      "orch/auto_merge_aggregator.py",
+      "tests/unit/test_auto_merge_aggregator.py",
+      "tests/dashboard/test_auto_merge_routes.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "frontend-impl",
+      "description": "Suppress duplicate topbar chip on /auto-merge page; add 'Show all daemon events' toggle to events table fragment.",
+      "prompt": "prompts/I-00096_S01_Frontend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01",
+      "prompt": "prompts/I-00096_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Aggregator filters to auto_merge_* / merge_auto_* prefixes by default; new include_non_auto_merge param.",
+      "prompt": "prompts/I-00096_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S03",
+      "prompt": "prompts/I-00096_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "api-impl",
+      "description": "Route accepts ?all=1 query param and forwards to aggregator.",
+      "prompt": "prompts/I-00096_S05_Api_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S05",
+      "prompt": "prompts/I-00096_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "tests-impl",
+      "description": "Regression tests for chip dedup + auto-merge-only default filter + show-all toggle",
+      "prompt": "prompts/I-00096_S07_Tests_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S07",
+      "prompt": "prompts/I-00096_S08_CodeReview_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-final-impl",
+      "description": "Global review",
+      "prompt": "prompts/I-00096_S09_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S16",
+      "agent": "qv-browser",
+      "description": "QV: Browser — verify exactly one chip on /auto-merge, default view excludes non-auto-merge, toggle includes them.",
+      "prompt": "prompts/I-00096_S16_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S17",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment via iw-item-analyze",
+      "prompt": "prompts/I-00096_S17_SelfAssess_prompt.md"
+    }
+  ]
+}
