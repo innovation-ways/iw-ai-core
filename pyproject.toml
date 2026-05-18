@@ -112,7 +112,7 @@ exclude = ["skills/", ".claude/", "ai-dev/"]
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN", "PIE", "PT", "RSE", "RET", "SLF", "SIM", "TCH", "ARG", "PTH", "ERA"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ARG001", "ARG002", "SLF001", "S603", "S607", "TC002", "TC003", "S110", "S108"]  # assert ok; fixture side effects; private access in tests ok; git subprocess in test fixtures; TC002: Session alias kept at runtime for reuse across session/scope pattern
+"tests/**" = ["S101", "ARG001", "ARG002", "SLF001", "S603", "S607", "TC002", "TC003", "S110", "S108", "DTZ001"]  # assert ok; fixture side effects; private access in tests ok; git subprocess in test fixtures; TC002: Session alias kept at runtime for reuse across session/scope pattern; DTZ001: freezegun tests pass naive datetimes to freeze_time (legitimate pattern)
 "orch/db/migrations/**" = ["E501", "TC003", "F401", "UP035", "I001"]  # migration files: long column definitions; Sequence used at runtime in upgrade(); boilerplate imports unused in merge migrations
 "dashboard/routers/**" = ["B008", "TC001", "PT028"]  # FastAPI Depends() in default args is canonical; TC001 conflicts with FastAPI runtime model resolution; PT028 misfires on dashboard/routers/tests.py — ruff treats route handlers prefixed `tests_*` as pytest tests
 "dashboard/services/oss_service.py" = ["S603", "S607", "S108"]  # git subprocess; /tmp paths for worktrees
