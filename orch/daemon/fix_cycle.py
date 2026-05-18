@@ -805,7 +805,7 @@ def attempt_fix_cycle(
 def check_active_fix_cycles(
     db: Session,
     project_id: str,
-    project_config: ProjectConfig,  # noqa: ARG001
+    project_config: ProjectConfig,
     config: DaemonConfig,  # noqa: ARG001
 ) -> None:
     """Monitor all in-progress fix cycles: detect PID death or timeout."""
@@ -820,7 +820,7 @@ def check_active_fix_cycles(
     )
 
     for cycle in cycles:
-        _check_fix_cycle_health(db, cycle, project_id)
+        _check_fix_cycle_health(db, cycle, project_id, project_config)
 
     db.commit()
 
@@ -834,6 +834,7 @@ def _check_fix_cycle_health(
     db: Session,
     cycle: FixCycle,
     project_id: str,
+    project_config: ProjectConfig,
 ) -> None:
     """Check if the fix agent process is still alive, timed out, or finished."""
     meta = cycle.fix_metadata or {}
@@ -863,7 +864,7 @@ def _check_fix_cycle_health(
         return  # Still running, no timeout info
 
     # PID is dead — fix agent finished (or crashed)
-    _complete_fix_cycle(db, cycle, project_id, now)
+    _complete_fix_cycle(db, cycle, project_id, now, project_config)
 
 
 def _cascade_reset_upstream_qv_gates(
