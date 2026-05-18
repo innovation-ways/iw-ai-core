@@ -1,0 +1,93 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00099",
+  "type": "Issue",
+  "title": "Scope-overlap sibling-dir rule generates false-positive cross-batch holds",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/scope_overlap.py",
+      "tests/unit/daemon/test_scope_overlap.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Remove the sibling-directory fallback (`_same_parent` + its caller branch in `find_blocking_items`) from `orch/daemon/scope_overlap.py`. The function `globs_intersect` and the helper `_strip_test_globs` stay intact. Update the module docstring with a `2026-05-18 (I-00099)` note recording why the sibling rule was dropped (false-positive holds on large dirs) and what the safety net is (git merge resolves real text conflicts; items that need module-level exclusion declare `dir/**` explicitly). `_same_parent` MUST be deleted (not just unused) so no dormant code path remains.",
+      "prompt": "prompts/I-00099_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01: confirm `_same_parent` is fully removed (no `def _same_parent`, no callers, no stale imports); confirm the sibling-case fallback inside `find_blocking_items` is gone; confirm `globs_intersect` and `_strip_test_globs` are byte-identical to their pre-fix bodies (no incidental rewrites); confirm module docstring carries the I-00099 rationale; confirm no scope creep outside `orch/daemon/scope_overlap.py`; lint/format/typecheck the touched file.",
+      "prompt": "prompts/I-00099_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Edit `tests/unit/daemon/test_scope_overlap.py`: (a) add new class `TestI00099SiblingDirNoLongerBlocks` with the two reproduction tests from the design (different docs in same dir; different daemon modules in same dir); (b) DELETE `test_non_test_sibling_still_blocks` (it asserts the buggy behaviour we removed); (c) refresh `TestI00071RegressionBatch00078` class docstring to note that under the new rule the sibling case is gone but the test-path stripping it validates is still meaningful for `globs_intersect`; (d) add positive regression tests proving exact-file overlap still blocks (`dashboard/CLAUDE.md` vs `dashboard/CLAUDE.md`) and glob-anchor still blocks (`orch/daemon/**` vs `orch/daemon/batch_manager.py`). Targeted verification: run only the modified test file (`uv run pytest tests/unit/daemon/test_scope_overlap.py -v`). Do NOT run `make test-unit` or `make test-integration` — those are the S09/S10 gates.",
+      "prompt": "prompts/I-00099_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03: confirm `TestI00099SiblingDirNoLongerBlocks` exists with both reproduction tests using the exact path strings from the design (`docs/IW_AI_Core_Testing_Strategy.md` ↔ `docs/IW_AI_Core_AI_Assistant_Models.md`; `orch/daemon/batch_manager.py` ↔ `orch/daemon/project_registry.py`); confirm `test_non_test_sibling_still_blocks` is DELETED (not just commented out); confirm exact-file and glob-anchor regression tests exist; confirm assertions verify the exact return shape (`result == []`, not just `not result`); confirm no scope creep outside the test file.",
+      "prompt": "prompts/I-00099_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review. Independently run the new reproduction tests against the post-fix code and confirm they pass. Independently run all four existing test classes in `tests/unit/daemon/test_scope_overlap.py` and confirm they still pass (no collateral damage to glob-intersection behaviour). Run `tests/integration/daemon/test_batch_manager_scope_gate.py` to confirm the integration-level use of `find_blocking_items` still behaves as expected. Verify the design's AC1..AC4 are all satisfied by the implementation + tests. Verify the module docstring's I-00099 note is present.",
+      "prompt": "prompts/I-00099_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Linting",
+      "command": "make lint",
+      "gate": "lint"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Formatting",
+      "command": "make format-check",
+      "gate": "format"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Type checking",
+      "command": "make type-check",
+      "gate": "typecheck"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Unit tests",
+      "command": "make test-unit",
+      "gate": "unit-tests"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "description": "QV: Integration tests",
+      "command": "make test-integration",
+      "gate": "integration-tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S11",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00099_S11_SelfAssess_prompt.md"
+    }
+  ]
+}
