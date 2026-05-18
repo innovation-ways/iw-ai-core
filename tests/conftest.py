@@ -7,6 +7,12 @@ import os
 
 import pytest
 
+# Pull in the testcontainer fixtures (pg_engine, db_session, test_project, etc.)
+# for tests that need them. Property-based tests in tests/unit/properties/ use
+# the db_session from tests/integration/conftest.py to drive DB-backed state
+# machine property tests (TestWorkItemLifecycle, TestFixCycleCap).
+pytest_plugins = ["tests.integration.conftest"]
+
 
 def pytest_configure(config: pytest.Config) -> None:  # type: ignore[override]
     """Unset IW_CORE_AGENT_CONTEXT before test collection begins.

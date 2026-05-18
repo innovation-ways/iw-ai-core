@@ -17,7 +17,8 @@
       "skills/iw-ai-core-testing/**",
       ".claude/skills/iw-ai-core-testing/**",
       "ai-dev/work/TESTS_ENHANCEMENT.md",
-      "orch/daemon/batch_manager.py"
+      "orch/daemon/batch_manager.py",
+      ".gitleaks.toml"
     ]
   },
   "steps": [

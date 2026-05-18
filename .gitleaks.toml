@@ -61,6 +61,12 @@ paths = [
   '''(?i)(?:^|/)\.mypy_cache/''',
   '''(?i)(?:^|/)\.ruff_cache/''',
   '''(?i)(?:^|/)\.pytest_cache/''',
+  # why: .hypothesis/ — Hypothesis internal cache files contain example strings
+  # (e.g., "env.local") that match the iw-internal-fqdn rule; not real secrets.
+  '''(?i)(?:^|/)\.hypothesis/''',
+  # why: tests/output/ — gitleaks JSON report contains matches of its own findings
+  # (e.g., "env.local" from the report); not real secrets.
+  '''(?i)(?:^|/)tests/output/''',
   '''(?i)(?:^|/)logs?/''',
   '''(?i)(?:^|/)allure-report/''',
   '''(?i)(?:^|/)allure-results/''',

@@ -196,7 +196,9 @@ class TestQueryFailedStepsActiveItemsIncluded:
         rows = _query_failed_steps(db_session)
         item_ids = [r.item_id for r in rows]
 
-        assert "CR-ALIVE" in item_ids, f"in_progress item should surface; got items: {item_ids}"
+        assert item_ids == ["CR-ALIVE"], (
+            f"in_progress item should be the sole surfaced row; got items: {item_ids}"
+        )
 
     def test_query_failed_steps_includes_paused_item(self, db_session: Session) -> None:
         """A paused item with a failed step must appear."""
@@ -208,7 +210,9 @@ class TestQueryFailedStepsActiveItemsIncluded:
         rows = _query_failed_steps(db_session)
         item_ids = [r.item_id for r in rows]
 
-        assert "CR-PAUSED" in item_ids, f"paused item should surface; got items: {item_ids}"
+        assert item_ids == ["CR-PAUSED"], (
+            f"paused item should be the sole surfaced row; got items: {item_ids}"
+        )
 
     def test_query_failed_steps_includes_failed_item(self, db_session: Session) -> None:
         """An item whose own status=failed (unresolved problem) must still appear."""
@@ -220,8 +224,9 @@ class TestQueryFailedStepsActiveItemsIncluded:
         rows = _query_failed_steps(db_session)
         item_ids = [r.item_id for r in rows]
 
-        assert "CR-BROKEN" in item_ids, (
-            f"item-level 'failed' is unresolved and must surface; got items: {item_ids}"
+        assert item_ids == ["CR-BROKEN"], (
+            f"item-level 'failed' is unresolved and must be the sole surfaced row; "
+            f"got items: {item_ids}"
         )
 
     def test_query_failed_steps_includes_needs_fix_status(self, db_session: Session) -> None:
@@ -237,8 +242,8 @@ class TestQueryFailedStepsActiveItemsIncluded:
         rows = _query_failed_steps(db_session)
         item_ids = [r.item_id for r in rows]
 
-        assert "CR-NEEDSFIX" in item_ids, (
-            f"needs_fix step on active item should surface; got items: {item_ids}"
+        assert item_ids == ["CR-NEEDSFIX"], (
+            f"needs_fix step on active item should be the sole surfaced row; got items: {item_ids}"
         )
 
 
@@ -346,8 +351,9 @@ class TestQueryRecentCompletionsActiveItemsIncluded:
         rows = _query_recent_completions(db_session)
         item_ids = [r.item_id for r in rows]
 
-        assert "CR-ALIVE" in item_ids, (
-            f"in_progress item with recent completion should surface; got items: {item_ids}"
+        assert item_ids == ["CR-ALIVE"], (
+            f"in_progress item with recent completion should be the sole surfaced row; "
+            f"got items: {item_ids}"
         )
 
     def test_query_recent_completions_includes_paused_item(self, db_session: Session) -> None:
@@ -366,8 +372,9 @@ class TestQueryRecentCompletionsActiveItemsIncluded:
         rows = _query_recent_completions(db_session)
         item_ids = [r.item_id for r in rows]
 
-        assert "CR-PAUSED" in item_ids, (
-            f"paused item with recent completion should surface; got items: {item_ids}"
+        assert item_ids == ["CR-PAUSED"], (
+            f"paused item with recent completion should be the sole surfaced row; "
+            f"got items: {item_ids}"
         )
 
     def test_query_recent_completions_includes_failed_item(self, db_session: Session) -> None:
@@ -386,8 +393,9 @@ class TestQueryRecentCompletionsActiveItemsIncluded:
         rows = _query_recent_completions(db_session)
         item_ids = [r.item_id for r in rows]
 
-        assert "CR-BROKEN" in item_ids, (
-            f"item-level 'failed' is unresolved and must surface; got items: {item_ids}"
+        assert item_ids == ["CR-BROKEN"], (
+            f"item-level 'failed' is unresolved and must be the sole surfaced row; "
+            f"got items: {item_ids}"
         )
 
 

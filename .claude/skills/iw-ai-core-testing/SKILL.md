@@ -177,7 +177,7 @@ Also keep the two DBs separate in tests: the agent runtime uses `IW_CORE_DB_*` (
 
 ## 4. State machines & property testing
 
-IW AI Core is full of state machines and parsers — the natural targets for invariant-style and (per the roadmap) Hypothesis property tests:
+IW AI Core is full of state machines and parsers — the natural targets for invariant-style and Hypothesis property tests:
 
 - **Work-item lifecycle** — invariants: never reach a terminal state with an open fix cycle; never exceed the fix-cycle cap (5); a merged item is never re-queued.
 - **Batch lifecycle** — invariant: batch status is a pure function of its items' statuses; a held/paused batch launches no new items.
@@ -185,7 +185,25 @@ IW AI Core is full of state machines and parsers — the natural targets for inv
 - **Doc versioning / diff** (`orch/doc_diff.py`, `orch/doc_sections.py`) — round-trip and idempotence: split→merge is identity; re-diffing is stable.
 - **RAG chunking** (`orch/rag/`) — chunk boundaries partition the source; re-chunking is stable.
 
-For now, write these as explicit boundary/transition tests with strong assertions. Use `@pytest.mark.parametrize` for known-important cases (boundaries, each error code); reserve broad random exploration for the forthcoming Hypothesis layer (roadmap 2.2). Do **not** add `hypothesis` or `mutmut` as dependencies on your own — those land via dedicated roadmap items.
+### Property-based tests (Hypothesis — CR-00060, P2-CR-B)
+
+Five property-test modules are implemented under `tests/unit/properties/`:
+
+| Module | Target | Pattern |
+|--------|--------|---------|
+| `test_work_item_lifecycle_properties.py` | WorkItem lifecycle | `RuleBasedStateMachine` + 4 invariants |
+| `test_batch_lifecycle_properties.py` | Batch status | `@given` pure-function properties |
+| `test_fix_cycle_cap_properties.py` | Fix-cycle cap | `RuleBasedStateMachine` |
+| `test_doc_diff_round_trip_properties.py` | Doc diff round-trip | `@given` with `assume()` for pathological inputs |
+| `test_iw_next_id_atomicity_properties.py` | `allocate_next_id` concurrency | `RuleBasedStateMachine` + `ThreadPoolExecutor` |
+
+**When to add a new property module:** the target is an invariant violation across a large input space that example tests can't enumerate. The five above are the canonical targets for this project.
+
+**Choosing RuleBasedStateMachine vs `@given`:** use `RuleBasedStateMachine` when modelling a stateful entity with multiple allowed transitions (work-item lifecycle, fix-cycle counter). Use `@given` when testing a pure function with arbitrary inputs (batch status, doc-diff round-trip). Use `assume()` to skip pathological inputs rather than silently passing — a test that accepts everything passes everything.
+
+**The `properties` marker** is auto-applied to every test in `tests/unit/properties/` by `pytest_collection_modifyitems` in `tests/unit/properties/conftest.py` — no per-test decorator needed.
+
+**Profiles:** the `ci` profile (`derandomize=True`, 20 examples, 2000 ms deadline) is the merge gate and runs as part of `make test-unit`. The `dev` profile (200 examples, 5000 ms deadline) is the local default. The `deep` profile (1000 examples, no deadline) is on-demand via `make test-properties-deep`. Select via `$IW_HYPOTHESIS_PROFILE`.
 
 ---
 
