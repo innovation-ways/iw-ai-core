@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -14,6 +15,34 @@ from orch.db.models import (
     DaemonEvent,
     MergeAutoVerdict,
 )
+
+
+def _extract_filter_chip_blocks(html: str) -> dict[str, str]:
+    """Return {label: outer-<a>-tag-as-html} for each filter chip in the
+    events-table fragment. Raises if not all 7 chips are found.
+    """
+    # The chips live inside <div class="flex flex-wrap gap-2">…</div>.
+    # Each chip is an <a> whose body text is the label.
+    pattern = re.compile(
+        r"(<a\b[^>]*?>\s*([\w_]+)\s*</a>)",
+        re.DOTALL,
+    )
+    out: dict[str, str] = {}
+    for match in pattern.finditer(html):
+        anchor, label = match.group(1), match.group(2)
+        if "hx-get=" in anchor and "auto-merge/events" in anchor:
+            out[label] = anchor
+    expected = {
+        "all",
+        "resolved",
+        "attempted",
+        "failed",
+        "skipped",
+        "health_probe",
+        "config_updated",
+    }
+    assert expected <= out.keys(), f"missing chips: {expected - out.keys()}"
+    return out
 
 
 def _force_phase_0(db_session, project_id: str) -> None:
@@ -277,3 +306,73 @@ def test_ac9_existing_routes_unaffected(client: TestClient, test_project, suffix
         body = r.text
         assert "<!DOCTYPE html>" in body or "<html" in body
         assert len(body) > 256
+
+
+# ---------------------------------------------------------------------------
+# I-00092 — filter chip active-state regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_filter_chip_resolved_is_highlighted_when_active(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC1 / I-00092: 'resolved' chip carries bg-primary + aria-pressed=true
+    when ?type=merge_auto_resolved is in the URL; no other chip is active."""
+    _event(db_session, test_project.id, event_type="merge_auto_resolved")
+    response = client.get(
+        f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10&type=merge_auto_resolved"
+    )
+    assert response.status_code == 200
+    chips = _extract_filter_chip_blocks(response.text)
+
+    # Attribute-scoped check (I-00067): bg-primary must appear inside the
+    # class attribute of the 'resolved' chip's <a>, not just anywhere in HTML.
+    assert re.search(r'class\s*=\s*"[^"]*\bbg-primary\b[^"]*"', chips["resolved"]), (
+        f"'resolved' chip should carry bg-primary; got:\n{chips['resolved']}"
+    )
+    assert 'aria-pressed="true"' in chips["resolved"]
+
+    for other in ("all", "attempted", "failed", "skipped", "health_probe", "config_updated"):
+        assert "bg-primary" not in chips[other], (
+            f"'{other}' should NOT carry bg-primary when 'resolved' is active; got:\n{chips[other]}"
+        )
+        assert 'aria-pressed="false"' in chips[other]
+
+
+def test_filter_chip_all_is_highlighted_when_no_type_param(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC2 / I-00092: 'all' chip is active when no ?type= param is provided."""
+    _event(db_session, test_project.id)
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10")
+    assert response.status_code == 200
+    chips = _extract_filter_chip_blocks(response.text)
+
+    assert re.search(r'class\s*=\s*"[^"]*\bbg-primary\b[^"]*"', chips["all"]), (
+        f"'all' chip should carry bg-primary; got:\n{chips['all']}"
+    )
+    assert 'aria-pressed="true"' in chips["all"]
+
+    for other in ("resolved", "attempted", "failed", "skipped", "health_probe", "config_updated"):
+        assert "bg-primary" not in chips[other], (
+            f"'{other}' should NOT carry bg-primary when 'all' is active; got:\n{chips[other]}"
+        )
+        assert 'aria-pressed="false"' in chips[other]
+
+
+def test_filter_chip_title_tooltips_match_event_types(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC3 / I-00092: each chip's <a> title attribute matches its event_type."""
+    _event(db_session, test_project.id)
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10")
+    assert response.status_code == 200
+    chips = _extract_filter_chip_blocks(response.text)
+
+    assert 'title="merge_auto_resolved"' in chips["resolved"]
+    assert 'title="merge_auto_resolution_attempted"' in chips["attempted"]
+    assert 'title="merge_auto_resolution_failed"' in chips["failed"]
+    assert 'title="merge_auto_resolution_skipped"' in chips["skipped"]
+    assert 'title="auto_merge_health_probe"' in chips["health_probe"]
+    assert 'title="auto_merge_config_updated"' in chips["config_updated"]
+    assert 'title="all event types"' in chips["all"]
