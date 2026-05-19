@@ -517,3 +517,7 @@ div.mermaid-diagram span {
 .auto-merge-modal__metadata{background:var(--muted);padding:.5rem;border-radius:.25rem;max-height:24rem;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.75rem;white-space:pre}
 .auto-merge-modal__copy-btn{border:1px solid var(--border);border-radius:.25rem;padding:.1rem .4rem;font-size:.7rem;cursor:pointer;background:var(--card)}
 .auto-merge-modal__copy-btn:hover{background:var(--muted)}
+
+.auto-merge-sortable{display:inline-flex;align-items:center;gap:.25rem;background:transparent;border:0;font:inherit;color:inherit;padding:0;cursor:pointer}
+.auto-merge-sortable:hover{color:var(--foreground)}
+.auto-merge-sortable--active{color:var(--foreground);font-weight:600}

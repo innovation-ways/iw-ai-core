@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from sqlalchemy import func, or_, select
 
@@ -11,6 +11,7 @@ from orch.db.models import AgentRuntimeOption, AutoMergeProjectConfig, DaemonEve
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+    from sqlalchemy.sql.elements import ColumnElement
 
     from orch.daemon.auto_merge import AutoMergeConfig
 
@@ -20,6 +21,13 @@ AUTO_MERGE_EVENT_PREFIXES: tuple[str, ...] = ("auto_merge_", "merge_auto_")
 
 EVENT_AUTO_MERGE_CONFIG_INVALID = "auto_merge_config_invalid"
 EVENT_AUTO_MERGE_HEALTH_PROBE = "auto_merge_health_probe"
+
+SORTABLE_COLUMNS: dict[str, ColumnElement[Any]] = {
+    "created_at": cast("ColumnElement[Any]", DaemonEvent.created_at),
+    "event_type": cast("ColumnElement[Any]", DaemonEvent.event_type),
+    "entity_id": cast("ColumnElement[Any]", DaemonEvent.entity_id),
+    "verdict": cast("ColumnElement[Any]", MergeAutoVerdict.verdict),
+}
 
 
 @dataclass(frozen=True)
@@ -270,8 +278,15 @@ def list_recent_events(
     page: int = 0,
     page_size: int = 50,
     event_type_filter: str | None = None,
+    sort: str = "created_at",
+    direction: str = "desc",
     include_non_auto_merge: bool = False,
 ) -> tuple[list[EventRow], int]:
+    if sort not in SORTABLE_COLUMNS:
+        raise ValueError(f"sort must be one of {sorted(SORTABLE_COLUMNS)}; got {sort!r}")
+    if direction not in ("asc", "desc"):
+        raise ValueError(f"direction must be 'asc' or 'desc'; got {direction!r}")
+
     stmt = (
         select(DaemonEvent, MergeAutoVerdict)
         .outerjoin(
@@ -287,10 +302,14 @@ def list_recent_events(
         stmt = stmt.where(
             or_(*(DaemonEvent.event_type.like(p + "%") for p in AUTO_MERGE_EVENT_PREFIXES))
         )
+
+    col = SORTABLE_COLUMNS[sort]
+    order = col.asc() if direction == "asc" else col.desc()
+    if sort == "verdict":
+        order = order.nulls_last()
+
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()
-    rows = db.execute(
-        stmt.order_by(DaemonEvent.created_at.desc()).offset(page * page_size).limit(page_size)
-    ).all()
+    rows = db.execute(stmt.order_by(order).offset(page * page_size).limit(page_size)).all()
     return [
         EventRow(
             id=event.id,
