@@ -1,6 +1,0 @@
-{
-  "item_id": "I-00092",
-  "bottom_line": "Workflow ran cleanly. No actionable process patterns detected.",
-  "coverage_notes": "All logs read in full (max 378 KB S10 log). DB telemetry: available. S13 is a self-assessment step — no execution logs to analyze.",
-  "findings": []
-}

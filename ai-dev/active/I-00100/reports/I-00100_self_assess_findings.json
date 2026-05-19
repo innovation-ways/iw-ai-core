@@ -1,6 +1,0 @@
-{
-  "item_id": "I-00100",
-  "bottom_line": "I-00100 ran with zero retries and zero fix cycles across all 12 steps — no process improvements are warranted.",
-  "coverage_notes": "No raw run logs available (worktree .worktrees/I-00100/ai-dev/logs/ is empty). Analysis based on complete self-reports for S01–S12. DB telemetry confirmed DB:UP. All step reports are present and coherent.",
-  "findings": []
-}
