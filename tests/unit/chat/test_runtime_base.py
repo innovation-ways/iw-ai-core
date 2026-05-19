@@ -28,6 +28,25 @@ def test_chat_runtime_cannot_be_instantiated_directly() -> None:
     assert "abstract" in msg
     assert "chatruntime" in msg
 
+    # Pin the abstract surface so a future edit that drops an @abstractmethod
+    # (which would silently make ChatRuntime instantiable and break the
+    # subclass contract) fails this test loudly.
+    assert set(ChatRuntime.__abstractmethods__) == {
+        "health",
+        "create_session",
+        "get_session",
+        "list_sessions",
+        "get_messages",
+        "prompt",
+        "abort",
+        "reply_permission",
+        "set_model",
+        "close_session",
+        "subscribe",
+        "get_config",
+        "get_providers",
+    }
+
 
 def test_subclass_missing_method_cannot_be_instantiated() -> None:
     """A subclass that misses even ONE abstract method is still abstract."""

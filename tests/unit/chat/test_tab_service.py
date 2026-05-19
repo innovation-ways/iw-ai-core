@@ -400,10 +400,22 @@ def test_touch_last_active_is_no_op_for_missing_tab(
     test_project: Any,  # noqa: ARG001 — fixture forces table to exist
 ) -> None:
     """``touch_last_active`` swallows missing tabs (background pump safety)."""
+    missing_tab_id = "00000000-0000-0000-0000-000000000000"
+
+    # Snapshot tab-table state before the call so we can prove the no-op
+    # didn't INSERT, UPDATE, or otherwise touch the chat_tabs rows.
+    before_count = db_session.query(ChatTab).count()
+
     # No exception, no DB write — function is a defensive no-op when the
     # tab vanished between the dispatch and the bump.
-    tab_service.touch_last_active(db_session, "00000000-0000-0000-0000-000000000000")
+    tab_service.touch_last_active(db_session, missing_tab_id)
     db_session.flush()
+
+    after_count = db_session.query(ChatTab).count()
+    assert after_count == before_count
+    # And the bogus UUID still doesn't exist as a tab row.
+    fetched = db_session.get(ChatTab, missing_tab_id)
+    assert fetched is None
 
 
 def test_bootstrap_is_idempotent_under_concurrent_calls(
