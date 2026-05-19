@@ -812,7 +812,7 @@ class StepRun(Base):
     cli_tool: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
-        comment="LLM CLI tool used: 'opencode' or 'claude'",
+        comment="LLM CLI tool used: 'opencode', 'claude', or 'pi'",
     )
     last_heartbeat: Mapped[datetime | None] = mapped_column(
         _TIMESTAMPTZ,
@@ -1079,7 +1079,12 @@ class Batch(Base):
         server_default=text("4"),
         comment="Maximum number of items executing simultaneously",
     )
-    cli_tool: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'opencode'"))
+    cli_tool: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'opencode'"),
+        comment="LLM CLI tool used: 'opencode', 'claude', or 'pi'",
+    )
     auto_publish: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

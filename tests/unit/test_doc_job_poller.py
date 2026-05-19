@@ -185,7 +185,12 @@ class TestDocServiceJobLifecycle:
         mock_job.completed_at = None
         mock_job.duration_seconds = None
         mock_job.doc_id = None
-        mock_db.get.return_value = mock_job
+        # CR-00062: doc_service now raises on unknown cli_tool; supply a real
+        # project mock so the cli_tool lookup yields the "opencode" default.
+        mock_project = MagicMock()
+        mock_project.config = {"cli_tool": "opencode"}
+        mock_project.repo_root = str(tmp_path)
+        mock_db.get.side_effect = [mock_job, mock_project]
 
         svc = DocService(mock_db)
         result = svc.complete_doc_job("job-123")
@@ -203,7 +208,12 @@ class TestDocServiceJobLifecycle:
         mock_job.status = JobStatus.running
         mock_job.started_at = datetime.now(UTC) - timedelta(seconds=60)
         mock_job.error = None
-        mock_db.get.return_value = mock_job
+        # CR-00062: doc_service now raises on unknown cli_tool; supply a real
+        # project mock so the cli_tool lookup yields the "opencode" default.
+        mock_project = MagicMock()
+        mock_project.config = {"cli_tool": "opencode"}
+        mock_project.repo_root = str(tmp_path)
+        mock_db.get.side_effect = [mock_job, mock_project]
 
         svc = DocService(mock_db)
         result = svc.complete_doc_job("job-123", error="something went wrong")

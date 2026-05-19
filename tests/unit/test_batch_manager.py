@@ -505,9 +505,17 @@ class TestStepLaunchFields:
 
         with (
             patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen,
+            patch("orch.agent_runtime.resolver.resolve_runtime") as mock_resolve,
             patch("pathlib.Path.open", MagicMock()),
             patch("pathlib.Path.mkdir"),
         ):
+            # CR-00062: _build_initial_command raises on unknown cli_tool, so the
+            # runtime resolver must return a concrete cli_tool string (not a MagicMock).
+            mock_option = MagicMock()
+            mock_option.cli_tool = "opencode"
+            mock_option.model = "minimax/MiniMax-M2.7"
+            mock_option.id = 1
+            mock_resolve.return_value = mock_option
             mock_popen.return_value = MagicMock(pid=1)
             manager = make_manager(tmp_path, db)
             db.query.return_value.filter.return_value.count.return_value = 0
@@ -600,11 +608,18 @@ class TestQvDirectExec:
 
         with (
             patch("orch.daemon.batch_manager.subprocess.Popen") as mock_popen,
+            patch("orch.agent_runtime.resolver.resolve_runtime") as mock_resolve,
             patch("pathlib.Path.open", MagicMock()),
             patch("pathlib.Path.mkdir"),
             patch("pathlib.Path.exists", return_value=False),
             patch("pathlib.Path.write_text"),
         ):
+            # CR-00062: _build_initial_command raises on unknown cli_tool.
+            mock_option = MagicMock()
+            mock_option.cli_tool = "claude"
+            mock_option.model = "anthropic/claude-sonnet-4-6"
+            mock_option.id = 2
+            mock_resolve.return_value = mock_option
             mock_popen.return_value = MagicMock(pid=4444)
             manager = make_manager(tmp_path, db, cli_tool="claude")
             db.query.return_value.filter.return_value.count.return_value = 0

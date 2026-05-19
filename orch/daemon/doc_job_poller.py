@@ -297,8 +297,13 @@ class DocJobPoller:
 
         if cli_tool == "opencode":
             cmd = f'opencode run "/{skill} doc-job {job.id}" --dangerously-skip-permissions'
-        else:
+        elif cli_tool == "claude":
             cmd = f'claude -p "/{skill} doc-job {job.id}" --permission-mode bypassPermissions'
+        elif cli_tool == "pi":
+            # CR-00062: pi.dev print-mode is permission-flag-free (R-00072 §7).
+            cmd = f'pi -p "/{skill} doc-job {job.id}"'
+        else:
+            raise ValueError(f"Unknown cli_tool: {cli_tool!r}")
 
         return [cmd]
 

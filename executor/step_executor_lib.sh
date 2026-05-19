@@ -620,6 +620,12 @@ _run_agent_oneshot() {
         opencode)
             echo "$prompt" | opencode run -p "$model"
             ;;
+        pi)
+            # CR-00062: pi.dev print-mode reads the prompt from stdin when
+            # invoked as `pi -p` without an inline prompt argument — see
+            # `pi --help`. No permission flag (R-00072 §7).
+            echo "$prompt" | pi -p --model "$model"
+            ;;
         *)
             echo "ERROR: unknown agent: $agent" >&2
             exit 1
