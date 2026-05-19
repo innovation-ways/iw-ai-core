@@ -182,6 +182,13 @@ def auto_merge_event_detail(
     if event is None:
         raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
 
+    humanized_title = f"{event.event_type} — {event.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
+
+    # Fetch the raw DaemonEvent to access entity_type (not carried on EventRow)
+    raw_event = db.get(DaemonEvent, event_id)
+    if raw_event is None or raw_event.project_id != project_id:
+        raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
+
     diffs: list[dict[str, Any]] = []
     if event.event_type == "merge_auto_resolved":
         try:
@@ -243,7 +250,14 @@ def auto_merge_event_detail(
     return _render_fragment(
         request,
         "fragments/auto_merge_event_detail.html",
-        {"request": request, "event": event, "diffs": diffs, "verdict": event.verdict},
+        {
+            "request": request,
+            "event": event,
+            "diffs": diffs,
+            "verdict": event.verdict,
+            "humanized_title": humanized_title,
+            "raw_event": raw_event,
+        },
     )
 
 
