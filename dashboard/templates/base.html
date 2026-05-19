@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="/static/styles.css" />
 
   <!-- AI Assistant panel CSS -->
-  <link rel="stylesheet" href="/static/chat_assistant/chat.css" />
+  <link rel="stylesheet" href="/static/chat_assistant/chat.css?v={{ static_v }}" />
 
   <!-- Dark mode: apply saved preference before paint to avoid flash -->
   <script>
@@ -287,7 +287,7 @@
   })();
 </script>
 <script src="{{ url_for('static', path='/sse-client.js') }}"></script>
-<script src="/static/chat_assistant/chat.js" defer></script>
+<script src="/static/chat_assistant/chat.js?v={{ static_v }}" defer></script>
 {% block scripts %}{% endblock %}
 
 </body>

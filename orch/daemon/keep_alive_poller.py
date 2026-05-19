@@ -11,6 +11,7 @@ import logging
 from orch.db.session import SessionLocal
 from orch.keep_alive_service import (
     fire_claude,
+    get_config,
     get_due_slots,
     log_run,
     pick_message,
@@ -30,7 +31,7 @@ class KeepAlivePoller:
 
         For each due slot:
           1. Pick a random message.
-          2. Call fire_claude(message).
+          2. Call fire_claude(message, model) using the model configured in KeepAliveConfig.
           3. If success: log_run(status='success').
           4. If failure: retry once with a new random message.
              - Retry success → log_run(status='retried_success').
@@ -43,22 +44,29 @@ class KeepAlivePoller:
         means any subsequent attribute access triggers a refresh that fails with
         DetachedInstanceError, masking every fire_claude success as an "unexpected
         error" and preventing the run from ever being logged.
+
+        The configured ``model`` is read once per poll cycle and threaded into
+        ``fire_claude`` so the subprocess actually runs against the model the
+        scheduler is anchoring a usage window on (typically Sonnet). Before
+        2026-05-19 the model field was stored but never passed to the CLI,
+        so every keep-alive ran against the user's default model (Opus).
         """
         with SessionLocal() as db:
             due_slots = get_due_slots(db)
             slot_snapshots = [(slot.id, slot.time_hhmm) for slot in due_slots]
+            model = get_config(db).model
             db.commit()
 
         for slot_id, slot_time in slot_snapshots:
             try:
-                self._fire_slot(slot_id, slot_time)
+                self._fire_slot(slot_id, slot_time, model)
             except Exception:
                 logger.exception("Unexpected error processing keep-alive slot %s", slot_id)
 
-    def _fire_slot(self, slot_id: int, slot_time: str) -> None:
+    def _fire_slot(self, slot_id: int, slot_time: str, model: str) -> None:
         """Fire a single slot: attempt + optional retry, then log result."""
         message_1 = pick_message()
-        success_1, error_1 = fire_claude(message_1)
+        success_1, error_1 = fire_claude(message_1, model)
 
         if success_1:
             self._log_run(slot_id, slot_time, status="success")
@@ -66,7 +74,7 @@ class KeepAlivePoller:
 
         # Retry once with a new message
         message_2 = pick_message()
-        success_2, error_2 = fire_claude(message_2)
+        success_2, error_2 = fire_claude(message_2, model)
 
         if success_2:
             self._log_run(slot_id, slot_time, status="retried_success")

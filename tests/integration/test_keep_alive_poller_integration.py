@@ -234,3 +234,42 @@ class TestKeepAlivePollerEndToEnd:
         assert run_a.status == "success"
         assert run_b.status == "success"
         assert {run_a.slot_time, run_b.slot_time} == {t1, t2}
+
+    def test_poll_threads_configured_model_into_fire_claude(
+        self,
+        db_session: Session,
+        db_session_factory: sessionmaker,
+    ) -> None:
+        """The model stored in KeepAliveConfig MUST reach fire_claude.
+
+        Regression: from F-00074 (2026-05-15) through 2026-05-19 the poller
+        called ``fire_claude(message)`` with no model argument, and
+        ``fire_claude`` ran ``claude -p <msg>`` with no ``--model`` flag — so
+        every keep-alive fired against the user's default CLI model (Opus on
+        the dev host) instead of the Sonnet model the user configured. The
+        scheduler exists to anchor a 5-hour usage window on a specific model,
+        so silently running the wrong model defeats the feature entirely.
+        """
+        get_config(db_session)
+        cfg = get_config(db_session)
+        cfg.model = "claude-sonnet-4-6"
+        db_session.flush()
+        _seed_slot(db_session)
+
+        with (
+            patch("orch.daemon.keep_alive_poller.SessionLocal", db_session_factory),
+            patch(
+                "orch.daemon.keep_alive_poller.fire_claude",
+                return_value=(True, None),
+            ) as mock_fire,
+        ):
+            KeepAlivePoller().poll()
+
+        assert mock_fire.call_count == 1
+        # Accept either positional (message, model) or keyword passing.
+        args, kwargs = mock_fire.call_args
+        model_arg = args[1] if len(args) >= 2 else kwargs.get("model")
+        assert model_arg == "claude-sonnet-4-6", (
+            f"Expected configured model to be threaded into fire_claude; "
+            f"got args={args!r} kwargs={kwargs!r}"
+        )
