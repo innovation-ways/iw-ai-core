@@ -1,6 +1,0 @@
-{
-  "item_id": "I-00091",
-  "bottom_line": "No actionable patterns detected. Workflow ran cleanly across 15 steps; one legitimate fix-cycle on S14 (browser verification caught real htmx swap defect); S01 correctly deferred 3 test updates to S05; S03 correctly used I-00067 plain-CSS mitigation; S14 verified all 4 matrix cells plus in-place swap and no regressions.",
-  "coverage_notes": "No raw run logs available (worktree .worktrees/I-00091/ai-dev/logs/ is empty). Analysis based on: agent self-reports (S01-S14 reports), fix-cycle prompt (I-00091_S14_FIX_cycle1_prompt.md), workflow manifest, and DB telemetry (iw item-status --json). S14 fix-cycle confirmed one cycle with minimum patch; re-run all pass. DB signal: full.",
-  "findings": []
-}
