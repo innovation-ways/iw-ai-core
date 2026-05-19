@@ -1072,3 +1072,94 @@ def test_event_modal_heading_is_humanized(client: TestClient, test_project, db_s
     assert "auto_merge_health_probe" in heading_text, (
         f"heading must contain event_type; got: {heading_text!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# I-00095 — sortable auto-merge events table regressions
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_sort_param_returns_400(client: TestClient, test_project) -> None:
+    response = client.get(
+        f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10&sort=message"
+    )
+    assert response.status_code == 400
+    assert "sort must be one of" in response.text
+
+
+def test_invalid_dir_param_returns_400(client: TestClient, test_project) -> None:
+    response = client.get(
+        f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10&dir=random"
+    )
+    assert response.status_code == 400
+
+
+def test_table_header_renders_clickable_sort_button_for_timestamp(
+    client: TestClient, test_project
+) -> None:
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10")
+    assert response.status_code == 200
+    html = response.text
+
+    match = re.search(
+        r'<button\b[^>]*\bhx-get="[^"]*\bsort=created_at\b[^"]*"[^>]*>\s*timestamp\b',
+        html,
+    )
+    assert match, f"timestamp header should be a sortable button; got:\n{html[:2000]}"
+
+
+def test_default_events_view_uses_created_at_desc_as_active_sort(
+    client: TestClient, test_project
+) -> None:
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10")
+    assert response.status_code == 200
+    html = response.text
+
+    timestamp_header = re.search(
+        r'(<th\b[^>]*\baria-sort="descending"[^>]*>\s*<button\b[^>]*\bhx-get="([^"]*\bsort=created_at\b[^"]*)"[^>]*>\s*timestamp\s*<span[^>]*>↓</span>)',
+        html,
+        re.DOTALL,
+    )
+    assert timestamp_header, "default view should show created_at descending as active"
+    assert "dir=asc" in timestamp_header.group(2)
+
+
+def test_active_column_carries_chevron_and_aria_sort(
+    client: TestClient, test_project, db_session
+) -> None:
+    _event(db_session, test_project.id, event_type="auto_merge_health_probe")
+    response = client.get(
+        f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10&sort=event_type&dir=asc"
+    )
+    assert response.status_code == 200
+    html = response.text
+
+    event_type_header = re.search(
+        r'(<th\b[^>]*\baria-sort="ascending"[^>]*>\s*<button[^>]*\bsort=event_type\b[^>]*>.*?</button>\s*</th>)',
+        html,
+        re.DOTALL,
+    )
+    assert event_type_header, "event_type header should carry aria-sort=ascending when active"
+    assert re.search(r"event_type\s*<span[^>]*>↑</span>", event_type_header.group(1), re.DOTALL)
+    assert html.count("aria-sort=") == 1
+
+
+def test_filter_and_sort_combine_correctly(client: TestClient, test_project, db_session) -> None:
+    for _i in range(60):
+        _event(db_session, test_project.id, event_type="auto_merge_health_probe")
+    response = client.get(
+        f"/project/{test_project.id}/auto-merge/events"
+        "?page=0&page_size=50&type=auto_merge_health_probe&sort=created_at&dir=asc"
+    )
+    assert response.status_code == 200
+    html = response.text
+
+    next_btn = re.search(
+        r'<(?:button|a)\b[^>]*\bhx-get="([^"]*page=1[^"]*)"[^>]*>\s*Next',
+        html,
+    )
+    assert next_btn, "Next button missing"
+    next_url = next_btn.group(1)
+    assert "type=auto_merge_health_probe" in next_url
+    assert "sort=created_at" in next_url
+    assert "dir=asc" in next_url

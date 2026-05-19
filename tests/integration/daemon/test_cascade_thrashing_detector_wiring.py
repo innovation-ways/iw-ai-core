@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -212,7 +213,7 @@ class TestCascadeThrashingDetectorWiring:
         could still collide with a real process and the "belt-and-suspenders"
         ``> 1_000_000`` assertion fired pre-emptively (I-00100 follow-up).
         """
-        with open("/proc/sys/kernel/pid_max", encoding="ascii") as f:
+        with Path("/proc/sys/kernel/pid_max").open(encoding="ascii") as f:
             pid_max = int(f.read().strip())
         pid = pid_max  # kernel never assigns this value to a real process
         try:

@@ -33,6 +33,8 @@ EXECUTOR_TOML = FsPath(__file__).resolve().parents[2] / "executor" / "auto_merge
 MAX_VERDICT_NOTES_BYTES = 8192
 REPO_ROOT = FsPath(__file__).resolve().parents[2]
 ALLOWED_VERDICTS = {"pending", "correct", "wrong", "partial"}
+SORT_VALUES = ("created_at", "event_type", "entity_id", "verdict")
+DIR_VALUES = ("asc", "desc")
 
 
 class VerdictBody(BaseModel):
@@ -144,17 +146,31 @@ def auto_merge_events(
     page: int = Query(default=0, ge=0),
     type: str | None = Query(default=None),  # noqa: A002
     page_size: int = Query(default=50, ge=1, le=200),
+    sort: str = Query(default="created_at"),
+    dir: str = Query(default="desc"),  # noqa: A002
     all: bool = Query(default=False, alias="all"),  # noqa: A002 — shadowing builtin
 ) -> HTMLResponse:
     _get_project_or_404(db, project_id)
-    rows, total = agg.list_recent_events(
-        db,
-        project_id,
-        page=page,
-        page_size=page_size,
-        event_type_filter=type,
-        include_non_auto_merge=all,
-    )
+    if sort not in SORT_VALUES:
+        raise HTTPException(
+            status_code=400, detail=f"sort must be one of {SORT_VALUES}; got {sort!r}"
+        )
+    if dir not in DIR_VALUES:
+        raise HTTPException(status_code=400, detail=f"dir must be one of {DIR_VALUES}; got {dir!r}")
+
+    try:
+        rows, total = agg.list_recent_events(
+            db,
+            project_id,
+            page=page,
+            page_size=page_size,
+            event_type_filter=type,
+            include_non_auto_merge=all,
+            sort=sort,
+            direction=dir,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     has_more = (page + 1) * page_size < total
     return _render_fragment(
         request,
@@ -166,6 +182,8 @@ def auto_merge_events(
             "page": page,
             "page_size": page_size,
             "has_more": has_more,
+            "sort": sort,
+            "direction": dir,
             "show_all": all,
         },
     )
