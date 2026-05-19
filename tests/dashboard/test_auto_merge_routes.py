@@ -23,20 +23,20 @@ if TYPE_CHECKING:
 
 
 def _extract_filter_chip_blocks(html: str) -> dict[str, str]:
-    """Return {label: outer-<a>-tag-as-html} for each filter chip in the
+    """Return {label: outer-<button>-tag-as-html} for each filter chip in the
     events-table fragment. Raises if not all 7 chips are found.
     """
     # The chips live inside <div class="flex flex-wrap gap-2">…</div>.
-    # Each chip is an <a> whose body text is the label.
+    # Each chip is a <button> whose body text is the label.
     pattern = re.compile(
-        r"(<a\b[^>]*?>\s*([\w_]+)\s*</a>)",
+        r"(<button\b[^>]*?>\s*([\w_]+)\s*</button>)",
         re.DOTALL,
     )
     out: dict[str, str] = {}
     for match in pattern.finditer(html):
-        anchor, label = match.group(1), match.group(2)
-        if "hx-get=" in anchor and "auto-merge/events" in anchor:
-            out[label] = anchor
+        button, label = match.group(1), match.group(2)
+        if "hx-get=" in button and "auto-merge/events" in button:
+            out[label] = button
     expected = {
         "all",
         "resolved",
@@ -816,6 +816,109 @@ def test_show_all_toggle_button_renders_with_correct_aria_pressed(
     )
     assert btn, "show-all toggle button must render with ?all=1"
     assert 'aria-pressed="true"' in btn.group(0), "aria-pressed should be true when ?all=1"
+
+
+# ---------------------------------------------------------------------------
+# I-00094 — button accessibility: filter chips, (view) links, rollup toggles,
+# pagination Prev/Next — must all be <button> not href-less <a>
+# ---------------------------------------------------------------------------
+
+
+def test_filter_chips_are_buttons_not_hrefless_anchors(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC1: every filter chip is a <button type='button'>, never <a hx-get> without href."""
+    # Seed at least one event so the fragment renders.
+    _event(db_session, test_project.id, event_type="merge_auto_resolved")
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10")
+    assert response.status_code == 200
+    html = response.text
+
+    # Negative assertion: no <a hx-get=".../auto-merge/events..."> without href.
+    bad_anchors = re.findall(
+        r'<a\b(?![^>]*\bhref=)[^>]*\bhx-get="[^"]*/auto-merge/events[^"]*"[^>]*>',
+        html,
+    )
+    assert bad_anchors == [], f"href-less <a hx-get> for filter chips remains:\n{bad_anchors}"
+
+    # Positive assertion: ≥7 filter chip buttons present (6 type chips + "Show all" toggle).
+    chip_buttons = re.findall(
+        r'<button\b[^>]*\btype="button"[^>]*\bhx-get="[^"]*/auto-merge/events[^"]*"',
+        html,
+    )
+    assert len(chip_buttons) >= 7, (
+        f"Expected ≥7 filter chip buttons (6 type chips + show-all toggle); got {len(chip_buttons)}"
+    )
+
+
+def test_view_link_is_button_not_hrefless_anchor(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC2: each event row's (view) action is a <button>, never <a hx-get> without href."""
+    _event(db_session, test_project.id, event_type="merge_auto_resolved")
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10")
+    assert response.status_code == 200
+    html = response.text
+
+    # Negative: no href-less <a> pointing to a specific event detail.
+    bad = re.findall(
+        r'<a\b(?![^>]*\bhref=)[^>]*\bhx-get="[^"]*/auto-merge/events/\d+[^"]*"[^>]*>',
+        html,
+    )
+    assert bad == [], f"href-less <a hx-get> for (view) links remains:\n{bad}"
+
+    # Positive: at least one <button type="button"> with a numeric event ID.
+    view_buttons = re.findall(
+        r'<button\b[^>]*\btype="button"[^>]*\bhx-get="[^"]*/auto-merge/events/\d+"',
+        html,
+    )
+    assert len(view_buttons) >= 1, f"Expected ≥1 (view) button; got {len(view_buttons)}"
+
+
+def test_rollup_window_toggles_are_buttons(client: TestClient, test_project, db_session) -> None:
+    """AC3: 7d and 30d rollup window toggles are <button type='button'>, not href-less <a>."""
+    _event(db_session, test_project.id, event_type="merge_auto_resolved")
+    response = client.get(f"/project/{test_project.id}/auto-merge/rollup?window=7d")
+    assert response.status_code == 200
+    html = response.text
+
+    # Negative: no href-less <a> pointing to /auto-merge/rollup.
+    bad = re.findall(
+        r'<a\b(?![^>]*\bhref=)[^>]*\bhx-get="[^"]*/auto-merge/rollup[^"]*"[^>]*>',
+        html,
+    )
+    assert bad == [], f"href-less <a hx-get> for rollup toggles remains:\n{bad}"
+
+    # Positive: exactly 2 window-toggle buttons (7d and 30d).
+    toggles = re.findall(
+        r'<button\b[^>]*\btype="button"[^>]*\bhx-get="[^"]*/auto-merge/rollup[^"]*"',
+        html,
+    )
+    assert len(toggles) == 2, f"Expected exactly 2 window-toggle buttons; got {len(toggles)}"
+
+
+def test_pagination_links_are_buttons(client: TestClient, test_project, db_session) -> None:
+    """AC4: Prev/Next pagination links are <button type='button'>, not href-less <a>."""
+    # Create 60 events so pagination triggers (page_size=50 → has more).
+    for _i in range(60):
+        _event(db_session, test_project.id, event_type="auto_merge_health_probe")
+    response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=50")
+    assert response.status_code == 200
+    html = response.text
+
+    # Negative: no href-less <a> with a page= query param.
+    bad = re.findall(
+        r'<a\b(?![^>]*\bhref=)[^>]*\bhx-get="[^"]*/auto-merge/events\?page=[^"]*"[^>]*>',
+        html,
+    )
+    assert bad == [], f"href-less <a hx-get> for pagination remains:\n{bad}"
+
+    # Positive: the 'Next' button (page=1) must be present.
+    next_btn = re.search(
+        r'<button\b[^>]*\btype="button"[^>]*\bhx-get="[^"]*page=1[^"]*"[^>]*>\s*Next\s*</button>',
+        html,
+    )
+    assert next_btn is not None, "'Next' pagination button not found in response"
 
 
 # ---------------------------------------------------------------------------

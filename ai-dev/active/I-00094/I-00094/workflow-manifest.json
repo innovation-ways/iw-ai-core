@@ -11,8 +11,7 @@
       "dashboard/templates/fragments/auto_merge_event_row.html",
       "dashboard/templates/fragments/auto_merge_rollup.html",
       "dashboard/static/styles.css",
-      "tests/dashboard/test_auto_merge_routes.py",
-      "tests/integration/daemon/test_cascade_thrashing_detector_wiring.py"
+      "tests/dashboard/test_auto_merge_routes.py"
     ]
   },
   "steps": [
