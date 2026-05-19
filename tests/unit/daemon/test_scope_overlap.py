@@ -137,8 +137,7 @@ class TestGlobsIntersect:
         # "src/tests/**/*.py" matches "src/tests/helpers.py"
         # "src/app/**/*.py" matches "src/app/main.py"
         result = globs_intersect(a, b)
-        assert "src/tests/**/*.py" in result
-        assert "src/app/**/*.py" in result
+        assert sorted(result) == ["src/app/**/*.py", "src/tests/**/*.py"]
 
     def test_both_empty_lists(self) -> None:
         """Empty inputs return empty intersection."""

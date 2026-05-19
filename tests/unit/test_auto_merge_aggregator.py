@@ -341,8 +341,7 @@ def test_list_recent_events_include_non_auto_merge_shows_everything() -> None:
 
     rows, _ = list_recent_events(db, "proj-1", include_non_auto_merge=True)
     types = {r.event_type for r in rows}
-    assert "step_launched" in types
-    assert "auto_merge_health_probe" in types
+    assert types == {"step_launched", "auto_merge_health_probe"}
 
 
 def test_list_recent_events_event_type_filter_takes_precedence() -> None:

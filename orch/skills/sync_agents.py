@@ -15,6 +15,7 @@ class AgentSyncResult:
     """Result of syncing agents and/or commands to a project."""
 
     claude_agents_synced: int = 0
+    pi_agents_synced: int = 0
     opencode_agents_synced: int = 0
     opencode_commands_synced: int = 0
     errors: list[str] = field(default_factory=list)
@@ -54,10 +55,11 @@ def sync_agents_and_commands(
     project_path: Path,
     platform_root: Path,
 ) -> AgentSyncResult:
-    """Sync platform agents and commands to a project's .claude/ and .opencode/ directories.
+    """Sync platform agents and commands to a project's .claude/, .pi/, and .opencode/ directories.
 
     Copies:
       - agents/claude/*.md  → project/.claude/agents/
+      - agents/pi/*.md      → project/.pi/agents/
       - agents/opencode/*.md → project/.opencode/agents/
       - commands/*.md → project/.opencode/commands/
 
@@ -76,6 +78,14 @@ def sync_agents_and_commands(
         project_path / ".claude" / "agents",
     )
     result.claude_agents_synced = count
+    result.errors.extend(errors)
+
+    # Pi agents
+    count, errors = _sync_directory(
+        platform_root / "agents" / "pi",
+        project_path / ".pi" / "agents",
+    )
+    result.pi_agents_synced = count
     result.errors.extend(errors)
 
     # OpenCode agents

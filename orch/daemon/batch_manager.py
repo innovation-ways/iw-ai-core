@@ -1461,20 +1461,16 @@ class BatchManager:
 
             # NOTE: the fix-agent launcher in ``fix_cycle._launch_fix_agent``
             # builds the same `opencode run "$(cat …)"` / `claude -p "$(cat …)"`
-            # form — keep the two in sync (F-00081 changed this site but missed
-            # the fix-cycle copy; see I-00074).
-            if resolved_cli_tool == "opencode":
-                agent_name = step.opencode_agent or step.agent_label
-                agent_args = f"--agent {agent_name}" if agent_name else ""
-                command = (
-                    f'opencode run "$(cat {prompt_file})" --model {resolved_model} '
-                    f"--dangerously-skip-permissions {agent_args}"
-                ).strip()
-            else:
-                command = (
-                    f'claude -p "$(cat {prompt_file})" --model {resolved_model} '
-                    f"--dangerously-skip-permissions"
-                )
+            # / `pi -p "$(cat …)"` form — keep the two in sync (F-00081 changed
+            # this site but missed the fix-cycle copy; see I-00074).
+            agent_name = step.opencode_agent or step.agent_label
+            agent_args = f"--agent {agent_name}" if agent_name else ""
+            command = _build_initial_command(
+                cli_tool=resolved_cli_tool,
+                prompt_file=str(prompt_file),
+                resolved_model=resolved_model,
+                agent_args=agent_args,
+            )
 
         # CR-00023: prefer the DB column (populated at register time). Fall
         # back to a manifest read for items registered before CR-00023.
@@ -2026,6 +2022,36 @@ def _next_run_number(db: Session, step: WorkflowStep) -> int:
     """Return the next run_number for a step (existing count + 1)."""
     count = db.query(StepRun).filter(StepRun.step_id == step.id).count()
     return count + 1
+
+
+def _build_initial_command(
+    cli_tool: str,
+    prompt_file: str,
+    resolved_model: str,
+    agent_args: str = "",
+) -> str:
+    """Build the shell command launched for a step's initial agent run.
+
+    Keep in sync with ``fix_cycle._build_fix_inner_command`` — they encode the
+    same per-runtime argv shape and any drift between them re-creates I-00074.
+    """
+    if cli_tool == "opencode":
+        return (
+            f'opencode run "$(cat {prompt_file})" --model {resolved_model} '
+            f"--dangerously-skip-permissions {agent_args}"
+        ).strip()
+    if cli_tool == "claude":
+        return (
+            f'claude -p "$(cat {prompt_file})" --model {resolved_model} '
+            f"--dangerously-skip-permissions"
+        )
+    if cli_tool == "pi":
+        # CR-00062: pi.dev print-mode mirrors `claude -p`. Pi gates capabilities
+        # via extension permissions, not a CLI switch — so no
+        # `--dangerously-skip-permissions` / `--permission-mode bypassPermissions`
+        # flag. See R-00072 §7.
+        return f'pi -p "$(cat {prompt_file})" --model {resolved_model}'
+    raise ValueError(f"Unknown cli_tool: {cli_tool!r}")
 
 
 def _build_qv_direct_command(

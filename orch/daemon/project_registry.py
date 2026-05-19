@@ -37,6 +37,11 @@ logger = logging.getLogger(__name__)
 
 _AI_ASSISTANT_MODEL_PATTERN = re.compile(r"^[a-z0-9._-]+/[A-Za-z0-9._:/-]+$")
 
+# CR-00062: code-only allowlist of valid cli_tool values. No CHECK constraint on
+# the corresponding DB columns by design — adding a 4th runtime later stays a
+# one-line code change instead of a schema migration.
+_VALID_CLI_TOOLS = {"opencode", "claude", "pi"}
+
 
 # ---------------------------------------------------------------------------
 # ProjectConfig — in-memory representation of one project entry
@@ -153,6 +158,14 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
     # cli_tool: projects.toml entry takes precedence; .iw-orch.json is fallback
     # for backwards compat. .iw-orch.json ONLY supplies cli_tool (not model).
     cli_tool: str = entry.get("cli_tool") or iw_config.get("cli_tool", "opencode")
+    if cli_tool not in _VALID_CLI_TOOLS:
+        logger.warning(
+            "Project %r has invalid cli_tool %r (expected one of %s) — skipping",
+            project_id,
+            cli_tool,
+            sorted(_VALID_CLI_TOOLS),
+        )
+        return None
     # model: read from projects.toml entry; default "minimax/MiniMax-M2.7"
     # (opencode --model expects provider/model_id format; bare "minimax" crashes)
     model: str = entry.get("model", "minimax/MiniMax-M2.7")

@@ -17,7 +17,7 @@
 #   item_id           Work item ID (e.g. I001)
 #   step_id           Step ID to execute (e.g. S01, S03)
 #   worktree_path     Absolute path to the git worktree
-#   cli_tool          Agent CLI: "opencode" or "claude" (default: opencode)
+#   cli_tool          Agent CLI: "opencode", "claude", or "pi" (default: opencode)
 #   project_repo_root Absolute path to the project repo (optional, for context)
 #
 # Exit codes:
@@ -149,8 +149,24 @@ elif [[ "$CLI_TOOL" == "claude" ]]; then
         claude -p "$INSTRUCTION" --permission-mode bypassPermissions \
         < /dev/null >> "$STEP_LOG" 2>&1 || EXIT_CODE=$?
 
+elif [[ "$CLI_TOOL" == "pi" ]]; then
+    # CR-00062: pi.dev print-mode mirrors `claude -p`. Pi stores sessions under
+    # ~/.pi/agent/sessions/ and does not need XDG isolation. Pi gates capabilities
+    # via extension permissions, not a CLI flag (R-00072 §7), so no
+    # --permission-mode / --dangerously-skip-permissions is passed.
+    # MODEL comes from the daemon env in production; for manual runs it may be
+    # unset, in which case fall back to Pi's documented default (R-00072).
+    if [[ -z "${MODEL:-}" ]]; then
+        _lib_log "  WARNING: \$MODEL is empty; falling back to pi default 'anthropic/claude-sonnet-4-6'"
+        MODEL="anthropic/claude-sonnet-4-6"
+    fi
+    TMPDIR="$WORKTREE_PATH/.tmp" \
+        setsid timeout "$TIMEOUT" \
+        pi -p "$INSTRUCTION" --model "$MODEL" \
+        < /dev/null >> "$STEP_LOG" 2>&1 || EXIT_CODE=$?
+
 else
-    _lib_log_error "Unknown CLI tool: $CLI_TOOL (expected 'opencode' or 'claude')"
+    _lib_log_error "Unknown CLI tool: $CLI_TOOL (expected 'opencode', 'claude', or 'pi')"
     iw_step_fail "$ITEM_ID" "$STEP_ID" "Unknown CLI tool: $CLI_TOOL"
     exit 1
 fi
