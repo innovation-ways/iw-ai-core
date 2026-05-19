@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,6 +25,8 @@ from orch.db.models import (
     BatchItem,
     BatchItemStatus,
     BatchStatus,
+    DaemonEvent,
+    MergeAutoVerdict,
     Project,
     WorkItem,
     WorkItemPhase,
@@ -385,3 +388,67 @@ def fake_llm(monkeypatch: pytest.MonkeyPatch) -> FakeLLM:
 def default_runtime_option(db_session: Session) -> AgentRuntimeOption:
     """Insert a default AgentRuntimeOption row for auto_merge tests."""
     return make_default_runtime_option(db_session)
+
+
+# ---------------------------------------------------------------------------
+# DaemonEvent factory helper
+# ---------------------------------------------------------------------------
+
+
+def daemon_event_factory(
+    db_session: Session,
+    project_id: str,
+    event_type: str,
+    message: str = "test event",
+    event_metadata: dict | None = None,
+    entity_id: str | None = None,
+    entity_type: str | None = None,
+) -> DaemonEvent:
+    """Insert a DaemonEvent row with the given fields.
+
+    Commits to the session so the row is queryable by the dashboard router.
+    Returns the flushed DaemonEvent instance.
+    """
+    event = DaemonEvent(
+        project_id=project_id,
+        event_type=event_type,
+        entity_id=entity_id,
+        entity_type=entity_type,
+        message=message,
+        event_metadata=event_metadata or {},
+    )
+    db_session.add(event)
+    db_session.flush()
+    return event
+
+
+# ---------------------------------------------------------------------------
+# MergeAutoVerdict factory helper
+# ---------------------------------------------------------------------------
+
+
+def merge_verdict_factory(
+    db_session: Session,
+    project_id: str,
+    daemon_event_id: int,
+    verdict: str = "pending",
+    verdict_notes: str = "",
+    verdicted_by: str = "test-operator",
+    verdicted_at: datetime | None = None,
+) -> MergeAutoVerdict:
+    """Insert a MergeAutoVerdict row linked to a DaemonEvent.
+
+    Commits to the session so the row is queryable by the dashboard router.
+    Returns the flushed MergeAutoVerdict instance.
+    """
+    v = MergeAutoVerdict(
+        project_id=project_id,
+        daemon_event_id=daemon_event_id,
+        verdict=verdict,
+        verdict_notes=verdict_notes,
+        verdicted_by=verdicted_by,
+        verdicted_at=verdicted_at or datetime.now(UTC),
+    )
+    db_session.add(v)
+    db_session.flush()
+    return v

@@ -816,3 +816,156 @@ def test_show_all_toggle_button_renders_with_correct_aria_pressed(
     )
     assert btn, "show-all toggle button must render with ?all=1"
     assert 'aria-pressed="true"' in btn.group(0), "aria-pressed should be true when ?all=1"
+
+
+# ---------------------------------------------------------------------------
+# I-00093 — event detail modal renders message, metadata, verdict, heading
+# ---------------------------------------------------------------------------
+
+
+def test_event_modal_renders_message_and_metadata_for_health_probe(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC1: health probe modal renders message + all metadata fields."""
+    event = DaemonEvent(
+        project_id=test_project.id,
+        event_type="auto_merge_health_probe",
+        message="probe latency 412ms",
+        event_metadata={
+            "runtime_reachable": True,
+            "model": "claude-sonnet-4-6",
+            "cli_tool": "claude-code",
+            "latency_ms": 412,
+        },
+    )
+    db_session.add(event)
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge/events/{event.id}")
+    assert response.status_code == 200
+    html = response.text
+
+    # Message must render (exact string from the factory)
+    assert "probe latency 412ms" in html, "message must render in modal"
+    # Metadata keys must render (unique keys that wouldn't appear elsewhere)
+    assert "runtime_reachable" in html, "metadata key runtime_reachable must render"
+    assert "claude-sonnet-4-6" in html, "metadata model value must render"
+    assert "412" in html, "numeric metadata value latency_ms must render"
+
+
+def test_event_modal_renders_old_new_for_config_updated(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC2: config_updated modal renders old + new config keys + values."""
+    event = DaemonEvent(
+        project_id=test_project.id,
+        event_type="auto_merge_config_updated",
+        message="auto-merge config updated from dashboard",
+        event_metadata={
+            "old": {"phase": None, "runtime_option_id": 4},
+            "new": {"phase": 1, "runtime_option_id": None},
+            "updated_by": "dashboard",
+            "source": "dashboard",
+        },
+    )
+    db_session.add(event)
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge/events/{event.id}")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "auto-merge config updated from dashboard" in html
+    # JSON keys are visible in the rendered metadata block
+    assert "old" in html, "'old' config key must render in metadata"
+    assert "new" in html, "'new' config key must render in metadata"
+    assert "updated_by" in html, "'updated_by' key must render in metadata"
+    assert "dashboard" in html, "dashboard source must render"
+
+
+def test_event_modal_renders_verdict_info_for_resolved(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC4: resolved event modal renders verdict value, notes, verdicted_by,
+    AND the existing verdict form still appears with the current value pre-selected."""
+    event = DaemonEvent(
+        project_id=test_project.id,
+        event_type="merge_auto_resolved",
+        message="resolved 1 conflict in tests/foo.py",
+        event_metadata={"llm_calls": []},
+    )
+    db_session.add(event)
+    db_session.flush()
+
+    # Attach a verdict
+    db_session.add(
+        MergeAutoVerdict(
+            project_id=test_project.id,
+            daemon_event_id=event.id,
+            verdict="correct",
+            verdict_notes="looked fine",
+            verdicted_by="operator",
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge/events/{event.id}")
+    html = response.text
+
+    # Verdict info must render
+    assert "correct" in html, "verdict value must render"
+    assert "looked fine" in html, "verdict notes must render"
+    assert "operator" in html, "verdicted_by must render"
+    # Existing verdict form still appears with the correct value pre-checked
+    assert 'name="verdict"' in html, "verdict form must be present"
+    assert 'value="correct"' in html, "verdict form must pre-select 'correct'"
+
+
+def test_event_modal_no_verdict_form_for_non_resolved_events(
+    client: TestClient, test_project, db_session
+) -> None:
+    """AC4 complement: non-resolved events must NOT show the verdict form,
+    but message and metadata still render."""
+    event = DaemonEvent(
+        project_id=test_project.id,
+        event_type="step_launched",
+        message="Step S13 launched (PID 99)",
+        event_metadata={"pid": 99, "step_id": 13},
+    )
+    db_session.add(event)
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge/events/{event.id}")
+    assert response.status_code == 200
+    html = response.text
+
+    # Verdict form must NOT appear for non-resolved event types
+    assert 'name="verdict"' not in html, "verdict form must NOT appear for non-resolved events"
+    # But message and metadata still must appear
+    assert "Step S13 launched (PID 99)" in html, "message must render"
+    assert "pid" in html, "metadata key pid must render"
+    assert "99" in html, "metadata value 99 must render"
+
+
+def test_event_modal_heading_is_humanized(client: TestClient, test_project, db_session) -> None:
+    """AC3: modal heading contains the event_type (not just 'Event #<id>')."""
+    event = DaemonEvent(
+        project_id=test_project.id,
+        event_type="auto_merge_health_probe",
+        message="ok",
+        event_metadata={"runtime_reachable": True},
+    )
+    db_session.add(event)
+    db_session.flush()
+
+    response = client.get(f"/project/{test_project.id}/auto-merge/events/{event.id}")
+    assert response.status_code == 200
+    html = response.text
+
+    # Heading element must exist and contain the event_type
+    heading = re.search(r'<h3[^>]*id="auto-merge-event-title"[^>]*>(.*?)</h3>', html, re.DOTALL)
+    assert heading, "heading element with id=auto-merge-event-title must exist"
+    heading_text = heading.group(1)
+    assert "auto_merge_health_probe" in heading_text, (
+        f"heading must contain event_type; got: {heading_text!r}"
+    )

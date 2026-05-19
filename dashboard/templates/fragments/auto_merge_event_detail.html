@@ -1,7 +1,7 @@
 <div class="auto-merge-modal-backdrop" onclick="if(event.target===this)document.getElementById('modal-root').innerHTML=''" data-auto-merge-modal>
   <div class="auto-merge-modal" role="dialog" aria-modal="true" aria-labelledby="auto-merge-event-title">
     <div class="flex items-center justify-between border-b border-border px-4 py-3">
-      <h3 id="auto-merge-event-title" class="text-sm font-semibold">Event #{{ event.id }}</h3>
+      <h3 id="auto-merge-event-title" class="text-sm font-semibold">{{ humanized_title }}</h3>
       <button type="button" class="text-muted-foreground" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
     </div>
     <script>
@@ -21,9 +21,50 @@
       <dl class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
         <div><dt class="text-muted-foreground">timestamp</dt><dd>{{ event.created_at | localdt('%Y-%m-%d %H:%M:%S') }}</dd></div>
         <div><dt class="text-muted-foreground">type</dt><dd>{{ event.event_type }}</dd></div>
+        <div><dt class="text-muted-foreground">entity_type</dt><dd>{{ raw_event.entity_type or '—' }}</dd></div>
         <div><dt class="text-muted-foreground">entity_id</dt><dd class="font-mono">{{ event.entity_id or '—' }}</dd></div>
         <div><dt class="text-muted-foreground">project_id</dt><dd class="font-mono">{{ event.metadata.get('project_id', request.path_params.project_id) }}</dd></div>
       </dl>
+
+      {% if event.message %}
+      <section class="text-xs">
+        <h4 class="text-muted-foreground uppercase tracking-wide mb-1">Message</h4>
+        <p class="auto-merge-modal__message">{{ event.message }}</p>
+      </section>
+      {% endif %}
+
+      {% if event.metadata %}
+      <section class="text-xs space-y-1">
+        <div class="flex items-center justify-between">
+          <h4 class="text-muted-foreground uppercase tracking-wide">Metadata</h4>
+          <button type="button"
+                  class="auto-merge-modal__copy-btn"
+                  onclick="window.iwClipboard.copy({{ event.metadata | tojson }}, this)">
+            Copy as JSON
+          </button>
+        </div>
+        <details {% if (event.metadata | tojson)|length < 400 %}open{% endif %}>
+          <summary class="cursor-pointer text-muted-foreground">
+            {{ event.metadata.keys() | list | length }} key{{ 's' if event.metadata|length != 1 else '' }}
+          </summary>
+          <pre class="auto-merge-modal__metadata">{{ event.metadata | tojson(indent=2) }}</pre>
+        </details>
+      </section>
+      {% endif %}
+
+      {% if event.verdict %}
+      <section class="text-xs space-y-1 border-t border-border pt-3">
+        <h4 class="text-muted-foreground uppercase tracking-wide mb-1">Verdict</h4>
+        <dl class="grid grid-cols-2 gap-2">
+          <div><dt class="text-muted-foreground">value</dt><dd>{{ event.verdict }}</dd></div>
+          <div><dt class="text-muted-foreground">by</dt><dd>{{ event.verdicted_by or '—' }}</dd></div>
+          <div><dt class="text-muted-foreground">at</dt><dd>{{ event.verdicted_at | localdt('%Y-%m-%d %H:%M:%S') if event.verdicted_at else '—' }}</dd></div>
+        </dl>
+        {% if event.verdict_notes %}
+        <p>{{ event.verdict_notes }}</p>
+        {% endif %}
+      </section>
+      {% endif %}
 
       {% if event.event_type == 'merge_auto_resolved' and diffs %}
         <section class="space-y-2">
