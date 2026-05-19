@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from dashboard.dependencies import get_db
 
@@ -94,7 +94,10 @@ class TestLifespanOpencodeStartup:
                     base_url="http://localhost:4096",
                     password="test-pw-xyz",  # noqa: S106
                 )
-                mock_rm.assert_called_once_with(mock_client)
+                # F-00086 added a session_resolver kwarg used to map chat
+                # tab IDs to OpenCode session IDs; we don't introspect the
+                # closure here, only that the client is forwarded positionally.
+                mock_rm.assert_called_once_with(mock_client, session_resolver=ANY)
                 mock_lc.assert_called_once()
 
         finally:

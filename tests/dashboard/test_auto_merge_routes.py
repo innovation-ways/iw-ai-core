@@ -1015,13 +1015,30 @@ def test_event_modal_renders_verdict_info_for_resolved(
     response = client.get(f"/project/{test_project.id}/auto-merge/events/{event.id}")
     html = response.text
 
-    # Verdict info must render
-    assert "correct" in html, "verdict value must render"
-    assert "looked fine" in html, "verdict notes must render"
-    assert "operator" in html, "verdicted_by must render"
-    # Existing verdict form still appears with the correct value pre-checked
-    assert 'name="verdict"' in html, "verdict form must be present"
-    assert 'value="correct"' in html, "verdict form must pre-select 'correct'"
+    # The Verdict section is rendered with a dedicated header (not just the
+    # verdict string appearing anywhere — verdict='correct' is also the value
+    # of the form radio, so we anchor on the Verdict section heading).
+    verdict_header_idx = html.find(">Verdict<")
+    assert verdict_header_idx >= 0, "Verdict section header must be rendered"
+
+    # Everything below the verdict header makes up the verdict + form region.
+    verdict_region = html[verdict_header_idx:]
+    # 'correct' appears at least twice: once as the rendered value, once as
+    # the pre-selected radio in the form.
+    assert verdict_region.count("correct") >= 2
+    # Verdict notes and verdicter render inside this region.
+    assert "looked fine" in verdict_region
+    assert "operator" in verdict_region
+
+    # Form pre-selects 'correct' — the 'correct' radio carries `checked`.
+    correct_input = re.search(r'<input[^>]*name="verdict"[^>]*value="correct"[^>]*>', html)
+    assert correct_input is not None
+    assert "checked" in correct_input.group(0)
+    # And the other three radios (pending/wrong/partial) do NOT carry checked.
+    for v in ("pending", "wrong", "partial"):
+        other = re.search(rf'<input[^>]*name="verdict"[^>]*value="{v}"[^>]*>', html)
+        assert other is not None, f"radio for {v} must exist"
+        assert "checked" not in other.group(0), f"radio for {v} must NOT be pre-checked"
 
 
 def test_event_modal_no_verdict_form_for_non_resolved_events(

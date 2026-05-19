@@ -135,10 +135,34 @@ class TestFireClaude:
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-            success, error = fire_claude("test message")
+            success, error = fire_claude("test message", "claude-sonnet-4-6")
 
         assert success is True
         assert error is None
+
+    def test_fire_claude_passes_model_to_subprocess(self) -> None:
+        """The configured model MUST land on the claude CLI as ``--model <model>``.
+
+        Regression: before 2026-05-19, ``fire_claude`` ran ``claude -p <msg>``
+        with no ``--model`` flag, so every keep-alive fired against the user's
+        default model (Opus on the dev host) instead of the Sonnet model the
+        scheduler stored in ``KeepAliveConfig`` — defeating the purpose of the
+        scheduler, which is to anchor a 5h usage window on a specific model.
+        """
+        from subprocess import CompletedProcess
+
+        from orch.keep_alive_service import fire_claude
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+            fire_claude("hi", "claude-sonnet-4-6")
+
+        call_args = mock_run.call_args
+        assert call_args is not None
+        argv = call_args.args[0] if call_args.args else call_args.kwargs.get("args")
+        assert argv == ["claude", "--model", "claude-sonnet-4-6", "-p", "hi"], (
+            f"expected --model flag to be passed to claude CLI; got argv={argv!r}"
+        )
 
     def test_fire_claude_returns_false_on_nonzero(self) -> None:
         """returncode=1, stderr="error" → (False, "error")."""
@@ -150,7 +174,7 @@ class TestFireClaude:
             mock_run.return_value = CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="connection failed"
             )
-            success, error = fire_claude("test message")
+            success, error = fire_claude("test message", "claude-sonnet-4-6")
 
         assert success is False
         assert error == "connection failed"
@@ -163,7 +187,7 @@ class TestFireClaude:
 
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = TimeoutExpired(cmd=["claude"], timeout=30)
-            success, error = fire_claude("test message")
+            success, error = fire_claude("test message", "claude-sonnet-4-6")
 
         assert success is False
         assert error is not None

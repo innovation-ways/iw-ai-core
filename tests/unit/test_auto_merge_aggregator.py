@@ -140,8 +140,12 @@ def test_list_recent_events_sorts_by_event_type_desc(db_session, test_project) -
 
     list_recent_events(db_session, test_project.id, sort="event_type", direction="desc")
 
-    stmt = db_session.execute.call_args_list[1].args[0]
-    assert "ORDER BY daemon_events.event_type DESC" in str(stmt)
+    stmt_str = str(db_session.execute.call_args_list[1].args[0])
+    assert "ORDER BY daemon_events.event_type DESC" in stmt_str
+    # Exactly one ORDER BY — guards against accidental double-sort drift.
+    assert stmt_str.count("ORDER BY") == 1
+    # And ascending must NOT also appear on the same column.
+    assert "ORDER BY daemon_events.event_type ASC" not in stmt_str
 
 
 def test_list_recent_events_sorts_by_entity_id_asc(db_session, test_project) -> None:
@@ -152,8 +156,12 @@ def test_list_recent_events_sorts_by_entity_id_asc(db_session, test_project) -> 
 
     list_recent_events(db_session, test_project.id, sort="entity_id", direction="asc")
 
-    stmt = db_session.execute.call_args_list[1].args[0]
-    assert "ORDER BY daemon_events.entity_id ASC" in str(stmt)
+    stmt_str = str(db_session.execute.call_args_list[1].args[0])
+    assert "ORDER BY daemon_events.entity_id ASC" in stmt_str
+    # Exactly one ORDER BY — guards against accidental double-sort drift.
+    assert stmt_str.count("ORDER BY") == 1
+    # And descending must NOT also appear on the same column.
+    assert "ORDER BY daemon_events.entity_id DESC" not in stmt_str
 
 
 def test_list_recent_events_sorts_by_verdict_nulls_last(db_session, test_project) -> None:
@@ -163,16 +171,22 @@ def test_list_recent_events_sorts_by_verdict_nulls_last(db_session, test_project
     db_session.execute.return_value.all.return_value = []
 
     list_recent_events(db_session, test_project.id, sort="verdict", direction="asc")
-    stmt_asc = db_session.execute.call_args_list[1].args[0]
+    stmt_asc_str = str(db_session.execute.call_args_list[1].args[0])
 
     db_session.execute.reset_mock()
     db_session.execute.return_value.scalar_one.return_value = 0
     db_session.execute.return_value.all.return_value = []
     list_recent_events(db_session, test_project.id, sort="verdict", direction="desc")
-    stmt_desc = db_session.execute.call_args_list[1].args[0]
+    stmt_desc_str = str(db_session.execute.call_args_list[1].args[0])
 
-    assert "ORDER BY merge_auto_verdicts.verdict ASC NULLS LAST" in str(stmt_asc)
-    assert "ORDER BY merge_auto_verdicts.verdict DESC NULLS LAST" in str(stmt_desc)
+    assert "ORDER BY merge_auto_verdicts.verdict ASC NULLS LAST" in stmt_asc_str
+    assert "ORDER BY merge_auto_verdicts.verdict DESC NULLS LAST" in stmt_desc_str
+    # Exactly one ORDER BY in each — and the opposite direction must NOT
+    # appear (verdict sorts must apply NULLS LAST exclusively).
+    assert stmt_asc_str.count("ORDER BY") == 1
+    assert stmt_desc_str.count("ORDER BY") == 1
+    assert "DESC NULLS LAST" not in stmt_asc_str
+    assert "ASC NULLS LAST" not in stmt_desc_str
 
 
 def test_list_recent_events_rejects_unknown_sort_column(db_session, test_project) -> None:

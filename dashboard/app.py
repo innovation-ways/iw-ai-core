@@ -377,6 +377,23 @@ def create_app() -> FastAPI:
         return is_db_stale(request)
 
     templates.env.globals["is_db_stale"] = _is_db_stale
+
+    import subprocess as _sp
+
+    try:
+        _git_hash = (
+            _sp.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607
+                cwd=str(_HERE),
+                stderr=_sp.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        _git_hash = "0"
+    templates.env.globals["static_v"] = _git_hash
+
     app.state.templates = templates
 
     # Health check endpoint (used by browser_verification steps and monitoring)

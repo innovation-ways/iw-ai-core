@@ -217,10 +217,16 @@ def get_recent_runs(db: Session, limit: int = 10) -> list[KeepAliveRun]:
 # ---------------------------------------------------------------------------
 
 
-def fire_claude(message: str, timeout: int = 30) -> tuple[bool, str | None]:
-    """Spawn a claude CLI subprocess.
+def fire_claude(message: str, model: str, timeout: int = 30) -> tuple[bool, str | None]:
+    """Spawn a claude CLI subprocess pinned to ``model``.
 
-    Runs: subprocess.run(["claude", "-p", message], capture_output=True, text=True, timeout=timeout)
+    Runs: ``claude --model <model> -p <message>`` with ``capture_output=True``,
+    ``text=True``, and ``timeout=timeout``.
+
+    ``model`` is required — the whole point of the Keep-Alive Scheduler is to
+    anchor a usage window on a specific model (typically Sonnet), so we must
+    never silently fall back to the user's default ``claude`` model.
+
     Returns (True, None) on returncode==0.
     Returns (False, stderr_or_exception_str) on failure.
     Does NOT retry — retry logic is in the poller.
@@ -228,7 +234,7 @@ def fire_claude(message: str, timeout: int = 30) -> tuple[bool, str | None]:
     """
     try:
         result = subprocess.run(
-            ["claude", "-p", message],
+            ["claude", "--model", model, "-p", message],
             capture_output=True,
             text=True,
             timeout=timeout,
