@@ -51,7 +51,7 @@ dev = [
     "pytest-cov>=5.0",
     "testcontainers[postgres]>=4.0",
     "factory-boy>=3.3",
-    "freezegun>=1.4",
+    "freezegun>=1.5.5",
 
     # Quality
     "ruff>=0.8",
@@ -82,7 +82,7 @@ dev = [
     "respx>=0.21,<0.23",
     "testcontainers[postgres]>=4.0",
     "factory-boy>=3.3",
-    "freezegun>=1.4",
+    "freezegun>=1.5.5",
     "mutmut>=2.5,<3.0",
     "ruff>=0.8",
     "mypy>=1.13",
