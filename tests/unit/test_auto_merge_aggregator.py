@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from orch.auto_merge_aggregator import EVENT_AUTO_MERGE_HEALTH_PROBE
 from orch.daemon.auto_merge import AutoMergeConfig
 
@@ -94,6 +96,94 @@ def test_list_recent_events_type_filter() -> None:
     db.execute.return_value.all.return_value = [(_event(event_type="merge_auto_resolved"), None)]
     rows, _ = list_recent_events(db, "proj", event_type_filter="merge_auto_resolved")
     assert rows[0].event_type == "merge_auto_resolved"
+
+
+def test_list_recent_events_sorts_by_event_type_asc(db_session, test_project) -> None:
+    from orch.auto_merge_aggregator import list_recent_events
+    from orch.db.models import DaemonEvent
+
+    base = datetime.now(UTC)
+    db_session.add_all(
+        [
+            DaemonEvent(
+                project_id=test_project.id,
+                event_type="auto_merge_health_probe",
+                message="x",
+                created_at=base,
+            ),
+            DaemonEvent(
+                project_id=test_project.id,
+                event_type="auto_merge_config_updated",
+                message="x",
+                created_at=base + timedelta(seconds=1),
+            ),
+            DaemonEvent(
+                project_id=test_project.id,
+                event_type="merge_auto_resolved",
+                message="x",
+                created_at=base + timedelta(seconds=2),
+            ),
+        ]
+    )
+    db_session.flush()
+
+    rows, _ = list_recent_events(db_session, test_project.id, sort="event_type", direction="asc")
+    types = [r.event_type for r in rows]
+    assert types == sorted(types), f"Expected ascending event_type sort; got {types}"
+
+
+def test_list_recent_events_sorts_by_event_type_desc(db_session, test_project) -> None:
+    from orch.auto_merge_aggregator import list_recent_events
+
+    db_session.execute.return_value.scalar_one.return_value = 0
+    db_session.execute.return_value.all.return_value = []
+
+    list_recent_events(db_session, test_project.id, sort="event_type", direction="desc")
+
+    stmt = db_session.execute.call_args_list[1].args[0]
+    assert "ORDER BY daemon_events.event_type DESC" in str(stmt)
+
+
+def test_list_recent_events_sorts_by_entity_id_asc(db_session, test_project) -> None:
+    from orch.auto_merge_aggregator import list_recent_events
+
+    db_session.execute.return_value.scalar_one.return_value = 0
+    db_session.execute.return_value.all.return_value = []
+
+    list_recent_events(db_session, test_project.id, sort="entity_id", direction="asc")
+
+    stmt = db_session.execute.call_args_list[1].args[0]
+    assert "ORDER BY daemon_events.entity_id ASC" in str(stmt)
+
+
+def test_list_recent_events_sorts_by_verdict_nulls_last(db_session, test_project) -> None:
+    from orch.auto_merge_aggregator import list_recent_events
+
+    db_session.execute.return_value.scalar_one.return_value = 0
+    db_session.execute.return_value.all.return_value = []
+
+    list_recent_events(db_session, test_project.id, sort="verdict", direction="asc")
+    stmt_asc = db_session.execute.call_args_list[1].args[0]
+
+    db_session.execute.reset_mock()
+    db_session.execute.return_value.scalar_one.return_value = 0
+    db_session.execute.return_value.all.return_value = []
+    list_recent_events(db_session, test_project.id, sort="verdict", direction="desc")
+    stmt_desc = db_session.execute.call_args_list[1].args[0]
+
+    assert "ORDER BY merge_auto_verdicts.verdict ASC NULLS LAST" in str(stmt_asc)
+    assert "ORDER BY merge_auto_verdicts.verdict DESC NULLS LAST" in str(stmt_desc)
+
+
+def test_list_recent_events_rejects_unknown_sort_column(db_session, test_project) -> None:
+    from orch.auto_merge_aggregator import list_recent_events
+
+    with pytest.raises(ValueError, match="sort must be one of"):
+        list_recent_events(db_session, test_project.id, sort="message")
+    with pytest.raises(ValueError, match="sort must be one of"):
+        list_recent_events(db_session, test_project.id, sort="actions")
+    with pytest.raises(ValueError, match="direction must be"):
+        list_recent_events(db_session, test_project.id, direction="random")
 
 
 def test_list_recent_events_left_joins_verdicts() -> None:
