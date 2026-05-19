@@ -3,7 +3,7 @@
 These tests cover the second half of AC2: when the agent (fake upstream)
 emits a synthetic ``permission.asked`` event, the dashboard surfaces it on
 the SSE stream; the browser POSTs an approval/deny via
-``POST /api/chat/sessions/{sid}/permissions/{rid}``; the dashboard router
+``POST /api/chat/tabs/{tab_id}/permissions/{rid}``; the dashboard router
 forwards that to the upstream via ``OpencodeClient.reply_permission``,
 which we observe on the fake server's recorded-POST log.
 
@@ -20,6 +20,10 @@ follow-up ``permission.replied`` → ``drop_relay`` → then read the full
 captured SSE body. Polling ``body_parts`` mid-flight is unreliable
 because ``ASGITransport`` buffers chunks until either enough bytes are
 emitted or the stream closes; the close-then-read pattern is reliable.
+
+Adapted from F-00083 (pre-tab surface) to F-00086 (tab-scoped surface):
+- POST /api/chat/sessions → POST /api/chat/tabs
+- /api/chat/sessions/{sid}/... → /api/chat/tabs/{tab_id}/...
 """
 
 from __future__ import annotations
@@ -34,12 +38,14 @@ from httpx import ASGITransport, AsyncClient
 
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
-from orch.chat.opencode_client import OpencodeClient
-from orch.chat.relay_manager import RelayManager
+from orch.chat.opencode.client import OpencodeClient
+from orch.chat.opencode.relay_manager import RelayManager
 from tests.integration._fake_opencode import FakeOpencodeServer, fake_opencode_server
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+    from orch.db.models import Project
 
 
 # ---------------------------------------------------------------------------
@@ -108,22 +114,33 @@ async def _wait_for_post(fake: FakeOpencodeServer, path: str, *, timeout: float 
 @pytest.mark.asyncio
 async def test_permission_asked_event_renders_and_reply_forwards(
     db_session: Session,
+    test_project: Project,
 ) -> None:
-    """A ``permission.asked`` event reaches the browser; the reply is forwarded upstream."""
+    """A ``permission.asked`` event reaches the browser; the reply is forwarded upstream.
+
+    Adapted: POST /api/chat/sessions → POST /api/chat/tabs; stream and permission
+    URLs now use tab_id instead of the raw OpenCode session id.
+    """
     with fake_opencode_server() as fake:
         app, client, relay_manager = await _build_chat_app(fake, db_session)
         transport = ASGITransport(app=app)
         try:
             async with AsyncClient(transport=transport, base_url="http://test") as http:
-                resp = await http.post("/api/chat/sessions", json={})
-                sid = resp.json()["session_id"]
+                resp = await http.post(
+                    "/api/chat/tabs",
+                    json={"project_id": test_project.id},
+                )
+                assert resp.status_code == 201, resp.text
+                tab = resp.json()["tab"]
+                tab_id = tab["id"]
+                sid = tab["opencode_session_id"]
 
                 rid = "perm_req_abc"
                 body_parts: list[str] = []
 
                 async def _consume() -> None:
                     async with http.stream(
-                        "GET", f"/api/chat/sessions/{sid}/stream", timeout=20.0
+                        "GET", f"/api/chat/tabs/{tab_id}/stream", timeout=20.0
                     ) as resp:
                         async for chunk in resp.aiter_text():
                             body_parts.append(chunk)
@@ -149,12 +166,14 @@ async def test_permission_asked_event_renders_and_reply_forwards(
 
                 # POST the approval through the dashboard router.
                 resp = await http.post(
-                    f"/api/chat/sessions/{sid}/permissions/{rid}",
+                    f"/api/chat/tabs/{tab_id}/permissions/{rid}",
                     json={"response": "allow", "remember": False},
                 )
                 assert resp.status_code == 204, resp.text
 
                 # Verify the dashboard forwarded the reply to the fake server.
+                # The client calls reply_permission(sid, rid, ...) → fake records
+                # POST /session/{sid}/permissions/{rid}.
                 target_path = f"/session/{sid}/permissions/{rid}"
                 await _wait_for_post(fake, target_path, timeout=5.0)
                 reply_posts = fake.control.posts_matching_path(target_path)
@@ -167,7 +186,7 @@ async def test_permission_asked_event_renders_and_reply_forwards(
                 assert reply_posts[0].body == {"response": "allow", "remember": False}
 
                 # Close the stream and read the captured body.
-                await relay_manager.drop_relay(sid)
+                await relay_manager.drop_relay(tab_id)
                 await asyncio.wait_for(consumer, timeout=5.0)
 
                 parsed = _parse_sse("".join(body_parts))
@@ -192,22 +211,35 @@ async def test_permission_asked_event_renders_and_reply_forwards(
 
 
 @pytest.mark.asyncio
-async def test_permission_deny_blocks_tool(db_session: Session) -> None:
-    """A deny reply is forwarded upstream; a follow-up permission.replied flows back."""
+async def test_permission_deny_blocks_tool(
+    db_session: Session,
+    test_project: Project,
+) -> None:
+    """A deny reply is forwarded upstream; a follow-up permission.replied flows back.
+
+    Adapted: POST /api/chat/sessions → POST /api/chat/tabs; stream and permission
+    URLs now use tab_id instead of the raw OpenCode session id.
+    """
     with fake_opencode_server() as fake:
         app, client, relay_manager = await _build_chat_app(fake, db_session)
         transport = ASGITransport(app=app)
         try:
             async with AsyncClient(transport=transport, base_url="http://test") as http:
-                resp = await http.post("/api/chat/sessions", json={})
-                sid = resp.json()["session_id"]
+                resp = await http.post(
+                    "/api/chat/tabs",
+                    json={"project_id": test_project.id},
+                )
+                assert resp.status_code == 201, resp.text
+                tab = resp.json()["tab"]
+                tab_id = tab["id"]
+                sid = tab["opencode_session_id"]
 
                 rid = "perm_req_deny"
                 body_parts: list[str] = []
 
                 async def _consume() -> None:
                     async with http.stream(
-                        "GET", f"/api/chat/sessions/{sid}/stream", timeout=20.0
+                        "GET", f"/api/chat/tabs/{tab_id}/stream", timeout=20.0
                     ) as resp:
                         async for chunk in resp.aiter_text():
                             body_parts.append(chunk)
@@ -230,7 +262,7 @@ async def test_permission_deny_blocks_tool(db_session: Session) -> None:
 
                 # Deny via the dashboard.
                 resp = await http.post(
-                    f"/api/chat/sessions/{sid}/permissions/{rid}",
+                    f"/api/chat/tabs/{tab_id}/permissions/{rid}",
                     json={"response": "deny"},
                 )
                 assert resp.status_code == 204
@@ -257,7 +289,7 @@ async def test_permission_deny_blocks_tool(db_session: Session) -> None:
                 )
                 await asyncio.sleep(0.3)
 
-                await relay_manager.drop_relay(sid)
+                await relay_manager.drop_relay(tab_id)
                 await asyncio.wait_for(consumer, timeout=5.0)
 
                 parsed = _parse_sse("".join(body_parts))

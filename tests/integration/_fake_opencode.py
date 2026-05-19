@@ -278,9 +278,28 @@ def _build_app(control: FakeOpencodeControl) -> Starlette:
     async def get_config(_request: Request) -> Response:
         return JSONResponse(
             {
-                "models": ["fake/model-a", "fake/model-b"],
-                "default_model": "fake/model-a",
+                "model": "fake/model-a",
                 "default_agent": "default",
+            }
+        )
+
+    async def get_config_providers(_request: Request) -> Response:
+        """Return a minimal ``/config/providers`` response.
+
+        Required by ``create_tab`` in F-00086: the router calls both
+        ``/config`` and ``/config/providers`` to resolve and validate the
+        model before creating the OpenCode session.
+        """
+        return JSONResponse(
+            {
+                "providers": [
+                    {
+                        "id": "fake",
+                        "name": "Fake Provider",
+                        "models": {"model-a": {}, "model-b": {}},
+                    }
+                ],
+                "default": {"fake": "model-a"},
             }
         )
 
@@ -324,6 +343,7 @@ def _build_app(control: FakeOpencodeControl) -> Starlette:
                 methods=["POST"],
             ),
             Route("/config", get_config, methods=["GET"]),
+            Route("/config/providers", get_config_providers, methods=["GET"]),
             Route("/event", get_event, methods=["GET"]),
             Route("/global/health", get_global_health, methods=["GET"]),
         ]

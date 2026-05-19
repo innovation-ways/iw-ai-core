@@ -68,3 +68,28 @@ def _arm_live_db_guard() -> None:
     os.environ["IW_CORE_DB_NAME"] = "iw_orch_test_blocked"
     os.environ["IW_CORE_DB_USER"] = "blocked"
     os.environ["IW_CORE_DB_PASSWORD"] = "blocked"  # noqa: S105
+
+
+@pytest.fixture(autouse=True)
+def _clear_chat_router_caches() -> None:
+    """Reset module-level caches in dashboard.routers.chat between tests.
+
+    The chat router keeps two module-level dicts (``_config_cache`` and
+    ``_skills_cache``) with 30 s TTLs. Under pytest-randomly, tests that
+    hit ``/api/chat/config`` against different mock OpenCode clients
+    (e.g. ``fake_opencode_server`` returning ``fake/model-a`` vs unit
+    mocks returning ``prov-a/model-a``) pollute the cache for whichever
+    test runs next on the same ``project_id`` — F-00086 expanded the
+    cache-read surface via ``_resolve_default_model_for_project`` in the
+    bootstrap path, so the leak now surfaces as flaky assertions on the
+    seeded Default tab's model. Clearing both caches per-test eliminates
+    the cross-test contamination without changing production behaviour.
+    """
+    try:
+        from dashboard.routers import chat as _chat_router
+    except Exception:
+        # dashboard not importable in this test context (e.g. live-DB
+        # guard armed pre-collection); nothing to clear.
+        return
+    _chat_router._config_cache.clear()
+    _chat_router._skills_cache.clear()

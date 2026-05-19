@@ -26,6 +26,12 @@ the buffer-fill condition deterministic without the flakiness of "sleep
 for N ms and hope". That probe is intentional: it's the test's anchor
 to the relay's internal contract, and a regression in the buffer's
 ``maxlen`` would surface here.
+
+Adapted from F-00083 (pre-tab surface) to F-00086 (tab-scoped surface):
+- POST /api/chat/sessions → POST /api/chat/tabs
+- /api/chat/sessions/{sid}/... → /api/chat/tabs/{tab_id}/...
+- relay_manager.get_or_create_relay(sid) → get_or_create_relay(tab_id)
+- relay_manager.drop_relay(sid) → drop_relay(tab_id)
 """
 
 from __future__ import annotations
@@ -40,12 +46,14 @@ from httpx import ASGITransport, AsyncClient
 
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
-from orch.chat.opencode_client import OpencodeClient
-from orch.chat.relay_manager import RelayManager
+from orch.chat.opencode.client import OpencodeClient
+from orch.chat.opencode.relay_manager import RelayManager
 from tests.integration._fake_opencode import FakeOpencodeServer, fake_opencode_server
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+    from orch.db.models import Project
 
 
 # ---------------------------------------------------------------------------
@@ -114,22 +122,33 @@ async def _wait_until(predicate: Any, *, timeout: float = 10.0, interval: float 
 @pytest.mark.asyncio
 async def test_reconnect_replays_buffered_events_via_last_event_id(
     db_session: Session,
+    test_project: Project,
 ) -> None:
-    """AC6: reconnect with ``Last-Event-ID`` replays only the newer buffered events."""
+    """AC6: reconnect with ``Last-Event-ID`` replays only the newer buffered events.
+
+    Adapted: POST /api/chat/sessions → POST /api/chat/tabs. The relay is
+    keyed by tab_id; get_or_create_relay and drop_relay use tab_id.
+    """
     with fake_opencode_server() as fake:
         app, client, relay_manager = await _build_chat_app(fake, db_session)
         transport = ASGITransport(app=app)
         try:
             async with AsyncClient(transport=transport, base_url="http://test") as http:
-                resp = await http.post("/api/chat/sessions", json={})
-                sid = resp.json()["session_id"]
+                resp = await http.post(
+                    "/api/chat/tabs",
+                    json={"project_id": test_project.id},
+                )
+                assert resp.status_code == 201, resp.text
+                tab = resp.json()["tab"]
+                tab_id = tab["id"]
+                sid = tab["opencode_session_id"]
 
                 # Start the relay's pump up-front so events flow into its
                 # buffer without needing a first browser subscriber. This
                 # mirrors what would happen in real life: the relay pump
                 # is started by the first reader; subsequent reconnects
                 # find the relay (and buffer) already alive.
-                relay = await relay_manager.get_or_create_relay(sid)
+                relay = await relay_manager.get_or_create_relay(tab_id)
                 await fake.control.await_stream(0, timeout=5.0)
 
                 # Push 10 events with deterministic ids.
@@ -153,7 +172,7 @@ async def test_reconnect_replays_buffered_events_via_last_event_id(
                 async def _consume() -> None:
                     async with http.stream(
                         "GET",
-                        f"/api/chat/sessions/{sid}/stream",
+                        f"/api/chat/tabs/{tab_id}/stream",
                         timeout=20.0,
                         headers={"Last-Event-ID": "evt_005"},
                     ) as resp:
@@ -163,7 +182,7 @@ async def test_reconnect_replays_buffered_events_via_last_event_id(
                 consumer = asyncio.create_task(_consume())
                 # Let the replay drain through the SSE generator.
                 await asyncio.sleep(0.3)
-                await relay_manager.drop_relay(sid)
+                await relay_manager.drop_relay(tab_id)
                 await asyncio.wait_for(consumer, timeout=5.0)
 
                 parsed = _parse_sse("".join(body_parts))
@@ -195,17 +214,27 @@ async def test_reconnect_replays_buffered_events_via_last_event_id(
 @pytest.mark.asyncio
 async def test_reconnect_past_ring_buffer_emits_gap_warning(
     db_session: Session,
+    test_project: Project,
 ) -> None:
-    """AC6 / Boundary Behavior: aged-out Last-Event-ID triggers a one-time gap warning."""
+    """AC6 / Boundary Behavior: aged-out Last-Event-ID triggers a one-time gap warning.
+
+    Adapted: POST /api/chat/sessions → POST /api/chat/tabs. Relay keyed by tab_id.
+    """
     with fake_opencode_server() as fake:
         app, client, relay_manager = await _build_chat_app(fake, db_session)
         transport = ASGITransport(app=app)
         try:
             async with AsyncClient(transport=transport, base_url="http://test") as http:
-                resp = await http.post("/api/chat/sessions", json={})
-                sid = resp.json()["session_id"]
+                resp = await http.post(
+                    "/api/chat/tabs",
+                    json={"project_id": test_project.id},
+                )
+                assert resp.status_code == 201, resp.text
+                tab = resp.json()["tab"]
+                tab_id = tab["id"]
+                sid = tab["opencode_session_id"]
 
-                relay = await relay_manager.get_or_create_relay(sid)
+                relay = await relay_manager.get_or_create_relay(tab_id)
                 await fake.control.await_stream(0, timeout=5.0)
 
                 # Push 300 events. Buffer maxlen=256, so events 1–44 age
@@ -233,7 +262,7 @@ async def test_reconnect_past_ring_buffer_emits_gap_warning(
                 async def _consume() -> None:
                     async with http.stream(
                         "GET",
-                        f"/api/chat/sessions/{sid}/stream",
+                        f"/api/chat/tabs/{tab_id}/stream",
                         timeout=20.0,
                         headers={"Last-Event-ID": "evt_001"},
                     ) as resp:
@@ -243,7 +272,7 @@ async def test_reconnect_past_ring_buffer_emits_gap_warning(
                 consumer = asyncio.create_task(_consume())
                 # 256 events take some time to stream through SSE wire.
                 await asyncio.sleep(0.6)
-                await relay_manager.drop_relay(sid)
+                await relay_manager.drop_relay(tab_id)
                 await asyncio.wait_for(consumer, timeout=10.0)
 
                 parsed = _parse_sse("".join(body_parts))

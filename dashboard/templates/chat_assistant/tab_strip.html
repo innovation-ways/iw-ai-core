@@ -1,0 +1,59 @@
+<!-- chat_assistant/tab_strip.html
+     Horizontal scrollable tab strip with per-tab controls.
+     Included by panel.html inside the #chat-assistant-panel div.
+     Shown/hidden via JS (_renderTabStrip).
+-->
+<div id="chat-assistant-tab-strip-wrap"
+     class="flex-shrink-0 border-b border-border"
+     style="display: none;">
+
+  <div class="flex items-center" style="min-height: 36px;">
+
+    <!-- Scrollable tab row -->
+    <div id="chat-assistant-tab-strip"
+         class="flex items-center overflow-x-auto flex-1"
+         role="tablist"
+         aria-label="Chat tabs"
+         style="scrollbar-width: thin; min-height: 36px;">
+      <!-- Tab buttons injected by chat.js -->
+    </div>
+
+    <!-- Right controls: recent-closed + new-tab -->
+    <div class="flex items-center flex-shrink-0 gap-0.5 px-1 border-l border-border">
+      <button id="chat-assistant-recent-closed-btn"
+              type="button"
+              class="tap inline-flex items-center justify-center p-1 rounded hover:bg-muted text-muted-foreground"
+              aria-label="Recent closed tabs"
+              title="Recent closed tabs">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </button>
+
+      <button id="chat-assistant-new-tab-btn"
+              type="button"
+              class="tap inline-flex items-center justify-center p-1 rounded hover:bg-muted text-muted-foreground"
+              aria-label="New chat tab"
+              title="New chat tab">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+      </button>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Context menu for tab right-click (shared, repositioned by JS) -->
+<div id="chat-assistant-tab-context-menu"
+     class="hidden fixed z-50 bg-card border border-border rounded shadow-md py-1"
+     role="menu"
+     style="min-width: 140px;">
+  <button type="button" class="block w-full text-left px-3 py-1.5 text-xs hover:bg-muted"
+          role="menuitem" data-ctx-action="rename">Rename</button>
+  <button type="button" class="block w-full text-left px-3 py-1.5 text-xs hover:bg-muted"
+          role="menuitem" data-ctx-action="duplicate">Duplicate</button>
+  <button type="button" class="block w-full text-left px-3 py-1.5 text-xs hover:bg-muted text-destructive"
+          role="menuitem" data-ctx-action="close">Close</button>
+</div>

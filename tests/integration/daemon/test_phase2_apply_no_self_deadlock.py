@@ -34,8 +34,10 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "6d78323d0954"  # head — CR-00062 add pi runtime options
-_PREV_REVISION = "678ac4dd44b7"  # F-00085 auto merge verdicts and project config (before head)
+_HEAD_REVISION = "e45b45f74ea0"  # head — F-00086 chat_tabs
+_PREV_REVISION = (
+    "678ac4dd44b7"  # F-00085 auto merge verdicts and project config (pre-head ancestor)
+)
 
 
 # ---------------------------------------------------------------------------

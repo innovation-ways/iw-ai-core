@@ -1,13 +1,23 @@
-"""Multi-session SSE relay between `OpencodeClient` and dashboard browsers.
+"""Per-tab SSE relay between `OpencodeClient` and dashboard browsers.
 
-`SessionRelay` runs ONE upstream pump task per OpenCode session, holds a
-ring buffer of the most recent events (for tab-refresh replay via
-`Last-Event-ID`), and fans events out to N browser subscribers. A slow
-subscriber's queue is allowed to fill and overflow with dropped events
-— the others must not stall.
+`SessionRelay` runs ONE upstream pump task per tab, holds a ring buffer
+of the most recent events (for tab-refresh replay via ``Last-Event-ID``),
+and fans events out to N browser subscribers. A slow subscriber's queue
+is allowed to fill and overflow with dropped events — the others must
+not stall.
 
-`RelayManager` owns the dict of sid → SessionRelay and lazily creates
-relays on first subscribe.
+`RelayManager` owns the dict of ``tab_id → SessionRelay`` (rekeyed from
+the F-00083 ``sid → relay`` shape by F-00086). On first subscribe the
+manager resolves ``tab_id`` to its ``opencode_session_id`` via the
+injected ``session_resolver`` callable so the pump knows which OpenCode
+stream to follow.
+
+**Invariant #2** — every event yielded by ``SessionRelay.subscribe()``
+carries a top-level ``"tab_id"`` field whose value equals the relay's
+``tab_id``. The stamp happens inside ``_pump`` (so the ring buffer holds
+pre-stamped events; ``Last-Event-ID`` replay therefore inherits the
+field without extra work) and in ``_compute_replay`` for the synthetic
+``gap`` event.
 """
 
 from __future__ import annotations
@@ -20,12 +30,12 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from orch.chat import filters
+from orch.chat.opencode import filters
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
 
-    from orch.chat.opencode_client import OpencodeClient
+    from orch.chat.opencode.client import OpencodeClient
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +48,10 @@ _RELAY_GAP_EVENT = "gap"
 
 
 class SessionRelay:
-    """Owns the upstream pump + ring buffer + subscriber fan-out for ONE session."""
+    """Owns the upstream pump + ring buffer + subscriber fan-out for ONE tab.
+
+    Each relay is bound to one ``(tab_id, opencode_session_id)`` pair.
+    """
 
     def __init__(
         self,
@@ -46,16 +59,30 @@ class SessionRelay:
         sid: str,
         buffer_size: int = _DEFAULT_BUFFER_SIZE,
         *,
+        tab_id: str | None = None,
         subscriber_queue_size: int = _DEFAULT_SUBSCRIBER_QUEUE_SIZE,
     ) -> None:
         self._client = client
         self._sid = sid
+        # ``tab_id`` is the public key in the F-00086 rekey. We keep it
+        # optional so legacy callers that still pass only ``sid`` see no
+        # behaviour change while they migrate — but production code paths
+        # (``RelayManager.get_or_create_relay``) always supply it.
+        self._tab_id = tab_id
         self._buffer: deque[dict[str, Any]] = deque(maxlen=buffer_size)
         self._subscribers: list[asyncio.Queue[dict[str, Any] | None]] = []
         self._subscriber_queue_size = subscriber_queue_size
         self._pump_task: asyncio.Task[None] | None = None
         self._stopped = False
         self._last_seen_id: str | None = None
+
+    @property
+    def tab_id(self) -> str | None:
+        return self._tab_id
+
+    @property
+    def sid(self) -> str:
+        return self._sid
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -136,6 +163,7 @@ class SessionRelay:
             },
             "id": "",
         }
+        self._stamp_tab_id(gap_event)
         return [gap_event, *snapshot]
 
     async def _iter_subscription(
@@ -159,6 +187,11 @@ class SessionRelay:
     # Upstream pump
     # ------------------------------------------------------------------
 
+    def _stamp_tab_id(self, ev: dict[str, Any]) -> None:
+        """Stamp the relay's tab_id onto an event in place (invariant #2)."""
+        if self._tab_id is not None:
+            ev["tab_id"] = self._tab_id
+
     async def _pump(self) -> None:
         backoff = _RECONNECT_BACKOFF_MIN
         consecutive_persistent_errors = 0
@@ -168,6 +201,7 @@ class SessionRelay:
                     if self._stopped:
                         return
                     ev = filters.normalise(sse)
+                    self._stamp_tab_id(ev)
                     self._buffer.append(ev)
                     ev_id = ev.get("id")
                     if isinstance(ev_id, str) and ev_id:
@@ -188,8 +222,9 @@ class SessionRelay:
                 raise
             except httpx.ReadError as exc:
                 logger.info(
-                    "relay upstream ReadError on sid=%s: %s; retry in %.2fs",
+                    "relay upstream ReadError on sid=%s tab=%s: %s; retry in %.2fs",
                     self._sid,
+                    self._tab_id,
                     exc,
                     backoff,
                 )
@@ -198,23 +233,24 @@ class SessionRelay:
             except (httpx.HTTPError, OSError) as exc:
                 consecutive_persistent_errors += 1
                 logger.error(
-                    "relay upstream error on sid=%s: %s (consecutive=%d)",
+                    "relay upstream error on sid=%s tab=%s: %s (consecutive=%d)",
                     self._sid,
+                    self._tab_id,
                     exc,
                     consecutive_persistent_errors,
                 )
-                self._broadcast(
-                    {
-                        "event": _RELAY_ERROR_EVENT,
-                        "data": {
-                            "sid": self._sid,
-                            "error": type(exc).__name__,
-                            "message": str(exc),
-                            "consecutive": consecutive_persistent_errors,
-                        },
-                        "id": "",
-                    }
-                )
+                err_event: dict[str, Any] = {
+                    "event": _RELAY_ERROR_EVENT,
+                    "data": {
+                        "sid": self._sid,
+                        "error": type(exc).__name__,
+                        "message": str(exc),
+                        "consecutive": consecutive_persistent_errors,
+                    },
+                    "id": "",
+                }
+                self._stamp_tab_id(err_event)
+                self._broadcast(err_event)
                 await asyncio.sleep(backoff)
                 backoff = min(_RECONNECT_BACKOFF_MAX, backoff * 2)
 
@@ -224,34 +260,66 @@ class SessionRelay:
                 q.put_nowait(ev)
             except asyncio.QueueFull:
                 logger.warning(
-                    "relay subscriber on sid=%s is slow; dropping event id=%s",
+                    "relay subscriber on sid=%s tab=%s is slow; dropping event id=%s",
                     self._sid,
+                    self._tab_id,
                     ev.get("id"),
                 )
 
 
 class RelayManager:
-    """Owns sid → `SessionRelay` and lazily spawns pumps."""
+    """Owns ``tab_id → SessionRelay`` and lazily spawns pumps.
 
-    def __init__(self, client: OpencodeClient) -> None:
+    F-00086 rekey: the manager now keys relays by ``tab_id`` (not raw
+    ``sid``). On ``get_or_create_relay(tab_id)``, the manager calls
+    ``session_resolver(tab_id)`` to discover the OpenCode session id the
+    underlying pump should follow. The resolver is injected so the relay
+    package stays DB-free — production wiring closes over a
+    ``tab_service.get_tab`` call.
+
+    For backwards compatibility (and for unit tests that still drive the
+    pre-F-00086 ``sid``-keyed surface), ``session_resolver`` is optional:
+    when it is None ``get_or_create_relay`` treats the argument as the
+    OpenCode session id directly (the pre-F-00086 contract).
+    """
+
+    def __init__(
+        self,
+        client: OpencodeClient,
+        *,
+        session_resolver: Callable[[str], str | None] | None = None,
+    ) -> None:
         self._client = client
+        self._session_resolver = session_resolver
         self._relays: dict[str, SessionRelay] = {}
         self._lock = asyncio.Lock()
 
-    async def get_or_create_relay(self, sid: str) -> SessionRelay:
+    async def get_or_create_relay(self, tab_id: str) -> SessionRelay:
         async with self._lock:
-            relay = self._relays.get(sid)
+            relay = self._relays.get(tab_id)
             if relay is None:
-                relay = SessionRelay(self._client, sid)
-                self._relays[sid] = relay
+                if self._session_resolver is not None:
+                    sid = self._session_resolver(tab_id)
+                    if not sid:
+                        raise ValueError(
+                            f"cannot start relay: tab '{tab_id}' has no opencode_session_id"
+                        )
+                    relay = SessionRelay(self._client, sid, tab_id=tab_id)
+                else:
+                    # Legacy / pre-F-00086 callers pass the OpenCode session id
+                    # directly as the key. The relay still stamps ``tab_id``
+                    # using the same value so the event-shape contract is
+                    # uniform.
+                    relay = SessionRelay(self._client, tab_id, tab_id=tab_id)
+                self._relays[tab_id] = relay
                 await relay.start()
             elif not relay.is_running():
                 await relay.start()
             return relay
 
-    async def drop_relay(self, sid: str) -> None:
+    async def drop_relay(self, tab_id: str) -> None:
         async with self._lock:
-            relay = self._relays.pop(sid, None)
+            relay = self._relays.pop(tab_id, None)
         if relay is not None:
             await relay.stop()
 

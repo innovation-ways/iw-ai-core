@@ -4,6 +4,12 @@ These tests would FAIL before the I-00087 fix (chat.js never listened for
 'message.part.updated' and never read 'properties.delta' / 'properties.part.text').
 They PASS after the fix.
 
+Adapted in F-00086 for the multi-tab chat refactor: the named-events table
+was renamed from ``namedEvents`` to ``NAMED_EVENTS`` and the history-loading
+helper from ``_loadHistory`` to ``_loadTabHistory`` (per-tab). The protocol
+contracts being pinned (event registration, properties.* extraction,
+last-event-id replay, gap/reconnecting handling) are unchanged.
+
 Placed in tests/dashboard/ (not tests/unit/) so future tests in the same file
 can use the db_session / client fixtures from tests/dashboard/conftest.py.
 No DB or FastAPI client is required by the current tests — all assertions are
@@ -15,7 +21,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from orch.chat.filters import INTERESTING_EVENTS
+from orch.chat.opencode.filters import INTERESTING_EVENTS
 
 CHAT_JS = Path(__file__).resolve().parents[2] / "dashboard/static/chat_assistant/chat.js"
 
@@ -42,11 +48,15 @@ PRE_FIX_NAMED_EVENTS: frozenset[str] = frozenset(
 def _registered_event_names(js_source: str) -> set[str]:
     """Extract every event name passed to EventSource.addEventListener(<name>, …).
 
-    Handles both the array-form (namedEvents.forEach) and direct addEventListener
-    calls with string literal arguments.
+    Handles three forms:
+      1. Direct ``addEventListener('<name>', …)`` with a string literal.
+      2. Legacy ``namedEvents = [...]`` (pre-F-00086, lowerCamel).
+      3. F-00086 ``NAMED_EVENTS = [...]`` (SCREAMING_SNAKE) — the multi-tab
+         refactor renamed the constant; the surrounding ``.forEach`` registration
+         pattern was preserved.
     """
     direct = set(re.findall(r"addEventListener\(\s*['\"]([\w.]+)['\"]", js_source))
-    array_blocks = re.findall(r"namedEvents\s*=\s*\[([\s\S]*?)\]", js_source)
+    array_blocks = re.findall(r"(?:namedEvents|NAMED_EVENTS)\s*=\s*\[([\s\S]*?)\]", js_source)
     array_names: set[str] = set()
     for block in array_blocks:
         array_names.update(re.findall(r"['\"]([\w.]+)['\"]", block))
@@ -73,46 +83,72 @@ def test_chat_js_reads_properties_delta_for_streaming_text() -> None:
 
     The handler must read properties.delta (streaming chunks) and
     properties.part (finalised text), not the old flat data.text / data.content.
+
+    The F-00086 multi-tab refactor binds ``props = data.properties`` once at
+    the top of ``_handleEvent`` and then reads ``props.delta`` / ``props.part``
+    — semantically equivalent to ``properties.delta`` / ``properties.part``.
     """
     js = CHAT_JS.read_text(encoding="utf-8")
-    assert "properties.delta" in js, (
-        "_handleEvent must read properties.delta for message.part.updated frames"
+    # data.properties is the original extraction (or props = ... assigned from it).
+    assert "data.properties" in js or "data && data.properties" in js, (
+        "_handleEvent must extract opencode properties via data.properties"
     )
-    assert "properties.part" in js, (
-        "_handleEvent must read properties.part (or properties.part.text) for finalised text"
+    # ``properties.delta`` (direct) OR ``props.delta`` (post-extraction).
+    assert ("properties.delta" in js) or ("props.delta" in js), (
+        "_handleEvent must read properties.delta (or the bound props.delta) "
+        "for message.part.updated / message.part.delta streaming chunks"
+    )
+    assert ("properties.part" in js) or ("props.part" in js), (
+        "_handleEvent must read properties.part (or the bound props.part) for finalised text"
     )
 
 
 def test_chat_js_history_reads_info_and_parts() -> None:
-    """_loadHistory must iterate {info, parts} entries (opencode shape).
+    """The history-loader must iterate {info, parts} entries (opencode shape).
 
     The pre-fix code read m.role and m.content, which don't exist on opencode
     messages. Role lives on info.role; text content lives in parts[].text.
+
+    F-00086 renamed the helper from ``_loadHistory`` (single-session) to
+    ``_loadTabHistory`` (per-tab); both names are accepted here so the test
+    survives the refactor and would still fail if a future change ripped the
+    {info, parts} traversal out.
     """
     js = CHAT_JS.read_text(encoding="utf-8")
-    m = re.search(r"function\s+_loadHistory\b[\s\S]*?\n\s*\}\s*\n", js)
-    assert m, "_loadHistory function not found in chat.js"
+    m = re.search(r"function\s+(?:_loadHistory|_loadTabHistory)\b[\s\S]*?\n\s*\}\s*\n", js)
+    assert m, "_loadHistory / _loadTabHistory function not found in chat.js"
     body = m.group(0)
     assert ".info" in body, (
-        "_loadHistory must read entry.info.role / entry.info.id "
+        "history loader must read entry.info.role / entry.info.id "
         "(opencode messages have no top-level role field)"
     )
     assert ".parts" in body, (
-        "_loadHistory must iterate entry.parts to extract text "
+        "history loader must iterate entry.parts to extract text "
         "(opencode messages have no top-level content field)"
     )
 
 
 def test_chat_js_preserves_session_storage_key() -> None:
-    """Session-continuity invariant: sessionStorage key must use 'iw-chat-session-' + _tabId.
+    """Session-continuity invariant: per-tab last-event-id must be persisted.
 
-    The user requirement is that the chat panel retains the same opencode
-    session across page refresh and between tab switches.
+    Pre-F-00086 the chat panel was single-session and persisted the opencode
+    ``session_id`` under ``'iw-chat-session-' + _tabId`` so that a page refresh
+    could resume the same conversation. F-00086 moved that durable
+    session-pointer into the database (``chat_tabs.opencode_session_id``,
+    one row per tab) and replaced the sessionStorage key with a per-tab
+    last-event-id (``'iw-chat-last-eid-' + tabId``) so the SSE relay can
+    replay any events missed during the refresh.
+
+    The invariant being pinned is the same one I-00087 added — refresh must
+    not lose chat state. Under F-00086 the load-bearing artefact is the
+    per-tab last-event-id key (the session id itself is server-side now).
     """
     js = CHAT_JS.read_text(encoding="utf-8")
-    assert "'iw-chat-session-' + _tabId" in js, (
-        "sessionStorage key 'iw-chat-session-' + _tabId must be preserved "
-        "for session continuity across page refresh"
+    assert "'iw-chat-last-eid-' + tabId" in js, (
+        "sessionStorage key 'iw-chat-last-eid-' + tabId must be persisted "
+        "per tab so SSE replay survives a page refresh (F-00086 replacement "
+        "for the legacy 'iw-chat-session-' + _tabId key, which moved to "
+        "chat_tabs.opencode_session_id server-side)"
     )
 
 

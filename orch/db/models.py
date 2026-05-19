@@ -2554,3 +2554,105 @@ class ChatSummarizationJob(Base):
         ),
         {"comment": "Background summarisation jobs for ChatConversation rolling_summary"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Chat Assistant tabs (F-00086 — Multi-tab AI Assistant on OpenCode)
+# ---------------------------------------------------------------------------
+
+
+class ChatTab(Base):
+    """A single user-facing AI Assistant tab bound to one runtime session.
+
+    Each row represents one tab in the multi-tab chat panel. The runtime
+    column shape is intentionally a plain Text with allowlist enforced in
+    ``orch/chat/tab_service.py`` (matches CR-00062's ``cli_tool`` pattern,
+    avoiding a PostgreSQL ENUM that would require a migration to extend).
+
+    Soft-delete semantics: closing a tab sets ``status='closed'`` and
+    ``closed_at=now()``; the ``opencode_session_id`` is preserved so that
+    ``reopen_tab`` can restore the full message history.
+
+    The partial unique index ``uq_chat_tabs_default_per_project`` exists
+    only to guard the bootstrap_default_tab race window — see F-00086
+    Boundary row "Bootstrap called twice concurrently".
+    """
+
+    __tablename__ = "chat_tabs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    title: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'New chat'"),
+        comment="Tab title shown in the strip; user-editable",
+    )
+    runtime: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'opencode'"),
+        comment="Chat runtime: 'opencode' today; 'pi' added by F-B",
+    )
+    model: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Model identifier scoped to runtime (e.g., 'anthropic/claude-sonnet-4-7')",
+    )
+    project_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="FK to projects.id; deleting a project cascades to its tabs",
+    )
+    opencode_session_id: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="OpenCode session id; populated after first session create",
+    )
+    status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'active'"),
+        comment="Tab status: 'active' or 'closed' (soft-delete)",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=False,
+        server_default=func.now(),
+    )
+    last_active_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=False,
+        server_default=func.now(),
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=True,
+        comment="When the tab was soft-deleted; NULL when active",
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_chat_tabs_status_last_active",
+            "status",
+            text("last_active_at DESC"),
+        ),
+        Index("ix_chat_tabs_project_status", "project_id", "status"),
+        Index(
+            "uq_chat_tabs_default_per_project",
+            "project_id",
+            unique=True,
+            postgresql_where=text("title = 'Default' AND status = 'active'"),
+        ),
+        {"comment": "Multi-tab AI Assistant chat tabs (F-00086)"},
+    )

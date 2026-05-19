@@ -1,11 +1,11 @@
-"""Unit tests for `orch.chat.filters.normalise`.
+"""Unit tests for `orch.chat.opencode.filters.normalise`.
 
 OpenCode's `/event` stream emits SSE frames whose `event:` line is absent;
 the type and id live inside the JSON payload (`{"id", "type", "properties"}`).
 The S02 pre-step spike captured this wire shape verbatim — the dashboard
 relay normalises every frame to `{event, data, id}` before fanning it out.
 
-Tests are TDD-RED: written and run BEFORE `orch.chat.filters` exists.
+Tests are TDD-RED: written and run BEFORE `orch.chat.opencode.filters` exists.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import pytest
 # missing, the test collection fails loudly rather than silently skipping.
 from httpx_sse import ServerSentEvent
 
-from orch.chat import filters
+from orch.chat.opencode import filters
 
 
 def _sse(event: str, data: dict | None, id_: str = "") -> ServerSentEvent:

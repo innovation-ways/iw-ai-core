@@ -1,6 +1,6 @@
-"""Unit tests for `orch.chat.opencode_client.OpencodeClient`.
+"""Unit tests for `orch.chat.opencode.client.OpencodeClient`.
 
-Tests are TDD-RED — written and run BEFORE `orch.chat.opencode_client` exists.
+Tests are TDD-RED — written and run BEFORE `orch.chat.opencode.client` exists.
 We use `respx` to assert exact request shapes (path, method, JSON body,
 auth header) against an in-memory router.
 """
@@ -15,7 +15,7 @@ import httpx
 import pytest
 import respx
 
-from orch.chat.opencode_client import OpencodeClient
+from orch.chat.opencode.client import OpencodeClient
 
 BASE_URL = "http://127.0.0.1:4099"
 PASSWORD = "test-password-32-bytes-or-thereabouts"  # noqa: S105 — test fixture, not real
