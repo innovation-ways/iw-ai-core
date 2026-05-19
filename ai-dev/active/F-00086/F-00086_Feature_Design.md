@@ -346,7 +346,7 @@ Conditions that **must hold true** after implementation. Each maps to a test.
   - `tests/integration/test_chat_tabs_multi_session_independence.py` — create two tabs with two different models, drive prompts on both, assert event streams are tagged with the correct tab_id, abort one and verify the other continues.
   - `tests/integration/test_chat_tabs_reload_persistence.py` — create tabs, dispose TestClient, recreate, GET /api/chat/tabs returns the same tabs in `last_active_at DESC` order.
   - `tests/integration/test_chat_tabs_bootstrap_default.py` — fresh DB + simulated prior session → first GET creates exactly one default tab; second GET creates none.
-- **Adapted existing tests** (S08): `tests/dashboard/test_chat_router.py`, `tests/dashboard/test_chat_endpoint_session_lifecycle.py`, `tests/dashboard/test_chat_endpoint_permission_flow.py`, `tests/dashboard/test_chat_endpoint_reconnect.py`, `tests/dashboard/test_chat_panel_*.py`, `tests/dashboard/test_chat_config_allowlist_intersection.py`. Each test's path assertions move from `/api/chat/sessions/*` to `/api/chat/tabs/*`; behavioural assertions unchanged.
+- **Adapted existing tests** (S08): `tests/dashboard/test_chat_router.py`, `tests/integration/test_chat_endpoint_session_lifecycle.py`, `tests/integration/test_chat_endpoint_permission_flow.py`, `tests/integration/test_chat_endpoint_reconnect.py`, `tests/dashboard/test_chat_panel_*.py`, `tests/integration/test_chat_config_allowlist_intersection.py`. Each test's path assertions move from `/api/chat/sessions/*` to `/api/chat/tabs/*`; behavioural assertions unchanged.
 
 ## Notes
 

@@ -420,7 +420,12 @@ class TestItemCancelInActiveBatch:
         from bs4 import BeautifulSoup
 
         soup = BeautifulSoup(html, "html.parser")
-        cancel_buttons = [b for b in soup.find_all("button") if b.get_text(strip=True) == "Cancel"]
+        cancel_buttons = [
+            b
+            for b in soup.find_all("button")
+            if b.get_text(strip=True) == "Cancel"
+            and not (b.get("id") or "").startswith("chat-assistant-")
+        ]
         assert len(cancel_buttons) > 0, "Cancel button must be present"
         disabled_btn = cancel_buttons[0]
         assert disabled_btn.get("disabled") is not None or "cursor-not-allowed" in str(
@@ -519,7 +524,12 @@ class TestCancelBatchTerminalRefused:
         from bs4 import BeautifulSoup
 
         soup = BeautifulSoup(response.text, "html.parser")
-        cancel_btns = [b for b in soup.find_all("button") if b.get_text(strip=True) == "Cancel"]
+        cancel_btns = [
+            b
+            for b in soup.find_all("button")
+            if b.get_text(strip=True) == "Cancel"
+            and not (b.get("id") or "").startswith("chat-assistant-")
+        ]
         assert len(cancel_btns) == 0, "Completed batch must NOT have a Cancel button"
 
     def test_post_cancel_batch_returns_422_for_completed_batch(

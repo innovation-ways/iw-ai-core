@@ -1,13 +1,14 @@
 <style>
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-title,
-  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-model,
-  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-context-pct,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-tray-toggle,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-history-toggle,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-new-btn,
+  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-tab-strip-wrap,
+  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-softcap-banner,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-messages,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-skills-tray,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-history-dropdown,
+  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-tab-model-bar,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-composer-wrap { display: none; }
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-collapse-btn { display: none; }
   #chat-assistant-panel:not([data-collapsed="true"]) #chat-assistant-expand-rail { display: none; }
@@ -26,16 +27,6 @@
     <span id="chat-assistant-title"
           class="text-sm font-medium truncate flex-1">AI Assistant</span>
 
-    <select id="chat-assistant-model"
-            class="text-xs bg-input border border-border rounded px-1 py-0.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring max-w-[90px] hidden"
-            aria-label="Model selector">
-      <option value="">Loading…</option>
-    </select>
-
-    <span id="chat-assistant-context-pct"
-          class="text-xs text-muted-foreground hidden"
-          title="Context usage"></span>
-
     <button id="chat-assistant-tray-toggle"
             class="tap inline-flex items-center justify-center p-1 rounded hover:bg-muted"
             aria-label="Toggle skills and commands tray"
@@ -47,8 +38,8 @@
 
     <button id="chat-assistant-history-toggle"
             class="tap inline-flex items-center justify-center p-1 rounded hover:bg-muted"
-            aria-label="Toggle session history"
-            title="Session history">
+            aria-label="Recent closed tabs"
+            title="Recent closed tabs">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
       </svg>
@@ -56,7 +47,7 @@
 
     <button id="chat-assistant-new-btn"
             class="tap inline-flex items-center justify-center p-1 rounded hover:bg-muted"
-            aria-label="New chat session"
+            aria-label="New chat tab"
             title="New chat">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -73,6 +64,93 @@
     </button>
   </header>
 
+  <!-- Soft-cap warning banner (above tab strip) -->
+  <div id="chat-assistant-softcap-banner"
+       style="display: none;"
+       role="alert">
+    <div class="chat-assistant-softcap-banner-inner flex items-center gap-2 px-3 py-1.5 text-xs">
+      <span class="flex-1">&#9888; 10+ tabs open &mdash; consider closing inactive tabs.</span>
+      <button type="button"
+              id="chat-assistant-softcap-dismiss"
+              class="flex-shrink-0 opacity-60 hover:opacity-100"
+              aria-label="Dismiss">&#x2715;</button>
+    </div>
+  </div>
+
+  <!-- Tab strip -->
+  {% include "chat_assistant/tab_strip.html" %}
+
+  <!-- Skills tray (toggleable) -->
+  {% include "chat_assistant/skills_tray.html" %}
+
+  <!-- History dropdown (toggleable) -->
+  {% include "chat_assistant/history_dropdown.html" %}
+
+  <!-- Per-tab model bar (above composer; shown when a tab is active) -->
+  <div id="chat-assistant-tab-model-bar"
+       style="display: none;"
+       class="flex-shrink-0 border-b border-border px-2 py-1">
+    <div class="relative">
+      <button id="chat-assistant-tab-model-badge"
+              type="button"
+              class="text-xs px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground truncate max-w-full"
+              aria-label="Current model — click to change"
+              title="Click to change model">
+        <span id="chat-assistant-tab-model-label">&#8212;</span>
+        <svg class="w-3 h-3 inline ml-0.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <!-- Model dropdown list (shown when badge clicked) -->
+      <div id="chat-assistant-tab-model-dropdown"
+           class="hidden absolute z-50 bg-card border border-border rounded shadow-md"
+           role="listbox"
+           aria-label="Available models"
+           style="min-width: 200px; max-height: 240px; overflow-y: auto; top: 100%; left: 0;">
+        <!-- Options injected by chat.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Messages area -->
+  <div id="chat-assistant-messages"
+       role="log"
+       aria-live="polite"
+       aria-relevant="additions"
+       aria-label="AI Assistant conversation"
+       class="flex-1 overflow-y-auto px-3 py-2 space-y-3">
+
+    <!-- Per-tab empty state (hidden when a tab has messages) -->
+    <div id="chat-assistant-empty-state"
+         class="text-sm text-muted-foreground py-8 px-2 text-center space-y-2">
+      <p class="font-medium text-foreground">AI Assistant</p>
+      <p>Ask anything about this project or use a skill command.</p>
+      <p class="text-xs">Press <kbd class="px-1 py-0.5 rounded border border-border bg-muted">Ctrl+/</kbd> to toggle &middot; <kbd class="px-1 py-0.5 rounded border border-border bg-muted">/</kbd> for skills</p>
+    </div>
+
+    <!-- No-tabs empty state (shown when no tabs exist after bootstrap) -->
+    <div id="chat-assistant-no-tabs-state"
+         class="hidden text-sm text-muted-foreground py-8 px-2 text-center space-y-3">
+      <p class="font-medium text-foreground">No chats yet</p>
+      <p>Click + to create your first chat tab.</p>
+      <button type="button"
+              id="chat-assistant-no-tabs-cta"
+              class="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded min-h-[44px]">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        New Chat
+      </button>
+    </div>
+
+    <div id="chat-assistant-scroll-anchor" aria-hidden="true"></div>
+  </div>
+
+  <!-- Composer -->
+  <div id="chat-assistant-composer-wrap" class="flex-shrink-0">
+    {% include "chat_assistant/composer.html" %}
+  </div>
+
   <!-- Collapsed rail (visible when data-collapsed="true") -->
   <div id="chat-assistant-expand-rail"
        class="flex flex-col items-center justify-center gap-2 p-2 cursor-pointer flex-1"
@@ -87,38 +165,18 @@
     </svg>
   </div>
 
-  <!-- Skills tray (toggleable) -->
-  {% include "chat_assistant/skills_tray.html" %}
-
-  <!-- History dropdown (toggleable) -->
-  {% include "chat_assistant/history_dropdown.html" %}
-
-  <!-- Messages area -->
-  <div id="chat-assistant-messages"
-       role="log"
-       aria-live="polite"
-       aria-relevant="additions"
-       aria-label="AI Assistant conversation"
-       class="flex-1 overflow-y-auto px-3 py-2 space-y-3">
-
-    <div id="chat-assistant-empty-state"
-         class="text-sm text-muted-foreground py-8 px-2 text-center space-y-2">
-      <p class="font-medium text-foreground">AI Assistant</p>
-      <p>Ask anything about this project or use a skill command.</p>
-      <p class="text-xs">Press <kbd class="px-1 py-0.5 rounded border border-border bg-muted">Ctrl+/</kbd> to toggle · <kbd class="px-1 py-0.5 rounded border border-border bg-muted">/</kbd> for skills</p>
-    </div>
-    <div id="chat-assistant-scroll-anchor" aria-hidden="true"></div>
-  </div>
-
-  <!-- Composer -->
-  <div id="chat-assistant-composer-wrap" class="flex-shrink-0">
-    {% include "chat_assistant/composer.html" %}
-  </div>
-
 </div>
 
 <!-- Approval modal mount point -->
 <div id="chat-assistant-approval-root"></div>
+
+<!-- Create-tab modal (hidden until opened by JS) -->
+<div id="chat-assistant-create-tab-modal-root">
+  {% include "chat_assistant/create_tab_modal.html" %}
+</div>
+
+<!-- Recent-closed tabs dropdown (positioned relative to tab strip by JS) -->
+{% include "chat_assistant/closed_tabs_dropdown.html" %}
 
 <!-- Template for client-side message rendering -->
 <template id="chat-assistant-message-template">

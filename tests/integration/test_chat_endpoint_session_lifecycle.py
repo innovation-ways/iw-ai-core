@@ -2,11 +2,11 @@
 
 Exercises the full pipeline:
 
-    POST /api/chat/sessions            → real OpencodeClient → fake `opencode serve`
-    POST /api/chat/sessions/{sid}/prompt
-    GET  /api/chat/sessions/{sid}/stream   ← SSE bytes flow back through the
-                                             real RelayManager + SessionRelay
-    POST /api/chat/sessions/{sid}/abort
+    POST /api/chat/tabs                           → real OpencodeClient → fake `opencode serve`
+    POST /api/chat/tabs/{tab_id}/prompt
+    GET  /api/chat/tabs/{tab_id}/stream            ← SSE bytes flow back through the
+                                                     real RelayManager + SessionRelay
+    POST /api/chat/tabs/{tab_id}/abort
 
 The fake server (see ``_fake_opencode.py``) is a real ASGI app served by
 ``uvicorn`` on a background thread on a random loopback port. The dashboard
@@ -14,7 +14,13 @@ relay opens a real TCP/SSE connection to it, so the test exercises the
 production wire path — only the upstream binary is replaced.
 
 Per ``tests/CLAUDE.md`` we use the testcontainer ``db_session`` fixture for
-DB pinning; the chat endpoints themselves do not touch the DB.
+DB pinning; the chat endpoints themselves touch the DB only for tab creation
+and last_active_at updates.
+
+Adapted from F-00083 (pre-tab surface) to F-00086 (tab-scoped surface):
+- POST /api/chat/sessions → POST /api/chat/tabs
+- /api/chat/sessions/{sid}/... → /api/chat/tabs/{tab_id}/...
+- directory in request body → resolved from Project.repo_root
 """
 
 from __future__ import annotations
@@ -29,8 +35,9 @@ from httpx import ASGITransport, AsyncClient
 
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
-from orch.chat.opencode_client import OpencodeClient
-from orch.chat.relay_manager import RelayManager
+from orch.chat.opencode.client import OpencodeClient
+from orch.chat.opencode.relay_manager import RelayManager
+from orch.db.models import Project
 from tests.integration._fake_opencode import FakeOpencodeServer, fake_opencode_server
 
 if TYPE_CHECKING:
@@ -99,7 +106,7 @@ def _parse_sse(body: str) -> list[dict[str, str]]:
 
 async def _read_until_relay_drops(
     http: AsyncClient,
-    sid: str,
+    tab_id: str,
     relay_manager: RelayManager,
     fake: FakeOpencodeServer,
     *,
@@ -109,7 +116,7 @@ async def _read_until_relay_drops(
     body_parts: list[str] = []
 
     async def _consume() -> None:
-        async with http.stream("GET", f"/api/chat/sessions/{sid}/stream", timeout=20.0) as resp:
+        async with http.stream("GET", f"/api/chat/tabs/{tab_id}/stream", timeout=20.0) as resp:
             assert resp.status_code == 200
             async for chunk in resp.aiter_text():
                 body_parts.append(chunk)
@@ -124,7 +131,7 @@ async def _read_until_relay_drops(
     finally:
         # Ensure the consumer exits even if push_then_drop didn't trigger close.
         if not consumer.done():
-            await relay_manager.drop_relay(sid)
+            await relay_manager.drop_relay(tab_id)
         await asyncio.wait_for(consumer, timeout=5.0)
     return _parse_sse("".join(body_parts))
 
@@ -137,17 +144,27 @@ async def _read_until_relay_drops(
 @pytest.mark.asyncio
 async def test_session_lifecycle_create_prompt_stream_abort(
     db_session: Session,
+    test_project: Project,
 ) -> None:
-    """AC2 happy path: create → prompt → stream 3+ events → abort cleanly."""
+    """AC2 happy path: create tab → prompt → stream 3+ events → abort cleanly.
+
+    Adapted: POST /api/chat/sessions → POST /api/chat/tabs; subsequent URLs
+    use tab_id (not the raw OpenCode session id).
+    """
     with fake_opencode_server() as fake:
         app, client, relay_manager = await _build_chat_app(fake, db_session)
         transport = ASGITransport(app=app)
         try:
             async with AsyncClient(transport=transport, base_url="http://test") as http:
-                # ---- create session ----
-                resp = await http.post("/api/chat/sessions", json={})
-                assert resp.status_code == 200, resp.text
-                sid = resp.json()["session_id"]
+                # ---- create tab ----
+                resp = await http.post(
+                    "/api/chat/tabs",
+                    json={"project_id": test_project.id},
+                )
+                assert resp.status_code == 201, resp.text
+                tab = resp.json()["tab"]
+                tab_id = tab["id"]
+                sid = tab["opencode_session_id"]
                 assert sid.startswith("ses_")
                 # The fake server logs this as an inbound POST.
                 create_posts = fake.control.posts_matching_path("/session")
@@ -155,7 +172,7 @@ async def test_session_lifecycle_create_prompt_stream_abort(
 
                 # ---- send prompt ----
                 resp = await http.post(
-                    f"/api/chat/sessions/{sid}/prompt",
+                    f"/api/chat/tabs/{tab_id}/prompt",
                     json={"text": "list files in dashboard/routers"},
                 )
                 assert resp.status_code == 204
@@ -190,10 +207,10 @@ async def test_session_lifecycle_create_prompt_stream_abort(
                     )
                     # Let the events flow through the pump → relay → SSE.
                     await asyncio.sleep(0.3)
-                    await relay_manager.drop_relay(sid)
+                    await relay_manager.drop_relay(tab_id)
 
                 events = await _read_until_relay_drops(
-                    http, sid, relay_manager, fake, push_then_drop=push_then_drop
+                    http, tab_id, relay_manager, fake, push_then_drop=push_then_drop
                 )
 
                 # Assert: at least the three pushed events appear, in order,
@@ -217,7 +234,7 @@ async def test_session_lifecycle_create_prompt_stream_abort(
                 assert "Sure," in evt1["data"]
 
                 # ---- abort ----
-                resp = await http.post(f"/api/chat/sessions/{sid}/abort")
+                resp = await http.post(f"/api/chat/tabs/{tab_id}/abort")
                 assert resp.status_code == 204
                 abort_posts = fake.control.posts_matching_path(f"/session/{sid}/abort")
                 assert len(abort_posts) == 1
@@ -228,23 +245,37 @@ async def test_session_lifecycle_create_prompt_stream_abort(
 
 
 @pytest.mark.asyncio
-async def test_concurrent_sessions_independent_streams(db_session: Session) -> None:
-    """AC3: two sessions, two streams, events don't bleed across sessions.
+async def test_concurrent_sessions_independent_streams(
+    db_session: Session,
+    test_project: Project,
+) -> None:
+    """AC3: two tabs, two streams, events don't bleed across sessions.
 
-    Each ``SessionRelay`` opens its own upstream ``/event`` connection (see
-    ``relay_manager._pump``). The fake server tags each connection with its
-    own event queue, so pushing to queue #0 only reaches the relay for
-    session A, and queue #1 only reaches the relay for session B.
+    Adapted: POST /api/chat/sessions → POST /api/chat/tabs (×2). Each tab
+    gets its own opencode_session_id; relay is keyed by tab_id.
     """
     with fake_opencode_server() as fake:
         app, client, relay_manager = await _build_chat_app(fake, db_session)
         transport = ASGITransport(app=app)
         try:
             async with AsyncClient(transport=transport, base_url="http://test") as http:
-                resp_a = await http.post("/api/chat/sessions", json={})
-                resp_b = await http.post("/api/chat/sessions", json={})
-                sid_a = resp_a.json()["session_id"]
-                sid_b = resp_b.json()["session_id"]
+                resp_a = await http.post(
+                    "/api/chat/tabs",
+                    json={"project_id": test_project.id},
+                )
+                resp_b = await http.post(
+                    "/api/chat/tabs",
+                    json={"project_id": test_project.id},
+                )
+                assert resp_a.status_code == 201, resp_a.text
+                assert resp_b.status_code == 201, resp_b.text
+                tab_a = resp_a.json()["tab"]
+                tab_b = resp_b.json()["tab"]
+                tab_id_a = tab_a["id"]
+                tab_id_b = tab_b["id"]
+                sid_a = tab_a["opencode_session_id"]
+                sid_b = tab_b["opencode_session_id"]
+                assert tab_id_a != tab_id_b
                 assert sid_a != sid_b
 
                 body_a: list[str] = []
@@ -252,14 +283,14 @@ async def test_concurrent_sessions_independent_streams(db_session: Session) -> N
 
                 async def consume_a() -> None:
                     async with http.stream(
-                        "GET", f"/api/chat/sessions/{sid_a}/stream", timeout=20.0
+                        "GET", f"/api/chat/tabs/{tab_id_a}/stream", timeout=20.0
                     ) as resp:
                         async for chunk in resp.aiter_text():
                             body_a.append(chunk)
 
                 async def consume_b() -> None:
                     async with http.stream(
-                        "GET", f"/api/chat/sessions/{sid_b}/stream", timeout=20.0
+                        "GET", f"/api/chat/tabs/{tab_id_b}/stream", timeout=20.0
                     ) as resp:
                         async for chunk in resp.aiter_text():
                             body_b.append(chunk)
@@ -298,8 +329,8 @@ async def test_concurrent_sessions_independent_streams(db_session: Session) -> N
                 )
 
                 await asyncio.sleep(0.4)
-                await relay_manager.drop_relay(sid_a)
-                await relay_manager.drop_relay(sid_b)
+                await relay_manager.drop_relay(tab_id_a)
+                await relay_manager.drop_relay(tab_id_b)
 
                 await asyncio.wait_for(task_a, timeout=5.0)
                 await asyncio.wait_for(task_b, timeout=5.0)
@@ -327,28 +358,29 @@ async def test_concurrent_sessions_independent_streams(db_session: Session) -> N
 
 
 @pytest.mark.asyncio
-async def test_session_error_event_surfaces_to_sse_stream(db_session: Session) -> None:
+async def test_session_error_event_surfaces_to_sse_stream(
+    db_session: Session,
+    test_project: Project,
+) -> None:
     """Boundary row H1: ``session.error`` (and unknown error types like
     ``provider_unauthenticated``) must flow from the fake upstream through the
     relay and appear in the dashboard SSE stream intact.
 
-    This test covers the scenario: "User selects a model the provider doesn't
-    authenticate" — OpenCode would emit a ``session.error`` (and potentially a
-    provider-specific event) that the dashboard must surface to the browser.
-
-    The relay's pass-through of unknown event types is covered at the unit
-    level by ``test_unknown_error_event_passes_through_relay``; this test
-    adds integration-level coverage that the router + SSE generator also
-    forwards error events end-to-end without transforming or dropping them.
+    Adapted: POST /api/chat/sessions → POST /api/chat/tabs; stream URL uses tab_id.
     """
     with fake_opencode_server() as fake:
         app, client, relay_manager = await _build_chat_app(fake, db_session)
         transport = ASGITransport(app=app)
         try:
             async with AsyncClient(transport=transport, base_url="http://test") as http:
-                resp = await http.post("/api/chat/sessions", json={})
-                assert resp.status_code == 200, resp.text
-                sid = resp.json()["session_id"]
+                resp = await http.post(
+                    "/api/chat/tabs",
+                    json={"project_id": test_project.id},
+                )
+                assert resp.status_code == 201, resp.text
+                tab = resp.json()["tab"]
+                tab_id = tab["id"]
+                sid = tab["opencode_session_id"]
 
                 async def push_error_events_then_drop() -> None:
                     # Emit a session.error event (what OpenCode likely emits
@@ -376,11 +408,11 @@ async def test_session_error_event_surfaces_to_sse_stream(db_session: Session) -
                         },
                     )
                     await asyncio.sleep(0.3)
-                    await relay_manager.drop_relay(sid)
+                    await relay_manager.drop_relay(tab_id)
 
                 events = await _read_until_relay_drops(
                     http,
-                    sid,
+                    tab_id,
                     relay_manager,
                     fake,
                     push_then_drop=push_error_events_then_drop,
@@ -410,12 +442,19 @@ async def test_session_error_event_surfaces_to_sse_stream(db_session: Session) -
 @pytest.mark.asyncio
 async def test_create_session_forwards_directory_to_opencode(
     db_session: Session,
+    test_project: Project,
 ) -> None:
-    """CR-00057: when the frontend sends ``directory`` on session creation,
-    the dashboard must forward it verbatim to opencode's ``POST /session``.
+    """CR-00057: the dashboard must forward the project's repo_root to opencode's
+    ``POST /session`` as the ``directory`` field.
 
-    The directory scopes the OpenCode session to the project's repo root so
-    the assistant operates against the correct working tree.
+    Adapted: the pre-S06 surface accepted ``directory`` in the POST /api/chat/sessions
+    body and forwarded it verbatim. The new POST /api/chat/tabs surface resolves
+    directory from ``Project.repo_root`` instead. We set ``test_project.repo_root``
+    to a known path and assert opencode receives it via the project lookup.
+
+    The second sub-test: when ``Project.repo_root`` is None (or empty), the
+    ``directory`` key must NOT appear in the opencode request — same fail-open
+    semantics as the legacy "omit directory when client sends none" case.
     """
     project_dir = "/srv/projects/iw-ai-core"
     with fake_opencode_server() as fake:
@@ -423,31 +462,56 @@ async def test_create_session_forwards_directory_to_opencode(
         transport = ASGITransport(app=app)
         try:
             async with AsyncClient(transport=transport, base_url="http://test") as http:
+                # Set up project with a known repo_root.
+                test_project.repo_root = project_dir
+                db_session.add(test_project)
+                db_session.commit()
+
+                # Clear any stale config cache from prior tests — the cache
+                # may hold project_directory="/repos/test" (test_project's
+                # default) which would shadow the repo_root we just set.
+                from dashboard.routers import chat as _chat_mod  # noqa: PLC0415
+
+                _chat_mod._config_cache.clear()
+
                 resp = await http.post(
-                    "/api/chat/sessions",
-                    json={"directory": project_dir},
+                    "/api/chat/tabs",
+                    json={"project_id": test_project.id},
                 )
-                assert resp.status_code == 200, resp.text
+                assert resp.status_code == 201, resp.text
 
                 create_posts = fake.control.posts_matching_path("/session")
                 assert len(create_posts) == 1
                 body = create_posts[0].body
                 assert isinstance(body, dict), f"expected JSON body, got {body!r}"
                 assert body.get("directory") == project_dir, (
-                    f"directory not forwarded to opencode; got body={body!r}"
+                    f"directory not forwarded to opencode from project.repo_root; got body={body!r}"
                 )
 
-                # Sanity: when the frontend OMITS directory (e.g. on /system/*
-                # pages), it must NOT be sent — opencode treats absent vs empty
-                # very differently and we want strict fail-open semantics.
-                resp_no_dir = await http.post("/api/chat/sessions", json={})
-                assert resp_no_dir.status_code == 200, resp_no_dir.text
-                create_posts = fake.control.posts_matching_path("/session")
-                assert len(create_posts) == 2
-                body_no_dir = create_posts[1].body
+                # Sanity: when project.repo_root is empty, directory must NOT be
+                # sent to opencode — the production code maps "" → directory=None
+                # → key absent from the POST body. repo_root is NOT NULL in the DB
+                # schema, so we use "" (empty string) to represent "no directory".
+                project_no_dir = Project(
+                    id="proj-no-dir",
+                    display_name="No Dir",
+                    repo_root="",
+                    config={},
+                )
+                db_session.add(project_no_dir)
+                db_session.commit()
+
+                resp_no_dir = await http.post(
+                    "/api/chat/tabs",
+                    json={"project_id": "proj-no-dir"},
+                )
+                assert resp_no_dir.status_code == 201, resp_no_dir.text
+                create_posts_all = fake.control.posts_matching_path("/session")
+                assert len(create_posts_all) == 2
+                body_no_dir = create_posts_all[1].body
                 assert isinstance(body_no_dir, dict)
                 assert "directory" not in body_no_dir, (
-                    f"directory key leaked when client sent none; body={body_no_dir!r}"
+                    f"directory key leaked when project.repo_root is empty; body={body_no_dir!r}"
                 )
         finally:
             await relay_manager.shutdown()

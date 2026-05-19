@@ -99,11 +99,11 @@ All integration tests use the testcontainer fixture from `tests/integration/conf
 
 For each file in:
 - `tests/dashboard/test_chat_router.py`
-- `tests/dashboard/test_chat_endpoint_session_lifecycle.py`
-- `tests/dashboard/test_chat_endpoint_permission_flow.py`
-- `tests/dashboard/test_chat_endpoint_reconnect.py`
+- `tests/integration/test_chat_endpoint_session_lifecycle.py`
+- `tests/integration/test_chat_endpoint_permission_flow.py`
+- `tests/integration/test_chat_endpoint_reconnect.py`
 - `tests/dashboard/test_chat_panel_*.py`
-- `tests/dashboard/test_chat_config_allowlist_intersection.py`
+- `tests/integration/test_chat_config_allowlist_intersection.py`
 
 Replace every `/api/chat/sessions/{sid}` URL with `/api/chat/tabs/{tab_id}`. Replace every request body that previously contained session-only fields with the equivalent tab-scoped body. Behavioural assertions (status codes, response shapes for fields that survived the refactor, SSE event ordering) MUST NOT change — if a test was asserting `event.session_id`, it now asserts `event.tab_id`. **No test is deleted.** If a test becomes meaningless after refactor (e.g., it only asserted that an old endpoint exists), update it to the new equivalent rather than deleting.
 

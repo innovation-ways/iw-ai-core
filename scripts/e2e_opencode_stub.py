@@ -25,6 +25,93 @@ MODEL_ID = "stub/echo"
 EVENT_BUFFER_MAX = 256
 PERMISSION_TIMEOUT_SECONDS = 10.0
 
+# Per-chunk streaming delay. Real opencode emits one delta per LLM token at
+# ~50-100ms per token, so a fast model still leaves several seconds of
+# observable streaming for any non-trivial reply. The S16 browser
+# verifications (V2 "streaming tokens appear within 10s", V5 "Abort button
+# visible while streaming" + multi-tab switch flow) require a non-zero gap
+# between chunks; without it the entire reply lands in <50ms and the Abort
+# control flickers past too quickly to click.
+STREAM_CHUNK_DELAY_S = 0.5
+
+# Long-prompt threshold (chars). Prompts above this length trigger a longer
+# reply with more chunks, giving V5 a comfortable abort window — matches
+# the "Write a haiku and then explain each line in detail" V5 fixture.
+LONG_PROMPT_THRESHOLD = 40
+
+# Reply chunks for short prompts ("hi", "hello"). Total: ~1.6s streaming.
+SHORT_REPLY_CHUNKS = ["ok", " — ", "running", " ls"]
+
+# Reply chunks for long prompts. ~60 chunks × 0.5s ≈ 30s of streaming —
+# long enough for V5 to switch to Tab B, send a Tab B prompt, wait for
+# Tab B's reply to finish, switch back to Tab A, find the still-visible
+# Abort button on Tab A, click it, and observe `Run aborted.` Real
+# opencode replies to "Write a haiku and explain each line" are easily
+# 200+ tokens, so this remains representative of production timing.
+LONG_REPLY_CHUNKS = [
+    "Sure",
+    ", ",
+    "let",
+    " me",
+    " think",
+    " about",
+    " that",
+    " carefully",
+    ".",
+    " First",
+    ",",
+    " I'll",
+    " sketch",
+    " the",
+    " three-line",
+    " haiku",
+    ",",
+    " then",
+    " walk",
+    " through",
+    " each",
+    " line",
+    " with",
+    " short",
+    " notes",
+    " on",
+    " imagery",
+    ",",
+    " rhythm",
+    ",",
+    " and",
+    " meaning",
+    ".",
+    " The",
+    " imagery",
+    " grounds",
+    " the",
+    " abstraction",
+    " of",
+    " software",
+    " engineering",
+    " in",
+    " a",
+    " concrete",
+    " seasonal",
+    " moment",
+    ";",
+    " the",
+    " rhythm",
+    " of",
+    " five",
+    "-seven",
+    "-five",
+    " syllables",
+    " gives",
+    " it",
+    " the",
+    " traditional",
+    " haiku",
+    " cadence",
+    ".",
+]
+
 # CR-00057: the stub advertises a realistic provider catalog so the chat
 # allowlist round-trip (projects.toml -> Project.config["ai_assistant"] ->
 # /api/chat/config intersection) has something non-trivial to filter
@@ -233,16 +320,42 @@ def create_app(password: str) -> FastAPI:
 
         # Stream the assistant reply as a series of delta events so chat.js
         # exercises its accumulation guard, then finalise with message.updated.
+        # The stub paces chunks with a real wall-clock delay so the browser
+        # verification step can observe streaming-in-progress (V2) and click
+        # the per-tab Abort button while still streaming (V5). Without these
+        # delays the entire response would land in <50ms and the Abort
+        # control would flicker past faster than a UI test can react.
         assistant_mid = f"msg_{secrets.token_hex(4)}"
-        reply_chunks = ["ok", " — ", "running", " ls"]
+        reply_chunks = (
+            LONG_REPLY_CHUNKS if len(prompt_text) > LONG_PROMPT_THRESHOLD else SHORT_REPLY_CHUNKS
+        )
         accumulated = ""
-        for chunk in reply_chunks:
+        for i, chunk in enumerate(reply_chunks):
             accumulated += chunk
             await emit_message_part_updated(
                 message_id=assistant_mid,
                 delta=chunk,
                 accumulated_text=accumulated,
             )
+            # Skip the delay after the final chunk; the message.updated /
+            # session.idle events follow immediately.
+            if i < len(reply_chunks) - 1:
+                try:
+                    await asyncio.sleep(STREAM_CHUNK_DELAY_S)
+                except asyncio.CancelledError:
+                    # If aborted mid-stream, persist the partial reply and
+                    # emit session.idle with aborted=true so chat.js can
+                    # render the "Run aborted." indicator (V5 requirement).
+                    _append_history(
+                        session,
+                        message_id=assistant_mid,
+                        sid=sid,
+                        role="assistant",
+                        text=accumulated,
+                    )
+                    await emit_message_finalised(sid=sid, message_id=assistant_mid)
+                    await _finish_idle(sid, extra={"aborted": True})
+                    raise
 
         _append_history(
             session,
@@ -350,7 +463,19 @@ def create_app(password: str) -> FastAPI:
             raise HTTPException(status_code=404, detail="Unknown session")
         if session.permission_future is not None and not session.permission_future.done():
             session.permission_future.set_result("abort")
-        await _finish_idle(sid, {"aborted": True})
+        # If a prompt stream is in flight, cancel it. _process_prompt's
+        # CancelledError handler emits message.updated + a session.idle with
+        # aborted=True against the partial reply (V5 browser-verification
+        # contract). If no stream is active (e.g. the test path that calls
+        # abort AFTER the prompt completes), we still emit one terminal
+        # session.idle with aborted=True so callers always see a
+        # state-transition event.
+        cancelled_active = False
+        if session.active_task is not None and not session.active_task.done():
+            session.active_task.cancel()
+            cancelled_active = True
+        if not cancelled_active:
+            await _finish_idle(sid, {"aborted": True})
         return JSONResponse({})
 
     @app.post("/session/{sid}/permissions/{rid}")

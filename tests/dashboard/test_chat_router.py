@@ -1,9 +1,8 @@
-"""Tests for the Dashboard AI Assistant chat router (F-00083 S03).
+"""Tests for the Dashboard AI Assistant chat router (F-00086 S08 tab-scoped rewrite).
 
 Uses FastAPI TestClient with mocked OpencodeClient/OpencodeRuntime so no live
 OpenCode binary is required. The db_session fixture (testcontainer) is used to
-satisfy the app's DB dependency — no DB operations are performed by the chat
-router itself.
+satisfy the app's DB dependency.
 
 Convention: context-chip threading uses the ``system`` field of the prompt body —
 when a ``context`` field is provided in POST /prompt, the router prepends
@@ -31,6 +30,7 @@ from fastapi.testclient import TestClient
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
 from dashboard.routers import chat as chat_mod
+from orch.chat import tab_service as _tab_service
 from orch.db.models import Project
 
 if TYPE_CHECKING:
@@ -103,13 +103,31 @@ def _make_relay(events: list[dict[str, Any]] | None = None) -> Any:
     return relay
 
 
+def _create_tab_in_db(
+    db_session: Session,
+    *,
+    project_id: str = "test-proj",
+    model: str = "prov-a/model-a",
+    opencode_session_id: str = "oc-sess-1",
+) -> Any:
+    """Insert a ChatTab row and commit. Returns the tab ORM object."""
+    tab, _ = _tab_service.create_tab(
+        db_session,
+        project_id=project_id,
+        model=model,
+        opencode_session_id=opencode_session_id,
+    )
+    db_session.commit()
+    return tab
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def chat_client(db_session: Session) -> Generator[TestClient, None, None]:
+def chat_client(db_session: Session, test_project: Project) -> Generator[TestClient, None, None]:
     """TestClient with healthy mock runtime + mocked chat dependencies."""
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
@@ -145,13 +163,19 @@ def app_no_runtime(db_session: Session) -> Generator[TestClient, None, None]:
 
 
 # ---------------------------------------------------------------------------
-# TC1 — create session returns session_id
+# TC1 — create tab returns tab object (was: create session returns session_id)
 # ---------------------------------------------------------------------------
 
 
 class TestCreateSession:
-    def test_create_session_returns_session_id(self, db_session: Session) -> None:
-        """POST /api/chat/sessions returns {session_id} from client.create_session."""
+    def test_create_session_returns_session_id(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """POST /api/chat/tabs returns {tab} with 201; the tab's opencode_session_id is set.
+
+        Adapted from legacy POST /api/chat/sessions → {"session_id": "..."}.
+        The new surface is POST /api/chat/tabs → 201 {"tab": {...}}.
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             mock_client = _make_client()
@@ -163,20 +187,37 @@ class TestCreateSession:
             app.state.relay_manager = _make_relay_manager()
             app.dependency_overrides[get_db] = lambda: db_session
             tc = TestClient(app, raise_server_exceptions=False)
-            resp = tc.post("/api/chat/sessions", json={})
-            assert resp.status_code == 200
-            assert resp.json() == {"session_id": "sess-1"}
+            resp = tc.post("/api/chat/tabs", json={"project_id": test_project.id})
+            assert resp.status_code == 201
+            body = resp.json()
+            assert "tab" in body
+            tab = body["tab"]
+            # The opencode_session_id is what the legacy test verified via session_id.
+            assert tab["opencode_session_id"] == "sess-1"
+            assert tab["project_id"] == test_project.id
         finally:
             app.dependency_overrides.clear()
             if original is not None:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
-    def test_create_session_passes_optional_fields(self, db_session: Session) -> None:
-        """Optional model/agent/directory are forwarded to client.create_session."""
+    def test_create_session_passes_optional_fields(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """Optional model/agent are forwarded to client.create_session.
+
+        Adapted: POST /api/chat/tabs accepts model and agent but NOT directory
+        in the request body. The directory is resolved from project.repo_root
+        (test_project.repo_root == "/repos/test").
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             mock_client = _make_client()
             mock_client.create_session = AsyncMock(return_value="sess-2")
+
+            # Ensure the requested model survives project-level allowlist intersection.
+            test_project.settings = {"ai_assistant": {"models": ["prov-a/model-a"]}}
+            db_session.add(test_project)
+            db_session.commit()
 
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
@@ -185,12 +226,17 @@ class TestCreateSession:
             app.dependency_overrides[get_db] = lambda: db_session
             tc = TestClient(app, raise_server_exceptions=False)
             resp = tc.post(
-                "/api/chat/sessions",
-                json={"model": "m", "agent": "a", "directory": "/tmp"},  # noqa: S108
+                "/api/chat/tabs",
+                json={
+                    "project_id": test_project.id,
+                    "model": "prov-a/model-a",
+                    "agent": "a",
+                },
             )
-            assert resp.status_code == 200
+            assert resp.status_code == 201
+            # directory is resolved from project.repo_root="/repos/test", not from request body.
             mock_client.create_session.assert_awaited_once_with(
-                model="m", agent="a", directory="/tmp"
+                model="prov-a/model-a", agent="a", directory="/repos/test"
             )
         finally:
             app.dependency_overrides.clear()
@@ -205,31 +251,43 @@ class TestCreateSession:
 
 class TestRuntimeUnavailable:
     def test_runtime_none_create_session_returns_503(self, app_no_runtime: TestClient) -> None:
-        resp = app_no_runtime.post("/api/chat/sessions", json={})
+        # POST /api/chat/tabs requires a runtime; 503 when unavailable.
+        # project_id "any-id" is fine — the 503 short-circuits before DB lookup.
+        resp = app_no_runtime.post("/api/chat/tabs", json={"project_id": "any-id"})
         assert resp.status_code == 503
         assert "unavailable" in resp.json()["error"].lower()
 
     def test_runtime_none_stream_returns_503(self, app_no_runtime: TestClient) -> None:
-        resp = app_no_runtime.get("/api/chat/sessions/sid-x/stream")
+        # GET /api/chat/tabs/{tab_id}/stream: 503 fires before DB/tab lookup when
+        # runtime is None (the health check dependency returns False immediately).
+        resp = app_no_runtime.get("/api/chat/tabs/00000000-0000-0000-0000-000000000000/stream")
         assert resp.status_code == 503
 
     def test_runtime_none_prompt_returns_503(self, app_no_runtime: TestClient) -> None:
-        resp = app_no_runtime.post("/api/chat/sessions/sid-x/prompt", json={"text": "hi"})
+        # POST /api/chat/tabs/{tab_id}/prompt: health gate fires first → 503.
+        resp = app_no_runtime.post(
+            "/api/chat/tabs/00000000-0000-0000-0000-000000000000/prompt",
+            json={"text": "hi"},
+        )
         assert resp.status_code == 503
 
     def test_runtime_none_abort_returns_503(self, app_no_runtime: TestClient) -> None:
-        resp = app_no_runtime.post("/api/chat/sessions/sid-x/abort")
+        # POST /api/chat/tabs/{tab_id}/abort: health gate fires first → 503.
+        resp = app_no_runtime.post("/api/chat/tabs/00000000-0000-0000-0000-000000000000/abort")
         assert resp.status_code == 503
 
     def test_runtime_none_permissions_returns_503(self, app_no_runtime: TestClient) -> None:
+        # POST /api/chat/tabs/{tab_id}/permissions/{rid}: health gate fires first → 503.
         resp = app_no_runtime.post(
-            "/api/chat/sessions/sid-x/permissions/rid-y",
+            "/api/chat/tabs/00000000-0000-0000-0000-000000000000/permissions/rid-y",
             json={"response": "allow"},
         )
         assert resp.status_code == 503
 
-    def test_runtime_unhealthy_returns_503(self, db_session: Session) -> None:
-        """health() returning False also yields 503."""
+    def test_runtime_unhealthy_returns_503(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """health() returning False also yields 503 on tab creation."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             rt = MagicMock()
@@ -241,7 +299,7 @@ class TestRuntimeUnavailable:
             app.state.relay_manager = _make_relay_manager()
             app.dependency_overrides[get_db] = lambda: db_session
             tc = TestClient(app, raise_server_exceptions=False)
-            resp = tc.post("/api/chat/sessions", json={})
+            resp = tc.post("/api/chat/tabs", json={"project_id": test_project.id})
             assert resp.status_code == 503
         finally:
             app.dependency_overrides.clear()
@@ -253,13 +311,51 @@ class TestRuntimeUnavailable:
         resp = app_no_runtime.get("/api/chat/config")
         assert 200 <= resp.status_code < 600
 
-    def test_list_sessions_runtime_none_returns_503(self, app_no_runtime: TestClient) -> None:
-        resp = app_no_runtime.get("/api/chat/sessions")
-        assert resp.status_code == 503
+    def test_list_tabs_no_runtime_returns_200(self, app_no_runtime: TestClient) -> None:
+        """GET /api/chat/tabs is a pure DB endpoint and returns 200 even when runtime is None.
 
-    def test_get_session_runtime_none_returns_503(self, app_no_runtime: TestClient) -> None:
-        resp = app_no_runtime.get("/api/chat/sessions/sid-x")
-        assert resp.status_code == 503
+        Behaviour change from F-00086 S06: the legacy GET /api/chat/sessions was
+        health-gated (503 when runtime down). The new GET /api/chat/tabs is NOT
+        health-gated — it is a pure DB read that always returns 200.
+        """
+        # project_id "any-id" — no rows exist, returns empty list.
+        resp = app_no_runtime.get("/api/chat/tabs?project_id=any-id")
+        # Changed from 503 → 200: list-tabs is not health-gated.
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "tabs" in body
+
+    def test_get_session_runtime_none_returns_503(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """GET /api/chat/tabs/{tab_id}: 404 fires before 503 (tab lookup happens first).
+
+        The production get_tab handler does the DB lookup BEFORE the health check,
+        so a missing tab returns 404 regardless of runtime health. To test the
+        503 path, we must create a real tab first.
+        """
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            # Create a real tab so the 404 is bypassed and the 503 health gate fires.
+            tab = _create_tab_in_db(
+                db_session,
+                project_id=test_project.id,
+                opencode_session_id="sid-x",
+            )
+            tab_id = str(tab.id)
+
+            app = create_app()
+            app.state.opencode_runtime = None
+            app.state.opencode_client = None
+            app.state.relay_manager = None
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+            resp = tc.get(f"/api/chat/tabs/{tab_id}")
+            assert resp.status_code == 503
+        finally:
+            app.dependency_overrides.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
 
 # ---------------------------------------------------------------------------
@@ -767,10 +863,13 @@ class TestConfigProjectAllowlist:
             assert resp_b.status_code == 200
             assert resp_a.json()["models"] == ["prov-a/model-a"]
             assert resp_b.json()["models"] == ["prov-a/model-b"]
-            assert set(chat_mod._config_cache) >= {"proj-a", "proj-b"}
+            # Cache keys include ":opencode" suffix (format: "{project_id}:{runtime}").
+            assert any("proj-a" in k for k in chat_mod._config_cache)
+            assert any("proj-b" in k for k in chat_mod._config_cache)
 
             # mutate one cache slot and confirm it doesn't affect the other slot
-            chat_mod._config_cache["proj-a"]["data"]["models"] = ["poisoned/model"]
+            proj_a_key = next(k for k in chat_mod._config_cache if "proj-a" in k)
+            chat_mod._config_cache[proj_a_key]["data"]["models"] = ["poisoned/model"]
             resp_b_again = tc.get("/api/chat/config?project_id=proj-b")
             assert resp_b_again.json()["models"] == ["prov-a/model-b"]
         finally:
@@ -1018,8 +1117,15 @@ class TestSkillsLayoutSupport:
 
 
 class TestStreamEndpoint:
-    def test_stream_endpoint_forwards_relay_events(self, db_session: Session) -> None:
-        """SSE response contains three event: lines from the relay."""
+    def test_stream_endpoint_forwards_relay_events(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """SSE response contains three event: lines from the relay.
+
+        Adapted: URL changed from /api/chat/sessions/{sid}/stream to
+        /api/chat/tabs/{tab_id}/stream. A real tab row is created first so the
+        relay manager lookup works.
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             events = [
@@ -1030,6 +1136,12 @@ class TestStreamEndpoint:
             relay = _make_relay(events)
             rm = _make_relay_manager(relay)
 
+            # Create a tab row so the router can find it.
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="oc-sid-1"
+            )
+            tab_id = str(tab.id)
+
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
             app.state.opencode_client = _make_client()
@@ -1038,7 +1150,7 @@ class TestStreamEndpoint:
 
             with (
                 TestClient(app, raise_server_exceptions=False) as tc,
-                tc.stream("GET", "/api/chat/sessions/sid-1/stream") as resp,
+                tc.stream("GET", f"/api/chat/tabs/{tab_id}/stream") as resp,
             ):
                 assert resp.status_code == 200
                 assert resp.headers.get("Cache-Control") == "no-cache"
@@ -1053,12 +1165,21 @@ class TestStreamEndpoint:
         event_lines = [ln for ln in body.splitlines() if ln.startswith("event:")]
         assert len(event_lines) == 3, f"Expected 3 event lines, got {len(event_lines)}: {body!r}"
 
-    def test_stream_sse_headers(self, db_session: Session) -> None:
-        """SSE endpoint carries the required anti-buffering headers."""
+    def test_stream_sse_headers(self, db_session: Session, test_project: Project) -> None:
+        """SSE endpoint carries the required anti-buffering headers.
+
+        Adapted: URL changed from /api/chat/sessions/{sid}/stream to
+        /api/chat/tabs/{tab_id}/stream.
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             relay = _make_relay([])
             rm = _make_relay_manager(relay)
+
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="oc-sid-h"
+            )
+            tab_id = str(tab.id)
 
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
@@ -1068,7 +1189,7 @@ class TestStreamEndpoint:
 
             with (
                 TestClient(app, raise_server_exceptions=False) as tc,
-                tc.stream("GET", "/api/chat/sessions/sid-h/stream") as resp,
+                tc.stream("GET", f"/api/chat/tabs/{tab_id}/stream") as resp,
             ):
                 assert resp.headers.get("Cache-Control") == "no-cache"
                 assert resp.headers.get("X-Accel-Buffering") == "no"
@@ -1078,8 +1199,12 @@ class TestStreamEndpoint:
             if original is not None:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
-    def test_stream_sse_event_format(self, db_session: Session) -> None:
-        """Each relay event is yielded as event:/data:/id: lines."""
+    def test_stream_sse_event_format(self, db_session: Session, test_project: Project) -> None:
+        """Each relay event is yielded as event:/data:/id: lines.
+
+        Adapted: URL changed from /api/chat/sessions/{sid}/stream to
+        /api/chat/tabs/{tab_id}/stream.
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             events = [
@@ -1087,6 +1212,11 @@ class TestStreamEndpoint:
             ]
             relay = _make_relay(events)
             rm = _make_relay_manager(relay)
+
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="oc-sid-2"
+            )
+            tab_id = str(tab.id)
 
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
@@ -1096,7 +1226,7 @@ class TestStreamEndpoint:
 
             with (
                 TestClient(app, raise_server_exceptions=False) as tc,
-                tc.stream("GET", "/api/chat/sessions/sid-2/stream") as resp,
+                tc.stream("GET", f"/api/chat/tabs/{tab_id}/stream") as resp,
             ):
                 body = resp.read().decode()
         finally:
@@ -1118,8 +1248,14 @@ class TestStreamEndpoint:
 
 
 class TestStreamLastEventId:
-    def test_stream_endpoint_passes_last_event_id(self, db_session: Session) -> None:
-        """The Last-Event-ID request header is passed to relay.subscribe()."""
+    def test_stream_endpoint_passes_last_event_id(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """The Last-Event-ID request header is passed to relay.subscribe().
+
+        Adapted: URL changed from /api/chat/sessions/{sid}/stream to
+        /api/chat/tabs/{tab_id}/stream. A real tab row is required.
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             received_last_event_id: list[str | None] = []
@@ -1135,6 +1271,11 @@ class TestStreamLastEventId:
             relay.subscribe = _fake_subscribe
             rm = _make_relay_manager(relay)
 
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="oc-sid-3"
+            )
+            tab_id = str(tab.id)
+
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
             app.state.opencode_client = _make_client()
@@ -1145,7 +1286,7 @@ class TestStreamLastEventId:
                 TestClient(app, raise_server_exceptions=False) as tc,
                 tc.stream(
                     "GET",
-                    "/api/chat/sessions/sid-3/stream",
+                    f"/api/chat/tabs/{tab_id}/stream",
                     headers={"Last-Event-ID": "evt-42"},
                 ),
             ):
@@ -1166,12 +1307,24 @@ class TestStreamLastEventId:
 
 
 class TestPromptWithContextChip:
-    def test_prompt_with_context_chip_threaded(self, db_session: Session) -> None:
-        """POST /prompt with context prepends chip to the system message."""
+    def test_prompt_with_context_chip_threaded(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """POST /api/chat/tabs/{tab_id}/prompt with context prepends chip to system message.
+
+        Adapted: URL changed from /api/chat/sessions/{sid}/prompt. A real tab row
+        is inserted first so the router can look it up. The mock client.prompt is
+        called with sid=tab.opencode_session_id.
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             mock_client = _make_client()
             mock_client.prompt = AsyncMock(return_value=None)
+
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="oc-sid-4"
+            )
+            tab_id = str(tab.id)
 
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
@@ -1180,7 +1333,7 @@ class TestPromptWithContextChip:
             app.dependency_overrides[get_db] = lambda: db_session
             tc = TestClient(app, raise_server_exceptions=False)
             resp = tc.post(
-                "/api/chat/sessions/sid-4/prompt",
+                f"/api/chat/tabs/{tab_id}/prompt",
                 json={
                     "text": "hello",
                     "context": {"type": "item", "id": "F-00083", "title": "F-00083"},
@@ -1201,12 +1354,22 @@ class TestPromptWithContextChip:
             if original is not None:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
-    def test_prompt_without_context_no_system(self, db_session: Session) -> None:
-        """POST /prompt without context passes no system kwarg (or None)."""
+    def test_prompt_without_context_no_system(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """POST /api/chat/tabs/{tab_id}/prompt without context passes no system kwarg (or None).
+
+        Adapted: URL changed from /api/chat/sessions/{sid}/prompt.
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             mock_client = _make_client()
             mock_client.prompt = AsyncMock(return_value=None)
+
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="oc-sid-5"
+            )
+            tab_id = str(tab.id)
 
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
@@ -1215,7 +1378,7 @@ class TestPromptWithContextChip:
             app.dependency_overrides[get_db] = lambda: db_session
             tc = TestClient(app, raise_server_exceptions=False)
             resp = tc.post(
-                "/api/chat/sessions/sid-5/prompt",
+                f"/api/chat/tabs/{tab_id}/prompt",
                 json={"text": "hello"},
             )
             assert resp.status_code == 204, resp.text
@@ -1228,8 +1391,18 @@ class TestPromptWithContextChip:
             if original is not None:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
-    def test_prompt_returns_204(self, chat_client: TestClient) -> None:
-        resp = chat_client.post("/api/chat/sessions/sid-p/prompt", json={"text": "test"})
+    def test_prompt_returns_204(
+        self, db_session: Session, test_project: Project, chat_client: TestClient
+    ) -> None:
+        """POST /api/chat/tabs/{tab_id}/prompt returns 204.
+
+        Adapted: URL changed from /api/chat/sessions/{sid}/prompt. chat_client
+        fixture provides a healthy runtime; a real tab row is required.
+        """
+        tab = _create_tab_in_db(
+            db_session, project_id=test_project.id, opencode_session_id="oc-sid-p"
+        )
+        resp = chat_client.post(f"/api/chat/tabs/{tab.id}/prompt", json={"text": "test"})
         assert resp.status_code == 204
 
 
@@ -1239,12 +1412,22 @@ class TestPromptWithContextChip:
 
 
 class TestPermissionReply:
-    def test_permission_reply_forwards(self, db_session: Session) -> None:
-        """POST /permissions/{rid} forwards body to client.reply_permission(sid, rid, ...)."""
+    def test_permission_reply_forwards(self, db_session: Session, test_project: Project) -> None:
+        """POST /api/chat/tabs/{tab_id}/permissions/{rid} forwards body to client.reply_permission.
+
+        Adapted: URL changed from /api/chat/sessions/{sid}/permissions/{rid}.
+        The client is called with tab.opencode_session_id (not the tab_id directly).
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             mock_client = _make_client()
             mock_client.reply_permission = AsyncMock(return_value=None)
+
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="oc-sid-6"
+            )
+            tab_id = str(tab.id)
+            sid = tab.opencode_session_id  # "oc-sid-6"
 
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
@@ -1253,12 +1436,12 @@ class TestPermissionReply:
             app.dependency_overrides[get_db] = lambda: db_session
             tc = TestClient(app, raise_server_exceptions=False)
             resp = tc.post(
-                "/api/chat/sessions/sid-6/permissions/rid-7",
+                f"/api/chat/tabs/{tab_id}/permissions/rid-7",
                 json={"response": "allow", "remember": True},
             )
             assert resp.status_code == 204, resp.text
             mock_client.reply_permission.assert_awaited_once_with(
-                "sid-6",
+                sid,
                 "rid-7",
                 "allow",
                 remember=True,
@@ -1268,12 +1451,23 @@ class TestPermissionReply:
             if original is not None:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
-    def test_permission_reply_without_remember(self, db_session: Session) -> None:
-        """remember defaults to False when not supplied."""
+    def test_permission_reply_without_remember(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """remember defaults to False when not supplied.
+
+        Adapted: URL changed from /api/chat/sessions/{sid}/permissions/{rid}.
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             mock_client = _make_client()
             mock_client.reply_permission = AsyncMock(return_value=None)
+
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="oc-sid-8"
+            )
+            tab_id = str(tab.id)
+            sid = tab.opencode_session_id  # "oc-sid-8"
 
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
@@ -1282,12 +1476,12 @@ class TestPermissionReply:
             app.dependency_overrides[get_db] = lambda: db_session
             tc = TestClient(app, raise_server_exceptions=False)
             resp = tc.post(
-                "/api/chat/sessions/sid-8/permissions/rid-9",
+                f"/api/chat/tabs/{tab_id}/permissions/rid-9",
                 json={"response": "deny"},
             )
             assert resp.status_code == 204
             mock_client.reply_permission.assert_awaited_once_with(
-                "sid-8",
+                sid,
                 "rid-9",
                 "deny",
                 remember=False,
@@ -1297,49 +1491,78 @@ class TestPermissionReply:
             if original is not None:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
-    def test_abort_returns_204(self, chat_client: TestClient) -> None:
-        resp = chat_client.post("/api/chat/sessions/sid-ab/abort")
+    def test_abort_returns_204(
+        self, db_session: Session, test_project: Project, chat_client: TestClient
+    ) -> None:
+        """POST /api/chat/tabs/{tab_id}/abort returns 204.
+
+        Adapted: URL changed from /api/chat/sessions/{sid}/abort. chat_client
+        fixture provides a healthy runtime; a real tab row is required.
+        """
+        tab = _create_tab_in_db(
+            db_session, project_id=test_project.id, opencode_session_id="oc-sid-ab"
+        )
+        resp = chat_client.post(f"/api/chat/tabs/{tab.id}/abort")
         assert resp.status_code == 204
         # Verify abort was delegated to the mocked client
         # (chat_client fixture uses _make_client() which has abort=AsyncMock)
 
 
 # ---------------------------------------------------------------------------
-# Additional: list sessions and get session
+# Additional: list tabs and get tab (was: list sessions / get session)
 # ---------------------------------------------------------------------------
 
 
 class TestSessionEndpoints:
-    def test_list_sessions(self, db_session: Session) -> None:
+    def test_list_sessions(self, db_session: Session, test_project: Project) -> None:
+        """GET /api/chat/tabs returns {"tabs": [...]} — the list of tabs for a project.
+
+        Adapted: URL changed from /api/chat/sessions (which returned a raw list).
+        The new surface returns {"tabs": [...]} with 200 (always, no health gate).
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
-            mock_client = _make_client()
-            mock_client.list_sessions = AsyncMock(
-                return_value=[{"id": "s1", "created_at": "2026-01-01T00:00:00Z"}]
+            # Create one tab so the list is non-empty.
+            _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="oc-sess-s1"
             )
 
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
-            app.state.opencode_client = mock_client
+            app.state.opencode_client = _make_client()
             app.state.relay_manager = _make_relay_manager()
             app.dependency_overrides[get_db] = lambda: db_session
             tc = TestClient(app, raise_server_exceptions=False)
-            resp = tc.get("/api/chat/sessions")
+            resp = tc.get(f"/api/chat/tabs?project_id={test_project.id}")
             assert resp.status_code == 200
             data = resp.json()
-            assert isinstance(data, list)
-            assert data[0]["id"] == "s1"
+            # New surface: {"tabs": [...]} not a raw list.
+            assert "tabs" in data
+            assert isinstance(data["tabs"], list)
+            # At least one tab created above should be present.
+            assert len(data["tabs"]) >= 1
+            assert data["tabs"][0]["opencode_session_id"] == "oc-sess-s1"
         finally:
             app.dependency_overrides.clear()
             if original is not None:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
-    def test_get_session(self, db_session: Session) -> None:
+    def test_get_session(self, db_session: Session, test_project: Project) -> None:
+        """GET /api/chat/tabs/{tab_id} returns {"tab": {...}, "session": {...}, "messages": [...]}.
+
+        Adapted: URL changed from /api/chat/sessions/{sid}. The response shape now
+        includes both "tab" (DB row) and "session"/"messages" (from OpenCode client).
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             mock_client = _make_client()
-            mock_client.get_session = AsyncMock(return_value={"id": "s1"})
+            mock_client.get_session = AsyncMock(return_value={"id": "oc-sess-s1"})
             mock_client.get_messages = AsyncMock(return_value=[{"role": "user", "content": "hi"}])
+
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="oc-sess-s1"
+            )
+            tab_id = str(tab.id)
 
             app = create_app()
             app.state.opencode_runtime = _make_healthy_runtime()
@@ -1347,9 +1570,11 @@ class TestSessionEndpoints:
             app.state.relay_manager = _make_relay_manager()
             app.dependency_overrides[get_db] = lambda: db_session
             tc = TestClient(app, raise_server_exceptions=False)
-            resp = tc.get("/api/chat/sessions/s1")
+            resp = tc.get(f"/api/chat/tabs/{tab_id}")
             assert resp.status_code == 200
             data = resp.json()
+            # New shape: tab details + upstream session + messages.
+            assert "tab" in data
             assert "session" in data
             assert "messages" in data
         finally:
