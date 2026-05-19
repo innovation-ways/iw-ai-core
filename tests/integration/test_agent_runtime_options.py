@@ -132,7 +132,14 @@ class TestAgentRuntimeOptionsTable:
         assert required.issubset(col_names), f"Missing columns: {required - col_names}"
 
     def test_seed_rows_present(self, db_session, seed_agent_runtime_options) -> None:
-        """All seed rows are present with correct values."""
+        """All seed rows are present with correct values.
+
+        CR-00062 added two Pi rows (sort_order=25 and 26) via Alembic
+        migration ``6d78323d0954_add_pi_runtime_options``. The fixture
+        re-seeds the F-00081 rows with ``ON CONFLICT (id) DO NOTHING``,
+        so the table holds the F-00081 + GPT-5.3 Codex + Pi rows after
+        migration.
+        """
         rows = db_session.execute(
             text("""
                 SELECT cli_tool, model, is_default, sort_order
@@ -140,13 +147,15 @@ class TestAgentRuntimeOptionsTable:
                 ORDER BY sort_order
             """)
         ).fetchall()
-        assert len(rows) == 6, f"Expected 6 rows, got {len(rows)}"
+        assert len(rows) == 8, f"Expected 8 rows, got {len(rows)}"
         assert rows[0] == ("opencode", "minimax/MiniMax-M2.7", True, 10)
         assert rows[1] == ("opencode", "openai/gpt-5.3-codex", False, 15)
         assert rows[2] == ("opencode", "claude-sonnet-4-6", False, 20)
-        assert rows[3] == ("opencode", "claude-opus-4-7", False, 30)
-        assert rows[4] == ("claude", "claude-sonnet-4-6", False, 40)
-        assert rows[5] == ("claude", "claude-opus-4-7", False, 50)
+        assert rows[3] == ("pi", "minimax/MiniMax-M2.7", False, 25)
+        assert rows[4] == ("pi", "openai/gpt-5.3-codex", False, 26)
+        assert rows[5] == ("opencode", "claude-opus-4-7", False, 30)
+        assert rows[6] == ("claude", "claude-sonnet-4-6", False, 40)
+        assert rows[7] == ("claude", "claude-opus-4-7", False, 50)
 
     def test_unique_constraint_on_cli_tool_model(
         self, db_session, seed_agent_runtime_options
@@ -182,7 +191,11 @@ class TestAgentRuntimeOptionsTable:
         db_session.rollback()
 
     def test_can_disable_non_default_row(self, db_session, seed_agent_runtime_options) -> None:
-        """Non-default rows can be disabled."""
+        """Non-default rows can be disabled.
+
+        Seven non-default rows: 5 F-00081 seeds (minus the MiniMax 2.7
+        default) + 1 OpenCode GPT-5.3 Codex + 2 Pi rows (CR-00062).
+        """
         result = db_session.execute(
             text("""
                 UPDATE agent_runtime_options
@@ -192,7 +205,7 @@ class TestAgentRuntimeOptionsTable:
             """)
         ).fetchall()
         db_session.commit()
-        assert len(result) == 5  # 5 non-default rows
+        assert len(result) == 7  # 7 non-default rows
 
 
 class TestAgentRuntimeOptionFKColumns:

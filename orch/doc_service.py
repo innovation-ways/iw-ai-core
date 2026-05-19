@@ -574,6 +574,11 @@ class DocService:
             command_issued = f'opencode run "/doc-job {job.id}" --dangerously-skip-permissions'
         elif cli_tool == "claude":
             command_issued = f'claude -p "/doc-job {job.id}" --permission-mode bypassPermissions'
+        elif cli_tool == "pi":
+            # CR-00062: pi.dev print-mode is permission-flag-free (R-00072 §7).
+            command_issued = f'pi -p "/doc-job {job.id}"'
+        else:
+            raise ValueError(f"Unknown cli_tool: {cli_tool!r}")
 
         from orch.doc_report import build_execution_report
 

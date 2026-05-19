@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "21de61b41cec"  # head — CR-00056 add prompt_text and fix_prompt_text
+_HEAD_REVISION = "6d78323d0954"  # head — CR-00062 add pi runtime options
 _PREV_REVISION = "678ac4dd44b7"  # F-00085 auto merge verdicts and project config (before head)
 
 

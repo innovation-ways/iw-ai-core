@@ -2244,7 +2244,10 @@ def _build_fix_launch_argv(cli_tool: str, inner_command: str) -> list[str]:
     * opencode behaves differently without a controlling TTY, so it is wrapped
       in ``script -qec <inner_command> /dev/null`` (``script`` runs the command
       via ``$SHELL -c``, allocating a PTY).
-    * other CLIs run directly under ``/bin/sh -c <inner_command>``.
+    * other CLIs (claude, pi) run directly under ``/bin/sh -c <inner_command>``.
+      Pi's print mode is documented to work under non-TTY stdout (R-00072 §1),
+      so it never needs the PTY wrapper — falling through to the unwrapped arm
+      is the correct behaviour, not a missing branch.
 
     Regression guard (I-00074): the previous implementation built
     ``f'script -qec "timeout … {command}" /dev/null'`` and ran it with
@@ -2257,6 +2260,28 @@ def _build_fix_launch_argv(cli_tool: str, inner_command: str) -> list[str]:
     if cli_tool == "opencode":
         return ["script", "-qec", inner_command, "/dev/null"]
     return ["/bin/sh", "-c", inner_command]
+
+
+def _build_fix_inner_command(cli_tool: str, prompt_path: str, resolved_model: str) -> str:
+    """Build the inner shell command launched for a fix-cycle agent run.
+
+    Mirrors ``batch_manager._build_initial_command`` — the two helpers must
+    stay in lockstep (drifting between them is exactly how I-00074 surfaced).
+    """
+    if cli_tool == "opencode":
+        return (
+            f'opencode run "$(cat {prompt_path})" --model {resolved_model} '
+            f"--dangerously-skip-permissions"
+        )
+    if cli_tool == "claude":
+        return (
+            f'claude -p "$(cat {prompt_path})" --model {resolved_model} '
+            f"--dangerously-skip-permissions"
+        )
+    if cli_tool == "pi":
+        # CR-00062: pi.dev print-mode is permission-flag-free (R-00072 §7).
+        return f'pi -p "$(cat {prompt_path})" --model {resolved_model}'
+    raise ValueError(f"Unknown cli_tool: {cli_tool!r}")
 
 
 def _launch_fix_agent(
@@ -2312,16 +2337,11 @@ def _launch_fix_agent(
     # I-00074: cap the prompt so a bloated fix-cycle prompt can't blow past
     # execve's per-argument limit when it's spliced in as `"$(cat …)"` below.
     write_agent_prompt(tmp_prompt, prompt_text)
-    if resolved_cli_tool == "opencode":
-        command = (
-            f'opencode run "$(cat {tmp_prompt})" --model {resolved_model} '
-            f"--dangerously-skip-permissions"
-        )
-    else:
-        command = (
-            f'claude -p "$(cat {tmp_prompt})" --model {resolved_model} '
-            f"--dangerously-skip-permissions"
-        )
+    command = _build_fix_inner_command(
+        cli_tool=resolved_cli_tool,
+        prompt_path=str(tmp_prompt),
+        resolved_model=resolved_model,
+    )
 
     # Log file
     log_dir = Path(worktree_path) / "ai-dev" / "logs"
