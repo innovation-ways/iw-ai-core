@@ -7,7 +7,7 @@
       <h3 class="text-sm font-semibold">Verdict rollup</h3>
       <div class="flex gap-1 text-xs">
         {% for w in ['7d', '30d'] %}
-          <a hx-get="/project/{{ request.path_params.project_id }}/auto-merge/rollup?window={{ w }}" hx-target="#auto-merge-rollup" hx-swap="innerHTML" class="px-2 py-1 rounded border {% if window == w %}bg-primary text-primary-foreground border-primary{% else %}border-border{% endif %}">{{ w }}</a>
+          <button type="button" hx-get="/project/{{ request.path_params.project_id }}/auto-merge/rollup?window={{ w }}" hx-target="#auto-merge-rollup" hx-swap="innerHTML" class="px-2 py-1 rounded border {% if window == w %}bg-primary text-primary-foreground border-primary{% else %}border-border{% endif %}">{{ w }}</button>
         {% endfor %}
       </div>
     </div>

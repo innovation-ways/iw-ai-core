@@ -202,21 +202,35 @@ class TestCascadeThrashingDetectorWiring:
     def dead_pid(self) -> int:
         """Return a PID guaranteed to be dead.
 
-        Strategy: use os.getpid() + 99999 — a PID far beyond any real process
-        range on a Linux system (default pid_max is 32768 or 4194304; the sum
-        is guaranteed not to exist). We verify at fixture construction that
-        no process with this PID could be alive, then return it directly.
-        No subprocess overhead.
+        Strategy: pick a PID at or above ``/proc/sys/kernel/pid_max``. The
+        kernel never assigns a PID >= pid_max, so no real process can occupy
+        it. We verify via ``os.kill(pid, 0)`` that the PID is not alive
+        before returning it.
 
-        See: /proc/sys/kernel/pid_max — most Linux systems max out at 32768
-        (older) or 4194304 ( newer). os.getpid() + 99999 >> both limits.
+        The earlier strategy of ``os.getpid() + 99999`` was wrong on systems
+        where the pytest process is given a low PID — the synthesized value
+        could still collide with a real process and the "belt-and-suspenders"
+        ``> 1_000_000`` assertion fired pre-emptively (I-00100 follow-up).
         """
-        pid = os.getpid() + 99999
-        # Belt-and-suspenders: assert the PID can't exist even in theory.
-        # This guard would fail only if pid_max were somehow raised to > 2^31,
-        # which is not possible on any Linux kernel that supports pytest.
-        assert pid > 1_000_000, f"Unexpectedly small pid_max: {pid}"
-        return pid
+        with open("/proc/sys/kernel/pid_max", encoding="ascii") as f:
+            pid_max = int(f.read().strip())
+        pid = pid_max  # kernel never assigns this value to a real process
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return pid  # confirmed dead — expected path
+        except PermissionError:
+            # PID exists but isn't ours (shouldn't happen at >= pid_max, but
+            # be conservative). Step one above and retry once.
+            pid -= 1
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return pid
+            raise AssertionError(f"Could not find a dead PID near pid_max={pid_max}") from None
+        raise AssertionError(
+            f"PID {pid} (== pid_max={pid_max}) appears alive — kernel invariant violated"
+        )
 
     def test_thrashing_detector_fires_when_driven_through_check_active_fix_cycles(
         self,
