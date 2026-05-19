@@ -1,4 +1,4 @@
-"""Unit tests for `orch.chat.opencode_runtime.OpencodeRuntime`.
+"""Unit tests for `orch.chat.opencode.runtime.OpencodeRuntime`.
 
 Tests are written FIRST (TDD-RED). They cover:
 
@@ -118,7 +118,7 @@ def _make_httpx_get(seq: list[int]) -> Any:
 @pytest.mark.asyncio
 async def test_start_health_stop_happy_path(tmp_path: Path) -> None:
     """start() polls /global/health, returns when 200; stop() cleans up."""
-    from orch.chat.opencode_runtime import OpencodeRuntime
+    from orch.chat.opencode.runtime import OpencodeRuntime
 
     proc = _FakeProc()
     create_exec = AsyncMock(return_value=proc)
@@ -127,8 +127,8 @@ async def test_start_health_stop_happy_path(tmp_path: Path) -> None:
     fake_client.aclose = AsyncMock()
 
     with (
-        patch("orch.chat.opencode_runtime.asyncio.create_subprocess_exec", create_exec),
-        patch("orch.chat.opencode_runtime.httpx.AsyncClient", return_value=fake_client),
+        patch("orch.chat.opencode.runtime.asyncio.create_subprocess_exec", create_exec),
+        patch("orch.chat.opencode.runtime.httpx.AsyncClient", return_value=fake_client),
     ):
         rt = OpencodeRuntime(repo_root=tmp_path, port=4096, bin_path="opencode")
         await rt.start()
@@ -145,7 +145,7 @@ async def test_start_health_stop_happy_path(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_start_health_timeout_raises(tmp_path: Path) -> None:
     """If /global/health never returns 200, start() raises RuntimeError."""
-    from orch.chat.opencode_runtime import OpencodeRuntime
+    from orch.chat.opencode.runtime import OpencodeRuntime
 
     proc = _FakeProc()
     create_exec = AsyncMock(return_value=proc)
@@ -159,9 +159,9 @@ async def test_start_health_timeout_raises(tmp_path: Path) -> None:
     times = iter([0.0, 100.0, 100.0, 100.0])
 
     with (
-        patch("orch.chat.opencode_runtime.asyncio.create_subprocess_exec", create_exec),
-        patch("orch.chat.opencode_runtime.httpx.AsyncClient", return_value=fake_client),
-        patch("orch.chat.opencode_runtime.time.monotonic", side_effect=lambda: next(times)),
+        patch("orch.chat.opencode.runtime.asyncio.create_subprocess_exec", create_exec),
+        patch("orch.chat.opencode.runtime.httpx.AsyncClient", return_value=fake_client),
+        patch("orch.chat.opencode.runtime.time.monotonic", side_effect=lambda: next(times)),
     ):
         rt = OpencodeRuntime(
             repo_root=tmp_path,
@@ -176,7 +176,7 @@ async def test_start_health_timeout_raises(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_stop_sigterm_then_sigkill(tmp_path: Path) -> None:
     """If SIGTERM is ignored, stop() escalates to SIGKILL after the grace window."""
-    from orch.chat.opencode_runtime import OpencodeRuntime
+    from orch.chat.opencode.runtime import OpencodeRuntime
 
     proc = _FakeProc(ignore_sigterm=True)
     create_exec = AsyncMock(return_value=proc)
@@ -185,8 +185,8 @@ async def test_stop_sigterm_then_sigkill(tmp_path: Path) -> None:
     fake_client.aclose = AsyncMock()
 
     with (
-        patch("orch.chat.opencode_runtime.asyncio.create_subprocess_exec", create_exec),
-        patch("orch.chat.opencode_runtime.httpx.AsyncClient", return_value=fake_client),
+        patch("orch.chat.opencode.runtime.asyncio.create_subprocess_exec", create_exec),
+        patch("orch.chat.opencode.runtime.httpx.AsyncClient", return_value=fake_client),
     ):
         # Shorten the stop grace window to keep the test fast.
         rt = OpencodeRuntime(
@@ -205,7 +205,7 @@ async def test_stop_sigterm_then_sigkill(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_password_not_logged(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     """The generated password literal must never appear in log records."""
-    from orch.chat.opencode_runtime import OpencodeRuntime
+    from orch.chat.opencode.runtime import OpencodeRuntime
 
     proc = _FakeProc()
     create_exec = AsyncMock(return_value=proc)
@@ -213,10 +213,10 @@ async def test_password_not_logged(tmp_path: Path, caplog: pytest.LogCaptureFixt
     fake_client.get = _make_httpx_get([200])
     fake_client.aclose = AsyncMock()
 
-    caplog.set_level(logging.DEBUG, logger="orch.chat.opencode_runtime")
+    caplog.set_level(logging.DEBUG, logger="orch.chat.opencode.runtime")
     with (
-        patch("orch.chat.opencode_runtime.asyncio.create_subprocess_exec", create_exec),
-        patch("orch.chat.opencode_runtime.httpx.AsyncClient", return_value=fake_client),
+        patch("orch.chat.opencode.runtime.asyncio.create_subprocess_exec", create_exec),
+        patch("orch.chat.opencode.runtime.httpx.AsyncClient", return_value=fake_client),
     ):
         rt = OpencodeRuntime(repo_root=tmp_path, port=4096, bin_path="opencode")
         await rt.start()
@@ -236,12 +236,12 @@ async def test_password_not_logged(tmp_path: Path, caplog: pytest.LogCaptureFixt
 @pytest.mark.asyncio
 async def test_missing_binary_clear_error(tmp_path: Path) -> None:
     """A non-existent binary path surfaces a wrapped RuntimeError with a clear message."""
-    from orch.chat.opencode_runtime import OpencodeRuntime
+    from orch.chat.opencode.runtime import OpencodeRuntime
 
     async def _raise_fnf(*_a: Any, **_kw: Any) -> Any:
         raise FileNotFoundError(2, "No such file or directory", "/does/not/exist/opencode")
 
-    with patch("orch.chat.opencode_runtime.asyncio.create_subprocess_exec", side_effect=_raise_fnf):
+    with patch("orch.chat.opencode.runtime.asyncio.create_subprocess_exec", side_effect=_raise_fnf):
         rt = OpencodeRuntime(
             repo_root=tmp_path,
             port=4096,
@@ -260,7 +260,7 @@ async def test_restart_on_crash_capped_at_3_per_60s(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A crashing subprocess is restarted at most 3 times in a 60-s window."""
-    from orch.chat.opencode_runtime import OpencodeRuntime
+    from orch.chat.opencode.runtime import OpencodeRuntime
 
     procs: list[_FakeProc] = []
 
@@ -278,14 +278,14 @@ async def test_restart_on_crash_capped_at_3_per_60s(
     # Freeze monotonic clock so all restarts fall inside the 60-s window.
     # Don't patch asyncio.sleep globally — that would also disable the test's
     # own asyncio.sleep(0) yields. Instead, set the backoff to 0 via the ctor.
-    caplog.set_level(logging.DEBUG, logger="orch.chat.opencode_runtime")
+    caplog.set_level(logging.DEBUG, logger="orch.chat.opencode.runtime")
     with (
         patch(
-            "orch.chat.opencode_runtime.asyncio.create_subprocess_exec",
+            "orch.chat.opencode.runtime.asyncio.create_subprocess_exec",
             new=AsyncMock(side_effect=_spawn),
         ),
-        patch("orch.chat.opencode_runtime.httpx.AsyncClient", return_value=fake_client),
-        patch("orch.chat.opencode_runtime.time.monotonic", return_value=1000.0),
+        patch("orch.chat.opencode.runtime.httpx.AsyncClient", return_value=fake_client),
+        patch("orch.chat.opencode.runtime.time.monotonic", return_value=1000.0),
     ):
         rt = OpencodeRuntime(
             repo_root=tmp_path,
@@ -321,7 +321,7 @@ async def test_pr_set_pdeathsig_set_on_linux(tmp_path: Path) -> None:
     """On Linux, the subprocess is spawned with a preexec_fn that wires
     PR_SET_PDEATHSIG → SIGTERM via prctl(2). On other platforms it is skipped.
     """
-    from orch.chat.opencode_runtime import OpencodeRuntime
+    from orch.chat.opencode.runtime import OpencodeRuntime
 
     proc = _FakeProc()
     create_exec = AsyncMock(return_value=proc)
@@ -334,10 +334,10 @@ async def test_pr_set_pdeathsig_set_on_linux(tmp_path: Path) -> None:
     fake_libc = MagicMock()
 
     with (
-        patch("orch.chat.opencode_runtime.sys.platform", "linux"),
-        patch("orch.chat.opencode_runtime.asyncio.create_subprocess_exec", create_exec),
-        patch("orch.chat.opencode_runtime.httpx.AsyncClient", return_value=fake_client),
-        patch("orch.chat.opencode_runtime.ctypes.CDLL", return_value=fake_libc),
+        patch("orch.chat.opencode.runtime.sys.platform", "linux"),
+        patch("orch.chat.opencode.runtime.asyncio.create_subprocess_exec", create_exec),
+        patch("orch.chat.opencode.runtime.httpx.AsyncClient", return_value=fake_client),
+        patch("orch.chat.opencode.runtime.ctypes.CDLL", return_value=fake_libc),
     ):
         rt = OpencodeRuntime(repo_root=tmp_path, port=4096, bin_path="opencode")
         await rt.start()
@@ -356,9 +356,9 @@ async def test_pr_set_pdeathsig_set_on_linux(tmp_path: Path) -> None:
     fake_client2.get = _make_httpx_get([200])
     fake_client2.aclose = AsyncMock()
     with (
-        patch("orch.chat.opencode_runtime.sys.platform", "darwin"),
-        patch("orch.chat.opencode_runtime.asyncio.create_subprocess_exec", create_exec2),
-        patch("orch.chat.opencode_runtime.httpx.AsyncClient", return_value=fake_client2),
+        patch("orch.chat.opencode.runtime.sys.platform", "darwin"),
+        patch("orch.chat.opencode.runtime.asyncio.create_subprocess_exec", create_exec2),
+        patch("orch.chat.opencode.runtime.httpx.AsyncClient", return_value=fake_client2),
     ):
         rt2 = OpencodeRuntime(repo_root=tmp_path, port=4096, bin_path="opencode")
         await rt2.start()

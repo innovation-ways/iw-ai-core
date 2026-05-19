@@ -1,0 +1,34 @@
+{
+  "item_id": "F-00086",
+  "bottom_line": "Tighten S16 qv-browser guardrails (selector strategy, command hygiene, and session checks) to remove the biggest retry hotspot.",
+  "coverage_notes": "DB telemetry available via iw item-status. Reviewed all step reports S01-S16. Log sizes were all <1 MB, so no large-file sampling was required; focused deep reads on S08, S15, and S16 run/fix logs where retries occurred.",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Browser verification thrash from brittle Playwright interaction patterns",
+      "recommendation": "Require resilient role/text selectors, explicit enablement waits, and a snapshot-refresh fallback path in qv-browser execution guidance.",
+      "evidence": [
+        "ai-dev/logs/F-00086_S16_run1.log:189 - Error: locator.fill: Error: Element is not an <input>, <textarea> or [contenteditable] element",
+        "ai-dev/logs/F-00086_S16_run11.log:643 - TimeoutError: locator.click: Timeout 5000ms exceeded.",
+        "ai-dev/logs/F-00086_S16_run11.log:813 - TypeError: Cannot read properties of undefined (reading 'url')"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Harden qv-browser execution guidance with robust selector and retry patterns to reduce S16 thrash; evidence in ai-dev/active/F-00086/reports/F-00086_self_assess_report.md. Target file: skills/iw-workflow/SKILL.md. Effort: M."
+    },
+    {
+      "severity": "HIGH",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "Fix-cycle execution context drift caused misleading import failures",
+      "recommendation": "Add mandatory fix-cycle preflight checks for working directory and import resolution before running test commands.",
+      "evidence": [
+        "ai-dev/logs/F-00086_S16_fix3.log:59 - ImportError: cannot import name 'tab_service' from 'orch.chat' (/home/sergiog/dev/iw-ai-core/orch/chat/__init__.py)",
+        "ai-dev/logs/F-00086_S16_fix4.log:56 - ModuleNotFoundError: No module named 'orch.chat.opencode'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add fix-cycle preflight checks (pwd/top-level/import sanity) to prevent wrong-root retries, based on F-00086 self-assess evidence in ai-dev/active/F-00086/reports/F-00086_self_assess_report.md. Target file: CLAUDE.md. Effort: S."
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-"""Unit tests for `orch.chat.relay_manager.SessionRelay` / `RelayManager`.
+"""Unit tests for `orch.chat.opencode.relay_manager.SessionRelay` / `RelayManager`.
 
 Tests are TDD-RED — written and run BEFORE the relay exists.
 
@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from httpx_sse import ServerSentEvent
 
-from orch.chat.relay_manager import RelayManager, SessionRelay
+from orch.chat.opencode.relay_manager import RelayManager, SessionRelay
 
 # ---------------------------------------------------------------------------
 # Fake client — drives the upstream pump deterministically.

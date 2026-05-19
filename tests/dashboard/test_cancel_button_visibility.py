@@ -12,7 +12,7 @@ Template-rendered assertions (no monkey-patching of service layer).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from bs4 import BeautifulSoup
@@ -132,10 +132,25 @@ def _seed_item_in_batch(
     return item
 
 
+def _is_chat_assistant_button(btn: Any) -> bool:
+    """Return True for buttons that belong to the F-00086 chat-assistant panel.
+
+    The chat panel renders globally on every dashboard page and contains a
+    "Cancel" button (the create-tab modal's dismiss action), which collides
+    with the F-00082 work-item / batch cancel buttons under a plain
+    ``text == "Cancel"`` filter. Skip anything namespaced under the
+    ``chat-assistant-`` id prefix.
+    """
+    btn_id = btn.get("id") or ""
+    return isinstance(btn_id, str) and btn_id.startswith("chat-assistant-")
+
+
 def _find_cancel_button(html: str) -> str | None:
     """Return the cancel button text or None if not found."""
     soup = BeautifulSoup(html, "html.parser")
     for btn in soup.find_all("button"):
+        if _is_chat_assistant_button(btn):
+            continue
         text = btn.get_text(strip=True)
         if text == "Cancel":
             return text
@@ -150,6 +165,8 @@ def _has_disabled_cancel_button(html: str) -> bool:
     """Check if there's a disabled Cancel button (hint for in-active-batch)."""
     soup = BeautifulSoup(html, "html.parser")
     for btn in soup.find_all("button"):
+        if _is_chat_assistant_button(btn):
+            continue
         text = btn.get_text(strip=True)
         if text == "Cancel" and btn.get("disabled") is not None:
             return True

@@ -130,7 +130,21 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
             )
             await _runtime.start()
             _client = OpencodeClient(base_url=_runtime.base_url, password=_runtime.password)
-            _relay_manager = RelayManager(_client)
+
+            def _resolve_tab_session_id(tab_id: str) -> str | None:
+                """Resolve chat tab -> OpenCode session id for RelayManager."""
+                from orch.chat import tab_service  # noqa: PLC0415
+
+                session = SessionLocal()
+                try:
+                    tab = tab_service.get_tab(session, tab_id)
+                    if tab is None:
+                        return None
+                    return tab.opencode_session_id
+                finally:
+                    session.close()
+
+            _relay_manager = RelayManager(_client, session_resolver=_resolve_tab_session_id)
             app.state.opencode_runtime = _runtime
             app.state.opencode_client = _client
             app.state.relay_manager = _relay_manager

@@ -1,0 +1,140 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "F-00086",
+  "type": "Feature",
+  "title": "Multi-tab AI Assistant on OpenCode",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/chat/__init__.py",
+      "orch/chat/runtime_base.py",
+      "orch/chat/opencode/**",
+      "orch/chat/tab_service.py",
+      "orch/chat/migration_helpers.py",
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**",
+      "dashboard/routers/chat.py",
+      "dashboard/app.py",
+      "dashboard/templates/chat_assistant/**",
+      "dashboard/static/chat_assistant/**",
+      "dashboard/static/styles.css",
+      "tests/unit/chat/**",
+      "tests/dashboard/test_chat_*.py",
+      "tests/integration/test_chat_*.py",
+      "ai-dev/active/F-00086/**",
+      "ai-dev/archive/F-00086/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Create chat_tabs table via Alembic revision (UUID PK, text runtime/status with code-only allowlists, project_id FK ON DELETE CASCADE, two indexes)",
+      "prompt": "prompts/F-00086_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "qv-gate",
+      "gate": "migration-check",
+      "command": "make migration-check",
+      "description": "QV: Alembic migration round-trip + drift check"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Define ChatRuntime ABC; move OpenCode plumbing into orch/chat/opencode/ subpackage; rekey RelayManager by tab_id; add tab_service.py (CRUD + soft-cap + soft-delete + reopen + bootstrap-default)",
+      "prompt": "prompts/F-00086_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Per-agent code review of S03 (ABC contract, package move correctness, soft-cap/soft-delete semantics, RelayManager tab_id rekey, bootstrap idempotency)",
+      "prompt": "prompts/F-00086_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-fix-impl",
+      "description": "Apply CRITICAL/HIGH/MEDIUM(fixable) findings from S04",
+      "prompt": "prompts/F-00086_S05_CodeReviewFix_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "api-impl",
+      "description": "Rewrite dashboard/routers/chat.py to tab-scoped surface (11 endpoints, X-Tab-Soft-Cap-Exceeded header, Last-Event-ID SSE replay preserved); remove old /api/chat/sessions/* endpoints",
+      "prompt": "prompts/F-00086_S06_API_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "frontend-impl",
+      "description": "Tab strip + create-tab modal + per-tab controls + per-tab EventSource lifecycle + soft-cap warning banner + recent-closed dropdown + per-tab model dropdown",
+      "prompt": "prompts/F-00086_S07_Frontend_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "tests-impl",
+      "description": "Unit tests (3 files) + integration tests (4 files) + adapt existing chat tests to tab-scoped surface (no deletions)",
+      "prompt": "prompts/F-00086_S08_Tests_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "code-review-final-impl",
+      "description": "Cross-agent global review: DB↔backend↔API↔frontend↔tests integration boundaries; ABC contract honoured; event tab_id field present at every emit site; default-tab bootstrap fires exactly once per project on first load",
+      "prompt": "prompts/F-00086_S09_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "code-review-fix-final-impl",
+      "description": "Apply CRITICAL/HIGH/MEDIUM(fixable) findings from S09",
+      "prompt": "prompts/F-00086_S10_CodeReviewFix_Final_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S16",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — open 2 tabs with different models, send prompts, abort one, reload page, close+reopen a tab via recent-closed menu",
+      "prompt": "prompts/F-00086_S16_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S17",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/F-00086_S17_SelfAssess_prompt.md"
+    }
+  ]
+}

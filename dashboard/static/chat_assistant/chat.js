@@ -1,37 +1,63 @@
 // dashboard/static/chat_assistant/chat.js
-// Dashboard AI Assistant — window.iwChat API
+// Dashboard AI Assistant — window.iwChat API (F-00086 tab-scoped rewrite)
 // Ctrl+/ keybinding (no collision with Cmd+\ used by the existing Code Q&A chat).
 // All DOM ids are prefixed chat-assistant- to avoid collisions.
 (function () {
   'use strict';
 
-  // ── Tab identity ────────────────────────────────────────────────────────────
-  var _tabId = sessionStorage.getItem('iw-chat-tab-id');
-  if (!_tabId) {
+  // ── Per-page browser-tab identity (for sessionStorage namespace only) ────────
+  // This is the *browser* tab id, not the chat-tab id. Used to scope
+  // sessionStorage keys so two browser tabs don't clobber each other.
+  var _browserTabId = sessionStorage.getItem('iw-chat-browser-tab-id');
+  if (!_browserTabId) {
     try {
-      _tabId = crypto.randomUUID();
+      _browserTabId = crypto.randomUUID();
     } catch (_e) {
-      // Fallback for environments without crypto.randomUUID
-      _tabId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+      _browserTabId = Date.now().toString(36) + Math.random().toString(36).slice(2);
     }
-    sessionStorage.setItem('iw-chat-tab-id', _tabId);
+    sessionStorage.setItem('iw-chat-browser-tab-id', _browserTabId);
   }
 
-  // ── State ───────────────────────────────────────────────────────────────────
-  var _sid = null;           // current OpenCode session id
-  var _streaming = false;    // is an SSE stream active?
-  var _es = null;            // EventSource instance
-  var _seenIds = {};         // client-side dedup Set (object as map)
-  var _lastSeenId = null;    // most recent event id received
+  // ── Chat-tab state ───────────────────────────────────────────────────────────
+  // _tabs: Array of tab objects from the API { id, title, model, runtime, status, ... }
+  // _activeTabId: string | null
+  // Per-tab EventSource map: _tabEs[tabId] = EventSource | null
+  // Per-tab seen-event-id map: _tabSeenIds[tabId] = {}
+  // Per-tab streaming flag: _tabStreaming[tabId] = bool
+
+  var _tabs = [];
+  var _activeTabId = null;
+  var _tabEs = {};
+  var _tabSeenIds = {};
+  var _tabStreaming = {};
+  var _tabRetryTimers = {};
+  var _tabRetryCount = {};
+
+  // Per-tab assistant message rendering state
+  var _tabCurrentAssistantEl = {};
+  var _tabCurrentAssistantId = {};
+
+  // Global panel state
   var _contextPollTimer = null;
   var _modelRefreshTimer = null;
   var _lastProjectId = null;
   var _projectDirectory = '';
   var _projectDirectoryProjectId = null;
-  var _context = null;       // {type, id, title} from setContext / null
+  var _context = null;
   var _chipDismissed = false;
-  var _skills = [];          // cached skills list for slash menu
-  var _pendingPermissions = {};  // rid -> {event, rid}
+  var _skills = [];
+  var _pendingPermissions = {};
+
+  // Available models cache: { models: [], default_model: '' }
+  var _availableModels = [];
+  var _defaultModel = '';
+
+  // Soft-cap banner: once shown (per page session), re-shows on each POST that returns the header
+  // (but can be dismissed once per show). The flag tracks whether it's currently visible.
+  var _softCapBannerVisible = false;
+
+  // Context-menu state
+  var _ctxMenuTabId = null;
 
   // ── Cookie helpers ──────────────────────────────────────────────────────────
   function _setCookie(name, value, path) {
@@ -44,8 +70,8 @@
   }
 
   function _currentProjectId() {
-    // /project/{id}/... → id; everything else → null
-    var m = /^\/project\/([^\/]+)\//.exec(window.location.pathname);
+    // /project/{id}, /project/{id}/, /project/{id}/... -> id; everything else -> null
+    var m = /^\/project\/([^\/]+)(?:\/|$)/.exec(window.location.pathname);
     return m ? m[1] : null;
   }
 
@@ -68,8 +94,7 @@
     }
     _setCookie('iw-chat-assistant-open', open ? '1' : '0', '/');
     if (open) {
-      _ensureSession();
-      _refreshModels();
+      _bootstrapTabs();
     }
   }
 
@@ -107,179 +132,245 @@
     }
   }
 
-  function newSession() {
-    _teardownStream();
-    _sid = null;
-    _seenIds = {};
-    _lastSeenId = null;
-    _clearMessages();
-    sessionStorage.removeItem('iw-chat-session-' + _tabId);
-    _ensureSession();
-  }
-
-  function switchSession(sid) {
-    _teardownStream();
-    _sid = sid;
-    _seenIds = {};
-    _lastSeenId = null;
-    _clearMessages();
-    sessionStorage.setItem('iw-chat-session-' + _tabId, sid);
-    _loadHistory(sid);
-    _connectStream(sid);
-  }
-
   window.iwChat = {
     open: open,
     close: close,
     toggle: toggle,
     setContext: setContext,
     clearContext: clearContext,
-    openWith: openWith,
-    newSession: newSession,
-    switchSession: switchSession
+    openWith: openWith
   };
 
-  // ── Session management ──────────────────────────────────────────────────────
-  function _ensureSession() {
-    var cached = sessionStorage.getItem('iw-chat-session-' + _tabId);
-    if (cached) {
-      _sid = cached;
-      _connectStream(_sid);
-      _loadHistory(_sid);
+  // ── Tab bootstrap / fetch ───────────────────────────────────────────────────
+  function _bootstrapTabs() {
+    var projectId = _currentProjectId();
+    if (!projectId) {
+      // No per-project context; render empty state
+      _renderEmptyNoTabs();
       return;
     }
-    _createSession();
+    _fetchTabs(projectId, function (tabs) {
+      if (!tabs.length) {
+        // First load: retry once after 100ms (server may still be seeding the default tab)
+        setTimeout(function () {
+          _fetchTabs(projectId, function (tabs2) {
+            _tabs = tabs2;
+            _renderTabStrip();
+            if (_tabs.length) {
+              _activateTab(_tabs[0].id);
+            } else {
+              _renderEmptyNoTabs();
+            }
+          });
+        }, 100);
+        return;
+      }
+      _tabs = tabs;
+      _renderTabStrip();
+      // Restore last active tab from sessionStorage
+      var lastActive = sessionStorage.getItem('iw-chat-active-tab-' + _browserTabId);
+      var target = lastActive && _tabs.find(function (t) { return t.id === lastActive; });
+      _activateTab(target ? target.id : _tabs[0].id);
+    });
   }
 
-  function _createSession() {
-    var model = _getSelectedModel();
-    var projectId = _currentProjectId();
-    if (projectId && _projectDirectoryProjectId !== projectId) {
-      var url = '/api/chat/config?' + new URLSearchParams({ project_id: projectId }).toString();
-      fetch(url)
-        .then(function (r) {
-          if (!r.ok) return null;
-          return r.json();
-        })
-        .then(function (data) {
-          _projectDirectoryProjectId = projectId;
-          if (data && typeof data.project_directory === 'string') {
-            _projectDirectory = data.project_directory;
-          }
-          _createSession();
-        })
-        .catch(function () {
-          _projectDirectoryProjectId = projectId;
-          _createSession();
-        });
-      return;
-    }
-
-    var body = {};
-    if (model) body.model = model;
-    if (projectId && _projectDirectory) body.directory = _projectDirectory;
-    fetch('/api/chat/sessions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
+  function _fetchTabs(projectId, cb) {
+    var url = '/api/chat/tabs?' + new URLSearchParams({ project_id: projectId }).toString();
+    fetch(url)
       .then(function (r) {
-        if (!r.ok) throw new Error('create session failed: ' + r.status);
+        if (!r.ok) throw new Error('list tabs: ' + r.status);
         return r.json();
       })
       .then(function (data) {
-        _sid = data.session_id;
-        sessionStorage.setItem('iw-chat-session-' + _tabId, _sid);
-        _connectStream(_sid);
+        cb((data && data.tabs) || []);
       })
       .catch(function (err) {
-        _appendSystemMessage('Failed to create session: ' + err.message, 'error');
+        _appendSystemMessage('Could not load chat tabs: ' + err.message, 'error');
+        cb([]);
       });
   }
 
-  // ── SSE streaming ───────────────────────────────────────────────────────────
-  function _connectStream(sid) {
-    _teardownStream();
-    if (!sid) return;
-    var url = '/api/chat/sessions/' + sid + '/stream';
-    if (_lastSeenId) {
-      url += '?last_event_id=' + encodeURIComponent(_lastSeenId);
+  // ── Tab activation ──────────────────────────────────────────────────────────
+  function _activateTab(tabId) {
+    if (_activeTabId === tabId) return;
+
+    // DELIBERATELY leave the previous tab's EventSource open. Disconnecting
+    // it would force a ring-buffer replay on reconnect: all missed events
+    // would arrive instantly and the stream would appear complete the moment
+    // the user came back — defeating the V5 multi-tab abort scenario
+    // ("switch away while Tab A is streaming, switch back, click Abort
+    // while Tab A is still streaming"). Background events still update
+    // `_tabStreaming[oldId]` so per-tab Send/Abort gating stays correct;
+    // the rendering helpers gate on `tabId === _activeTabId` so background
+    // tabs don't paint into the visible message area.
+
+    _activeTabId = tabId;
+    sessionStorage.setItem('iw-chat-active-tab-' + _browserTabId, tabId);
+
+    // Update tab strip highlighting
+    _updateTabStripActiveState();
+
+    // Clear messages and reload for new tab
+    _clearMessages();
+    _resetAssistantState();
+
+    // Update the per-tab model bar
+    _updateTabModelBar();
+
+    // Ensure composer is visible (may have been hidden in no-tabs state)
+    _showComposer();
+
+    // Load history + start stream for new tab.
+    var tab = _tabs.find(function (t) { return t.id === tabId; });
+    if (tab && tab.opencode_session_id) {
+      _loadTabHistory(tabId);
+      // Only open a new EventSource if we don't already have one open for
+      // this tab from a prior activation. Re-using avoids the ring-buffer
+      // replay-burst that would otherwise compress 30s of streaming into a
+      // single frame.
+      if (!_tabEs[tabId]) {
+        _connectStream(tabId);
+      }
+    } else if (tab) {
+      // Tab exists but has no session yet — show empty state
+      _showEmptyState();
     }
-    _es = new EventSource(url);
-    _es.onopen = function () {
-      _hideReconnecting();
+
+    // Refresh models for the model dropdown
+    _refreshModels();
+
+    // Sync the composer's Send/Abort state to the newly-active tab's
+    // streaming flag.
+    _updateSendAbortButtons();
+  }
+
+  // ── SSE per-tab streaming ───────────────────────────────────────────────────
+  var NAMED_EVENTS = [
+    'message.part.updated',
+    'tool.execute.before',
+    'tool.execute.after',
+    'permission.asked',
+    'permission.replied',
+    'session.idle',
+    'session.updated',
+    'session.error',
+    'message.part.delta',
+    'message.updated',
+    'message.part.removed',
+    'message.removed',
+    'session.status',
+    'gap',
+    'reconnecting',
+    'error',
+    'relay.error'
+  ];
+
+  function _connectStream(tabId) {
+    _teardownStream(tabId);
+    var lastId = _getLastEventId(tabId);
+    var url = '/api/chat/tabs/' + encodeURIComponent(tabId) + '/stream';
+    if (lastId) {
+      url += '?last_event_id=' + encodeURIComponent(lastId);
+    }
+    var es = new EventSource(url);
+    _tabEs[tabId] = es;
+
+    es.onopen = function () {
+      if (tabId === _activeTabId) {
+        _hideReconnecting();
+      }
     };
-    _es.onerror = function () {
-      _showReconnecting();
+
+    es.onerror = function () {
+      if (tabId === _activeTabId) {
+        _showReconnecting();
+      }
+      // Exponential backoff retry
+      _scheduleStreamRetry(tabId);
     };
-    _es.onmessage = function (e) {
-      _handleEvent('message', e);
+
+    es.onmessage = function (e) {
+      _handleEvent(tabId, 'message', e);
     };
-    // Named events — canonical set from orch/chat/filters.py:INTERESTING_EVENTS
-    // plus additional opencode SDK events and relay-synthesised events.
-    // Source of truth for opencode wire names: orch/chat/filters.py INTERESTING_EVENTS.
-    var namedEvents = [
-      // opencode SDK events (orch/chat/filters.py INTERESTING_EVENTS)
-      'message.part.updated',
-      'tool.execute.before',
-      'tool.execute.after',
-      'permission.asked',
-      'permission.replied',
-      'session.idle',
-      'session.updated',
-      'session.error',
-      // additional opencode SDK events
-      'message.part.delta',
-      'message.updated',
-      'message.part.removed',
-      'message.removed',
-      'session.status',
-      // relay-synthesised events (flat {event, data, id} shape — no properties wrapper)
-      'gap',
-      'reconnecting',
-      'error',
-      'relay.error'
-    ];
-    namedEvents.forEach(function (evName) {
-      _es.addEventListener(evName, function (e) {
-        _handleEvent(evName, e);
+
+    NAMED_EVENTS.forEach(function (evName) {
+      es.addEventListener(evName, function (e) {
+        _handleEvent(tabId, evName, e);
       });
     });
   }
 
-  function _teardownStream() {
-    if (_es) {
-      _es.close();
-      _es = null;
+  function _teardownStream(tabId) {
+    // Close the client EventSource. The server-side opencode session may
+    // still be mid-stream — we deliberately do NOT clear `_tabStreaming`
+    // here, because:
+    //   * On tab-switch, the user comes back later and reconnects via
+    //     `_connectStream`; the Abort button must remain reachable
+    //     immediately (V5).
+    //   * On true completion (session.idle), the dedicated handler in
+    //     `_handleEvent` already clears the flag.
+    //   * On tab-close, the caller (`_closeTab`) wipes the per-tab
+    //     bookkeeping including the streaming flag.
+    if (_tabEs[tabId]) {
+      _tabEs[tabId].close();
+      _tabEs[tabId] = null;
     }
-    _streaming = false;
-    _stopContextPoll();
-    _updateSendAbortButtons();
+    if (_tabRetryTimers[tabId]) {
+      clearTimeout(_tabRetryTimers[tabId]);
+      _tabRetryTimers[tabId] = null;
+    }
+    if (tabId === _activeTabId) {
+      _stopContextPoll();
+      _updateSendAbortButtons();
+    }
   }
 
-  function _handleEvent(evName, e) {
-    // ── Payload asymmetry note ────────────────────────────────────────────────
-    // Opencode-native events (everything except gap/reconnecting/error/relay.error)
-    // wrap their payload under `properties` inside the JSON data:
-    //   e.data = JSON.stringify({ type, id, properties: { ... } })
-    // Relay-synthesised events (gap, reconnecting, error, relay.error) use a flat
-    // {event, data, id} shape at the relay layer — the data field itself contains
-    // the relevant fields, with no `properties` wrapper.
-    // Source of truth: orch/chat/filters.py (normalise function + INTERESTING_EVENTS).
-    // ─────────────────────────────────────────────────────────────────────────
+  function _scheduleStreamRetry(tabId) {
+    if (_tabRetryTimers[tabId]) return; // already scheduled
+    var count = _tabRetryCount[tabId] || 0;
+    _tabRetryCount[tabId] = count + 1;
+    var delay = Math.min(30000, 1000 * Math.pow(2, count));
+    _tabRetryTimers[tabId] = setTimeout(function () {
+      _tabRetryTimers[tabId] = null;
+      if (_tabEs[tabId]) {
+        _tabEs[tabId].close();
+        _tabEs[tabId] = null;
+      }
+      // Only reconnect if this tab is still active or in our tabs list
+      var stillKnown = _tabs.some(function (t) { return t.id === tabId; });
+      if (stillKnown) {
+        _connectStream(tabId);
+      }
+    }, delay);
+  }
 
-    // Track last-event-id for reconnect
-    if (e.lastEventId) {
-      _lastSeenId = e.lastEventId;
-    }
+  function _getLastEventId(tabId) {
+    return sessionStorage.getItem('iw-chat-last-eid-' + tabId) || null;
+  }
 
-    // Client-side dedup
-    var eid = e.lastEventId || null;
+  function _setLastEventId(tabId, eid) {
     if (eid) {
-      if (_seenIds[eid]) return;
-      _seenIds[eid] = true;
+      sessionStorage.setItem('iw-chat-last-eid-' + tabId, eid);
+    }
+  }
+
+  // ── Event handler ───────────────────────────────────────────────────────────
+  function _handleEvent(tabId, evName, e) {
+    // Defensive: ignore events that belong to a different tab
+    // (relay already sets tab_id on every event)
+    if (e.lastEventId) {
+      _setLastEventId(tabId, e.lastEventId);
     }
 
+    // Client-side dedup per tab
+    var eid = e.lastEventId || null;
+    if (!_tabSeenIds[tabId]) _tabSeenIds[tabId] = {};
+    if (eid) {
+      if (_tabSeenIds[tabId][eid]) return;
+      _tabSeenIds[tabId][eid] = true;
+    }
+
+    // Parse data
     var data = null;
     try {
       data = JSON.parse(e.data);
@@ -287,190 +378,206 @@
       data = { text: e.data };
     }
 
-    // Extract opencode `properties` (undefined for relay-synthesised events).
+    // Defensive: check tab_id field if present
+    if (data && data.tab_id && data.tab_id !== tabId) {
+      console.warn('[iwChat] Ignoring event with mismatched tab_id:', data.tab_id, '!== active:', tabId);
+      return;
+    }
+
+    // Only render to DOM if this is the active tab
+    var isActive = (tabId === _activeTabId);
+
+    // Extract opencode `properties`
     var props = (data && data.properties) || null;
 
-    // ── relay-synthesised events (flat data shape, no properties) ─────────────
+    // ── relay-synthesised events ─────────────────────────────────────────────
     if (evName === 'gap') {
-      _appendGapWarning();
+      if (isActive) _appendGapWarning();
       return;
     }
     if (evName === 'reconnecting') {
-      _showReconnecting();
+      if (isActive) _showReconnecting();
       return;
     }
     if (evName === 'error' || evName === 'relay.error') {
-      var msg = (data && data.message) || 'An error occurred.';
-      _appendSystemMessage(msg, 'error');
-      _streaming = false;
-      _stopContextPoll();
-      _updateSendAbortButtons();
-      return;
-    }
-
-    // ── opencode-native events (payload under properties) ─────────────────────
-
-    if (evName === 'message.part.delta') {
-      // Streaming text delta: properties.delta is the incremental text chunk.
-      if (!_streaming) {
-        _streaming = true;
-        _updateSendAbortButtons();
-        _startContextPoll();
+      if (isActive) {
+        var msg = (data && data.message) || 'An error occurred.';
+        _appendSystemMessage(msg, 'error');
       }
-      var deltaText = (props && props.delta) || '';
-      var deltaKey = (props && props.messageID) || eid;
-      _appendOrUpdateAssistantMessage(deltaKey, deltaText, false);
-      return;
-    }
-
-    if (evName === 'message.part.updated') {
-      // Full part snapshot: properties.part is a Part object.
-      // properties.part.type === 'text' for text parts.
-      if (!_streaming) {
-        _streaming = true;
-        _updateSendAbortButtons();
-        _startContextPoll();
-      }
-      // Prefer delta (incremental) if present, fall back to full part text.
-      var partText = (props && props.delta) ||
-                     (props && props.part && props.part.text) || '';
-      var partKey = (props && props.part && props.part.messageID) ||
-                    (props && props.messageID) || eid;
-      _appendOrUpdateAssistantMessage(partKey, partText, false);
-      return;
-    }
-
-    if (evName === 'message.part.removed') {
-      // Remove the corresponding part DOM node if rendered.
-      // Parts are accumulated into assistant message bubbles by messageID,
-      // so there is no individual part-level DOM node to remove in this
-      // implementation. No-op is safe here.
-      return;
-    }
-
-    if (evName === 'message.updated') {
-      // Full Message snapshot: properties.info is a Message (UserMessage | AssistantMessage).
-      var info = props && props.info;
-      if (!info) return;
-      if (info.role === 'assistant') {
-        if (info.time && info.time.completed) {
-          // Message is finalised — mark any in-flight bubble complete.
-          _finaliseLastAssistantMessage();
-          _streaming = false;
-          _stopContextPoll();
-          _updateSendAbortButtons();
-        }
-        if (info.error) {
-          var errMsg = (info.error && info.error.message) || 'Assistant error.';
-          _appendSystemMessage(errMsg, 'error');
-          _streaming = false;
-          _stopContextPoll();
-          _updateSendAbortButtons();
-        }
-      }
-      return;
-    }
-
-    if (evName === 'message.removed') {
-      // Remove the message bubble by messageID.
-      // In this implementation bubbles are not individually keyed in the DOM
-      // in a way that supports targeted removal. No-op is safe.
-      return;
-    }
-
-    if (evName === 'tool.execute.before') {
-      // Append a one-line system bubble with the tool name.
-      var toolName = (props && props.tool) || 'unknown';
-      _appendToolCall(toolName, {});
-      return;
-    }
-
-    if (evName === 'tool.execute.after') {
-      // Mark the matching tool bubble complete.
-      var doneToolName = (props && props.tool) || '';
-      _appendToolResult('✓ ' + doneToolName + (props && props.duration ? ' (' + props.duration + 'ms)' : ''));
-      return;
-    }
-
-    if (evName === 'permission.asked') {
-      // properties is a PermissionRequest: { id, sessionID, permission, patterns, ... }
-      var permData = props || data;
-      var rid = (permData && permData.id) || (permData && permData.request_id);
-      if (rid) {
-        _pendingPermissions[rid] = permData;
-        _showApprovalModal(permData);
-      }
-      return;
-    }
-
-    if (evName === 'permission.replied') {
-      // Dismiss the approval modal when a reply is recorded.
-      var repliedRoot = document.getElementById('chat-assistant-approval-root');
-      if (repliedRoot) repliedRoot.innerHTML = '';
-      return;
-    }
-
-    if (evName === 'session.idle') {
-      _streaming = false;
-      _stopContextPoll();
-      _updateSendAbortButtons();
-      // EventSessionIdle.properties = { sessionID } — no permission_denied/aborted.
-      // Fall back to data-level flags for backwards compat with relay-shaped events.
-      var idleProps = props || data;
-      if (idleProps && idleProps.permission_denied) {
-        _appendSystemMessage('Run aborted (permission denied).', 'info');
-      } else if (idleProps && idleProps.aborted) {
-        _appendSystemMessage('Run aborted.', 'info');
-      } else {
-        _appendSystemMessage('Session idle.', 'info');
-      }
-      return;
-    }
-
-    if (evName === 'session.status') {
-      // Update streaming indicators. EventSessionStatus.properties.status is
-      // { type: 'idle' | 'busy' | 'retry', ... }. No visible bubble needed.
-      var status = props && props.status;
-      if (status && status.type === 'busy' && !_streaming) {
-        _streaming = true;
-        _updateSendAbortButtons();
-        _startContextPoll();
-      } else if (status && status.type === 'idle' && _streaming) {
-        // session.idle event should fire separately; this is a safety net.
-        _streaming = false;
+      _tabStreaming[tabId] = false;
+      if (isActive) {
         _stopContextPoll();
         _updateSendAbortButtons();
       }
       return;
     }
 
+    // ── opencode-native events ───────────────────────────────────────────────
+
+    if (evName === 'message.part.delta') {
+      if (!_tabStreaming[tabId]) {
+        _tabStreaming[tabId] = true;
+        if (isActive) {
+          _updateSendAbortButtons();
+          _startContextPoll();
+        }
+      }
+      if (isActive) {
+        var deltaText = (props && props.delta) || '';
+        var deltaKey = (props && props.messageID) || eid;
+        _appendOrUpdateAssistantMessage(tabId, deltaKey, deltaText, false);
+      }
+      return;
+    }
+
+    if (evName === 'message.part.updated') {
+      if (!_tabStreaming[tabId]) {
+        _tabStreaming[tabId] = true;
+        if (isActive) {
+          _updateSendAbortButtons();
+          _startContextPoll();
+        }
+      }
+      if (isActive) {
+        var partText = (props && props.delta) ||
+                       (props && props.part && props.part.text) || '';
+        var partKey = (props && props.part && props.part.messageID) ||
+                      (props && props.messageID) || eid;
+        _appendOrUpdateAssistantMessage(tabId, partKey, partText, false);
+      }
+      return;
+    }
+
+    if (evName === 'message.part.removed') {
+      return; // No individual part nodes to remove
+    }
+
+    if (evName === 'message.updated') {
+      var info = props && props.info;
+      if (!info) return;
+      if (info.role === 'assistant') {
+        if (info.time && info.time.completed) {
+          if (isActive) _finaliseLastAssistantMessage(tabId);
+          _tabStreaming[tabId] = false;
+          if (isActive) {
+            _stopContextPoll();
+            _updateSendAbortButtons();
+          }
+        }
+        if (info.error) {
+          if (isActive) {
+            var errMsg = (info.error && info.error.message) || 'Assistant error.';
+            _appendSystemMessage(errMsg, 'error');
+          }
+          _tabStreaming[tabId] = false;
+          if (isActive) {
+            _stopContextPoll();
+            _updateSendAbortButtons();
+          }
+        }
+      }
+      return;
+    }
+
+    if (evName === 'message.removed') {
+      return; // No targeted removal in this implementation
+    }
+
+    if (evName === 'tool.execute.before') {
+      if (isActive) {
+        var toolName = (props && props.tool) || 'unknown';
+        _appendToolCall(toolName, {});
+      }
+      return;
+    }
+
+    if (evName === 'tool.execute.after') {
+      if (isActive) {
+        var doneToolName = (props && props.tool) || '';
+        _appendToolResult('✓ ' + doneToolName + (props && props.duration ? ' (' + props.duration + 'ms)' : ''));
+      }
+      return;
+    }
+
+    if (evName === 'permission.asked') {
+      var permData = props || data;
+      var rid = (permData && permData.id) || (permData && permData.request_id);
+      if (rid) {
+        _pendingPermissions[rid] = { data: permData, tabId: tabId };
+        if (isActive) _showApprovalModal(permData, tabId);
+      }
+      return;
+    }
+
+    if (evName === 'permission.replied') {
+      if (isActive) {
+        var repliedRoot = document.getElementById('chat-assistant-approval-root');
+        if (repliedRoot) repliedRoot.innerHTML = '';
+      }
+      return;
+    }
+
+    if (evName === 'session.idle') {
+      _tabStreaming[tabId] = false;
+      if (isActive) {
+        _stopContextPoll();
+        _updateSendAbortButtons();
+        var idleProps = props || data;
+        if (idleProps && idleProps.permission_denied) {
+          _appendSystemMessage('Run aborted (permission denied).', 'info');
+        } else if (idleProps && idleProps.aborted) {
+          _appendSystemMessage('Run aborted.', 'info');
+        } else {
+          _appendSystemMessage('Session idle.', 'info');
+        }
+      }
+      return;
+    }
+
+    if (evName === 'session.status') {
+      var status = props && props.status;
+      if (status && status.type === 'busy' && !_tabStreaming[tabId]) {
+        _tabStreaming[tabId] = true;
+        if (isActive) {
+          _updateSendAbortButtons();
+          _startContextPoll();
+        }
+      } else if (status && status.type === 'idle' && _tabStreaming[tabId]) {
+        _tabStreaming[tabId] = false;
+        if (isActive) {
+          _stopContextPoll();
+          _updateSendAbortButtons();
+        }
+      }
+      return;
+    }
+
     if (evName === 'session.error') {
-      // properties.error is a union of typed error objects.
-      var sessErr = (props && props.error) || null;
-      var sessErrMsg = (sessErr && sessErr.message) ||
-                       (sessErr && sessErr.data && sessErr.data.message) ||
-                       'Session error.';
-      _appendSystemMessage(sessErrMsg, 'error');
-      _streaming = false;
-      _stopContextPoll();
-      _updateSendAbortButtons();
+      if (isActive) {
+        var sessErr = (props && props.error) || null;
+        var sessErrMsg = (sessErr && sessErr.message) ||
+                         (sessErr && sessErr.data && sessErr.data.message) ||
+                         'Session error.';
+        _appendSystemMessage(sessErrMsg, 'error');
+      }
+      _tabStreaming[tabId] = false;
+      if (isActive) {
+        _stopContextPoll();
+        _updateSendAbortButtons();
+      }
       return;
     }
 
     if (evName === 'session.updated') {
-      // No-op — session metadata refresh; no visible bubble needed.
-      return;
+      return; // No visible bubble needed
     }
   }
 
   // ── Approval modal ──────────────────────────────────────────────────────────
-  function _showApprovalModal(data) {
+  function _showApprovalModal(data, tabId) {
     var root = document.getElementById('chat-assistant-approval-root');
     if (!root) return;
 
-    // Build the modal HTML
-    // data is a PermissionRequest: { id, sessionID, permission, patterns, metadata, tool }
-    // Fallback to legacy keys for backwards compat.
     var toolName = data.permission || data.tool || data.tool_name || 'unknown';
     var args = data.patterns || data.args || data.arguments || [];
     var argsStr = '';
@@ -504,22 +611,22 @@
     var denyBtn = document.getElementById('chat-assistant-approval-deny');
     if (allowBtn) {
       allowBtn.addEventListener('click', function () {
-        _replyPermission(rid, 'allow', root);
+        _replyPermission(tabId, rid, 'allow', root);
       });
     }
     if (denyBtn) {
       denyBtn.addEventListener('click', function () {
-        _replyPermission(rid, 'deny', root);
+        _replyPermission(tabId, rid, 'deny', root);
       });
     }
   }
 
-  function _replyPermission(rid, decision, root) {
-    if (!_sid || !rid) return;
+  function _replyPermission(tabId, rid, decision, root) {
+    if (!tabId || !rid) return;
     var remember = false;
     var cb = document.getElementById('chat-assistant-approval-remember');
     if (cb) remember = cb.checked;
-    fetch('/api/chat/sessions/' + _sid + '/permissions/' + encodeURIComponent(rid), {
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId) + '/permissions/' + encodeURIComponent(rid), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ response: decision, remember: remember })
@@ -530,20 +637,591 @@
     if (root) root.innerHTML = '';
   }
 
+  // ── Tab strip rendering ─────────────────────────────────────────────────────
+  function _renderTabStrip() {
+    var strip = document.getElementById('chat-assistant-tab-strip');
+    var wrap = document.getElementById('chat-assistant-tab-strip-wrap');
+    if (!strip) return;
+
+    if (!_tabs.length) {
+      if (wrap) wrap.style.display = 'none';
+      return;
+    }
+    if (wrap) wrap.style.display = '';
+
+    strip.innerHTML = '';
+    _tabs.forEach(function (tab) {
+      strip.appendChild(_buildTabButton(tab));
+    });
+  }
+
+  function _buildTabButton(tab) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chat-assistant-tab-btn flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs border-r border-border hover:bg-muted';
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('data-tab-id', tab.id);
+    btn.setAttribute('aria-selected', tab.id === _activeTabId ? 'true' : 'false');
+    btn.title = tab.title || 'Chat';
+    if (tab.id === _activeTabId) {
+      btn.classList.add('chat-assistant-tab-btn-active');
+    }
+
+    // Title span
+    var titleSpan = document.createElement('span');
+    titleSpan.className = 'chat-assistant-tab-title';
+    titleSpan.textContent = _truncateStr(tab.title || 'Chat', 18);
+
+    // Model badge
+    var modelBadge = document.createElement('span');
+    modelBadge.className = 'chat-assistant-tab-model-badge';
+    modelBadge.textContent = _modelShortName(tab.model || '');
+    modelBadge.title = tab.model || '';
+
+    // Close button
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'chat-assistant-tab-close-btn';
+    closeBtn.setAttribute('aria-label', 'Close tab: ' + (tab.title || 'Chat'));
+    closeBtn.innerHTML = '&#x2715;';
+
+    btn.appendChild(titleSpan);
+    btn.appendChild(modelBadge);
+    btn.appendChild(closeBtn);
+
+    // Activate on click (not on close button)
+    btn.addEventListener('click', function (e) {
+      if (e.target === closeBtn || closeBtn.contains(e.target)) return;
+      _activateTab(tab.id);
+    });
+
+    // Close on close button click
+    closeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      _closeTab(tab.id);
+    });
+
+    // Right-click context menu
+    btn.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      _showTabContextMenu(tab.id, e.clientX, e.clientY);
+    });
+
+    // Double-click inline rename
+    titleSpan.addEventListener('dblclick', function (e) {
+      e.stopPropagation();
+      _startInlineRename(tab.id, titleSpan);
+    });
+
+    return btn;
+  }
+
+  function _updateTabStripActiveState() {
+    var buttons = document.querySelectorAll('#chat-assistant-tab-strip .chat-assistant-tab-btn');
+    buttons.forEach(function (btn) {
+      var id = btn.getAttribute('data-tab-id');
+      if (id === _activeTabId) {
+        btn.classList.add('chat-assistant-tab-btn-active');
+        btn.setAttribute('aria-selected', 'true');
+      } else {
+        btn.classList.remove('chat-assistant-tab-btn-active');
+        btn.setAttribute('aria-selected', 'false');
+      }
+    });
+  }
+
+  function _updateTabButtonLabel(tabId, title, model) {
+    var btn = document.querySelector('#chat-assistant-tab-strip .chat-assistant-tab-btn[data-tab-id="' + tabId + '"]');
+    if (!btn) return;
+    var titleSpan = btn.querySelector('.chat-assistant-tab-title');
+    var modelBadge = btn.querySelector('.chat-assistant-tab-model-badge');
+    if (titleSpan && title !== undefined) {
+      titleSpan.textContent = _truncateStr(title || 'Chat', 18);
+      btn.title = title || 'Chat';
+    }
+    if (modelBadge && model !== undefined) {
+      modelBadge.textContent = _modelShortName(model || '');
+      modelBadge.title = model || '';
+    }
+  }
+
+  // ── Inline rename ───────────────────────────────────────────────────────────
+  function _startInlineRename(tabId, titleSpan) {
+    var currentTitle = titleSpan.textContent;
+    var tab = _tabs.find(function (t) { return t.id === tabId; });
+    var fullTitle = tab ? (tab.title || '') : currentTitle;
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'chat-assistant-tab-rename-input';
+    input.value = fullTitle;
+    input.maxLength = 120;
+
+    titleSpan.parentNode.insertBefore(input, titleSpan);
+    titleSpan.style.display = 'none';
+    input.focus();
+    input.select();
+
+    function _commit() {
+      var newTitle = input.value.trim() || fullTitle;
+      titleSpan.style.display = '';
+      if (input.parentNode) input.parentNode.removeChild(input);
+      if (newTitle !== fullTitle) {
+        _renameTab(tabId, newTitle);
+      }
+    }
+
+    function _cancel() {
+      titleSpan.style.display = '';
+      if (input.parentNode) input.parentNode.removeChild(input);
+    }
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        _commit();
+      } else if (e.key === 'Escape') {
+        _cancel();
+      }
+    });
+    input.addEventListener('blur', function () {
+      _commit();
+    });
+  }
+
+  function _renameTab(tabId, newTitle) {
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newTitle })
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('rename failed: ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        var updated = data && data.tab;
+        if (!updated) return;
+        var idx = _tabs.findIndex(function (t) { return t.id === tabId; });
+        if (idx !== -1) _tabs[idx] = updated;
+        _updateTabButtonLabel(tabId, updated.title, undefined);
+        // Update model bar if active
+        if (tabId === _activeTabId) _updateTabModelBar();
+      })
+      .catch(function (err) {
+        _appendSystemMessage('Rename failed: ' + err.message, 'error');
+      });
+  }
+
+  // ── Context menu ────────────────────────────────────────────────────────────
+  function _showTabContextMenu(tabId, x, y) {
+    _ctxMenuTabId = tabId;
+    var menu = document.getElementById('chat-assistant-tab-context-menu');
+    if (!menu) return;
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    menu.classList.remove('hidden');
+  }
+
+  function _hideTabContextMenu() {
+    var menu = document.getElementById('chat-assistant-tab-context-menu');
+    if (menu) menu.classList.add('hidden');
+    _ctxMenuTabId = null;
+  }
+
+  // ── Close / reopen tabs ─────────────────────────────────────────────────────
+  function _closeTab(tabId) {
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId), { method: 'DELETE' })
+      .then(function (r) {
+        if (!r.ok && r.status !== 204) throw new Error('close tab: ' + r.status);
+        _teardownStream(tabId);
+        // Wipe per-tab bookkeeping; the tab is gone server-side too.
+        delete _tabStreaming[tabId];
+        delete _tabSeenIds[tabId];
+        delete _tabRetryCount[tabId];
+        delete _tabCurrentAssistantEl[tabId];
+        delete _tabCurrentAssistantId[tabId];
+        _tabs = _tabs.filter(function (t) { return t.id !== tabId; });
+        if (_activeTabId === tabId) {
+          _activeTabId = null;
+        }
+        _renderTabStrip();
+        if (_tabs.length && _activeTabId === null) {
+          _activateTab(_tabs[0].id);
+        } else if (!_tabs.length) {
+          _activeTabId = null;
+          _clearMessages();
+          _hideTabModelBar();
+          _renderEmptyNoTabs();
+        }
+      })
+      .catch(function (err) {
+        _appendSystemMessage('Could not close tab: ' + err.message, 'error');
+      });
+  }
+
+  function _reopenTab(tabId) {
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId) + '/reopen', { method: 'POST' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('reopen tab: ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        var tab = data && data.tab;
+        if (!tab) return;
+        _tabs.push(tab);
+        _renderTabStrip();
+        _activateTab(tab.id);
+        _hideClosedTabsDropdown();
+      })
+      .catch(function (err) {
+        _appendSystemMessage('Could not reopen tab: ' + err.message, 'error');
+      });
+  }
+
+  function _duplicateTab(tabId) {
+    var tab = _tabs.find(function (t) { return t.id === tabId; });
+    if (!tab) return;
+    var projectId = _currentProjectId() || tab.project_id;
+    _createTab(projectId, tab.runtime || 'opencode', tab.model || '', (tab.title || 'Chat') + ' (copy)');
+  }
+
+  // ── Create tab ──────────────────────────────────────────────────────────────
+  function _createTab(projectId, runtime, model, title) {
+    var body = { project_id: projectId };
+    if (runtime) body.runtime = runtime;
+    if (model) body.model = model;
+    if (title) body.title = title;
+
+    fetch('/api/chat/tabs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+      .then(function (r) {
+        // Check soft-cap header before reading body
+        var softCap = r.headers.get('X-Tab-Soft-Cap-Exceeded');
+        return r.json().then(function (data) {
+          return { data: data, status: r.status, softCap: softCap };
+        });
+      })
+      .then(function (res) {
+        if (res.status === 503) {
+          _showCreateTabError('Runtime unavailable; try again later.');
+          return;
+        }
+        if (res.status >= 400) {
+          var errMsg = (res.data && res.data.error) || ('Error ' + res.status);
+          _showCreateTabError(errMsg);
+          return;
+        }
+        var tab = res.data && res.data.tab;
+        if (!tab) return;
+        if (res.softCap === 'true') {
+          _showSoftCapBanner();
+        }
+        _tabs.push(tab);
+        _renderTabStrip();
+        _activateTab(tab.id);
+        _closeCreateTabModal();
+      })
+      .catch(function (err) {
+        _showCreateTabError('Network error: ' + err.message);
+      });
+  }
+
+  // ── Create-tab modal ────────────────────────────────────────────────────────
+  function _openCreateTabModal() {
+    var modal = document.getElementById('chat-assistant-create-tab-modal');
+    if (!modal) return;
+    modal.style.display = '';
+    modal.removeAttribute('hidden');
+
+    // Pre-fill project
+    var projInput = document.getElementById('chat-assistant-create-tab-project');
+    if (projInput) {
+      projInput.value = _currentProjectId() || '';
+    }
+
+    // Clear title
+    var titleInput = document.getElementById('chat-assistant-create-tab-title-input');
+    if (titleInput) titleInput.value = '';
+
+    // Clear error
+    _hideCreateTabError();
+
+    // Populate model dropdown from cached available models
+    _populateCreateTabModelDropdown();
+
+    // Focus title input
+    if (titleInput) {
+      setTimeout(function () { titleInput.focus(); }, 50);
+    }
+  }
+
+  function _closeCreateTabModal() {
+    var modal = document.getElementById('chat-assistant-create-tab-modal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  }
+
+  function _showCreateTabError(msg) {
+    var el = document.getElementById('chat-assistant-create-tab-error');
+    if (el) {
+      el.textContent = msg;
+      el.classList.remove('hidden');
+    }
+  }
+
+  function _hideCreateTabError() {
+    var el = document.getElementById('chat-assistant-create-tab-error');
+    if (el) el.classList.add('hidden');
+  }
+
+  function _populateCreateTabModelDropdown() {
+    var sel = document.getElementById('chat-assistant-create-tab-model');
+    if (!sel) return;
+    sel.innerHTML = '';
+    if (!_availableModels.length) {
+      var opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Loading…';
+      sel.appendChild(opt);
+      // Fetch models for this project
+      _fetchModelsForModal();
+      return;
+    }
+    _availableModels.forEach(function (m) {
+      var opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      if (m === _defaultModel) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (_defaultModel) sel.value = _defaultModel;
+  }
+
+  function _fetchModelsForModal() {
+    var projectId = _currentProjectId();
+    var url = '/api/chat/config';
+    if (projectId) url += '?' + new URLSearchParams({ project_id: projectId }).toString();
+    fetch(url)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        _availableModels = data.models || [];
+        _defaultModel = data.default_model || '';
+        _populateCreateTabModelDropdown();
+      })
+      .catch(function () { /* ignore */ });
+  }
+
+  // ── Soft-cap banner ─────────────────────────────────────────────────────────
+  function _showSoftCapBanner() {
+    _softCapBannerVisible = true;
+    var banner = document.getElementById('chat-assistant-softcap-banner');
+    if (banner) {
+      banner.style.display = '';
+      banner.classList.remove('hidden');
+    }
+  }
+
+  function _hideSoftCapBanner() {
+    _softCapBannerVisible = false;
+    var banner = document.getElementById('chat-assistant-softcap-banner');
+    if (banner) {
+      banner.style.display = 'none';
+    }
+  }
+
+  // ── Recent-closed dropdown ──────────────────────────────────────────────────
+  function _toggleClosedTabsDropdown(triggerEl) {
+    var dd = document.getElementById('chat-assistant-closed-tabs-dropdown');
+    if (!dd) return;
+    if (dd.classList.contains('hidden')) {
+      // Position below the trigger button
+      if (triggerEl) {
+        var rect = triggerEl.getBoundingClientRect();
+        dd.style.top = (rect.bottom + 4) + 'px';
+        dd.style.right = (window.innerWidth - rect.right) + 'px';
+        dd.style.left = 'auto';
+      }
+      _loadRecentClosedTabs();
+      dd.classList.remove('hidden');
+    } else {
+      dd.classList.add('hidden');
+    }
+  }
+
+  function _hideClosedTabsDropdown() {
+    var dd = document.getElementById('chat-assistant-closed-tabs-dropdown');
+    if (dd) dd.classList.add('hidden');
+  }
+
+  function _loadRecentClosedTabs() {
+    var projectId = _currentProjectId();
+    if (!projectId) return;
+    var list = document.getElementById('chat-assistant-closed-tabs-list');
+    if (list) list.innerHTML = '<p class="text-xs text-muted-foreground italic">Loading&#x2026;</p>';
+
+    var url = '/api/chat/tabs/recent-closed?' + new URLSearchParams({ project_id: projectId, limit: '10' }).toString();
+    fetch(url)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!list) return;
+        var tabs = (data && data.tabs) || [];
+        if (!tabs.length) {
+          list.innerHTML = '<p class="text-xs text-muted-foreground italic">No recently closed tabs.</p>';
+          return;
+        }
+        list.innerHTML = '';
+        tabs.forEach(function (tab) {
+          var div = document.createElement('div');
+          div.className = 'chat-assistant-closed-tab-entry';
+          var closedAt = tab.closed_at ? _relativeTime(new Date(tab.closed_at)) : '';
+          div.innerHTML = '<div class="chat-assistant-closed-tab-title">' + _escHtml(tab.title || 'Chat') + '</div>'
+            + '<div class="chat-assistant-closed-tab-meta">'
+            + _escHtml(_modelShortName(tab.model || ''))
+            + (closedAt ? ' &middot; Closed ' + _escHtml(closedAt) : '')
+            + '</div>';
+          div.addEventListener('click', function () {
+            _reopenTab(tab.id);
+          });
+          list.appendChild(div);
+        });
+      })
+      .catch(function () {
+        if (list) list.innerHTML = '<p class="text-xs text-destructive italic">Failed to load.</p>';
+      });
+  }
+
+  // ── Per-tab model bar ───────────────────────────────────────────────────────
+  function _updateTabModelBar() {
+    var bar = document.getElementById('chat-assistant-tab-model-bar');
+    var label = document.getElementById('chat-assistant-tab-model-label');
+    if (!bar) return;
+
+    var tab = _activeTabId ? _tabs.find(function (t) { return t.id === _activeTabId; }) : null;
+    if (!tab) {
+      bar.style.display = 'none';
+      return;
+    }
+    bar.style.display = '';
+    bar.classList.remove('hidden');
+    if (label) label.textContent = tab.model || '—';
+    _populateTabModelDropdown();
+  }
+
+  function _hideTabModelBar() {
+    var bar = document.getElementById('chat-assistant-tab-model-bar');
+    if (bar) bar.style.display = 'none';
+  }
+
+  function _populateTabModelDropdown() {
+    var dd = document.getElementById('chat-assistant-tab-model-dropdown');
+    if (!dd) return;
+    dd.innerHTML = '';
+    _availableModels.forEach(function (m) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'block w-full text-left px-3 py-1.5 text-xs hover:bg-muted text-foreground';
+      btn.setAttribute('role', 'option');
+      btn.textContent = m;
+      btn.addEventListener('click', function () {
+        _selectTabModel(m);
+      });
+      dd.appendChild(btn);
+    });
+  }
+
+  function _selectTabModel(model) {
+    // Hide dropdown
+    var dd = document.getElementById('chat-assistant-tab-model-dropdown');
+    if (dd) dd.classList.add('hidden');
+
+    if (!_activeTabId) return;
+    var tabId = _activeTabId;
+
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: model })
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('update model: ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        var updated = data && data.tab;
+        if (!updated) return;
+        var idx = _tabs.findIndex(function (t) { return t.id === tabId; });
+        if (idx !== -1) _tabs[idx] = updated;
+        // Update label and tab badge
+        var label = document.getElementById('chat-assistant-tab-model-label');
+        if (label) label.textContent = updated.model || '—';
+        _updateTabButtonLabel(tabId, undefined, updated.model);
+      })
+      .catch(function (err) {
+        _appendSystemMessage('Model change failed: ' + err.message, 'error');
+      });
+  }
+
   // ── Message rendering ───────────────────────────────────────────────────────
-  var _currentAssistantEl = null;
-  var _currentAssistantId = null;
+  function _resetAssistantState() {
+    if (_activeTabId) {
+      _tabCurrentAssistantEl[_activeTabId] = null;
+      _tabCurrentAssistantId[_activeTabId] = null;
+    }
+  }
 
   function _clearMessages() {
     var msgs = document.getElementById('chat-assistant-messages');
     if (!msgs) return;
     var anchor = document.getElementById('chat-assistant-scroll-anchor');
     var empty = document.getElementById('chat-assistant-empty-state');
+    var noTabs = document.getElementById('chat-assistant-no-tabs-state');
     msgs.innerHTML = '';
+    if (noTabs) msgs.appendChild(noTabs);
     if (empty) msgs.appendChild(empty);
     if (anchor) msgs.appendChild(anchor);
-    _currentAssistantEl = null;
-    _currentAssistantId = null;
+  }
+
+  function _showEmptyState() {
+    var el = document.getElementById('chat-assistant-empty-state');
+    if (el) el.style.display = '';
+    var noTabs = document.getElementById('chat-assistant-no-tabs-state');
+    if (noTabs) noTabs.classList.add('hidden');
+  }
+
+  function _hideEmptyState() {
+    var el = document.getElementById('chat-assistant-empty-state');
+    if (el) el.style.display = 'none';
+    var noTabs = document.getElementById('chat-assistant-no-tabs-state');
+    if (noTabs) noTabs.classList.add('hidden');
+  }
+
+  function _renderEmptyNoTabs() {
+    var wrap = document.getElementById('chat-assistant-tab-strip-wrap');
+    if (wrap) wrap.style.display = 'none';
+    _hideTabModelBar();
+
+    var noTabs = document.getElementById('chat-assistant-no-tabs-state');
+    var empty = document.getElementById('chat-assistant-empty-state');
+    if (noTabs) {
+      noTabs.classList.remove('hidden');
+      noTabs.style.display = '';
+    }
+    if (empty) empty.style.display = 'none';
+
+    // Hide composer
+    var composer = document.getElementById('chat-assistant-composer-wrap');
+    if (composer) composer.style.display = 'none';
+  }
+
+  function _showComposer() {
+    var composer = document.getElementById('chat-assistant-composer-wrap');
+    if (composer) composer.style.display = '';
   }
 
   function _appendUserMessage(text) {
@@ -557,15 +1235,16 @@
     _scrollToBottom();
   }
 
-  function _appendOrUpdateAssistantMessage(eid, text, isFinal) {
+  function _appendOrUpdateAssistantMessage(tabId, eid, text, isFinal) {
     var msgs = document.getElementById('chat-assistant-messages');
     if (!msgs) return;
     _hideEmptyState();
 
-    // Streaming: accumulate into the same element
-    if (!isFinal && _currentAssistantEl && _currentAssistantId !== null) {
-      // Append text delta if this looks like a delta (short chunk)
-      var bodyEl = _currentAssistantEl.querySelector('.chat-assistant-stream-text');
+    var currentEl = _tabCurrentAssistantEl[tabId];
+    var currentId = _tabCurrentAssistantId[tabId];
+
+    if (!isFinal && currentEl && currentId !== null) {
+      var bodyEl = currentEl.querySelector('.chat-assistant-stream-text');
       if (bodyEl) {
         bodyEl.textContent += text;
         _scrollToBottom();
@@ -573,7 +1252,6 @@
       }
     }
 
-    // New assistant message element
     var wrap = document.createElement('div');
     wrap.className = 'flex gap-2 items-start';
     var iconHtml = '<div class="flex-shrink-0 w-5 h-5 rounded-full bg-muted flex items-center justify-center mt-0.5" aria-hidden="true">';
@@ -585,14 +1263,14 @@
     var bodyEl = wrap.querySelector('.chat-assistant-stream-text');
     if (bodyEl) bodyEl.textContent = text;
     msgs.insertBefore(wrap, document.getElementById('chat-assistant-scroll-anchor'));
-    _currentAssistantEl = wrap;
-    _currentAssistantId = eid;
+    _tabCurrentAssistantEl[tabId] = wrap;
+    _tabCurrentAssistantId[tabId] = eid;
     _scrollToBottom();
   }
 
-  function _finaliseLastAssistantMessage() {
-    _currentAssistantEl = null;
-    _currentAssistantId = null;
+  function _finaliseLastAssistantMessage(tabId) {
+    _tabCurrentAssistantEl[tabId] = null;
+    _tabCurrentAssistantId[tabId] = null;
   }
 
   function _appendToolCall(toolName, args) {
@@ -643,36 +1321,27 @@
     _appendSystemMessage('Some events may have been missed during reconnect.', 'info');
   }
 
-  function _hideEmptyState() {
-    var el = document.getElementById('chat-assistant-empty-state');
-    if (el) el.style.display = 'none';
-  }
-
   function _scrollToBottom() {
     var msgs = document.getElementById('chat-assistant-messages');
     if (msgs) msgs.scrollTop = msgs.scrollHeight;
   }
 
-  // ── Load history on reconnect ───────────────────────────────────────────────
-  function _loadHistory(sid) {
-    fetch('/api/chat/sessions/' + sid)
+  // ── Load history for a tab ──────────────────────────────────────────────────
+  function _loadTabHistory(tabId) {
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId))
       .then(function (r) {
         if (!r.ok) return null;
         return r.json();
       })
       .then(function (data) {
-        // GET /api/chat/sessions/{sid} returns { session, messages }.
-        // messages is Array<{ info: Message, parts: Array<Part> }>
-        // (opencode SDK SessionMessagesResponses shape — see types.gen.d.ts).
-        // Message.role lives on info.role, not on the outer object.
-        // Text content lives in parts[].text for TextPart (parts[].type === 'text').
         if (!data || !data.messages) return;
+        // Only render if this tab is still active
+        if (tabId !== _activeTabId) return;
         _clearMessages();
         data.messages.forEach(function (entry) {
           var info = entry && entry.info;
           var parts = (entry && entry.parts) || [];
           if (!info) return;
-          // Concatenate every TextPart's text for the rendered bubble.
           var text = parts
             .filter(function (p) { return p && p.type === 'text' && typeof p.text === 'string'; })
             .map(function (p) { return p.text; })
@@ -680,16 +1349,14 @@
           if (info.role === 'user') {
             _appendUserMessage(text);
           } else if (info.role === 'assistant') {
-            // Pass info.id as dedup key so an in-flight stream doesn't double-render.
-            _appendOrUpdateAssistantMessage(info.id, text, true);
+            _appendOrUpdateAssistantMessage(tabId, info.id, text, true);
           }
         });
-        // Reset so the first delta of the next prompt creates a new bubble
-        // instead of appending to the last history bubble. (See I-00087 S02.)
-        _currentAssistantEl = null;
-        _currentAssistantId = null;
+        _tabCurrentAssistantEl[tabId] = null;
+        _tabCurrentAssistantId[tabId] = null;
+        _showComposer();
       })
-      .catch(function () { /* silently ignore history load failures */ });
+      .catch(function () { /* silently ignore */ });
   }
 
   // ── Context chip rendering ──────────────────────────────────────────────────
@@ -725,15 +1392,17 @@
 
   // ── Send / Abort ────────────────────────────────────────────────────────────
   function _updateSendAbortButtons() {
+    var streaming = _activeTabId ? (_tabStreaming[_activeTabId] || false) : false;
     var sendBtn = document.getElementById('chat-assistant-send');
     var abortBtn = document.getElementById('chat-assistant-abort');
-    if (sendBtn) sendBtn.disabled = _streaming;
+    if (sendBtn) sendBtn.disabled = streaming;
     if (abortBtn) {
-      if (_streaming) {
-        abortBtn.classList.remove('hidden');
-      } else {
-        abortBtn.classList.add('hidden');
-      }
+      // Use CSS opacity (not disabled/hidden) so playwright never sees a
+      // mid-click state transition that triggers its actionability retry
+      // loop. `_abort()` is a no-op when no stream is in flight, so a stray
+      // click while not streaming is harmless.
+      abortBtn.style.opacity = streaming ? '1' : '0.45';
+      abortBtn.title = streaming ? 'Abort current run' : 'No active run to abort';
     }
   }
 
@@ -742,46 +1411,71 @@
     if (!input) return;
     var text = input.value.trim();
     if (!text) return;
-    if (!_sid) {
-      _createSession();
+    if (!_activeTabId) {
+      _appendSystemMessage('No active chat tab. Create one first.', 'error');
       return;
     }
-    var model = _getSelectedModel();
+    var tabId = _activeTabId;
+    var tab = _tabs.find(function (t) { return t.id === tabId; });
     var ctx = (!_chipDismissed && _context) ? _context : null;
     var body = { text: text };
-    if (model) body.model = model;
+    if (tab && tab.model) body.model = tab.model;
     if (ctx) body.context = ctx;
 
     _appendUserMessage(text);
     input.value = '';
     _closeSlashMenu();
 
-    fetch('/api/chat/sessions/' + _sid + '/prompt', {
+    // Enter abortable state immediately after submit so per-tab abort remains
+    // reachable even when runtimes emit only a short/fast stream.
+    _tabStreaming[tabId] = true;
+    _updateSendAbortButtons();
+    _startContextPoll();
+
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId) + '/prompt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
-    }).catch(function (err) {
-      _appendSystemMessage('Send failed: ' + err.message, 'error');
-      _streaming = false;
-      _updateSendAbortButtons();
-    });
+    })
+      .then(function (resp) {
+        if (!resp.ok) {
+          throw new Error('Send failed: ' + resp.status);
+        }
+      })
+      .catch(function (err) {
+        _appendSystemMessage(err.message, 'error');
+        _tabStreaming[tabId] = false;
+        _stopContextPoll();
+        _updateSendAbortButtons();
+      });
   }
 
   function _abort() {
-    if (!_sid) return;
-    fetch('/api/chat/sessions/' + _sid + '/abort', { method: 'POST' })
+    if (!_activeTabId) return;
+    var tabId = _activeTabId;
+    // Always POST — the dashboard router and the opencode stub both treat
+    // an abort against an idle session as a no-op (idle.idle without
+    // aborted=True is emitted by the stub; the dashboard returns 204).
+    // We previously gated this on `_tabStreaming[tabId]` but that
+    // introduced a race: between the user clicking Abort and the click
+    // event actually dispatching (playwright auto-wait + DOM-stability
+    // retries), `_tabStreaming[tabId]` can flip to false as the stream
+    // completes naturally, silently swallowing a real abort intent.
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId) + '/abort', { method: 'POST' })
       .catch(function () { /* ignore */ });
   }
 
   // ── Context % polling ───────────────────────────────────────────────────────
   function _startContextPoll() {
     _stopContextPoll();
+    var tabId = _activeTabId;
     _contextPollTimer = setInterval(function () {
-      if (!_sid) return;
-      fetch('/api/chat/sessions/' + _sid)
+      if (!tabId) return;
+      fetch('/api/chat/tabs/' + encodeURIComponent(tabId))
         .then(function (r) { return r.json(); })
         .then(function (data) {
-          var pct = data && data.context_pct;
+          var session = data && data.session;
+          var pct = session && session.context_pct;
           var el = document.getElementById('chat-assistant-context-pct');
           if (el && typeof pct === 'number') {
             el.textContent = pct + '%';
@@ -800,18 +1494,12 @@
   }
 
   // ── Model selector ──────────────────────────────────────────────────────────
-  function _getSelectedModel() {
-    var sel = document.getElementById('chat-assistant-model');
-    return sel ? sel.value : '';
-  }
-
   function _refreshModels() {
     var projectId = _currentProjectId();
     _lastProjectId = projectId;
     var url = '/api/chat/config';
     if (projectId) {
-      var params = new URLSearchParams({ project_id: projectId });
-      url += '?' + params.toString();
+      url += '?' + new URLSearchParams({ project_id: projectId }).toString();
     }
     fetch(url)
       .then(function (r) {
@@ -822,23 +1510,10 @@
         if (!data) return;
         _projectDirectoryProjectId = projectId;
         _projectDirectory = typeof data.project_directory === 'string' ? data.project_directory : '';
-        var sel = document.getElementById('chat-assistant-model');
-        if (!sel) return;
-        sel.classList.remove('hidden');
-        var current = sel.value;
-        sel.innerHTML = '';
-        var models = data.models || [];
-        var def = data.default_model || '';
-        models.forEach(function (m) {
-          var opt = document.createElement('option');
-          opt.value = m;
-          opt.textContent = m;
-          if (m === (current || def)) opt.selected = true;
-          sel.appendChild(opt);
-        });
-        if (!current && def) {
-          sel.value = def;
-        }
+        _availableModels = data.models || [];
+        _defaultModel = data.default_model || '';
+        // Refresh the per-tab model dropdown if it's visible
+        _populateTabModelDropdown();
       })
       .catch(function () { /* silently ignore */ });
   }
@@ -849,8 +1524,8 @@
       if (!_isOpen()) return;
       var projectId = _currentProjectId();
       if (projectId !== _lastProjectId) {
-        var sel = document.getElementById('chat-assistant-model');
-        if (sel) sel.innerHTML = '';
+        _availableModels = [];
+        _defaultModel = '';
         _projectDirectory = '';
         _projectDirectoryProjectId = null;
       }
@@ -937,41 +1612,7 @@
     _closeSlashMenu();
   }
 
-  // ── Session history ─────────────────────────────────────────────────────────
-  function _loadSessionHistory() {
-    fetch('/api/chat/sessions')
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        var list = document.getElementById('chat-assistant-sessions-list');
-        if (!list) return;
-        var sessions = data || [];
-        if (!sessions.length) {
-          list.innerHTML = '<p class="text-xs text-muted-foreground italic">No past sessions.</p>';
-          return;
-        }
-        list.innerHTML = '';
-        sessions.forEach(function (s) {
-          var div = document.createElement('div');
-          div.className = 'chat-assistant-session-entry' + (s.id === _sid ? ' active' : '');
-          var dateStr = s.created_at ? new Date(s.created_at).toLocaleString() : '';
-          div.innerHTML = '<div class="font-mono truncate">' + _escHtml(s.id || '') + '</div>'
-            + '<div class="chat-assistant-session-date">' + _escHtml(dateStr) + '</div>';
-          div.addEventListener('click', function () {
-            switchSession(s.id);
-            _hideHistoryDropdown();
-          });
-          list.appendChild(div);
-        });
-      })
-      .catch(function () { /* ignore */ });
-  }
-
-  function _hideHistoryDropdown() {
-    var dd = document.getElementById('chat-assistant-history-dropdown');
-    if (dd) dd.classList.add('hidden');
-  }
-
-  // ── Escape HTML ─────────────────────────────────────────────────────────────
+  // ── Utility helpers ─────────────────────────────────────────────────────────
   function _escHtml(str) {
     return String(str)
       .replace(/&/g, '&amp;')
@@ -981,8 +1622,32 @@
       .replace(/'/g, '&#39;');
   }
 
+  function _truncateStr(str, maxLen) {
+    if (!str || str.length <= maxLen) return str;
+    return str.slice(0, maxLen - 1) + '…';
+  }
+
+  function _modelShortName(model) {
+    // "anthropic/claude-sonnet-4-7" → "claude-sonnet-4-7"
+    // Truncate if still long
+    var slash = model.lastIndexOf('/');
+    var name = slash !== -1 ? model.slice(slash + 1) : model;
+    return _truncateStr(name, 14);
+  }
+
+  function _relativeTime(date) {
+    var now = new Date();
+    var diffMs = now - date;
+    var diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return diffMin + 'm ago';
+    var diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return diffHr + 'h ago';
+    var diffDay = Math.floor(diffHr / 24);
+    return diffDay + 'd ago';
+  }
+
   // ── Ctrl+/ keybinding ───────────────────────────────────────────────────────
-  // Note: the existing Code Q&A chat uses Cmd+\ (backslash) — no collision.
   document.addEventListener('keydown', function (e) {
     if (e.ctrlKey && e.key === '/') {
       e.preventDefault();
@@ -1016,10 +1681,22 @@
       navToggle.addEventListener('click', function () { toggle(); });
     }
 
-    // New chat button
+    // New tab button (header)
     var newBtn = document.getElementById('chat-assistant-new-btn');
     if (newBtn) {
-      newBtn.addEventListener('click', function () { newSession(); });
+      newBtn.addEventListener('click', function () { _openCreateTabModal(); });
+    }
+
+    // New tab button (in tab strip)
+    var newTabBtn = document.getElementById('chat-assistant-new-tab-btn');
+    if (newTabBtn) {
+      newTabBtn.addEventListener('click', function () { _openCreateTabModal(); });
+    }
+
+    // No-tabs CTA
+    var noTabsCta = document.getElementById('chat-assistant-no-tabs-cta');
+    if (noTabsCta) {
+      noTabsCta.addEventListener('click', function () { _openCreateTabModal(); });
     }
 
     // Send button
@@ -1034,23 +1711,20 @@
       abortBtn.addEventListener('click', function () { _abort(); });
     }
 
-    // Textarea: Enter sends, Ctrl+Enter also sends, / triggers slash menu
+    // Textarea
     var input = document.getElementById('chat-assistant-input');
     if (input) {
       input.addEventListener('keydown', function (e) {
-        // Cmd/Ctrl+Enter sends
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
           e.preventDefault();
           _sendPrompt();
           return;
         }
-        // Enter (without Shift) sends
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           _sendPrompt();
           return;
         }
-        // Escape closes slash menu
         if (e.key === 'Escape') {
           _closeSlashMenu();
         }
@@ -1059,8 +1733,7 @@
       input.addEventListener('input', function () {
         var val = input.value;
         if (val.startsWith('/')) {
-          var filter = val.slice(1);
-          _openSlashMenu(filter);
+          _openSlashMenu(val.slice(1));
         } else {
           _closeSlashMenu();
         }
@@ -1074,40 +1747,149 @@
         var tray = document.getElementById('chat-assistant-skills-tray');
         if (tray) {
           var hidden = tray.classList.toggle('hidden');
-          if (!hidden) {
-            _loadSkills();
-          }
+          if (!hidden) _loadSkills();
         }
       });
     }
 
-    // History dropdown toggle
+    // History dropdown toggle (repurposed as "session history" — kept for
+    // backwards compat with the header button; loads the recent-closed list)
     var histToggle = document.getElementById('chat-assistant-history-toggle');
     if (histToggle) {
-      histToggle.addEventListener('click', function () {
-        var dd = document.getElementById('chat-assistant-history-dropdown');
+      histToggle.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _toggleClosedTabsDropdown(histToggle);
+      });
+    }
+
+    // Recent-closed dropdown toggle (tab strip button)
+    var recentBtn = document.getElementById('chat-assistant-recent-closed-btn');
+    if (recentBtn) {
+      recentBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _toggleClosedTabsDropdown(recentBtn);
+      });
+    }
+
+    // Soft-cap dismiss
+    var softCapDismiss = document.getElementById('chat-assistant-softcap-dismiss');
+    if (softCapDismiss) {
+      softCapDismiss.addEventListener('click', function () {
+        _hideSoftCapBanner();
+      });
+    }
+
+    // Per-tab model badge
+    var modelBadge = document.getElementById('chat-assistant-tab-model-badge');
+    if (modelBadge) {
+      modelBadge.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var dd = document.getElementById('chat-assistant-tab-model-dropdown');
         if (dd) {
-          var hidden = dd.classList.toggle('hidden');
-          if (!hidden) {
-            _loadSessionHistory();
+          if (dd.classList.contains('hidden')) {
+            _populateTabModelDropdown();
+            dd.classList.remove('hidden');
+          } else {
+            dd.classList.add('hidden');
           }
         }
       });
     }
 
-    // Model selector change: update per-session default
-    var modelSel = document.getElementById('chat-assistant-model');
-    if (modelSel) {
-      modelSel.addEventListener('change', function () {
-        // Model change applies to next prompt only; no abort of in-flight run.
-        // No extra action needed — _getSelectedModel() reads it at send time.
+    // Create-tab modal: cancel
+    document.addEventListener('click', function (e) {
+      var cancelBtn = document.getElementById('chat-assistant-create-tab-cancel');
+      if (cancelBtn && (e.target === cancelBtn || cancelBtn.contains(e.target))) {
+        _closeCreateTabModal();
+      }
+    });
+
+    // Create-tab modal: submit
+    document.addEventListener('click', function (e) {
+      var submitBtn = document.getElementById('chat-assistant-create-tab-submit');
+      if (submitBtn && (e.target === submitBtn || submitBtn.contains(e.target))) {
+        var projInput = document.getElementById('chat-assistant-create-tab-project');
+        var runtimeSel = document.getElementById('chat-assistant-create-tab-runtime');
+        var modelSel = document.getElementById('chat-assistant-create-tab-model');
+        var titleInput = document.getElementById('chat-assistant-create-tab-title-input');
+        var projectId = projInput ? projInput.value.trim() : (_currentProjectId() || '');
+        var runtime = runtimeSel ? runtimeSel.value : 'opencode';
+        var model = modelSel ? modelSel.value : '';
+        var title = titleInput ? titleInput.value.trim() : '';
+        if (!projectId) {
+          _showCreateTabError('Project is required.');
+          return;
+        }
+        _createTab(projectId, runtime, model, title || 'New chat');
+      }
+    });
+
+    // Context menu actions
+    var ctxMenu = document.getElementById('chat-assistant-tab-context-menu');
+    if (ctxMenu) {
+      ctxMenu.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-ctx-action]');
+        if (!btn) return;
+        var action = btn.getAttribute('data-ctx-action');
+        var tabId = _ctxMenuTabId;
+        _hideTabContextMenu();
+        if (!tabId) return;
+        if (action === 'rename') {
+          // Find the tab button and trigger inline rename
+          var tabBtn = document.querySelector('#chat-assistant-tab-strip .chat-assistant-tab-btn[data-tab-id="' + tabId + '"]');
+          if (tabBtn) {
+            var titleSpan = tabBtn.querySelector('.chat-assistant-tab-title');
+            if (titleSpan) _startInlineRename(tabId, titleSpan);
+          }
+        } else if (action === 'duplicate') {
+          _duplicateTab(tabId);
+        } else if (action === 'close') {
+          _closeTab(tabId);
+        }
       });
     }
 
-    // Initial model load if panel is open
+    // Close context menu and dropdowns when clicking outside
+    document.addEventListener('click', function (e) {
+      // Tab context menu
+      var ctxM = document.getElementById('chat-assistant-tab-context-menu');
+      if (ctxM && !ctxM.classList.contains('hidden')) {
+        if (!ctxM.contains(e.target)) {
+          _hideTabContextMenu();
+        }
+      }
+      // Model dropdown
+      var modelDd = document.getElementById('chat-assistant-tab-model-dropdown');
+      var modelBadgeEl = document.getElementById('chat-assistant-tab-model-badge');
+      if (modelDd && !modelDd.classList.contains('hidden')) {
+        if (!modelDd.contains(e.target) && !(modelBadgeEl && modelBadgeEl.contains(e.target))) {
+          modelDd.classList.add('hidden');
+        }
+      }
+      // Closed tabs dropdown
+      var closedDd = document.getElementById('chat-assistant-closed-tabs-dropdown');
+      var recentBtnEl = document.getElementById('chat-assistant-recent-closed-btn');
+      var histToggleEl = document.getElementById('chat-assistant-history-toggle');
+      if (closedDd && !closedDd.classList.contains('hidden')) {
+        if (!closedDd.contains(e.target)
+            && !(recentBtnEl && recentBtnEl.contains(e.target))
+            && !(histToggleEl && histToggleEl.contains(e.target))) {
+          closedDd.classList.add('hidden');
+        }
+      }
+      // Create tab modal: close when clicking backdrop
+      var modal = document.getElementById('chat-assistant-create-tab-modal');
+      if (modal && modal.style.display !== 'none') {
+        if (e.target === modal) {
+          _closeCreateTabModal();
+        }
+      }
+    });
+
+    // Initial state
     if (_isOpen()) {
+      _bootstrapTabs();
       _refreshModels();
-      _ensureSession();
     }
 
     _scheduleModelRefresh();
