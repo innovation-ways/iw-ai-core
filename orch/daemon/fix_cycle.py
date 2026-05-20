@@ -2262,7 +2262,9 @@ def _build_fix_launch_argv(cli_tool: str, inner_command: str) -> list[str]:
     return ["/bin/sh", "-c", inner_command]
 
 
-def _build_fix_inner_command(cli_tool: str, prompt_path: str, resolved_model: str) -> str:
+def _build_fix_inner_command(
+    cli_tool: str, prompt_path: str, resolved_model: str, worktree_path: str
+) -> str:
     """Build the inner shell command launched for a fix-cycle agent run.
 
     Mirrors ``batch_manager._build_initial_command`` — the two helpers must
@@ -2280,7 +2282,14 @@ def _build_fix_inner_command(cli_tool: str, prompt_path: str, resolved_model: st
         )
     if cli_tool == "pi":
         # CR-00062: pi.dev print-mode is permission-flag-free (R-00072 §7).
-        return f'pi -p "$(cat {prompt_path})" --model {resolved_model}'
+        # CR-00065 follow-up: pin pi to its worktree — same isolation the
+        # initial-step launcher applies (see _pi_worktree_isolation_args).
+        from orch.daemon.batch_manager import _pi_worktree_isolation_args  # noqa: PLC0415
+
+        return (
+            f'pi -p "$(cat {prompt_path})" --model {resolved_model} '
+            f"{_pi_worktree_isolation_args(worktree_path)}"
+        )
     raise ValueError(f"Unknown cli_tool: {cli_tool!r}")
 
 
@@ -2341,6 +2350,7 @@ def _launch_fix_agent(
         cli_tool=resolved_cli_tool,
         prompt_path=str(tmp_prompt),
         resolved_model=resolved_model,
+        worktree_path=worktree_path,
     )
 
     # Log file

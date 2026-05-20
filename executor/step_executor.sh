@@ -160,9 +160,14 @@ elif [[ "$CLI_TOOL" == "pi" ]]; then
         _lib_log "  WARNING: \$MODEL is empty; falling back to pi default 'anthropic/claude-sonnet-4-6'"
         MODEL="anthropic/claude-sonnet-4-6"
     fi
+    # CR-00065: pin pi to its worktree — pi discovers CLAUDE.md by walking up
+    # past the nested worktree into the main repo, so the agent edits main
+    # instead of the worktree. See pi_isolation_args in step_executor_lib.sh.
+    PI_ISO=()
+    pi_isolation_args PI_ISO "$WORKTREE_PATH"
     TMPDIR="$WORKTREE_PATH/.tmp" \
         setsid timeout "$TIMEOUT" \
-        pi -p "$INSTRUCTION" --model "$MODEL" \
+        pi -p "$INSTRUCTION" --model "$MODEL" "${PI_ISO[@]}" \
         < /dev/null >> "$STEP_LOG" 2>&1 || EXIT_CODE=$?
 
 else
