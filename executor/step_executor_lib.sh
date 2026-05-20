@@ -596,6 +596,34 @@ VERDICT
 }
 
 # =============================================================================
+# CR-00065: Pi worktree isolation
+# =============================================================================
+# CR-00065 / BATCH-00122 incident (2026-05-20): pi (<=0.75.x) has no
+# project-root flag and no environment block. It discovers CLAUDE.md /
+# AGENTS.md by walking *up* the directory tree, past the nested worktree into
+# the main repo, and tells the agent the project root is the main checkout —
+# so the agent edits the main working tree instead of its own worktree.
+# Disable pi's discovery and re-inject the worktree's own context plus an
+# explicit working-directory pin.
+# Mirror of orch/daemon/batch_manager._pi_worktree_isolation_args — keep in sync.
+PI_WORKTREE_PIN_TEXT="WORKTREE ISOLATION (IW AI Core): your current working directory is the root of your project and it is a git worktree. Every file you read, write, edit, or run a shell command against MUST stay inside this working directory. Never cd to, read, or write any path outside it. A separate checkout of this same repository may exist at a parent or sibling path on disk; it is NOT your project. Ignore it entirely and use paths relative to your working directory."
+
+# pi_isolation_args <out_array_name> <worktree_path>
+# Populate the named bash array with pi worktree-isolation CLI flags.
+pi_isolation_args() {
+    local -n _pi_iso_out="$1"
+    local _wt="$2"
+    _pi_iso_out=(--no-context-files)
+    if [[ -n "$_wt" && -f "$_wt/CLAUDE.md" ]]; then
+        _pi_iso_out+=(--append-system-prompt "$_wt/CLAUDE.md")
+    fi
+    if [[ -n "$_wt" && -f "$_wt/AGENTS.md" ]]; then
+        _pi_iso_out+=(--append-system-prompt "$_wt/AGENTS.md")
+    fi
+    _pi_iso_out+=(--append-system-prompt "$PI_WORKTREE_PIN_TEXT")
+}
+
+# =============================================================================
 # F-00084: LLM One-Shot Agent Invocation
 # =============================================================================
 # Used by orch/daemon/auto_merge.py (Phase 1 dry-run) to call the configured

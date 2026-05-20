@@ -1469,6 +1469,7 @@ class BatchManager:
                 cli_tool=resolved_cli_tool,
                 prompt_file=str(prompt_file),
                 resolved_model=resolved_model,
+                worktree_path=worktree_path,
                 agent_args=agent_args,
             )
 
@@ -2024,10 +2025,53 @@ def _next_run_number(db: Session, step: WorkflowStep) -> int:
     return count + 1
 
 
+# CR-00065 / BATCH-00122 incident (2026-05-20): the `pi` CLI (<=0.75.x) has no
+# project-root flag and no environment block. Its only signal for "where am I"
+# is AGENTS.md / CLAUDE.md discovery, which walks *up* the directory tree with
+# no worktree boundary. Worktrees are created nested inside the project repo
+# (`<repo>/.worktrees/<item>/`), so pi also finds the parent repo's CLAUDE.md
+# and reports the *main checkout* as the project root — the agent then edits
+# the main working tree instead of its own worktree. opencode and claude anchor
+# on their launch cwd and are unaffected.
+_PI_WORKTREE_PIN_TEXT = (
+    "WORKTREE ISOLATION (IW AI Core): your current working directory is the "
+    "root of your project and it is a git worktree. Every file you read, "
+    "write, edit, or run a shell command against MUST stay inside this "
+    "working directory. Never cd to, read, or write any path outside it. A "
+    "separate checkout of this same repository may exist at a parent or "
+    "sibling path on disk; it is NOT your project. Ignore it entirely and use "
+    "paths relative to your working directory."
+)
+
+
+def _pi_worktree_isolation_args(worktree_path: str) -> str:
+    """Return extra ``pi`` flags that pin the agent to ``worktree_path``.
+
+    ``--no-context-files`` disables pi's own (worktree-unaware) AGENTS.md /
+    CLAUDE.md discovery; the worktree's own CLAUDE.md / AGENTS.md are then
+    re-injected verbatim via ``--append-system-prompt`` so project guidance is
+    preserved without leaking the main-repo path; a final ``--append-system-
+    prompt`` carries the explicit working-directory pin. See
+    ``_PI_WORKTREE_PIN_TEXT`` for the incident this prevents.
+
+    Every argument is ``shlex.quote``-d so the fragment is safe to splice into
+    the ``"$(cat …)"``-style shell command line the daemon launches.
+    """
+    parts = ["--no-context-files"]
+    worktree = Path(worktree_path)
+    for ctx_name in ("CLAUDE.md", "AGENTS.md"):
+        ctx_file = worktree / ctx_name
+        if ctx_file.is_file():
+            parts.append(f"--append-system-prompt {shlex.quote(str(ctx_file))}")
+    parts.append(f"--append-system-prompt {shlex.quote(_PI_WORKTREE_PIN_TEXT)}")
+    return " ".join(parts)
+
+
 def _build_initial_command(
     cli_tool: str,
     prompt_file: str,
     resolved_model: str,
+    worktree_path: str,
     agent_args: str = "",
 ) -> str:
     """Build the shell command launched for a step's initial agent run.
@@ -2050,7 +2094,11 @@ def _build_initial_command(
         # via extension permissions, not a CLI switch — so no
         # `--dangerously-skip-permissions` / `--permission-mode bypassPermissions`
         # flag. See R-00072 §7.
-        return f'pi -p "$(cat {prompt_file})" --model {resolved_model}'
+        # CR-00065 follow-up: pin pi to its worktree (see _pi_worktree_isolation_args).
+        return (
+            f'pi -p "$(cat {prompt_file})" --model {resolved_model} '
+            f"{_pi_worktree_isolation_args(worktree_path)}"
+        )
     raise ValueError(f"Unknown cli_tool: {cli_tool!r}")
 
 
