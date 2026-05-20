@@ -19,6 +19,14 @@
 
   <!-- Send / Abort row -->
   <div class="flex items-center justify-end gap-2">
+    <button id="chat-assistant-clear"
+            type="button"
+            disabled
+            class="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:bg-muted min-h-[44px] min-w-[44px]"
+            aria-label="Clear chat history"
+            title="Clear all messages and reset context">
+      Clear
+    </button>
     <button id="chat-assistant-abort"
             type="button"
             style="opacity: 0.45;"

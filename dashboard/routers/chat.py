@@ -1006,6 +1006,88 @@ async def reply_permission(
     return Response(status_code=204)
 
 
+@router.post("/tabs/{tab_id}/clear")
+async def clear_tab(
+    tab_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    client: OpencodeClient | None = Depends(_get_client),
+    healthy: bool = Depends(_check_runtime_healthy),
+    relay_manager: RelayManager | None = Depends(_get_relay_manager),
+) -> Any:
+    """Reset a tab's LLM context by creating a new runtime session.
+
+    Creates a fresh session in the tab's runtime (OpenCode or Pi), drops
+    any existing SSE relay for this tab, updates ``ChatTab.opencode_session_id``
+    to the new session ID, and returns the updated tab dict.
+
+    Errors: 404 (tab not found), 400 (tab has no session to clear),
+    503 (runtime unavailable).
+    """
+    tab = _tab_service.get_tab(db, tab_id)
+    if tab is None:
+        return JSONResponse(status_code=404, content={"error": "tab not found"})
+
+    if not tab.opencode_session_id:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "tab has no session to clear"},
+        )
+
+    # Pi runtime path
+    if tab.runtime == "pi":
+        pi_runtime = getattr(request.app.state, "pi_runtime", None)
+        if pi_runtime is None:
+            return JSONResponse(status_code=503, content={"error": "Pi runtime unavailable"})
+        try:
+            pi_healthy = await pi_runtime.health()
+        except Exception:
+            pi_healthy = False
+        if not pi_healthy:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Pi runtime unavailable: pi binary not found"},
+            )
+        project = db.get(Project, tab.project_id) if tab.project_id else None
+        project_directory = ""
+        if project is not None:
+            project_directory = project.repo_root if isinstance(project.repo_root, str) else ""
+        try:
+            new_sid = await pi_runtime.create_session(
+                model=tab.model,
+                directory=project_directory or None,
+            )
+        except Exception:
+            return JSONResponse(status_code=503, content={"error": "Pi runtime unavailable"})
+    else:
+        # OpenCode path
+        if not healthy or client is None:
+            return _503_unavailable()
+
+        project = db.get(Project, tab.project_id) if tab.project_id else None
+        project_directory = ""
+        if project is not None:
+            project_directory = project.repo_root if isinstance(project.repo_root, str) else ""
+        try:
+            new_sid = await client.create_session(
+                model=tab.model,
+                directory=project_directory or None,
+            )
+        except Exception:
+            return JSONResponse(status_code=503, content={"error": "OpenCode runtime unavailable"})
+
+    # Close the old SSE relay for this tab before switching to the new session.
+    if relay_manager is not None:
+        await relay_manager.drop_relay(tab_id)
+
+    # Update the tab's session ID.
+    tab.opencode_session_id = new_sid
+    db.commit()
+    db.refresh(tab)
+
+    return {"tab": _tab_to_dict(tab)}
+
+
 # ---------------------------------------------------------------------------
 # Retained endpoints
 # ---------------------------------------------------------------------------
