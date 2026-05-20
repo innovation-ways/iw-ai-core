@@ -12,6 +12,7 @@ import logging
 import os
 import signal
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from orch.db.models import DaemonEvent, RunStatus, StepRun, StepStatus, WorkflowStep
@@ -211,6 +212,11 @@ def _check_step_health(
     now = datetime.now(UTC)
     alive = _is_pid_alive(run.pid)
     run.pid_alive = alive
+
+    # CR-00065: resolve and persist the pi session file on the first poll cycle
+    # that sees this run as alive (or every poll until it is found).
+    if alive and run.session_file is None:
+        _maybe_resolve_pi_session_file(db, run, now)
 
     if not alive:
         _handle_crashed(db, run, project_id, now, project_config)
@@ -529,3 +535,94 @@ def _emit_event(
         event_metadata=metadata or {},
     )
     db.add(event)
+
+
+# ---------------------------------------------------------------------------
+# CR-00065: pi session file resolution
+# ---------------------------------------------------------------------------
+
+_PI_SESSIONS_DIR = Path.home() / ".pi" / "agent" / "sessions"
+
+
+def _resolve_pi_session_file(run: StepRun) -> str | None:
+    """Locate the most recently modified .jsonl file in the pi session dir for this worktree.
+
+    Pi derives its session directory slug from the working directory by replacing
+    each ``/`` with ``-``:
+        /home/user/.../CR-00065  →  --home-user-...-CR-00065--
+
+    The session directory is therefore:
+        ~/.pi/agent/sessions/{slug}/
+
+    We scan for ``.jsonl`` files in that directory whose mtime is greater than or
+    equal to ``run.started_at`` (the step was started after the file was created
+    or was being created at the time).  The most recently modified file is
+    returned, or ``None`` if the directory does not exist or no qualifying file
+    is found.
+
+    All filesystem errors are swallowed and return ``None`` so that poll-cycle
+    failures never crash the daemon health-check loop.
+    """
+    if run.cli_tool != "pi":
+        return None
+    if run.worktree_path is None:
+        return None
+
+    slug = f"--{run.worktree_path.lstrip('/').replace('/', '-')}--"
+    session_dir = _PI_SESSIONS_DIR / slug
+
+    try:
+        if not session_dir.is_dir():
+            return None
+    except OSError:
+        return None
+
+    started_at = run.started_at
+    best_path: str | None = None
+    best_mtime = 0.0
+
+    try:
+        jsonl_files = session_dir.glob("*.jsonl")
+    except OSError:
+        return None
+
+    for path in jsonl_files:
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+
+        if started_at is not None and mtime < started_at.timestamp():
+            continue
+
+        if mtime > best_mtime:
+            best_mtime = mtime
+            best_path = str(path)
+
+    return best_path
+
+
+def _maybe_resolve_pi_session_file(
+    db: Session,  # noqa: ARG001 — kept for future DB writes; harmless no-op today
+    run: StepRun,
+    now: datetime,  # noqa: ARG001 — reserved for future use (e.g. event emission)
+) -> None:
+    """Attempt to resolve and persist the pi session file for a running StepRun.
+
+    Called every poll cycle for any alive ``pi`` StepRun whose
+    ``session_file`` column is still ``NULL``.  On success the path is
+    written back to the DB row; the caller is responsible for committing.
+    """
+    try:
+        session_file = _resolve_pi_session_file(run)
+    except Exception:
+        logger.warning(
+            "step_run %d: _resolve_pi_session_file raised an exception (non-fatal)",
+            run.id,
+            exc_info=True,
+        )
+        return
+
+    if session_file is not None:
+        run.session_file = session_file
+        logger.debug("step_run %d: resolved pi session file %s", run.id, session_file)

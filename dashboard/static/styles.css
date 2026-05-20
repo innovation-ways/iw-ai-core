@@ -521,3 +521,12 @@ div.mermaid-diagram span {
 .auto-merge-sortable{display:inline-flex;align-items:center;gap:.25rem;background:transparent;border:0;font:inherit;color:inherit;padding:0;cursor:pointer}
 .auto-merge-sortable:hover{color:var(--foreground)}
 .auto-merge-sortable--active{color:var(--foreground);font-weight:600}
+
+/* CR-00065: session log modal */
+#session-log-modal pre {
+  max-height: 200px;
+  overflow-y: auto;
+}
+#session-log-modal details[open] pre {
+  max-height: 400px;
+}

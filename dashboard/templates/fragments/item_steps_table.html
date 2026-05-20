@@ -11,6 +11,7 @@
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Model</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Prompt</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Logs</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Started</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Runs</th>
@@ -121,6 +122,24 @@
                 {{ status_badge(step.status) }}
               {% endif %}
             </td>
+          <td class="px-4 py-2">
+            {% if not step.is_synthetic and step.run_count > 0 %}
+            <button
+              class="session-log-trigger p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
+              aria-label="View logs for step {{ step.step_id }}"
+              hx-get="/project/{{ item.project_id }}/item/{{ item.id }}/step/{{ step.step_id }}/session-log"
+              hx-target="#session-log-modal-body"
+              hx-trigger="click"
+              hx-on::after-request="document.getElementById('session-log-modal').classList.remove('hidden')"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h10M4 14h8M4 18h6"/>
+              </svg>
+            </button>
+            {% else %}
+            <span class="text-muted-foreground/30">—</span>
+            {% endif %}
+          </td>
           <td class="px-4 py-2 font-mono text-xs text-muted-foreground hidden sm:table-cell">
             {% if step.started_at %}
               {{ step.started_at | localdt('%H:%M:%S') }}
@@ -209,7 +228,7 @@
       {% endfor %}
       {% if not steps %}
         <tr>
-          <td colspan="11" class="px-4 py-8 text-center text-muted-foreground text-sm">
+          <td colspan="12" class="px-4 py-8 text-center text-muted-foreground text-sm">
             No steps found.
           </td>
         </tr>
@@ -237,4 +256,38 @@
     </button>
   </div>
   <div id="prompt-modal-mount"></div>
+
+  <!-- CR-00065: Session log modal -->
+  <div id="session-log-modal"
+       class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="session-log-modal-title">
+    <div class="bg-card border border-border rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col mx-4">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+        <h2 id="session-log-modal-title" class="text-sm font-semibold">Agent Session Log</h2>
+        <button
+          class="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground"
+          aria-label="Close log viewer"
+          onclick="document.getElementById('session-log-modal').classList.add('hidden')"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div id="session-log-modal-body"
+           class="overflow-y-auto flex-1 p-4 text-xs font-mono">
+        <span class="text-muted-foreground">Select a step to view its log.</span>
+      </div>
+    </div>
+  </div>
+  <script>
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') document.getElementById('session-log-modal').classList.add('hidden');
+  });
+  document.getElementById('session-log-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.add('hidden');
+  });
+  </script>
 </div>

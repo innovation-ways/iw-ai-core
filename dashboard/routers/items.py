@@ -8,7 +8,7 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
@@ -41,6 +41,20 @@ from orch.db.models import (
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates
     from sqlalchemy.orm import Session
+
+
+# ---------------------------------------------------------------------------
+# TypedDict helpers (used in htmx fragment routes)
+# ---------------------------------------------------------------------------
+
+
+class SessionLogSegment(TypedDict, total=False):
+    """A rendered log segment produced by session_reader.read_session_content."""
+
+    type: str  # "assistant" | "tool_call" | "tool_result" | "thinking"
+    #             | "compaction" | "error" | "log"
+    text: str
+    collapsible: bool
 
 
 router = APIRouter(prefix="/project/{project_id}")
@@ -2094,5 +2108,97 @@ def item_log_content(
             "item_id": item_id,
             "step_db_id": step_db_id,
             "run_number": run_number,
+        },
+    )
+
+
+@router.get("/item/{item_id}/step/{step_id}/session-log", response_class=HTMLResponse)
+def item_session_log(
+    project_id: str,
+    item_id: str,
+    step_id: str,
+    request: Request,
+    run_number: int | None = None,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: rendered session log for a specific step run (CR-00065).
+
+    Query params:
+        run_number: int | None — if omitted, uses the highest run_number for the step.
+
+    Error handling:
+        404 if project, item, or step not found.
+        200 with error segment if read_session_content fails (never 500).
+    """
+    from orch.daemon.session_reader import read_session_content
+
+    # Validate project + item exist
+    _get_project_or_404(project_id, db)
+    _get_item_or_404(project_id, item_id, db)
+
+    # Resolve the WorkflowStep DB id from the string step_id
+    ws = db.scalar(
+        select(WorkflowStep).where(
+            WorkflowStep.project_id == project_id,
+            WorkflowStep.work_item_id == item_id,
+            WorkflowStep.step_id == step_id,
+        )
+    )
+    if ws is None:
+        raise HTTPException(status_code=404, detail=f"Step {step_id!r} not found")
+
+    # Query StepRun rows for this step
+    run: StepRun | None = None
+    if run_number is not None:
+        run = db.scalar(
+            select(StepRun).where(
+                StepRun.step_id == ws.id,
+                StepRun.run_number == run_number,
+            )
+        )
+    else:
+        # Default to the latest run (highest run_number)
+        run = db.scalars(
+            select(StepRun)
+            .where(StepRun.step_id == ws.id)
+            .order_by(StepRun.run_number.desc())
+            .limit(1)
+        ).first()
+
+    segments: list[SessionLogSegment] = []
+    cli_tool: str | None = None
+    is_live: bool = False
+    error_message: str | None = None
+
+    if run is not None:
+        cli_tool = run.cli_tool
+        is_live = run.status in (RunStatus.running, RunStatus.stalled)
+        error_message = run.error_message
+        try:
+            raw_segments = read_session_content(run)
+            segments = raw_segments  # type: ignore[assignment]
+            # Never 500 — return a single error segment so the popup still renders
+        except Exception:
+            segments = [
+                SessionLogSegment(
+                    type="error",
+                    text="Failed to read session log.",
+                    collapsible=False,
+                )
+            ]
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/session_log_popup_content.html",
+        {
+            "segments": segments,
+            "is_live": is_live,
+            "step_id": step_id,
+            "run_number": run.run_number if run is not None else 1,
+            "cli_tool": cli_tool,
+            "item_id": item_id,
+            "project_id": project_id,
+            "error_message": error_message,
         },
     )

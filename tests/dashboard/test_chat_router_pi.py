@@ -177,9 +177,7 @@ def pi_chat_app(
         app = create_app()
         app.state.opencode_runtime = _make_opencode_runtime_healthy()
         app.state.opencode_client = oc_client
-        app.state.relay_manager = MagicMock(
-            get_or_create_relay=AsyncMock(), drop_relay=AsyncMock()
-        )
+        app.state.relay_manager = MagicMock(get_or_create_relay=AsyncMock(), drop_relay=AsyncMock())
         app.state.pi_runtime = pi_runtime
         app.dependency_overrides[get_db] = lambda: db_session
         with TestClient(app, raise_server_exceptions=False) as tc:

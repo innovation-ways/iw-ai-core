@@ -18,10 +18,7 @@
       "tests/integration/test_step_run_session_file.py",
       "tests/dashboard/test_items_session_log.py",
       "ai-dev/active/CR-00065/**",
-      "ai-dev/work/CR-00065/**",
-      "tests/integration/test_dashboard_remaining.py",
-      "tests/integration/daemon/test_phase2_apply_no_self_deadlock.py",
-      "tests/dashboard/test_item_steps_table_render.py"
+      "ai-dev/work/CR-00065/**"
     ]
   },
   "steps": [
@@ -101,7 +98,7 @@
       "step": "S11",
       "agent": "qv-browser",
       "step_type": "qv_browser",
-      "description": "QV: Browser verification \u2014 Logs popup opens, renders session content, live-refreshes",
+      "description": "QV: Browser verification — Logs popup opens, renders session content, live-refreshes",
       "prompt": "prompts/CR-00065_S11_BrowserVerification_prompt.md"
     },
     {
