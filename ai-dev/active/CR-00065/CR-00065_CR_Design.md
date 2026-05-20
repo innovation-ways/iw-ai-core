@@ -56,7 +56,7 @@ Read `CLAUDE.md` for architecture, conventions, and hard rules. Key areas:
 | `orch/daemon/session_reader.py` | Does not exist | New module: reads pi JSONL or log_file and returns rendered HTML-safe segments |
 | `dashboard/routers/items.py` | Logs tab only; no per-step log endpoint | New `GET .../step/{step_id}/session-log` fragment endpoint |
 | `dashboard/templates/fragments/item_steps_table.html` | No Logs column | New Logs icon column with htmx popup trigger |
-| `dashboard/templates/fragments/session_log_popup.html` | Does not exist | New popup fragment template |
+| `dashboard/templates/fragments/session_log_popup_content.html` | Does not exist | New popup fragment template |
 
 ### Breaking Changes
 
@@ -77,7 +77,7 @@ Read `CLAUDE.md` for architecture, conventions, and hard rules. Key areas:
 | S02 | qv-gate | `make migration-check` — round-trip test | — |
 | S03 | backend-impl | `step_monitor` resolves + stores pi session file; `session_reader` module | — |
 | S04 | api-impl | `GET /project/{id}/api/item/{item_id}/step/{step_id}/session-log` fragment endpoint | — |
-| S05 | frontend-impl | Logs column in `item_steps_table.html`; `session_log_popup.html` fragment; CSS | — |
+| S05 | frontend-impl | Logs column in `item_steps_table.html`; `session_log_popup_content.html` fragment; CSS | — |
 | S06 | code-review-impl | Review S01–S05 | — |
 | S07 | code-review-fix-impl | Fix CRITICAL/HIGH findings | — |
 | S08 | code-review-final-impl | Cross-agent final review | — |
@@ -100,7 +100,7 @@ Read `CLAUDE.md` for architecture, conventions, and hard rules. Key areas:
 
 ### Frontend Changes
 
-- **New components**: `dashboard/templates/fragments/session_log_popup.html` — popup modal with rendered log view; htmx polling when in_progress
+- **New components**: `dashboard/templates/fragments/session_log_popup_content.html` — popup modal with rendered log view; htmx polling when in_progress
 - **Modified components**: `dashboard/templates/fragments/item_steps_table.html` — new Logs column header + per-row icon button
 
 ## File Manifest
@@ -200,7 +200,7 @@ And session_file is not NULL in the step_runs row
 - `orch/daemon/session_reader.py`
 - `dashboard/routers/items.py`
 - `dashboard/templates/fragments/item_steps_table.html`
-- `dashboard/templates/fragments/session_log_popup.html`
+- `dashboard/templates/fragments/session_log_popup_content.html`
 - `dashboard/static/styles.css`
 - `tests/integration/test_step_run_session_file.py`
 - `tests/dashboard/test_items_session_log.py`

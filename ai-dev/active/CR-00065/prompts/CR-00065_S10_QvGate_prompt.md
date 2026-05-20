@@ -24,7 +24,7 @@ Run the full integration test suite:
 make test-integration
 ```
 
-This runs `tests/integration/` and `tests/dashboard/` against a PostgreSQL testcontainer (including the new `test_step_run_session_file.py` and `test_items_session_log.py` added in S03/S04).
+This runs `tests/integration/` and `tests/dashboard/` against a PostgreSQL testcontainer (including the new `test_step_run_session_file.py` added in S01 and `test_items_session_log.py` added in S04).
 
 ## Pass Criteria
 

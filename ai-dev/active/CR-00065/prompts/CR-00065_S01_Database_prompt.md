@@ -83,10 +83,29 @@ uv run alembic show head
 
 Confirm the revision file is present and references `step_runs.session_file`.
 
+### 5. Write integration test `tests/integration/test_step_run_session_file.py`
+
+Using a testcontainer (see `tests/conftest.py` for the `db_session` fixture pattern), write:
+
+```python
+def test_session_file_column_readable_writable(db_session):
+    """session_file column can be set and retrieved via the ORM."""
+
+def test_session_file_column_nullable(db_session):
+    """session_file defaults to NULL for a StepRun created without it."""
+```
+
+Run to confirm GREEN (testcontainer applies the new migration):
+
+```bash
+uv run pytest tests/integration/test_step_run_session_file.py -v
+```
+
 ## Output Files
 
 - `orch/db/models.py` — updated with `session_file` column on `StepRun`
 - `orch/db/migrations/versions/xxxx_cr00065_add_session_file_to_step_runs.py` — migration file
+- `tests/integration/test_step_run_session_file.py` — integration tests for the new column
 
 ## Subagent Result Contract
 
@@ -105,7 +124,8 @@ uv run iw step-done CR-00065 --step S01 \
   "completion_status": "complete",
   "files_changed": [
     "orch/db/models.py",
-    "orch/db/migrations/versions/<rev>_cr00065_add_session_file_to_step_runs.py"
+    "orch/db/migrations/versions/<rev>_cr00065_add_session_file_to_step_runs.py",
+    "tests/integration/test_step_run_session_file.py"
   ],
   "preflight": {
     "format": "ok",

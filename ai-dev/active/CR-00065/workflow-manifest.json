@@ -35,8 +35,7 @@
       "step_type": "qv_gate",
       "gate": "migration-check",
       "command": "make migration-check",
-      "description": "QV: Alembic migration round-trip + drift check",
-      "prompt": "prompts/CR-00065_S02_MigrationCheck_prompt.md"
+      "description": "QV: Alembic migration round-trip + drift check"
     },
     {
       "step": "S03",
@@ -93,8 +92,7 @@
       "step_type": "qv_gate",
       "gate": "integration-tests",
       "command": "make test-integration",
-      "description": "QV: integration test suite",
-      "prompt": "prompts/CR-00065_S10_QvGate_prompt.md"
+      "description": "QV: integration test suite"
     },
     {
       "step": "S11",

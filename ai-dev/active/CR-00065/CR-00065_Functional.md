@@ -10,7 +10,7 @@ This item adds one new nullable column to the step runs table. The migration fil
 
 ## Why
 
-When an agent step runs using the Pi runtime, all conversational output — what the agent thought, which files it read, which commands it ran — is stored in Pi's own session files, not in the standard log. The platform captures an empty log file for every Pi run. This means that when a step crashes or behaves unexpectedly, operators have no way to see what the agent actually did during that run without manually locating and parsing Pi's internal session files. The CR-00064 S01 crash (35 minutes of work, 0 bytes in the log) was the direct trigger. This change gives operators full session visibility from within the platform, for all three supported agent runtimes.
+When an agent step runs using the Pi runtime, all conversational output — what the agent thought, which files it read, which commands it ran — is stored in Pi's own session files, not in the standard log. The platform captures an empty log file for every Pi run. This means that when a step crashes or behaves unexpectedly, operators cannot see what the agent did without manually locating and parsing Pi's internal session files. The CR-00064 S01 crash (35 minutes of work, 0 bytes in the log) was the direct trigger. This change gives operators full session visibility from within the platform, for all three supported agent runtimes.
 
 ## What Changed (for the User)
 
