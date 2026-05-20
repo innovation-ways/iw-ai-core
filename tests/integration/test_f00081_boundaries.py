@@ -125,6 +125,12 @@ def seed_runtime_options(db_session: Session) -> list[AgentRuntimeOption]:
             sort_order=50,
         ),
     ]
+    # Migration 0f11be8f2147 made Pi + MiniMax 2.7 the catalogue default.
+    # Clear it so this fixture's id=1 row can hold the single is_default
+    # slot without tripping the uq_agent_runtime_options_one_default index.
+    db_session.execute(
+        text("UPDATE agent_runtime_options SET is_default = false WHERE is_default = true")
+    )
     for r in rows:
         db_session.merge(r)
     db_session.commit()
@@ -209,6 +215,11 @@ class TestBoundaryCatalogueEmpty:
         """With no opencode rows present, resolver falls back to is_default=true row."""
         import logging
 
+        # Migration 0f11be8f2147 made Pi the catalogue default; clear it so
+        # the id=1 row merged below can reclaim the single is_default slot.
+        db_session.execute(
+            text("UPDATE agent_runtime_options SET is_default = false WHERE is_default = true")
+        )
         db_session.merge(
             AgentRuntimeOption(
                 id=4,

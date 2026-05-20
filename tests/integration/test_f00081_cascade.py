@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from orch.agent_runtime.resolver import resolve_runtime
 from orch.db.models import (
@@ -97,6 +97,12 @@ def seed_runtime_options(db_session: Session) -> list[AgentRuntimeOption]:
             sort_order=50,
         ),
     ]
+    # Migration 0f11be8f2147 made Pi + MiniMax 2.7 the catalogue default.
+    # Clear it so this fixture's id=1 row can hold the single is_default
+    # slot without tripping the uq_agent_runtime_options_one_default index.
+    db_session.execute(
+        text("UPDATE agent_runtime_options SET is_default = false WHERE is_default = true")
+    )
     for r in rows:
         db_session.merge(r)
     db_session.commit()

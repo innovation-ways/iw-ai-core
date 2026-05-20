@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
@@ -74,6 +74,12 @@ def client(db_session):
 
 
 def _runtime(db_session, rid=1, enabled=True):
+    if rid == 1:
+        # Migration 0f11be8f2147 made Pi the catalogue default; clear it so
+        # the id=1 row below can reclaim the single is_default slot.
+        db_session.execute(
+            text("UPDATE agent_runtime_options SET is_default = false WHERE is_default = true")
+        )
     db_session.merge(
         AgentRuntimeOption(
             id=rid,

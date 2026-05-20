@@ -138,7 +138,9 @@ class TestAgentRuntimeOptionsTable:
         migration ``6d78323d0954_add_pi_runtime_options``. The fixture
         re-seeds the F-00081 rows with ``ON CONFLICT (id) DO NOTHING``,
         so the table holds the F-00081 + GPT-5.3 Codex + Pi rows after
-        migration.
+        migration. Migration ``0f11be8f2147`` then flipped the catalogue
+        default from the OpenCode + MiniMax 2.7 row to the
+        Pi + MiniMax 2.7 row.
         """
         rows = db_session.execute(
             text("""
@@ -148,10 +150,10 @@ class TestAgentRuntimeOptionsTable:
             """)
         ).fetchall()
         assert len(rows) == 8, f"Expected 8 rows, got {len(rows)}"
-        assert rows[0] == ("opencode", "minimax/MiniMax-M2.7", True, 10)
+        assert rows[0] == ("opencode", "minimax/MiniMax-M2.7", False, 10)
         assert rows[1] == ("opencode", "openai/gpt-5.3-codex", False, 15)
         assert rows[2] == ("opencode", "claude-sonnet-4-6", False, 20)
-        assert rows[3] == ("pi", "minimax/MiniMax-M2.7", False, 25)
+        assert rows[3] == ("pi", "minimax/MiniMax-M2.7", True, 25)
         assert rows[4] == ("pi", "openai/gpt-5.3-codex", False, 26)
         assert rows[5] == ("opencode", "claude-opus-4-7", False, 30)
         assert rows[6] == ("claude", "claude-sonnet-4-6", False, 40)

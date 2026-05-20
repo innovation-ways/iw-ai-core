@@ -458,7 +458,8 @@ def test_pi_catalogue_resolves_minimax_and_codex(
 
     AC2 invariants pinned here:
       - ``(pi, minimax/MiniMax-M2.7)`` → ``display_name="Pi + MiniMax 2.7"``,
-        ``enabled=True``, ``is_default=False``, ``sort_order=25``.
+        ``enabled=True``, ``sort_order=25``. Migration ``0f11be8f2147``
+        promoted this row to the catalogue default, so ``is_default=True``.
       - ``(pi, openai/gpt-5.3-codex)`` → ``display_name="Pi + GPT-5.3 Codex"``,
         ``sort_order=26``.
     """
@@ -486,7 +487,7 @@ def test_pi_catalogue_resolves_minimax_and_codex(
     assert resolved.model == "minimax/MiniMax-M2.7"
     assert resolved.display_name == "Pi + MiniMax 2.7"
     assert resolved.enabled is True
-    assert resolved.is_default is False
+    assert resolved.is_default is True
     assert resolved.sort_order == 25
 
     project_codex = MagicMock()
@@ -506,12 +507,12 @@ def test_pi_catalogue_resolves_minimax_and_codex(
     assert resolved_codex.is_default is False
     assert resolved_codex.sort_order == 26
 
-    # AC5 / AC2 catalogue invariant: the existing default (the MiniMax 2.7
-    # default for opencode per F-00081) is still ``is_default=True`` after
-    # the migration. Verifying this here defends against an accidental
-    # ``is_default=true`` slip in either of the pi seed rows.
+    # AC5 / AC2 catalogue invariant: there is exactly one is_default=true
+    # row, and after migration ``0f11be8f2147`` it is Pi + MiniMax 2.7.
+    # The ``.one()`` also guards against a second is_default=true row
+    # slipping into the catalogue.
     default = (
         db_session.query(AgentRuntimeOption).filter(AgentRuntimeOption.is_default.is_(True)).one()
     )
-    assert default.cli_tool == "opencode"
+    assert default.cli_tool == "pi"
     assert default.model == "minimax/MiniMax-M2.7"

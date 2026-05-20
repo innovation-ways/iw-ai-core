@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
@@ -28,6 +28,12 @@ def _extract_select_block(html: str, name: str) -> str:
 def _seed_runtime(db, rid: int, enabled: bool = True, model: str | None = None) -> None:
     if model is None:
         model = f"test-model-{rid}"
+    if rid == 1:
+        # Migration 0f11be8f2147 made Pi the catalogue default; clear it so
+        # the id=1 row below can reclaim the single is_default slot.
+        db.execute(
+            text("UPDATE agent_runtime_options SET is_default = false WHERE is_default = true")
+        )
     db.merge(
         AgentRuntimeOption(
             id=rid,
