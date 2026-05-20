@@ -2,7 +2,6 @@
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-title,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-tray-toggle,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-history-toggle,
-  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-new-btn,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-tab-strip-wrap,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-softcap-banner,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-messages,
@@ -42,15 +41,6 @@
             title="Recent closed tabs">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-      </svg>
-    </button>
-
-    <button id="chat-assistant-new-btn"
-            class="tap inline-flex items-center justify-center p-1 rounded hover:bg-muted"
-            aria-label="New chat tab"
-            title="New chat">
-      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
       </svg>
     </button>
 
@@ -146,8 +136,57 @@
     <div id="chat-assistant-scroll-anchor" aria-hidden="true"></div>
   </div>
 
-  <!-- Composer -->
+  <!-- Composer + settings panel -->
   <div id="chat-assistant-composer-wrap" class="flex-shrink-0">
+
+    <!-- Tab settings slide-up panel (hidden by default) -->
+    <div id="chat-assistant-settings-panel"
+         class="hidden border-t border-border bg-card px-3 py-2.5">
+      <div class="flex items-center gap-2 mb-2">
+        <label class="text-xs text-muted-foreground w-14 flex-shrink-0"
+               for="chat-assistant-settings-title">Title</label>
+        <input id="chat-assistant-settings-title"
+               type="text"
+               maxlength="20"
+               class="flex-1 text-xs bg-input border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+      </div>
+      <div class="flex items-center gap-2 mb-2">
+        <label class="text-xs text-muted-foreground w-14 flex-shrink-0"
+               for="chat-assistant-settings-runtime">Runtime</label>
+        <select id="chat-assistant-settings-runtime"
+                class="flex-1 text-xs bg-input border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+          <option value="opencode">OpenCode</option>
+          <option value="pi">Pi</option>
+        </select>
+      </div>
+      <div class="flex items-center gap-2 mb-2">
+        <label class="text-xs text-muted-foreground w-14 flex-shrink-0"
+               for="chat-assistant-settings-model">Model</label>
+        <select id="chat-assistant-settings-model"
+                class="flex-1 text-xs bg-input border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <div id="chat-assistant-settings-warn"
+           class="hidden text-xs px-1 mb-2"
+           style="color: #92400e;">
+        Changing runtime will start a new conversation.
+      </div>
+      <div id="chat-assistant-settings-error"
+           class="hidden text-xs text-destructive px-1 mb-2"
+           role="alert"></div>
+      <div class="flex items-center justify-end gap-2">
+        <button id="chat-assistant-settings-cancel" type="button"
+                class="text-xs px-2 py-1 rounded border border-border hover:bg-muted text-foreground min-h-[32px]">
+          Cancel
+        </button>
+        <button id="chat-assistant-settings-save" type="button"
+                class="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:opacity-90 min-h-[32px]">
+          Save
+        </button>
+      </div>
+    </div>
+
     {% include "chat_assistant/composer.html" %}
   </div>
 
@@ -169,11 +208,6 @@
 
 <!-- Approval modal mount point -->
 <div id="chat-assistant-approval-root"></div>
-
-<!-- Create-tab modal (hidden until opened by JS) -->
-<div id="chat-assistant-create-tab-modal-root">
-  {% include "chat_assistant/create_tab_modal.html" %}
-</div>
 
 <!-- Recent-closed tabs dropdown (positioned relative to tab strip by JS) -->
 {% include "chat_assistant/closed_tabs_dropdown.html" %}

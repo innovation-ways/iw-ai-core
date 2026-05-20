@@ -372,6 +372,29 @@
   outline: none;
 }
 
+/* ── "+" add-tab button in the tab strip ── */
+.chat-assistant-tab-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  font-size: 1rem;
+  font-weight: 400;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted-foreground);
+  min-height: 32px;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+  line-height: 1;
+}
+
+.chat-assistant-tab-add-btn:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
 /* ── Soft-cap banner ── */
 .chat-assistant-softcap-banner-inner {
   background: #fefce8;
