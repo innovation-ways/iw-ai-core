@@ -86,6 +86,7 @@ def _make_relay_manager(relay: Any = None) -> Any:
     """Return a mock RelayManager."""
     rm = MagicMock()
     rm.get_or_create_relay = AsyncMock(return_value=relay or _make_relay())
+    rm.drop_relay = AsyncMock(return_value=None)
     rm.shutdown = AsyncMock(return_value=None)
     return rm
 
@@ -1647,6 +1648,120 @@ class TestSessionEndpoints:
             assert "tab" in data
             assert "session" in data
             assert "messages" in data
+        finally:
+            app.dependency_overrides.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+
+# ---------------------------------------------------------------------------
+# TC9 — POST /api/chat/tabs/{tab_id}/clear
+# ---------------------------------------------------------------------------
+
+
+class TestClearTab:
+    def test_clear_tab_returns_updated_tab(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """POST /api/chat/tabs/{tab_id}/clear returns 200 with new session ID."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            mock_client = _make_client()
+            new_session_id = "new-sess-uuid-12345"
+            mock_client.create_session = AsyncMock(return_value=new_session_id)
+
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="old-sess"
+            )
+            tab_id = str(tab.id)
+
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = mock_client
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            resp = tc.post(f"/api/chat/tabs/{tab_id}/clear")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert "tab" in body
+            assert body["tab"]["opencode_session_id"] == new_session_id
+        finally:
+            app.dependency_overrides.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_clear_tab_not_found(self, db_session: Session) -> None:
+        """POST /api/chat/tabs/{tab_id}/clear returns 404 when the tab does not exist."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = _make_client()
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            # Use a valid UUID that does not exist in the DB.
+            # (ChatTab.id is UUID; a non-UUID string would trigger a DB parse error.)
+            resp = tc.post("/api/chat/tabs/00000000-0000-0000-0000-000000000000/clear")
+            assert resp.status_code == 404
+            assert "tab not found" in resp.json()["error"]
+        finally:
+            app.dependency_overrides.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_clear_tab_no_session(self, db_session: Session, test_project: Project) -> None:
+        """POST /api/chat/tabs/{tab_id}/clear returns 400 when tab has no opencode_session_id."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            tab, _ = _tab_service.create_tab(
+                db_session,
+                project_id=test_project.id,
+                model="prov-a/model-a",
+                opencode_session_id=None,  # no session
+            )
+            db_session.commit()
+            tab_id = str(tab.id)
+
+            app = create_app()
+            app.state.opencode_runtime = _make_healthy_runtime()
+            app.state.opencode_client = _make_client()
+            app.state.relay_manager = _make_relay_manager()
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            resp = tc.post(f"/api/chat/tabs/{tab_id}/clear")
+            assert resp.status_code == 400
+            assert "no session" in resp.json()["error"].lower()
+        finally:
+            app.dependency_overrides.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_clear_tab_runtime_unavailable(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """POST /api/chat/tabs/{tab_id}/clear returns 503 when OpenCode runtime is None."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="old-sess"
+            )
+            tab_id = str(tab.id)
+
+            app = create_app()
+            app.state.opencode_runtime = None
+            app.state.opencode_client = None
+            app.state.relay_manager = None
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            resp = tc.post(f"/api/chat/tabs/{tab_id}/clear")
+            assert resp.status_code == 503
+            assert "unavailable" in resp.json()["error"].lower()
         finally:
             app.dependency_overrides.clear()
             if original is not None:

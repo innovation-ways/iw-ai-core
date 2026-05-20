@@ -413,3 +413,11 @@
   color: var(--muted-foreground);
   margin-top: 1px;
 }
+
+/* ── Clear button disabled state ── */
+/* Use !important: the button may carry inline style="opacity:1" from a Tailwind
+   class; the :disabled pseudo-class rule must win regardless of source order. */
+#chat-assistant-clear:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}

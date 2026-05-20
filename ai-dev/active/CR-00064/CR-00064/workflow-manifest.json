@@ -1,0 +1,83 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00064",
+  "type": "ChangeRequest",
+  "title": "Clear Chat History Button in AI Assistant",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/routers/chat.py",
+      "dashboard/templates/chat_assistant/composer.html",
+      "dashboard/static/chat_assistant/chat.js",
+      "dashboard/static/chat_assistant/chat.css",
+      "tests/dashboard/test_chat_router.py",
+      "tests/dashboard/test_chat_clear_button.py",
+      "tests/dashboard/test_chat_templates.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "api-impl",
+      "description": "New POST /api/chat/tabs/{tab_id}/clear endpoint — creates fresh session, updates tab's opencode_session_id",
+      "prompt": "prompts/CR-00064_S01_API_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "frontend-impl",
+      "description": "Clear button in composer.html + JS wiring (_clearChat, _tabHasHistory, _updateClearButton, SSE reset)",
+      "prompt": "prompts/CR-00064_S02_Frontend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-impl",
+      "description": "Per-agent code review of S01 + S02",
+      "prompt": "prompts/CR-00064_S03_CodeReview_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-fix-impl",
+      "description": "Fix CRITICAL/HIGH findings from S03",
+      "prompt": "prompts/CR-00064_S04_CodeReview_FIX_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Cross-agent final review of all implementation work",
+      "prompt": "prompts/CR-00064_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-fix-final-impl",
+      "description": "Fix findings from final review",
+      "prompt": "prompts/CR-00064_S06_CodeReview_FIX_Final_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: lint gate (ruff + node --check + Jinja2 template check)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "tests",
+      "command": "uv run pytest tests/dashboard/ -v -k \"chat\" --no-header",
+      "description": "QV: chat test suite gate"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — Clear button visible, enabled/disabled correctly, clears history on confirm",
+      "prompt": "prompts/CR-00064_S09_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00064_S10_SelfAssess_prompt.md"
+    }
+  ]
+}

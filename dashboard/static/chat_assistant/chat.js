@@ -32,6 +32,7 @@
   var _tabStreaming = {};
   var _tabRetryTimers = {};
   var _tabRetryCount = {};
+  var _tabHasHistory = {};
 
   // Per-tab assistant message rendering state
   var _tabCurrentAssistantEl = {};
@@ -270,6 +271,7 @@
     // Sync the composer's Send/Abort state to the newly-active tab's
     // streaming flag.
     _updateSendAbortButtons();
+    _updateClearButton();
   }
 
   // ── SSE per-tab streaming ───────────────────────────────────────────────────
@@ -459,6 +461,8 @@
           _startContextPoll();
         }
       }
+      _tabHasHistory[tabId] = true;
+      _updateClearButton();
       if (isActive) {
         var deltaText = (props && props.delta) || '';
         var deltaKey = (props && props.messageID) || eid;
@@ -475,6 +479,8 @@
           _startContextPoll();
         }
       }
+      _tabHasHistory[tabId] = true;
+      _updateClearButton();
       if (isActive) {
         var partText = (props && props.delta) ||
                        (props && props.part && props.part.text) || '';
@@ -498,6 +504,8 @@
           _startContextPoll();
         }
       }
+      _tabHasHistory[tabId] = true;
+      _updateClearButton();
       if (isActive) {
         var addedPart = (data && data.part) || (props && props.part) || {};
         var addedText = (typeof addedPart.text === 'string' ? addedPart.text : '') ||
@@ -602,6 +610,8 @@
           _startContextPoll();
         }
       }
+      _tabHasHistory[tabId] = true;
+      _updateClearButton();
       return;
     }
 
@@ -1363,6 +1373,7 @@
     if (noTabs) msgs.appendChild(noTabs);
     if (empty) msgs.appendChild(empty);
     if (anchor) msgs.appendChild(anchor);
+    if (_activeTabId) _tabHasHistory[_activeTabId] = false;
   }
 
   function _showEmptyState() {
@@ -1516,6 +1527,7 @@
         // Only render if this tab is still active
         if (tabId !== _activeTabId) return;
         _clearMessages();
+        var renderedCount = 0;
         data.messages.forEach(function (entry) {
           var info = entry && entry.info;
           var parts = (entry && entry.parts) || [];
@@ -1526,8 +1538,10 @@
             .join('');
           if (info.role === 'user') {
             _appendUserMessage(text);
+            renderedCount++;
           } else if (info.role === 'assistant') {
             _appendOrUpdateAssistantMessage(tabId, info.id, text, true);
+            renderedCount++;
             parts.forEach(function (p) {
               if (!p || !p.type) return;
               var pt = p.type;
@@ -1543,6 +1557,10 @@
         _tabCurrentAssistantEl[tabId] = null;
         _tabCurrentAssistantId[tabId] = null;
         _showComposer();
+        if (renderedCount > 0) {
+          _tabHasHistory[tabId] = true;
+          _updateClearButton();
+        }
       })
       .catch(function (err) {
         _appendSystemMessage('Could not load chat history \u2014 ' + (err && err.message ? err.message : 'runtime unavailable'), 'error');
@@ -1653,6 +1671,66 @@
     // completes naturally, silently swallowing a real abort intent.
     fetch('/api/chat/tabs/' + encodeURIComponent(tabId) + '/abort', { method: 'POST' })
       .catch(function () { /* ignore */ });
+  }
+
+  function _updateClearButton() {
+    var btn = document.getElementById('chat-assistant-clear');
+    if (!btn) return;
+    var hasHistory = _activeTabId ? (_tabHasHistory[_activeTabId] || false) : false;
+    btn.disabled = !hasHistory;
+  }
+
+  function _clearChat() {
+    if (!_activeTabId) return;
+    if (!_tabHasHistory[_activeTabId]) return;
+    if (!window.confirm('Clear chat history? This cannot be undone.')) return;
+
+    var tabId = _activeTabId;
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId) + '/clear', { method: 'POST' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        // Only act if this tab is still active
+        if (tabId !== _activeTabId) return;
+
+        // 1. Update the in-memory tab model with new session ID
+        var newTab = data && data.tab;
+        if (newTab) {
+          _tabs = _tabs.map(function (t) { return t.id === tabId ? newTab : t; });
+        }
+
+        // 2. Close old EventSource and reset SSE tracking
+        if (_tabEs[tabId]) {
+          _tabEs[tabId].close();
+          delete _tabEs[tabId];
+        }
+        sessionStorage.removeItem('iw-chat-last-eid-' + tabId);
+        delete _tabSeenIds[tabId];
+
+        // 3. Reset streaming / assistant state
+        _tabStreaming[tabId] = false;
+        _tabCurrentAssistantEl[tabId] = null;
+        _tabCurrentAssistantId[tabId] = null;
+
+        // 4. Clear DOM
+        _clearMessages();
+
+        // 5. Reset history flag and update button
+        _tabHasHistory[tabId] = false;
+        _updateClearButton();
+        _updateSendAbortButtons();
+
+        // 6. Show confirmation message
+        _appendSystemMessage('Chat cleared.', 'info');
+
+        // 7. Reconnect stream to new session
+        _connectStream(tabId);
+      })
+      .catch(function (err) {
+        _appendSystemMessage('Could not clear chat: ' + (err && err.message ? err.message : 'unknown error'), 'error');
+      });
   }
 
   // ── Context % polling ───────────────────────────────────────────────────────
@@ -1905,6 +1983,12 @@
     var abortBtn = document.getElementById('chat-assistant-abort');
     if (abortBtn) {
       abortBtn.addEventListener('click', function () { _abort(); });
+    }
+
+    // Clear button
+    var clearBtn = document.getElementById('chat-assistant-clear');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () { _clearChat(); });
     }
 
     // Textarea

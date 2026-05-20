@@ -31,6 +31,11 @@ def chat_composer_html():
     return _env().get_template("chat/composer.html").render()
 
 
+@pytest.fixture
+def chat_assistant_composer_html():
+    return _env().get_template("chat_assistant/composer.html").render()
+
+
 class TestChatPanelTemplate:
     def test_panel_has_correct_id(self, chat_panel_html):
         assert 'id="chat-panel"' in chat_panel_html
@@ -119,6 +124,18 @@ class TestChatComposerTemplate:
         assert 'type="file"' in chat_composer_html
         assert "sr-only" in chat_composer_html
 
+    def test_clear_button_disabled_initially(self, chat_assistant_composer_html):
+        """ "CR-00064 AC1 — clear button starts disabled (no history on a fresh tab)."""
+        assert 'id="chat-assistant-clear"' in chat_assistant_composer_html
+        assert "disabled" in chat_assistant_composer_html
+
+    def test_clear_button_has_aria_label(self, chat_assistant_composer_html):
+        assert 'aria-label="Clear chat history"' in chat_assistant_composer_html
+
+    def test_clear_button_min_touch_size(self, chat_assistant_composer_html):
+        assert "min-h-[44px]" in chat_assistant_composer_html
+        assert "min-w-[44px]" in chat_assistant_composer_html
+
 
 class TestChatCss:
     def test_css_defines_chat_width_var(self):
@@ -127,6 +144,13 @@ class TestChatCss:
         assert ":root { --chat-width: 400px; }" in content
         assert ":focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }" in content
         assert ".tap { min-height: 44px; min-width: 44px; }" in content
+
+    def test_clear_button_disabled_has_opacity(self):
+        """CR-00064 — clear button must visually indicate disabled state via opacity."""
+        root = Path(__file__).parent.parent.parent
+        css_content = (root / "dashboard" / "static" / "chat_assistant" / "chat.css").read_text()
+        assert "#chat-assistant-clear:disabled" in css_content
+        assert "opacity" in css_content
 
 
 class TestChatMessageTemplate:

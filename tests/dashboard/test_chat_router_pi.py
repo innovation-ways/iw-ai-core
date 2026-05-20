@@ -177,7 +177,9 @@ def pi_chat_app(
         app = create_app()
         app.state.opencode_runtime = _make_opencode_runtime_healthy()
         app.state.opencode_client = oc_client
-        app.state.relay_manager = MagicMock(get_or_create_relay=AsyncMock())
+        app.state.relay_manager = MagicMock(
+            get_or_create_relay=AsyncMock(), drop_relay=AsyncMock()
+        )
         app.state.pi_runtime = pi_runtime
         app.dependency_overrides[get_db] = lambda: db_session
         with TestClient(app, raise_server_exceptions=False) as tc:
@@ -436,3 +438,62 @@ class TestNoCrossRuntimeLeakage:
         assert resp.status_code == 204
         oc_client.prompt.assert_awaited_once()
         pi_runtime.prompt.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# clear_tab: Pi tab routes to PiRuntime.create_session
+# ---------------------------------------------------------------------------
+
+
+class TestClearPiTabDispatch:
+    def test_clear_pi_tab_calls_pi_runtime_not_opencode(
+        self,
+        pi_chat_app: tuple[TestClient, Any, Any],
+        db_session: Session,
+        test_project: Project,
+    ) -> None:
+        """POST /tabs/{tab_id}/clear on a Pi tab dispatches to PiRuntime.create_session()."""
+        tc, pi_runtime, oc_client = pi_chat_app
+        tab = _create_pi_tab_in_db(db_session, project_id=test_project.id)
+
+        # Override create_session to return a predictable new session ID.
+        pi_runtime.create_session = AsyncMock(return_value="pi-sess-new-xyz")
+
+        resp = tc.post(f"/api/chat/tabs/{tab.id}/clear")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["tab"]["opencode_session_id"] == "pi-sess-new-xyz"
+
+        # Pi runtime received create_session.
+        pi_runtime.create_session.assert_awaited_once()
+        # OpenCode client must NOT have been called.
+        oc_client.create_session.assert_not_called()
+
+    def test_clear_pi_tab_503_when_pi_runtime_unhealthy(
+        self,
+        db_session: Session,
+        test_project: Project,
+    ) -> None:
+        """POST /tabs/{tab_id}/clear returns 503 when Pi runtime is unhealthy."""
+        _seed_pi_models(db_session)
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            pi_runtime = _make_pi_runtime()
+            pi_runtime.health = AsyncMock(return_value=False)
+
+            app = create_app()
+            app.state.opencode_runtime = _make_opencode_runtime_healthy()
+            app.state.opencode_client = _make_opencode_client()
+            app.state.relay_manager = MagicMock()
+            app.state.pi_runtime = pi_runtime
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+
+            tab = _create_pi_tab_in_db(db_session, project_id=test_project.id)
+            resp = tc.post(f"/api/chat/tabs/{tab.id}/clear")
+            assert resp.status_code == 503
+            assert "Pi runtime unavailable" in resp.json()["error"]
+        finally:
+            app.dependency_overrides.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
