@@ -1,0 +1,104 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00066",
+  "type": "ChangeRequest",
+  "title": "Context Window Usage Progress Bar",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**",
+      "orch/daemon/step_monitor.py",
+      "dashboard/routers/items.py",
+      "dashboard/templates/fragments/item_steps_table.html",
+      "dashboard/static/styles.css",
+      "tests/unit/test_step_monitor_token_poll.py",
+      "tests/integration/test_context_tokens_migration.py",
+      "ai-dev/active/CR-00066/**",
+      "ai-dev/work/CR-00066/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "step_type": "database",
+      "description": "Add context_window_tokens to agent_runtime_options; context_tokens_peak + context_tokens_last to step_runs; seed known models",
+      "prompt": "prompts/CR-00066_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "qv-gate",
+      "step_type": "qv_gate",
+      "gate": "migration-check",
+      "command": "make migration-check",
+      "description": "QV: Alembic migration round-trip + drift check",
+      "prompt": "prompts/CR-00066_S02_MigrationCheck_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "step_type": "backend",
+      "description": "step_monitor reads totalTokens from pi session JSONL; updates context_tokens_peak and context_tokens_last",
+      "prompt": "prompts/CR-00066_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "frontend-impl",
+      "step_type": "frontend",
+      "description": "Items router passes context data; Context column with color-coded progress bar in item_steps_table",
+      "prompt": "prompts/CR-00066_S04_Frontend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Code review of S01–S04",
+      "prompt": "prompts/CR-00066_S05_CodeReview_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-fix-impl",
+      "step_type": "code_review_fix",
+      "description": "Fix CRITICAL/HIGH/MEDIUM_FIXABLE review findings",
+      "prompt": "prompts/CR-00066_S06_CodeReviewFix_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Cross-agent final review",
+      "prompt": "prompts/CR-00066_S07_CodeReviewFinal_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-fix-final-impl",
+      "step_type": "code_review_fix_final",
+      "description": "Fix final review findings",
+      "prompt": "prompts/CR-00066_S08_CodeReviewFixFinal_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "step_type": "qv_gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: integration test suite",
+      "prompt": "prompts/CR-00066_S09_QvGate_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-browser",
+      "step_type": "qv_browser",
+      "description": "QV: Browser verification — context bar visible, correct color coding",
+      "prompt": "prompts/CR-00066_S10_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00066_S11_SelfAssess_prompt.md"
+    }
+  ]
+}
