@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
@@ -127,6 +127,12 @@ def seed_runtime_options(db_session: Session) -> list[AgentRuntimeOption]:
     # disabled) while the outer transaction rollback restores migration data
     # after each test.  Using add() would raise UniqueViolation on the
     # already-committed migration rows.
+    # Migration 0f11be8f2147 made Pi + MiniMax 2.7 the catalogue default.
+    # Clear it so the id=1 row merged below can hold the single is_default
+    # slot without tripping the uq_agent_runtime_options_one_default index.
+    db_session.execute(
+        text("UPDATE agent_runtime_options SET is_default = false WHERE is_default = true")
+    )
     merged = [db_session.merge(r) for r in rows]
     db_session.flush()
     return merged
