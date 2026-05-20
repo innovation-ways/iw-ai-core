@@ -166,7 +166,17 @@
             _tabs = tabs2;
             _renderTabStrip();
             if (_tabs.length) {
-              _activateTab(_tabs[0].id);
+              var lastActive2 = sessionStorage.getItem('iw-chat-active-tab-' + _browserTabId);
+              var target2 = lastActive2 && _tabs.find(function (t) { return t.id === lastActive2; });
+              if (!target2 && _tabs.length > 1) {
+                target2 = _tabs.reduce(function (best, t) {
+                  if (!best) return t;
+                  var bestTs = best.last_active_at ? new Date(best.last_active_at).getTime() : 0;
+                  var tTs = t.last_active_at ? new Date(t.last_active_at).getTime() : 0;
+                  return tTs > bestTs ? t : best;
+                }, null);
+              }
+              _activateTab(target2 ? target2.id : _tabs[0].id);
             } else {
               _renderEmptyNoTabs();
             }
@@ -179,6 +189,15 @@
       // Restore last active tab from sessionStorage
       var lastActive = sessionStorage.getItem('iw-chat-active-tab-' + _browserTabId);
       var target = lastActive && _tabs.find(function (t) { return t.id === lastActive; });
+      if (!target && _tabs.length > 1) {
+        // sessionStorage cleared — restore the most recently active tab
+        target = _tabs.reduce(function (best, t) {
+          if (!best) return t;
+          var bestTs = best.last_active_at ? new Date(best.last_active_at).getTime() : 0;
+          var tTs = t.last_active_at ? new Date(t.last_active_at).getTime() : 0;
+          return tTs > bestTs ? t : best;
+        }, null);
+      }
       _activateTab(target ? target.id : _tabs[0].id);
     });
   }
@@ -1489,7 +1508,7 @@
   function _loadTabHistory(tabId) {
     fetch('/api/chat/tabs/' + encodeURIComponent(tabId))
       .then(function (r) {
-        if (!r.ok) return null;
+        if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       })
       .then(function (data) {
@@ -1509,13 +1528,25 @@
             _appendUserMessage(text);
           } else if (info.role === 'assistant') {
             _appendOrUpdateAssistantMessage(tabId, info.id, text, true);
+            parts.forEach(function (p) {
+              if (!p || !p.type) return;
+              var pt = p.type;
+              // Handle both opencode 'tool-use' and Pi 'tool_use' conventions
+              if (pt === 'tool-use' || pt === 'tool_use') {
+                _appendToolCall(p.name || 'tool', p.input || {});
+              } else if (pt === 'tool-result' || pt === 'tool_result') {
+                _appendToolResult(typeof p.content === 'string' ? p.content : JSON.stringify(p.content));
+              }
+            });
           }
         });
         _tabCurrentAssistantEl[tabId] = null;
         _tabCurrentAssistantId[tabId] = null;
         _showComposer();
       })
-      .catch(function () { /* silently ignore */ });
+      .catch(function (err) {
+        _appendSystemMessage('Could not load chat history \u2014 ' + (err && err.message ? err.message : 'runtime unavailable'), 'error');
+      });
   }
 
   // ── Context chip rendering ──────────────────────────────────────────────────
