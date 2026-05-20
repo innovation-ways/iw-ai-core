@@ -1,0 +1,7 @@
+{
+  "name": "iw-chat-approvals",
+  "version": "0.1.0",
+  "description": "IW AI Core chat approval policy bridge (Pi extension)",
+  "main": "index.ts",
+  "pi": { "extension": true }
+}

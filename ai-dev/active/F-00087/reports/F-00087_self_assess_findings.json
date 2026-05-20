@@ -1,0 +1,87 @@
+{
+  "item_id": "F-00087",
+  "bottom_line": "Propagate the `which pi` litmus-test prohibition that fix-cycle 4 hand-patched into F-00087's S13 prompt into the QVBrowser prompt template and qv-browser agent definition, so future runtime-shaped browser-verification steps don't burn 2 runs and 2 fix cycles on a false ENV_DATA_MISSING verdict.",
+  "coverage_notes": "DB up — item-status pulled via `iw item-status --json`. Read S01-S10/S13 run logs and all S12/S13 fix-cycle logs in full (all small, <8 KB). S11 (4 logs, ~400 KB each) and S12 (4 logs, ~380 KB each) sampled by tail and targeted grep for result/FAILED lines; line numbers cited are exact. S05's two run logs are both 0 bytes — no execution signal for the Tests step; S05 analysis relies on its self-report only. Self-reports used only for cross-reference, never as primary evidence.",
+  "steps_analyzed": 14,
+  "steps_with_retries": 7,
+  "total_fix_cycles": 5,
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "frequency": "systemic",
+      "title": "qv-browser used a `which pi` container litmus test instead of the verification's authoritative HTTP signal — twice",
+      "recommendation": "Move the prohibition fix-cycle 4 hand-patched into F-00087's item-specific S13 prompt up into templates/design/QVBrowser_Prompt_Template.md and agents/{claude,opencode}/qv-browser.md: qv-browser must not use container introspection (which / docker exec which) as a pass/fail verdict; the authoritative signal is the HTTP response of a real runtime=pi tab creation (201 wired / 503 genuinely unavailable), and the dashboard logs its stub-fallback decision.",
+      "evidence": [
+        "ai-dev/logs/F-00087_S13_run3.log:1 — 'Root cause: `docker exec which pi` -> not found in `e2e-dashboard` container'",
+        "ai-dev/logs/F-00087_S13_run5.log:1 — 'Pi binary is not installed in the E2E stack image ... marked V4-V7 n/a'",
+        "ai-dev/logs/F-00087_S13_fix4.log — 'the qv-browser agent used `which pi` as a litmus test and gave up after seeing not found'",
+        "ai-dev/logs/F-00087_S13_run9.log:1 — 'a litmus test the step prompt explicitly forbids'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Move the `which pi` container-litmus-test prohibition fix-cycle 4 hand-patched into F-00087's S13 prompt into templates/design/QVBrowser_Prompt_Template.md and agents/{claude,opencode}/qv-browser.md so qv-browser uses the runtime=pi HTTP response (201/503), not container introspection, as the verdict; analyzed in F-00087 (see ai-dev/active/F-00087/reports/F-00087_self_assess_report.md). Effort: S."
+    },
+    {
+      "severity": "HIGH",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "frequency": "systemic",
+      "title": "Rate-limit kills mid-step left the workflow advancing on a stale fix-cycle report",
+      "recommendation": "The step executor should detect the 'You've hit your limit' rate-limit sentinel in agent output and treat the run as incomplete — pause and retry after the reset window rather than advancing the fix cycle. A run that never calls step-done/step-fail must not let the orchestrator surface a prior cycle's report as current.",
+      "evidence": [
+        "ai-dev/logs/F-00087_S13_run7.log:1 — 'You've hit your limit · resets 2:20am (Europe/Lisbon)'",
+        "ai-dev/logs/F-00087_S13_fix3.log:1 — 'You've hit your limit · resets 2:20am (Europe/Lisbon)'",
+        "ai-dev/logs/F-00087_S13_fix4.log — 'run 7's qv-browser process died (rate-limited, never reported completion) and the orchestrator surfaced an older cycle-3 report'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Step executor advances fix cycles on rate-limit-killed runs that never called step-done/step-fail, surfacing stale prior-cycle reports; detect the 'hit your limit' sentinel and retry after reset instead. Analyzed in F-00087 (see ai-dev/active/F-00087/reports/F-00087_self_assess_report.md). Target file: executor/step_executor_lib.sh. Effort: M."
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "frequency": "recurring",
+      "title": "Every S13 fix cycle re-ran the full QV gate chain S08-S12, including the ~16-min integration suite, on already-green code",
+      "recommendation": "When a fix cycle's changed files are statically scoped (S13 fix-cycle 1 touched only chat.js, a static asset), scope the QV re-run to affected gates instead of restarting at S08, or resume the chain from the failed gate. Re-running the 16.5-min integration suite after a JS-only change is pure wall-clock waste (~50 min spent here re-validating unchanged code).",
+      "evidence": [
+        "ai-dev/logs/F-00087_S08_run1.log:3 and F-00087_S08_run4.log:3 — 'All checks passed!' (lint ran 4x, green every time)",
+        "ai-dev/logs/F-00087_S11_run1.log:3575 and F-00087_S11_run4.log:3575 — '3271 passed ... in ~87s' (unit suite ran 4x, green every time)",
+        "ai-dev/logs/F-00087_S12_run1.log:3198 — '1 failed, 2772 passed ... in 991.10s (0:16:31)' (only run with a real failure)",
+        "ai-dev/logs/F-00087_S12_run5.log:3161 — '2773 passed ... in 988.40s' (runs 3/4/5 green re-runs of the 16-min suite)"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Scope QV-gate re-runs after a fix cycle to gates affected by the changed files (or resume from the failed gate) instead of restarting at S08, so a JS-only fix does not re-run the 16-min integration suite; analyzed in F-00087 (see ai-dev/active/F-00087/reports/F-00087_self_assess_report.md). Target file: executor/step_executor.sh. Effort: M."
+    },
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "frequency": "systemic",
+      "title": "S01 tdd_red_evidence is a retroactive narrative, not a captured RED run",
+      "recommendation": "S01's tdd_red_evidence cites no specific failing test and no captured failure output — it states the modules already existed by report time, so no RED run was preserved. The Backend impl agent prompt must require capturing the literal RED-run output (failing pytest invocation + ImportError/ModuleNotFoundError traceback) into the report before any implementation file is written; for multi-agent backend steps the first agent must record RED evidence before handoff.",
+      "evidence": [
+        "ai-dev/logs/F-00087_S01_run1.log:1 — 'tdd_red_evidence: Modules pre-existed at end of two-agent run; expected RED phase documented in report (ModuleNotFoundError: No module named orch.chat.pi)'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Require the Backend impl agent to capture the literal RED-run output (failing pytest + ImportError traceback) into the step report before writing any implementation file, and for multi-agent backend steps record RED evidence before handoff; analyzed in F-00087 (see ai-dev/active/F-00087/reports/F-00087_self_assess_report.md). Target files: agents/claude/backend-impl.md, agents/opencode/backend-impl.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "frequency": "systemic",
+      "title": "New SSE event name reached the design mapping table but was never registered with EventSource.addEventListener; no test layer below browser verification covers it",
+      "recommendation": "The gap (chat.js NAMED_EVENTS missing message.part.added) escaped frontend impl S04, cross-agent review S06, and integration tests S12 — caught only at browser verification S13. The Frontend impl agent prompt should mandate that every SSE event name in a design event-mapping table be added to NAMED_EVENTS AND covered by a dashboard-level test asserting addEventListener registration, so the gap fails at S12 rather than S13.",
+      "evidence": [
+        "ai-dev/logs/F-00087_S13_run1.log:1 — 'V4 FAIL ... no streaming agent response ever reaches the UI ... message.part.added payloads from the normalizer never render'",
+        "ai-dev/logs/F-00087_S13_fix1.log:1 — 'chat.js:NAMED_EVENTS didn't include message.part.added ... EventSource only invokes handlers registered via addEventListener for named events, so the Pi text frames were silently dropped'",
+        "ai-dev/logs/F-00087_S06_run1.log:1 — final cross-agent review passed S04's frontend; gap escaped S04/S06/S12"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Make the Frontend impl agent prompt mandate that every SSE event name in a design event-mapping table is added to NAMED_EVENTS and covered by a dashboard-level test asserting EventSource.addEventListener registration; analyzed in F-00087 (see ai-dev/active/F-00087/reports/F-00087_self_assess_report.md). Target files: agents/claude/frontend-impl.md, agents/opencode/frontend-impl.md. Effort: S."
+    }
+  ],
+  "omitted_findings_count": 2,
+  "omitted_findings_summary": "(a) S05's two run logs are both 0 bytes — the Tests step stdout was never captured, blinding this analysis for S05 [platform, observability, one-off]; (b) a stale F-00086 RED-evidence test (test_post_tabs_rejects_unknown_runtime) flipped to failing when F-00087 added pi to the allowlist, causing S12's only real failure [design, one-off]."
+}

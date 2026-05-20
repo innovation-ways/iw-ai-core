@@ -31,9 +31,9 @@ from orch.db.models import ChatTab
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-# F-B will widen this to ``frozenset({"opencode", "pi"})``; the migration
-# is unchanged because ``chat_tabs.runtime`` is plain TEXT.
-ALLOWED_RUNTIMES: frozenset[str] = frozenset({"opencode"})
+# F-00087 extends this to include ``"pi"``; the migration is unchanged
+# because ``chat_tabs.runtime`` is plain TEXT.
+ALLOWED_RUNTIMES: frozenset[str] = frozenset({"opencode", "pi"})
 
 # Soft-cap threshold for active tabs per project (invariant #4). The cap
 # is advisory — exceeding it returns the warning flag but the tab is

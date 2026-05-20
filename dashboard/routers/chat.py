@@ -68,11 +68,12 @@ from typing import TYPE_CHECKING, Any, Final
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from dashboard.dependencies import get_db
 from orch.chat import bootstrap_default_tab
 from orch.chat import tab_service as _tab_service
-from orch.db.models import Project
+from orch.db.models import AgentRuntimeOption, Project
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator
@@ -247,23 +248,89 @@ async def _relay_sse_generator(
 # ---------------------------------------------------------------------------
 
 
+def _resolve_pi_model_config(db: Session, project_key: str) -> dict[str, Any]:
+    """Resolve Pi runtime model config from ``agent_runtime_options`` + project allowlist.
+
+    Returns ``{models, default_model, project_directory}`` matching the OpenCode
+    shape so the rest of ``create_tab`` can stay runtime-agnostic.  Mirrors the
+    Pi branch of ``get_config`` so behaviour is consistent across endpoints.
+    """
+    rows = (
+        db.execute(
+            select(AgentRuntimeOption)
+            .where(
+                AgentRuntimeOption.cli_tool == "pi",
+                AgentRuntimeOption.enabled.is_(True),
+            )
+            .order_by(AgentRuntimeOption.sort_order)
+        )
+        .scalars()
+        .all()
+    )
+    available_models = [f"{r.cli_tool}/{r.model}" for r in rows]
+    default_row = next((r for r in rows if r.is_default), None)
+    raw_default = (
+        f"{default_row.cli_tool}/{default_row.model}"
+        if default_row
+        else (available_models[0] if available_models else "")
+    )
+
+    project_directory = ""
+    project = db.get(Project, project_key) if project_key else None
+    if project is not None:
+        if isinstance(project.repo_root, str):
+            project_directory = project.repo_root
+        ai_assistant = project.config.get("ai_assistant") if project is not None else None
+        if isinstance(ai_assistant, dict):
+            allowlist_raw = ai_assistant.get("models")
+            allowlist = (
+                [m for m in allowlist_raw if isinstance(m, str)]
+                if isinstance(allowlist_raw, list)
+                else []
+            )
+            available_set = set(available_models)
+            filtered = [m for m in allowlist if m in available_set]
+            if not filtered:
+                filtered = available_models
+            allow_default = ai_assistant.get("default_model")
+            default_model = (
+                allow_default
+                if isinstance(allow_default, str) and allow_default in filtered
+                else (filtered[0] if filtered else raw_default)
+            )
+            return {
+                "models": filtered,
+                "default_model": default_model,
+                "project_directory": project_directory,
+            }
+
+    return {
+        "models": available_models,
+        "default_model": raw_default,
+        "project_directory": project_directory,
+    }
+
+
 @router.post("/tabs")
 async def create_tab(
     body: CreateTabRequest,
+    request: Request,
     db: Session = Depends(get_db),
     client: OpencodeClient | None = Depends(_get_client),
     healthy: bool = Depends(_check_runtime_healthy),
 ) -> Any:
     """Create a new chat tab. Returns ``{tab}`` + optional X-Tab-Soft-Cap-Exceeded header.
 
-    Health-gated: 503 when the runtime is unavailable (a tab without a live
-    runtime session would be unresponsive).
+    Health-gated per runtime: OpenCode tabs 503 when the OpenCode runtime is
+    unavailable; Pi tabs 503 when the Pi runtime is unavailable (``pi`` binary
+    missing).
 
     Model validation: if ``model`` is supplied it must appear in the runtime's
     available models list. If omitted, the default model from config is used.
 
-    Runtime allowlist: currently ``{"opencode"}``; attempting ``"pi"`` or any
-    other value returns 400.
+    Runtime allowlist: ``{"opencode", "pi"}``; any other value returns 400.
+    Pi tabs route to ``PiRuntime`` (per-tab subprocess pool); OpenCode tabs
+    route to ``OpencodeClient`` (single shared subprocess).
     """
     # --- runtime allowlist: validate BEFORE any client/health calls ---
     # This runs even before the health gate so unknown runtimes always get 400
@@ -279,14 +346,90 @@ async def create_tab(
             },
         )
 
+    project_key = body.project_id.strip()
+    runtime_key = body.runtime.strip()
+
+    # ------------------------------------------------------------------
+    # Pi branch — dispatch to PiRuntime (per-tab subprocess pool)
+    # ------------------------------------------------------------------
+    if runtime_key == "pi":
+        # Validate the model against the Pi catalogue BEFORE probing the
+        # runtime: model rejection is a deterministic 400 regardless of
+        # subprocess health, and matches the OpenCode branch's ordering.
+        pi_config = _resolve_pi_model_config(db, project_key)
+        resolved_model = body.model if body.model is not None else pi_config["default_model"]
+        if body.model is not None and resolved_model not in pi_config["models"]:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": (
+                        f"model '{resolved_model}' not available for runtime '{body.runtime}'"
+                    )
+                },
+            )
+
+        pi_runtime = getattr(request.app.state, "pi_runtime", None)
+        if pi_runtime is None:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Pi runtime unavailable"},
+            )
+        try:
+            pi_healthy = await pi_runtime.health()
+        except Exception:
+            pi_healthy = False
+        if not pi_healthy:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Pi runtime unavailable: pi binary not found"},
+            )
+
+        project_directory = pi_config.get("project_directory") or ""
+        try:
+            session_id = await pi_runtime.create_session(
+                model=resolved_model,
+                agent=body.agent,
+                directory=project_directory if project_directory else None,
+            )
+        except Exception as exc:
+            logger.error("create_tab: failed to create Pi session: %s", exc)
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Pi runtime unavailable"},
+            )
+
+        try:
+            tab, soft_cap_exceeded = _tab_service.create_tab(
+                db,
+                project_id=body.project_id,
+                runtime=body.runtime,
+                model=resolved_model,
+                title=body.title,
+                agent=body.agent,
+                opencode_session_id=session_id,
+            )
+            db.commit()
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+
+        headers: dict[str, str] = {}
+        if soft_cap_exceeded:
+            headers["X-Tab-Soft-Cap-Exceeded"] = "true"
+        return JSONResponse(
+            status_code=201,
+            content={"tab": _tab_to_dict(tab)},
+            headers=headers,
+        )
+
+    # ------------------------------------------------------------------
+    # OpenCode branch (default)
+    # ------------------------------------------------------------------
     if not healthy or client is None:
         return _503_unavailable()
 
     # --- resolve and validate model ---
     # Fetch config once; cache key is project_id + runtime (no need to re-fetch
     # per field within this request).
-    project_key = body.project_id.strip()
-    runtime_key = body.runtime.strip()
     cache_key = f"{project_key}:{runtime_key}"
     now = time.monotonic()
     cache_slot = _config_cache.get(cache_key, {})
@@ -374,7 +517,7 @@ async def create_tab(
         # Runtime allowlist or other validation error from tab_service.
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
-    headers: dict[str, str] = {}
+    headers = {}
     if soft_cap_exceeded:
         headers["X-Tab-Soft-Cap-Exceeded"] = "true"
 
@@ -528,24 +671,51 @@ async def _resolve_default_model_for_project(
 @router.get("/tabs/{tab_id}")
 async def get_tab(
     tab_id: str,
+    request: Request,
     client: OpencodeClient | None = Depends(_get_client),
     healthy: bool = Depends(_check_runtime_healthy),
     db: Session = Depends(get_db),
 ) -> Any:
     """Return ``{tab, session, messages}`` for the given tab.
 
-    Health-gated for session/message retrieval: 503 when unhealthy.
+    Health-gated per runtime: OpenCode tabs use the OpenCode client; Pi tabs
+    dispatch to ``PiRuntime`` for session metadata / message history.
     """
     tab = _tab_service.get_tab(db, tab_id)
     if tab is None:
         return JSONResponse(status_code=404, content={"error": "tab not found"})
 
-    if not healthy or client is None:
-        return _503_unavailable()
-
     sid = tab.opencode_session_id
     session: dict[str, Any] | None = None
     messages: list[Any] = []
+
+    if tab.runtime == "pi":
+        pi_runtime = getattr(request.app.state, "pi_runtime", None)
+        if pi_runtime is None:
+            return JSONResponse(status_code=503, content={"error": "Pi runtime unavailable"})
+        try:
+            pi_healthy = await pi_runtime.health()
+        except Exception:
+            pi_healthy = False
+        if not pi_healthy:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Pi runtime unavailable: pi binary not found"},
+            )
+        if sid:
+            try:
+                session = await pi_runtime.get_session(sid)
+                messages = await pi_runtime.get_messages(sid)
+            except Exception as exc:
+                logger.warning(
+                    "get_tab: failed to fetch Pi session/messages for sid=%s: %s", sid, exc
+                )
+        return {"tab": _tab_to_dict(tab), "session": session, "messages": messages}
+
+    # OpenCode path
+    if not healthy or client is None:
+        return _503_unavailable()
+
     if sid:
         try:
             session = await client.get_session(sid)
@@ -610,28 +780,72 @@ async def reopen_tab(
     return {"tab": _tab_to_dict(tab)}
 
 
+async def _pi_subscribe_with_tab_id(
+    pi_runtime: Any,
+    sid: str,
+    tab_id: str,
+) -> AsyncIterator[dict[str, Any]]:
+    """Wrap ``PiRuntime.subscribe`` to stamp ``tab_id`` on every event.
+
+    PiRuntime's normaliser intentionally does NOT add ``tab_id`` (invariant
+    that the relay/router layer owns).  When we serve Pi events over SSE
+    directly (no RelayManager in the Pi path), we stamp ``tab_id`` here so
+    the frontend dispatch path is uniform across runtimes.
+    """
+    async for ev in pi_runtime.subscribe(sid):
+        if isinstance(ev, dict) and "tab_id" not in ev:
+            ev["tab_id"] = tab_id
+        yield ev
+
+
 @router.get("/tabs/{tab_id}/stream")
 async def stream_tab(
     tab_id: str,
     request: Request,
+    db: Session = Depends(get_db),
     relay_manager: RelayManager | None = Depends(_get_relay_manager),
     healthy: bool = Depends(_check_runtime_healthy),
 ) -> Any:
     """SSE stream relaying events for the given tab.
 
-    Respects the ``Last-Event-ID`` request header and ``last_event_id``
-    query parameter for ring-buffer replay (invariant — existing behaviour
-    preserved from the session-scoped stream_session handler).
-
-    Events already carry ``tab_id`` (set by RelayManager in S03) — the
-    router forwards the dict to JSON without stripping or renaming any field.
+    OpenCode tabs use the ``RelayManager`` ring-buffer + ``Last-Event-ID``
+    replay path.  Pi tabs subscribe directly to ``PiRuntime.subscribe(sid)``
+    (no ring-buffer replay in v1 — Pi has its own session-resume semantics
+    via ``--session`` for cross-page-load history).
     """
-    if not healthy or relay_manager is None:
-        return _503_unavailable()
+    tab = _tab_service.get_tab(db, tab_id)
+    if tab is None:
+        return JSONResponse(status_code=404, content={"error": "tab not found"})
 
     last_event_id = request.headers.get("Last-Event-ID") or request.query_params.get(
         "last_event_id"
     )
+
+    if tab.runtime == "pi":
+        sid = tab.opencode_session_id
+        if not sid:
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"tab '{tab_id}' has no pi session id"},
+            )
+        pi_or_503 = await _resolve_pi_runtime_or_503(request)
+        if isinstance(pi_or_503, JSONResponse):
+            return pi_or_503
+        relay_iter = _pi_subscribe_with_tab_id(pi_or_503, sid, tab_id)
+        return StreamingResponse(
+            _relay_sse_generator(relay_iter, request),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+
+    # OpenCode path
+    if not healthy or relay_manager is None:
+        return _503_unavailable()
+
     try:
         relay = await relay_manager.get_or_create_relay(tab_id)
     except ValueError as exc:
@@ -650,24 +864,44 @@ async def stream_tab(
     )
 
 
+async def _resolve_pi_runtime_or_503(request: Request) -> Any | JSONResponse:
+    """Return the Pi runtime when healthy, else a 503 JSONResponse.
+
+    Pi runtime health is checked independently of the OpenCode health gate.
+    Used by per-tab endpoints that need to dispatch to PiRuntime when the
+    tab's runtime is ``"pi"``.
+    """
+    pi_runtime = getattr(request.app.state, "pi_runtime", None)
+    if pi_runtime is None:
+        return JSONResponse(status_code=503, content={"error": "Pi runtime unavailable"})
+    try:
+        pi_healthy = await pi_runtime.health()
+    except Exception:
+        pi_healthy = False
+    if not pi_healthy:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Pi runtime unavailable: pi binary not found"},
+        )
+    return pi_runtime
+
+
 @router.post("/tabs/{tab_id}/prompt")
 async def send_prompt(
     tab_id: str,
     body: PromptRequest,
+    request: Request,
     db: Session = Depends(get_db),
     client: OpencodeClient | None = Depends(_get_client),
     healthy: bool = Depends(_check_runtime_healthy),
 ) -> Any:
-    """Forward a user prompt to the tab's OpenCode session.
+    """Forward a user prompt to the tab's runtime session.
 
-    When ``body.context`` is supplied, prepends a context chip to the
-    ``system`` argument::
+    Dispatches to ``PiRuntime`` for Pi tabs and ``OpencodeClient`` for OpenCode
+    tabs.  Context chips are threaded as ``system`` for both runtimes::
 
         [Context: viewing {title} ({type} {id})]
     """
-    if not healthy or client is None:
-        return _503_unavailable()
-
     tab = _tab_service.get_tab(db, tab_id)
     if tab is None:
         return JSONResponse(status_code=404, content={"error": "tab not found"})
@@ -676,7 +910,7 @@ async def send_prompt(
     if not sid:
         return JSONResponse(
             status_code=409,
-            content={"error": "tab has no opencode session; create the session first"},
+            content={"error": "tab has no runtime session; create the session first"},
         )
 
     system: str | None = None
@@ -687,7 +921,15 @@ async def send_prompt(
         cid = ctx.get("id", "")
         system = f"[Context: viewing {title} ({ctype} {cid})]"
 
-    await client.prompt(sid, body.text, model=body.model, system=system)
+    if tab.runtime == "pi":
+        pi_or_503 = await _resolve_pi_runtime_or_503(request)
+        if isinstance(pi_or_503, JSONResponse):
+            return pi_or_503
+        await pi_or_503.prompt(sid, body.text, model=body.model, system=system)
+    else:
+        if not healthy or client is None:
+            return _503_unavailable()
+        await client.prompt(sid, body.text, model=body.model, system=system)
 
     # Bump last_active_at on prompt so the tab ordering stays fresh.
     _tab_service.touch_last_active(db, tab_id)
@@ -699,14 +941,12 @@ async def send_prompt(
 @router.post("/tabs/{tab_id}/abort")
 async def abort_tab(
     tab_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     client: OpencodeClient | None = Depends(_get_client),
     healthy: bool = Depends(_check_runtime_healthy),
 ) -> Any:
-    """Abort the current in-flight prompt for the given tab's session."""
-    if not healthy or client is None:
-        return _503_unavailable()
-
+    """Abort the current in-flight prompt for the given tab's runtime session."""
     tab = _tab_service.get_tab(db, tab_id)
     if tab is None:
         return JSONResponse(status_code=404, content={"error": "tab not found"})
@@ -715,7 +955,15 @@ async def abort_tab(
     if not sid:
         return Response(status_code=204)  # No session to abort; no-op.
 
-    await client.abort(sid)
+    if tab.runtime == "pi":
+        pi_or_503 = await _resolve_pi_runtime_or_503(request)
+        if isinstance(pi_or_503, JSONResponse):
+            return pi_or_503
+        await pi_or_503.abort(sid)
+    else:
+        if not healthy or client is None:
+            return _503_unavailable()
+        await client.abort(sid)
     return Response(status_code=204)
 
 
@@ -724,14 +972,17 @@ async def reply_permission(
     tab_id: str,
     rid: str,
     body: PermissionRequest,
+    request: Request,
     db: Session = Depends(get_db),
     client: OpencodeClient | None = Depends(_get_client),
     healthy: bool = Depends(_check_runtime_healthy),
 ) -> Any:
-    """Reply to a pending ``permission.asked`` event for the tab's session."""
-    if not healthy or client is None:
-        return _503_unavailable()
+    """Reply to a pending ``permission.asked`` event for the tab's runtime session.
 
+    Pi tabs route through ``PiRuntime.reply_permission`` (which writes an
+    ``extension_ui_response`` to the subprocess stdin via the
+    ``iw-chat-approvals`` extension contract — F-00087 AC3).
+    """
     tab = _tab_service.get_tab(db, tab_id)
     if tab is None:
         return JSONResponse(status_code=404, content={"error": "tab not found"})
@@ -740,16 +991,79 @@ async def reply_permission(
     if not sid:
         return JSONResponse(
             status_code=409,
-            content={"error": "tab has no opencode session"},
+            content={"error": "tab has no runtime session"},
         )
 
-    await client.reply_permission(sid, rid, body.response, remember=body.remember)
+    if tab.runtime == "pi":
+        pi_or_503 = await _resolve_pi_runtime_or_503(request)
+        if isinstance(pi_or_503, JSONResponse):
+            return pi_or_503
+        await pi_or_503.reply_permission(sid, rid, body.response, remember=body.remember)
+    else:
+        if not healthy or client is None:
+            return _503_unavailable()
+        await client.reply_permission(sid, rid, body.response, remember=body.remember)
     return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
 # Retained endpoints
 # ---------------------------------------------------------------------------
+
+
+def _apply_ai_assistant_allowlist(
+    available_models: list[str],
+    default_model_raw: str,
+    ai_assistant: dict[str, Any],
+    project_key: str,
+    *,
+    default_agent: str = "",
+    project_directory: str = "",
+) -> dict[str, Any]:
+    """Apply ``ai_assistant.models`` allowlist intersection and return a config result dict.
+
+    Shared by the opencode and pi branches of ``get_config``.  The ``default_agent``
+    key is always present (defaults to ``""``) so the response shape documented in
+    ``get_config`` (``{models, default_model, default_agent, project_directory}``)
+    is honoured for both runtimes.
+    """
+    allowlist_raw = ai_assistant.get("models")
+    allowlist = (
+        [m for m in allowlist_raw if isinstance(m, str)] if isinstance(allowlist_raw, list) else []
+    )
+    allow_default = ai_assistant.get("default_model")
+
+    available_set = set(available_models)
+    filtered = [m for m in allowlist if m in available_set]
+    dropped = [m for m in allowlist if m not in available_set]
+    if dropped:
+        logger.warning(
+            "Chat config allowlist dropped unreachable models for project=%s: %s",
+            project_key,
+            ",".join(dropped),
+        )
+
+    if not filtered:
+        logger.info(
+            "Chat config allowlist empty after intersection for project=%s "
+            "— returning full provider list",
+            project_key,
+        )
+        filtered = available_models
+
+    chosen_default = (
+        allow_default
+        if isinstance(allow_default, str) and allow_default in filtered
+        else (filtered[0] if filtered else default_model_raw)
+    )
+
+    result: dict[str, Any] = {
+        "models": filtered,
+        "default_model": chosen_default,
+        "default_agent": default_agent,
+        "project_directory": project_directory,
+    }
+    return result
 
 
 @router.get("/config")
@@ -769,15 +1083,17 @@ async def get_config(
     selector consumes).
 
     The ``runtime`` query param (default ``"opencode"``) is accepted for
-    forward-compatibility with F-B (Pi runtime); the response shape is
-    unchanged.
+    forward-compatibility with F-00087 (Pi runtime). When ``runtime=pi``, models
+    are fetched from ``agent_runtime_options`` (DB table) instead of the OpenCode
+    HTTP API. The response shape is identical for both runtimes.
 
     Unlike the other endpoints, if a cached value exists it is served even
     when the runtime is temporarily unhealthy.
     """
+
     now = time.monotonic()
     project_key = (project_id or "").strip()
-    # Cache key includes runtime so Pi (F-B) can have independent caches.
+    # Cache key includes runtime so Pi and opencode have independent caches.
     cache_key = f"{project_key}:{runtime}" if project_key else f"__none__:{runtime}"
     cache_slot = _config_cache.get(cache_key, {})
     cached = cache_slot.get("data")
@@ -786,6 +1102,68 @@ async def get_config(
     if cached is not None and (now - cached_at) < _CONFIG_TTL:
         return cached
 
+    # ------------------------------------------------------------------
+    # Pi branch — models from agent_runtime_options (no HTTP call needed)
+    # ------------------------------------------------------------------
+    if runtime == "pi":
+        rows = (
+            db.execute(
+                select(AgentRuntimeOption)
+                .where(
+                    AgentRuntimeOption.cli_tool == "pi",
+                    AgentRuntimeOption.enabled.is_(True),
+                )
+                .order_by(AgentRuntimeOption.sort_order)
+            )
+            .scalars()
+            .all()
+        )
+        # Model strings use "<cli_tool>/<model>" so the ai_assistant.models
+        # allowlist works uniformly across runtimes (same format as opencode).
+        available_models = [f"{r.cli_tool}/{r.model}" for r in rows]
+        default_row = next((r for r in rows if r.is_default), None)
+        raw_default = (
+            f"{default_row.cli_tool}/{default_row.model}"
+            if default_row
+            else (available_models[0] if available_models else "")
+        )
+
+        project_directory = ""
+        if project_key:
+            project = db.get(Project, project_key)
+            project_directory = project.repo_root if project is not None else ""
+            if not isinstance(project_directory, str):
+                project_directory = ""
+            ai_assistant = project.config.get("ai_assistant") if project is not None else None
+            if isinstance(ai_assistant, dict):
+                result = _apply_ai_assistant_allowlist(
+                    available_models,
+                    raw_default,
+                    ai_assistant,
+                    project_key,
+                    project_directory=project_directory,
+                )
+            else:
+                result = {
+                    "models": available_models,
+                    "default_model": raw_default,
+                    "default_agent": "",
+                    "project_directory": project_directory,
+                }
+        else:
+            result = {
+                "models": available_models,
+                "default_model": raw_default,
+                "default_agent": "",
+                "project_directory": project_directory,
+            }
+
+        _config_cache[cache_key] = {"data": result, "at": now}
+        return result
+
+    # ------------------------------------------------------------------
+    # OpenCode branch (default) — models from OpenCode HTTP API
+    # ------------------------------------------------------------------
     if not healthy or client is None:
         if cached is not None:
             # Serve stale cache rather than 503

@@ -49,8 +49,17 @@
   var _pendingPermissions = {};
 
   // Available models cache: { models: [], default_model: '' }
+  // These hold models for the *active tab's* runtime (used by per-tab model dropdown).
   var _availableModels = [];
   var _defaultModel = '';
+
+  // Modal-local models: populated from /api/chat/config?runtime=<selected> each
+  // time the user opens the modal or changes the runtime dropdown.
+  var _modalModels = [];
+  var _modalDefaultModel = '';
+  // Tracks which runtime the modal dropdown last fetched models for, so a second
+  // open without a runtime change skips the fetch.
+  var _modalRuntime = 'opencode';
 
   // Soft-cap banner: once shown (per page session), re-shows on each POST that returns the header
   // (but can be dismissed once per show). The flag tracks whether it's currently visible.
@@ -245,12 +254,21 @@
   }
 
   // ── SSE per-tab streaming ───────────────────────────────────────────────────
+  // NOTE: EventSource only dispatches to listeners whose names appear in this
+  // list (default 'message' aside). Pi-runtime events (F-00087) are normalised
+  // to 'message.part.added' / 'session.start' / 'tool.execution.*' — these
+  // MUST be enumerated here or the browser silently drops them.
   var NAMED_EVENTS = [
     'message.part.updated',
+    'message.part.added',
     'tool.execute.before',
     'tool.execute.after',
+    'tool.execution.start',
+    'tool.execution.update',
+    'tool.execution.end',
     'permission.asked',
     'permission.replied',
+    'session.start',
     'session.idle',
     'session.updated',
     'session.error',
@@ -448,6 +466,30 @@
       return;
     }
 
+    // F-00087: Pi-runtime streaming text. The Pi event_normalizer maps
+    // `message_update`+`text_delta` → `message.part.added` with shape
+    // `{data: {part: {type: "text", text: <delta>}}}` (no `properties`
+    // wrapper — that is an OpenCode-specific shape). Render the delta into
+    // the active assistant bubble identically to message.part.updated.
+    if (evName === 'message.part.added') {
+      if (!_tabStreaming[tabId]) {
+        _tabStreaming[tabId] = true;
+        if (isActive) {
+          _updateSendAbortButtons();
+          _startContextPoll();
+        }
+      }
+      if (isActive) {
+        var addedPart = (data && data.part) || (props && props.part) || {};
+        var addedText = (typeof addedPart.text === 'string' ? addedPart.text : '') ||
+                        (props && props.delta) || '';
+        var addedKey = addedPart.messageID ||
+                       (props && props.messageID) || eid;
+        _appendOrUpdateAssistantMessage(tabId, addedKey, addedText, false);
+      }
+      return;
+    }
+
     if (evName === 'message.part.removed') {
       return; // No individual part nodes to remove
     }
@@ -495,6 +537,51 @@
       if (isActive) {
         var doneToolName = (props && props.tool) || '';
         _appendToolResult('✓ ' + doneToolName + (props && props.duration ? ' (' + props.duration + 'ms)' : ''));
+      }
+      return;
+    }
+
+    // F-00087: Pi-runtime tool lifecycle. Pi's event_normalizer maps
+    // tool_execution_start/update/end → tool.execution.start/update/end
+    // with shape `{data: {tool, args, ...}}` (no `properties` wrapper).
+    if (evName === 'tool.execution.start') {
+      if (isActive) {
+        var piToolName = (data && data.tool) || (props && props.tool) || 'unknown';
+        var piToolArgs = (data && data.args) || (props && props.args) || {};
+        _appendToolCall(piToolName, piToolArgs);
+      }
+      return;
+    }
+
+    if (evName === 'tool.execution.update') {
+      return; // no streaming progress bubble in v1
+    }
+
+    if (evName === 'tool.execution.end') {
+      if (isActive) {
+        var piDoneTool = (data && data.tool) || (props && props.tool) || '';
+        var piResult = (data && data.result);
+        if (piResult === undefined && props) piResult = props.result;
+        var label = piDoneTool ? ('✓ ' + piDoneTool) : '✓ tool';
+        if (piResult !== undefined && piResult !== null && piResult !== '') {
+          _appendToolResult(label + ' — ' + (typeof piResult === 'string' ? piResult : JSON.stringify(piResult)));
+        } else {
+          _appendToolResult(label);
+        }
+      }
+      return;
+    }
+
+    // F-00087: Pi emits `agent_start` → `session.start`. No visible bubble,
+    // but mark the tab as streaming so Send/Abort state flips correctly even
+    // before the first text delta arrives.
+    if (evName === 'session.start') {
+      if (!_tabStreaming[tabId]) {
+        _tabStreaming[tabId] = true;
+        if (isActive) {
+          _updateSendAbortButtons();
+          _startContextPoll();
+        }
       }
       return;
     }
@@ -661,6 +748,7 @@
     btn.className = 'chat-assistant-tab-btn flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs border-r border-border hover:bg-muted';
     btn.setAttribute('role', 'tab');
     btn.setAttribute('data-tab-id', tab.id);
+    btn.setAttribute('data-runtime', tab.runtime || 'opencode');
     btn.setAttribute('aria-selected', tab.id === _activeTabId ? 'true' : 'false');
     btn.title = tab.title || 'Chat';
     if (tab.id === _activeTabId) {
@@ -943,6 +1031,12 @@
       projInput.value = _currentProjectId() || '';
     }
 
+    // Reset runtime dropdown to opencode (default)
+    var runtimeSel = document.getElementById('chat-assistant-create-tab-runtime');
+    if (runtimeSel) {
+      runtimeSel.value = 'opencode';
+    }
+
     // Clear title
     var titleInput = document.getElementById('chat-assistant-create-tab-title-input');
     if (titleInput) titleInput.value = '';
@@ -950,8 +1044,12 @@
     // Clear error
     _hideCreateTabError();
 
-    // Populate model dropdown from cached available models
-    _populateCreateTabModelDropdown();
+    // Fetch models for the default runtime (opencode); always re-fetch on open
+    // so a project with no Pi models sees the correct empty state if they switch.
+    _modalRuntime = 'opencode';
+    _modalModels = [];
+    _modalDefaultModel = '';
+    _fetchModelsForModal('opencode');
 
     // Focus title input
     if (titleInput) {
@@ -981,40 +1079,97 @@
 
   function _populateCreateTabModelDropdown() {
     var sel = document.getElementById('chat-assistant-create-tab-model');
+    var submitBtn = document.getElementById('chat-assistant-create-tab-submit');
     if (!sel) return;
     sel.innerHTML = '';
-    if (!_availableModels.length) {
+
+    if (!_modalModels.length) {
       var opt = document.createElement('option');
       opt.value = '';
+      // Distinguish between "still loading" and "genuinely empty after fetch".
+      // _fetchModelsForModal sets _modalModels=[] before the fetch starts, so
+      // we use a separate sentinel: the placeholder text changes once we know
+      // the runtime has no models.
+      // Show a loading indicator initially; _fetchModelsForModal replaces it.
       opt.textContent = 'Loading…';
       sel.appendChild(opt);
-      // Fetch models for this project
-      _fetchModelsForModal();
+      if (submitBtn) submitBtn.disabled = false; // re-enabled after fetch
       return;
     }
-    _availableModels.forEach(function (m) {
+
+    _modalModels.forEach(function (m) {
       var opt = document.createElement('option');
       opt.value = m;
       opt.textContent = m;
-      if (m === _defaultModel) opt.selected = true;
+      if (m === _modalDefaultModel) opt.selected = true;
       sel.appendChild(opt);
     });
-    if (_defaultModel) sel.value = _defaultModel;
+    if (_modalDefaultModel) sel.value = _modalDefaultModel;
+    if (submitBtn) submitBtn.disabled = false;
   }
 
-  function _fetchModelsForModal() {
+  function _fetchModelsForModal(runtime) {
     var projectId = _currentProjectId();
-    var url = '/api/chat/config';
-    if (projectId) url += '?' + new URLSearchParams({ project_id: projectId }).toString();
+    var selectedRuntime = runtime || 'opencode';
+    var params = {};
+    if (projectId) params.project_id = projectId;
+    params.runtime = selectedRuntime;
+    var url = '/api/chat/config?' + new URLSearchParams(params).toString();
+
+    // Show loading state immediately
+    _modalModels = [];
+    _modalDefaultModel = '';
+    _populateCreateTabModelDropdown();
+
+    var submitBtn = document.getElementById('chat-assistant-create-tab-submit');
+
     fetch(url)
-      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (r) {
+        if (!r.ok) {
+          throw new Error('config fetch failed: ' + r.status);
+        }
+        return r.json();
+      })
       .then(function (data) {
         if (!data) return;
-        _availableModels = data.models || [];
-        _defaultModel = data.default_model || '';
+        // Guard: if the user changed runtime again while this fetch was in-flight,
+        // discard the stale result.
+        if (_modalRuntime !== selectedRuntime) return;
+        _modalModels = data.models || [];
+        _modalDefaultModel = data.default_model || '';
+
+        if (!_modalModels.length) {
+          // Empty model list: show an inline message and disable Create.
+          var sel = document.getElementById('chat-assistant-create-tab-model');
+          if (sel) {
+            sel.innerHTML = '';
+            var opt = document.createElement('option');
+            opt.value = '';
+            if (selectedRuntime === 'pi') {
+              opt.textContent = 'No Pi models configured for this project. See docs/IW_AI_Core_AI_Assistant_Models.md.';
+            } else {
+              opt.textContent = 'No models available.';
+            }
+            sel.appendChild(opt);
+          }
+          if (submitBtn) submitBtn.disabled = true;
+          _showCreateTabError(
+            selectedRuntime === 'pi'
+              ? 'No Pi models configured for this project. See docs/IW_AI_Core_AI_Assistant_Models.md.'
+              : 'No models available for the selected runtime.'
+          );
+          return;
+        }
+
+        // Models available: clear any previous error and populate.
+        _hideCreateTabError();
         _populateCreateTabModelDropdown();
       })
-      .catch(function () { /* ignore */ });
+      .catch(function (err) {
+        if (_modalRuntime !== selectedRuntime) return;
+        _showCreateTabError('Could not load models: ' + err.message);
+        if (submitBtn) submitBtn.disabled = true;
+      });
   }
 
   // ── Soft-cap banner ─────────────────────────────────────────────────────────
@@ -1122,6 +1277,10 @@
     var dd = document.getElementById('chat-assistant-tab-model-dropdown');
     if (!dd) return;
     dd.innerHTML = '';
+    // The dropdown is scoped to the active tab's runtime. Pi tabs show only Pi
+    // models; OpenCode tabs show only OpenCode models. Switching runtime requires
+    // creating a new tab.
+    dd.title = 'Switching runtime requires creating a new tab.';
     _availableModels.forEach(function (m) {
       var btn = document.createElement('button');
       btn.type = 'button';
@@ -1497,10 +1656,16 @@
   function _refreshModels() {
     var projectId = _currentProjectId();
     _lastProjectId = projectId;
-    var url = '/api/chat/config';
-    if (projectId) {
-      url += '?' + new URLSearchParams({ project_id: projectId }).toString();
-    }
+    // Determine the active tab's runtime so the per-tab model dropdown shows
+    // only models that are valid for that runtime (Pi tab → Pi models only;
+    // OpenCode tab → OpenCode models only). No cross-runtime model switching;
+    // changing runtime requires creating a new tab.
+    var activeTab = _activeTabId ? _tabs.find(function (t) { return t.id === _activeTabId; }) : null;
+    var activeRuntime = (activeTab && activeTab.runtime) ? activeTab.runtime : 'opencode';
+    var params = {};
+    if (projectId) params.project_id = projectId;
+    params.runtime = activeRuntime;
+    var url = '/api/chat/config?' + new URLSearchParams(params).toString();
     fetch(url)
       .then(function (r) {
         if (!r.ok) return null;
@@ -1801,6 +1966,22 @@
       var cancelBtn = document.getElementById('chat-assistant-create-tab-cancel');
       if (cancelBtn && (e.target === cancelBtn || cancelBtn.contains(e.target))) {
         _closeCreateTabModal();
+      }
+    });
+
+    // Create-tab modal: runtime change → re-fetch model list
+    document.addEventListener('change', function (e) {
+      var runtimeSel = document.getElementById('chat-assistant-create-tab-runtime');
+      if (runtimeSel && e.target === runtimeSel) {
+        var selectedRuntime = runtimeSel.value;
+        _modalRuntime = selectedRuntime;
+        _modalModels = [];
+        _modalDefaultModel = '';
+        _hideCreateTabError();
+        // Re-enable submit optimistically; _fetchModelsForModal disables it on empty.
+        var submitBtn = document.getElementById('chat-assistant-create-tab-submit');
+        if (submitBtn) submitBtn.disabled = false;
+        _fetchModelsForModal(selectedRuntime);
       }
     });
 
