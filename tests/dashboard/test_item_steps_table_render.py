@@ -367,11 +367,11 @@ class TestPromptColumnRendering:
         table = soup.find("table")
         assert table is not None, "No <table> found in overview tab fragment"
 
-        # Count the actual headers (should be 11 — all current columns)
+        # Count the actual headers (should be 12 — all current columns including Logs)
         headers = table.find_all("th")
         header_count = len(headers)
-        assert header_count == 11, (
-            f"Expected 11 headers, got {header_count}: {[h.get_text() for h in headers]}"
+        assert header_count == 12, (
+            f"Expected 12 headers, got {header_count}: {[h.get_text() for h in headers]}"
         )
 
         # The S00 synthetic row must be present (no "No steps found" empty state)
@@ -384,7 +384,7 @@ class TestPromptColumnRendering:
 
         # Verify S00 step row has 11 cells (no empty state row)
         data_cells = rows[1].find_all("td")
-        assert len(data_cells) == 11, f"Expected 11 data cells in S00 row, got {len(data_cells)}"
+        assert len(data_cells) == 12, f"Expected 12 data cells in S00 row, got {len(data_cells)}"
         # No colspan cells (empty state only appears when both S00 and MERGE are absent,
         # which never happens for items with a BatchItem)
         has_colspan = any(td.get("colspan") for td in data_cells)

@@ -417,7 +417,14 @@ def test_history_no_clear_link_without_filters(client: TestClient, db_session: A
     make_project(db_session)
     resp = client.get("/project/test-proj/history")
     assert resp.status_code == 200
-    assert "Clear" not in resp.text
+    # Verify the filter-form Clear link is absent (it only appears when filters are active).
+    # Note: the AI Assistant panel's "Clear chat" button is in the layout shell and is
+    # unrelated to history filtering — check the filter form section instead.
+    import re
+    # Extract the filter form section (the first <form method="get"> block)
+    form_match = re.search(r'<form method="get"[^>]*>(.*?)</form>', resp.text, re.DOTALL)
+    assert form_match, "No filter form found"
+    assert "Clear" not in form_match.group(1)
 
 
 def test_history_404_for_unknown_project(client: TestClient, db_session: Any) -> None:

@@ -34,9 +34,9 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "e45b45f74ea0"  # head — F-00086 chat_tabs
+_HEAD_REVISION = "00490acc4cdf"  # head — CR-00065 session_file column
 _PREV_REVISION = (
-    "678ac4dd44b7"  # F-00085 auto merge verdicts and project config (pre-head ancestor)
+    "6d78323d0954"  # F-00081 pi_runtime_options (one migration pending: CR-00065)
 )
 
 
@@ -61,12 +61,12 @@ def db_url(pg_container: PostgresContainer) -> str:
 
 @pytest.fixture
 def db_engine_at_prev_revision(db_url: str) -> Engine:
-    """Engine with schema at PREV_REVISION — one migration (4cc043748e92) pending.
+    """Engine with schema at PREV_REVISION — one migration (CR-00065) pending.
 
     Strategy: on a fresh testcontainer (no alembic_version row), upgrade to
     PREV_REVISION only. This applies all migrations up to and including
-    e53ce8e86a3c, leaving exactly one migration (4cc043748e92: ALTER TABLE
-    batch_items ADD COLUMN …) pending.
+    6d78323d0954, leaving exactly one migration (00490acc4cdf: CR-00065
+    session_file column) pending.
 
     NOTE: we intentionally do NOT call Base.metadata.create_all() here.
     Alembic's online migration is the sole mechanism for schema creation in
@@ -80,9 +80,9 @@ def db_engine_at_prev_revision(db_url: str) -> Engine:
     alembic_cfg.set_main_option("script_location", "orch/db/migrations")
     alembic_cfg.set_main_option("sqlalchemy.url", db_url)
 
-    # Upgrade to PREV_REVISION — applies migrations up to e53ce8e86a3c.
+    # Upgrade to PREV_REVISION — applies migrations up to 6d78323d0954.
     # The fresh testcontainer has no alembic_version row, so this establishes
-    # the schema at e53ce8e86a3c with exactly one migration (4cc043748e92) pending.
+    # the schema at 6d78323d0954 with exactly one migration (CR-00065) pending.
     command.upgrade(alembic_cfg, _PREV_REVISION)
 
     yield engine

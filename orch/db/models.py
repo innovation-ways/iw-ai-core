@@ -837,6 +837,15 @@ class StepRun(Base):
         nullable=True,
         comment="Captured log content (ANSI-stripped, truncated) for fast DB access",
     )
+    session_file: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "Absolute path to the pi session .jsonl file for this run. "
+            "Set by step_monitor on the first poll cycle after step launch. "
+            "NULL for claude/opencode runs and pre-CR-00065 rows. (CR-00065)"
+        ),
+    )
     report_file: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Files view — per-step diff (captured at step-done)
     diff_text: Mapped[str | None] = mapped_column(
