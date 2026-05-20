@@ -257,32 +257,102 @@ class TestRuntimeUnavailable:
         assert resp.status_code == 503
         assert "unavailable" in resp.json()["error"].lower()
 
-    def test_runtime_none_stream_returns_503(self, app_no_runtime: TestClient) -> None:
-        # GET /api/chat/tabs/{tab_id}/stream: 503 fires before DB/tab lookup when
-        # runtime is None (the health check dependency returns False immediately).
-        resp = app_no_runtime.get("/api/chat/tabs/00000000-0000-0000-0000-000000000000/stream")
-        assert resp.status_code == 503
+    def test_runtime_none_stream_returns_503(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """GET /api/chat/tabs/{tab_id}/stream returns 503 when OpenCode runtime is None.
 
-    def test_runtime_none_prompt_returns_503(self, app_no_runtime: TestClient) -> None:
-        # POST /api/chat/tabs/{tab_id}/prompt: health gate fires first → 503.
-        resp = app_no_runtime.post(
-            "/api/chat/tabs/00000000-0000-0000-0000-000000000000/prompt",
-            json={"text": "hi"},
-        )
-        assert resp.status_code == 503
+        F-00087: per-tab endpoints look up the tab BEFORE the health gate so we can
+        dispatch to the correct runtime (OpenCode vs Pi). Missing tabs therefore
+        return 404 before the 503 fires; we create a real OpenCode tab first to
+        exercise the health-gate-after-lookup path.
+        """
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="sid-x"
+            )
+            app = create_app()
+            app.state.opencode_runtime = None
+            app.state.opencode_client = None
+            app.state.relay_manager = None
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+            resp = tc.get(f"/api/chat/tabs/{tab.id}/stream")
+            assert resp.status_code == 503
+        finally:
+            app.dependency_overrides.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
-    def test_runtime_none_abort_returns_503(self, app_no_runtime: TestClient) -> None:
-        # POST /api/chat/tabs/{tab_id}/abort: health gate fires first → 503.
-        resp = app_no_runtime.post("/api/chat/tabs/00000000-0000-0000-0000-000000000000/abort")
-        assert resp.status_code == 503
+    def test_runtime_none_prompt_returns_503(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """POST /prompt 503s when OpenCode runtime is None — after tab lookup (F-00087)."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="sid-x"
+            )
+            app = create_app()
+            app.state.opencode_runtime = None
+            app.state.opencode_client = None
+            app.state.relay_manager = None
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+            resp = tc.post(f"/api/chat/tabs/{tab.id}/prompt", json={"text": "hi"})
+            assert resp.status_code == 503
+        finally:
+            app.dependency_overrides.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
-    def test_runtime_none_permissions_returns_503(self, app_no_runtime: TestClient) -> None:
-        # POST /api/chat/tabs/{tab_id}/permissions/{rid}: health gate fires first → 503.
-        resp = app_no_runtime.post(
-            "/api/chat/tabs/00000000-0000-0000-0000-000000000000/permissions/rid-y",
-            json={"response": "allow"},
-        )
-        assert resp.status_code == 503
+    def test_runtime_none_abort_returns_503(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """POST /abort 503s when OpenCode runtime is None — after tab lookup (F-00087)."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="sid-x"
+            )
+            app = create_app()
+            app.state.opencode_runtime = None
+            app.state.opencode_client = None
+            app.state.relay_manager = None
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+            resp = tc.post(f"/api/chat/tabs/{tab.id}/abort")
+            assert resp.status_code == 503
+        finally:
+            app.dependency_overrides.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+    def test_runtime_none_permissions_returns_503(
+        self, db_session: Session, test_project: Project
+    ) -> None:
+        """POST /permissions 503s when OpenCode runtime is None — after tab lookup (F-00087)."""
+        original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+        try:
+            tab = _create_tab_in_db(
+                db_session, project_id=test_project.id, opencode_session_id="sid-x"
+            )
+            app = create_app()
+            app.state.opencode_runtime = None
+            app.state.opencode_client = None
+            app.state.relay_manager = None
+            app.dependency_overrides[get_db] = lambda: db_session
+            tc = TestClient(app, raise_server_exceptions=False)
+            resp = tc.post(
+                f"/api/chat/tabs/{tab.id}/permissions/rid-y",
+                json={"response": "allow"},
+            )
+            assert resp.status_code == 503
+        finally:
+            app.dependency_overrides.clear()
+            if original is not None:
+                os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
     def test_runtime_unhealthy_returns_503(
         self, db_session: Session, test_project: Project

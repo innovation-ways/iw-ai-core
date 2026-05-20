@@ -69,11 +69,12 @@ def test_create_tab_rejects_unknown_runtime(
     db_session: Session,
     test_project: Any,
 ) -> None:
-    with pytest.raises(ValueError, match=r"runtime 'pi' not in allowlist"):
+    # F-00087 added "pi" to ALLOWED_RUNTIMES — use a genuinely unknown runtime.
+    with pytest.raises(ValueError, match=r"runtime 'notaruntime' not in allowlist"):
         tab_service.create_tab(
             db_session,
             project_id=test_project.id,
-            runtime="pi",
+            runtime="notaruntime",
             model="any/model",
         )
     # No row written

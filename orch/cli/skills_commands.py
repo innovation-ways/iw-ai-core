@@ -131,6 +131,7 @@ def sync_agents_cmd(ctx: click.Context) -> None:
                     "project_id": project_id,
                     "claude_agents": result.claude_agents_synced,
                     "pi_agents": result.pi_agents_synced,
+                    "pi_extensions": result.pi_extensions_synced,
                     "opencode_agents": result.opencode_agents_synced,
                     "opencode_commands": result.opencode_commands_synced,
                     "errors": result.errors,
@@ -142,6 +143,7 @@ def sync_agents_cmd(ctx: click.Context) -> None:
     click.echo(f"Syncing agents for {project_id}...")
     click.echo(f"  Claude agents: {result.claude_agents_synced}")
     click.echo(f"  Pi agents: {result.pi_agents_synced}")
+    click.echo(f"  Pi extensions: {result.pi_extensions_synced}")
     click.echo(f"  OpenCode agents: {result.opencode_agents_synced}")
     click.echo(f"  OpenCode commands: {result.opencode_commands_synced}")
     for err in result.errors:
@@ -149,6 +151,7 @@ def sync_agents_cmd(ctx: click.Context) -> None:
     total = (
         result.claude_agents_synced
         + result.pi_agents_synced
+        + result.pi_extensions_synced
         + result.opencode_agents_synced
         + result.opencode_commands_synced
     )

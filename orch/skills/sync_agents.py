@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -16,6 +19,7 @@ class AgentSyncResult:
 
     claude_agents_synced: int = 0
     pi_agents_synced: int = 0
+    pi_extensions_synced: int = 0
     opencode_agents_synced: int = 0
     opencode_commands_synced: int = 0
     errors: list[str] = field(default_factory=list)
@@ -103,5 +107,24 @@ def sync_agents_and_commands(
     )
     result.opencode_commands_synced = count
     result.errors.extend(errors)
+
+    # Pi extensions — each immediate subdirectory under agents/pi/extensions/
+    # is copied recursively to project/.pi/extensions/<name>/.
+    # Missing source dir is silently skipped (optional feature).
+    pi_extensions_src = platform_root / "agents" / "pi" / "extensions"
+    if pi_extensions_src.is_dir():
+        try:
+            extension_dirs = [d for d in pi_extensions_src.iterdir() if d.is_dir()]
+        except OSError as exc:
+            logger.warning("Failed to list Pi extensions directory %s: %s", pi_extensions_src, exc)
+            extension_dirs = []
+
+        for ext_dir in sorted(extension_dirs):
+            dst = project_path / ".pi" / "extensions" / ext_dir.name
+            try:
+                shutil.copytree(ext_dir, dst, dirs_exist_ok=True, copy_function=shutil.copy2)
+                result.pi_extensions_synced += 1
+            except (OSError, shutil.Error) as exc:
+                logger.warning("Failed to sync Pi extension %s: %s", ext_dir.name, exc)
 
     return result

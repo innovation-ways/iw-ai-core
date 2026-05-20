@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Stub pi binary for F-00087 integration tests. Emits canned JSONL events
+# in response to commands on stdin. Pattern lifted from CR-00062 S05.
+exec python3 "$(dirname "$0")/_pi_stub.py" "$@"

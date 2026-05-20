@@ -117,9 +117,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     # ------------------------------------------------------------------
     _runtime = None
     _relay_manager = None
+    _pi_runtime = None
     if os.environ.get("IW_CORE_TEST_CONTEXT") != "true":
         try:
-            from orch.chat import OpencodeClient, OpencodeRuntime, RelayManager
+            from orch.chat import OpencodeClient, OpencodeRuntime, PiRuntime, RelayManager
             from orch.config import CORE_ROOT, load_config
 
             cfg = load_config()
@@ -149,11 +150,75 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
             app.state.opencode_client = _client
             app.state.relay_manager = _relay_manager
             logger.info("OpenCode runtime started on port %d", cfg.opencode_port)
+
+            # Pi runtime — per-tab subprocess pool (F-00087).
+            # Resolve the pi binary: explicit IW_CORE_PI_BIN wins (parity with
+            # IW_CORE_OPENCODE_BIN); production deployments install the real
+            # `pi` on PATH. The per-worktree E2E container ships no /usr/local
+            # /bin/pi shim, so when IW_E2E_SEED=1 (set only by
+            # docker-compose.e2e.yml) and `pi` isn't on PATH, fall back to the
+            # bundled stub under tests/integration/stubs/pi so S13 V3..V7 can
+            # exercise the Pi pipeline end-to-end. Production behaviour stays
+            # unchanged: without IW_E2E_SEED set, the default remains "pi" and
+            # missing-binary correctly maps to 503 per the design doc spec.
+            import shutil as _shutil  # noqa: PLC0415
+
+            pi_binary = os.environ.get("IW_CORE_PI_BIN", "").strip() or "pi"
+            if (
+                pi_binary == "pi"
+                and os.environ.get("IW_E2E_SEED") == "1"
+                and _shutil.which("pi") is None
+            ):
+                _stub_path = CORE_ROOT / "tests" / "integration" / "stubs" / "pi"
+                if _stub_path.is_file():
+                    # Defensive: Docker COPY occasionally drops the exec bit on
+                    # certain daemon/host combos; the stub is owned by the
+                    # runtime user inside the container so chmod+x is safe.
+                    if not os.access(str(_stub_path), os.X_OK):
+                        try:
+                            _stub_path.chmod(_stub_path.stat().st_mode | 0o111)
+                            logger.info(
+                                "Pi stub %s had no exec bit; chmod +x applied",
+                                _stub_path,
+                            )
+                        except OSError as _chmod_exc:
+                            logger.warning(
+                                "Pi stub %s not executable and chmod failed: %s",
+                                _stub_path,
+                                _chmod_exc,
+                            )
+                    if os.access(str(_stub_path), os.X_OK):
+                        pi_binary = str(_stub_path)
+                        logger.info(
+                            "Pi binary not on PATH; using bundled E2E stub at %s",
+                            pi_binary,
+                        )
+                    else:
+                        logger.warning(
+                            "Pi E2E stub at %s is not executable; PiRuntime "
+                            "health() will fail and Pi tab creation will 503",
+                            _stub_path,
+                        )
+                else:
+                    logger.warning(
+                        "IW_E2E_SEED=1 set and `pi` missing on PATH, but the "
+                        "bundled stub at %s does not exist; PiRuntime health() "
+                        "will fail and Pi tab creation will 503",
+                        _stub_path,
+                    )
+
+            _pi_runtime = PiRuntime(
+                base_session_dir=Path.home() / ".pi" / "agent" / "sessions",
+                binary=pi_binary,
+            )
+            app.state.pi_runtime = _pi_runtime
+            logger.info("Pi runtime initialised (lazy subprocess spawn)")
         except Exception as exc:
             logger.exception("OpenCode runtime startup failed: %s", exc)
             app.state.opencode_runtime = None
             app.state.opencode_client = None
             app.state.relay_manager = None
+            app.state.pi_runtime = None
     else:
         logger.debug("OpenCode runtime startup skipped in test context")
 
@@ -192,8 +257,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     yield
 
     # ------------------------------------------------------------------
-    # Shutdown: reverse order — relay_manager → runtime
+    # Shutdown: reverse order — pi_runtime → relay_manager → opencode runtime
     # ------------------------------------------------------------------
+    if _pi_runtime is not None:
+        try:
+            await _pi_runtime.close_all_clients()
+        except Exception as exc:
+            logger.warning("Pi runtime shutdown error: %s", exc)
     if _relay_manager is not None:
         try:
             await _relay_manager.shutdown()
