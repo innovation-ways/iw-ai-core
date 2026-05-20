@@ -69,6 +69,9 @@
   // Context-menu state
   var _ctxMenuTabId = null;
 
+  // Settings panel state
+  var _settingsOriginalRuntime = null;
+
   // ── Cookie helpers ──────────────────────────────────────────────────────────
   function _setCookie(name, value, path) {
     document.cookie = name + '=' + value + '; path=' + (path || '/');
@@ -222,6 +225,7 @@
   // ── Tab activation ──────────────────────────────────────────────────────────
   function _activateTab(tabId) {
     if (_activeTabId === tabId) return;
+    _closeSettingsPanel();
 
     // DELIBERATELY leave the previous tab's EventSource open. Disconnecting
     // it would force a ring-buffer replay on reconnect: all missed events
@@ -636,6 +640,7 @@
     if (evName === 'session.idle') {
       _tabStreaming[tabId] = false;
       if (isActive) {
+        _finaliseLastAssistantMessage(tabId);
         _stopContextPoll();
         _updateSendAbortButtons();
         var idleProps = props || data;
@@ -769,6 +774,17 @@
     _tabs.forEach(function (tab) {
       strip.appendChild(_buildTabButton(tab));
     });
+
+    // "+" add-tab button at end of the strip (Notepad++-style)
+    var addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.id = 'chat-assistant-tab-add-btn';
+    addBtn.className = 'chat-assistant-tab-add-btn flex-shrink-0 inline-flex items-center justify-center px-2 text-muted-foreground hover:bg-muted hover:text-foreground';
+    addBtn.setAttribute('aria-label', 'New chat tab');
+    addBtn.setAttribute('title', 'New chat tab');
+    addBtn.textContent = '+';
+    addBtn.addEventListener('click', function () { _instantCreateTab(); });
+    strip.appendChild(addBtn);
   }
 
   function _buildTabButton(tab) {
@@ -787,7 +803,7 @@
     // Title span
     var titleSpan = document.createElement('span');
     titleSpan.className = 'chat-assistant-tab-title';
-    titleSpan.textContent = _truncateStr(tab.title || 'Chat', 18);
+    titleSpan.textContent = _truncateStr(tab.title || 'Chat', 20);
 
     // Model badge
     var modelBadge = document.createElement('span');
@@ -852,9 +868,11 @@
     if (!btn) return;
     var titleSpan = btn.querySelector('.chat-assistant-tab-title');
     var modelBadge = btn.querySelector('.chat-assistant-tab-model-badge');
+    var closeBtn = btn.querySelector('.chat-assistant-tab-close-btn');
     if (titleSpan && title !== undefined) {
-      titleSpan.textContent = _truncateStr(title || 'Chat', 18);
+      titleSpan.textContent = _truncateStr(title || 'Chat', 20);
       btn.title = title || 'Chat';
+      if (closeBtn) closeBtn.setAttribute('aria-label', 'Close tab: ' + (title || 'Chat'));
     }
     if (modelBadge && model !== undefined) {
       modelBadge.textContent = _modelShortName(model || '');
@@ -872,7 +890,7 @@
     input.type = 'text';
     input.className = 'chat-assistant-tab-rename-input';
     input.value = fullTitle;
-    input.maxLength = 120;
+    input.maxLength = 20;
 
     titleSpan.parentNode.insertBefore(input, titleSpan);
     titleSpan.style.display = 'none';
@@ -1024,12 +1042,14 @@
       })
       .then(function (res) {
         if (res.status === 503) {
-          _showCreateTabError('Runtime unavailable; try again later.');
+          _appendSystemMessage('Runtime unavailable; try again later.', 'error');
           return;
         }
         if (res.status >= 400) {
-          var errMsg = (res.data && res.data.error) || ('Error ' + res.status);
-          _showCreateTabError(errMsg);
+          var errMsg = (res.data && res.data.error)
+            || (res.data && Array.isArray(res.data.detail) && res.data.detail[0] && res.data.detail[0].msg)
+            || ('Error ' + res.status);
+          _appendSystemMessage(errMsg, 'error');
           return;
         }
         var tab = res.data && res.data.tab;
@@ -1040,14 +1060,174 @@
         _tabs.push(tab);
         _renderTabStrip();
         _activateTab(tab.id);
-        _closeCreateTabModal();
       })
       .catch(function (err) {
-        _showCreateTabError('Network error: ' + err.message);
+        _appendSystemMessage('Network error: ' + err.message, 'error');
       });
   }
 
-  // ── Create-tab modal ────────────────────────────────────────────────────────
+  // ── Instant tab creation (Notepad++-style, no modal) ────────────────────────
+  function _instantCreateTab() {
+    var projectId = _currentProjectId();
+    if (!projectId) {
+      _appendSystemMessage('Navigate to a project page first to create a chat tab.', 'error');
+      return;
+    }
+    var activeTab = _activeTabId ? _tabs.find(function (t) { return t.id === _activeTabId; }) : null;
+    var runtime = (activeTab && activeTab.runtime) || 'opencode';
+    var model = (activeTab && activeTab.model) || _defaultModel || '';
+    // Auto-increment title: "Chat 1", "Chat 2", ...
+    var n = _tabs.length + 1;
+    var title = 'Chat ' + n;
+    while (_tabs.some(function (t) { return (t.title || '') === title; })) {
+      n++;
+      title = 'Chat ' + n;
+    }
+    _createTab(projectId, runtime, model, title);
+  }
+
+  // ── Settings panel ────────────────────────────────────────────────────────────
+  function _openSettingsPanel() {
+    if (!_activeTabId) return;
+    _loadSettingsPanel();
+    var panel = document.getElementById('chat-assistant-settings-panel');
+    if (panel) panel.classList.remove('hidden');
+  }
+
+  function _closeSettingsPanel() {
+    var panel = document.getElementById('chat-assistant-settings-panel');
+    if (panel) panel.classList.add('hidden');
+    var warn = document.getElementById('chat-assistant-settings-warn');
+    if (warn) warn.classList.add('hidden');
+    var err = document.getElementById('chat-assistant-settings-error');
+    if (err) err.classList.add('hidden');
+  }
+
+  function _loadSettingsPanel() {
+    var tab = _activeTabId ? _tabs.find(function (t) { return t.id === _activeTabId; }) : null;
+    if (!tab) return;
+    _settingsOriginalRuntime = tab.runtime || 'opencode';
+    var titleInput = document.getElementById('chat-assistant-settings-title');
+    if (titleInput) titleInput.value = tab.title || '';
+    var runtimeSel = document.getElementById('chat-assistant-settings-runtime');
+    if (runtimeSel) runtimeSel.value = tab.runtime || 'opencode';
+    var warn = document.getElementById('chat-assistant-settings-warn');
+    if (warn) warn.classList.add('hidden');
+    var err = document.getElementById('chat-assistant-settings-error');
+    if (err) err.classList.add('hidden');
+    var saveBtn = document.getElementById('chat-assistant-settings-save');
+    if (saveBtn) saveBtn.disabled = false;
+    _fetchModelsForSettings(tab.runtime || 'opencode', tab.model || '');
+  }
+
+  function _fetchModelsForSettings(runtime, currentModel) {
+    var projectId = _currentProjectId();
+    var params = {};
+    if (projectId) params.project_id = projectId;
+    params.runtime = runtime;
+    var sel = document.getElementById('chat-assistant-settings-model');
+    if (sel) { sel.innerHTML = '<option value="">Loading…</option>'; }
+    fetch('/api/chat/config?' + new URLSearchParams(params).toString())
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!sel) return;
+        sel.innerHTML = '';
+        var models = (data && data.models) || [];
+        if (!models.length) {
+          var opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'No models available';
+          sel.appendChild(opt);
+          return;
+        }
+        models.forEach(function (m) {
+          var opt = document.createElement('option');
+          opt.value = m;
+          opt.textContent = m;
+          sel.appendChild(opt);
+        });
+        if (currentModel && models.indexOf(currentModel) !== -1) {
+          sel.value = currentModel;
+        } else if (data && data.default_model && models.indexOf(data.default_model) !== -1) {
+          sel.value = data.default_model;
+        }
+      })
+      .catch(function () {});
+  }
+
+  function _saveSettings() {
+    if (!_activeTabId) return;
+    var tabId = _activeTabId;
+    var tab = _tabs.find(function (t) { return t.id === tabId; });
+    if (!tab) return;
+
+    var titleInput = document.getElementById('chat-assistant-settings-title');
+    var runtimeSel = document.getElementById('chat-assistant-settings-runtime');
+    var modelSel = document.getElementById('chat-assistant-settings-model');
+    var saveBtn = document.getElementById('chat-assistant-settings-save');
+
+    var newTitle = (titleInput ? titleInput.value.trim() : '') || tab.title || 'Chat';
+    var newRuntime = runtimeSel ? runtimeSel.value : (tab.runtime || 'opencode');
+    var newModel = modelSel ? modelSel.value : (tab.model || '');
+
+    var runtimeChanged = newRuntime !== (tab.runtime || 'opencode');
+
+    if (runtimeChanged) {
+      // Runtime change: close current tab and open a new one with the new runtime.
+      // The old conversation is lost (new session for new runtime).
+      _closeSettingsPanel();
+      var projectId = _currentProjectId() || tab.project_id;
+      _closeTab(tabId);
+      _createTab(projectId, newRuntime, newModel, newTitle);
+      return;
+    }
+
+    // Simple PATCH for title and/or model
+    var patchBody = {};
+    if (newTitle !== (tab.title || '')) patchBody.title = newTitle;
+    if (newModel && newModel !== (tab.model || '')) patchBody.model = newModel;
+
+    if (!Object.keys(patchBody).length) {
+      _closeSettingsPanel();
+      return;
+    }
+
+    if (saveBtn) saveBtn.disabled = true;
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patchBody)
+    })
+      .then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error((d && d.error) || ('Error ' + r.status));
+          return d;
+        });
+      })
+      .then(function (data) {
+        var updated = data && data.tab;
+        if (updated) {
+          var idx = _tabs.findIndex(function (t) { return t.id === tabId; });
+          if (idx !== -1) _tabs[idx] = updated;
+          _updateTabButtonLabel(tabId, updated.title, updated.model);
+          if (tabId === _activeTabId) {
+            _updateTabModelBar();
+            if (patchBody.model) _refreshModels();
+          }
+        }
+        _closeSettingsPanel();
+      })
+      .catch(function (err) {
+        var errEl = document.getElementById('chat-assistant-settings-error');
+        if (errEl) {
+          errEl.textContent = 'Save failed: ' + err.message;
+          errEl.classList.remove('hidden');
+        }
+        if (saveBtn) saveBtn.disabled = false;
+      });
+  }
+
+  // ── Create-tab modal (kept for compatibility; no longer used by default) ──────
   function _openCreateTabModal() {
     var modal = document.getElementById('chat-assistant-create-tab-modal');
     if (!modal) return;
@@ -1432,7 +1612,7 @@
     var currentEl = _tabCurrentAssistantEl[tabId];
     var currentId = _tabCurrentAssistantId[tabId];
 
-    if (!isFinal && currentEl && currentId !== null) {
+    if (!isFinal && currentEl) {
       var bodyEl = currentEl.querySelector('.chat-assistant-stream-text');
       if (bodyEl) {
         bodyEl.textContent += text;
@@ -1955,23 +2135,73 @@
       navToggle.addEventListener('click', function () { toggle(); });
     }
 
-    // New tab button (header)
-    var newBtn = document.getElementById('chat-assistant-new-btn');
-    if (newBtn) {
-      newBtn.addEventListener('click', function () { _openCreateTabModal(); });
-    }
-
-    // New tab button (in tab strip)
-    var newTabBtn = document.getElementById('chat-assistant-new-tab-btn');
-    if (newTabBtn) {
-      newTabBtn.addEventListener('click', function () { _openCreateTabModal(); });
-    }
-
     // No-tabs CTA
     var noTabsCta = document.getElementById('chat-assistant-no-tabs-cta');
     if (noTabsCta) {
-      noTabsCta.addEventListener('click', function () { _openCreateTabModal(); });
+      noTabsCta.addEventListener('click', function () { _instantCreateTab(); });
     }
+
+    // Hamburger settings button
+    var settingsBtn = document.getElementById('chat-assistant-settings-btn');
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var panel = document.getElementById('chat-assistant-settings-panel');
+        if (panel && !panel.classList.contains('hidden')) {
+          _closeSettingsPanel();
+        } else {
+          _openSettingsPanel();
+        }
+      });
+    }
+
+    // Settings panel: runtime change → update model list + show/hide warning
+    document.addEventListener('change', function (e) {
+      var runtimeSel = document.getElementById('chat-assistant-settings-runtime');
+      if (runtimeSel && e.target === runtimeSel) {
+        var tab = _activeTabId ? _tabs.find(function (t) { return t.id === _activeTabId; }) : null;
+        var originalRuntime = tab ? (tab.runtime || 'opencode') : 'opencode';
+        var warn = document.getElementById('chat-assistant-settings-warn');
+        if (warn) {
+          if (runtimeSel.value !== originalRuntime) {
+            warn.classList.remove('hidden');
+          } else {
+            warn.classList.add('hidden');
+          }
+        }
+        var currentModel = tab ? (tab.model || '') : '';
+        _fetchModelsForSettings(runtimeSel.value, currentModel);
+      }
+    });
+
+    // Settings panel: cancel
+    document.addEventListener('click', function (e) {
+      var cancelBtn = document.getElementById('chat-assistant-settings-cancel');
+      if (cancelBtn && (e.target === cancelBtn || cancelBtn.contains(e.target))) {
+        _closeSettingsPanel();
+      }
+    });
+
+    // Settings panel: save
+    document.addEventListener('click', function (e) {
+      var saveBtn = document.getElementById('chat-assistant-settings-save');
+      if (saveBtn && !saveBtn.disabled && (e.target === saveBtn || saveBtn.contains(e.target))) {
+        _saveSettings();
+      }
+    });
+
+    // Settings panel: Enter key on title input submits save
+    document.addEventListener('keydown', function (e) {
+      var titleInput = document.getElementById('chat-assistant-settings-title');
+      var panel = document.getElementById('chat-assistant-settings-panel');
+      if (titleInput && e.target === titleInput && e.key === 'Enter') {
+        e.preventDefault();
+        _saveSettings();
+      }
+      if (panel && !panel.classList.contains('hidden') && e.key === 'Escape') {
+        _closeSettingsPanel();
+      }
+    });
 
     // Send button
     var sendBtn = document.getElementById('chat-assistant-send');
@@ -2042,15 +2272,6 @@
       });
     }
 
-    // Recent-closed dropdown toggle (tab strip button)
-    var recentBtn = document.getElementById('chat-assistant-recent-closed-btn');
-    if (recentBtn) {
-      recentBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        _toggleClosedTabsDropdown(recentBtn);
-      });
-    }
-
     // Soft-cap dismiss
     var softCapDismiss = document.getElementById('chat-assistant-softcap-dismiss');
     if (softCapDismiss) {
@@ -2075,50 +2296,6 @@
         }
       });
     }
-
-    // Create-tab modal: cancel
-    document.addEventListener('click', function (e) {
-      var cancelBtn = document.getElementById('chat-assistant-create-tab-cancel');
-      if (cancelBtn && (e.target === cancelBtn || cancelBtn.contains(e.target))) {
-        _closeCreateTabModal();
-      }
-    });
-
-    // Create-tab modal: runtime change → re-fetch model list
-    document.addEventListener('change', function (e) {
-      var runtimeSel = document.getElementById('chat-assistant-create-tab-runtime');
-      if (runtimeSel && e.target === runtimeSel) {
-        var selectedRuntime = runtimeSel.value;
-        _modalRuntime = selectedRuntime;
-        _modalModels = [];
-        _modalDefaultModel = '';
-        _hideCreateTabError();
-        // Re-enable submit optimistically; _fetchModelsForModal disables it on empty.
-        var submitBtn = document.getElementById('chat-assistant-create-tab-submit');
-        if (submitBtn) submitBtn.disabled = false;
-        _fetchModelsForModal(selectedRuntime);
-      }
-    });
-
-    // Create-tab modal: submit
-    document.addEventListener('click', function (e) {
-      var submitBtn = document.getElementById('chat-assistant-create-tab-submit');
-      if (submitBtn && (e.target === submitBtn || submitBtn.contains(e.target))) {
-        var projInput = document.getElementById('chat-assistant-create-tab-project');
-        var runtimeSel = document.getElementById('chat-assistant-create-tab-runtime');
-        var modelSel = document.getElementById('chat-assistant-create-tab-model');
-        var titleInput = document.getElementById('chat-assistant-create-tab-title-input');
-        var projectId = projInput ? projInput.value.trim() : (_currentProjectId() || '');
-        var runtime = runtimeSel ? runtimeSel.value : 'opencode';
-        var model = modelSel ? modelSel.value : '';
-        var title = titleInput ? titleInput.value.trim() : '';
-        if (!projectId) {
-          _showCreateTabError('Project is required.');
-          return;
-        }
-        _createTab(projectId, runtime, model, title || 'New chat');
-      }
-    });
 
     // Context menu actions
     var ctxMenu = document.getElementById('chat-assistant-tab-context-menu');
@@ -2145,7 +2322,7 @@
       });
     }
 
-    // Close context menu and dropdowns when clicking outside
+    // Close context menu, dropdowns, and settings panel when clicking outside
     document.addEventListener('click', function (e) {
       // Tab context menu
       var ctxM = document.getElementById('chat-assistant-tab-context-menu');
@@ -2164,20 +2341,20 @@
       }
       // Closed tabs dropdown
       var closedDd = document.getElementById('chat-assistant-closed-tabs-dropdown');
-      var recentBtnEl = document.getElementById('chat-assistant-recent-closed-btn');
       var histToggleEl = document.getElementById('chat-assistant-history-toggle');
       if (closedDd && !closedDd.classList.contains('hidden')) {
         if (!closedDd.contains(e.target)
-            && !(recentBtnEl && recentBtnEl.contains(e.target))
             && !(histToggleEl && histToggleEl.contains(e.target))) {
           closedDd.classList.add('hidden');
         }
       }
-      // Create tab modal: close when clicking backdrop
-      var modal = document.getElementById('chat-assistant-create-tab-modal');
-      if (modal && modal.style.display !== 'none') {
-        if (e.target === modal) {
-          _closeCreateTabModal();
+      // Settings panel: close when clicking outside the panel and not the settings button
+      var settingsPanel = document.getElementById('chat-assistant-settings-panel');
+      var settingsBtnEl = document.getElementById('chat-assistant-settings-btn');
+      if (settingsPanel && !settingsPanel.classList.contains('hidden')) {
+        if (!settingsPanel.contains(e.target)
+            && !(settingsBtnEl && settingsBtnEl.contains(e.target))) {
+          _closeSettingsPanel();
         }
       }
     });
