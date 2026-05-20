@@ -100,7 +100,32 @@ Remove any unrelated drift from autogenerate output.
 
 ---
 
-### 3. TDD RED evidence
+### 3. Integration test — `tests/integration/test_context_tokens_migration.py`
+
+Create this file with the following test cases (testcontainers pattern — see `tests/CLAUDE.md`):
+
+```python
+def test_migration_adds_context_window_tokens_column(pg_container):
+    """agent_runtime_options gains context_window_tokens INT NULL after upgrade."""
+
+def test_migration_adds_step_run_token_columns(pg_container):
+    """step_runs gains context_tokens_peak and context_tokens_last INT NULL after upgrade."""
+
+def test_migration_seeds_known_models(pg_container):
+    """After upgrade, the 4 known models have context_window_tokens = 200000; others NULL."""
+
+def test_migration_downgrade_removes_columns(pg_container):
+    """alembic downgrade -1 drops all three columns cleanly."""
+
+def test_orm_context_tokens_read_write(pg_session):
+    """Can write and read context_tokens_peak / context_tokens_last via ORM."""
+```
+
+Run RED (tests fail because columns don't exist yet), implement the migration in step 2, then rerun to confirm GREEN.
+
+---
+
+### 4. TDD RED evidence
 
 ```bash
 uv run python -c "
@@ -125,6 +150,7 @@ uv run alembic show head
 
 - `orch/db/models.py` — updated with 3 new columns
 - `orch/db/migrations/versions/xxxx_cr00066_add_context_tokens_columns.py`
+- `tests/integration/test_context_tokens_migration.py` — new integration tests
 
 ## Subagent Result Contract
 
@@ -141,7 +167,8 @@ uv run iw step-done CR-00066 --step S01 \
   "completion_status": "complete",
   "files_changed": [
     "orch/db/models.py",
-    "orch/db/migrations/versions/<rev>_cr00066_add_context_tokens_columns.py"
+    "orch/db/migrations/versions/<rev>_cr00066_add_context_tokens_columns.py",
+    "tests/integration/test_context_tokens_migration.py"
   ],
   "preflight": {"format": "ok", "typecheck": "ok", "lint": "ok"},
   "tests_passed": true,

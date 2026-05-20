@@ -64,9 +64,10 @@ Any new violations in changed files = CRITICAL finding.
 - No Jinja2 `"{}"|format(...)` filter usage (use `"%s"|format(...)` style).
 - Column header and cell align structurally with adjacent columns.
 
-### 4. Tests (S03)
+### 4. Tests (S01 + S03)
 
-- 6 unit tests all cover the specified scenarios.
+- S01 integration tests (`test_context_tokens_migration.py`): migration round-trip, seed values for known models, ORM read/write, downgrade drops all three columns.
+- S03 unit tests (`test_step_monitor_token_poll.py`): 6 unit tests all cover the specified scenarios.
 - Test for "peak never decreases" constructs a StepRun mock with existing `context_tokens_peak`, calls the helper with a lower value, verifies peak is unchanged.
 
 ### 5. Scope check

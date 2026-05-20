@@ -18,7 +18,7 @@
 make test-integration
 ```
 
-Runs `tests/integration/` and `tests/dashboard/` including `test_context_tokens_migration.py` added in S01/S03.
+Runs `tests/integration/` and `tests/dashboard/` including `test_context_tokens_migration.py` added in S01 and `test_step_monitor_token_poll.py` added in S03.
 
 ## Pass Criteria
 

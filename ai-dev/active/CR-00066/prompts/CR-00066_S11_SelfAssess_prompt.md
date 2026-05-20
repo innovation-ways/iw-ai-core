@@ -2,7 +2,7 @@
 
 **Work Item**: CR-00066 — Context Window Usage Progress Bar
 **Step**: S11
-**Agent**: SelfAssess
+**Agent**: self-assess-impl
 
 ---
 
