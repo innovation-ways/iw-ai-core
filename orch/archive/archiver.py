@@ -90,17 +90,27 @@ def archive_work_item(
     if archive_dir is None or wi.archive_path is not None:
         return
 
-    # Derive the work item directory from design_doc_path (parent dir), falling back to
-    # the conventional location. This handles projects whose active dir is not under
-    # ai-dev/design/active/ (e.g. InnoForge uses ai-dev/active/).
+    # A work item occupies two on-disk trees, both compressed into the bundle
+    # and removed from the repo on cleanup:
+    #   <active>/         — design doc, prompts, manifest (parent of design_doc_path)
+    #   ai-dev/work/<id>/ — step reports, logs, fix prompts, self-assessment output
+    # The work tree is captured even when self_assess wrote uncommitted files
+    # into it post-merge, so nothing is lost when the folder is removed.
     if wi.design_doc_path:
-        work_item_dir = (repo_root / wi.design_doc_path).parent
-        if not work_item_dir.exists():
+        active_dir = (repo_root / wi.design_doc_path).parent
+        if not active_dir.exists():
             # design_doc_path may be stale; fall back to conventional location
-            work_item_dir = repo_root / "ai-dev" / "active" / item_id
+            active_dir = repo_root / "ai-dev" / "active" / item_id
     else:
-        work_item_dir = repo_root / "ai-dev" / "active" / item_id
-    if not work_item_dir.exists():
+        active_dir = repo_root / "ai-dev" / "active" / item_id
+    work_dir = repo_root / "ai-dev" / "work" / item_id
+
+    members: list[tuple[Path, str]] = []
+    if active_dir.exists():
+        members.append((active_dir, item_id))
+    if work_dir.exists():
+        members.append((work_dir, f"{item_id}/work"))
+    if not members:
         return
 
     archive_dir = Path(archive_dir)
@@ -108,7 +118,7 @@ def archive_work_item(
     dest_dir.mkdir(parents=True, exist_ok=True)
     archive_path = dest_dir / f"{item_id}.tar.zst"
 
-    _compress_to_zstd(work_item_dir, archive_path, arcname=item_id)
+    _compress_to_zstd(members, archive_path)
 
     wi.archive_path = f"{project_id}/{item_id}.tar.zst"
     wi.archive_size_bytes = archive_path.stat().st_size
@@ -117,7 +127,8 @@ def archive_work_item(
     # --- Cleanup ---
 
     if cleanup:
-        shutil.rmtree(work_item_dir)
+        for src, _ in members:
+            shutil.rmtree(src)
 
 
 def archive_all_completed(
@@ -153,12 +164,13 @@ def archive_all_completed(
     return archived
 
 
-def _compress_to_zstd(source_dir: Path, dest_path: Path, arcname: str) -> None:
-    """Create a .tar.zst archive from source_dir."""
+def _compress_to_zstd(members: list[tuple[Path, str]], dest_path: Path) -> None:
+    """Create a .tar.zst archive containing each (source_dir, arcname) member."""
     cctx = zstd.ZstdCompressor(level=3)
     with (
         dest_path.open("wb") as f_out,
         cctx.stream_writer(f_out) as compressor,
         tarfile.open(fileobj=compressor, mode="w|") as tar,
     ):
-        tar.add(source_dir, arcname=arcname)
+        for source_dir, arcname in members:
+            tar.add(source_dir, arcname=arcname)

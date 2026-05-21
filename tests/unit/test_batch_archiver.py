@@ -363,6 +363,26 @@ class TestPostArchiveCommands:
 
 
 # ---------------------------------------------------------------------------
+# _archive_paths_for_item — git staging paths
+# ---------------------------------------------------------------------------
+
+
+class TestArchivePathsForItem:
+    def test_includes_work_folder(self) -> None:
+        """ai-dev/work/<id>/ is staged for deletion alongside the active folder."""
+        from pathlib import Path  # noqa: PLC0415
+
+        from orch.archive.batch_archiver import _archive_paths_for_item  # noqa: PLC0415
+
+        project = _make_project(repo_root="/repos/proj")
+        db = _make_db(project=project, batch_items=[_make_batch_item("F-00001")])
+
+        paths = _archive_paths_for_item(db, "proj", "F-00001", Path("/archives"))
+
+        assert Path("/repos/proj/ai-dev/work/F-00001") in paths
+
+
+# ---------------------------------------------------------------------------
 # Fatal errors (missing batch/project)
 # ---------------------------------------------------------------------------
 

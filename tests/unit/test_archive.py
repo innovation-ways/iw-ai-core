@@ -232,6 +232,71 @@ def test_tier2_no_cleanup_preserves_source_folder(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tier 2 — work folder (ai-dev/work/<id>/) archiving + cleanup
+# ---------------------------------------------------------------------------
+
+
+def test_tier2_archives_work_folder(tmp_path: Path) -> None:
+    """The .tar.zst captures the ai-dev/work/<id>/ tree (reports, logs, findings)."""
+    repos = tmp_path / "repos"
+    active_dir = repos / "ai-dev" / "active" / "I-00001"
+    active_dir.mkdir(parents=True)
+    (active_dir / "design.md").write_text("# Design", encoding="utf-8")
+    reports = repos / "ai-dev" / "work" / "I-00001" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "I-00001_S02_CodeReview_report.md").write_text("findings", encoding="utf-8")
+
+    wi = _make_work_item()
+    db = _make_session(wi, _make_project(str(repos)))
+    archive_work_item(db, "proj", "I-00001", archive_dir=tmp_path / "archives", cleanup=False)
+
+    archive_path = tmp_path / "archives" / "proj" / "I-00001.tar.zst"
+    dctx = zstd.ZstdDecompressor()
+    with (
+        archive_path.open("rb") as f_in,
+        dctx.stream_reader(f_in) as reader,
+        tarfile.open(fileobj=reader, mode="r|") as tar,  # type: ignore[arg-type]
+    ):
+        names = tar.getnames()
+
+    assert any(n.endswith("I-00001_S02_CodeReview_report.md") for n in names)
+
+
+def test_tier2_cleanup_deletes_work_folder(tmp_path: Path) -> None:
+    """cleanup=True removes ai-dev/work/<id>/, not only the active folder."""
+    repos = tmp_path / "repos"
+    active_dir = repos / "ai-dev" / "active" / "I-00001"
+    active_dir.mkdir(parents=True)
+    (active_dir / "design.md").write_text("# Design", encoding="utf-8")
+    work_dir = repos / "ai-dev" / "work" / "I-00001"
+    (work_dir / "reports").mkdir(parents=True)
+    (work_dir / "reports" / "r.md").write_text("report", encoding="utf-8")
+
+    wi = _make_work_item()
+    db = _make_session(wi, _make_project(str(repos)))
+    archive_work_item(db, "proj", "I-00001", archive_dir=tmp_path / "archives", cleanup=True)
+
+    assert not active_dir.exists()
+    assert not work_dir.exists()
+
+
+def test_tier2_archives_work_folder_when_active_folder_absent(tmp_path: Path) -> None:
+    """The work folder is still archived and removed when no active folder exists."""
+    repos = tmp_path / "repos"
+    work_dir = repos / "ai-dev" / "work" / "I-00001"
+    work_dir.mkdir(parents=True)
+    (work_dir / "I-00001_self_assess_findings.json").write_text("{}", encoding="utf-8")
+
+    wi = _make_work_item()
+    db = _make_session(wi, _make_project(str(repos)))
+    archive_work_item(db, "proj", "I-00001", archive_dir=tmp_path / "archives", cleanup=True)
+
+    archive_path = tmp_path / "archives" / "proj" / "I-00001.tar.zst"
+    assert archive_path.exists()
+    assert not work_dir.exists()
+
+
+# ---------------------------------------------------------------------------
 # Idempotency
 # ---------------------------------------------------------------------------
 
@@ -266,7 +331,7 @@ def test_idempotent_second_call_skips_tier2(tmp_path: Path) -> None:
 
 
 def _make_archive(archive_path: Path, source_dir: Path, arcname: str) -> None:
-    _compress_to_zstd(source_dir, archive_path, arcname=arcname)
+    _compress_to_zstd([(source_dir, arcname)], archive_path)
 
 
 def test_extract_archive_creates_extraction_path(tmp_path: Path) -> None:

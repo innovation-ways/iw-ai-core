@@ -205,9 +205,9 @@ def _archive_paths_for_item(
 ) -> list[Path]:
     """Return the absolute paths the archive operation touched for one item.
 
-    Includes the deleted active folder (so its deletion can be staged) and the
-    newly created .tar.zst bundle. Caller is responsible for filtering out
-    paths that fall outside the project's repo_root.
+    Includes the deleted active and work folders (so their deletions can be
+    staged) and the newly created .tar.zst bundle. Caller is responsible for
+    filtering out paths that fall outside the project's repo_root.
     """
     wi = db.get(WorkItem, (project_id, item_id))
     if wi is None:
@@ -217,12 +217,15 @@ def _archive_paths_for_item(
     repo_root = Path(project.repo_root) if project else None
     paths: list[Path] = []
 
-    # The work item folder (now deleted from disk by archive_work_item, but git
-    # still tracks it — we need to stage the deletion).
+    # The active folder and the ai-dev/work/<id>/ tree (reports, logs, fix
+    # prompts, self-assessment) are both deleted from disk by archive_work_item
+    # but still tracked by git — we need to stage both deletions.
     if wi.design_doc_path and repo_root is not None:
         paths.append((repo_root / wi.design_doc_path).parent)
     elif repo_root is not None:
         paths.append(repo_root / "ai-dev" / "active" / item_id)
+    if repo_root is not None:
+        paths.append(repo_root / "ai-dev" / "work" / item_id)
 
     # The newly created archive bundle. wi.archive_path is set by
     # archive_work_item to "<project_id>/<item_id>.tar.zst" (relative to
