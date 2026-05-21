@@ -74,16 +74,21 @@ def _arm_live_db_guard() -> None:
 def _clear_chat_router_caches() -> None:
     """Reset module-level caches in dashboard.routers.chat between tests.
 
-    The chat router keeps two module-level dicts (``_config_cache`` and
-    ``_skills_cache``) with 30 s TTLs. Under pytest-randomly, tests that
-    hit ``/api/chat/config`` against different mock OpenCode clients
-    (e.g. ``fake_opencode_server`` returning ``fake/model-a`` vs unit
-    mocks returning ``prov-a/model-a``) pollute the cache for whichever
-    test runs next on the same ``project_id`` — F-00086 expanded the
-    cache-read surface via ``_resolve_default_model_for_project`` in the
-    bootstrap path, so the leak now surfaces as flaky assertions on the
-    seeded Default tab's model. Clearing both caches per-test eliminates
-    the cross-test contamination without changing production behaviour.
+    The chat router keeps three module-level dicts (``_config_cache``,
+    ``_skills_cache`` and ``_providers_cache``) with 30 s TTLs. Under
+    pytest-randomly, tests that hit ``/api/chat/config`` against different
+    mock OpenCode clients (e.g. ``fake_opencode_server`` returning
+    ``fake/model-a`` vs unit mocks returning ``prov-a/model-a``) pollute
+    the cache for whichever test runs next on the same ``project_id`` —
+    F-00086 expanded the cache-read surface via
+    ``_resolve_default_model_for_project`` in the bootstrap path, so the
+    leak now surfaces as flaky assertions on the seeded Default tab's
+    model. CR-00071 added ``_providers_cache`` (read by ``get_tab`` via
+    ``_get_providers_cached`` for ``context_pct`` model-limit lookups);
+    a stale providers payload from a prior test makes
+    ``lookup_context_window`` miss and ``context_pct`` silently absent.
+    Clearing all three caches per-test eliminates the cross-test
+    contamination without changing production behaviour.
     """
     try:
         from dashboard.routers import chat as _chat_router
@@ -93,3 +98,4 @@ def _clear_chat_router_caches() -> None:
         return
     _chat_router._config_cache.clear()
     _chat_router._skills_cache.clear()
+    _chat_router._providers_cache.clear()

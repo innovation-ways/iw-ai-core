@@ -231,6 +231,142 @@ class TestComputeContextPct:
 
 
 # ---------------------------------------------------------------------------
+# normalize_pi_messages tests
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizePiMessages:
+    """Tests for ``normalize_pi_messages``."""
+
+    def test_returns_empty_list_for_none(self) -> None:
+        assert normalize_pi_messages(None) == []
+
+    def test_returns_empty_list_for_non_list(self) -> None:
+        assert normalize_pi_messages("not a list") == []
+        assert normalize_pi_messages(42) == []
+
+    def test_passes_through_non_dict_messages(self) -> None:
+        msgs = ["string", 123, None]
+        assert normalize_pi_messages(msgs) == msgs
+
+    def test_translates_usage_dict_to_tokens(self) -> None:
+        msgs = [{"role": "assistant", "usage": {"input": 5000, "output": 200}}]
+        result = normalize_pi_messages(msgs)
+        assert len(result) == 1
+        assert result[0]["role"] == "assistant"
+        assert result[0]["tokens"]["input"] == 5000
+        assert result[0]["tokens"]["output"] == 200
+        assert result[0]["tokens"]["reasoning"] == 0
+        assert result[0]["tokens"]["cache"]["read"] == 0
+        assert result[0]["tokens"]["cache"]["write"] == 0
+
+    def test_translates_cache_read_cache_write_fields(self) -> None:
+        msgs = [
+            {
+                "role": "assistant",
+                "usage": {"input": 100, "output": 50, "cacheRead": 20, "cacheWrite": 5},
+            }
+        ]
+        result = normalize_pi_messages(msgs)
+        assert result[0]["tokens"]["input"] == 100
+        assert result[0]["tokens"]["output"] == 50
+        assert result[0]["tokens"]["cache"]["read"] == 20
+        assert result[0]["tokens"]["cache"]["write"] == 5
+
+    def test_preserves_non_usage_fields(self) -> None:
+        msgs = [{"role": "assistant", "content": "hello", "usage": {"input": 100}}]
+        result = normalize_pi_messages(msgs)
+        assert result[0]["role"] == "assistant"
+        assert result[0]["content"] == "hello"
+        assert result[0]["tokens"]["input"] == 100
+        assert "usage" in result[0]
+
+    def test_omits_tokens_when_no_usage(self) -> None:
+        msgs = [{"role": "user", "content": "hello"}]
+        result = normalize_pi_messages(msgs)
+        assert len(result) == 1
+        assert "tokens" not in result[0]
+
+    def test_translates_usage_to_tokens(self) -> None:
+        """Pi assistant message with ``usage`` dict becomes nested ``tokens`` dict."""
+        pi_msg = {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Answer."}],
+            "usage": {"input": 5000, "output": 3000, "cacheRead": 500, "cacheWrite": 200},
+        }
+        result = normalize_pi_messages([pi_msg])
+        assert len(result) == 1
+        assert result[0]["tokens"] == {
+            "input": 5000,
+            "output": 3000,
+            "reasoning": 0,
+            "cache": {"read": 500, "write": 200},
+        }
+        # Original fields are preserved.
+        assert result[0]["role"] == "assistant"
+        assert result[0]["content"] == pi_msg["content"]
+
+    def test_leaves_non_assistant_messages_unchanged(self) -> None:
+        """User message with ``usage`` passes through with ``tokens`` added."""
+        pi_msg = {
+            "role": "user",
+            "content": [{"type": "text", "text": "Hello?"}],
+            "usage": {"input": 100, "output": 0},
+        }
+        result = normalize_pi_messages([pi_msg])
+        assert len(result) == 1
+        assert result[0]["role"] == "user"
+        assert result[0]["tokens"]["input"] == 100
+
+    def test_omits_usage_when_absent(self) -> None:
+        """Message without ``usage`` has no ``tokens`` key added."""
+        pi_msg = {"role": "assistant", "content": [{"type": "text", "text": "Hi."}]}
+        result = normalize_pi_messages([pi_msg])
+        assert len(result) == 1
+        assert "tokens" not in result[0]
+        assert "usage" not in result[0]
+
+    def test_partial_usage_fields_default_to_zero(self) -> None:
+        """``usage`` missing some fields → those token sub-fields default to 0."""
+        pi_msg = {
+            "role": "assistant",
+            "usage": {"input": 42},  # only input present
+        }
+        result = normalize_pi_messages([pi_msg])
+        assert result[0]["tokens"]["input"] == 42
+        assert result[0]["tokens"]["output"] == 0
+        assert result[0]["tokens"]["cache"]["read"] == 0
+        assert result[0]["tokens"]["cache"]["write"] == 0
+
+    def test_non_dict_message_passes_through(self) -> None:
+        """Non-dict message entries pass through without modification."""
+        result = normalize_pi_messages(["not a dict", None])
+        assert result[0] == "not a dict"
+        assert result[1] is None
+
+    def test_none_input_returns_empty_list(self) -> None:
+        """Non-list input (including None) returns an empty list."""
+        assert normalize_pi_messages(None) == []
+        assert normalize_pi_messages("string") == []
+        assert normalize_pi_messages(42) == []
+
+    def test_combined_with_compute_context_pct(self) -> None:
+        """normalize_pi_messages output feeds correctly into ``compute_context_pct``."""
+        pi_messages = [
+            {"role": "user", "content": [{"type": "text", "text": "Hello"}]},
+            {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Answer."}],
+                "usage": {"input": 5000, "output": 3000, "cacheRead": 500, "cacheWrite": 200},
+            },
+        ]
+        normalized = normalize_pi_messages(pi_messages)
+        pct = compute_context_pct(normalized, context_window=100000)
+        # 5000+3000+500+200 = 8700; 8700/100000*100 = 8.7
+        assert pct == pytest.approx(8.7)
+
+
+# ---------------------------------------------------------------------------
 # lookup_context_window tests
 # ---------------------------------------------------------------------------
 
@@ -333,93 +469,6 @@ class TestResolveModelFromTab:
         ]
         result = resolve_model_from_tab("openai/gpt-4o", msgs)
         assert result == ("openai", "gpt-4o")
-
-
-# ---------------------------------------------------------------------------
-# normalize_pi_messages tests
-# ---------------------------------------------------------------------------
-
-
-class TestNormalizePiMessages:
-    """Tests for ``normalize_pi_messages`` — translates Pi ``usage`` to OpenCode ``tokens``."""
-
-    def test_translates_usage_to_tokens(self) -> None:
-        """Pi assistant message with ``usage`` dict becomes nested ``tokens`` dict."""
-        pi_msg = {
-            "role": "assistant",
-            "content": [{"type": "text", "text": "Answer."}],
-            "usage": {"input": 5000, "output": 3000, "cacheRead": 500, "cacheWrite": 200},
-        }
-        result = normalize_pi_messages([pi_msg])
-        assert len(result) == 1
-        assert result[0]["tokens"] == {
-            "input": 5000,
-            "output": 3000,
-            "reasoning": 0,
-            "cache": {"read": 500, "write": 200},
-        }
-        # Original fields are preserved.
-        assert result[0]["role"] == "assistant"
-        assert result[0]["content"] == pi_msg["content"]
-
-    def test_leaves_non_assistant_messages_unchanged(self) -> None:
-        """User message with ``usage`` passes through with ``tokens`` added."""
-        pi_msg = {
-            "role": "user",
-            "content": [{"type": "text", "text": "Hello?"}],
-            "usage": {"input": 100, "output": 0},
-        }
-        result = normalize_pi_messages([pi_msg])
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-        assert result[0]["tokens"]["input"] == 100
-
-    def test_omits_usage_when_absent(self) -> None:
-        """Message without ``usage`` has no ``tokens`` key added."""
-        pi_msg = {"role": "assistant", "content": [{"type": "text", "text": "Hi."}]}
-        result = normalize_pi_messages([pi_msg])
-        assert len(result) == 1
-        assert "tokens" not in result[0]
-        assert "usage" not in result[0]
-
-    def test_partial_usage_fields_default_to_zero(self) -> None:
-        """``usage`` missing some fields → those token sub-fields default to 0."""
-        pi_msg = {
-            "role": "assistant",
-            "usage": {"input": 42},  # only input present
-        }
-        result = normalize_pi_messages([pi_msg])
-        assert result[0]["tokens"]["input"] == 42
-        assert result[0]["tokens"]["output"] == 0
-        assert result[0]["tokens"]["cache"]["read"] == 0
-        assert result[0]["tokens"]["cache"]["write"] == 0
-
-    def test_non_dict_message_passes_through(self) -> None:
-        """Non-dict message entries pass through without modification."""
-        result = normalize_pi_messages(["not a dict", None])
-        assert result[0] == "not a dict"
-        assert result[1] is None
-
-    def test_none_input_returns_empty_list(self) -> None:
-        """Non-list input (including None) returns an empty list."""
-        assert normalize_pi_messages(None) == []
-        assert normalize_pi_messages("string") == []
-        assert normalize_pi_messages(42) == []
-
-    def test_combined_with_compute_context_pct(self) -> None:
-        """normalize_pi_messages output feeds correctly into ``compute_context_pct``."""
-        pi_messages = [
-            {"role": "user", "content": [{"type": "text", "text": "Hello"}]},
-            {
-                "role": "assistant",
-                "content": [{"type": "text", "text": "Answer."}],
-                "usage": {"input": 5000, "output": 3000, "cacheRead": 500, "cacheWrite": 200},
-            },
-        ]
-        normalized = normalize_pi_messages(pi_messages)
-        pct = compute_context_pct(normalized, context_window=100000)
-        # 5000+3000+500+200 = 8700; 8700/100000*100 = 8.7
-        assert pct == pytest.approx(8.7)
 
 
 # ---------------------------------------------------------------------------
