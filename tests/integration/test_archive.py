@@ -226,6 +226,47 @@ def test_archive_idempotent(
     assert wi.archive_path == first_path
 
 
+def test_archive_includes_and_removes_work_folder(
+    db_session: Session,
+    test_project_with_root: Project,
+    repo_root: Path,
+    archive_dir: Path,
+) -> None:
+    """archive_work_item compresses and removes ai-dev/work/<id>/ (reports, self-assess)."""
+    project_id = test_project_with_root.id
+
+    active_dir = repo_root / "ai-dev" / "active" / "I-00001"
+    active_dir.mkdir(parents=True)
+    (active_dir / "I-00001_design.md").write_text("# Design", encoding="utf-8")
+
+    work_reports = repo_root / "ai-dev" / "work" / "I-00001" / "reports"
+    work_reports.mkdir(parents=True)
+    (work_reports / "I-00001_S08_SelfAssess_findings.json").write_text("{}", encoding="utf-8")
+
+    _make_completed_item(
+        db_session,
+        project_id,
+        "I-00001",
+        design_doc_path="ai-dev/active/I-00001/I-00001_design.md",
+    )
+
+    archive_work_item(db_session, project_id, "I-00001", archive_dir=archive_dir, cleanup=True)
+
+    work_dir = repo_root / "ai-dev" / "work" / "I-00001"
+    assert not active_dir.exists()
+    assert not work_dir.exists()
+
+    archive_path = archive_dir / project_id / "I-00001.tar.zst"
+    dctx = zstd.ZstdDecompressor()
+    with (
+        archive_path.open("rb") as f_in,
+        dctx.stream_reader(f_in) as reader,
+        tarfile.open(fileobj=reader, mode="r|") as tar,  # type: ignore[arg-type]
+    ):
+        names = tar.getnames()
+    assert any(n.endswith("I-00001_S08_SelfAssess_findings.json") for n in names)
+
+
 def test_fts_finds_archived_item(
     db_session: Session,
     test_project_with_root: Project,
