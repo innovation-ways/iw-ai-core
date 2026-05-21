@@ -662,10 +662,10 @@ class TestI00076EditableStepSelect:
 
 
 class TestI00076PatchStepOverride:
-    """AC1 / AC3: PATCH /project/{p}/api/item/{iid}/step/{sid}/runtime-override.
+    """PATCH /project/{p}/api/item/{iid}/step/{sid}/runtime-override.
 
     - PATCH with a real option_id (e.g. 5 = claude, claude-opus-4-7) must persist it.
-    - PATCH with no body (or empty option_id) must clear it — the '— inherit —' path.
+    - PATCH with no body (or empty option_id) must clear the step override.
     """
 
     def test_i00076_patch_step_override_persists_chosen_option(
@@ -711,7 +711,7 @@ class TestI00076PatchStepOverride:
         client: TestClient,
         db_session: Session,
     ) -> None:
-        """PATCH with no option_id body clears the step override (AC3: '— inherit —')."""
+        """PATCH with no option_id body clears the step override back to the inherited runtime."""
         project, _batch = _seed_project_and_batch(db_session)
         _seed_runtime_options(db_session)
         wi = _seed_work_item_with_steps(db_session, project.id, "WI-I00076-CLEAR", num_steps=2)
@@ -785,6 +785,158 @@ class TestI00076ResolveRuntime:
             f"Expected model=claude-opus-4-7, got {resolved.model}"
         )
         assert resolved.id == 5
+
+
+# ---------------------------------------------------------------------------
+# CR-00070 S02: inherited_runtime_label template rendering
+# ---------------------------------------------------------------------------
+
+
+class TestInheritedRuntimeLabel:
+    """AC1 / AC2 / AC3 / AC5: empty-option label shows resolved runtime + (inherited).
+
+    - Per-step <select> empty option → "{inherited_runtime_label} (inherited)"
+    - Bulk <select> empty option → same
+    - Bulk non-empty options → display_name (not cli_label/model_label)
+    - None / empty catalogue → falls back to "— inherit —"
+    - Item-level override reflected in inherited label (AC3)
+    """
+
+    def test_per_step_empty_option_shows_inherited_suffix(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """AC1: per-step <select> empty option reads "... (inherited)", not "— inherit —"."""
+        project, _batch = _seed_project_and_batch(db_session)
+        _seed_runtime_options(db_session)
+        wi = _seed_work_item_with_steps(db_session, project.id, "WI-CR70-PER-STEP", num_steps=3)
+        db_session.commit()
+
+        response = client.get(f"/project/{project.id}/item/{wi.id}/tab/overview")
+        assert response.status_code == 200, response.text
+        html = response.text
+
+        # The default option (id=1, display_name="OpenCode + MiniMax 2.7") is resolved
+        # as the inherited runtime; the empty <option value=""> label must carry (inherited).
+        assert "(inherited)" in html, (
+            "Per-step empty option must show '(inherited)' suffix when a runtime resolves"
+        )
+        # The hardcoded fallback must not appear when an option resolves
+        assert "— inherit —" not in html, (
+            "'— inherit —' must not appear when inherited_runtime_label resolves"
+        )
+
+    def test_bulk_empty_option_shows_inherited_suffix(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """AC2: "Apply to remaining steps" bulk <select> empty option shows (inherited)."""
+        project, _batch = _seed_project_and_batch(db_session)
+        _seed_runtime_options(db_session)
+        wi = _seed_work_item_with_steps(db_session, project.id, "WI-CR70-BULK", num_steps=3)
+        db_session.commit()
+
+        response = client.get(f"/project/{project.id}/item/{wi.id}/tab/overview")
+        assert response.status_code == 200, response.text
+        html = response.text
+
+        assert "(inherited)" in html
+        assert "— inherit —" not in html
+
+    def test_bulk_non_empty_options_use_display_name(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """AC2: bulk dropdown non-empty options use display_name, not cli_label/model_label."""
+        project, _batch = _seed_project_and_batch(db_session)
+        runtime_opts = _seed_runtime_options(db_session)
+        wi = _seed_work_item_with_steps(db_session, project.id, "WI-CR70-DN", num_steps=3)
+        db_session.commit()
+
+        response = client.get(f"/project/{project.id}/item/{wi.id}/tab/overview")
+        assert response.status_code == 200, response.text
+        html = response.text
+
+        # Check that display_name values appear, not the old cli_label/model_label format
+        for opt in runtime_opts:
+            # display_name of each option must be in the HTML bulk dropdown
+            assert opt.display_name in html, (
+                f"display_name '{opt.display_name}' must appear in bulk options"
+            )
+
+        # The old format (cli_label / model_label) must not appear
+        assert "OpenCode / MiniMax 2.7" not in html, (
+            "Old format 'cli_label / model_label' must not appear in bulk dropdown"
+        )
+
+    def test_none_inherited_label_falls_back_to_neutral_inherit(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """AC5: empty catalogue → empty option falls back to "— inherit —"."""
+        project, _batch = _seed_project_and_batch(db_session)
+        # Clear all runtime options
+        db_session.execute(text("DELETE FROM agent_runtime_options"))
+        db_session.flush()
+        wi = _seed_work_item_with_steps(db_session, project.id, "WI-CR70-NONE", num_steps=3)
+        db_session.commit()
+
+        response = client.get(f"/project/{project.id}/item/{wi.id}/tab/overview")
+        assert response.status_code == 200, response.text
+        html = response.text
+
+        # Steps table must render (no 500)
+        assert "item-steps-table" in html
+        # Neutral fallback must appear
+        assert "— inherit —" in html, (
+            "Must fall back to '— inherit —' when no runtime option resolves"
+        )
+
+    def test_item_override_reflected_in_inherited_label(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """AC3: item-level override changes the inherited label to that option's display_name."""
+        project, _batch = _seed_project_and_batch(db_session)
+        _seed_runtime_options(db_session)
+        # Item override = id=3 (OpenCode + Claude Opus 4.7)
+        wi = _seed_work_item_with_steps(
+            db_session, project.id, "WI-CR70-ITEM-OVR", num_steps=3, runtime_option_id=3
+        )
+        db_session.commit()
+
+        response = client.get(f"/project/{project.id}/item/{wi.id}/tab/overview")
+        assert response.status_code == 200, response.text
+        html = response.text
+
+        # The inherited label must reflect the item-level override (id=3)
+        assert "(inherited)" in html
+        assert "OpenCode + Claude Opus 4.7" in html, (
+            "Inherited label must reflect item-level override's display_name"
+        )
+
+    def test_all_three_render_paths_show_inherited_suffix(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        """AC6: (inherited) label appears in all three render paths."""
+        project, _batch = _seed_project_and_batch(db_session)
+        _seed_runtime_options(db_session)
+        wi = _seed_work_item_with_steps(db_session, project.id, "WI-CR70-ALL-PATHS", num_steps=3)
+        db_session.commit()
+
+        # Path 1: full item page
+        r1 = client.get(f"/project/{project.id}/item/{wi.id}")
+        assert r1.status_code == 200
+
+        # Path 2: overview tab
+        r2 = client.get(f"/project/{project.id}/item/{wi.id}/tab/overview")
+        assert r2.status_code == 200
+
+        # Path 3: PATCH step override response fragment
+        r3 = client.patch(
+            f"/project/{project.id}/api/item/{wi.id}/step/S01/runtime-override",
+            data={"option_id": ""},
+        )
+        assert r3.status_code == 200
+
+        for r, name in [(r1, "item_detail"), (r2, "tab_overview"), (r3, "patch_fragment")]:
+            assert "(inherited)" in r.text, f"{name} must show (inherited) suffix"
+            assert "— inherit —" not in r.text, f"{name} must not show — inherit —"
 
 
 if __name__ == "__main__":

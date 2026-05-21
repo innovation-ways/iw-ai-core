@@ -149,3 +149,51 @@ def _load_default(session: Session) -> AgentRuntimeOption | None:
     return session.execute(
         select(AgentRuntimeOption).where(AgentRuntimeOption.is_default.is_(True))
     ).scalar_one_or_none()
+
+
+def resolve_inherited_runtime(
+    session: Session,
+    *,
+    item: object,
+    project: object,
+) -> AgentRuntimeOption | None:
+    """Resolve the runtime option an un-overridden step would inherit.
+
+    This helper answers "what does a step with no explicit step-level override
+    actually run?" — identical to what the daemon's ``resolve_runtime()``
+    would return for a step carrying no ``agent_runtime_option_id``.
+
+    The cascade is:
+        item override → projects.toml (cli_tool, model) lookup → catalogue default
+
+    Args:
+        session: Active SQLAlchemy session.
+        item: WorkItem row (or fake with .agent_runtime_option_id).
+        project: ProjectConfig (or fake with .cli_tool/.model), may be None.
+
+    Returns:
+        The resolved ``AgentRuntimeOption`` row, or ``None`` when the catalogue
+        has no enabled rows at all (e.g. fresh install before the seed migration
+        runs). ``None`` is returned instead of raising so dashboard renders
+        degrade gracefully without a 500 on the steps table (AC5).
+    """
+
+    # Build a no-step-override sentinel — an object whose
+    # agent_runtime_option_id is None so the step-override branch in
+    # resolve_runtime() is skipped.
+    class _NoStepOverride:
+        agent_runtime_option_id: int | None = None
+
+    try:
+        return resolve_runtime(
+            session,
+            step=_NoStepOverride(),
+            item=item,
+            project=project,
+        )
+    except RuntimeError:
+        # resolve_runtime raises RuntimeError only when the cascade reaches the
+        # catalogue default and finds no is_default=true row. This can happen
+        # when the seed migration hasn't run yet (empty or partially-seeded
+        # catalogue). We degrade gracefully rather than crashing the dashboard.
+        return None

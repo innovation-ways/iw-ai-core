@@ -10,4 +10,4 @@ from __future__ import annotations
 from orch.agent_runtime.audit import emit_runtime_override_changed
 from orch.agent_runtime.resolver import resolve_runtime
 
-__all__ = ["emit_runtime_override_changed", "resolve_runtime"]
+__all__ = ["emit_runtime_override_changed", "resolve_inherited_runtime", "resolve_runtime"]

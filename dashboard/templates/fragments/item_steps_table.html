@@ -72,7 +72,7 @@
                 hx-swap="outerHTML"
                 hx-disabled-elt="this"
                 name="option_id">
-                <option value="">— inherit —</option>
+                <option value="">{% if inherited_runtime_label %}{{ inherited_runtime_label }} (inherited){% else %}— inherit —{% endif %}</option>
                 {% for opt in runtime_options %}
                   <option value="{{ opt.id }}" {% if step.runtime_option_id == opt.id %}selected{% endif %}>{{ opt.display_name }}</option>
                 {% endfor %}
@@ -266,9 +266,9 @@
     <select
       id="bulk-runtime-option"
       class="text-xs border border-border rounded bg-background text-foreground px-1 py-0.5 w-36">
-      <option value="">— inherit —</option>
+      <option value="">{% if inherited_runtime_label %}{{ inherited_runtime_label }} (inherited){% else %}— inherit —{% endif %}</option>
       {% for opt in runtime_options %}
-        <option value="{{ opt.id }}">{{ opt.cli_label }} / {{ opt.model_label }}</option>
+        <option value="{{ opt.id }}">{{ opt.display_name }}</option>
       {% endfor %}
     </select>
     <button
