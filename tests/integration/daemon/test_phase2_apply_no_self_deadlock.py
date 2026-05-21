@@ -38,8 +38,10 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "8263c6b7746b"  # merge cr00065 session_file + pi default flip heads
-_PREV_REVISION = "6d78323d0954"  # add_pi_runtime_options (three migrations pending: chat_tabs, cr00065, pi-flip)
+_HEAD_REVISION = "891343247f66"  # cr00066_add_context_tokens_columns (current head)
+_PREV_REVISION = (
+    "6d78323d0954"  # add_pi_runtime_options (test stamps here; migrations through head pending)
+)
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import mimetypes
 import subprocess
 from dataclasses import dataclass, field
@@ -22,7 +21,6 @@ from sqlalchemy import select
 from dashboard.dependencies import get_db
 from dashboard.utils.markdown import render_markdown
 from orch.daemon.execution_report import assemble_execution_report
-from orch.daemon.session_reader import read_session_content
 from orch.db.models import (
     AgentRuntimeOption,
     Batch,
@@ -40,11 +38,23 @@ from orch.db.models import (
     WorkItemEvidence,
 )
 
-logger = logging.getLogger(__name__)
-
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates
     from sqlalchemy.orm import Session
+
+
+# ---------------------------------------------------------------------------
+# TypedDict helpers (used in htmx fragment routes)
+# ---------------------------------------------------------------------------
+
+
+class SessionLogSegment(TypedDict, total=False):
+    """A rendered log segment produced by session_reader.read_session_content."""
+
+    type: str  # "assistant" | "tool_call" | "tool_result" | "thinking"
+    #             | "compaction" | "error" | "log"
+    text: str
+    collapsible: bool
 
 
 router = APIRouter(prefix="/project/{project_id}")
@@ -83,6 +93,11 @@ class StepDetail:
     # I-00101: scope-violation paths from the latest escalated FixCycle on this step
     scope_violations: list[str] | None = None
 
+    # CR-00066: context window usage tracking
+    context_tokens_peak: int | None = None
+    context_tokens_last: int | None = None
+    context_window_tokens: int | None = None
+
 
 @dataclass
 class ReportSection:
@@ -106,21 +121,6 @@ class RunLog:
     is_running: bool
     log_content: str | None
     log_modified: str | None = None
-
-
-class SessionLogSegment(TypedDict):
-    """A single rendered segment from the session log reader.
-
-    Fields:
-        type: one of assistant | tool_call | tool_result | thinking |
-              error | compaction | log
-        text: rendered content
-        collapsible: True for thinking blocks and long tool results
-    """
-
-    type: str
-    text: str
-    collapsible: bool
 
 
 @dataclass
@@ -398,6 +398,17 @@ def _get_steps(
         ).all()
         fix_cycle_counts = {row.step_id: row.cnt for row in rows}
 
+    # CR-00066: build id→context_window_tokens lookup from AgentRuntimeOption
+    runtime_opt_tokens: dict[int, int] = {}
+    opt_rows = db.execute(
+        select(AgentRuntimeOption.id, AgentRuntimeOption.context_window_tokens).where(
+            AgentRuntimeOption.enabled.is_(True)
+        )
+    ).all()
+    for row in opt_rows:
+        if row.context_window_tokens is not None:
+            runtime_opt_tokens[row.id] = row.context_window_tokens
+
     step_spans = _aggregate_step_spans(db, step_db_ids)
 
     # F-00081: runtime option id from last run (most recent step_runs row per step)
@@ -435,6 +446,8 @@ def _get_steps(
                 StepRun.error_message,
                 StepRun.prompt_text,
                 StepRun.fix_prompt_text,
+                StepRun.context_tokens_peak,
+                StepRun.context_tokens_last,
                 func.row_number()
                 .over(
                     partition_by=StepRun.step_id,
@@ -453,6 +466,8 @@ def _get_steps(
                 last_run_sub2.c.error_message,
                 last_run_sub2.c.prompt_text,
                 last_run_sub2.c.fix_prompt_text,
+                last_run_sub2.c.context_tokens_peak,
+                last_run_sub2.c.context_tokens_last,
                 last_run_sub2.c.rc,
             ).where(last_run_sub2.c.rn == 1)
         ).all()
@@ -469,6 +484,9 @@ def _get_steps(
             has_prompt_map[row.step_id] = bool(
                 row.prompt_text is not None or row.fix_prompt_text is not None
             )
+            # CR-00066: context tokens from the last run row
+            run.context_tokens_peak = row.context_tokens_peak
+            run.context_tokens_last = row.context_tokens_last
 
     # F-00081: item-level runtime override
     item = db.scalar(
@@ -511,6 +529,12 @@ def _get_steps(
         run_opt_id = last_run_option_map.get(step.id)
         step_opt_id = step.agent_runtime_option_id  # explicit step-level override
 
+        # CR-00066: resolve context_window_tokens from runtime option
+        resolved_opt_id = (
+            run_opt_id if run_opt_id is not None else (step_opt_id or item_runtime_option_id)
+        )
+        context_window_tokens = runtime_opt_tokens.get(resolved_opt_id) if resolved_opt_id else None
+
         result.append(
             StepDetail(
                 step_id=step.step_id,
@@ -526,12 +550,14 @@ def _get_steps(
                 description=step.description,
                 report_content=report,
                 fix_cycle_count=fix_cycle_counts.get(step.id, 0),
-                runtime_option_id=run_opt_id
-                if run_opt_id is not None
-                else (step_opt_id or item_runtime_option_id),
+                runtime_option_id=resolved_opt_id,
                 step_runtime_option_id=step_opt_id,
                 has_prompt=has_prompt_map.get(step.id, False),
                 scope_violations=scope_violations_map.get(step.id),
+                # CR-00066: context window data
+                context_tokens_peak=last_run.context_tokens_peak if last_run else None,
+                context_tokens_last=last_run.context_tokens_last if last_run else None,
+                context_window_tokens=context_window_tokens,
             )
         )
     result.append(_synthetic_merge_step(bi))
@@ -2126,76 +2152,73 @@ def item_session_log(
     run_number: int | None = None,
     db: Session = Depends(get_db),
 ) -> Any:
-    """htmx fragment: rendered session log for a specific step run.
+    """htmx fragment: rendered session log for a specific step run (CR-00065).
 
     Query params:
-        run_number: int | None — if omitted, use the most recent run.
+        run_number: int | None — if omitted, uses the highest run_number for the step.
 
-    Returns 200 with the rendered fragment, or 404 if the step does not exist.
-    If read_session_content fails, returns 200 with a single error segment.
+    Error handling:
+        404 if project, item, or step not found.
+        200 with error segment if read_session_content fails (never 500).
     """
-    # 404 if project or item do not exist
+    from orch.daemon.session_reader import read_session_content
+
+    # Validate project + item exist
     _get_project_or_404(project_id, db)
     _get_item_or_404(project_id, item_id, db)
 
-    # 404 if step does not exist
-    workflow_step = db.scalar(
+    # Resolve the WorkflowStep DB id from the string step_id
+    ws = db.scalar(
         select(WorkflowStep).where(
             WorkflowStep.project_id == project_id,
             WorkflowStep.work_item_id == item_id,
             WorkflowStep.step_id == step_id,
         )
     )
-    if workflow_step is None:
+    if ws is None:
         raise HTTPException(status_code=404, detail=f"Step {step_id!r} not found")
 
-    # Resolve the requested StepRun
-    run: StepRun | None
+    # Query StepRun rows for this step
+    run: StepRun | None = None
     if run_number is not None:
         run = db.scalar(
             select(StepRun).where(
-                StepRun.step_id == workflow_step.id,
+                StepRun.step_id == ws.id,
                 StepRun.run_number == run_number,
             )
         )
     else:
-        # Most recent run
-        run = db.scalar(
+        # Default to the latest run (highest run_number)
+        run = db.scalars(
             select(StepRun)
-            .where(StepRun.step_id == workflow_step.id)
+            .where(StepRun.step_id == ws.id)
             .order_by(StepRun.run_number.desc())
             .limit(1)
-        )
+        ).first()
 
-    # 200 with "no content" message when there are no runs yet
-    if run is None:
-        templates: Jinja2Templates = request.app.state.templates
-        return templates.TemplateResponse(
-            request,
-            "fragments/session_log_popup_content.html",
-            {
-                "segments": [],
-                "is_live": False,
-                "step_id": step_id,
-                "run_number": 0,
-                "cli_tool": None,
-                "item_id": item_id,
-                "project_id": project_id,
-                "error_message": None,
-            },
-        )
+    segments: list[SessionLogSegment] = []
+    cli_tool: str | None = None
+    is_live: bool = False
+    error_message: str | None = None
 
-    # Determine live status
-    is_live = run.status in (RunStatus.running, RunStatus.stalled)
+    if run is not None:
+        cli_tool = run.cli_tool
+        is_live = run.status in (RunStatus.running, RunStatus.stalled)
+        error_message = run.error_message
+        try:
+            raw_segments = read_session_content(run)
+            segments = raw_segments  # type: ignore[assignment]
+            # Never 500 — return a single error segment so the popup still renders
+        except Exception:
+            segments = [
+                SessionLogSegment(
+                    type="error",
+                    text="Failed to read session log.",
+                    collapsible=False,
+                )
+            ]
 
-    # Read rendered segments
-    try:
-        segments: list[SessionLogSegment] = read_session_content(run)
-    except Exception as exc:
-        logger.exception("read_session_content failed for step_run %d: %s", run.id, exc)
-        segments = [{"type": "error", "text": str(exc), "collapsible": False}]
-
-    templates = request.app.state.templates
+    templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "fragments/session_log_popup_content.html",
@@ -2203,10 +2226,10 @@ def item_session_log(
             "segments": segments,
             "is_live": is_live,
             "step_id": step_id,
-            "run_number": run.run_number,
-            "cli_tool": run.cli_tool,
+            "run_number": run.run_number if run is not None else 1,
+            "cli_tool": cli_tool,
             "item_id": item_id,
             "project_id": project_id,
-            "error_message": run.error_message,
+            "error_message": error_message,
         },
     )

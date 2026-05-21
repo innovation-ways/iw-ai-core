@@ -71,6 +71,15 @@ class AgentRuntimeOption(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    context_window_tokens: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment=(
+            "Maximum context window size in tokens for this model. "
+            "Used to compute the context usage percentage shown in the step table. "
+            "NULL = unknown / not yet configured. (CR-00066)"
+        ),
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -844,6 +853,24 @@ class StepRun(Base):
             "Absolute path to the pi session .jsonl file for this run. "
             "Set by step_monitor on the first poll cycle after step launch. "
             "NULL for claude/opencode runs and pre-CR-00065 rows. (CR-00065)"
+        ),
+    )
+    context_tokens_peak: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment=(
+            "All-time peak totalTokens observed during this run (pi runs only). "
+            "Set by step_monitor each poll cycle; never decreases (tracks high-water mark "
+            "even across compaction resets). NULL for non-pi runs. (CR-00066)"
+        ),
+    )
+    context_tokens_last: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment=(
+            "Most recent totalTokens from the pi session JSONL for this run. "
+            "May be lower than context_tokens_peak after a compaction event. "
+            "NULL for non-pi runs. (CR-00066)"
         ),
     )
     report_file: Mapped[str | None] = mapped_column(Text, nullable=True)

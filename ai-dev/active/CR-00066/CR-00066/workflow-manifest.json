@@ -15,13 +15,7 @@
       "tests/unit/test_step_monitor_token_poll.py",
       "tests/integration/test_context_tokens_migration.py",
       "ai-dev/active/CR-00066/**",
-      "ai-dev/work/CR-00066/**",
-      "tests/dashboard/test_item_overview_awaiting_merge.py",
-      "tests/dashboard/test_cascade_history.py",
-      "tests/integration/test_n1_bounded_queries.py",
-      "tests/integration/daemon/test_phase2_apply_no_self_deadlock.py",
-      "tests/dashboard/test_item_steps_table_render.py",
-      "tests/dashboard/test_item_overview_action_buttons.py"
+      "ai-dev/work/CR-00066/**"
     ]
   },
   "steps": [
@@ -58,7 +52,7 @@
       "step": "S05",
       "agent": "code-review-impl",
       "step_type": "code_review",
-      "description": "Code review of S01\u2013S04",
+      "description": "Code review of S01–S04",
       "prompt": "prompts/CR-00066_S05_CodeReview_prompt.md"
     },
     {
@@ -94,7 +88,7 @@
       "step": "S10",
       "agent": "qv-browser",
       "step_type": "qv_browser",
-      "description": "QV: Browser verification \u2014 context bar visible, correct color coding",
+      "description": "QV: Browser verification — context bar visible, correct color coding",
       "prompt": "prompts/CR-00066_S10_BrowserVerification_prompt.md"
     },
     {

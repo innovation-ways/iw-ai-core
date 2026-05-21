@@ -8,6 +8,7 @@ Called every poll cycle for each project. Detects:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import signal
@@ -217,6 +218,12 @@ def _check_step_health(
     # that sees this run as alive (or every poll until it is found).
     if alive and run.session_file is None:
         _maybe_resolve_pi_session_file(db, run, now)
+
+    # CR-00066: extract token counts from the pi session JSONL and update
+    # context_tokens_last / context_tokens_peak for all alive pi runs that have
+    # a resolved session file (peak never decreases; last may drop after compaction).
+    if alive and run.session_file is not None:
+        _update_token_counts(run)
 
     if not alive:
         _handle_crashed(db, run, project_id, now, project_config)
@@ -542,6 +549,69 @@ def _emit_event(
 # ---------------------------------------------------------------------------
 
 _PI_SESSIONS_DIR = Path.home() / ".pi" / "agent" / "sessions"
+
+
+def _extract_latest_tokens(session_file: str) -> int | None:
+    """Extract totalTokens from the most recent assistant message in a pi session JSONL.
+
+    Iterates lines in reverse order (from the end) to find the most recent
+    ``type == "message"`` entry where ``message.role == "assistant"`` and
+    ``message.usage`` is present.  Returns ``message.usage.get("totalTokens")``
+    as an int, or ``None`` if no qualifying entry is found.
+
+    All filesystem/parse errors are swallowed and return ``None`` silently.
+    """
+    try:
+        with open(session_file, encoding="utf-8") as fh:  # noqa: PTH123
+            lines = fh.readlines()
+    except OSError:
+        return None
+
+    for raw_line in reversed(lines):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            obj: dict[str, Any] = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        if (
+            obj.get("type") == "message"
+            and isinstance(obj.get("message"), dict)
+            and obj["message"].get("role") == "assistant"
+            and "usage" in obj["message"]
+        ):
+            total = obj["message"]["usage"].get("totalTokens")
+            if isinstance(total, int):
+                return total
+
+    return None
+
+
+def _update_token_counts(run: StepRun) -> None:
+    """Update context_tokens_last and context_tokens_peak from the pi session JSONL.
+
+    Called every poll cycle for alive ``pi`` StepRuns with a resolved session_file.
+    - ``context_tokens_last`` tracks the most recent token count (may drop after compaction).
+    - ``context_tokens_peak`` is the all-time high-water mark and never decreases.
+
+    Filesystem errors are swallowed — a corrupt session file never crashes the poll loop.
+    """
+    if run.cli_tool != "pi" or run.session_file is None:
+        return
+
+    try:
+        latest = _extract_latest_tokens(run.session_file)
+    except Exception:
+        return
+
+    if latest is None:
+        return
+
+    run.context_tokens_last = latest
+    if run.context_tokens_peak is None or latest > run.context_tokens_peak:
+        run.context_tokens_peak = latest
 
 
 def _resolve_pi_session_file(run: StepRun) -> str | None:
