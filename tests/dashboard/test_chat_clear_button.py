@@ -1,20 +1,16 @@
 """Tests for CR-00064 Clear Chat History Button — frontend wiring.
 
-TDD pattern (RED first):
-  tests/dashboard/test_chat_clear_button.py  — regex/grep assertions on source files
-  1. test_clear_button_present_in_composer     — composer.html has id="chat-assistant-clear"
-  2. test_clear_button_starts_disabled         — composer.html has disabled on clear button
-  3. test_clear_chat_function_exists          — chat.js has function _clearChat
-  4. test_tab_has_history_tracking            — chat.js has _tabHasHistory
-  5. test_update_clear_button_function        — chat.js has function _updateClearButton
-  6. test_clear_has_no_confirm                — _clearChat body does NOT contain window.confirm
-  7. test_clear_calls_api                     — _clearChat body contains /clear
-  8. test_clear_removes_eid                   — _clearChat body contains removeItem
+Asserts the composer template ships the clear button with the right
+attributes, and that chat.js defines and wires the clear-chat functions.
+Each test verifies a specific structural fact that would fail if the
+production wiring regressed.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+
+from bs4 import BeautifulSoup
 
 CHAT_JS = Path(__file__).resolve().parents[2] / "dashboard/static/chat_assistant/chat.js"
 COMPOSER_HTML = (
@@ -22,75 +18,97 @@ COMPOSER_HTML = (
 )
 
 
+def _js_function_text(js: str, name: str) -> str:
+    """Return the full source of JS function ``name`` — its declaration line
+    through the matching closing brace.
+
+    Raises AssertionError if the function is missing or its braces are
+    unbalanced, so a renamed/removed function fails loudly instead of
+    silently passing an ``in`` check against the whole file.
+    """
+    start = js.find("function " + name)
+    assert start != -1, f"function {name} not found in chat.js"
+    brace_open = js.find("{", start)
+    assert brace_open != -1, f"no opening brace for function {name}"
+    depth = 0
+    i = brace_open
+    while i < len(js):
+        if js[i] == "{":
+            depth += 1
+        elif js[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return js[start : i + 1]
+        i += 1
+    raise AssertionError(f"unbalanced braces in function {name}")
+
+
 class TestClearButtonPresent:
     def test_clear_button_present_in_composer(self):
-        html = COMPOSER_HTML.read_text(encoding="utf-8")
-        assert 'id="chat-assistant-clear"' in html, (
-            'composer.html must contain <button id="chat-assistant-clear">'
-        )
+        soup = BeautifulSoup(COMPOSER_HTML.read_text(encoding="utf-8"), "html.parser")
+        btn = soup.find(id="chat-assistant-clear")
+        assert btn is not None, 'composer.html must contain id="chat-assistant-clear"'
+        assert btn.name == "button", f"#chat-assistant-clear must be a <button>, got <{btn.name}>"
 
     def test_clear_button_starts_disabled(self):
-        html = COMPOSER_HTML.read_text(encoding="utf-8")
-        # Button HTML must have the disabled attribute so the JS can enable it
-        # when history exists.  Pattern: <button ... disabled ...>
-        assert "disabled" in html, "clear button must have 'disabled' attribute so JS can toggle it"
-        # Also confirm the button is not accidentally forced enabled
-        # The exact attribute value is not enforced — presence of the word
-        # 'disabled' in the button tag is sufficient evidence.
-        assert 'id="chat-assistant-clear"' in html
+        soup = BeautifulSoup(COMPOSER_HTML.read_text(encoding="utf-8"), "html.parser")
+        btn = soup.find(id="chat-assistant-clear")
+        assert btn is not None, "#chat-assistant-clear button not found"
+        # The button itself must ship disabled — a fresh tab has no history;
+        # the JS enables it once messages exist. Checking the attribute is on
+        # the button (not merely the word 'disabled' somewhere in the file).
+        assert btn.has_attr("disabled"), (
+            "clear button must ship with the 'disabled' attribute so JS toggles it"
+        )
 
 
 class TestClearChatJsFunctions:
     def test_clear_chat_function_exists(self):
         js = CHAT_JS.read_text(encoding="utf-8")
-        assert "function _clearChat" in js, "chat.js must define function _clearChat()"
+        assert js.count("function _clearChat") == 1, (
+            "chat.js must define function _clearChat() exactly once"
+        )
 
     def test_tab_has_history_tracking(self):
         js = CHAT_JS.read_text(encoding="utf-8")
-        assert "_tabHasHistory" in js, (
-            "chat.js must track per-tab history state with _tabHasHistory variable"
+        # A tracker declared but never read does not actually track anything —
+        # require at least a declaration plus one use.
+        assert js.count("_tabHasHistory") >= 2, (
+            "chat.js must declare AND consult _tabHasHistory to track per-tab history"
         )
 
     def test_update_clear_button_function(self):
         js = CHAT_JS.read_text(encoding="utf-8")
-        assert "function _updateClearButton" in js, (
-            "chat.js must define function _updateClearButton()"
+        assert js.count("function _updateClearButton") == 1, (
+            "chat.js must define function _updateClearButton() exactly once"
+        )
+        # Defining it is pointless unless something invokes it.
+        assert js.count("_updateClearButton(") >= 2, (
+            "_updateClearButton must be called, not just defined"
         )
 
 
 class TestClearChatBehavior:
     def test_clear_has_no_confirm(self):
         js = CHAT_JS.read_text(encoding="utf-8")
-        # Extract the _clearChat function body by finding its start and end.
-        # Function starts at "function _clearChat() {" and ends at its closing "}".
-        start = js.find("function _clearChat() {")
-        assert start != -1, "_clearChat function not found in chat.js"
-        # Find the matching closing brace by counting brace depth.
-        depth = 0
-        body_start = js.find("{", start)
-        i = body_start
-        while i < len(js):
-            c = js[i]
-            if c == "{":
-                depth += 1
-            elif c == "}":
-                depth -= 1
-                if depth == 0:
-                    break
-            i += 1
-        body = js[start : i + 1]
+        body = _js_function_text(js, "_clearChat")
         assert "window.confirm" not in body, (
             "_clearChat must not show a confirmation dialog via window.confirm"
         )
 
     def test_clear_calls_api(self):
         js = CHAT_JS.read_text(encoding="utf-8")
-        # The clear API endpoint added in S01
-        assert "/clear" in js, "_clearChat must POST to /api/chat/tabs/{tab_id}/clear"
+        body = _js_function_text(js, "_clearChat")
+        # The call must live INSIDE _clearChat, not merely somewhere in chat.js.
+        assert body.count("/clear") >= 1, "_clearChat must call the .../clear endpoint"
+        assert "POST" in body, "_clearChat must use the POST method to clear history"
 
     def test_clear_removes_eid(self):
         js = CHAT_JS.read_text(encoding="utf-8")
-        assert "removeItem" in js, (
-            "_clearChat must clear the sessionStorage last-eid key "
-            "(iw-chat-last-eid-<tabId>) after a successful clear"
+        body = _js_function_text(js, "_clearChat")
+        assert body.count("removeItem") >= 1, (
+            "_clearChat must call sessionStorage.removeItem after a successful clear"
+        )
+        assert "iw-chat-last-eid-" in body, (
+            "_clearChat must drop the iw-chat-last-eid-<tabId> sessionStorage key"
         )

@@ -384,7 +384,11 @@ def test_pi_isolation_args_always_disables_context_discovery() -> None:
     up past the worktree into the parent repo. Without it the agent re-learns
     the main-repo path and the contamination returns.
     """
-    assert "--no-context-files" in shlex.split(_pi_worktree_isolation_args("/some/worktree"))
+    tokens = shlex.split(_pi_worktree_isolation_args("/some/worktree"))
+    assert tokens.count("--no-context-files") == 1, (
+        "--no-context-files must be passed exactly once to stop pi walking up "
+        f"into the parent repo; got: {tokens}"
+    )
 
 
 def test_pi_isolation_args_carries_explicit_worktree_pin() -> None:
@@ -402,8 +406,13 @@ def test_pi_isolation_args_appends_worktree_claude_md_when_present(tmp_path: Pat
     the agent keeps its project guidance after discovery is disabled.
     """
     (tmp_path / "CLAUDE.md").write_text("# project rules\n")
+    claude_md = str(tmp_path / "CLAUDE.md")
     tokens = shlex.split(_pi_worktree_isolation_args(str(tmp_path)))
-    assert str(tmp_path / "CLAUDE.md") in tokens
+    assert claude_md in tokens, f"worktree CLAUDE.md path not injected; tokens={tokens}"
+    # It must be the value of an --append-system-prompt flag, not a stray token.
+    assert tokens[tokens.index(claude_md) - 1] == "--append-system-prompt", (
+        "the worktree CLAUDE.md must be re-injected as an --append-system-prompt argument"
+    )
 
 
 def test_pi_isolation_args_skips_missing_context_files(tmp_path: Path) -> None:

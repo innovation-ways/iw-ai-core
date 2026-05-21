@@ -125,6 +125,10 @@ async def test_reaper_does_not_kill_recently_active_client() -> None:
 
     mock_client.close.assert_not_awaited()
     assert sid in runtime._clients, "recently-active session must remain in _clients"
+    assert runtime._clients[sid] is mock_client, (
+        "the recently-active client object must remain pooled unchanged "
+        "(not closed, replaced, or recreated)"
+    )
 
 
 @pytest.mark.asyncio
