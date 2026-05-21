@@ -12,6 +12,7 @@
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Prompt</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Logs</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Context</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Started</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
         <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Runs</th>
@@ -138,6 +139,30 @@
             </button>
             {% else %}
             <span class="text-muted-foreground/30">—</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2 min-w-[90px]">
+            {% set ctx_peak = step.context_tokens_peak %}
+            {% set ctx_window = step.context_window_tokens %}
+            {% if ctx_peak is not none %}
+              {% if ctx_window %}
+                {% set ctx_pct = (ctx_peak / ctx_window * 100) | round(0) | int %}
+                {% if ctx_pct > 100 %}{% set ctx_pct = 100 %}{% endif %}
+                {% if ctx_pct <= 60 %}{% set ctx_color_class = "ctx-bar-green" %}
+                {% elif ctx_pct <= 85 %}{% set ctx_color_class = "ctx-bar-yellow" %}
+                {% else %}{% set ctx_color_class = "ctx-bar-red" %}{% endif %}
+                <div class="text-xs text-muted-foreground whitespace-nowrap">
+                  {{ (ctx_peak / 1000) | round(0) | int }}K / {{ (ctx_window / 1000) | round(0) | int }}K
+                </div>
+                <div class="ctx-bar-track mt-0.5">
+                  <div class="ctx-bar-fill {{ ctx_color_class }}" style="width: {{ ctx_pct }}%"></div>
+                </div>
+                <div class="text-xs text-muted-foreground">{{ ctx_pct }}%</div>
+              {% else %}
+                <div class="text-xs text-muted-foreground">{{ (ctx_peak / 1000) | round(0) | int }}K</div>
+              {% endif %}
+            {% else %}
+              <span class="text-muted-foreground/30">—</span>
             {% endif %}
           </td>
           <td class="px-4 py-2 font-mono text-xs text-muted-foreground hidden sm:table-cell">

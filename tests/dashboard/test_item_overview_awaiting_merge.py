@@ -59,6 +59,12 @@ def _make_step(
         fix_cycle_count=0,
         error_message=None,
         is_synthetic=is_synthetic,
+        # CR-00066: context window usage tracking
+        context_tokens_peak=None,
+        context_tokens_last=None,
+        context_window_tokens=None,
+        # CR-00056 S11: has_prompt for prompt column rendering
+        has_prompt=False,
     )
 
 

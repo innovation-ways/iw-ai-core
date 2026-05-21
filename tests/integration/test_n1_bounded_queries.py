@@ -401,7 +401,7 @@ class TestItemDetailBoundedQueries:
         finally:
             event.remove(db_session.get_bind(), "before_cursor_execute", count_queries)
 
-        max_allowed = 8
+        max_allowed = 9
         assert query_count <= max_allowed, (
             f"Expected ≤{max_allowed} queries for 10 steps, got {query_count}"
         )

@@ -61,6 +61,9 @@ def _make_step(
     fix_cycle_count: int = 0,
     is_synthetic: bool = False,
     agent_label: str = "agent",
+    context_tokens_peak: int | None = None,
+    context_tokens_last: int | None = None,
+    context_window_tokens: int | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         step_id=step_id,
@@ -75,6 +78,12 @@ def _make_step(
         fix_cycle_count=fix_cycle_count,
         error_message=None,
         is_synthetic=is_synthetic,
+        # CR-00066: context window usage tracking
+        context_tokens_peak=context_tokens_peak,
+        context_tokens_last=context_tokens_last,
+        context_window_tokens=context_window_tokens,
+        # CR-00056 S11: has_prompt for prompt column rendering
+        has_prompt=False,
     )
 
 
