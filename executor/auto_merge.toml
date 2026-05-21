@@ -80,7 +80,12 @@ max_file_size_bytes = 256000
 # Hard cap on DaemonEvent.metadata JSON size to prevent JSONB row inflation.
 max_event_metadata_bytes = 262144
 # LLM call timeout per file.
-llm_call_timeout_seconds = 120
+# 2026-05-21: raised 120 → 600. Step-run baseline (last 7 days, 113 pi+MiniMax-M2.7
+# runs) shows 80.5 % success at average duration 524 s. The previous 120 s was
+# ~4× tighter than the model's typical response time and caused false timeouts
+# even when upstream MiniMax was healthy (e.g. I-00091 on 2026-05-18 timed out
+# at 121 s during a 100 % healthy probe hour). See AUTO_MERGE_RESOLUTION.md v1.7.2.
+llm_call_timeout_seconds = 600
 
 [health]
 # F-00085: daemon-scheduled health-probe knobs.
