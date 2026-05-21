@@ -444,3 +444,26 @@
   opacity: 0.45 !important;
   cursor: not-allowed !important;
 }
+
+/* ── Context % indicator (CR-00067) ── */
+.chat-assistant-context-pct {
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  vertical-align: middle;
+  padding-right: 0.25rem;
+}
+
+.chat-assistant-context-pct.is-warn {
+  color: #92400e;
+}
+
+.chat-assistant-context-pct.is-crit {
+  color: var(--destructive);
+}
+
+@media (prefers-color-scheme: dark) {
+  .chat-assistant-context-pct.is-warn {
+    color: #fcd34d;
+  }
+}

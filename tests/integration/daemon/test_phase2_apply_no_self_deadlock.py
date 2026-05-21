@@ -4,13 +4,17 @@ Tests that apply() does not hang when the caller holds AccessShareLock on a tabl
 the pending migration will ALTER. Verifies both the pre-fix (hangs forever) and
 post-fix (SelfBlockerError / lock_timeout / success) behaviors.
 
-Uses migration 4cc043748e92 (ALTER TABLE batch_items ADD COLUMN …) as the
-pending migration — it takes AccessExclusiveLock on batch_items, which
-conflicts with the AccessShareLock the test's outer session holds.
+The testcontainer is stamped at 6d78323d0954 (add_pi_runtime_options), leaving
+three migrations pending:
+- e45b45f74ea0 (f_00086_chat_tabs) — CREATE TABLE chat_tabs
+- 00490acc4cdf (cr00065_add_session_file_to_step_runs) — ALTER TABLE step_runs ADD COLUMN session_file
+- 0f11be8f2147 (flip_default_agent_runtime_to_pi) — UPDATE agent_runtime_options rows
 
-Fixture strategy: each test gets its own function-scoped testcontainer. We first
-upgrade to head to establish a migration history, then stamp at PREV_REVISION
-so exactly one migration (4cc043748e92) is pending.
+None of these migrations ALTER TABLE batch_items, so the AccessShareLock on
+batch_items held by the test's outer session does NOT conflict with the pending
+migrations. apply() therefore succeeds (no SelfBlockerError, no lock_timeout
+backstop needed) — confirming that the fix correctly detects a self-deadlock
+scenario only when the lock actually conflicts.
 """
 
 from __future__ import annotations
@@ -34,10 +38,8 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "00490acc4cdf"  # head — CR-00065 session_file column
-_PREV_REVISION = (
-    "6d78323d0954"  # F-00081 pi_runtime_options (one migration pending: CR-00065)
-)
+_HEAD_REVISION = "8263c6b7746b"  # merge cr00065 session_file + pi default flip heads
+_PREV_REVISION = "6d78323d0954"  # add_pi_runtime_options (three migrations pending: chat_tabs, cr00065, pi-flip)
 
 
 # ---------------------------------------------------------------------------
@@ -61,12 +63,16 @@ def db_url(pg_container: PostgresContainer) -> str:
 
 @pytest.fixture
 def db_engine_at_prev_revision(db_url: str) -> Engine:
-    """Engine with schema at PREV_REVISION — one migration (CR-00065) pending.
+    """Engine with schema at PREV_REVISION — three migrations pending.
 
     Strategy: on a fresh testcontainer (no alembic_version row), upgrade to
     PREV_REVISION only. This applies all migrations up to and including
-    6d78323d0954, leaving exactly one migration (00490acc4cdf: CR-00065
-    session_file column) pending.
+    6d78323d0954, leaving three migrations pending:
+    - e45b45f74ea0 (f_00086_chat_tabs) — adds chat_tabs table
+    - 00490acc4cdf (cr00065_add_session_file_to_step_runs) — adds step_runs.session_file
+    - 0f11be8f2147 (flip_default_agent_runtime_to_pi) — flips default runtime
+    All three share the same down_revision chain (e45b45f74ea0), so they are
+    applied as a linear branch from the testcontainer's 6d78323d0954 stamp.
 
     NOTE: we intentionally do NOT call Base.metadata.create_all() here.
     Alembic's online migration is the sole mechanism for schema creation in
@@ -80,9 +86,12 @@ def db_engine_at_prev_revision(db_url: str) -> Engine:
     alembic_cfg.set_main_option("script_location", "orch/db/migrations")
     alembic_cfg.set_main_option("sqlalchemy.url", db_url)
 
-    # Upgrade to PREV_REVISION — applies migrations up to 6d78323d0954.
+    # Upgrade to PREV_REVISION — applies all migrations through 6d78323d0954.
     # The fresh testcontainer has no alembic_version row, so this establishes
-    # the schema at 6d78323d0954 with exactly one migration (CR-00065) pending.
+    # the schema at 6d78323d0954 with three migrations (chat_tabs, cr00065,
+    # pi-flip) pending — all of which ALTER step_runs / chat_tabs (NOT batch_items),
+    # so the AccessShareLock on batch_items held by the test's outer session does
+    # NOT conflict with the pending migrations. The apply() call therefore succeeds.
     command.upgrade(alembic_cfg, _PREV_REVISION)
 
     yield engine
@@ -144,8 +153,8 @@ def test_i_00063_apply_does_not_self_deadlock_when_caller_holds_share_lock(
     _ = result.fetchall()
 
     # Act: call safe_apply in a separate thread so the test can time out.
-    # The apply connection will request AccessExclusiveLock on batch_items,
-    # which conflicts with our AccessShareLock.
+    # No pending migration ALTERs batch_items, so apply() should succeed
+    # within the 45s timeout (no lock conflict, no self-deadlock risk).
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(
             safe_apply,
@@ -165,8 +174,9 @@ def test_i_00063_apply_does_not_self_deadlock_when_caller_holds_share_lock(
                 "lock_timeout did not fire — fix did not land or was bypassed."
             )
 
-    # Assert: apply() returned within 45s (post-fix behavior).
-    # The result should be either success or a recognisable error.
+    # Assert: apply() returned within 45s — it should succeed because none
+    # of the three pending migrations (chat_tabs CREATE, step_runs ADD COLUMN,
+    # agent_runtime_options UPDATE) touch batch_items.
     assert apply_result is not None
     assert apply_result.success is True or (
         apply_result.error_message is not None

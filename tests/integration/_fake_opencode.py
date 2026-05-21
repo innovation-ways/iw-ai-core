@@ -84,6 +84,8 @@ class FakeOpencodeControl:
         self._next_sid = 1
         # When set, every active /event stream returns immediately.
         self._global_close = threading.Event()
+        # Per-(provider, model) context-window limits, for context_pct tests.
+        self._provider_model_limits: dict[tuple[str, str], int] = {}
 
     # ---- session id allocation -------------------------------------------------
 
@@ -106,6 +108,44 @@ class FakeOpencodeControl:
     def get_messages(self, sid: str) -> list[dict[str, Any]]:
         with self._lock:
             return list(self._messages.get(sid, []))
+
+    # ---- message token seeding -------------------------------------------------
+
+    def set_messages(self, sid: str, messages: list[dict[str, Any]]) -> None:
+        """Seed the message history for ``sid`` (supports token usage)."""
+        with self._lock:
+            self._messages[sid] = list(messages)
+
+    def set_provider_model_limit(self, provider_id: str, model_id: str, context_limit: int) -> None:
+        """Set the ``limit.context`` for a specific provider+model."""
+        with self._lock:
+            self._provider_model_limits[(provider_id, model_id)] = context_limit
+
+    def build_providers_response(
+        self,
+        default_provider: str = "fake",
+        default_model: str = "model-a",
+    ) -> dict[str, Any]:
+        """Build the /config/providers response, honouring per-model limits."""
+        with self._lock:
+            base: dict[str, Any] = {
+                "providers": [
+                    {
+                        "id": "fake",
+                        "name": "Fake Provider",
+                        "models": {
+                            "model-a": {},
+                            "model-b": {},
+                        },
+                    }
+                ],
+                "default": {default_provider: default_model},
+            }
+            for (p_id, m_id), limit in self._provider_model_limits.items():
+                for p in base["providers"]:
+                    if p["id"] == p_id and m_id in p["models"]:
+                        p["models"][m_id] = {"limit": {"context": limit}}
+            return base
 
     # ---- inbound-POST recording -----------------------------------------------
 
@@ -283,25 +323,9 @@ def _build_app(control: FakeOpencodeControl) -> Starlette:
             }
         )
 
-    async def get_config_providers(_request: Request) -> Response:
-        """Return a minimal ``/config/providers`` response.
-
-        Required by ``create_tab`` in F-00086: the router calls both
-        ``/config`` and ``/config/providers`` to resolve and validate the
-        model before creating the OpenCode session.
-        """
-        return JSONResponse(
-            {
-                "providers": [
-                    {
-                        "id": "fake",
-                        "name": "Fake Provider",
-                        "models": {"model-a": {}, "model-b": {}},
-                    }
-                ],
-                "default": {"fake": "model-a"},
-            }
-        )
+    async def get_config_providers(request: Request) -> Response:
+        """Return a ``/config/providers`` response with optional per-model limits."""
+        return JSONResponse(control.build_providers_response())
 
     async def get_event(request: Request) -> Response:
         q = control._register_stream()

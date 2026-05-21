@@ -71,8 +71,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from dashboard.dependencies import get_db
-from orch.chat import bootstrap_default_tab
+from orch.chat import bootstrap_default_tab, context_usage
 from orch.chat import tab_service as _tab_service
+from orch.chat.opencode import OpencodeClient
 from orch.db.models import AgentRuntimeOption, Project
 
 if TYPE_CHECKING:
@@ -92,9 +93,11 @@ router = APIRouter(prefix="/api/chat")
 
 _CONFIG_TTL = 30.0  # seconds
 _SKILLS_TTL = 30.0  # seconds
+_PROVIDERS_TTL = 30.0  # seconds — short TTL to keep model-limit data fresh
 
 _config_cache: dict[str, dict[str, Any]] = {}
 _skills_cache: dict[str, Any] = {}
+_providers_cache: dict[str, Any] = {}
 
 # Repo root used to scan `.opencode/{skills,commands}` and
 # `.claude/{skills,commands}`. From this file's location two parents up reaches
@@ -594,6 +597,40 @@ async def list_tabs(
     return {"tabs": [_tab_to_dict(t) for t in tabs]}
 
 
+# ---------------------------------------------------------------------------
+# Providers cache for model-limit lookups
+# ---------------------------------------------------------------------------
+
+
+async def _get_providers_cached(
+    client: OpencodeClient,
+) -> dict[str, Any]:
+    """Return the ``/config/providers`` payload, served from a short-TTL cache.
+
+    The providers payload is needed for model ``limit.context`` lookups every
+    time ``get_tab`` is polled (every 5 s by the frontend), so it is cached
+    for ``_PROVIDERS_TTL`` seconds to avoid an HTTP round-trip on every poll.
+    """
+    now = time.monotonic()
+    cache_slot: dict[str, Any] | None = _providers_cache.get("data")
+    cached_at = cache_slot.get("at", 0.0) if cache_slot is not None else 0.0
+
+    if cache_slot is not None and (now - cached_at) < _PROVIDERS_TTL:
+        return cache_slot.get("data") or {}
+
+    try:
+        providers_raw = await client.get_providers()
+    except Exception as exc:
+        # Return stale cache if available, else empty
+        if cache_slot is not None:
+            return cache_slot.get("data") or {}
+        logger.warning("_get_providers_cached: client.get_providers failed: %s", exc)
+        return {}
+
+    _providers_cache["data"] = {"data": providers_raw, "at": now}
+    return providers_raw
+
+
 async def _resolve_default_model_for_project(
     db: Session,
     *,
@@ -722,6 +759,18 @@ async def get_tab(
             messages = await client.get_messages(sid)
         except Exception as exc:
             logger.warning("get_tab: failed to fetch session/messages for sid=%s: %s", sid, exc)
+
+    # Inject context_pct into the session dict (additive, never an error)
+    if isinstance(session, dict):
+        with contextlib.suppress(Exception):
+            providers = await _get_providers_cached(client)
+            pid, mid = context_usage.resolve_model_from_tab(tab.model, messages) or (None, None)
+            if pid and mid:
+                context_window = context_usage.lookup_context_window(providers, pid, mid)
+                if context_window is not None:
+                    pct = context_usage.compute_context_pct(messages, context_window)
+                    if pct is not None:
+                        session["context_pct"] = pct
 
     return {"tab": _tab_to_dict(tab), "session": session, "messages": messages}
 

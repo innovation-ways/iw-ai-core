@@ -289,6 +289,7 @@ class TestReapIntegration:
 
         with (
             patch("orch.daemon.worktree_reaper.scan", return_value=[orphan_finding]),
+            patch("orch.daemon.worktree_reaper.scan_e2e_stacks", return_value=[]),
             patch("orch.daemon.worktree_compose.down"),
         ):
             from orch.daemon.worktree_reaper import reap

@@ -276,6 +276,9 @@
     // streaming flag.
     _updateSendAbortButtons();
     _updateClearButton();
+
+    // Show context % immediately on tab activation (no waiting for a message)
+    _refreshContextPct(tabId);
   }
 
   // ── SSE per-tab streaming ───────────────────────────────────────────────────
@@ -988,6 +991,8 @@
           _clearMessages();
           _hideTabModelBar();
           _renderEmptyNoTabs();
+          // No active tab — hide stale context %
+          _refreshContextPct(null);
         }
       })
       .catch(function (err) {
@@ -1914,23 +1919,46 @@
   }
 
   // ── Context % polling ───────────────────────────────────────────────────────
+  function _applyContextPct(pct) {
+    var el = document.getElementById('chat-assistant-context-pct');
+    if (!el) return;
+    el.classList.remove('is-warn', 'is-crit');
+    if (typeof pct === 'number' && isFinite(pct)) {
+      var rounded = Math.round(pct);
+      el.textContent = rounded + '%';
+      el.title = 'Context window used: ' + rounded + '%';
+      el.setAttribute('aria-label', 'Context window used: ' + rounded + '%');
+      el.classList.remove('hidden');
+      if (rounded >= 90) {
+        el.classList.add('is-crit');
+      } else if (rounded >= 70) {
+        el.classList.add('is-warn');
+      }
+    } else {
+      el.textContent = '';
+      el.classList.add('hidden');
+    }
+  }
+
+  function _refreshContextPct(tabId) {
+    if (!tabId) {
+      _applyContextPct(NaN); // hide + clear
+      return;
+    }
+    fetch('/api/chat/tabs/' + encodeURIComponent(tabId))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var session = data && data.session;
+        _applyContextPct(session && session.context_pct);
+      })
+      .catch(function () { /* ignore */ });
+  }
+
   function _startContextPoll() {
     _stopContextPoll();
     var tabId = _activeTabId;
     _contextPollTimer = setInterval(function () {
-      if (!tabId) return;
-      fetch('/api/chat/tabs/' + encodeURIComponent(tabId))
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          var session = data && data.session;
-          var pct = session && session.context_pct;
-          var el = document.getElementById('chat-assistant-context-pct');
-          if (el && typeof pct === 'number') {
-            el.textContent = pct + '%';
-            el.classList.remove('hidden');
-          }
-        })
-        .catch(function () { /* ignore */ });
+      _refreshContextPct(tabId);
     }, 5000);
   }
 

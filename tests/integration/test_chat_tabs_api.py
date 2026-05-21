@@ -96,10 +96,11 @@ def _seed_project(db: Session, project_id: str = "test-proj") -> Project:
 
 @pytest.fixture(autouse=True)
 def _clear_chat_caches(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Drop any cached config / skills between tests so each test starts fresh."""
+    """Drop any cached config / skills / providers between tests so each test starts fresh."""
     monkeypatch.setattr(chat_mod, "_CONFIG_TTL", 0)
     chat_mod._config_cache.clear()
     chat_mod._skills_cache.clear()
+    chat_mod._providers_cache.clear()
 
 
 @pytest.fixture
@@ -504,6 +505,172 @@ def test_recent_closed_lists_closed_tabs_by_closed_at_desc(
     returned_titles = [t["title"] for t in recent.json()["tabs"]]
     assert returned_titles == ["T1", "T2", "T0"], (
         f"unexpected recent-closed order: {returned_titles}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Context percentage (AC1 / AC2)
+# ---------------------------------------------------------------------------
+
+
+def test_get_tab_injects_context_pct_when_token_data_present(
+    chat_test_client: TestClient,
+    db_session: Session,
+    test_project: Project,
+) -> None:
+    """When an assistant message carries token usage and the model limit is known,
+    ``GET /api/chat/tabs/{id}`` returns ``session.context_pct`` as a numeric value."""
+    # Create a tab so we have a valid tab_id + session_id.
+    create_resp = chat_test_client.post(
+        "/api/chat/tabs",
+        json={
+            "project_id": test_project.id,
+            "model": "prov-a/model-a",
+            "title": "Context Test",
+        },
+    )
+    assert create_resp.status_code == 201
+    tab = create_resp.json()["tab"]
+    tab_id = tab["id"]
+
+    # Patch the client mock so get_messages returns a message with token usage.
+    actual_client = getattr(chat_test_client.app.state, "opencode_client", None)
+    assert actual_client is not None
+
+    # Override get_messages to return an assistant message with tokens.
+    assistant_msg = {
+        "role": "assistant",
+        "content": "Here is a detailed response.",
+        "tokens": {
+            "input": 5000,
+            "output": 8000,
+            "reasoning": 1000,
+            "cache": {"read": 500, "write": 200},
+        },
+    }
+    # Build a messages list with a user message first, then the assistant.
+    messages_with_tokens = [
+        {"role": "user", "content": "Hello"},
+        assistant_msg,
+    ]
+    actual_client.get_messages = AsyncMock(return_value=messages_with_tokens)
+
+    # Override get_providers to include a context limit for the model.
+    actual_client.get_providers = AsyncMock(
+        return_value={
+            "providers": [
+                {
+                    "id": "prov-a",
+                    "models": {
+                        "model-a": {"limit": {"context": 100000}},
+                        "model-b": {},
+                    },
+                }
+            ],
+            "default": {"prov-a": "model-a"},
+        }
+    )
+
+    resp = chat_test_client.get(f"/api/chat/tabs/{tab_id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "session" in body
+    # 5000+8000+1000+500+200 = 14700; 14700/100000*100 = 14.7
+    assert "context_pct" in body["session"], f"context_pct missing from session; body={body}"
+    pct = body["session"]["context_pct"]
+    assert isinstance(pct, float), f"Expected float, got {type(pct).__name__}: {pct}"
+    assert pct == pytest.approx(14.7), f"Expected ~14.7, got {pct}"
+
+
+def test_get_tab_omits_context_pct_when_no_token_data(
+    chat_test_client: TestClient,
+    db_session: Session,
+    test_project: Project,
+) -> None:
+    """When no assistant message carries token usage, ``context_pct`` is absent."""
+    create_resp = chat_test_client.post(
+        "/api/chat/tabs",
+        json={
+            "project_id": test_project.id,
+            "model": "prov-a/model-a",
+            "title": "No Tokens",
+        },
+    )
+    assert create_resp.status_code == 201
+    tab = create_resp.json()["tab"]
+    tab_id = tab["id"]
+
+    # Override get_messages to return messages without token usage.
+    actual_client = getattr(chat_test_client.app.state, "opencode_client", None)
+    assert actual_client is not None
+    actual_client.get_messages = AsyncMock(
+        return_value=[
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
+    )
+
+    resp = chat_test_client.get(f"/api/chat/tabs/{tab_id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "session" in body
+    assert "context_pct" not in body["session"], (
+        f"context_pct should be absent when no token data; "
+        f"got {body['session'].get('context_pct')!r}"
+    )
+
+
+def test_get_tab_omits_context_pct_when_context_window_unknown(
+    chat_test_client: TestClient,
+    db_session: Session,
+    test_project: Project,
+) -> None:
+    """When the model limit is not in the providers payload, ``context_pct`` is absent."""
+    create_resp = chat_test_client.post(
+        "/api/chat/tabs",
+        json={
+            "project_id": test_project.id,
+            "model": "prov-a/model-a",
+            "title": "No Limit",
+        },
+    )
+    assert create_resp.status_code == 201
+    tab = create_resp.json()["tab"]
+    tab_id = tab["id"]
+
+    # Override get_messages to return a message with tokens.
+    actual_client = getattr(chat_test_client.app.state, "opencode_client", None)
+    assert actual_client is not None
+    actual_client.get_messages = AsyncMock(
+        return_value=[
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi", "tokens": {"input": 1000, "output": 2000}},
+        ]
+    )
+
+    # Override get_providers to NOT include a limit for model-a.
+    actual_client.get_providers = AsyncMock(
+        return_value={
+            "providers": [
+                {
+                    "id": "prov-a",
+                    "models": {
+                        "model-a": {},  # no limit.context
+                        "model-b": {"limit": {"context": 200000}},
+                    },
+                }
+            ],
+            "default": {"prov-a": "model-a"},
+        }
+    )
+
+    resp = chat_test_client.get(f"/api/chat/tabs/{tab_id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "session" in body
+    assert "context_pct" not in body["session"], (
+        f"context_pct should be absent when limit unknown; "
+        f"got {body['session'].get('context_pct')!r}"
     )
 
 
