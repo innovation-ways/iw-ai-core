@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 import subprocess
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from sqlalchemy import select
 from dashboard.dependencies import get_db
 from dashboard.utils.markdown import render_markdown
 from orch.daemon.execution_report import assemble_execution_report
+from orch.daemon.session_reader import read_session_content
 from orch.db.models import (
     AgentRuntimeOption,
     Batch,
@@ -38,23 +40,11 @@ from orch.db.models import (
     WorkItemEvidence,
 )
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates
     from sqlalchemy.orm import Session
-
-
-# ---------------------------------------------------------------------------
-# TypedDict helpers (used in htmx fragment routes)
-# ---------------------------------------------------------------------------
-
-
-class SessionLogSegment(TypedDict, total=False):
-    """A rendered log segment produced by session_reader.read_session_content."""
-
-    type: str  # "assistant" | "tool_call" | "tool_result" | "thinking"
-    #             | "compaction" | "error" | "log"
-    text: str
-    collapsible: bool
 
 
 router = APIRouter(prefix="/project/{project_id}")
@@ -116,6 +106,21 @@ class RunLog:
     is_running: bool
     log_content: str | None
     log_modified: str | None = None
+
+
+class SessionLogSegment(TypedDict):
+    """A single rendered segment from the session log reader.
+
+    Fields:
+        type: one of assistant | tool_call | tool_result | thinking |
+              error | compaction | log
+        text: rendered content
+        collapsible: True for thinking blocks and long tool results
+    """
+
+    type: str
+    text: str
+    collapsible: bool
 
 
 @dataclass
@@ -2121,73 +2126,76 @@ def item_session_log(
     run_number: int | None = None,
     db: Session = Depends(get_db),
 ) -> Any:
-    """htmx fragment: rendered session log for a specific step run (CR-00065).
+    """htmx fragment: rendered session log for a specific step run.
 
     Query params:
-        run_number: int | None — if omitted, uses the highest run_number for the step.
+        run_number: int | None — if omitted, use the most recent run.
 
-    Error handling:
-        404 if project, item, or step not found.
-        200 with error segment if read_session_content fails (never 500).
+    Returns 200 with the rendered fragment, or 404 if the step does not exist.
+    If read_session_content fails, returns 200 with a single error segment.
     """
-    from orch.daemon.session_reader import read_session_content
-
-    # Validate project + item exist
+    # 404 if project or item do not exist
     _get_project_or_404(project_id, db)
     _get_item_or_404(project_id, item_id, db)
 
-    # Resolve the WorkflowStep DB id from the string step_id
-    ws = db.scalar(
+    # 404 if step does not exist
+    workflow_step = db.scalar(
         select(WorkflowStep).where(
             WorkflowStep.project_id == project_id,
             WorkflowStep.work_item_id == item_id,
             WorkflowStep.step_id == step_id,
         )
     )
-    if ws is None:
+    if workflow_step is None:
         raise HTTPException(status_code=404, detail=f"Step {step_id!r} not found")
 
-    # Query StepRun rows for this step
-    run: StepRun | None = None
+    # Resolve the requested StepRun
+    run: StepRun | None
     if run_number is not None:
         run = db.scalar(
             select(StepRun).where(
-                StepRun.step_id == ws.id,
+                StepRun.step_id == workflow_step.id,
                 StepRun.run_number == run_number,
             )
         )
     else:
-        # Default to the latest run (highest run_number)
-        run = db.scalars(
+        # Most recent run
+        run = db.scalar(
             select(StepRun)
-            .where(StepRun.step_id == ws.id)
+            .where(StepRun.step_id == workflow_step.id)
             .order_by(StepRun.run_number.desc())
             .limit(1)
-        ).first()
+        )
 
-    segments: list[SessionLogSegment] = []
-    cli_tool: str | None = None
-    is_live: bool = False
-    error_message: str | None = None
+    # 200 with "no content" message when there are no runs yet
+    if run is None:
+        templates: Jinja2Templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request,
+            "fragments/session_log_popup_content.html",
+            {
+                "segments": [],
+                "is_live": False,
+                "step_id": step_id,
+                "run_number": 0,
+                "cli_tool": None,
+                "item_id": item_id,
+                "project_id": project_id,
+                "error_message": None,
+            },
+        )
 
-    if run is not None:
-        cli_tool = run.cli_tool
-        is_live = run.status in (RunStatus.running, RunStatus.stalled)
-        error_message = run.error_message
-        try:
-            raw_segments = read_session_content(run)
-            segments = raw_segments  # type: ignore[assignment]
-            # Never 500 — return a single error segment so the popup still renders
-        except Exception:
-            segments = [
-                SessionLogSegment(
-                    type="error",
-                    text="Failed to read session log.",
-                    collapsible=False,
-                )
-            ]
+    # Determine live status
+    is_live = run.status in (RunStatus.running, RunStatus.stalled)
 
-    templates: Jinja2Templates = request.app.state.templates
+    # Read rendered segments
+    try:
+        segments: list[SessionLogSegment] = read_session_content(run)
+    except Exception as exc:
+        logger.exception("read_session_content failed for step_run %d: %s", run.id, exc)
+        segments = [{"type": "error", "text": str(exc), "collapsible": False}]
+
+    templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "fragments/session_log_popup_content.html",
@@ -2195,10 +2203,10 @@ def item_session_log(
             "segments": segments,
             "is_live": is_live,
             "step_id": step_id,
-            "run_number": run.run_number if run is not None else 1,
-            "cli_tool": cli_tool,
+            "run_number": run.run_number,
+            "cli_tool": run.cli_tool,
             "item_id": item_id,
             "project_id": project_id,
-            "error_message": error_message,
+            "error_message": run.error_message,
         },
     )
