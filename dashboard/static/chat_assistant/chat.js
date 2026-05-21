@@ -49,10 +49,7 @@
   var _skills = [];
   var _pendingPermissions = {};
 
-  // Available models cache: { models: [], default_model: '' }
-  // These hold models for the *active tab's* runtime (used by per-tab model dropdown).
-  var _availableModels = [];
-  var _defaultModel = '';
+  // Modal-local models
 
   // Modal-local models: populated from /api/chat/config?runtime=<selected> each
   // time the user opens the modal or changes the runtime dropdown.
@@ -61,6 +58,9 @@
   // Tracks which runtime the modal dropdown last fetched models for, so a second
   // open without a runtime change skips the fetch.
   var _modalRuntime = 'opencode';
+
+  // Default model for new tabs (kept so _instantCreateTab() can pick the right default).
+  var _defaultModel = '';
 
   // Soft-cap banner: once shown (per page session), re-shows on each POST that returns the header
   // (but can be dismissed once per show). The flag tracks whether it's currently visible.
@@ -246,9 +246,6 @@
     // Clear messages and reload for new tab
     _clearMessages();
     _resetAssistantState();
-
-    // Update the per-tab model bar
-    _updateTabModelBar();
 
     // Ensure composer is visible (may have been hidden in no-tabs state)
     _showComposer();
@@ -943,8 +940,6 @@
         var idx = _tabs.findIndex(function (t) { return t.id === tabId; });
         if (idx !== -1) _tabs[idx] = updated;
         _updateTabButtonLabel(tabId, updated.title, undefined);
-        // Update model bar if active
-        if (tabId === _activeTabId) _updateTabModelBar();
       })
       .catch(function (err) {
         _appendSystemMessage('Rename failed: ' + err.message, 'error');
@@ -989,7 +984,6 @@
         } else if (!_tabs.length) {
           _activeTabId = null;
           _clearMessages();
-          _hideTabModelBar();
           _renderEmptyNoTabs();
           // No active tab — hide stale context %
           _refreshContextPct(null);
@@ -1215,10 +1209,6 @@
           var idx = _tabs.findIndex(function (t) { return t.id === tabId; });
           if (idx !== -1) _tabs[idx] = updated;
           _updateTabButtonLabel(tabId, updated.title, updated.model);
-          if (tabId === _activeTabId) {
-            _updateTabModelBar();
-            if (patchBody.model) _refreshModels();
-          }
         }
         _closeSettingsPanel();
       })
@@ -1465,82 +1455,7 @@
       });
   }
 
-  // ── Per-tab model bar ───────────────────────────────────────────────────────
-  function _updateTabModelBar() {
-    var bar = document.getElementById('chat-assistant-tab-model-bar');
-    var label = document.getElementById('chat-assistant-tab-model-label');
-    if (!bar) return;
-
-    var tab = _activeTabId ? _tabs.find(function (t) { return t.id === _activeTabId; }) : null;
-    if (!tab) {
-      bar.style.display = 'none';
-      return;
-    }
-    bar.style.display = '';
-    bar.classList.remove('hidden');
-    if (label) label.textContent = tab.model || '—';
-    _populateTabModelDropdown();
-  }
-
-  function _hideTabModelBar() {
-    var bar = document.getElementById('chat-assistant-tab-model-bar');
-    if (bar) bar.style.display = 'none';
-  }
-
-  function _populateTabModelDropdown() {
-    var dd = document.getElementById('chat-assistant-tab-model-dropdown');
-    if (!dd) return;
-    dd.innerHTML = '';
-    // The dropdown is scoped to the active tab's runtime. Pi tabs show only Pi
-    // models; OpenCode tabs show only OpenCode models. Switching runtime requires
-    // creating a new tab.
-    dd.title = 'Switching runtime requires creating a new tab.';
-    _availableModels.forEach(function (m) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'block w-full text-left px-3 py-1.5 text-xs hover:bg-muted text-foreground';
-      btn.setAttribute('role', 'option');
-      btn.textContent = m;
-      btn.addEventListener('click', function () {
-        _selectTabModel(m);
-      });
-      dd.appendChild(btn);
-    });
-  }
-
-  function _selectTabModel(model) {
-    // Hide dropdown
-    var dd = document.getElementById('chat-assistant-tab-model-dropdown');
-    if (dd) dd.classList.add('hidden');
-
-    if (!_activeTabId) return;
-    var tabId = _activeTabId;
-
-    fetch('/api/chat/tabs/' + encodeURIComponent(tabId), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: model })
-    })
-      .then(function (r) {
-        if (!r.ok) throw new Error('update model: ' + r.status);
-        return r.json();
-      })
-      .then(function (data) {
-        var updated = data && data.tab;
-        if (!updated) return;
-        var idx = _tabs.findIndex(function (t) { return t.id === tabId; });
-        if (idx !== -1) _tabs[idx] = updated;
-        // Update label and tab badge
-        var label = document.getElementById('chat-assistant-tab-model-label');
-        if (label) label.textContent = updated.model || '—';
-        _updateTabButtonLabel(tabId, undefined, updated.model);
-      })
-      .catch(function (err) {
-        _appendSystemMessage('Model change failed: ' + err.message, 'error');
-      });
-  }
-
-  // ── Message rendering ───────────────────────────────────────────────────────
+// ── Message rendering ───────────────────────────────────────────────────────
   function _resetAssistantState() {
     if (_activeTabId) {
       _tabCurrentAssistantEl[_activeTabId] = null;
@@ -1578,7 +1493,6 @@
   function _renderEmptyNoTabs() {
     var wrap = document.getElementById('chat-assistant-tab-strip-wrap');
     if (wrap) wrap.style.display = 'none';
-    _hideTabModelBar();
 
     var noTabs = document.getElementById('chat-assistant-no-tabs-state');
     var empty = document.getElementById('chat-assistant-empty-state');
@@ -1992,10 +1906,8 @@
         if (!data) return;
         _projectDirectoryProjectId = projectId;
         _projectDirectory = typeof data.project_directory === 'string' ? data.project_directory : '';
-        _availableModels = data.models || [];
         _defaultModel = data.default_model || '';
-        // Refresh the per-tab model dropdown if it's visible
-        _populateTabModelDropdown();
+        // _defaultModel is kept current so _instantCreateTab() picks the right default.
       })
       .catch(function () { /* silently ignore */ });
   }
@@ -2006,7 +1918,6 @@
       if (!_isOpen()) return;
       var projectId = _currentProjectId();
       if (projectId !== _lastProjectId) {
-        _availableModels = [];
         _defaultModel = '';
         _projectDirectory = '';
         _projectDirectoryProjectId = null;
@@ -2308,23 +2219,6 @@
       });
     }
 
-    // Per-tab model badge
-    var modelBadge = document.getElementById('chat-assistant-tab-model-badge');
-    if (modelBadge) {
-      modelBadge.addEventListener('click', function (e) {
-        e.stopPropagation();
-        var dd = document.getElementById('chat-assistant-tab-model-dropdown');
-        if (dd) {
-          if (dd.classList.contains('hidden')) {
-            _populateTabModelDropdown();
-            dd.classList.remove('hidden');
-          } else {
-            dd.classList.add('hidden');
-          }
-        }
-      });
-    }
-
     // Context menu actions
     var ctxMenu = document.getElementById('chat-assistant-tab-context-menu');
     if (ctxMenu) {
@@ -2357,14 +2251,6 @@
       if (ctxM && !ctxM.classList.contains('hidden')) {
         if (!ctxM.contains(e.target)) {
           _hideTabContextMenu();
-        }
-      }
-      // Model dropdown
-      var modelDd = document.getElementById('chat-assistant-tab-model-dropdown');
-      var modelBadgeEl = document.getElementById('chat-assistant-tab-model-badge');
-      if (modelDd && !modelDd.classList.contains('hidden')) {
-        if (!modelDd.contains(e.target) && !(modelBadgeEl && modelBadgeEl.contains(e.target))) {
-          modelDd.classList.add('hidden');
         }
       }
       // Closed tabs dropdown
