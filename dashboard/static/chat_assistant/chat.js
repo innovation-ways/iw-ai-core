@@ -1782,7 +1782,6 @@
   function _clearChat() {
     if (!_activeTabId) return;
     if (!_tabHasHistory[_activeTabId]) return;
-    if (!window.confirm('Clear chat history? This cannot be undone.')) return;
 
     var tabId = _activeTabId;
     fetch('/api/chat/tabs/' + encodeURIComponent(tabId) + '/clear', { method: 'POST' })

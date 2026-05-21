@@ -7,7 +7,7 @@ TDD pattern (RED first):
   3. test_clear_chat_function_exists          — chat.js has function _clearChat
   4. test_tab_has_history_tracking            — chat.js has _tabHasHistory
   5. test_update_clear_button_function        — chat.js has function _updateClearButton
-  6. test_clear_calls_confirm                 — _clearChat body contains window.confirm
+  6. test_clear_has_no_confirm                — _clearChat body does NOT contain window.confirm
   7. test_clear_calls_api                     — _clearChat body contains /clear
   8. test_clear_removes_eid                   — _clearChat body contains removeItem
 """
@@ -59,10 +59,28 @@ class TestClearChatJsFunctions:
 
 
 class TestClearChatBehavior:
-    def test_clear_calls_confirm(self):
+    def test_clear_has_no_confirm(self):
         js = CHAT_JS.read_text(encoding="utf-8")
-        assert "window.confirm" in js, (
-            "_clearChat must show a confirmation dialog via window.confirm before clearing history"
+        # Extract the _clearChat function body by finding its start and end.
+        # Function starts at "function _clearChat() {" and ends at its closing "}".
+        start = js.find("function _clearChat() {")
+        assert start != -1, "_clearChat function not found in chat.js"
+        # Find the matching closing brace by counting brace depth.
+        depth = 0
+        body_start = js.find("{", start)
+        i = body_start
+        while i < len(js):
+            c = js[i]
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        body = js[start : i + 1]
+        assert "window.confirm" not in body, (
+            "_clearChat must not show a confirmation dialog via window.confirm"
         )
 
     def test_clear_calls_api(self):
