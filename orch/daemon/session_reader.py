@@ -123,7 +123,9 @@ def _process_pi_object(obj: dict[str, Any], segments: list[dict[str, Any]]) -> N
         args = obj.get("args", {})
         args_str = json.dumps(args, ensure_ascii=False)
         summary = args_str[:_MAX_TOOL_CALL_ARGS]
-        segments.append({"type": _SEG_TOOL_CALL, "text": f"{name}: {summary}", "collapsible": False})
+        segments.append(
+            {"type": _SEG_TOOL_CALL, "text": f"{name}: {summary}", "collapsible": False}
+        )
         return
 
     if obj_type == "tool_result":
@@ -290,9 +292,10 @@ def read_session_content(run: StepRun, max_chars: int = 50_000) -> list[dict[str
         return _render_pi_jsonl(session_file)
 
     # CR-00065: pi runs without a session_file fall back to log_content (JSONL in DB)
-    if cli_tool == "pi" and not session_file and getattr(run, "log_content", None):
+    log_content: str | None = getattr(run, "log_content", None)
+    if cli_tool == "pi" and not session_file and log_content:
         segments: list[dict[str, Any]] = []
-        for line in run.log_content.splitlines():
+        for line in log_content.splitlines():
             obj = _parse_pi_line(line.strip())
             if obj is not None:
                 _process_pi_object(obj, segments)
