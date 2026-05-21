@@ -44,7 +44,7 @@ The user explicitly chose **auto-refresh on approve** + **draft-only**. There is
 
 ### 1. `_compute_manifest_digest(steps: list[dict]) -> str`
 
-Add a pure helper near `parse_manifest_steps` in `orch/cli/item_commands.py` (or a sibling module if that keeps `item_commands.py` thinner — your call, just match the local style). Contract:
+Add a pure helper near `parse_manifest_steps` in `orch/cli/item_commands.py`. Keep it **in `item_commands.py`** — the workflow-manifest `scope.allowed_paths` admits only `orch/cli/item_commands.py`, not a new `orch/cli/` module, and the design's *Code Changes* section lists no new source file. Do NOT create a sibling module. Contract:
 
 - Input: the `manifest_steps` list (each element is a dict).
 - Output: a hex string (sha256 hex digest) — use Python stdlib `hashlib.sha256`.
@@ -65,7 +65,7 @@ Keep this **outside** the idempotency branch — the early "Already registered" 
 
 In the `approve` command, BEFORE flipping `status → approved` and BEFORE calling `ensure_active_files_committed` / `ingest_phase_from_disk`:
 
-1. Resolve the on-disk manifest path. Prefer `WorkItem.config["scope_extraction"]["source"]` + `WorkItem.design_doc_path` to derive the design dir, falling back to the canonical `ai-dev/active/<ID>/workflow-manifest.json` relative to `repo_root`. If the manifest file does **not** exist on disk, fail with a clear `output_error` message naming the missing path (this is the AC-tested missing-manifest branch — never proceed with a "ghost" approve).
+1. Resolve the on-disk manifest path. Derive it from the design directory: when `WorkItem.design_doc_path` is set, use `Path(design_doc_path).parent / "workflow-manifest.json"`; otherwise fall back to the canonical `ai-dev/active/<ID>/workflow-manifest.json` resolved relative to `repo_root`. Do **not** use `WorkItem.config["scope_extraction"]["source"]` — that field is a marker string (`declared` / `regex_fallback` / `none`), not a path. If the manifest file does **not** exist on disk, fail with a clear `output_error` message naming the missing path (this is the AC-tested missing-manifest branch — never proceed with a "ghost" approve).
 2. Re-parse via `parse_manifest_steps(...)` (the same path register uses — keeps canonicalization identical).
 3. Recompute the digest via `_compute_manifest_digest(...)`.
 4. Compare against `item.manifest_digest`. Three branches:

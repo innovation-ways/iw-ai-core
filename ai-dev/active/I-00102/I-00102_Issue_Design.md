@@ -37,11 +37,14 @@ Read the project's `CLAUDE.md` (architecture, conventions, hard rules). Register
 
 ## Root Cause Analysis
 
-`orch/cli/item_commands.py:343` (the `existing` short-circuit inside the `register` command) returns "Already registered" without comparing the on-disk manifest against the registered rows:
+`orch/cli/item_commands.py:338-355` (the `existing` short-circuit inside the `register` command) returns "Already registered" without comparing the on-disk manifest against the registered rows:
 
 ```python
-if existing:
-    click.echo(f"Already registered {item_id}: {existing.title} [{existing.status.value}]")
+if existing is not None:
+    # ... emits "Already registered" (plain-text or --json) ...
+    click.echo(
+        f"Already registered {item_id}: {existing.title} [{existing.status.value}]"
+    )
     return
 ```
 
@@ -245,6 +248,7 @@ And on the first `approve` of any pre-existing draft item, approve sees NULL →
   - `test_approve_no_drift_does_not_emit_refresh_event` — happy path; if disk == DB, no `manifest_refreshed` event.
   - `test_register_stores_initial_digest` — after register, `WorkItem.manifest_digest` is non-NULL and equal to the digest of the manifest on disk.
   - `test_approve_refuses_when_manifest_missing_after_register` — disk file was deleted; approve fails with a clear error (this is a separate failure mode worth pinning; the digest comparison treats it as an error, not as "drift to nothing").
+  - `test_approve_on_non_draft_item_does_not_refresh` — **AC3 coverage**: register, approve once (status → `approved`), then drift the on-disk manifest and invoke `approve` again. The existing status guard rejects the second approve (exit non-zero, error names the non-draft status); assert no `manifest_refreshed` event is emitted for the item and the `workflow_steps` rows are untouched — the drift/refresh path never runs ahead of the status guard.
 
 ## Notes
 

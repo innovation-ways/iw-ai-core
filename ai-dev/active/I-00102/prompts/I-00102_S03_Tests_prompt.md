@@ -97,6 +97,11 @@ Required tests:
 - **`test_approve_with_missing_manifest_fails_loudly`** — error path:
   1. Register. Delete the on-disk `workflow-manifest.json`. Approve. Assert: exit non-zero, error message names the missing path, no `workflow_steps` rows were touched, no `manifest_refreshed` event recorded, status remains `draft`.
 
+- **`test_approve_on_non_draft_item_does_not_refresh`** — AC3 (refusal when not in draft):
+  1. Register with manifest v1, then approve once cleanly (status → `approved`, no drift, no event).
+  2. Edit the on-disk manifest to v2 so the digest genuinely drifts.
+  3. Invoke `approve` a second time. Assert: exit non-zero and the error message names the non-draft status (the existing `validate_approve_transition` guard fires first); query `daemon_events` — **no** `manifest_refreshed` event exists for the item; query `workflow_steps` — the rows still match v1 exactly (`step_id` list and `agent_label` list unchanged); `item.manifest_digest` is unchanged. This pins that the drift/refresh path never runs ahead of the status guard.
+
 - **`test_approve_drift_rebuild_is_atomic_on_failure`** — transaction safety. Monkeypatch `parse_manifest_steps` to raise after the existing rows would have been deleted, simulating a mid-rebuild crash. Approve. Assert: the transaction rolled back — original `workflow_steps` rows are intact (count and agent_labels unchanged), `item.manifest_digest` unchanged, status unchanged, no `manifest_refreshed` event recorded.
 
 ### 3. Test isolation & live-DB rules
