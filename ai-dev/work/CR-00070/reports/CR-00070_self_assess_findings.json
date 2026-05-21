@@ -1,6 +1,0 @@
-{
-  "item_id": "CR-00070",
-  "bottom_line": "CR-00070 executed with zero thrash and zero fix cycles across all 9 steps — no findings to act on.",
-  "coverage_notes": "S01-S06 and S08 run logs fully read (files <2 KB each). S07 log (393 KB) — sampled grep FAILED/ERROR at top; no failures; tail for context. S08_browser_env_up sampled via grep Error (no matches). S09 log is current step — not written at analysis time. DB was available and step telemetry confirmed clean execution.",
-  "findings": []
-}

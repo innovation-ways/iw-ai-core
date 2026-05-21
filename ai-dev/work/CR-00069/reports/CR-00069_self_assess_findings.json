@@ -1,6 +1,0 @@
-{
-  "item_id": "CR-00069",
-  "bottom_line": "No actionable patterns detected. Workflow ran cleanly.",
-  "coverage_notes": "Read logs S01-S05 and S07 in full. S06 (388KB) — sampled tail + grep for FAILED/ERROR; coverage report line shows 2828 passed, 32 skipped, 4 xfailed, 2 xpassed. All run logs are small (<10KB) except S06. DB telemetry: full (DB:UP).",
-  "findings": []
-}

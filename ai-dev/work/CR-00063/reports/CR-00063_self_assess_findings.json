@@ -1,6 +1,0 @@
-{
-  "item_id": "CR-00063",
-  "bottom_line": "Execution ran cleanly across all 8 steps — no process improvements warranted.",
-  "coverage_notes": "All step logs read in full (4–196 lines each). DB telemetry confirmed via `iw item-status CR-00063 --json`. DB identity verified via `iw db-identity check`. Step reports consulted as secondary evidence only after raw logs.",
-  "findings": []
-}

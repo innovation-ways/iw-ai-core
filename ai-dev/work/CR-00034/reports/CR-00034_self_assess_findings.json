@@ -1,6 +1,0 @@
-{
-  "item_id": "CR-00034",
-  "bottom_line": "Trivially small CR ran cleanly — zero retries, zero fix cycles, all 8 QV gates passed. Workflow is well-calibrated for micro-CR cases.",
-  "coverage_notes": "No raw run logs present in worktree; all evidence from step self-reports (S01-S08). DB was available and healthy throughout.",
-  "findings": []
-}
