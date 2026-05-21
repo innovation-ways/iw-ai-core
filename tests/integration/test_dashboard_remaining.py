@@ -421,6 +421,7 @@ def test_history_no_clear_link_without_filters(client: TestClient, db_session: A
     # Note: the AI Assistant panel's "Clear chat" button is in the layout shell and is
     # unrelated to history filtering — check the filter form section instead.
     import re
+
     # Extract the filter form section (the first <form method="get"> block)
     form_match = re.search(r'<form method="get"[^>]*>(.*?)</form>', resp.text, re.DOTALL)
     assert form_match, "No filter form found"
