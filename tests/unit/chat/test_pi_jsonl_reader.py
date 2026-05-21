@@ -108,41 +108,37 @@ def test_no_builtin_line_iterators_present() -> None:
     source = src_path.read_text(encoding="utf-8")
     tree = ast.parse(source)
 
-    # Collect all Call nodes to look for .readline() calls.
-    # Also look for "for ... in <stream>" iteration patterns on StreamReader.
+    violations: list[str] = []
     for node in ast.walk(tree):
-        # Check for attribute calls like stream.readline()
+        # Attribute calls like stream.readline()
         if isinstance(node, ast.Call):
             func = node.func
             if isinstance(func, ast.Attribute) and func.attr == "readline":
-                raise AssertionError(
-                    f"Forbidden .readline() call found at line {node.lineno} "
-                    "in pi_jsonl_reader.py — must use LF-only byte-level scanning"
+                violations.append(
+                    f"line {node.lineno}: forbidden .readline() call — "
+                    "must use LF-only byte-level scanning"
                 )
-        # Check for iter(stream.readline, ...) or iter(proc.stdout.readline, ...)
-        if isinstance(node, ast.Call):
-            func = node.func
+            # A readline sentinel passed to the iter builtin is forbidden too.
             if isinstance(func, ast.Name) and func.id == "iter" and node.args:
                 first_arg = node.args[0]
                 if isinstance(first_arg, ast.Attribute) and first_arg.attr == "readline":
-                    raise AssertionError(
-                        f"Forbidden iter(x.readline, ...) at line {node.lineno} "
-                        "in pi_jsonl_reader.py"
-                    )
+                    violations.append(f"line {node.lineno}: forbidden iter(x.readline, ...)")
+        # Text-layer stream iteration (a for-loop over the stream variable)
+        # calls __iter__ on an io.IOBase — also forbidden.
+        if (
+            isinstance(node, ast.For)
+            and isinstance(node.iter, ast.Name)
+            and node.iter.id == "stream"
+        ):
+            violations.append(
+                f"line {node.lineno}: forbidden 'for ... in stream' — "
+                "must use LF-only byte-level scanning"
+            )
 
-    # The module must not use the text-layer stream iteration (for line in stream)
-    # which would call __iter__ on an io.IOBase. We verify by checking the source
-    # does not iterate over a variable named "stream" in a for-loop.
-    for node in ast.walk(tree):
-        if isinstance(node, ast.For):
-            target_name = None
-            if isinstance(node.iter, ast.Name):
-                target_name = node.iter.id
-            if target_name == "stream":
-                raise AssertionError(
-                    f"Forbidden 'for ... in stream' at line {node.lineno} "
-                    "in pi_jsonl_reader.py — must use LF-only byte-level scanning"
-                )
+    assert not violations, (
+        "pi_jsonl_reader.py must not use Python built-in line iteration:\n  "
+        + "\n  ".join(violations)
+    )
 
 
 # ---------------------------------------------------------------------------

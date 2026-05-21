@@ -66,7 +66,7 @@ def test_load_tab_history_renders_tool_calls() -> None:
     js = CHAT_JS.read_text(encoding="utf-8")
     body = _extract_function_body(js, "_loadTabHistory")
     assert body is not None, "_loadTabHistory function not found in chat.js"
-    assert "_appendToolCall" in body, (
+    assert body.count("_appendToolCall") >= 1, (
         "_loadTabHistory must call _appendToolCall for tool-use parts "
         "(opencode 'tool-use' / Pi 'tool_use')"
     )
@@ -77,7 +77,7 @@ def test_load_tab_history_renders_tool_results() -> None:
     js = CHAT_JS.read_text(encoding="utf-8")
     body = _extract_function_body(js, "_loadTabHistory")
     assert body is not None, "_loadTabHistory function not found in chat.js"
-    assert "_appendToolResult" in body, (
+    assert body.count("_appendToolResult") >= 1, (
         "_loadTabHistory must call _appendToolResult for tool-result parts "
         "(opencode 'tool-result' / Pi 'tool_result')"
     )
@@ -109,7 +109,7 @@ def test_load_tab_history_throws_on_non_ok() -> None:
     js = CHAT_JS.read_text(encoding="utf-8")
     body = _extract_function_body(js, "_loadTabHistory")
     assert body is not None, "_loadTabHistory function not found in chat.js"
-    assert "throw new Error" in body, (
+    assert body.count("throw new Error") >= 1, (
         "_loadTabHistory must throw on non-ok response so .catch fires "
         "and displays an error to the user"
     )
@@ -125,7 +125,7 @@ def test_bootstrap_tabs_uses_last_active_at_fallback() -> None:
     js = CHAT_JS.read_text(encoding="utf-8")
     body = _extract_function_body(js, "_bootstrapTabs")
     assert body is not None, "_bootstrapTabs function not found in chat.js"
-    assert "last_active_at" in body, (
+    assert body.count("last_active_at") >= 1, (
         "_bootstrapTabs must compare `last_active_at` timestamps to pick the "
         "most recently active tab when sessionStorage is cleared, "
         "instead of blindly falling back to _tabs[0]"

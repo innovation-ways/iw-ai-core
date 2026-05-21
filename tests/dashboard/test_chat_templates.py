@@ -6,11 +6,33 @@ import re
 from pathlib import Path
 
 import pytest
+from bs4 import BeautifulSoup
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 
 def _template_dir() -> str:
     return str((Path(__file__).parent.parent.parent / "dashboard" / "templates").resolve())
+
+
+def _css_rule_body(css: str, selector: str) -> str | None:
+    """Return the declaration block of the CSS rule for ``selector``.
+
+    Matches the first occurrence of ``selector`` followed only by whitespace
+    then ``{``; returns the text between that ``{`` and its ``}``, or None when
+    no such rule exists. Scopes substring checks to the rule that actually
+    declares the style.
+    """
+    pos = 0
+    while True:
+        idx = css.find(selector, pos)
+        if idx == -1:
+            return None
+        brace = css.find("{", idx + len(selector))
+        if brace != -1 and css[idx + len(selector) : brace].strip() == "":
+            end = css.find("}", brace)
+            if end != -1:
+                return css[brace + 1 : end]
+        pos = idx + len(selector)
 
 
 def _env() -> Environment:
@@ -125,16 +147,31 @@ class TestChatComposerTemplate:
         assert "sr-only" in chat_composer_html
 
     def test_clear_button_disabled_initially(self, chat_assistant_composer_html):
-        """ "CR-00064 AC1 — clear button starts disabled (no history on a fresh tab)."""
-        assert 'id="chat-assistant-clear"' in chat_assistant_composer_html
-        assert "disabled" in chat_assistant_composer_html
+        """CR-00064 AC1 — clear button starts disabled (no history on a fresh tab)."""
+        soup = BeautifulSoup(chat_assistant_composer_html, "html.parser")
+        btn = soup.find(id="chat-assistant-clear")
+        assert btn is not None, "#chat-assistant-clear button not found"
+        assert btn.has_attr("disabled"), (
+            "clear button must start disabled — a fresh tab has no history to clear"
+        )
 
     def test_clear_button_has_aria_label(self, chat_assistant_composer_html):
-        assert 'aria-label="Clear chat history"' in chat_assistant_composer_html
+        soup = BeautifulSoup(chat_assistant_composer_html, "html.parser")
+        btn = soup.find(id="chat-assistant-clear")
+        assert btn is not None, "#chat-assistant-clear button not found"
+        assert btn.get("aria-label") == "Clear chat history", (
+            "clear button must carry aria-label='Clear chat history' for screen readers"
+        )
 
     def test_clear_button_min_touch_size(self, chat_assistant_composer_html):
-        assert "min-h-[44px]" in chat_assistant_composer_html
-        assert "min-w-[44px]" in chat_assistant_composer_html
+        soup = BeautifulSoup(chat_assistant_composer_html, "html.parser")
+        btn = soup.find(id="chat-assistant-clear")
+        assert btn is not None, "#chat-assistant-clear button not found"
+        classes = set(btn.get("class", []))
+        assert {"min-h-[44px]", "min-w-[44px]"}.issubset(classes), (
+            "clear button must carry min-h-[44px] and min-w-[44px] (44px touch target); "
+            f"got classes: {sorted(classes)}"
+        )
 
 
 class TestChatCss:
@@ -149,8 +186,13 @@ class TestChatCss:
         """CR-00064 — clear button must visually indicate disabled state via opacity."""
         root = Path(__file__).parent.parent.parent
         css_content = (root / "dashboard" / "static" / "chat_assistant" / "chat.css").read_text()
-        assert "#chat-assistant-clear:disabled" in css_content
-        assert "opacity" in css_content
+        rule = _css_rule_body(css_content, "#chat-assistant-clear:disabled")
+        assert rule is not None, "chat.css must define a #chat-assistant-clear:disabled rule"
+        # The opacity declaration must live INSIDE the :disabled rule, not just
+        # anywhere in the stylesheet.
+        assert rule.count("opacity") >= 1, (
+            "the #chat-assistant-clear:disabled rule must set opacity to dim the button"
+        )
 
 
 class TestChatMessageTemplate:

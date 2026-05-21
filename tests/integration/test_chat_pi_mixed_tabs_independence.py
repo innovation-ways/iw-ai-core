@@ -173,9 +173,13 @@ async def test_aborting_one_pi_tab_does_not_affect_other_pi_tab(
             "aborting sid1 must not remove sid2 from the active client pool"
         )
 
-        # After closing sid1 explicitly, sid2 must still be accessible.
+        # After closing sid1 explicitly, sid1 must leave the pool and sid2
+        # must remain — proving close_session is effective AND isolated.
         await runtime.close_session(sid1)
-        assert sid2 in runtime._clients
+        assert sid1 not in runtime._clients, (
+            "close_session(sid1) must remove sid1 from the active client pool"
+        )
+        assert sid2 in runtime._clients, "closing sid1 must not evict the independent sid2 client"
     finally:
         await runtime.close_all_clients()
 

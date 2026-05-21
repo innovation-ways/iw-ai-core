@@ -102,14 +102,16 @@ def test_create_tab_still_accepts_runtime_opencode(
 
 def test_allowed_runtimes_contains_pi() -> None:
     """ALLOWED_RUNTIMES frozenset must contain 'pi' after F-00087."""
-    assert "pi" in tab_service.ALLOWED_RUNTIMES, (
+    # frozenset({"pi"}) <= X is the subset test — fails if 'pi' is dropped.
+    assert frozenset({"pi"}) <= tab_service.ALLOWED_RUNTIMES, (
         f"'pi' not in ALLOWED_RUNTIMES: {tab_service.ALLOWED_RUNTIMES!r}"
     )
 
 
 def test_allowed_runtimes_contains_opencode() -> None:
     """ALLOWED_RUNTIMES frozenset must still contain 'opencode' (F-00086 baseline)."""
-    assert "opencode" in tab_service.ALLOWED_RUNTIMES, (
+    # Guards the opencode baseline against removal by a later allowlist edit.
+    assert frozenset({"opencode"}) <= tab_service.ALLOWED_RUNTIMES, (
         f"'opencode' not in ALLOWED_RUNTIMES: {tab_service.ALLOWED_RUNTIMES!r}"
     )
 

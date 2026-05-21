@@ -179,7 +179,7 @@ class TestTabStripModelBadgeRetained:
         removed along with the bar.
         """
         content = _chat_js_path().read_text()
-        assert "chat-assistant-tab-model-badge" in content, (
+        assert content.count("chat-assistant-tab-model-badge") >= 1, (
             "chat-assistant-tab-model-badge class not found in chat.js. "
             "The tab-strip model badge class must be retained — "
             "only the per-tab model bar was removed (CR-00068)."
@@ -201,8 +201,8 @@ class TestTabStripModelBadgeRetained:
             "chat_assistant/closed_tabs_dropdown.html",
             "chat_assistant/message.html",
         ]
-        for inc in required_includes:
-            assert inc in content, (
-                f"Include {inc!r} not found in panel.html. "
-                "CR-00068 must not disturb the panel's include structure."
-            )
+        missing = [inc for inc in required_includes if inc not in content]
+        assert not missing, (
+            f"panel.html is missing required includes {missing!r}. "
+            "CR-00068 must not disturb the panel's include structure."
+        )
