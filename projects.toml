@@ -21,6 +21,10 @@ models = [
   "ollama/gemma4:26b",
 ]
 default_model = "anthropic/claude-opus-4-7"
+# Runtime a new chat tab uses when there is no active tab to inherit from.
+# One of: "opencode", "pi". Absent → "opencode". The Pi runtime resolves its
+# own default model (MiniMax-M2.7) from agent_runtime_options.
+default_runtime = "pi"
 
 [[projects.iw-ai-core.services]]
 name = "daemon"

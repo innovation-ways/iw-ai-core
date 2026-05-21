@@ -7,7 +7,8 @@ post-fix (SelfBlockerError / lock_timeout / success) behaviors.
 The testcontainer is stamped at 6d78323d0954 (add_pi_runtime_options), leaving
 three migrations pending:
 - e45b45f74ea0 (f_00086_chat_tabs) — CREATE TABLE chat_tabs
-- 00490acc4cdf (cr00065_add_session_file_to_step_runs) — ALTER TABLE step_runs ADD COLUMN session_file
+- 00490acc4cdf (cr00065_add_session_file_to_step_runs) — ALTER TABLE step_runs
+  ADD COLUMN session_file
 - 0f11be8f2147 (flip_default_agent_runtime_to_pi) — UPDATE agent_runtime_options rows
 
 None of these migrations ALTER TABLE batch_items, so the AccessShareLock on

@@ -1766,3 +1766,57 @@ class TestClearTab:
             app.dependency_overrides.clear()
             if original is not None:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+
+
+class TestListTabsDefaultRuntime:
+    """GET /api/chat/tabs surfaces the project's configured default chat runtime.
+
+    The frontend uses this to create a new tab with the correct runtime when no
+    active tab exists — pairing runtime and model from the same source, so a
+    Pi-default project never sends a Pi model under the ``opencode`` runtime
+    (the mismatch that produced the 400 this change fixes).
+    """
+
+    def test_list_tabs_returns_configured_pi_default_runtime(
+        self, app_no_runtime: TestClient, db_session: Session, test_project: Project
+    ) -> None:
+        """ai_assistant.default_runtime='pi' is echoed back in the response."""
+        test_project.config = {
+            "ai_assistant": {
+                "models": ["minimax/MiniMax-M2.7"],
+                "default_runtime": "pi",
+            }
+        }
+        db_session.flush()
+
+        resp = app_no_runtime.get(f"/api/chat/tabs?project_id={test_project.id}")
+
+        assert resp.status_code == 200
+        assert resp.json()["default_runtime"] == "pi"
+
+    def test_list_tabs_default_runtime_falls_back_to_opencode_when_unset(
+        self, app_no_runtime: TestClient, db_session: Session, test_project: Project
+    ) -> None:
+        """A project with no ai_assistant block defaults to 'opencode'."""
+        # test_project ships config={} — no ai_assistant block.
+        resp = app_no_runtime.get(f"/api/chat/tabs?project_id={test_project.id}")
+
+        assert resp.status_code == 200
+        assert resp.json()["default_runtime"] == "opencode"
+
+    def test_list_tabs_default_runtime_falls_back_when_value_invalid(
+        self, app_no_runtime: TestClient, db_session: Session, test_project: Project
+    ) -> None:
+        """An unrecognised default_runtime value is ignored, falling back to 'opencode'."""
+        test_project.config = {
+            "ai_assistant": {
+                "models": ["minimax/MiniMax-M2.7"],
+                "default_runtime": "bogus-runtime",
+            }
+        }
+        db_session.flush()
+
+        resp = app_no_runtime.get(f"/api/chat/tabs?project_id={test_project.id}")
+
+        assert resp.status_code == 200
+        assert resp.json()["default_runtime"] == "opencode"
