@@ -13,7 +13,9 @@ __pycache__/
 dist/
 
 # Platform runtime files
-archive/
+# Anchored to repo root: the .tar.zst archive output dir (IW_CORE_ARCHIVE_DIR).
+# Unanchored "archive/" wrongly also ignored orch/archive/ and ai-dev/archive/.
+/archive/
 logs/
 .daemon.pid
 .dashboard.pid
