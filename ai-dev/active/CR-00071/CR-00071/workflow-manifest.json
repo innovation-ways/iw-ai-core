@@ -1,0 +1,85 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00071",
+  "type": "ChangeRequest",
+  "title": "Pi Runtime Context-Usage Percentage Support",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/routers/chat.py",
+      "orch/chat/context_usage.py",
+      "tests/unit/**",
+      "tests/integration/**",
+      "tests/dashboard/**",
+      "ai-dev/active/CR-00071/**",
+      "ai-dev/work/CR-00071/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "step_type": "backend",
+      "description": "Investigate Pi get_messages() token shape; add Pi context-window lookup from agent_runtime_options.context_window_tokens; extend get_tab() Pi branch to compute and inject context_pct; add pure Pi token normalizer if needed; TDD unit + integration tests",
+      "prompt": "prompts/CR-00071_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Code review of S01",
+      "prompt": "prompts/CR-00071_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-fix-impl",
+      "step_type": "code_review_fix",
+      "description": "Fix CRITICAL/HIGH/MEDIUM_FIXABLE review findings",
+      "prompt": "prompts/CR-00071_S03_CodeReviewFix_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Cross-step final review",
+      "prompt": "prompts/CR-00071_S04_CodeReviewFinal_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-fix-final-impl",
+      "step_type": "code_review_fix_final",
+      "description": "Fix final review findings",
+      "prompt": "prompts/CR-00071_S05_CodeReviewFixFinal_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "step_type": "qv_gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: unit test suite"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "step_type": "qv_gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: integration test suite"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-browser",
+      "step_type": "qv_browser",
+      "description": "QV: Browser verification — context % visible on a Pi tab, graceful degradation on a fresh tab, no OpenCode regression",
+      "prompt": "prompts/CR-00071_S08_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00071_S09_SelfAssess_prompt.md"
+    }
+  ]
+}

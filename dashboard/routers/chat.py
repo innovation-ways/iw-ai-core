@@ -773,6 +773,30 @@ async def get_tab(
                 logger.warning(
                     "get_tab: failed to fetch Pi session/messages for sid=%s: %s", sid, exc
                 )
+        # Inject context_pct (additive, non-fatal)
+        if isinstance(session, dict):
+            with contextlib.suppress(Exception):
+                # Resolve Pi model from tab.model: "pi/<model>" → cli_tool="pi", model="<model>"
+                model_part: str | None = None
+                model_str = tab.model
+                if isinstance(model_str, str) and "/" in model_str:
+                    _, _, model_part = model_str.partition("/")
+                if model_part:
+                    # Look up context_window_tokens from agent_runtime_options (indexed lookup)
+                    row = db.execute(
+                        select(AgentRuntimeOption).where(
+                            AgentRuntimeOption.cli_tool == "pi",
+                            AgentRuntimeOption.model == model_part,
+                        )
+                    ).scalar_one_or_none()
+                    if row is not None and row.context_window_tokens is not None:
+                        # Normalize Pi token shape → OpenCode shape, then compute percentage
+                        normalized_msgs = context_usage.normalize_pi_messages(messages)
+                        pct = context_usage.compute_context_pct(
+                            normalized_msgs, row.context_window_tokens
+                        )
+                        if pct is not None:
+                            session["context_pct"] = pct
         return {"tab": _tab_to_dict(tab), "session": session, "messages": messages}
 
     # OpenCode path

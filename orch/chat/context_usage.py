@@ -5,7 +5,66 @@ No I/O, no DB, no HTTP — fully unit-testable without mocks or testcontainers.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
+
+
+class _TokensShape(TypedDict, total=False):
+    input: int
+    output: int
+    reasoning: int
+    cache: dict[str, int]
+
+
+def normalize_pi_messages(
+    messages: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Normalize Pi-shaped messages into OpenCode ``tokens`` shape for ``compute_context_pct``.
+
+    Pi RPC messages carry per-message token usage as::
+
+        {"role": "assistant", "usage": {"input": N, "output": N, "cacheRead": N, "cacheWrite": N}}
+
+    ``compute_context_pct`` reads from ``message["tokens"]`` with snake_case sub-fields
+    ``cache.read`` / ``cache.write`` nested under a ``cache`` key::
+
+        {"role": "assistant", "tokens": {"input": N, "output": N,
+                                    "cache": {"read": N, "write": N}}}
+
+    This normalizer translates Pi's camelCase ``usage`` into the matching OpenCode
+    shape. The translation is applied to every message in the list that carries a
+    ``usage`` dict; all other fields pass through unchanged. Non-list input
+    returns an empty list (so the caller receives a valid argument to
+    ``compute_context_pct`` without additional None-checks).
+
+    Parameters
+    ----------
+    messages:
+        List of message dicts as returned by ``PiRuntime.get_messages()``.
+        May be ``None`` or non-list — the function returns ``[]`` in that case.
+    """
+    if not isinstance(messages, list):
+        return []
+
+    result: list[dict[str, Any]] = []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            result.append(msg)
+            continue
+        normalized = dict(msg)
+        usage = msg.get("usage")
+        if isinstance(usage, dict):
+            # Translate camelCase → snake_case and nest cache fields under "cache".
+            normalized["tokens"] = {
+                "input": int(usage["input"]) if "input" in usage else 0,
+                "output": int(usage["output"]) if "output" in usage else 0,
+                "reasoning": int(usage.get("reasoning", 0)),
+                "cache": {
+                    "read": int(usage.get("cacheRead", 0)),
+                    "write": int(usage.get("cacheWrite", 0)),
+                },
+            }
+        result.append(normalized)
+    return result
 
 
 def compute_context_pct(
@@ -25,7 +84,8 @@ def compute_context_pct(
         level *or* nested under ``info.role`` (OpenCode payload variant).
         Assistant messages may carry a ``tokens`` object shaped like
         ``{"input", "output", "reasoning", "cache": {"read", "write"}}``;
-        every sub-field is optional and defaults to 0.
+        every sub-field is optional and defaults to 0. Pi messages should be
+        normalized via ``normalize_pi_messages`` before calling this function.
     context_window:
         The active model's context-window limit (max tokens). None / 0 /
         negative → return None.

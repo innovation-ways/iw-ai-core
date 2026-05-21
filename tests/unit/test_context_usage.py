@@ -14,11 +14,15 @@ import pytest
 from orch.chat.context_usage import (
     compute_context_pct,
     lookup_context_window,
+    normalize_pi_messages,
     resolve_model_from_tab,
 )
 
 assert inspect.isfunction(compute_context_pct), (
     "compute_context_pct must be a function in orch.chat.context_usage"
+)
+assert inspect.isfunction(normalize_pi_messages), (
+    "normalize_pi_messages must be a function in orch.chat.context_usage"
 )
 
 
@@ -329,6 +333,93 @@ class TestResolveModelFromTab:
         ]
         result = resolve_model_from_tab("openai/gpt-4o", msgs)
         assert result == ("openai", "gpt-4o")
+
+
+# ---------------------------------------------------------------------------
+# normalize_pi_messages tests
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizePiMessages:
+    """Tests for ``normalize_pi_messages`` — translates Pi ``usage`` to OpenCode ``tokens``."""
+
+    def test_translates_usage_to_tokens(self) -> None:
+        """Pi assistant message with ``usage`` dict becomes nested ``tokens`` dict."""
+        pi_msg = {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Answer."}],
+            "usage": {"input": 5000, "output": 3000, "cacheRead": 500, "cacheWrite": 200},
+        }
+        result = normalize_pi_messages([pi_msg])
+        assert len(result) == 1
+        assert result[0]["tokens"] == {
+            "input": 5000,
+            "output": 3000,
+            "reasoning": 0,
+            "cache": {"read": 500, "write": 200},
+        }
+        # Original fields are preserved.
+        assert result[0]["role"] == "assistant"
+        assert result[0]["content"] == pi_msg["content"]
+
+    def test_leaves_non_assistant_messages_unchanged(self) -> None:
+        """User message with ``usage`` passes through with ``tokens`` added."""
+        pi_msg = {
+            "role": "user",
+            "content": [{"type": "text", "text": "Hello?"}],
+            "usage": {"input": 100, "output": 0},
+        }
+        result = normalize_pi_messages([pi_msg])
+        assert len(result) == 1
+        assert result[0]["role"] == "user"
+        assert result[0]["tokens"]["input"] == 100
+
+    def test_omits_usage_when_absent(self) -> None:
+        """Message without ``usage`` has no ``tokens`` key added."""
+        pi_msg = {"role": "assistant", "content": [{"type": "text", "text": "Hi."}]}
+        result = normalize_pi_messages([pi_msg])
+        assert len(result) == 1
+        assert "tokens" not in result[0]
+        assert "usage" not in result[0]
+
+    def test_partial_usage_fields_default_to_zero(self) -> None:
+        """``usage`` missing some fields → those token sub-fields default to 0."""
+        pi_msg = {
+            "role": "assistant",
+            "usage": {"input": 42},  # only input present
+        }
+        result = normalize_pi_messages([pi_msg])
+        assert result[0]["tokens"]["input"] == 42
+        assert result[0]["tokens"]["output"] == 0
+        assert result[0]["tokens"]["cache"]["read"] == 0
+        assert result[0]["tokens"]["cache"]["write"] == 0
+
+    def test_non_dict_message_passes_through(self) -> None:
+        """Non-dict message entries pass through without modification."""
+        result = normalize_pi_messages(["not a dict", None])
+        assert result[0] == "not a dict"
+        assert result[1] is None
+
+    def test_none_input_returns_empty_list(self) -> None:
+        """Non-list input (including None) returns an empty list."""
+        assert normalize_pi_messages(None) == []
+        assert normalize_pi_messages("string") == []
+        assert normalize_pi_messages(42) == []
+
+    def test_combined_with_compute_context_pct(self) -> None:
+        """normalize_pi_messages output feeds correctly into ``compute_context_pct``."""
+        pi_messages = [
+            {"role": "user", "content": [{"type": "text", "text": "Hello"}]},
+            {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Answer."}],
+                "usage": {"input": 5000, "output": 3000, "cacheRead": 500, "cacheWrite": 200},
+            },
+        ]
+        normalized = normalize_pi_messages(pi_messages)
+        pct = compute_context_pct(normalized, context_window=100000)
+        # 5000+3000+500+200 = 8700; 8700/100000*100 = 8.7
+        assert pct == pytest.approx(8.7)
 
 
 # ---------------------------------------------------------------------------
