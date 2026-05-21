@@ -174,6 +174,9 @@ def _render_steps_fragment(request: Request, db: Session, project_id: str, item_
         for r in runtime_options
     ]
 
+    # CR-00070 S01: compute the label shown in the per-step dropdown empty option
+    inherited_runtime_label = items_router._get_inherited_runtime_label(db, project_id, item)  # noqa: SLF001
+
     templates = request.app.state.templates
     response = templates.TemplateResponse(
         request,
@@ -183,6 +186,7 @@ def _render_steps_fragment(request: Request, db: Session, project_id: str, item_
             "steps": steps,
             "step_run_counts": step_run_counts,
             "runtime_options": runtime_options_list,
+            "inherited_runtime_label": inherited_runtime_label,
         },
     )
     return bytes(response.body).decode("utf-8")

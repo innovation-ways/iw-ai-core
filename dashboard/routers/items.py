@@ -1178,6 +1178,44 @@ def _get_cascade_history(db: Session, project_id: str, item_id: str) -> CascadeH
 
 
 # ---------------------------------------------------------------------------
+# CR-00070 S01: inherited runtime label helper
+# ---------------------------------------------------------------------------
+
+
+def _get_inherited_runtime_label(
+    db: Session,
+    project_id: str,
+    item: WorkItem,
+) -> str | None:
+    """Compute the display_name of the runtime an un-overridden step would inherit.
+
+    Uses the same cascade as the daemon's resolve_runtime():
+        item override → projects.toml (cli_tool, model) lookup → catalogue default
+
+    Returns the resolved AgentRuntimeOption's display_name, or None when no
+    option can be resolved (empty catalogue). A None value signals the template
+    to fall back to a neutral "— inherit —" label (AC5).
+
+    This function is called once per render (not per step) so the cascade result
+    is identical for every per-step dropdown within the same work item.
+    """
+    from orch.agent_runtime.resolver import resolve_inherited_runtime
+    from orch.config import load_config
+    from orch.daemon.project_registry import load_projects_toml
+
+    try:
+        cfg = load_projects_toml(load_config().projects_toml)
+        project_config = cfg.get(project_id)
+    except Exception:
+        # If projects.toml is unreadable, project_config stays None — the resolver
+        # falls through to the catalogue default.
+        project_config = None
+
+    resolved = resolve_inherited_runtime(db, item=item, project=project_config)
+    return resolved.display_name if resolved is not None else None
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -1219,6 +1257,9 @@ def item_detail(
     ]
     item_runtime_option_id = item.agent_runtime_option_id
 
+    # CR-00070 S01: compute the label shown in the per-step dropdown empty option
+    inherited_runtime_label = _get_inherited_runtime_label(db, project_id, item)
+
     item_type_val = item.type
     item_status_val = item.status
     templates: Jinja2Templates = request.app.state.templates
@@ -1240,6 +1281,7 @@ def item_detail(
             "setup_error": setup_error,
             "runtime_options": runtime_options_list,
             "item_runtime_option_id": item_runtime_option_id,
+            "inherited_runtime_label": inherited_runtime_label,
         },
     )
 
@@ -1313,6 +1355,9 @@ def item_tab_overview(
     ]
     item_runtime_option_id = item.agent_runtime_option_id
 
+    # CR-00070 S01: compute the label shown in the per-step dropdown empty option
+    inherited_runtime_label = _get_inherited_runtime_label(db, project_id, item)
+
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -1325,6 +1370,7 @@ def item_tab_overview(
             "step_run_counts": step_run_counts,
             "runtime_options": runtime_options_list,
             "item_runtime_option_id": item_runtime_option_id,
+            "inherited_runtime_label": inherited_runtime_label,
         },
     )
 
