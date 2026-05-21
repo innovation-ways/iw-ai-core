@@ -7,7 +7,9 @@
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-messages,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-skills-tray,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-history-dropdown,
-  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-tab-model-bar,
+  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-messages,
+  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-skills-tray,
+  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-history-dropdown,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-composer-wrap { display: none; }
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-collapse-btn { display: none; }
   #chat-assistant-panel:not([data-collapsed="true"]) #chat-assistant-expand-rail { display: none; }
@@ -75,32 +77,6 @@
 
   <!-- History dropdown (toggleable) -->
   {% include "chat_assistant/history_dropdown.html" %}
-
-  <!-- Per-tab model bar (above composer; shown when a tab is active) -->
-  <div id="chat-assistant-tab-model-bar"
-       style="display: none;"
-       class="flex-shrink-0 border-b border-border px-2 py-1">
-    <div class="relative">
-      <button id="chat-assistant-tab-model-badge"
-              type="button"
-              class="text-xs px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground truncate max-w-full"
-              aria-label="Current model — click to change"
-              title="Click to change model">
-        <span id="chat-assistant-tab-model-label">&#8212;</span>
-        <svg class="w-3 h-3 inline ml-0.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-        </svg>
-      </button>
-      <!-- Model dropdown list (shown when badge clicked) -->
-      <div id="chat-assistant-tab-model-dropdown"
-           class="hidden absolute z-50 bg-card border border-border rounded shadow-md"
-           role="listbox"
-           aria-label="Available models"
-           style="min-width: 200px; max-height: 240px; overflow-y: auto; top: 100%; left: 0;">
-        <!-- Options injected by chat.js -->
-      </div>
-    </div>
-  </div>
 
   <!-- Messages area -->
   <div id="chat-assistant-messages"
