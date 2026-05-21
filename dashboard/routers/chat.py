@@ -545,6 +545,25 @@ async def list_recent_closed_tabs(
     return {"tabs": [_tab_to_dict(t) for t in tabs]}
 
 
+def _resolve_default_runtime(db: Session, project_id: str) -> str:
+    """Return the project's configured AI Assistant default chat runtime.
+
+    Reads ``ai_assistant.default_runtime`` from the project config; falls back
+    to ``"opencode"`` when unset, invalid, or the project is unknown. The
+    frontend uses this to pick the runtime for a new tab when there is no
+    active tab to inherit from — keeping runtime and model from drifting apart.
+    """
+    if project_id:
+        project = db.get(Project, project_id)
+        if project is not None and isinstance(project.config, dict):
+            ai_assistant = project.config.get("ai_assistant")
+            if isinstance(ai_assistant, dict):
+                runtime = ai_assistant.get("default_runtime")
+                if isinstance(runtime, str) and runtime in _tab_service.ALLOWED_RUNTIMES:
+                    return runtime
+    return "opencode"
+
+
 @router.get("/tabs")
 async def list_tabs(
     project_id: str,
@@ -559,6 +578,10 @@ async def list_tabs(
     The helper itself decides whether to fire (it bails when ANY chat_tabs row
     exists, active or closed). This fulfils AC5 without pre-gating on empty
     list or include_closed.
+
+    The response also carries ``default_runtime`` (the project's configured
+    AI Assistant runtime) so the frontend can create a new tab with the
+    correct runtime when no active tab exists.
     """
     # Resolve bootstrap dependencies from app state.
     runtime = None
@@ -594,7 +617,10 @@ async def list_tabs(
             db.rollback()
 
     tabs = _tab_service.list_tabs(db, project_id=project_id, include_closed=include_closed)
-    return {"tabs": [_tab_to_dict(t) for t in tabs]}
+    return {
+        "tabs": [_tab_to_dict(t) for t in tabs],
+        "default_runtime": _resolve_default_runtime(db, project_id),
+    }
 
 
 # ---------------------------------------------------------------------------

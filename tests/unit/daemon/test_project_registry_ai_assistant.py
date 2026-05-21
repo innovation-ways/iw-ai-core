@@ -105,3 +105,56 @@ def test_parse_non_string_entries_dropped(caplog) -> None:
 
     assert parsed == {"models": ["valid/x"]}
     assert "invalid ai_assistant model entry" in caplog.text
+
+
+def test_parse_default_runtime_pi() -> None:
+    raw = {"models": ["anthropic/claude-opus-4-7"], "default_runtime": "pi"}
+
+    parsed = project_registry._parse_ai_assistant_block("iw-ai-core", raw)
+
+    assert parsed == {"models": ["anthropic/claude-opus-4-7"], "default_runtime": "pi"}
+
+
+def test_parse_default_runtime_opencode() -> None:
+    raw = {"models": ["anthropic/claude-opus-4-7"], "default_runtime": "opencode"}
+
+    parsed = project_registry._parse_ai_assistant_block("iw-ai-core", raw)
+
+    assert parsed == {"models": ["anthropic/claude-opus-4-7"], "default_runtime": "opencode"}
+
+
+def test_parse_default_runtime_absent_key_omitted() -> None:
+    raw = {"models": ["anthropic/claude-opus-4-7"]}
+
+    parsed = project_registry._parse_ai_assistant_block("iw-ai-core", raw)
+
+    assert parsed == {"models": ["anthropic/claude-opus-4-7"]}
+    assert "default_runtime" not in parsed
+
+
+def test_parse_default_runtime_invalid_ignored(caplog) -> None:
+    # "claude" is a valid cli_tool but NOT a valid AI Assistant chat runtime.
+    raw = {"models": ["anthropic/claude-opus-4-7"], "default_runtime": "claude"}
+
+    with caplog.at_level(logging.WARNING):
+        parsed = project_registry._parse_ai_assistant_block("iw-ai-core", raw)
+
+    assert parsed == {"models": ["anthropic/claude-opus-4-7"]}
+    assert "default_runtime" not in parsed
+    assert "default_runtime" in caplog.text
+
+
+def test_parse_default_runtime_and_default_model_together() -> None:
+    raw = {
+        "models": ["anthropic/claude-opus-4-7", "minimax/MiniMax-M2.7"],
+        "default_model": "minimax/MiniMax-M2.7",
+        "default_runtime": "pi",
+    }
+
+    parsed = project_registry._parse_ai_assistant_block("iw-ai-core", raw)
+
+    assert parsed == {
+        "models": ["anthropic/claude-opus-4-7", "minimax/MiniMax-M2.7"],
+        "default_model": "minimax/MiniMax-M2.7",
+        "default_runtime": "pi",
+    }

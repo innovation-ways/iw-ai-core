@@ -12,12 +12,14 @@ models = [
   "provider/model",
 ]
 default_model = "provider/model"
+default_runtime = "pi"
 ```
 
 | Field | Type | Required | Rules |
 |---|---|---|---|
 | `models` | array of strings | yes (if block exists) | Each entry must match `^[a-z0-9._-]+/[A-Za-z0-9._:/-]+$` (for example `anthropic/claude-opus-4-7`, `ollama/gemma4:26b`). |
 | `default_model` | string | no | If present, it must also be present in `models`. |
+| `default_runtime` | string | no | One of `opencode` \| `pi`. Runtime a new chat tab uses when there is no active tab to inherit from. Absent or invalid → `opencode`. Each runtime resolves its own default model — the Pi runtime's default comes from `agent_runtime_options`, not `default_model`. |
 
 Fail-open behavior is intentional: if a project has no `[projects.<project_id>.ai_assistant]` block (or no `project_id` is supplied), chat config falls back to the full OpenCode provider/model list.
 

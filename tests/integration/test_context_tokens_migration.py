@@ -158,9 +158,7 @@ class TestContextTokensMigration:
         finally:
             connection.close()
 
-    def test_migration_downgrade_removes_columns(
-        self, migrated_engine: Engine
-    ) -> None:
+    def test_migration_downgrade_removes_columns(self, migrated_engine: Engine) -> None:
         """alembic downgrade -1 drops all three columns cleanly."""
         alembic_cfg = Config()
         alembic_cfg.set_main_option("script_location", "orch/db/migrations")

@@ -59,8 +59,10 @@
   // open without a runtime change skips the fetch.
   var _modalRuntime = 'opencode';
 
-  // Default model for new tabs (kept so _instantCreateTab() can pick the right default).
-  var _defaultModel = '';
+  // Project's configured default chat runtime ('opencode' | 'pi'), populated
+  // from GET /api/chat/tabs. Used by _instantCreateTab() when there is no
+  // active tab to inherit a runtime from.
+  var _defaultRuntime = 'opencode';
 
   // Soft-cap banner: once shown (per page session), re-shows on each POST that returns the header
   // (but can be dismissed once per show). The flag tracks whether it's currently visible.
@@ -214,6 +216,9 @@
         return r.json();
       })
       .then(function (data) {
+        if (data && typeof data.default_runtime === 'string') {
+          _defaultRuntime = data.default_runtime;
+        }
         cb((data && data.tabs) || []);
       })
       .catch(function (err) {
@@ -1073,8 +1078,20 @@
       return;
     }
     var activeTab = _activeTabId ? _tabs.find(function (t) { return t.id === _activeTabId; }) : null;
-    var runtime = (activeTab && activeTab.runtime) || 'opencode';
-    var model = (activeTab && activeTab.model) || _defaultModel || '';
+    // Runtime and model MUST come from a single consistent source. With an
+    // active tab, clone its runtime+model pair. With no active tab, use the
+    // project's configured default runtime and send NO model — the backend
+    // resolves that runtime's own default model. Pairing a hardcoded runtime
+    // with a model left over from a different runtime is what produced the
+    // "model 'pi/...' not available for runtime 'opencode'" 400.
+    var runtime, model;
+    if (activeTab) {
+      runtime = activeTab.runtime || _defaultRuntime || 'opencode';
+      model = activeTab.model || '';
+    } else {
+      runtime = _defaultRuntime || 'opencode';
+      model = '';
+    }
     // Auto-increment title: "Chat 1", "Chat 2", ...
     var n = _tabs.length + 1;
     var title = 'Chat ' + n;
@@ -1235,10 +1252,15 @@
       projInput.value = _currentProjectId() || '';
     }
 
-    // Reset runtime dropdown to opencode (default)
+    // Reset runtime dropdown to the project's configured default runtime.
+    var initialRuntime = _defaultRuntime || 'opencode';
     var runtimeSel = document.getElementById('chat-assistant-create-tab-runtime');
     if (runtimeSel) {
-      runtimeSel.value = 'opencode';
+      runtimeSel.value = initialRuntime;
+      // If the select has no matching option, fall back to its current value.
+      if (runtimeSel.value !== initialRuntime) {
+        initialRuntime = runtimeSel.value || 'opencode';
+      }
     }
 
     // Clear title
@@ -1248,12 +1270,12 @@
     // Clear error
     _hideCreateTabError();
 
-    // Fetch models for the default runtime (opencode); always re-fetch on open
-    // so a project with no Pi models sees the correct empty state if they switch.
-    _modalRuntime = 'opencode';
+    // Fetch models for the initial runtime; always re-fetch on open so a
+    // project with no Pi models sees the correct empty state if they switch.
+    _modalRuntime = initialRuntime;
     _modalModels = [];
     _modalDefaultModel = '';
-    _fetchModelsForModal('opencode');
+    _fetchModelsForModal(initialRuntime);
 
     // Focus title input
     if (titleInput) {
@@ -1659,6 +1681,11 @@
         if (renderedCount > 0) {
           _tabHasHistory[tabId] = true;
           _updateClearButton();
+        } else {
+          // Freshly created tab with no messages yet: swap the global
+          // "No chats yet" placeholder for the per-tab empty state, otherwise
+          // a brand-new chat keeps showing "No chats yet" over an empty tab.
+          _showEmptyState();
         }
       })
       .catch(function (err) {
@@ -1905,8 +1932,6 @@
         if (!data) return;
         _projectDirectoryProjectId = projectId;
         _projectDirectory = typeof data.project_directory === 'string' ? data.project_directory : '';
-        _defaultModel = data.default_model || '';
-        // _defaultModel is kept current so _instantCreateTab() picks the right default.
       })
       .catch(function () { /* silently ignore */ });
   }
@@ -1917,7 +1942,7 @@
       if (!_isOpen()) return;
       var projectId = _currentProjectId();
       if (projectId !== _lastProjectId) {
-        _defaultModel = '';
+        _defaultRuntime = 'opencode';
         _projectDirectory = '';
         _projectDirectoryProjectId = null;
       }

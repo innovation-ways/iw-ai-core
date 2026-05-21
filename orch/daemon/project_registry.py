@@ -37,6 +37,11 @@ logger = logging.getLogger(__name__)
 
 _AI_ASSISTANT_MODEL_PATTERN = re.compile(r"^[a-z0-9._-]+/[A-Za-z0-9._:/-]+$")
 
+# Chat runtimes a project may pin as its AI Assistant default. Mirrors
+# ``orch.chat.tab_service.ALLOWED_RUNTIMES``; kept local to avoid importing the
+# dashboard chat layer into the daemon registry.
+_AI_ASSISTANT_RUNTIMES = {"opencode", "pi"}
+
 # CR-00062: code-only allowlist of valid cli_tool values. No CHECK constraint on
 # the corresponding DB columns by design — adding a 4th runtime later stays a
 # one-line code change instead of a schema migration.
@@ -437,6 +442,20 @@ def _parse_ai_assistant_block(project_id: str, raw: object) -> dict[str, Any] | 
         return None
 
     parsed: dict[str, Any] = {"models": valid_models}
+
+    default_runtime = raw.get("default_runtime")
+    if default_runtime is not None:
+        if isinstance(default_runtime, str) and default_runtime in _AI_ASSISTANT_RUNTIMES:
+            parsed["default_runtime"] = default_runtime
+        else:
+            logger.warning(
+                "Project %r ai_assistant default_runtime %r invalid "
+                "(expected one of %s) — ignoring default_runtime",
+                project_id,
+                default_runtime,
+                sorted(_AI_ASSISTANT_RUNTIMES),
+            )
+
     default_model = raw.get("default_model")
     if default_model is None:
         return parsed
