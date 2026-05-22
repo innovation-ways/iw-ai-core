@@ -1,0 +1,168 @@
+# F-00088_S15_SelfAssess_prompt
+
+**Work Item**: F-00088 -- Structured Dashboard E2E Test Layer
+**Step**: S15
+**Agent**: SelfAssess
+
+---
+
+## ⛔ Docker is off-limits
+
+You MUST NOT execute ANY of the following commands or any command that
+changes Docker container/volume/network state:
+
+  docker kill | docker stop | docker rm | docker restart
+  docker compose up | docker compose down | docker compose restart
+  docker-compose up | docker-compose down | docker-compose restart
+  docker volume rm | docker volume prune
+  docker system prune | docker container prune | docker image prune
+
+The orchestration database, daemon, dashboard, and any long-lived
+infrastructure containers are outside your scope. Touching them can
+cause multi-hour outages and data loss (see the 2026-04-22 incident in
+docs/IW_AI_Core_DB_Setup.md).
+
+Allowed exceptions:
+
+  1. Testcontainers spun up by pytest fixtures (they self-label and
+     self-destruct via Ryuk).
+  2. Read-only introspection: `docker ps`, `docker inspect`, `docker logs`.
+  3. Invoking `./ai-core.sh` or `make` targets — those know which
+     commands are safe.
+
+If your task seems to require a prohibited command, STOP and raise a
+blocker. Do not work around this rule.
+
+Full policy: docs/IW_AI_Core_Agent_Constraints.md
+
+## ⛔ Migrations: agents generate, daemon applies
+
+You MUST NOT run the following alembic commands against the live
+orchestration DB (port 5433) from an agent context:
+
+```
+alembic upgrade head
+alembic upgrade <revision>
+alembic downgrade <anything>
+alembic stamp <anything>
+```
+
+Your job is to ANALYZE the item's execution, not to modify the database.
+
+Allowed for agents:
+  - alembic history / current / show           (read-only)
+  - Running migrations inside testcontainer fixtures
+    (tests/conftest.py does this — agents don't call it directly)
+
+Allowed for OPERATORS only (not agents):
+  - uv run iw migrations list-pending          (read-only, safe for anyone)
+  - uv run iw migrations dry-run               (testcontainer, safe)
+  - uv run iw migrations apply --i-am-operator (refuses if IW_CORE_AGENT_CONTEXT=true)
+  - Direct invocation via ./ai-core.sh or make db-migrate (operator entry points)
+
+If your task seems to require applying a migration to the live DB,
+STOP and raise a blocker. Do not work around this rule.
+
+Full policy: docs/IW_AI_Core_Agent_Constraints.md
+
+## Input Files
+
+- **Item ID** — `$IW_ITEM_ID` env var (set by the executor; this is the canonical source).
+- **Worktree logs** — `.worktrees/F-00088/ai-dev/logs/` — run logs, fix-cycle logs.
+- **Item reports dir** — `ai-dev/work/F-00088/reports/` — existing step reports (secondary evidence only).
+
+## Output Files
+
+- `ai-dev/work/F-00088/reports/F-00088_self_assess_report.md` — Human-readable narrative analysis.
+- `ai-dev/work/F-00088/reports/F-00088_self_assess_findings.json` — Structured findings JSON.
+
+## Context
+
+You are running the self-assessment step for work item **F-00088**.
+
+This step invokes the `iw-item-analyze` skill to analyze the just-completed item's
+execution history and surface process improvement findings. This step is **soft** —
+failure does NOT block the item from merging. Produce the best report you can even
+if the analysis is partial.
+
+**Use the `iw-item-analyze` skill** to perform the analysis. The skill is auto-discovered
+by both Claude Code (via `.claude/skills/iw-item-analyze/SKILL.md`) and OpenCode (which
+reads the same path). In Claude Code, invoke it via the `Skill` tool with
+`skill: "iw-item-analyze"`. In OpenCode, the skill is loaded by default for the agent
+and you can reference it by name in your reasoning. Do NOT re-implement the analysis
+procedure inline — the skill is the source of truth for the output contract (two files:
+`_self_assess_report.md` + `_self_assess_findings.json`).
+
+When analysing F-00088 specifically, pay attention to:
+
+- Did the `tdd_red_evidence` in S01 and S03 record the harness self-check unit
+  tests (`tests/e2e/test_harness_selfcheck.py`, RED-then-GREEN against synthetic
+  input)? Did either step instead edit production code for the RED
+  demonstration — a scope violation that should have been caught in review?
+- Did S14 (qv-browser) require fix cycles? E2E journeys against the live stack
+  are inherently more brittle than unit/integration tests — note what caused
+  fix cycles (ENV_DATA_MISSING, CODE_DEFECT, or SPEC_MISMATCH) and whether
+  an `e2e_fixtures` file was needed.
+- Were any journeys xfailed for genuine dashboard bugs? If so, surface the
+  Incident IDs and note they are open follow-up work.
+- Did the `e2e` marker exclusion hold correctly across all QV gates (S06–S13)?
+  A gate that accidentally collected an `e2e` test would have failed or been slow.
+- Was the SSE stream in `test_journey_code_qa_sse` stable, or did timing issues
+  cause fix cycles? If so, note it as a candidate for further investigation.
+- Did the `e2e-smoke` blocking CI gate (V7 in S14) confirm both smoke journeys
+  passed as a suite? If there was instability, note it.
+- Were the docs/skill/plan updates (AC7) completed in a single pass or did they
+  require follow-up?
+
+## Soft-Step Semantics
+
+This step's failure does NOT block merge — but produce a usable report anyway.
+If the analysis can't complete, write a stub report explaining why and a
+`findings: []` JSON.
+
+## TDD RED Evidence (behaviour-implementing steps only)
+
+For each **behaviour-implementing step** (notably Backend) whose report
+claims new behavioural tests were added:
+
+- The report contains `tdd_red_evidence` — the field records
+  `run the new failing test` (the RED run) and shows a plausible failure
+  snippet (`AssertionError` / `NotImplementedError`, not an
+  import/collection error).
+- If the step added no behavioural test, the report says so with a one-line
+  justification (e.g. `"n/a — template/markdown edits only"`).
+
+**Dedicated coverage steps (`tests-impl`) are exempt** — they add tests after
+the code exists and are not RED-first by nature. Apply this checklist only when
+the reviewed step type is Backend or another behaviour-implementing agent.
+
+F-00088 is a test-infrastructure Feature — the journeys ARE the deliverable.
+S01 and S03 are both `backend-impl` steps; both should contain
+`tdd_red_evidence` covering the in-scope harness self-check tests
+(`tests/e2e/test_harness_selfcheck.py`). Confirm both.
+
+## Subagent Result Contract
+
+When your work is complete, report results in this JSON structure:
+
+```json
+{
+  "step": "S15",
+  "agent": "self-assess-impl",
+  "work_item": "F-00088",
+  "completion_status": "complete|partial|blocked",
+  "files_changed": [
+    "ai-dev/work/F-00088/reports/F-00088_self_assess_report.md",
+    "ai-dev/work/F-00088/reports/F-00088_self_assess_findings.json"
+  ],
+  "preflight": {
+    "format": "ok|skipped:no-code-changes",
+    "typecheck": "ok|skipped:no-code-changes",
+    "lint": "ok|skipped:no-code-changes"
+  },
+  "tests_passed": true,
+  "test_summary": "skipped: no tests for analysis step",
+  "blockers": [],
+  "notes": "Analysis completed; findings written to two output files."
+}
+```
