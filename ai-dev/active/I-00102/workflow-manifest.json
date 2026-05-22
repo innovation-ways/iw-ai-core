@@ -12,7 +12,8 @@
       "tests/integration/test_item_register_drift.py",
       "tests/unit/test_item_commands_digest.py",
       "ai-dev/active/I-00102/**",
-      "ai-dev/work/I-00102/**"
+      "ai-dev/work/I-00102/**",
+      "tests/integration/daemon/test_phase2_apply_no_self_deadlock.py"
     ]
   },
   "steps": [

@@ -1,0 +1,70 @@
+{
+  "item_id": "I-00102",
+  "bottom_line": "S02's CRITICAL regression was only caught by the code-review layer because implementation steps don't run the full relevant integration suite; the fix-cycle system then wasted ~7 cycles on pre-existing test noise instead of signaling it as out-of-scope early.",
+  "coverage_notes": "No raw run logs available (worktree reaped before S14). Primary evidence: agent self-reports (S01-S13), fix-cycle prompts (S09 FIX cycle1, S13 FIX cycles 1-2 visible in ai-dev/active/I-00102/fix-cycles/), and item-status JSON. DB signal partial (step list available, per-step retry/timing telemetry not queried without raw logs).",
+  "findings": [
+    {
+      "id": "1",
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "iw-ai-core",
+      "title": "S02 regression caught only by code review — implementation steps should smoke-test existing integration suite",
+      "recommendation": "When an implementation step changes a core CLI command (especially `approve`), require a targeted smoke run of the existing integration suite for that command (e.g., `pytest tests/integration/test_phantom_gate_auto_skip.py tests/integration/test_cli_core.py -k approve`) before the step self-reports as complete. This catches CRITICAL regressions within the implementation step rather than deferring them to the code-review layer.",
+      "evidence": [
+        "ai-dev/active/I-00102/reports/I-00102_S03_Tests_report.md — S03 self-report notes the phantom-gate regression in Observations (discovered post-S03)",
+        "ai-dev/active/I-00102/reports/I-00102_S04_CodeReview_report.md — CRITICAL finding: unconditional manifest check in approve broke 4 phantom-gate tests",
+        "ai-dev/active/I-00102/reports/I-00102_S05_CodeReviewFix_report.md — Fix: manifest_required = (old_digest is not None or design_doc_path is not None)"
+      ],
+      "effort": "S",
+      "frequency": "systemic",
+      "paste_prompt": "/iw-new-cr Require implementation steps to smoke-test the existing integration suite for any CLI command they modify (not just new tests they add). Analyzed in I-00102 (see ai-dev/active/I-00102/reports/I-00102_self_assess_report.md). Target file: ai-dev/templates/Implementation_Template.md or skills/iw-implementation/SKILL.md. Effort: S."
+    },
+    {
+      "id": "2",
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Fix-cycle system wastes effort on pre-existing test flakiness — needs out-of-scope classification",
+      "recommendation": "The QV fix-cycle dispatcher should classify each failing test as in-scope / out-of-scope-pre-existing / flaky. When ≥50% of failures in a fix-cycle are out-of-scope or flaky, skip the noise and retry only the in-scope failures. S13 cycle 1 had 11 failures, but only 1 was directly from I-00102's approve changes; 7 cycles were consumed mostly on pre-existing noise.",
+      "evidence": [
+        "ai-dev/active/I-00102/fix-cycles/I-00102_S13_FIX_cycle1_prompt.md — 11 failures: 4 phantom_gate tests (pre-existing), 4 test_cli_core tests (pre-existing), 1 phase2_deadlock (lint-only), 1 ensure_active_files_committed (pre-existing I-00083)",
+        "ai-dev/active/I-00102/fix-cycles/I-00102_S13_FIX_cycle2_prompt.md — Same suite, now only 1 failure (test_chat_endpoint_reconnect — pre-existing flaky)",
+        "ai-dev/active/I-00102/reports/I-00102_S06_CodeReviewFinal_report.md — M1: ensure_active_files_committed failure is pre-existing, not I-00102 regression"
+      ],
+      "effort": "M",
+      "frequency": "recurring",
+      "paste_prompt": "/iw-new-cr Fix-cycle dispatcher should classify failing tests as in-scope/out-of-scope-pre-existing/flaky and skip noise when majority of failures are pre-existing. Analyzed in I-00102 (see ai-dev/active/I-00102/reports/I-00102_self_assess_report.md). Target file: orch/daemon/fix_cycle.py. Effort: M."
+    },
+    {
+      "id": "3",
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Allowed-paths gap: lint gate fix-cycle didn't include the failing file, wasting a round-trip",
+      "recommendation": "For lint-gate fix cycles, automatically add any file containing a lint error to allowed_paths. Lint is a text constraint that can always be fixed in any file. The S09 fix-cycle spent a cycle on a line-too-long error in `tests/integration/daemon/test_phase2_apply_no_self_deadlock.py` simply because that file wasn't in the initial allowed_paths — it was only added for S13's scope.",
+      "evidence": [
+        "ai-dev/active/I-00102/fix-cycles/I-00102_S09_FIX_cycle1_prompt.md — Scope did not include test_phase2_apply_no_self_deadlock.py; E501 line-too-long in that file blocked the cycle",
+        "ai-dev/active/I-00102/fix-cycles/I-00102_S13_FIX_cycle1_prompt.md — Scope now includes test_phase2_apply_no_self_deadlock.py; lint passes"
+      ],
+      "effort": "S",
+      "frequency": "systemic",
+      "paste_prompt": "/iw-new-cr Fix-cycle dispatcher should auto-expand allowed_paths for lint gates to include any file containing a lint error. Analyzed in I-00102 (see ai-dev/active/I-00102/reports/I-00102_self_assess_report.md). Target file: orch/daemon/fix_cycle.py. Effort: S."
+    },
+    {
+      "id": "4",
+      "severity": "LOW",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "S05 spent time analyzing pre-existing ensure_active_files_committed regression instead of recognizing it as out-of-scope",
+      "recommendation": "When a fix correctly changes the error from the expected failure to a different, unrelated error, the fix-cycle system should recognize this as 'error improved to a different code path' and signal the remaining error as out-of-scope rather than 'fix inconclusive.' S05 correctly diagnosed the C1 fix worked, but the analysis still consumed a full step.",
+      "evidence": [
+        "ai-dev/active/I-00102/reports/I-00102_S05_CodeReviewFix_report.md — 'The C1 fix itself is verified by the fact that the error changed from Manifest-file-not-found to Active-directory-not-found'",
+        "ai-dev/active/I-00102/reports/I-00102_S06_CodeReviewFinal_report.md — 'M1: ensure_active_files_committed is pre-existing, not I-00102 regression'",
+        "ai-dev/active/I-00102/reports/I-00102_S07_CodeReviewFixFinal_report.md — M1 deferred as MEDIUM_INFO; tracked separately under I-00083"
+      ],
+      "effort": "M",
+      "frequency": "systemic",
+      "paste_prompt": "/iw-new-cr Fix-cycle dispatcher should detect when a fix correctly changes an error to an unrelated error in a different code path, and flag the remaining error as out-of-scope without requiring a full analysis step. Analyzed in I-00102 (see ai-dev/active/I-00102/reports/I-00102_self_assess_report.md). Target file: orch/daemon/fix_cycle.py. Effort: M."
+    }
+  ]
+}
