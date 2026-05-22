@@ -4,7 +4,7 @@
 
 .PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
           test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
-          test-assertions diff-coverage \
+          test-assertions diff-coverage data-layer-check \
           test-properties test-properties-deep \
           test-quarantine test-flake-detect \
           mutation-check mutation-audit mutation-results mutation-show \
@@ -305,6 +305,11 @@ db-revision:
 # downstream agents inherit them.
 migration-check:
 	uv run pytest tests/integration/test_migrations_round_trip.py -v --no-cov
+
+# data-layer-check: migration round-trip (make migration-check) must pass first;
+# then the three data-layer modules (FTS invariant, revision-skew, DB-identity).
+data-layer-check: migration-check
+	uv run pytest tests/integration/data_layer/ -v --no-cov
 
 # --- Services ---
 daemon-start:
