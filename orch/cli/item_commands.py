@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,7 @@ from orch.db.models import (
     Batch,
     BatchItem,
     BatchStatus,
+    DaemonEvent,
     EvidencePhase,
     StepStatus,
     StepType,
@@ -63,6 +65,10 @@ _WORK_ITEM_CLI_COLUMNS = (
     WorkItem.updated_at,
     WorkItem.completed_at,
     WorkItem.archived_at,
+    # NOTE: manifest_digest intentionally excluded here — it is only used in
+    # register/approve, not in general item-status output. Loading it via
+    # load_only() would cause issues if the column is absent in pre-migration
+    # DBs (e.g. during daemon-upgrade rolling restarts).
     # NOTE: diff_text, diff_summary, merge_commit_sha are intentionally
     # excluded — they are feature-gate columns (F-00079) that the live
     # orch DB may not have yet (migration un-applied). The CLI SELECT must
@@ -198,6 +204,35 @@ def agent_to_label(agent: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _compute_manifest_digest(steps: list[dict[str, Any]]) -> str:
+    """Compute a deterministic SHA-256 hex digest of a manifest's steps array.
+
+    Canonicalization rules:
+    - Drop keys whose values are None or empty strings from each step dict.
+    - Serialize each step via json.dumps with sort_keys=True, separators=(",", ":").
+    - Join with "\\n" and hash the result.
+
+    This digest is stored on the WorkItem at register/approve time. On subsequent
+    approves the on-disk manifest is re-parsed and re-digested; if the digest
+    differs and the item is still in `draft`, the workflow_steps rows are
+    atomically rebuilt from the current manifest.
+
+    The digest covers only the steps array. Top-level manifest fields
+    (title, _note, scope, browser_verification, …) are intentionally excluded:
+    - `_note` is auto-stamped by _stamp_manifest_note() so it would flag every
+      approve as drift if included.
+    - `title` lives on the WorkItem row.
+    - `scope` changes are caught downstream by the merge-time scope gate.
+    """
+    canonical_lines: list[str] = []
+    for step in steps:
+        # Drop None-valued and empty-string-valued keys
+        filtered = {k: v for k, v in step.items() if v is not None and v != ""}
+        canonical_lines.append(json.dumps(filtered, sort_keys=True, separators=(",", ":")))
+    content = "\n".join(canonical_lines).encode("utf-8")
+    return hashlib.sha256(content).hexdigest()
+
+
 def parse_manifest_steps(manifest_path: Path) -> list[dict[str, Any]]:
     """Parse a workflow-manifest.json and return the steps list."""
     data: Any = json.loads(manifest_path.read_text())
@@ -250,6 +285,111 @@ def _stamp_manifest_note(manifest_path: Path) -> None:
         )
 
 
+def _insert_workflow_steps_from_manifest(
+    session: Any,
+    project_id: str,
+    item_id: str,
+    manifest_steps: list[dict[str, Any]],
+) -> int:
+    """Bulk-insert WorkflowStep rows from a manifest's steps list.
+
+    Used by both :func:`register` (first insert) and :func:`approve` (drift
+    rebuild). Keeping the insertion logic in one place guarantees that
+    register and approve-rebuild never diverge.
+
+    Raises
+    ------
+    ValueError
+        When a step has an invalid (non-integer) ``timeout`` value. The
+        outer ``try/except`` in the caller converts this to an operator-facing
+        error via :func:`output_error`.
+
+    Returns
+    -------
+    int
+        Number of rows inserted.
+    """
+    count = 0
+    for idx, step_data in enumerate(manifest_steps):
+        step_id_str = str(step_data.get("step", f"S{idx + 1:02d}"))
+        agent = str(step_data.get("agent", ""))
+
+        # Explicit step_type overrides inference
+        step_type_raw = step_data.get("step_type")
+        if isinstance(step_type_raw, str):
+            try:
+                step_type: StepType = StepType(step_type_raw)
+            except ValueError:
+                step_type = agent_to_step_type(agent)
+        else:
+            step_type = agent_to_step_type(agent)
+
+        # Explicit agent_label overrides derivation
+        label_raw = step_data.get("agent_label")
+        label = str(label_raw) if label_raw else agent_to_label(agent) or step_id_str
+
+        description_raw = step_data.get("description")
+        description = str(description_raw) if description_raw else None
+
+        label_raw_val = step_data.get("step_label")
+        step_label = str(label_raw_val) if label_raw_val else None
+
+        # Derive numeric step_number from step_id ("S01" → 1)
+        num_str = step_id_str.lstrip("Ss")
+        try:
+            step_number = int(num_str)
+        except ValueError:
+            step_number = idx + 1
+
+        # CR-00023: ingest manifest's prompt/command/gate/timeout into the
+        # WorkflowStep row so iw item-status --json is a true superset of
+        # the manifest and the daemon can read runtime info from the DB.
+        prompt_raw = step_data.get("prompt")
+        prompt_file = str(prompt_raw) if prompt_raw else None
+
+        command_raw = step_data.get("command")
+        command_val = str(command_raw) if command_raw else None
+
+        gate_raw = step_data.get("gate")
+        gate_val = str(gate_raw) if gate_raw else None
+
+        timeout_raw = step_data.get("timeout")
+        timeout_secs: int | None
+        if timeout_raw is None:
+            timeout_secs = None
+        else:
+            try:
+                timeout_secs = int(timeout_raw)
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"Invalid 'timeout' for step {step_id_str}: {timeout_raw!r} is not an integer"
+                ) from None
+
+        session.add(
+            WorkflowStep(
+                project_id=project_id,
+                work_item_id=item_id,
+                step_number=step_number,
+                step_id=step_id_str,
+                agent_label=label,
+                opencode_agent=agent or None,
+                step_type=step_type,
+                step_label=step_label,
+                description=description,
+                prompt_file=prompt_file,
+                command=command_val,
+                gate=gate_val,
+                timeout_secs=timeout_secs,
+            )
+        )
+        count += 1
+
+    session.flush()
+    return count
+
+
+# ---------------------------------------------------------------------------
+# Lookup tables
 # ---------------------------------------------------------------------------
 # Lookup tables
 # ---------------------------------------------------------------------------
@@ -478,6 +618,12 @@ def register(
                 else:
                     scope_extraction = {"source": "none"}
 
+            # Compute digest for initial registration (only on first insert —
+            # the early-return branch above does not reach here).
+            initial_digest: str | None = None
+            if manifest_steps:
+                initial_digest = _compute_manifest_digest(manifest_steps)
+
             # Insert work item
             work_item = WorkItem(
                 project_id=project_id,
@@ -494,6 +640,7 @@ def register(
                 config={"scope_extraction": scope_extraction},
                 depends_on=filtered_depends_on,
                 blocks=deps.blocks,
+                manifest_digest=initial_digest,
             )
             session.add(work_item)
             session.flush()
@@ -516,84 +663,7 @@ def register(
                 if item_id not in blocked_item.depends_on:
                     blocked_item.depends_on = blocked_item.depends_on + [item_id]
 
-            # Insert workflow steps from manifest
-            for idx, step_data in enumerate(manifest_steps):
-                step_id_str = str(step_data.get("step", f"S{idx + 1:02d}"))
-                agent = str(step_data.get("agent", ""))
-
-                # Explicit step_type overrides inference
-                step_type_raw = step_data.get("step_type")
-                if isinstance(step_type_raw, str):
-                    try:
-                        step_type: StepType = StepType(step_type_raw)
-                    except ValueError:
-                        step_type = agent_to_step_type(agent)
-                else:
-                    step_type = agent_to_step_type(agent)
-
-                # Explicit agent_label overrides derivation
-                label_raw = step_data.get("agent_label")
-                label = str(label_raw) if label_raw else agent_to_label(agent) or step_id_str
-
-                description_raw = step_data.get("description")
-                description = str(description_raw) if description_raw else None
-
-                label_raw_val = step_data.get("step_label")
-                step_label = str(label_raw_val) if label_raw_val else None
-
-                # Derive numeric step_number from step_id ("S01" → 1)
-                num_str = step_id_str.lstrip("Ss")
-                try:
-                    step_number = int(num_str)
-                except ValueError:
-                    step_number = idx + 1
-
-                # CR-00023: ingest manifest's prompt/command/gate/timeout into the
-                # WorkflowStep row so iw item-status --json is a true superset of
-                # the manifest and the daemon can read runtime info from the DB.
-                prompt_raw = step_data.get("prompt")
-                prompt_file = str(prompt_raw) if prompt_raw else None
-
-                command_raw = step_data.get("command")
-                command_val = str(command_raw) if command_raw else None
-
-                gate_raw = step_data.get("gate")
-                gate_val = str(gate_raw) if gate_raw else None
-
-                timeout_raw = step_data.get("timeout")
-                timeout_secs: int | None
-                if timeout_raw is None:
-                    timeout_secs = None
-                else:
-                    try:
-                        timeout_secs = int(timeout_raw)
-                    except (TypeError, ValueError):
-                        output_error(
-                            ctx,
-                            (
-                                f"Invalid 'timeout' for step {step_id_str}: "
-                                f"{timeout_raw!r} is not an integer"
-                            ),
-                            2,
-                        )
-
-                session.add(
-                    WorkflowStep(
-                        project_id=project_id,
-                        work_item_id=item_id,
-                        step_number=step_number,
-                        step_id=step_id_str,
-                        agent_label=label,
-                        opencode_agent=agent or None,
-                        step_type=step_type,
-                        step_label=step_label,
-                        description=description,
-                        prompt_file=prompt_file,
-                        command=command_val,
-                        gate=gate_val,
-                        timeout_secs=timeout_secs,
-                    )
-                )
+            _insert_workflow_steps_from_manifest(session, project_id, item_id, manifest_steps)
 
             session.flush()
 
@@ -625,15 +695,29 @@ def register(
 @click.argument("item_id")
 @click.pass_context
 def approve(ctx: click.Context, item_id: str) -> None:
-    """Approve a work item for execution (draft → approved)."""
+    """Approve a work item for execution (draft → approved).
+
+    Before flipping status, this command checks whether the on-disk
+    workflow-manifest.json has drifted from the digest stored at register
+    time. When drift is detected and the item is still in ``draft``, the
+    ``workflow_steps`` rows are atomically rebuilt from the current manifest
+    and a ``manifest_refreshed`` daemon event is emitted.
+
+    Items registered before the ``manifest_digest`` column (pre-I-00102) have
+    NULL stored; the first approve always triggers a refresh and stores the
+    digest, so old items are backfill-safe.
+    """
     project_id = resolve_project(ctx)
     get_session = ctx.obj["get_session"]
+    manifest_refreshed = False
+    old_step_count = 0
+    new_step_count = 0
 
     try:
         with get_session() as session:
             item = session.execute(
                 select(WorkItem)
-                .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                .options(load_only(*_WORK_ITEM_CLI_COLUMNS, WorkItem.manifest_digest))
                 .where(WorkItem.project_id == project_id, WorkItem.id == item_id)
             ).scalar_one_or_none()
             if item is None:
@@ -643,21 +727,146 @@ def approve(ctx: click.Context, item_id: str) -> None:
             if error:
                 output_error(ctx, error, 1)
 
-            repo_root = ctx.obj.get("repo_root", "")
-            if repo_root:
+            # -----------------------------------------------------------------
+            # §1  Resolve on-disk manifest path
+            # -----------------------------------------------------------------
+            repo_root_raw = ctx.obj.get("repo_root", "") or str(Path.cwd())
+            repo_root = Path(repo_root_raw)
+            if item.design_doc_path:
+                # Derive from design doc: sibling workflow-manifest.json next to the design doc
+                design_doc = Path(item.design_doc_path)
+                if not design_doc.is_absolute():
+                    design_doc = repo_root / design_doc
+                manifest_path = design_doc.parent / "workflow-manifest.json"
+            else:
+                # Fallback: canonical location relative to repo_root
+                manifest_path = repo_root / "ai-dev" / "active" / item_id / "workflow-manifest.json"
+
+            # -----------------------------------------------------------------
+            # §2  Parse and digest current on-disk manifest
+            # -----------------------------------------------------------------
+            # Only require the on-disk manifest when we have a path to check:
+            # - old_digest is not None → item was registered with a manifest (drift possible)
+            # - design_doc_path is not None → deterministic path derivation exists
+            # When neither holds (pre-I-00102 item, or item registered without manifest)
+            # no drift detection is possible — skip the check and proceed with approve.
+            old_digest = item.manifest_digest  # may be NULL for pre-I-00102 items
+            manifest_required = old_digest is not None or item.design_doc_path is not None
+
+            if manifest_required and not manifest_path.exists():
+                output_error(
+                    ctx,
+                    (
+                        f"Manifest file not found: {manifest_path} — "
+                        "cannot approve without the current manifest"
+                    ),
+                    1,
+                )
+
+            new_digest: str | None = None  # set below when manifest_required is True
+
+            if manifest_required:
+                try:
+                    disk_steps = parse_manifest_steps(manifest_path)
+                except (json.JSONDecodeError, OSError) as exc:
+                    output_error(ctx, f"Invalid manifest file {manifest_path}: {exc}", 1)
+
+                new_digest = _compute_manifest_digest(disk_steps)
+
+            # -----------------------------------------------------------------
+            # §3  Drift detection — only when a manifest is available to compare
+            # -----------------------------------------------------------------
+            if not manifest_required:
+                # No drift detection possible — no manifest path and no stored digest.
+                # Approve proceeds without refresh (no manifest to rebuild from).
+                manifest_refreshed = False
+            elif new_digest == old_digest:
+                # No drift — proceed with existing workflow_steps unchanged
+                pass  # pragma: no cover  (branch exercised by integration tests)
+            elif item.status != WorkItemStatus.draft:
+                # Cannot arise in approve() (status guard above), but kept as a
+                # hard defensive assert so the refresh path stays draft-only even
+                # if future callers reuse this logic.
+                raise RuntimeError(
+                    f"manifest_refreshed path called on non-draft item {item_id} "
+                    f"(status={item.status.value}) — refresh is draft-only by design (AC3)"
+                )
+            else:
+                # -----------------------------------------------------------------
+                # §4  Drift detected AND item is in draft — rebuild workflow_steps
+                # -----------------------------------------------------------------
+                old_step_count = (
+                    session.query(WorkflowStep)
+                    .filter(
+                        WorkflowStep.project_id == project_id,
+                        WorkflowStep.work_item_id == item_id,
+                    )
+                    .count()
+                )
+
+                # Delete all existing rows (unique constraint on step_number means
+                # an in-place UPDATE is fragile — full replace is correct because
+                # the item is in draft and no run history exists)
+                session.query(WorkflowStep).filter(
+                    WorkflowStep.project_id == project_id,
+                    WorkflowStep.work_item_id == item_id,
+                ).delete(synchronize_session=False)
+
+                # Re-insert from current on-disk manifest using the shared helper
+                new_step_count = _insert_workflow_steps_from_manifest(
+                    session, project_id, item_id, disk_steps
+                )
+
+                # Update digest on the WorkItem
+                item.manifest_digest = new_digest
+
+                # Emit audit event
+                session.add(
+                    DaemonEvent(
+                        project_id=project_id,
+                        event_type="manifest_refreshed",
+                        entity_id=item_id,
+                        entity_type="work_item",
+                        message=(
+                            f"Workflow steps populated from manifest for {item_id} "
+                            f"({old_step_count} → {new_step_count} steps)"
+                            if old_digest is None
+                            else f"Manifest drifted since register — workflow_steps rebuilt "
+                            f"for {item_id} ({old_step_count} → {new_step_count} steps)"
+                        ),
+                        event_metadata={
+                            "old_digest": old_digest,
+                            "new_digest": new_digest,
+                            "old_step_count": old_step_count,
+                            "new_step_count": new_step_count,
+                            "trigger": "approve",
+                            "backfill": old_digest is None,
+                        },
+                    )
+                )
+                manifest_refreshed = True
+
+            # -----------------------------------------------------------------
+            # §5  Proceed with the rest of approve (unchanged)
+            # -----------------------------------------------------------------
+            # Only check active-file commitment when a design doc was registered.
+            # Items registered without --design-doc have no guaranteed active
+            # directory structure (test_full_flow_next_id_register_approve and
+            # similar minimal flows); skip the check so approve is not gated
+            # on an absent ai-dev/active/<ID>/ path.
+            if repo_root and item.design_doc_path:
                 try:
                     ensure_active_files_committed(repo_root, item_id, item.title)
                 except ValueError as exc:
                     output_error(ctx, str(exc), 1)
 
-            repo_root = ctx.obj.get("repo_root", "") or "."
             try:
                 ingest_phase_from_disk(
                     session=session,
                     project_id=project_id,
                     work_item_id=item_id,
                     phase=EvidencePhase.pre,
-                    root=Path(repo_root),
+                    root=repo_root,
                     step_id=None,
                 )
             except EvidenceTooLargeError as exc:
@@ -674,7 +883,12 @@ def approve(ctx: click.Context, item_id: str) -> None:
         output_error(ctx, f"Database error: {exc}", 1)
 
     if ctx.obj.get("json"):
-        result: dict[str, Any] = {"project_id": project_id, "id": item_id, "status": "approved"}
+        result: dict[str, Any] = {
+            "project_id": project_id,
+            "id": item_id,
+            "status": "approved",
+            "manifest_refreshed": manifest_refreshed,
+        }
         if skipped:
             result["auto_skipped_steps"] = [
                 {"step_id": s, "gate": g, "reason": r} for s, g, r in skipped
@@ -682,6 +896,11 @@ def approve(ctx: click.Context, item_id: str) -> None:
         click.echo(json.dumps(result))
     else:
         click.echo(f"Approved {item_id}")
+        if manifest_refreshed:
+            click.echo(
+                f"Refreshed workflow_steps from manifest "
+                f"({old_step_count} → {new_step_count} steps)"
+            )
         for step_id, gate, reason in skipped:
             click.echo(f"  Auto-skipped phantom gate {step_id} ({gate}): {reason}")
 

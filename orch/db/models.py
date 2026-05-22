@@ -552,6 +552,17 @@ class WorkItem(Base):
             "fallback over design_doc_content when the section is absent."
         ),
     )
+    manifest_digest: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "SHA-256 hex digest of the canonicalized steps array from "
+            "workflow-manifest.json at register/approve time. NULL for "
+            "pre-I-00102 items. Used by iw approve to detect on-disk "
+            "manifest drift and auto-refresh workflow_steps when the "
+            "item is still in draft. See I-00102."
+        ),
+    )
     design_doc_path: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,

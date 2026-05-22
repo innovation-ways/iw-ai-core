@@ -4,18 +4,15 @@ Tests that apply() does not hang when the caller holds AccessShareLock on a tabl
 the pending migration will ALTER. Verifies both the pre-fix (hangs forever) and
 post-fix (SelfBlockerError / lock_timeout / success) behaviors.
 
-The testcontainer is stamped at 6d78323d0954 (add_pi_runtime_options), leaving
-three migrations pending:
-- e45b45f74ea0 (f_00086_chat_tabs) — CREATE TABLE chat_tabs
-- 00490acc4cdf (cr00065_add_session_file_to_step_runs) — ALTER TABLE step_runs
-  ADD COLUMN session_file
-- 0f11be8f2147 (flip_default_agent_runtime_to_pi) — UPDATE agent_runtime_options rows
+The testcontainer is stamped at 891343247f66 (cr00066_add_context_tokens_columns),
+leaving one migration pending:
+- aeb0e4106b55 (add_manifest_digest_to_work_items, I-00102) — adds the
+  manifest_digest column to work_items.
 
-None of these migrations ALTER TABLE batch_items, so the AccessShareLock on
+This migration does NOT ALTER TABLE batch_items, so the AccessShareLock on
 batch_items held by the test's outer session does NOT conflict with the pending
-migrations. apply() therefore succeeds (no SelfBlockerError, no lock_timeout
-backstop needed) — confirming that the fix correctly detects a self-deadlock
-scenario only when the lock actually conflicts.
+migration. apply() therefore succeeds — confirming that the fix correctly
+detects a self-deadlock scenario only when the lock actually conflicts.
 """
 
 from __future__ import annotations
@@ -39,9 +36,9 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "891343247f66"  # cr00066_add_context_tokens_columns (current head)
+_HEAD_REVISION = "aeb0e4106b55"  # add_manifest_digest_to_work_items (I-00102, current head)
 _PREV_REVISION = (
-    "6d78323d0954"  # add_pi_runtime_options (test stamps here; migrations through head pending)
+    "891343247f66"  # cr00066_add_context_tokens_columns (stamped here; digest migration pending)
 )
 
 
@@ -66,16 +63,11 @@ def db_url(pg_container: PostgresContainer) -> str:
 
 @pytest.fixture
 def db_engine_at_prev_revision(db_url: str) -> Engine:
-    """Engine with schema at PREV_REVISION — three migrations pending.
+    """Engine with schema at PREV_REVISION — manifest_digest migration pending.
 
     Strategy: on a fresh testcontainer (no alembic_version row), upgrade to
     PREV_REVISION only. This applies all migrations up to and including
-    6d78323d0954, leaving three migrations pending:
-    - e45b45f74ea0 (f_00086_chat_tabs) — adds chat_tabs table
-    - 00490acc4cdf (cr00065_add_session_file_to_step_runs) — adds step_runs.session_file
-    - 0f11be8f2147 (flip_default_agent_runtime_to_pi) — flips default runtime
-    All three share the same down_revision chain (e45b45f74ea0), so they are
-    applied as a linear branch from the testcontainer's 6d78323d0954 stamp.
+    891343247f66, leaving the manifest_digest migration pending.
 
     NOTE: we intentionally do NOT call Base.metadata.create_all() here.
     Alembic's online migration is the sole mechanism for schema creation in
