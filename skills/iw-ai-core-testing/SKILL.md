@@ -126,6 +126,23 @@ with pytest.raises(FixCycleExhausted):
 
 Unit tests that just need to *mock* DB calls get a `MagicMock` `db_session` from `tests/unit/conftest.py`.
 
+### Data-layer test package — `tests/integration/data_layer/` (CR-00076)
+
+A consolidated package for the hard-won data-layer invariants. Three modules:
+
+| Module | Asserts | Extends (does not replace) |
+|--------|---------|----------------------------|
+| `test_fts_trigger_invariant.py` | every `tsvector` column is populated on INSERT and refreshed on UPDATE by its FTS trigger — parametrized one case per column | `test_work_items_functional_doc_fts.py` |
+| `test_migration_revision_skew.py` | `alembic upgrade head` against a DB whose `alembic_version` names a revision absent from the graph raises `CommandError: Can't locate revision identified by` — the I-00075/76 failure, pinned as a regression | `test_migrations_round_trip.py` |
+| `test_db_identity_invariants.py` | the match / mismatch / bootstrap / missing-row paths of `orch/db/identity.py` | `test_db_identity_integration.py` |
+
+`make data-layer-check` runs `make migration-check` then the package.
+
+**Extending it:**
+- New `tsvector` column → add one `(table, tsvector_column, [searchable_text_columns])` tuple to `TSVECTOR_COLUMNS` in `test_fts_trigger_invariant.py`; a parametrized case is generated automatically.
+- New DB-identity edge case → add a test to `test_db_identity_invariants.py`.
+- The skew module is **test-only** — it pins the failure, it adds no runtime skew guard. Any `alembic downgrade` here targets a specific revision ID, never `-1` (`tests/CLAUDE.md` rule 4a). To exercise a "behind head" DB, `command.upgrade` to a specific old revision — never rewrite `alembic_version` under a head-schema DB (the second upgrade would re-run already-applied `CREATE TABLE`s).
+
 ### pytest-randomly — test-order randomisation (CR-00055, 2026-05-16 — default-on)
 
 `pytest-randomly` is **ON by default** (CR-00055, 2026-05-16). The integration + dashboard suite is robust to randomisation via per-test PostgreSQL template-clone (`pgtestdbpy>=0.0.1`): a session-scoped template DB is migrated once; each test gets its own fresh clone (~25 ms via `CREATE DATABASE … TEMPLATE …` with WAL_LOG strategy override); `IW_CORE_DB_*` env vars are monkeypatched per-test so `iw` CLI subprocesses inherit the isolated clone. 3 module-scoped `migrated_engine` tests are quarantined `@pytest.mark.xfail(strict=False)` as carry-forward. Verified green across 4 reference seeds (12345/67890/11111/42424).

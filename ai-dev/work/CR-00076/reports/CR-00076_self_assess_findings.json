@@ -1,0 +1,75 @@
+{
+  "item_id": "CR-00076",
+  "bottom_line": "CR-00076 test infrastructure is sound (all 15 data-layer tests pass, AC1-AC4 met), but execution was complicated by an S01 context-window crash requiring operator recovery, an S10 diff-coverage failure caused by origin/main staleness (not a CR defect), and a tdd_red_evidence gap for the FTS module (proxy-verified vs. actual deliberate-break capture). Key process fixes: make diff-coverage robust to stale origin/main, require actual RED capture in S01 for test-infrastructure CRs.",
+  "coverage_notes": "All logs read in full (S01-S09 logs are small except S08/S09 at ~400KB each; used grep+tail for error patterns). S10_run1 (85KB) read in full for diff-coverage failure context. DB telemetry: DB:UP, item-status JSON retrieved. No archived tarball needed.",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "iw-ai-core",
+      "title": "S10 diff-coverage failure root cause was origin/main staleness, not CR code",
+      "recommendation": "Add `git fetch origin` pre-flight step to the diff-coverage Makefile target, or document that operators must ensure origin/main is current before launching CR worktrees. The concurrent-bootstrap test failure is pre-existing flaky unrelated to CR-00076.",
+      "evidence": [
+        "ai-dev/logs/CR-00076_S10_run3.log:1 — '# I-00084: sync stale origin/main so diff-cover compares against actual local main'",
+        "ai-dev/logs/CR-00076_S10_run3.log:707 — 'No lines with coverage information in this diff.' (after sync, diff passes)",
+        "ai-dev/logs/CR-00076_S10_fix1.log — empty file (fix cycle ran but S10_run3 is the successful retry)"
+      ],
+      "effort": "S",
+      "frequency": "systemic",
+      "paste_prompt": "/iw-new-cr Add git fetch origin pre-flight to diff-coverage Makefile target for robust branch comparisons; analyzed in CR-00076 (see ai-dev/work/CR-00076/reports/CR-00076_self_assess_report.md). Target: Makefile. Effort: S."
+    },
+    {
+      "severity": "HIGH",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "S01 context-window crash left no step-done; operator recovery required",
+      "recommendation": "For context-window risks, the S01 prompt should instruct the agent to checkpoint mid-deliverable and call step-done incrementally. Alternatively, the executor should treat 'context window exceeded' as an automatic retry trigger rather than silent compactor-resume.",
+      "evidence": [
+        "ai-dev/work/CR-00076/reports/CR-00076_S01_Backend_report.md — 'The original S01 agent ran on the pi runtime with minimax/MiniMax-M2.7. Mid-run it hit the model's context-window limit: context window exceeds limit (2013). The step never reached a clean finish: no step-done, no report'"
+      ],
+      "effort": "M",
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-cr Add context-window checkpoint guidance to S01 backend-impl prompts; analyzed in CR-00076 (see ai-dev/work/CR-00076/reports/CR-00076_self_assess_report.md). Target: skills/iw-execute/SKILL.md. Effort: M."
+    },
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "S01 tdd_red_evidence for FTS module was proxy-verified instead of actual deliberate-break capture",
+      "recommendation": "Update the S01 prompt template to require actual failing-output capture for each test module as tdd_red_evidence. S02/S03 should reject completion without it. The revision-skew module in the same CR already had genuine RED evidence — that standard should apply consistently.",
+      "evidence": [
+        "ai-dev/work/CR-00076/reports/CR-00076_S01_Backend_report.md — 'FTS-trigger module — assertions are behavioural and mutation-killing: ... Confirmed by make test-assertions (scanner proxy not a full break-revert cycle)'",
+        "ai-dev/logs/CR-00076_S02_run1.log — 'AC6 tdd_red_evidence for FTS module was proxy-verified via assertion scanner rather than a full deliberate-break-then-revert cycle. Acceptable given S01 report's transparency; no mandatory fix.'"
+      ],
+      "effort": "S",
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-cr Require actual RED capture in S01 tdd_red_evidence for test-infrastructure CRs; analyzed in CR-00076 (see ai-dev/work/CR-00076/reports/CR-00076_self_assess_report.md). Target: templates/design/Feature_Template.md. Effort: S."
+    },
+    {
+      "severity": "LOW",
+      "class": "design",
+      "target": "iw-ai-core",
+      "title": "tsvector column discovery path was undocumented; required manual models.py inspection",
+      "recommendation": "Document the tsvector column discovery path in docs/IW_AI_Core_Testing_Strategy.md and add a 'data_layer_discovery_notes' section to future CR design docs for test-infrastructure items so agents have a canonical where-to-look.",
+      "evidence": [
+        "ai-dev/work/CR-00076/reports/CR-00076_S01_Backend_report.md — 'Enumerated all 3 tsvector columns by inspecting orch/db/models.py: work_items.design_doc_search, work_items.functional_doc_search, project_docs.content_search. Module-level TSVECTOR_COLUMNS constant.'"
+      ],
+      "effort": "S",
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-cr Document tsvector column discovery path in Testing Strategy doc; analyzed in CR-00076 (see ai-dev/work/CR-00076/reports/CR-00076_self_assess_report.md). Target: docs/IW_AI_Core_Testing_Strategy.md. Effort: S."
+    },
+    {
+      "severity": "LOW",
+      "class": "convention",
+      "target": "iw-ai-core",
+      "title": "S01 agent orphaned baseline-whitelist entries and junk directory on context-window crash",
+      "recommendation": "The executor should track file modifications and roll back if a step is killed mid-execution. Consider adding tests/assertion_free_baseline.txt to an exclusion list that the executor validates post-step.",
+      "evidence": [
+        "ai-dev/work/CR-00076/reports/CR-00076_S01_Backend_report.md — 'two now-renamed test names had been added to tests/assertion_free_baseline.txt. Reverted that file entirely; the junk ai-dev/active/CR-00076/CR-00076/ directory also existed and was cleaned up.'"
+      ],
+      "effort": "M",
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-cr Add file-modification rollback to executor for killed steps; analyzed in CR-00076 (see ai-dev/work/CR-00076/reports/CR-00076_self_assess_report.md). Target: executor/ scripts. Effort: M."
+    }
+  ]
+}

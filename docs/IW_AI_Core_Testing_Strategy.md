@@ -66,6 +66,8 @@ Fast, no I/O, no containers. Cover: `orch/config.py` resolution; state-machine a
 
 Real PostgreSQL via `testcontainers[postgres]` — never the live DB. Cover: ORM models and constraints; the daemon loop and state transitions (`tests/integration/daemon/`); the `iw` CLI end-to-end against a real DB (`tests/integration/cli/`); RAG/code-index pipeline (`tests/integration/rag/` — some tests skip when no local Ollama listener, see the conftest hook); DB behaviour including `SELECT FOR UPDATE` locking (which is *why* the DB is never mocked here); migration round-trips (`tests/integration/test_migrations_round_trip.py`, also runnable via `make migration-check`); evidence ingestion; doc service/versioning. The `tests/integration/dashboard/` and `tests/integration/api/` subdirs hold heavier DB-backed dashboard/API flows.
 
+> **Sub-package — `tests/integration/data_layer/` (CR-00076).** A consolidated data-layer package holds three focused modules: `test_fts_trigger_invariant.py` (every `tsvector` column — `work_items.design_doc_search`, `work_items.functional_doc_search`, `project_docs.content_search` — is populated and refreshed by its FTS trigger, parametrized one case per column), `test_migration_revision_skew.py` (reproduces and pins the I-00075/I-00076 revision-skew failure: `alembic upgrade head` against a DB whose `alembic_version` names a revision absent from the migration graph must raise `CommandError: Can't locate revision identified by`), and `test_db_identity_invariants.py` (the match / mismatch / bootstrap / missing-row paths of `orch/db/identity.py`). It **extends — does not replace** — `test_migrations_round_trip.py`, `test_work_items_functional_doc_fts.py`, and `test_db_identity_integration.py`. `make data-layer-check` runs `make migration-check` then this package.
+
 ### Layer 3 — Dashboard tests (`tests/dashboard/`)
 
 FastAPI behaviour via `TestClient` with the testcontainer `db_session` injected through `app.dependency_overrides[get_db]` (see `tests/dashboard/conftest.py` and the pattern in `tests/dashboard/test_jobs_filter_ui.py`). Cover: route status/redirects/shapes; Jinja2 template rendering; htmx fragment swaps; SSE wiring (`test_code_qa_sse_wire`); chat panel a11y/security/templates; the alembic-guard banner; coverage page; staleness router; project onboarding; runtime overrides; session isolation (`test_F00077_session_isolation`). Run as part of `make test-integration`; `make test-dashboard` is a fast `--no-cov` slice for local iteration.
@@ -260,6 +262,7 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Coverage | `coverage.py` (`branch = true`) | `fail_under = 50` — just below measured branch coverage; **ratchets up over time, never down** (CR-00047) | enforced via `pytest --cov` (config in `pyproject.toml`) at the end of *every* test run that picks up `addopts` (incl. the `unit-tests` and CI `integration` runs) |
 | Diff coverage | `diff-cover` | new/changed Python lines ≥ ~90 % covered (vs `origin/main`) | `make diff-coverage` (daemon `diff-coverage` QV gate) + a `pull_request`-conditional step in `test-quality.yml`'s `unit` job |
 | Migration round-trip | pytest `test_migrations_round_trip.py` | 100 % pass | `make migration-check` |
+| Data-layer suite | pytest `tests/integration/data_layer/` (FTS-trigger invariant, revision-skew regression, DB-identity invariants — CR-00076) | 100 % pass | `make data-layer-check` (runs `make migration-check` first; no new daemon QV gate — the modules also run inside `make test-integration`) |
 | Smoke | pytest `-m smoke --strict-markers --no-cov` | 100 % pass | `make smoke` |
 | Mutation testing | `mutmut>=2.5,<3.0` | on-demand only (NOT in CI); spike score on `orch/daemon/` = 0.00% (CR-00059); follow-up CR will wire blocking PR gate | `make mutation-check MODULE=...` / `make mutation-audit` |
 | Property tests (ci profile) | hypothesis | included in `make test-unit` via `tests/unit/properties/` conftest default; `--strict-markers` via `pyproject.toml`; deterministic via `derandomize=True` | `make test-properties` (explicit); also via `make test-unit` |
@@ -360,7 +363,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | `iw` CLI-contract layer | ⚠️ piecemeal in `tests/integration/cli/` (3.3) |
 | Cross-project isolation matrix | ❌ (3.4) |
 | Security test module (live-DB-guard net, authz negatives, doc-render SSRF) | ⚠️ partial (`test_chat_security`, the guard fixture) (3.5) |
-| Data-layer module (migration round-trip / FTS invariant / per-worktree-DB skew) | ⚠️ partial (`migration-check` exists) (3.6) |
+| Data-layer module (migration round-trip / FTS invariant / revision-skew / DB-identity) | ✅ (CR-00076, 2026-05-21) — `tests/integration/data_layer/` package + `make data-layer-check`; extends, does not replace, the migration round-trip (3.6) |
 | Visual regression for rendered HTML/PDF docs | ❌ (4.1) |
 | Performance budgets | ❌ (4.2) |
 | Daemon chaos / fault-injection | ❌ (4.3) |
