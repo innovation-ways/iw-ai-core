@@ -266,6 +266,115 @@ def _render_claude_opencode(run: StepRun, max_chars: int) -> list[dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
+# Turn grouping helpers
+# ---------------------------------------------------------------------------
+
+
+def _reverse_log_lines(text: str) -> str:
+    """Reverse the lines of ``text`` so the newest line is on top."""
+    return "\n".join(text.splitlines()[::-1])
+
+
+def group_into_turns_newest_first(
+    segments: list[dict[str, Any]],
+) -> list[list[dict[str, Any]]]:
+    """Group a chronological flat segment list into agent turns, newest turn first.
+
+    A *turn* is a contiguous run of segments ending with an ``assistant`` segment
+    that is **not** immediately followed by another ``assistant`` segment, or with
+    an ``error`` segment (which always terminates its turn).  Consecutive
+    ``assistant`` segments (e.g. a pi message whose ``content`` list carries
+    multiple ``text`` items) stay in the same turn — only the last of a consecutive
+    run terminates the turn.
+
+    A ``compaction`` segment is emitted as its **own single-segment turn** after
+    flushing any in-progress turn, so the marker acts as a visual separator.
+
+    A ``log`` segment (claude/opencode whole-dump fallback) is emitted as its own
+    turn with its ``text`` lines reversed (newest line on top), consistent with
+    the ``_reverse_log`` behaviour used by the Logs tab.
+
+    Segments accumulated after the last terminator (no assistant reply yet —
+    common while a step is still running) form a **final in-progress turn**.
+
+    The list of turns is ordered **newest turn first**; segments **inside** each
+    turn keep their original chronological order.  The input list is not mutated.
+
+    Args:
+        segments: Flat chronological list of segment dicts produced by
+            ``read_session_content``.
+
+    Returns:
+        A list of turns, each turn being a list of segment dicts.  Empty input
+        returns an empty list.
+    """
+    if not segments:
+        return []
+
+    turns: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+
+    i = 0
+    n = len(segments)
+
+    while i < n:
+        seg = segments[i]
+        seg_type = seg["type"]
+
+        # ── Special: compaction ──────────────────────────────────────────────
+        if seg_type == _SEG_COMPACTION:
+            # Flush in-progress turn first, then emit compaction as its own turn
+            if current:
+                turns.append(current)
+                current = []
+            turns.append([seg])
+            i += 1
+            continue
+
+        # ── Special: log ─────────────────────────────────────────────────────
+        if seg_type == _SEG_LOG:
+            # Emit log as its own turn with reversed lines
+            # (do NOT mutate the original dict)
+            reversed_text = _reverse_log_lines(seg.get("text", ""))
+            reversed_seg = {**seg, "text": reversed_text}
+            if current:
+                turns.append(current)
+                current = []
+            turns.append([reversed_seg])
+            i += 1
+            continue
+
+        # ── Normal segment ────────────────────────────────────────────────────
+        current.append(seg)
+
+        # Turn terminates on an `error` segment
+        if seg_type == _SEG_ERROR:
+            turns.append(current)
+            current = []
+            i += 1
+            continue
+
+        # Turn terminates on an `assistant` segment that is NOT immediately
+        # followed by another `assistant` segment
+        if seg_type == _SEG_ASSISTANT:
+            next_is_assistant = (i + 1 < n) and (segments[i + 1]["type"] == _SEG_ASSISTANT)
+            if not next_is_assistant:
+                turns.append(current)
+                current = []
+
+        i += 1
+
+    # Final in-progress turn (no terminating assistant/error yet)
+    if current:
+        turns.append(current)
+
+    # Reverse the list of turns so newest turn is first
+    turns.reverse()
+
+    return turns
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
