@@ -34,9 +34,10 @@ So our metrics and gates are chosen accordingly:
 
 ## 2. Test layers (current state)
 
-IW AI Core today has **five test layers**, all pytest-based except the browser layer which drives a real Chromium via `playwright-cli`.
+IW AI Core today has **six test layers**, all pytest-based except the browser layer which drives a real Chromium via `playwright-cli`.
 
 ```
+Layer 6:  Contract tests (pytest)         — No-5xx route sweep + schemathesis OpenAPI fuzz
 Layer 5:  Security tests (pytest)         — Live-DB guard regression, authz negatives,
                                                  SSRF/path-traversal, agent-context env-var
 Layer 4:  Browser tests (playwright-cli) — Real Chromium against a live Uvicorn dashboard
@@ -99,6 +100,19 @@ Asserted regression tests for four distinct security risk classes, all against t
 **No real network I/O**: SSRF/path-traversal tests mock `httpx` and assert the mock is never called with an internal URL. No test reaches the live DB (port 5433).
 
 > **Extending the security module**: add a new module under `tests/integration/security/` for each new security risk class. Do not fix vulnerabilities within the same CR — file an Incident and xfail the test instead. Run `make test-security-module` to verify the new module, then `iw sync-skills --force iw-ai-core-testing` to update the skill.
+
+### Layer 6 — Contract tests (`tests/dashboard/test_route_contract_sweep.py`, `test_schemathesis_contract.py` — CR-00072)
+
+Two contract-level modules that prove the dashboard's HTTP surface as a whole, rather than one targeted behaviour at a time:
+
+| Module | What it does | Execution |
+|--------|--------------|-----------|
+| `test_route_contract_sweep.py` | Enumerates every route on `create_app()`; for every GET/HEAD route (minus a documented skip set — SSE/streaming, the static mount, FastAPI's OpenAPI/Swagger endpoints, the AI-runtime-gated chat endpoints) it issues a request against a seeded testcontainer `TestClient` (`raise_server_exceptions=False`) and asserts `status_code < 500`. Parametrized one case per route. Path parameters resolve from seeded data; an `UNRESOLVED` list is asserted against an explicitly-reviewed set; genuine pre-existing 5xx are recorded in an `EXPECTED_5XX` xfail allowlist. | **Blocking** — runs inside `make test-integration` (it lives under `tests/dashboard/`); convenience target `make test-route-sweep`. |
+| `test_schemathesis_contract.py` | schemathesis property-fuzzes the JSON API operations (keep-alive API + runtime-overrides) against the OpenAPI schema, asserting `not_a_server_error` on every generated case. Marked `contract_fuzz`. | **Periodic** — excluded from the default selection (`addopts -m 'not … and not contract_fuzz'`); runs via `make test-contract-fuzz` and the nightly `.github/workflows/contract-fuzz.yml` (`continue-on-error` burn-in). |
+
+The sweep introduces **no new canonical QV gate** — it is collected by the existing `integration-tests` gate. A newly-added route is swept automatically; a newly-added JSON endpoint should be considered for the schemathesis `JSON_API_PATHS` allow-list.
+
+**Genuine pre-existing 5xx handling**: a real handler bug the sweep surfaces is recorded in `EXPECTED_5XX` (route sweep) or `KNOWN_CONTRACT_5XX` (schemathesis) with a `TODO(file-incident)` rationale, the case is `xfail`-ed / excluded, and the bug is surfaced as operator follow-up in the step report — the operator files the Incident on `main` post-merge. CR-00072 never edits production code.
 
 
 ## E2E browser-verification stack
@@ -283,6 +297,8 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Security — asserted regression tests (CR-00075) | pytest `tests/integration/security/` | 100 % pass (xfailed genuine vulns allowed with Incident ID) | `make test-security-module`; also runs as part of `make test-integration` |
 | Unit tests | pytest | 100 % pass | `make test-unit` |
 | Integration + dashboard tests | pytest + testcontainers | 100 % pass | `make test-integration` |
+| Route-contract sweep (CR-00072) | pytest `test_route_contract_sweep.py` (every GET/HEAD route, `status_code < 500`) | 100 % pass (genuine pre-existing 5xx allowed via `EXPECTED_5XX` xfail + filed Incident) | `make test-route-sweep` (convenience); **blocking** — also runs inside `make test-integration`, no new daemon QV gate |
+| schemathesis contract fuzz (CR-00072) | `schemathesis>=4` OpenAPI fuzz of the JSON API operations (`not_a_server_error`) | informational (nightly burn-in, `continue-on-error`) | `make test-contract-fuzz`; nightly `.github/workflows/contract-fuzz.yml`; excluded from the default suite (`contract_fuzz` marker) |
 | Coverage | `coverage.py` (`branch = true`) | `fail_under = 50` — just below measured branch coverage; **ratchets up over time, never down** (CR-00047) | enforced via `pytest --cov` (config in `pyproject.toml`) at the end of *every* test run that picks up `addopts` (incl. the `unit-tests` and CI `integration` runs) |
 | Diff coverage | `diff-cover` | new/changed Python lines ≥ ~90 % covered (vs `origin/main`) | `make diff-coverage` (daemon `diff-coverage` QV gate) + a `pull_request`-conditional step in `test-quality.yml`'s `unit` job |
 | Migration round-trip | pytest `test_migrations_round_trip.py` | 100 % pass | `make migration-check` |
@@ -383,7 +399,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Property-based tests (Hypothesis) on state machines | ✅ (CR-00060, 2026-05-18) — five modules under `tests/unit/properties/`; ci profile in `make test-unit`; deep profile on-demand via `make test-properties-deep` |
 | Flaky/quarantine workflow | ✅ (CR-00061, 2026-05-18) — quarantine marker; addopts deselection; make test-quarantine / make test-flake-detect; quarantining requires filing an Incident (rule in tests/CLAUDE.md) |
 | Structured dashboard E2E layer | ❌ (3.1) — only ad-hoc `-m browser` tests today |
-| Contract / no-5xx route sweep + `schemathesis` | ❌ (3.2) |
+| Contract / no-5xx route sweep + `schemathesis` | ✅ DONE 2026-05-21 (CR-00072) — `tests/dashboard/test_route_contract_sweep.py` (every GET/HEAD route, `status_code < 500`, blocking via `make test-integration`) + `tests/dashboard/test_schemathesis_contract.py` (`schemathesis>=4` JSON-API fuzz, `contract_fuzz`-marked, nightly `contract-fuzz.yml` burn-in); genuine pre-existing 5xx → `EXPECTED_5XX`/`KNOWN_CONTRACT_5XX` allowlist + operator follow-up; documented in §2 Layer 6 + §5 gate table + skill (3.2) |
 | `iw` CLI-contract layer | ⚠️ piecemeal in `tests/integration/cli/` (3.3) |
 | Cross-project isolation matrix | ❌ (3.4) |
 | Security test module (live-DB-guard net, authz negatives, doc-render SSRF) | ✅ DONE 2026-05-21 (CR-00075) — `tests/integration/security/` package; `test_live_db_write_guard`, `test_authz_negative_paths`, `test_doc_render_ssrf_path_traversal`, `test_agent_context_env_handling`; genuine vulns → xfail + Incident; `make test-security-module`; documented in §2 Layer 5 + §5 gate table + skill + TESTS_ENHANCEMENT.md (3.5) |

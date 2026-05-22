@@ -319,3 +319,24 @@ make test-integration       # all integration tests including security
 ```
 
 **No real network I/O:** SSRF/path-traversal tests mock `httpx` and assert the mock is never called with an internal URL. No test touches the live DB (port 5433).
+
+---
+
+## 11. Contract test layer (CR-00072)
+
+Two contract-level modules under `tests/dashboard/` prove the dashboard's HTTP surface *as a whole* — a broken router import, a typo'd template, or an unhandled exception is caught the moment any route 5xx's, instead of when a human hits the page.
+
+| Module | What it does | Runs when |
+|--------|--------------|-----------|
+| `test_route_contract_sweep.py` | Enumerates every route on `create_app()`; requests each GET/HEAD route against a seeded testcontainer `TestClient` (`raise_server_exceptions=False`) and asserts `status_code < 500`. Parametrized one case per route. | **Blocking** — inside `make test-integration`; convenience `make test-route-sweep`. |
+| `test_schemathesis_contract.py` | `schemathesis` property-fuzzes the JSON API operations against the OpenAPI schema, asserting `not_a_server_error`. Marked `contract_fuzz`. | **Periodic** — `make test-contract-fuzz` + nightly `contract-fuzz.yml`; excluded from the default suite. |
+
+**How the sweep stays honest:**
+- **Skip set** (`SKIP_ROUTES`) — SSE/streaming routes, the static mount, FastAPI's OpenAPI/Swagger endpoints, AI-runtime-gated chat endpoints. Each entry carries a one-line rationale.
+- **Path parameters** resolve from a seeded dataset (`seed_contract_test_data` in `tests/dashboard/conftest.py`); a route whose parameters cannot all be resolved goes into `UNRESOLVED`, asserted against an explicitly-reviewed `EXPECTED_UNRESOLVED` set.
+- **`EXPECTED_5XX`** — a genuine pre-existing handler bug is allowlisted (route → `TODO(file-incident)` rationale), the case `xfail`-ed; the operator files the Incident on `main` post-merge. **Never fix production code to make the sweep pass** — investigate, and allowlist only genuine bugs (most 5xx are harness artefacts: better seed data / a resolvable parameter).
+
+**Extending it:**
+- A **newly-added route is swept automatically** — no test change needed. If the new route needs a path parameter the sweep can't resolve, `test_unresolved_routes_match_expected` fails — seed the entity (so it resolves) or add the route to `EXPECTED_UNRESOLVED` with a rationale.
+- A **newly-added JSON endpoint** (handler returning `JSONResponse` / a pydantic model) should be added to `JSON_API_PATHS` in `test_schemathesis_contract.py` so schemathesis fuzzes it. HTML/htmx routes are *not* fuzzed — the route sweep covers those.
+- A genuine 5xx schemathesis surfaces goes in `KNOWN_CONTRACT_5XX` (excluded from the fuzz, surfaced as operator follow-up) — same "never fix production code in-CR" rule.
