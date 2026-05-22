@@ -1,0 +1,105 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00075",
+  "type": "ChangeRequest",
+  "title": "Security Test Module",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "tests/integration/security/**",
+      "tests/integration/conftest.py",
+      "tests/fixtures/**",
+      "Makefile",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "skills/iw-ai-core-testing/**",
+      ".claude/skills/iw-ai-core-testing/**",
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Implement the security test module: (1) tests/integration/security/__init__.py — package marker. (2) tests/integration/security/test_live_db_write_guard.py — regression net for the I-00041 class: assert safe_create_engine / is_live_db_url refuses a live-DB URL (simulated via env-var injection, never by connecting to port 5433); cover test-collection and agent-worktree contexts. (3) tests/integration/security/test_authz_negative_paths.py — assert protected routes return 4xx for unauthorized/cross-scope requests; cover chat endpoints and other authz-bearing routes; use the test_chat_security pattern. (4) tests/integration/security/test_doc_render_ssrf_path_traversal.py — feed file:// URLs, ../../etc/passwd-style paths, and internal SSRF URLs to the doc-render pipeline; assert each is refused. (5) tests/integration/security/test_agent_context_env_handling.py — assert IW_CORE_AGENT_CONTEXT=true blocks operator-only commands; cover bypass attempts; reference test_agent_migrate_guard.py. (6) If a genuine vulnerability is found: write the failing reproduction, mark xfail(strict=False) with a TODO(file-incident) placeholder and one-line rationale, list under 'Operator follow-up — SECURITY' in the S01 report — do NOT run /iw-new-incident, do NOT create ai-dev/active/I-NNNNN/ from the worktree, do NOT edit production code. (7) Makefile target test-security-module (runs asserted tests; comment distinguishes it from make security-secrets / make security-sast scanners). (8) Update docs/IW_AI_Core_Testing_Strategy.md, skills/iw-ai-core-testing/SKILL.md (+ iw sync-skills --force), and ai-dev/work/TESTS_ENHANCEMENT.md (item 3.5 DONE + changelog). Demonstrate each new test can fail by temporarily inverting/weakening one assertion inside the test file (never patching production code), record as tdd_red_evidence; confirm git diff origin/main -- orch/ dashboard/ executor/ scripts/ is empty. Test-only CR — no production code may be edited. 2400s timeout.",
+      "prompt": "prompts/CR-00075_S01_Backend_prompt.md",
+      "timeout": 2400
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01: scope discipline (no production code touched, git diff origin/main -- orch/ dashboard/ executor/ scripts/ is empty, no residual inverted assertion left in committed test files), AC1 live-DB guard correctness (env-var injection only, never connects to port 5433, raises LiveDbConnectionRefusedError), AC2 authz negative paths (4xx, never data, never 5xx, behavioural assertions), AC3 doc-render SSRF/path-traversal (malicious inputs refused, xfail + TODO(file-incident) placeholder for genuine vulnerabilities — no /iw-new-incident run from worktree, no ai-dev/active/I-NNNNN/ created), AC4 agent-context env-var (operator commands blocked, bypass attempts covered), AC5 genuine-vulnerability handling (xfail + TODO(file-incident) placeholder + Operator follow-up — SECURITY section in S01 report, no production fix, no incident package created in worktree), AC6 docs/skill/plan updated and .claude/skills copy byte-identical, tdd_red_evidence records deliberate-break demonstrations (test-file assertion inversions) for all four modules. Pre-review lint+format+test-assertions gate must show zero new violations.",
+      "prompt": "prompts/CR-00075_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review of S01..S02: every AC (AC1-AC6) verified end-to-end; scope integrity (git diff origin/main -- orch/ dashboard/ is empty — no residual injection, no production code fix for any discovered vulnerability); skills/iw-workflow/SKILL.md canonical QV-gate list NOT modified (no new gate — scope creep check); test-security-module Makefile target comment clearly distinguishes asserted tests from scanner targets; TESTS_ENHANCEMENT.md changelog counts match S01 report. Runs full unit + integration suites — make test-integration executes the new security modules; a failure there is CRITICAL.",
+      "prompt": "prompts/CR-00075_S03_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests — runs the new security test modules",
+      "timeout": 1800
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scanning (gitleaks)"
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Note the number of xfailed vulnerability tests with TODO(file-incident) placeholders and the operator follow-up Incidents still to be filed on main post-merge, whether S09 (integration-tests) needed fix cycles from latent security failures, whether any 'Operator follow-up — SECURITY' finding was flagged but lacks a clear operator action, and whether the test-security-module Makefile distinction from scanner targets was implemented correctly.",
+      "prompt": "prompts/CR-00075_S12_SelfAssess_prompt.md"
+    }
+  ]
+}

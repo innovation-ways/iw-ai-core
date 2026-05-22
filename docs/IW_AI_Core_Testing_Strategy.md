@@ -34,14 +34,16 @@ So our metrics and gates are chosen accordingly:
 
 ## 2. Test layers (current state)
 
-IW AI Core today has **four test layers**, all pytest-based except the browser layer which drives a real Chromium via `playwright-cli`.
+IW AI Core today has **five test layers**, all pytest-based except the browser layer which drives a real Chromium via `playwright-cli`.
 
 ```
-Layer 4:  Browser tests (playwright-cli)   — Real Chromium against a live Uvicorn dashboard
-Layer 3:  Dashboard tests (TestClient)     — FastAPI routes/templates/htmx against testcontainer DB
-Layer 2:  Integration tests (pytest)       — Models, daemon, CLI, RAG, DB behaviour against testcontainer DB
-Layer 1:  Unit tests (pytest)              — Config, state-machine logic, parsers, CLI parsing, pure functions
-Static:   Quality gates (ruff, mypy, ...)  — Enforced by `make quality` / `make check`
+Layer 5:  Security tests (pytest)         — Live-DB guard regression, authz negatives,
+                                                 SSRF/path-traversal, agent-context env-var
+Layer 4:  Browser tests (playwright-cli) — Real Chromium against a live Uvicorn dashboard
+Layer 3:  Dashboard tests (TestClient)   — FastAPI routes/templates/htmx against testcontainer DB
+Layer 2:  Integration tests (pytest)     — Models, daemon, CLI, RAG, DB behaviour against testcontainer DB
+Layer 1:  Unit tests (pytest)            — Config, state-machine logic, parsers, CLI parsing, pure functions
+Static:   Quality gates (ruff, mypy…)   — Enforced by `make quality` / `make check`
 ```
 
 ### Test inventory
@@ -51,10 +53,11 @@ Static:   Quality gates (ruff, mypy, ...)  — Enforced by `make quality` / `mak
 | Unit | ~2,260 | 175 | pytest | `tests/unit/` | `make test-unit` |
 | Integration | ~1,510 | 169 | pytest + testcontainers[postgres] | `tests/integration/` | `make test-integration` (also runs `tests/dashboard/`) |
 | Dashboard | ~650 | 69 | pytest + FastAPI `TestClient` + `db_session` | `tests/dashboard/` (excl. `browser/`) | part of `make test-integration`; fast slice via `make test-dashboard` |
+| **Security** | ~85 | 4 | pytest + testcontainers + subprocess | `tests/integration/security/` | `make test-security-module` (also part of `make test-integration`) |
 | Browser | small | 7 | pytest + `playwright-cli` + live Uvicorn | `tests/dashboard/browser/` | `make test-browser` (not in `make test`); also the `qv-browser` workflow step |
-| **Total** | **~4,420** | **413** | | | `make test` = unit + integration (+ dashboard) |
+| **Total** | **~4,470+** | **417** | | | `make test` = unit + integration (+ dashboard + security) |
 
-(Counts are approximate — `def test_*` occurrences and `test_*.py` file counts as of 2026-05-11. Keep this row roughly current; it does not need to be exact.)
+(Counts are approximate — `def test_*` occurrences and `test_*.py` file counts as of 2026-05-21. Keep this row roughly current; it does not need to be exact.)
 
 ### Layer 1 — Unit tests (`tests/unit/`)
 
@@ -77,6 +80,26 @@ FastAPI behaviour via `TestClient` with the testcontainer `db_session` injected 
 Real Chromium via **`playwright-cli` only** (never `agent-browser`, never `chromium.launch()` directly, never `npx playwright install`, never modify `.playwright/cli.config.json` — see the root `CLAUDE.md`). Marked `@pytest.mark.browser` and **deselected by default** (`addopts` has `-m 'not browser'`); run with `make test-browser` against a live Uvicorn dashboard the test data is visible to. The workflow's `qv-browser` step also exercises browser-level verification per work item, capturing screenshots into `ai-dev/active/<ITEM>/evidences/post/`.
 
 > **Not yet a layer**: there is no structured browser/E2E *journey* suite (auth/session, queue→batch→merge, Docs export) and no isolated E2E compose stack — that's roadmap item 3.1. The current browser tests are a handful of smoke checks.
+
+### Layer 5 — Security tests (`tests/integration/security/` — CR-00075)
+
+Asserted regression tests for four distinct security risk classes, all against the testcontainer DB:
+
+| Module | Target risk class | Entry point tested |
+|--------|-------------------|-------------------|
+| `test_live_db_write_guard.py` | Live-DB write guard regression (I-00041 class) | `orch/db/live_db_guard.py`: `is_live_db_url()`, `assert_engine_url_allowed()`, `safe_create_engine()` |
+| `test_authz_negative_paths.py` | Authorization negative paths (project-scoping boundary) | Dashboard routes: items, batches, docs, jobs, code-QA, and chat tab/runtime guards |
+| `test_doc_render_ssrf_path_traversal.py` | SSRF and path-traversal in doc rendering | `orch/doc_service.py`: `DocService.validate_links()`, `DocService._is_ssrf_blocked()`; `orch/doc_sections.py`: pure string functions |
+| `test_agent_context_env_handling.py` | Agent-context env-var bypass | `orch/db/live_db_guard.py`: `IW_CORE_AGENT_CONTEXT` guard; CLI `iw migrations apply` with agent context |
+
+**Execution**: `make test-security-module` (the primary convenience target); also run automatically as part of `make test-integration` via the `tests/integration/` collection. The `test-security-module` Makefile target runs **only** the security regression tests and is explicitly distinct from `make security-secrets` (gitleaks — scanner, advisory output) and `make security-sast` (Semgrep/bandit — scanner, advisory output). See §5 for the gate-table entry.
+
+**Genuine vulnerability handling**: if a test surfaces a real SSRF, path-traversal, or a guard that does not fire, the test is written as the **failing reproduction**, marked `@pytest.mark.xfail(strict=False, reason="I-NNNNN: <one-liner>")`, and a high-priority Incident is filed. No production code is edited within the CR scope — the fix is a separate Incident. `scope.allowed_paths` enforces this at merge time.
+
+**No real network I/O**: SSRF/path-traversal tests mock `httpx` and assert the mock is never called with an internal URL. No test reaches the live DB (port 5433).
+
+> **Extending the security module**: add a new module under `tests/integration/security/` for each new security risk class. Do not fix vulnerabilities within the same CR — file an Incident and xfail the test instead. Run `make test-security-module` to verify the new module, then `iw sync-skills --force iw-ai-core-testing` to update the skill.
+
 
 ## E2E browser-verification stack
 
@@ -257,6 +280,7 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Security — IaC | `trivy config` HIGH/CRITICAL | exit 1 on findings | `make security-iac` |
 | Security — Secret scan (gitleaks) | `gitleaks detect --no-git --config .gitleaks.toml` | 0 findings; blocking | `make security-secrets` (8th daemon QV gate); pre-commit hook; GH `secrets-scan` job |
 | Security — Semgrep SAST | `semgrep --config p/python --config p/owasp-top-ten --config p/security-audit` | informational (burn-in) | GH `semgrep` job (`continue-on-error: true`); `make security-sast`; flip to blocking in `P1-CR-D-followup-semgrep-block` |
+| Security — asserted regression tests (CR-00075) | pytest `tests/integration/security/` | 100 % pass (xfailed genuine vulns allowed with Incident ID) | `make test-security-module`; also runs as part of `make test-integration` |
 | Unit tests | pytest | 100 % pass | `make test-unit` |
 | Integration + dashboard tests | pytest + testcontainers | 100 % pass | `make test-integration` |
 | Coverage | `coverage.py` (`branch = true`) | `fail_under = 50` — just below measured branch coverage; **ratchets up over time, never down** (CR-00047) | enforced via `pytest --cov` (config in `pyproject.toml`) at the end of *every* test run that picks up `addopts` (incl. the `unit-tests` and CI `integration` runs) |
@@ -362,7 +386,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Contract / no-5xx route sweep + `schemathesis` | ❌ (3.2) |
 | `iw` CLI-contract layer | ⚠️ piecemeal in `tests/integration/cli/` (3.3) |
 | Cross-project isolation matrix | ❌ (3.4) |
-| Security test module (live-DB-guard net, authz negatives, doc-render SSRF) | ⚠️ partial (`test_chat_security`, the guard fixture) (3.5) |
+| Security test module (live-DB-guard net, authz negatives, doc-render SSRF) | ✅ DONE 2026-05-21 (CR-00075) — `tests/integration/security/` package; `test_live_db_write_guard`, `test_authz_negative_paths`, `test_doc_render_ssrf_path_traversal`, `test_agent_context_env_handling`; genuine vulns → xfail + Incident; `make test-security-module`; documented in §2 Layer 5 + §5 gate table + skill + TESTS_ENHANCEMENT.md (3.5) |
 | Data-layer module (migration round-trip / FTS invariant / revision-skew / DB-identity) | ✅ (CR-00076, 2026-05-21) — `tests/integration/data_layer/` package + `make data-layer-check`; extends, does not replace, the migration round-trip (3.6) |
 | Visual regression for rendered HTML/PDF docs | ❌ (4.1) |
 | Performance budgets | ❌ (4.2) |
