@@ -1,0 +1,66 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00104",
+  "type": "Issue",
+  "title": "Batch planner false-negative overlap analysis + Max Parallel display mismatch",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/batch_planner.py",
+      "dashboard/routers/actions.py",
+      "tests/unit/test_batch_planner_overlap.py",
+      "tests/dashboard/test_batch_plan_max_parallel.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "(1) In orch/batch_planner.py replace the plain `set(files_a) & set(files_b)` intersection in both the intra-batch loop (lines ~205-215) and the cross-batch loop (lines ~217-236) with `scope_overlap.globs_intersect(list_a, list_b)` (import from orch.daemon.scope_overlap). Treat a non-empty result as an overlap; store the conflicting globs on the ItemAnalysis row if useful for the rendered plan (the existing `overlap_with` field stores other-item IDs, keep that semantic). (2) In dashboard/routers/actions.py:892-894 replace the three literal `4`s passed to generate_execution_plan_md / generate_drawio / generate_png with `batch.max_parallel` (the surrounding code already has `batch` in scope; verify). Capture tdd_red_evidence by running the new unit test (S03 will own it long-term; you write one RED-only case here to anchor the evidence) BEFORE applying the fix.",
+      "prompt": "prompts/I-00104_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01: globs_intersect is imported (not re-implemented); both loops in batch_planner.py use it (grep `& set(` in the diff — should not appear); the three `4` literals in actions.py are replaced with `batch.max_parallel`; no other behaviour changed in either file; the import block in batch_planner.py is sorted (ruff style).",
+      "prompt": "prompts/I-00104_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Two new test modules. (1) tests/unit/test_batch_planner_overlap.py — exercise analyze_dependencies directly with handcrafted items_data. Cases: AC1 glob-vs-concrete-file overlap detected (both `overlap_with` lists populated); dir-glob-vs-dir-glob overlap (e.g. `a/**` vs `a/b/**`) detected; strictly disjoint paths produce empty `overlap_with`; cross-batch loop (lines 217-236) also catches glob-vs-concrete via active_items_data input (asserts `cross_batch_conflicts` is populated); plus a GREEN value-variation test calling generate_execution_plan_md directly with max_parallel=3 and 7. Use exact-list assertions, not vacuous `if X.overlap_with`. (2) tests/dashboard/test_batch_plan_max_parallel.py — TestClient + db_session testcontainer fixture. There is NO regenerate-plan endpoint: POST /project/{project_id}/batch/create-from-selection with item_ids form fields (this endpoint CREATES the Batch with max_parallel=5 hardcoded and renders the plan); load the created Batch.execution_plan_md from the DB; assert `**Max Parallel**: 5` is in it and `**Max Parallel**: 4` is NOT. Analytic RED capture for the RED-able tests (no source revert at runtime).",
+      "prompt": "prompts/I-00104_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S03: exact-value assertions everywhere; testcontainer fixture used (NEVER live DB port 5433); the cross-batch case actually exercises the `active_items_data` parameter of analyze_dependencies (not just intra-batch); the batch-create endpoint URL (/batch/create-from-selection) in the dashboard test matches the actual route (verify by re-reading actions.py); tdd_red_evidence shows AssertionError or attribute-empty failures (not import/collection errors).",
+      "prompt": "prompts/I-00104_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review: every AC1-AC5 has a concrete test artifact; scope discipline — git diff origin/main confined to orch/batch_planner.py, dashboard/routers/actions.py, and the two new test files (no daemon changes, no schema changes, no other dashboard router edits); full make test-unit + make test-integration green. Verify `from orch.daemon import scope_overlap` (or `from orch.daemon.scope_overlap import globs_intersect`) appears exactly once in batch_planner.py.",
+      "prompt": "prompts/I-00104_S05_CodeReview_Final_prompt.md"
+    },
+    {"step": "S06", "agent": "qv-gate", "gate": "lint", "command": "make lint", "description": "QV: Linting"},
+    {"step": "S07", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
+    {"step": "S08", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
+    {"step": "S09", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
+    {"step": "S10", "agent": "qv-gate", "gate": "integration-tests", "command": "make test-integration", "description": "QV: Integration tests", "timeout": 1800},
+    {"step": "S11", "agent": "qv-gate", "gate": "assertions", "command": "make test-assertions", "description": "QV: Assertion scanner"},
+    {
+      "step": "S12",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — open Plan tab of a batch with at least 2 items sharing a glob (BATCH-00127 in seed if present; else seed via fixture); assert Dependency Analysis lists at least one Overlap With pair; assert Warnings section is NOT the literal `None — all items are independent.`; assert plan markdown's `Max Parallel: N` equals the header chip's `Max parallel: N`. No regression check on a clean (no-overlap) batch.",
+      "prompt": "prompts/I-00104_S12_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S13",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Focus: (1) whether the fix really used globs_intersect (or merely changed a comparison and accidentally reintroduced string equality); (2) whether the `4` literal hunt actually grepped the whole codebase for any other hardcoded plan max_parallel (there shouldn't be more, but verify); (3) cost analysis — fix cycles caused by tests-impl picking the wrong batch-create endpoint URL; (4) any related follow-ups (e.g. should the planner also apply per-project overlap policy — out of scope for this Incident but worth a finding for a future CR).",
+      "prompt": "prompts/I-00104_S13_SelfAssess_prompt.md"
+    }
+  ]
+}
