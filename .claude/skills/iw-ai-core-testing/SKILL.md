@@ -288,3 +288,34 @@ Flag a test for scrutiny / rework if **any** apply:
 - [ ] It imports `dashboard.routers.*` / `dashboard.dependencies` in a unit test without a `db_session` in scope (will fail at collection).
 - [ ] It would still pass if you deleted the production line it's supposed to cover.
 - [ ] **It only passes in fixed order** — this is an order-dependence smell: the test (or a fixture it uses) leaks state to other tests. Fix the leak or mark it `@pytest.mark.order_dependent` with a tracking comment.
+
+---
+
+## 10. Security test module (CR-00075)
+
+A dedicated security regression package lives at `tests/integration/security/`:
+
+| Module | Target risk class |
+|--------|-------------------|
+| `test_live_db_write_guard.py` | Live-DB write guard regression (I-00041 class) — guard fires in test/agent contexts |
+| `test_authz_negative_paths.py` | Authorization negative paths — protected routes return 4xx for unauthenticated/cross-project access |
+| `test_doc_render_ssrf_path_traversal.py` | SSRF and path-traversal in doc rendering — `file://`, `../../etc/passwd`, `http://localhost` all blocked |
+| `test_agent_context_env_handling.py` | Agent-context env-var bypass — `IW_CORE_AGENT_CONTEXT` blocks operator-only commands; bypass attempts blocked |
+
+**How to extend:** add a new module under `tests/integration/security/` for each new security risk class. The module name describes the risk class, not the entry point. Every test must have a meaningful behavioural assertion — see §1.
+
+**Genuine vulnerability handling:** if a test surfaces a real SSRF, path-traversal, or a guard that does not fire, do NOT fix it within the current CR:
+1. Write the test as the **failing reproduction** (it fails on current `main`).
+2. Mark it `@pytest.mark.xfail(strict=False, reason="I-NNNNN: <one-liner>")` with a `# NOTE: genuine vulnerability — tracked in I-NNNNN` comment.
+3. File a **high-priority security Incident** via `/iw-new-incident`.
+4. Report it as a blocker in your step report's `blockers` section. The fix is a separate CR.
+5. `scope.allowed_paths` enforces this at merge time — production code under `orch/` / `dashboard/` is excluded.
+
+**Run the security module:**
+```bash
+make test-security-module   # convenience target — runs only security tests
+# also runs as part of:
+make test-integration       # all integration tests including security
+```
+
+**No real network I/O:** SSRF/path-traversal tests mock `httpx` and assert the mock is never called with an internal URL. No test touches the live DB (port 5433).

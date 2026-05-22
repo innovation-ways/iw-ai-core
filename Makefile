@@ -13,6 +13,7 @@
           allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
           e2e-health e2e-logs e2e-stats \
           security-deps security-iac security-image-dashboard security-secrets security-all security-report security-sast \
+          test-security-module \
           arch-check test-frontend dead-code dep-check
 
 # --- Setup ---
@@ -374,6 +375,13 @@ allure-clean:
 	@echo "[allure-clean] Cleaning Allure artefacts..."
 	@rm -rf $(ALLURE_RESULTS) $(ALLURE_REPORT)
 	@echo "[allure-clean] Done"
+
+# --- Security (asserted tests + scanners) ---
+# NOTE: test-security-module runs pytest-asserted security regression tests.
+# It is NOT a replacement for make security-secrets (gitleaks) or make security-sast
+# (Semgrep/bandit), which run scanner tools that produce advisory output.
+test-security-module:  ## Run asserted security regression tests (distinct from make security-secrets / make security-sast scanners)
+	uv run pytest tests/integration/security/ -v --no-cov
 
 # --- Security ---
 SECURITY_DIR := tests/output/security
