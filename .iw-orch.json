@@ -10,7 +10,11 @@
       "__tests__/**",
       "**/*conftest*",
       "**/*.test.*",
-      "**/*.spec.*"
+      "**/*.spec.*",
+      "**/*.md",
+      "skills/**",
+      ".claude/skills/**",
+      "ai-dev/**"
     ]
   },
   "auto_publish": false,
@@ -25,8 +29,6 @@
       "redis_base": 6389,
       "pool_size": 50
     },
-    "e2e_user": "dev@example.local",
-    "e2e_password": "DevPass2026!",
     "compose_project_prefix": "iw-ai-core-e2e"
   },
   "fix_cycle_max": 5,

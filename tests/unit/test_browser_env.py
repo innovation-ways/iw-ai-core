@@ -232,13 +232,41 @@ def test_resolve_browser_env_default_compose_prefix() -> None:
     assert env["COMPOSE_PROJECT_NAME"].startswith("myproj-e2e-")
 
 
-def test_resolve_browser_env_no_e2e_user_skips_key() -> None:
-    """If e2e_user is absent, IW_BROWSER_E2E_USER must not be in the dict."""
+def test_resolve_browser_env_no_e2e_user_skips_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If e2e_user is absent from config AND env, the keys must not be in the dict."""
+    monkeypatch.delenv("IW_BROWSER_E2E_USER", raising=False)
+    monkeypatch.delenv("IW_BROWSER_E2E_PASSWORD", raising=False)
     pc = make_project_config(bv_cfg={"env_up_command": "make up"})
     env = resolve_browser_env(pc, "proj", "F-00001")
     assert env is not None
     assert "IW_BROWSER_E2E_USER" not in env
     assert "IW_BROWSER_E2E_PASSWORD" not in env
+
+
+def test_resolve_browser_env_e2e_creds_fall_back_to_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no creds in .iw-orch.json, IW_BROWSER_E2E_* are sourced from the env."""
+    monkeypatch.setenv("IW_BROWSER_E2E_USER", "env-user@example.local")
+    monkeypatch.setenv("IW_BROWSER_E2E_PASSWORD", "env-secret")
+    pc = make_project_config(bv_cfg={"env_up_command": "make up"})
+    env = resolve_browser_env(pc, "proj", "F-00001")
+    assert env is not None
+    assert env["IW_BROWSER_E2E_USER"] == "env-user@example.local"
+    assert env["IW_BROWSER_E2E_PASSWORD"] == "env-secret"  # noqa: S105
+
+
+def test_resolve_browser_env_config_creds_override_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit .iw-orch.json credential takes precedence over the env var."""
+    monkeypatch.setenv("IW_BROWSER_E2E_USER", "env-user@example.local")
+    monkeypatch.setenv("IW_BROWSER_E2E_PASSWORD", "env-secret")
+    pc = make_project_config(bv_cfg=_FULL_BV_CFG)
+    env = resolve_browser_env(pc, "innoforge", "F-00001")
+    assert env is not None
+    assert env["IW_BROWSER_E2E_USER"] == "dev@example.local"
+    assert env["IW_BROWSER_E2E_PASSWORD"] == "Secret123"  # noqa: S105
 
 
 # ---------------------------------------------------------------------------

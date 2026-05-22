@@ -16,14 +16,17 @@ for browser_verification steps. Projects opt in by adding a
                 "redis_base": 6389,
                 "pool_size": 100
             },
-            "e2e_user": "dev@example.local",
-            "e2e_password": "DevPass2026!",
             "compose_project_prefix": "myproject-e2e"
         }
     }
 
 If ``env_up_command`` is absent the project is considered opted-out and all
 functions here are no-ops.
+
+E2E login credentials are read from the daemon's environment —
+``IW_BROWSER_E2E_USER`` / ``IW_BROWSER_E2E_PASSWORD`` (set in ``.env``) — so they
+stay out of version control. ``.iw-orch.json`` may still supply ``e2e_user`` /
+``e2e_password`` to override the environment, but a committed config should not.
 
 ## Port allocation and collision risk
 
@@ -203,10 +206,14 @@ def _build_env(
     base_url_template = bv_cfg.get("base_url_template", "http://localhost:${E2E_FRONTEND_PORT}")
     env["IW_BROWSER_BASE_URL"] = Template(base_url_template).safe_substitute(env)
 
-    if bv_cfg.get("e2e_user"):
-        env["IW_BROWSER_E2E_USER"] = bv_cfg["e2e_user"]
-    if bv_cfg.get("e2e_password"):
-        env["IW_BROWSER_E2E_PASSWORD"] = bv_cfg["e2e_password"]
+    # Credentials: the canonical source is the daemon's environment (.env) so
+    # they stay out of version control; .iw-orch.json may override per-project.
+    e2e_user = bv_cfg.get("e2e_user") or os.environ.get("IW_BROWSER_E2E_USER")
+    if e2e_user:
+        env["IW_BROWSER_E2E_USER"] = e2e_user
+    e2e_password = bv_cfg.get("e2e_password") or os.environ.get("IW_BROWSER_E2E_PASSWORD")
+    if e2e_password:
+        env["IW_BROWSER_E2E_PASSWORD"] = e2e_password
 
     # Direct DSN for the isolated E2E Postgres container, so browser-verification
     # agents can INSERT rows that the dashboard under test will actually observe.
