@@ -5,6 +5,7 @@
 .PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
           test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
           test-assertions diff-coverage data-layer-check \
+          test-route-sweep test-contract-fuzz \
           test-properties test-properties-deep \
           test-quarantine test-flake-detect \
           mutation-check mutation-audit mutation-results mutation-show \
@@ -110,6 +111,17 @@ test-integration:
 # the full gate (`test-integration` / `check`) is what enforces it.
 test-dashboard:
 	uv run pytest tests/dashboard/ --ignore=tests/dashboard/browser --no-cov -v
+
+# Route-contract sweep: every GET/HEAD route is exercised against a seeded
+# TestClient and asserted to return non-5xx. Part of the blocking integration
+# suite (runs under test-integration).
+test-route-sweep:
+	uv run pytest tests/dashboard/test_route_contract_sweep.py --no-cov -v
+
+# Schemathesis property-fuzz against the OpenAPI schema (CR-00072).
+# Excluded from default pytest selection (addopts) — only run via this target.
+test-contract-fuzz:
+	uv run pytest tests/dashboard/test_schemathesis_contract.py -m contract_fuzz --no-cov -v
 
 test-frontend: test-dashboard
 

@@ -102,6 +102,9 @@ dev = [
     "vulture>=2.11",
     "deptry>=0.20",
     "pgtestdbpy>=0.0.1",
+    # Pinned to the current major (4.x) — schemathesis's loader and check API
+    # changed across majors; see tests/dashboard/test_schemathesis_contract.py.
+    "schemathesis>=4.19,<5",
 ]
 
 # --- Ruff ---
@@ -156,7 +159,7 @@ testpaths = ["tests"]
 #     uv run pytest tests/integration/ -p randomly --randomly-seed=<N> -q
 # Earlier fallback (CR-00048): `-p no:randomly` was in addopts 2026-05-13 → 2026-05-16
 # after 5 fix cycles could not converge; superseded by CR-00055's template-clone strategy.
-addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser and not quarantine' --strict-markers"
+addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser and not quarantine and not contract_fuzz' --strict-markers"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
     "smoke: fast critical-path tests; <=15 tests, <=5 critical paths, <60s wall-clock; documented in tests/CLAUDE.md; run via `make smoke`",
@@ -165,6 +168,7 @@ markers = [
     "order_dependent: test relies on test order; tracked for cleanup in P1-CR-C-followup",
     "properties: Hypothesis property-based tests (CR-00060, P2-CR-B); auto-applied to tests/unit/properties/",
     "quarantine: test is intermittently failing or order-dependent in a way we haven't root-caused; excluded from the merge gate; tracked via an Incident (ID in the marker reason). Recovery signal: passes consistently in `make test-quarantine` for >=3 consecutive runs.",
+    "contract_fuzz: schemathesis property-fuzz tests against the OpenAPI schema; excluded from the default pytest selection (never in the blocking suite); run via `make test-contract-fuzz`. See CR-00072.",
 ]
 
 [tool.coverage.run]

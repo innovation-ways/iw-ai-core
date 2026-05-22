@@ -17,15 +17,14 @@
       "docs/IW_AI_Core_Testing_Strategy.md",
       "skills/iw-ai-core-testing/**",
       ".claude/skills/iw-ai-core-testing/**",
-      "ai-dev/work/TESTS_ENHANCEMENT.md",
-      ".gitleaks.toml"
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
     ]
   },
   "steps": [
     {
       "step": "S01",
       "agent": "backend-impl",
-      "description": "Implement the contract test layer: (1) tests/dashboard/test_route_contract_sweep.py \u2014 enumerate create_app().routes, request every GET/HEAD route (TestClient with raise_server_exceptions=False) against a seeded testcontainer db_session, assert status_code < 500, parametrized one case per route, with a documented skip set (SSE/streaming, static mount), path-param resolution from seeded data, an UNRESOLVED assertion, and an EXPECTED_5XX xfail allowlist (each genuine 5xx gets a TODO(file-incident) placeholder for operator follow-up \u2014 never a production-code fix, never an incident package created in-worktree). (2) tests/dashboard/test_schemathesis_contract.py \u2014 schemathesis OpenAPI fuzzing of the JSON API operations (those whose OpenAPI response declares application/json \u2014 keep-alive API, runtime-overrides, JSON job endpoints \u2014 not HTML/htmx routes), marked contract_fuzz. (3) Add schemathesis to dev deps + regenerate uv.lock; register the contract_fuzz marker and add it to the addopts -m exclusion. (4) Makefile targets test-route-sweep + test-contract-fuzz. (5) .github/workflows/contract-fuzz.yml \u2014 nightly cron + workflow_dispatch, runs make test-contract-fuzz, continue-on-error during burn-in. (6) Update docs/IW_AI_Core_Testing_Strategy.md, skills/iw-ai-core-testing/SKILL.md (+ iw sync-skills --force), and ai-dev/work/TESTS_ENHANCEMENT.md (item 3.2 DONE + changelog). Demonstrate each new test can fail via a throwaway 5xx route registered on the test app (no production code touched) and record it as tdd_red_evidence. Test-only CR \u2014 no production code may be edited. 2400s timeout.",
+      "description": "Implement the contract test layer: (1) tests/dashboard/test_route_contract_sweep.py — enumerate create_app().routes, request every GET/HEAD route (TestClient with raise_server_exceptions=False) against a seeded testcontainer db_session, assert status_code < 500, parametrized one case per route, with a documented skip set (SSE/streaming, static mount), path-param resolution from seeded data, an UNRESOLVED assertion, and an EXPECTED_5XX xfail allowlist (each genuine 5xx gets a TODO(file-incident) placeholder for operator follow-up — never a production-code fix, never an incident package created in-worktree). (2) tests/dashboard/test_schemathesis_contract.py — schemathesis OpenAPI fuzzing of the JSON API operations (those whose OpenAPI response declares application/json — keep-alive API, runtime-overrides, JSON job endpoints — not HTML/htmx routes), marked contract_fuzz. (3) Add schemathesis to dev deps + regenerate uv.lock; register the contract_fuzz marker and add it to the addopts -m exclusion. (4) Makefile targets test-route-sweep + test-contract-fuzz. (5) .github/workflows/contract-fuzz.yml — nightly cron + workflow_dispatch, runs make test-contract-fuzz, continue-on-error during burn-in. (6) Update docs/IW_AI_Core_Testing_Strategy.md, skills/iw-ai-core-testing/SKILL.md (+ iw sync-skills --force), and ai-dev/work/TESTS_ENHANCEMENT.md (item 3.2 DONE + changelog). Demonstrate each new test can fail via a throwaway 5xx route registered on the test app (no production code touched) and record it as tdd_red_evidence. Test-only CR — no production code may be edited. 2400s timeout.",
       "prompt": "prompts/CR-00072_S01_Backend_prompt.md",
       "timeout": 2400
     },
@@ -38,7 +37,7 @@
     {
       "step": "S03",
       "agent": "code-review-final-impl",
-      "description": "Global cross-agent review of S01..S02: every AC (AC1-AC6) verified end-to-end; scope integrity (git diff origin/main -- dashboard/ orch/ is empty \u2014 no production edit, no throwaway route left behind); skills/iw-workflow/SKILL.md canonical QV-gate list NOT modified (no new gate \u2014 scope creep check); contract_fuzz exclusion independently verified via --collect-only; uv.lock consistent with the schemathesis constraint; TESTS_ENHANCEMENT.md changelog counts match the S01 report. Runs the full unit + integration suites \u2014 make test-integration executes the new route sweep; a failure there is CRITICAL.",
+      "description": "Global cross-agent review of S01..S02: every AC (AC1-AC6) verified end-to-end; scope integrity (git diff origin/main -- dashboard/ orch/ is empty — no production edit, no throwaway route left behind); skills/iw-workflow/SKILL.md canonical QV-gate list NOT modified (no new gate — scope creep check); contract_fuzz exclusion independently verified via --collect-only; uv.lock consistent with the schemathesis constraint; TESTS_ENHANCEMENT.md changelog counts match the S01 report. Runs the full unit + integration suites — make test-integration executes the new route sweep; a failure there is CRITICAL.",
       "prompt": "prompts/CR-00072_S03_CodeReview_Final_prompt.md"
     },
     {
@@ -81,7 +80,7 @@
       "agent": "qv-gate",
       "gate": "integration-tests",
       "command": "make test-integration",
-      "description": "QV: Integration tests \u2014 runs the new route-contract sweep",
+      "description": "QV: Integration tests — runs the new route-contract sweep",
       "timeout": 1800
     },
     {

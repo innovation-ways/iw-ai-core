@@ -1,0 +1,71 @@
+name: Contract Fuzz (nightly)
+
+# Nightly schemathesis property-fuzz of the dashboard JSON API operations
+# (CR-00072). This runs the `contract_fuzz`-marked module that is excluded from
+# the blocking suite. It is deliberately NOT triggered on push or pull_request
+# — the route-contract sweep (a normal integration test) is the blocking gate;
+# schemathesis runs periodically during a burn-in period.
+on:
+  schedule:
+    # 03:17 UTC daily — off-peak, staggered from other nightly jobs.
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  contract-fuzz:
+    name: schemathesis contract fuzz
+    runs-on: ubuntu-latest
+    # Burn-in: the schemathesis layer is informational while it stabilises —
+    # a finding must not fail the workflow. Flip to blocking in a follow-up
+    # once the burn-in period is over.
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: iw
+          POSTGRES_PASSWORD: iw
+          POSTGRES_DB: iw_ai_core
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U iw"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      IW_CORE_DB_HOST: localhost
+      IW_CORE_DB_PORT: "5433"
+      IW_CORE_DB_NAME: iw_ai_core
+      IW_CORE_DB_USER: iw
+      IW_CORE_DB_PASSWORD: iw
+      IW_CORE_DASHBOARD_HOST: localhost
+      IW_CORE_DASHBOARD_PORT: "9900"
+      IW_CORE_POLL_INTERVAL: "60"
+      IW_CORE_STALL_THRESHOLD: "300"
+      IW_CORE_PID_FILE: "/tmp/iw-orch-daemon.pid"
+      IW_CORE_ARCHIVE_DIR: "/tmp/iw-archive"
+      IW_CORE_ARCHIVE_TTL: "30"
+      IW_CORE_LOG_LEVEL: "INFO"
+      IW_CORE_LOG_FILE: "/tmp/iw-ai-core.log"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      # Several integration test fixtures shell out to `git`, which requires a
+      # global identity. CI runners ship without one — set a placeholder.
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.email "ci@iw-ai-core.local"
+          git config --global user.name "iw-ai-core CI"
+      - run: uv sync --frozen
+      # The schemathesis fixtures spin up their own PostgreSQL testcontainer;
+      # the services postgres + this migration keep parity with the
+      # integration job in test-quality.yml.
+      - name: Apply alembic migrations to services postgres
+        run: uv run alembic upgrade head
+      - run: make test-contract-fuzz
