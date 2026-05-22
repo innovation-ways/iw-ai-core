@@ -33,6 +33,24 @@
       </section>
       {% endif %}
 
+      {% set per_file_errors = event.metadata.get('per_file_errors') if event.metadata else None %}
+      {% if per_file_errors %}
+      <section class="text-xs">
+        <h4 class="text-muted-foreground uppercase tracking-wide mb-1">Per-file errors</h4>
+        <div class="auto-merge-modal__per-file-errors">
+          {% for entry in per_file_errors %}
+          <div class="auto-merge-modal__per-file-error">
+            <dl class="grid grid-cols-1 gap-1">
+              <div><dt class="text-muted-foreground">file</dt><dd class="font-mono">{{ entry.file_path }}</dd></div>
+              <div><dt class="text-muted-foreground">runtime</dt><dd class="font-mono">{{ entry.cli_tool }}/{{ entry.model }}</dd></div>
+              <div><dt class="text-muted-foreground">error</dt><dd><pre class="auto-merge-modal__error-text">{{ entry.error }}</pre></dd></div>
+            </dl>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
       {% if event.metadata %}
       <section class="text-xs space-y-1">
         <div class="flex items-center justify-between">

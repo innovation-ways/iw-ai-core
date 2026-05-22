@@ -958,6 +958,21 @@ def attempt_resolution(
     total_input_tokens = sum(c.input_tokens or 0 for c in llm_calls)
     total_output_tokens = sum(c.output_tokens or 0 for c in llm_calls)
 
+    # Build per-file error detail for the failed event.
+    # Size budget: max_conflicted_files_per_merge = 5, each error capped at 500 chars
+    # plus ~80 chars of metadata overhead → worst-case ~3.5 KB, well under the
+    # 256 KB default max_event_metadata_bytes limit. No truncation pass needed.
+    per_file_errors: list[dict[str, str]] = [
+        {
+            "file_path": call.file_path,
+            "error": call.error[:500],  # cap per design §AC5
+            "cli_tool": call.cli_tool,
+            "model": call.model,
+        }
+        for call in llm_calls
+        if call.error is not None
+    ]
+
     if abstained_files or error_files:
         _emit_event(
             db,
@@ -977,6 +992,7 @@ def attempt_resolution(
                 "runtime_option_id": runtime_option.id,
                 "total_input_tokens": total_input_tokens,
                 "total_output_tokens": total_output_tokens,
+                "per_file_errors": per_file_errors,
             },
         )
     else:
