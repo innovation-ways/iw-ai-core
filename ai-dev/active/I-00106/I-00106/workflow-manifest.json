@@ -1,0 +1,130 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00106",
+  "type": "Issue",
+  "title": "Agent Session Log modal renders oldest-first — newest activity buried at the bottom",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/session_reader.py",
+      "dashboard/routers/items.py",
+      "dashboard/templates/fragments/session_log_popup_content.html",
+      "tests/unit/test_session_reader.py",
+      "tests/dashboard/test_session_log_modal_ordering.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Backend: add a pure turn-grouping helper to orch/daemon/session_reader.py that groups the flat chronological segment list into turns and returns them newest-first, preserving within-turn order",
+      "prompt": "prompts/I-00106_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 (backend)",
+      "prompt": "prompts/I-00106_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "frontend-impl",
+      "description": "Frontend: item_session_log applies the helper and passes turns; session_log_popup_content.html iterates turns newest-first with a divider between turns",
+      "prompt": "prompts/I-00106_S03_Frontend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 (frontend)",
+      "prompt": "prompts/I-00106_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "description": "Tests: reproduction test for modal render order + regression tests for the turn-grouping helper",
+      "prompt": "prompts/I-00106_S05_Tests_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05 (tests)",
+      "prompt": "prompts/I-00106_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-agent review of S01..S06",
+      "prompt": "prompts/I-00106_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "frontend-tests",
+      "command": "make test-frontend",
+      "description": "QV: Frontend tests (Jinja2 dashboard)"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S16",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — open the Agent Session Log modal and confirm the newest turn renders at the top",
+      "prompt": "prompts/I-00106_S16_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S17",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00106_S17_SelfAssess_prompt.md"
+    }
+  ]
+}

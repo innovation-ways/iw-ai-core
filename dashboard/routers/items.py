@@ -2207,7 +2207,7 @@ def item_session_log(
         404 if project, item, or step not found.
         200 with error segment if read_session_content fails (never 500).
     """
-    from orch.daemon.session_reader import read_session_content
+    from orch.daemon.session_reader import group_into_turns_newest_first, read_session_content
 
     # Validate project + item exist
     _get_project_or_404(project_id, db)
@@ -2242,7 +2242,7 @@ def item_session_log(
             .limit(1)
         ).first()
 
-    segments: list[SessionLogSegment] = []
+    turns: list[list[dict[str, Any]]] = []
     cli_tool: str | None = None
     is_live: bool = False
     error_message: str | None = None
@@ -2253,23 +2253,22 @@ def item_session_log(
         error_message = run.error_message
         try:
             raw_segments = read_session_content(run)
-            segments = raw_segments  # type: ignore[assignment]
+            turns = group_into_turns_newest_first(raw_segments)
             # Never 500 — return a single error segment so the popup still renders
         except Exception:
-            segments = [
-                SessionLogSegment(
-                    type="error",
-                    text="Failed to read session log.",
-                    collapsible=False,
-                )
-            ]
+            error_segment = {
+                "type": "error",
+                "text": "Failed to read session log.",
+                "collapsible": False,
+            }
+            turns = [[error_segment]]
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "fragments/session_log_popup_content.html",
         {
-            "segments": segments,
+            "turns": turns,
             "is_live": is_live,
             "step_id": step_id,
             "run_number": run.run_number if run is not None else 1,
