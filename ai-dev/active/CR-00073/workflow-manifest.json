@@ -1,0 +1,110 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00073",
+  "type": "ChangeRequest",
+  "title": "iw CLI Contract Test Layer",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "tests/integration/cli/**",
+      "tests/integration/test_cli_core.py",
+      "tests/integration/test_cli_items.py",
+      "tests/integration/test_cli_batches.py",
+      "tests/integration/test_cli_steps.py",
+      "tests/integration/conftest.py",
+      "tests/fixtures/**",
+      "Makefile",
+      "docs/IW_AI_Core_CLI_Spec.md",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "skills/iw-ai-core-testing/**",
+      ".claude/skills/iw-ai-core-testing/**",
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Implement the CLI contract test layer: (1) tests/integration/cli/test_step_done_contract.py, test_register_contract.py, test_doc_update_contract.py, test_approve_contract.py, test_next_id_contract.py, test_evidence_hooks_contract.py — per-command contract classes asserting exit code 0 on success paths, non-zero exit + clear stderr on error paths, stdout shape matches docs, DB rows match expectations via testcontainer db_session, idempotence/atomicity where the spec promises it (next-id concurrency via ThreadPoolExecutor, register idempotency-key). Use CliRunner or subprocess to match existing tests/integration/cli/ patterns. (2) tests/integration/test_cli_spec_conformance.py — parse the §4 'Command Summary' fenced ASCII tree in docs/IW_AI_Core_CLI_Spec.md (NOT the §3.x option tables); introspect orch/cli/main.py's Click command tree recursively via .commands; assert bidirectional existence coverage (spec→CLI and CLI→spec) and that every spec command has a contract test OR is in KNOWN_UNTESTED_COMMANDS. Two module-level allowlists: KNOWN_SPEC_DRIFT (existence drift, command-keyed, Incident ID/rationale + direction) and KNOWN_UNTESTED_COMMANDS (coverage gap, command-keyed, rationale; pre-seeded with every non-priority command). Fix doc drift directly in docs/IW_AI_Core_CLI_Spec.md §4 if found (docs are in scope). (3) Makefile target test-cli-contract — runs the new contract tests as a convenience; integration-tests gate already covers them via make test-integration. (4) Update docs/IW_AI_Core_Testing_Strategy.md, skills/iw-ai-core-testing/SKILL.md (+ iw sync-skills --force iw-ai-core-testing), and ai-dev/work/TESTS_ENHANCEMENT.md (item 3.3 DONE + changelog). Demonstrate each new test can fail via an in-test pytest monkeypatch (auto-reverts; no orch/ edit) and record it as tdd_red_evidence. Test-only CR — no production code in orch/cli/ or elsewhere may be edited. 2400s timeout.",
+      "prompt": "prompts/CR-00073_S01_Backend_prompt.md",
+      "timeout": 2400
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01: scope discipline (no orch/ production code touched), AC1 per-command contract correctness (exit code + stderr + stdout + DB effect asserted for all 6 priority command groups), AC2 spec-conformance bidirectional existence check (spec→CLI and CLI→spec) parsing the §4 'Command Summary' tree, AC3 KNOWN_SPEC_DRIFT + KNOWN_UNTESTED_COMMANDS allowlist entries carry Incident IDs/rationale, AC4 no new QV gate added (skills/iw-workflow/SKILL.md unchanged), AC5 tdd_red_evidence records the monkeypatch demonstration (test-code-only, no orch/ edit) for both contract tests and conformance test, AC6 docs/skill/plan updated and .claude/skills copy byte-identical. Pre-review lint+format+test-assertions gate must show zero new violations.",
+      "prompt": "prompts/CR-00073_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review of S01..S02: every AC (AC1-AC6) verified end-to-end; scope integrity (git diff origin/main -- orch/ dashboard/ executor/ scripts/ is empty — no production code touched, monkeypatch demonstration is test-code-only); skills/iw-workflow/SKILL.md canonical QV-gate list NOT modified (no new gate — scope creep check); KNOWN_SPEC_DRIFT + KNOWN_UNTESTED_COMMANDS allowlists independently audited; docs/IW_AI_Core_CLI_Spec.md changes (if any) are doc-only fixes within scope; TESTS_ENHANCEMENT.md changelog counts match the S01 report. Runs the full unit + integration suites — make test-integration executes the new contract tests; a failure there is CRITICAL.",
+      "prompt": "prompts/CR-00073_S03_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S05",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests — runs the new CLI contract tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scanning (gitleaks)"
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Note the KNOWN_SPEC_DRIFT allowlist size and each entry's Incident ID, whether S09 (integration-tests) needed fix cycles from latent CLI contract failures, whether any genuine CLI bugs were found and filed as Incidents, and the total contract test count across all 6 priority command groups.",
+      "prompt": "prompts/CR-00073_S12_SelfAssess_prompt.md"
+    }
+  ]
+}
