@@ -18,27 +18,28 @@
       "docs/IW_AI_Core_Testing_Strategy.md",
       "skills/iw-ai-core-testing/**",
       ".claude/skills/iw-ai-core-testing/**",
-      "ai-dev/work/TESTS_ENHANCEMENT.md"
+      "ai-dev/work/TESTS_ENHANCEMENT.md",
+      ".gitleaks.toml"
     ]
   },
   "steps": [
     {
       "step": "S01",
       "agent": "backend-impl",
-      "description": "Implement the CLI contract test layer: (1) tests/integration/cli/test_step_done_contract.py, test_register_contract.py, test_doc_update_contract.py, test_approve_contract.py, test_next_id_contract.py, test_evidence_hooks_contract.py — per-command contract classes asserting exit code 0 on success paths, non-zero exit + clear stderr on error paths, stdout shape matches docs, DB rows match expectations via testcontainer db_session, idempotence/atomicity where the spec promises it (next-id concurrency via ThreadPoolExecutor, register idempotency-key). Use CliRunner or subprocess to match existing tests/integration/cli/ patterns. (2) tests/integration/test_cli_spec_conformance.py — parse the §4 'Command Summary' fenced ASCII tree in docs/IW_AI_Core_CLI_Spec.md (NOT the §3.x option tables); introspect orch/cli/main.py's Click command tree recursively via .commands; assert bidirectional existence coverage (spec→CLI and CLI→spec) and that every spec command has a contract test OR is in KNOWN_UNTESTED_COMMANDS. Two module-level allowlists: KNOWN_SPEC_DRIFT (existence drift, command-keyed, Incident ID/rationale + direction) and KNOWN_UNTESTED_COMMANDS (coverage gap, command-keyed, rationale; pre-seeded with every non-priority command). Fix doc drift directly in docs/IW_AI_Core_CLI_Spec.md §4 if found (docs are in scope). (3) Makefile target test-cli-contract — runs the new contract tests as a convenience; integration-tests gate already covers them via make test-integration. (4) Update docs/IW_AI_Core_Testing_Strategy.md, skills/iw-ai-core-testing/SKILL.md (+ iw sync-skills --force iw-ai-core-testing), and ai-dev/work/TESTS_ENHANCEMENT.md (item 3.3 DONE + changelog). Demonstrate each new test can fail via an in-test pytest monkeypatch (auto-reverts; no orch/ edit) and record it as tdd_red_evidence. Test-only CR — no production code in orch/cli/ or elsewhere may be edited. 2400s timeout.",
+      "description": "Implement the CLI contract test layer: (1) tests/integration/cli/test_step_done_contract.py, test_register_contract.py, test_doc_update_contract.py, test_approve_contract.py, test_next_id_contract.py, test_evidence_hooks_contract.py \u2014 per-command contract classes asserting exit code 0 on success paths, non-zero exit + clear stderr on error paths, stdout shape matches docs, DB rows match expectations via testcontainer db_session, idempotence/atomicity where the spec promises it (next-id concurrency via ThreadPoolExecutor, register idempotency-key). Use CliRunner or subprocess to match existing tests/integration/cli/ patterns. (2) tests/integration/test_cli_spec_conformance.py \u2014 parse the \u00a74 'Command Summary' fenced ASCII tree in docs/IW_AI_Core_CLI_Spec.md (NOT the \u00a73.x option tables); introspect orch/cli/main.py's Click command tree recursively via .commands; assert bidirectional existence coverage (spec\u2192CLI and CLI\u2192spec) and that every spec command has a contract test OR is in KNOWN_UNTESTED_COMMANDS. Two module-level allowlists: KNOWN_SPEC_DRIFT (existence drift, command-keyed, TODO(file-incident) placeholder/rationale + direction) and KNOWN_UNTESTED_COMMANDS (coverage gap, command-keyed, rationale; pre-seeded with every non-priority command). Fix doc drift directly in docs/IW_AI_Core_CLI_Spec.md \u00a74 if found (docs are in scope). (3) Makefile target test-cli-contract \u2014 runs the new contract tests as a convenience; integration-tests gate already covers them via make test-integration. (4) Update docs/IW_AI_Core_Testing_Strategy.md, skills/iw-ai-core-testing/SKILL.md (+ iw sync-skills --force iw-ai-core-testing), and ai-dev/work/TESTS_ENHANCEMENT.md (item 3.3 DONE + changelog). Demonstrate each new test can fail via an in-test pytest monkeypatch (auto-reverts; no orch/ edit) and record it as tdd_red_evidence. Genuine CLI bugs found: xfail the case (or add to KNOWN_CLI_BUG) with a TODO(file-incident) placeholder and a one-line rationale; list each under 'Operator follow-up' in the step report for the operator to file post-merge; do NOT run /iw-new-incident or create ai-dev/active/I-NNNNN/** from the worktree. Test-only CR \u2014 no production code in orch/cli/ or elsewhere may be edited. 2400s timeout.",
       "prompt": "prompts/CR-00073_S01_Backend_prompt.md",
       "timeout": 2400
     },
     {
       "step": "S02",
       "agent": "code-review-impl",
-      "description": "Per-agent review of S01: scope discipline (no orch/ production code touched), AC1 per-command contract correctness (exit code + stderr + stdout + DB effect asserted for all 6 priority command groups), AC2 spec-conformance bidirectional existence check (spec→CLI and CLI→spec) parsing the §4 'Command Summary' tree, AC3 KNOWN_SPEC_DRIFT + KNOWN_UNTESTED_COMMANDS allowlist entries carry Incident IDs/rationale, AC4 no new QV gate added (skills/iw-workflow/SKILL.md unchanged), AC5 tdd_red_evidence records the monkeypatch demonstration (test-code-only, no orch/ edit) for both contract tests and conformance test, AC6 docs/skill/plan updated and .claude/skills copy byte-identical. Pre-review lint+format+test-assertions gate must show zero new violations.",
+      "description": "Per-agent review of S01: scope discipline (no orch/ production code touched), AC1 per-command contract correctness (exit code + stderr + stdout + DB effect asserted for all 6 priority command groups), AC2 spec-conformance bidirectional existence check (spec\u2192CLI and CLI\u2192spec) parsing the \u00a74 'Command Summary' tree, AC3 KNOWN_SPEC_DRIFT + KNOWN_UNTESTED_COMMANDS allowlist entries carry Incident IDs/rationale, AC4 no new QV gate added (skills/iw-workflow/SKILL.md unchanged), AC5 tdd_red_evidence records the monkeypatch demonstration (test-code-only, no orch/ edit) for both contract tests and conformance test, AC6 docs/skill/plan updated and .claude/skills copy byte-identical. Pre-review lint+format+test-assertions gate must show zero new violations.",
       "prompt": "prompts/CR-00073_S02_CodeReview_prompt.md"
     },
     {
       "step": "S03",
       "agent": "code-review-final-impl",
-      "description": "Global cross-agent review of S01..S02: every AC (AC1-AC6) verified end-to-end; scope integrity (git diff origin/main -- orch/ dashboard/ executor/ scripts/ is empty — no production code touched, monkeypatch demonstration is test-code-only); skills/iw-workflow/SKILL.md canonical QV-gate list NOT modified (no new gate — scope creep check); KNOWN_SPEC_DRIFT + KNOWN_UNTESTED_COMMANDS allowlists independently audited; docs/IW_AI_Core_CLI_Spec.md changes (if any) are doc-only fixes within scope; TESTS_ENHANCEMENT.md changelog counts match the S01 report. Runs the full unit + integration suites — make test-integration executes the new contract tests; a failure there is CRITICAL.",
+      "description": "Global cross-agent review of S01..S02: every AC (AC1-AC6) verified end-to-end; scope integrity (git diff origin/main -- orch/ dashboard/ executor/ scripts/ is empty \u2014 no production code touched, monkeypatch demonstration is test-code-only); skills/iw-workflow/SKILL.md canonical QV-gate list NOT modified (no new gate \u2014 scope creep check); KNOWN_SPEC_DRIFT + KNOWN_UNTESTED_COMMANDS allowlists independently audited; docs/IW_AI_Core_CLI_Spec.md changes (if any) are doc-only fixes within scope; TESTS_ENHANCEMENT.md changelog counts match the S01 report. Runs the full unit + integration suites \u2014 make test-integration executes the new contract tests; a failure there is CRITICAL.",
       "prompt": "prompts/CR-00073_S03_CodeReview_Final_prompt.md"
     },
     {
@@ -81,7 +82,7 @@
       "agent": "qv-gate",
       "gate": "integration-tests",
       "command": "make test-integration",
-      "description": "QV: Integration tests — runs the new CLI contract tests",
+      "description": "QV: Integration tests \u2014 runs the new CLI contract tests",
       "timeout": 1800
     },
     {

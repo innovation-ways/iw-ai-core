@@ -74,8 +74,9 @@ When analysing CR-00073 specifically, pay attention to:
 - Did the `integration-tests` gate (S09) need fix cycles from latent CLI contract
   failures? The per-command tests exercise the full CLI contract for the first
   time — latent failures it surfaces burn S09 cycles.
-- Were any Incidents filed for genuine CLI bugs discovered by the contract tests?
-  If so, surface them as follow-up work items.
+- Were any `TODO(file-incident)` placeholders recorded for genuine CLI bugs
+  discovered by the contract tests? If so, surface them as operator follow-up
+  items — the operator files the Incident on `main` post-merge.
 - Was the concurrency test for `next-id` stable under `pytest-randomly`? Did it
   require any special isolation to avoid flaking?
 - Did the spec-conformance test find more drift than expected? Note the

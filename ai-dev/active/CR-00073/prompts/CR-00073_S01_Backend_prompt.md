@@ -69,9 +69,15 @@ except `docs/IW_AI_Core_CLI_Spec.md` and the files explicitly listed in
 
 If a contract test surfaces a genuine CLI bug, mark that test `pytest.mark.xfail`
 (or record it in a `KNOWN_CLI_BUG` allowlist in the affected contract test file)
-with a filed Incident ID — never fix the production code in this CR. A CLI bug is
-neither spec drift nor a coverage gap, so it does NOT belong in `KNOWN_SPEC_DRIFT`
-or `KNOWN_UNTESTED_COMMANDS`.
+with a `TODO(file-incident)` placeholder and a one-line rationale — never fix the
+production code in this CR, and do NOT run `/iw-new-incident` or create any
+`ai-dev/active/I-NNNNN/**` from the worktree (it would land outside
+`scope.allowed_paths`). Each placeholder must be surfaced as operator follow-up
+under an **"Operator follow-up"** heading in your step report (command + rationale
++ a short failing snippet); the operator files the Incident on `main` post-merge.
+A genuine pre-existing CLI bug is NOT a blocker — allowlist it, `xfail` it,
+report it, and keep going. A CLI bug is neither spec drift nor a coverage gap, so
+it does NOT belong in `KNOWN_SPEC_DRIFT` or `KNOWN_UNTESTED_COMMANDS`.
 
 ## Requirements
 
@@ -156,8 +162,9 @@ Create a test module that detects drift between the CLI and its specification.
      least one test function references it) **or** is listed in
      `KNOWN_UNTESTED_COMMANDS`.
 - **`KNOWN_SPEC_DRIFT` allowlist** (assertions 1 & 2): a module-level dict keyed
-  by command name. Each entry carries a `"reason"` (filed Incident ID or a
-  one-line rationale) and a `"direction"` (`"spec_only"` or `"cli_only"`).
+  by command name. Each entry carries a `"reason"` (a `TODO(file-incident)`
+  placeholder or a one-line rationale) and a `"direction"` (`"spec_only"` or
+  `"cli_only"`).
   Existence drift in the allowlist does NOT fail; drift not in it DOES fail.
 - **`KNOWN_UNTESTED_COMMANDS` allowlist** (assertion 3): a module-level dict
   keyed by command name, each entry carrying a `"reason"` (one-line rationale).
@@ -205,7 +212,7 @@ a developer convenience only.
   `DONE 2026-05-21 (CR-00073)` with the link; add a `## 11. Changelog` entry
   (or append to it if it already exists) dated 2026-05-21 summarising what
   shipped (priority commands covered, conformance test, `KNOWN_SPEC_DRIFT` count,
-  any Incidents filed for genuine CLI bugs or spec drift).
+  any `TODO(file-incident)` placeholders raised for operator follow-up).
 
 ## "Every test must be able to fail" — required demonstration
 
@@ -267,8 +274,8 @@ uv run pytest tests/integration/test_cli_spec_conformance.py -v --no-cov
 ```
 
 Do not report `tests_passed: true` unless all new contract tests pass (genuine
-CLI bugs allowlisted with Incidents) and the conformance test passes (pre-existing
-drift in `KNOWN_SPEC_DRIFT`).
+CLI bugs allowlisted with `TODO(file-incident)` placeholders and `xfail`-ed) and
+the conformance test passes (pre-existing drift absorbed by `KNOWN_SPEC_DRIFT`).
 
 ## Subagent Result Contract
 
@@ -288,13 +295,16 @@ drift in `KNOWN_SPEC_DRIFT`).
   "test_summary": "X passed, Y xfailed, 0 failed (contract tests); Z passed (conformance test)",
   "tdd_red_evidence": "monkeypatch demonstration — contract test: <command> case failed with <assertion error> after monkeypatch broke the DB-write/exit; conformance test: injected drift reported after monkeypatch dropped a command. Both via monkeypatch (auto-reverted); git diff origin/main touches no production file.",
   "blockers": [],
-  "notes": "KNOWN_SPEC_DRIFT: <N> entry(ies) — list each with Incident ID or rationale. KNOWN_UNTESTED_COMMANDS: <M> entry(ies). docs/IW_AI_Core_CLI_Spec.md §4: <K> rows added/fixed. Total contract test count: <T> across 6 priority command groups. Incidents filed for genuine CLI bugs: <list>."
+  "notes": "KNOWN_SPEC_DRIFT: <N> entry(ies) — list each with TODO(file-incident) placeholder or rationale. KNOWN_UNTESTED_COMMANDS: <M> entry(ies). docs/IW_AI_Core_CLI_Spec.md §4: <K> rows added/fixed. Total contract test count: <T> across 6 priority command groups. KNOWN_CLI_BUG TODO(file-incident) placeholders raised for operator follow-up: <list>."
 }
 ```
 
 - In `notes`, report: total contract tests across all priority command groups,
-  the `KNOWN_SPEC_DRIFT` count + each entry with its Incident ID or rationale,
-  the `KNOWN_UNTESTED_COMMANDS` count, how many §4 spec rows you added/fixed,
-  and any genuine CLI bugs found that were filed as Incidents.
-- If you found a genuine CLI bug you could not file an Incident for, set
-  `completion_status: partial` and list it in `blockers` for the operator.
+  the `KNOWN_SPEC_DRIFT` count + each entry with its `TODO(file-incident)` placeholder
+  or rationale, the `KNOWN_UNTESTED_COMMANDS` count, how many §4 spec rows you
+  added/fixed, and every `TODO(file-incident)` placeholder raised for operator
+  follow-up (command + rationale + short failing snippet), under an **"Operator
+  follow-up"** heading.
+- A genuine pre-existing CLI bug is NOT a blocker — allowlist it, `xfail` it,
+  and list it under "Operator follow-up". Set `completion_status: partial` only
+  if the contract tests cannot be made green for some other reason.

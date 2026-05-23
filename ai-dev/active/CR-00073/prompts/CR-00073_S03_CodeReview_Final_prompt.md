@@ -87,6 +87,11 @@ Verify each acceptance criterion end-to-end:
   is empty. S01 proves the tests can fail with pytest `monkeypatch` (test code
   only, auto-reverting); it must never edit a production file, even temporarily.
   Any non-empty diff here is a **CRITICAL** scope violation.
+- **No incident package created inside the worktree** — an `ai-dev/active/I-NNNNN/**`
+  path anywhere in the changeset is a **CRITICAL** scope violation. Genuine CLI
+  bugs must be `xfail`-ed (or recorded in `KNOWN_CLI_BUG`) with a
+  `TODO(file-incident)` placeholder and listed as operator follow-up in the S01
+  report; the operator files the Incident on `main` post-merge.
 - Any edit to `docs/IW_AI_Core_CLI_Spec.md` is doc-only (text/table changes);
   no executable code or imports were added.
 
@@ -97,7 +102,7 @@ Verify each acceptance criterion end-to-end:
   claims (e.g. skill saying "run test-cli-contract for the canonical gate" while
   the design says it is a convenience target only).
 - `TESTS_ENHANCEMENT.md` §11 changelog counts (priority commands covered, drift
-  entries, Incidents filed) match S01's report exactly.
+  entries, `TODO(file-incident)` placeholders raised) match S01's report exactly.
 - `docs/IW_AI_Core_CLI_Spec.md` changes (if any) are limited to adding or
   correcting entries in the §4 "Command Summary" tree (and matching §3.x detail
   prose) — no structural rewrites.

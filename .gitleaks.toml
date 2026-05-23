@@ -98,6 +98,8 @@ paths = [
   # why: dashboard/services/oss_check_catalog.yaml — YAML config keys named env.local
   # and info@innovation-ways.com contact; not real hostnames or credentials
   '''(?i)(?:^|/)dashboard/services/''',
+  # why: .env — contains example values (e.g. example.local); always gitignored, never committed
+  '''(?i)(?:^|/)\.env$''',
   # why: .dockerignore, .gitignore — patterns like "env.local" appear as literal
   # ignore rules, not as real internal hostnames
   '''(?i)\.dockerignore$''',

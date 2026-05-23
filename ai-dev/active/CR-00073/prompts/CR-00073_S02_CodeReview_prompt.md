@@ -65,8 +65,10 @@ is **CRITICAL**. If a command is unavailable, STOP and raise a blocker.
   `ai-dev/work/TESTS_ENHANCEMENT.md`. Any edit to `orch/cli/`, `orch/`,
   `dashboard/`, `executor/`, or `scripts/` is a **CRITICAL** scope violation —
   including a "fix" for a CLI bug the contract tests found (those must be
-  allowlisted in `KNOWN_SPEC_DRIFT` or a `KNOWN_CLI_BUG` dict with a filed
-  Incident, never fixed in-CR).
+  allowlisted in `KNOWN_SPEC_DRIFT` or a `KNOWN_CLI_BUG` dict with a
+  `TODO(file-incident)` placeholder and a one-line rationale, never fixed in-CR;
+  no `ai-dev/active/I-NNNNN/**` package created inside the worktree — that is a
+  **CRITICAL** scope violation).
 - **No production-code edit, not even temporary.** S01's TDD demonstration uses
   pytest `monkeypatch` inside test code — it must never edit `orch/`, the spec
   doc's executable areas, or any production module. Confirm via
@@ -106,9 +108,9 @@ is **CRITICAL**. If a command is unavailable, STOP and raise a blocker.
 
 - Both allowlists are module-level constants in `test_cli_spec_conformance.py`.
 - `KNOWN_SPEC_DRIFT` (existence drift): each entry keyed by command name, with a
-  `"reason"` (Incident ID or one-line rationale) and a `"direction"`
-  (`"spec_only"` or `"cli_only"`). An entry with no Incident ID and no rationale
-  is **HIGH**.
+  `"reason"` (`TODO(file-incident)` placeholder or one-line rationale) and a
+  `"direction"` (`"spec_only"` or `"cli_only"`). An entry with no placeholder
+  and no rationale is **HIGH**.
 - `KNOWN_UNTESTED_COMMANDS` (coverage gap): each entry keyed by command name with
   a `"reason"`. It must be pre-seeded with every non-priority command so the
   conformance test passes on first merge; an entry with no rationale is **HIGH**.
@@ -126,7 +128,7 @@ is **CRITICAL**. If a command is unavailable, STOP and raise a blocker.
 - The `test-cli-contract` Makefile target exists and is `.PHONY`-declared — it is
   a convenience target only, not a new canonical gate.
 
-### 6. AC5 — tdd_red_evidence (monkeypatch demonstration)
+### 6. AC5 — tdd_red_evidence (monkeypatch demonstration) and no incident package created
 
 - S01's report contains `tdd_red_evidence` describing the **monkeypatch**
   demonstration for both new test areas (a contract test failing when a
@@ -140,6 +142,13 @@ is **CRITICAL**. If a command is unavailable, STOP and raise a blocker.
   evidence describes editing `orch/` (or any production file) and reverting it,
   that is a process violation — raise **MEDIUM (fixable)** and confirm via
   `git diff origin/main` that no production file is actually modified.
+- S01 must NOT have run `/iw-new-incident` or created an incident package inside
+  the worktree — an `ai-dev/active/I-NNNNN/**` path anywhere in the changeset is
+  a **CRITICAL** scope violation. Genuine CLI bugs must be `xfail`-ed (or recorded
+  in `KNOWN_CLI_BUG`) with a `TODO(file-incident)` placeholder and listed under
+  "Operator follow-up" in the step report for the operator to file post-merge.
+  An allowlisted bug with no placeholder, no rationale, or not listed for the
+  operator is **HIGH**.
 
 ### 7. AC6 — docs / skill / plan
 
