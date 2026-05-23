@@ -38,6 +38,8 @@ Read the project's `CLAUDE.md` for architecture, conventions, and hard rules.
 
 ### Agents and Execution Order
 
+> **Step-granularity rule**: each implementation step targets one cohesive concern (one module or closely-related file group). Split multi-concern work across multiple steps. See `skills/iw-workflow/SKILL.md` for the canonical rule.
+
 | Step | Agent | Scope | Parallel With |
 |------|-------|-------|---------------|
 | S01 | {Agent} | {What this agent builds} | — |

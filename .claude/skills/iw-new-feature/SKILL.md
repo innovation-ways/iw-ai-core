@@ -1,6 +1,6 @@
 ---
 name: iw-new-feature
-version: "2.2.0"
+version: "2.3.0"
 description: Creates a new Feature design document with all implementation prompts following the IW development workflow. Use when starting a new feature, creating feature designs, planning feature implementation, or user says "new feature", "create feature", "design feature", "/iw-new-feature".
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 argument-hint: <brief feature description>
@@ -189,6 +189,17 @@ Add the functional doc to the **File Manifest** table (after the Feature_Design.
 | Test coverage | `Tests` |
 
 Use parallelism where possible (e.g., Backend + Frontend after Database completes).
+
+### Step-Size Guidance
+
+Follow the **canonical step-granularity rule** in `skills/iw-workflow/SKILL.md`: each implementation step targets **one cohesive concern** (roughly one module or one closely-related file group); multi-concern work is split across multiple steps. Many small steps are preferred over one large step — a single step bundling unrelated work is the primary failure mode.
+
+Apply this checklist to every step you propose in the manifest:
+
+- Does this step touch more than one unrelated area / module? → **split it**.
+- Would the step's description need more than a handful of unrelated numbered sub-deliverables? → **split it**.
+- Do docs, skill, or plan updates ride along with code changes in this step? → **give them their own step**.
+- Would one agent run have to read + edit + test across several modules? → **split it**.
 
 ### Implementation Plan Structure
 

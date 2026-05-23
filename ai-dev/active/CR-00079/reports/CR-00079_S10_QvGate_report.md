@@ -1,0 +1,221 @@
+# CR-00079 S10 QvGate Report
+
+## Gate
+
+| Field        | Value           |
+|--------------|-----------------|
+| Gate         | diff-coverage      |
+| Command      | `make diff-coverage` |
+| Exit code    | 0             |
+| Result       | PASS         |
+| Duration (s) | 429       |
+
+## Output (tail)
+
+```
+tests/integration/test_code_index_pipeline.py::test_regenerate_map_upserts_project_doc
+tests/integration/test_code_index_pipeline.py::test_runner_cleans_up_on_ollama_error
+tests/integration/test_code_index_pipeline.py::test_runner_cleans_up_on_ollama_error
+tests/integration/test_code_index_pipeline.py::test_full_index_cycle
+tests/integration/test_code_index_pipeline.py::test_runner_emits_progress_then_done
+  /home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00079/.venv/lib/python3.12/site-packages/llama_index/vector_stores/lancedb/base.py:319: DeprecationWarning: table_names() is deprecated, use list_tables() instead
+    page = list(self._connection.table_names(page_token))
+
+tests/integration/test_code_index_pipeline.py::test_runner_cleans_up_on_ollama_error
+tests/integration/test_code_index_pipeline.py::test_full_index_cycle
+tests/integration/test_code_index_pipeline.py::test_runner_emits_progress_then_done
+  /home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00079/orch/rag/indexer.py:148: DeprecationWarning: table_names() is deprecated, use list_tables() instead
+    if table_name in db.table_names():
+
+tests/integration/dashboard/test_session_cookie_middleware.py::TestSessionCookieMiddleware::test_second_request_uses_existing_cookie
+  /home/sergiog/dev/iw-doc-plan/main/iw-ai-core/.worktrees/CR-00079/.venv/lib/python3.12/site-packages/starlette/testclient.py:445: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return super().request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.3-final-0 ________________
+
+Name                                       Stmts   Miss Branch BrPart  Cover   Missing
+--------------------------------------------------------------------------------------
+dashboard/app.py                             281     57     58      8    76%   137-146, 172-203, 228-233, 245-253, 265-266, 275-276, 381, 393-395, 405, 412, 420, 424-431, 488-490, 504-525
+dashboard/dependencies.py                     27     11      4      1    55%   36, 44-56, 65-71
+dashboard/routers/_run_helpers.py             61     10     10      3    79%   37-41, 91-101, 151, 154-155
+dashboard/routers/actions.py                 605    149    184     24    71%   166, 188, 303->307, 310->312, 387, 394, 398-399, 463, 497, 524, 532, 567, 642, 695-719, 770, 786-787, 800, 871-878, 959, 1002-1023, 1037-1161, 1203, 1212, 1233-1234, 1357-1366, 1380-1389, 1415-1416, 1482->1484, 1484->1487, 1532->1535, 1548-1634, 1794, 1818, 1917-1935
+dashboard/routers/auto_merge_ui.py           190     20     62     13    87%   52->57, 56, 63, 79-80, 172-173, 201, 208, 215, 218, 223->240, 236-238, 243, 256, 265-266, 299, 329-330, 370->390
+dashboard/routers/batches.py                 293     23     80     14    89%   104, 109, 120->122, 122->124, 199, 205, 214->196, 225, 246-247, 272-274, 387, 578-586, 592-595, 733, 752
+dashboard/routers/chat.py                    684    155    274     60    74%   174-175, 220, 233, 243-246, 284->286, 288-304, 376, 382-383, 397-399, 415-416, 420, 452, 458-469, 503-505, 519-521, 556->564, 588->591, 595, 615-617, 649-654, 685, 690-692, 700, 706-717, 758, 761-762, 764, 768->777, 772-773, 777->800, 782->784, 784->800, 806->814, 810-811, 814->825, 818->825, 822->825, 877-878, 894-897, 917, 924-934, 950-952, 975, 978-979, 981, 1006, 1010, 1026, 1051, 1055, 1060, 1087, 1091, 1099, 1140, 1143-1144, 1152->1154, 1159-1160, 1168->1170, 1175-1176, 1179->1183, 1211-1247, 1290-1343, 1351, 1375, 1424, 1435, 1438, 1442, 1444, 1446->1445, 1470->1478, 1473, 1475->1471, 1490, 1504, 1565, 1582->1588, 1584->1582, 1597, 1611-1615
+dashboard/routers/code.py                    148      7     36      5    93%   158, 255, 259, 305, 345, 352-353
+dashboard/routers/code_qa.py                 236     29     54      5    87%   67-74, 291-292, 296->298, 351->270, 356-399, 431, 440->443
+dashboard/routers/code_ui.py                 236     26     60     15    85%   43->47, 45->47, 84, 125->131, 136, 190->192, 219->221, 266-269, 287, 301, 312, 354->359, 397-410, 445-453, 455-459, 461-462, 503-505, 527, 600
+dashboard/routers/containers.py               45     14     10      4    64%   38, 40, 42-43, 45-46, 120-137
+dashboard/routers/daemon_control.py           65     10     14      5    76%   66, 94, 97->105, 101->97, 121-128
+dashboard/routers/docs.py                    570     83    148     35    81%   48, 137, 139, 143-144, 175-177, 200, 202, 206-207, 291-292, 312, 347->352, 348->347, 354->359, 479-526, 544-545, 604, 620-631, 750, 795->800, 797, 804, 807->809, 877, 979, 1047, 1054-1055, 1086, 1092-1093, 1125, 1189, 1215, 1244, 1273, 1301, 1329, 1357, 1363, 1392, 1427
+dashboard/routers/docs_global.py              51      8     26      4    74%   54->59, 61-64, 68-71, 86->88
+dashboard/routers/help.py                     45     10     12      3    74%   17-22, 75-80, 84-87
+dashboard/routers/items.py                   921    247    272     30    69%   365-371, 619, 639, 658, 670, 686, 695-712, 756-766, 771-783, 788-792, 798-800, 804-805, 812, 815-833, 835-836, 837->839, 876, 890-911, 994, 1007-1016, 1078-1083, 1091-1093, 1114-1171, 1209-1212, 1399, 1409-1412, 1510-1514, 1545-1546, 1624, 1627, 1652-1657, 1678-1693, 1698-1701, 1819-1855, 1876-1888, 1903-1905, 1914-1915, 1928-1929, 1935-1938, 1981-1982, 2113-2151, 2163-2177, 2258-2264
+dashboard/routers/jobs_ui.py                 218     93     56      9    55%   49, 65-66, 68, 101-107, 111-117, 165, 171-177, 181-187, 242-246, 291-292, 301-302, 316-317, 359-425
+dashboard/routers/keep_alive.py               92      8      8      2    90%   181-184, 193-203
+dashboard/routers/oss.py                     253     36     50     10    82%   60-62, 68, 129, 181-182, 464, 483, 523, 609-627, 648-683, 691-694
+dashboard/routers/project_dashboard.py        87      1      8      0    99%   224
+dashboard/routers/project_pages.py           107      6     26      2    94%   159->164, 165->170, 174-175, 181-182, 243-244
+dashboard/routers/projects.py                165     20     34      4    88%   103, 139-140, 170, 184-185, 190-191, 228-230, 240-241, 245-246, 250, 343-346
+dashboard/routers/quality.py                 114     57     22      3    44%   76-77, 140, 144-157, 185-230, 242-287, 298-308
+dashboard/routers/research.py                 88     17     28      6    73%   41, 119, 122-154, 173->178, 180-183, 193
+dashboard/routers/running.py                 116     10     24      4    89%   109-114, 160->183, 180, 191, 250-251
+dashboard/routers/search.py                   61      4     14      1    88%   77-80
+dashboard/routers/sse.py                      78     31     16      3    53%   153-167, 197->exit, 202-255, 260-261, 266, 282-289, 302
+dashboard/routers/staleness.py               229     46     58      5    81%   94-95, 260-262, 266, 286-296, 314-324, 344-346, 352-355, 431-433, 437, 472-474, 478, 525-527, 549-554, 579-581
+dashboard/routers/system.py                  200     20     48     10    86%   107, 174-194, 263, 268->270, 292->291, 294, 302-307, 424->422, 435, 461, 465
+dashboard/routers/tests.py                   163     71     40      6    48%   64-66, 109-113, 195, 199, 224, 228-241, 269-328, 339-347, 363-382, 404-409, 439
+dashboard/routers/usage.py                    19      2      4      2    83%   17, 19
+dashboard/routers/worktrees.py               391    161    126     19    54%   64->62, 76->67, 102, 126-131, 138, 154, 162, 201, 205->207, 208-209, 229-273, 278-290, 343-352, 373-381, 399->398, 444->447, 451, 460-464, 497-502, 521, 561, 601-607, 629-727, 733-747, 761-801, 821, 826->832, 830, 865-922
+dashboard/services/coverage_service.py        96      5     14      2    94%   61-62, 92-93, 116->119, 126
+dashboard/services/oss_accepted.py            58      1     18      3    95%   49, 58->62, 60->59
+dashboard/services/oss_check_catalog.py       28      1      4      1    94%   25
+dashboard/services/oss_service.py            397    107    144     32    70%   75, 84-85, 120-122, 139, 156-157, 163-164, 204, 240, 249, 278-320, 336-337, 341-342, 359-387, 394, 397, 405-418, 446, 479, 492-495, 498-499, 504->507, 582->585, 635, 718-719, 764, 767-768, 771-772, 803, 807-808, 819->823, 827, 836->839, 850, 852, 854, 856
+dashboard/utils/markdown.py                  256     50    106     20    78%   57->78, 66-67, 140-141, 178->187, 187->199, 193->199, 197, 208-212, 231-234, 238-239, 248->256, 250, 253->248, 256->264, 261-262, 285-288, 321->324, 347-349, 352-353, 356-357, 368-391, 408, 496
+dashboard/utils/oss_copy.py                   18      3      0      0    83%   290, 301, 308
+dashboard/utils/project_onboarding.py         38      1     14      1    96%   45
+dashboard/utils/timing.py                     52      1      6      2    95%   52, 86->92
+executor/scope_gate.py                        38     38     16      0     0%   25-80
+orch/active_files.py                          24      3      8      3    81%   64, 87, 134
+orch/agent_runtime/resolver.py                47      0     16      2    97%   58->74, 77->93
+orch/archive/archiver.py                      70      3     36      4    93%   50, 54, 79->76, 103
+orch/archive/batch_archiver.py               152     33     40     10    76%   75-76, 91, 109, 154, 214, 225-226, 227->233, 233->236, 267-272, 283-286, 296-303, 312-319, 345-348
+orch/archive/extractor.py                     50      2     22      2    94%   88, 91
+orch/auto_merge_aggregator.py                199      4     50      3    97%   137, 236-237, 449
+orch/batch_planner.py                        307     30    118     17    88%   202->200, 214->207, 226, 228, 233->231, 257, 259-261, 263, 349, 355, 360, 369, 374-384, 468->467, 516-519, 534-536, 624, 634->643, 652, 678-680
+orch/cancel.py                               178      4     62      0    98%   283, 489-490, 503
+orch/chat/__init__.py                         14      5      4      0    50%   33-37
+orch/chat/context_usage.py                   105      6     66      8    92%   105, 117, 153, 184, 189, 218, 231->216, 237->240
+orch/chat/migration_helpers.py                55     16     24      7    66%   53, 58, 69, 80-89, 130, 134-138
+orch/chat/opencode/client.py                  86      5     22      4    92%   42, 73, 101, 109, 125
+orch/chat/opencode/relay_manager.py          156     27     44      9    80%   81, 85, 93, 100->104, 156, 198->exit, 202, 207->209, 216-220, 223-255, 302-307, 317
+orch/chat/opencode/runtime.py                226     52     48     15    73%   113->117, 119->125, 133->exit, 140->145, 158-159, 162->exit, 169-171, 184-198, 207, 212, 215, 218, 228, 231, 241, 255, 265, 285-287, 290, 293, 361, 369-370, 374, 380, 387-389, 408, 411-412, 414-416, 425->exit, 428, 431-434, 437, 439-441, 467-471
+orch/chat/pi/pi_jsonl_reader.py               26      1     10      0    97%   58
+orch/chat/pi/pi_rpc_client.py                146     26     38      8    78%   93, 126->131, 137->156, 140-141, 157-158, 165-167, 177-179, 185-188, 258, 265-267, 275->283, 277-278, 286-287, 294-296
+orch/chat/pi/pi_runtime.py                   177     57     50     11    62%   83->exit, 120-121, 128-136, 140-149, 167-170, 174, 180->exit, 195-198, 204-210, 225, 230, 233-236, 240, 244, 249->exit, 292, 323->325, 326->exit, 335-356
+orch/chat/tab_service.py                      76      3     24      3    94%   172, 174, 223
+orch/cli/batch_commands.py                   311     70    104     11    76%   201-205, 268-269, 278, 322-323, 358, 391-392, 409, 448, 464, 516, 521, 526-579, 594, 605, 608, 625, 636, 639, 702-703, 708-719
+orch/cli/daemon_commands.py                  108     40     22      6    63%   85-97, 115, 118, 140->138, 143, 148, 157-228
+orch/cli/db_commands.py                       59     47     12      0    17%   37-54, 63-96
+orch/cli/doc_commands.py                     293     23    106     11    90%   197, 210->212, 213, 215, 220->224, 256, 308, 359, 395, 417, 447-448, 451-452, 464-472, 494, 501, 573, 593
+orch/cli/id_commands.py                       63     12     12      0    76%   126-132, 148-157, 189-190
+orch/cli/item_commands.py                    474     71    142     22    84%   263-268, 271, 281-282, 320-323, 341-342, 463, 466-467, 519-520, 536->538, 547-548, 569-576, 663->650, 738->740, 771-772, 790, 860-861, 905, 926, 957, 960, 989, 991, 1000, 1003, 1007-1010, 1019-1020, 1073, 1079-1080, 1085-1088, 1098, 1112, 1135->1140, 1167, 1207-1208, 1213-1226, 1254, 1292-1293
+orch/cli/lock_commands.py                     79     10     18      6    84%   42, 58, 61, 93, 109, 112, 131, 141-142, 145
+orch/cli/main.py                              81      9      6      1    86%   84-103
+orch/cli/merge_queue_commands.py             135     35     42      9    69%   87, 93, 103-132, 194-195, 218-219, 257, 262-273, 280, 299->303, 316, 332
+orch/cli/migrations_commands.py              109     32     30      4    67%   86-87, 113-121, 130->132, 135->exit, 140, 179-225
+orch/cli/oss_commands.py                     212     91     68     12    51%   62-91, 108, 119, 124-188, 221-223, 243-244, 260-303, 322, 356, 362->377, 371->377, 374-375, 379-380, 407-409
+orch/cli/project_commands.py                  35     11      8      1    63%   68-69, 74-83
+orch/cli/search_commands.py                   47      4     16      3    89%   69->72, 85-86, 94-95, 101->103
+orch/cli/skills_commands.py                  179    140     52      1    17%   19-91, 98-158, 169-251, 281-282, 285-298
+orch/cli/step_commands.py                    393    141    154     19    61%   172-173, 275-276, 282-298, 349->352, 355, 409, 424, 445, 448, 481, 484->486, 491-497, 516-517, 538, 596, 610-626, 638, 639->641, 677, 683, 718, 726, 749, 784, 788-789, 818-908, 923-981, 996-1079
+orch/cli/utils.py                             48      8     14      2    81%   64-71, 107
+orch/cli/worktree_commands.py                136    116     58      0    10%   33-61, 66-75, 80-89, 98-125, 145-150, 154-156, 174-320
+orch/daemon/__main__.py                       17     17      2      0     0%   3-32
+orch/daemon/auto_merge.py                    336     15     84      2    95%   247-250, 430-431, 451-452, 552-553, 570-571, 660->664, 1023-1025
+orch/daemon/batch_manager.py                 723    108    222     32    84%   100-109, 123-124, 150-151, 165, 204-277, 313->exit, 452, 495->442, 504, 531, 558-564, 567-568, 581, 728-753, 792-801, 827->835, 860-861, 870-872, 1001-1002, 1027, 1043, 1048, 1052, 1108, 1114-1116, 1180, 1283->1440, 1369-1431, 1493->1499, 1494->1493, 1496, 1570-1573, 1670->1695, 1671->1670, 1674-1676, 1677->1693, 1749->exit, 1865, 1967->1957
+orch/daemon/batch_merge_hooks.py              28      3     10      2    87%   48-49, 53
+orch/daemon/browser_env.py                   221     32     60      5    82%   142, 176-177, 250->242, 329-335, 487->478, 492, 544-609, 642-644
+orch/daemon/chat_summarization_poller.py      73     12     14      4    82%   85-87, 104, 121-122, 133->137, 149->151, 153-155, 171-173
+orch/daemon/container_info.py                156     37     52     13    71%   41-43, 51, 54, 57->55, 87, 94-100, 104, 108, 120->118, 129, 149->152, 154->167, 158-165, 174, 210-230, 251-255, 261
+orch/daemon/doc_index_poller.py               89      7     20      2    92%   121-126, 143->exit, 146-147, 183-189
+orch/daemon/doc_job_poller.py                132      8     30      2    94%   85->87, 98-99, 114-115, 185-191, 221-222
+orch/daemon/execution_report.py              360     69    134      8    78%   167-169, 273, 344->356, 357->365, 421, 447, 495->497, 550-551, 670-726, 746-759, 775-780
+orch/daemon/fix_cycle.py                     739    116    290     53    80%   374-379, 494, 501, 577, 581, 588, 597-604, 652-655, 769-771, 892, 978, 981, 1025, 1034, 1063-1069, 1156->1269, 1299-1305, 1306->1309, 1338, 1344, 1348-1353, 1357-1359, 1375, 1451, 1455, 1470, 1496, 1520, 1525-1528, 1531-1533, 1576-1578, 1593-1595, 1620-1628, 1672-1676, 1678->1686, 1689, 1704-1709, 1715, 1723-1730, 1739, 1752->1762, 1754->1756, 1757, 1765, 1811->1810, 1853-1854, 1910-1911, 1922, 1954-1964, 2069->2101, 2343, 2402->2415, 2444-2446, 2450-2454, 2474-2492, 2547, 2552, 2590
+orch/daemon/keep_alive_poller.py              35      2      6      0    95%   63-64
+orch/daemon/main.py                          356    151     86     16    53%   78-93, 140-144, 148-150, 161->176, 212, 247-248, 282-283, 285->295, 288-292, 325-328, 341-357, 371-411, 415-442, 465-468, 475-476, 500-519, 537, 541, 555-556, 567-568, 572-575, 579-582, 588-589, 600-601, 605-606, 610-615, 624, 630-655, 667-668, 700-701
+orch/daemon/merge_queue.py                   190      7     50      3    96%   314->333, 349->378, 359-375, 406, 588-589
+orch/daemon/migration_pipeline.py            113     14     22      5    84%   121-122, 193-198, 247-254, 288->294, 303, 306-309, 336->342, 346->349, 360->exit
+orch/daemon/migration_rebase.py              267     26     74      6    91%   80-81, 160-162, 235-236, 245, 269, 295-297, 332-334, 398-399, 457->460, 530, 562, 576-577, 635-636, 679-681
+orch/daemon/project_registry.py              262     27     92      9    89%   230-244, 252-257, 265-270, 278-283, 321-328, 410-413, 438-442, 506-507, 587-588, 595-596, 613-614, 632->627
+orch/daemon/qv_baseline.py                   135     32     44      7    72%   95, 107, 117-146, 206->209, 244, 257, 284, 289
+orch/daemon/scope_amendment.py                90      6     30      4    92%   101, 128, 219-220, 224, 231
+orch/daemon/scope_overlap.py                 109     11     62      2    92%   95, 99, 122-124, 249-253, 269-273
+orch/daemon/session_reader.py                181     36     74     12    78%   67-69, 79-81, 86, 90, 115, 137, 157, 165-171, 201, 212->exit, 238-245, 259-265, 328-329, 341-342, 409->407
+orch/daemon/step_monitor.py                  246     17     78      9    92%   198-199, 277->279, 312->315, 361, 373, 382-383, 477->480, 483->485, 522->exit, 576-577, 606-607, 610, 647-648, 656-657, 662-663, 668->659
+orch/daemon/worktree_compose.py              333     79    100     18    76%   85-96, 155-159, 196, 269-281, 285, 288, 307, 311-315, 337-344, 348-353, 358-365, 386, 404-408, 431, 432->428, 504-505, 547, 572-584, 606-655, 676->680, 728-741, 768-805, 819-835
+orch/daemon/worktree_reaper.py               210     91     54      6    55%   100-104, 129-133, 137-139, 147-150, 170-187, 197-242, 253-298, 316-368, 408-410, 416, 419-421, 430->428, 436, 456-458, 524-525, 557-559, 566-567
+orch/db/alembic_guard.py                      63      5     12      1    92%   73, 94-97
+orch/db/migrations/env.py                     29      7      6      3    71%   27, 35, 52-61, 107
+orch/db/models.py                            805      4     12      3    99%   232, 675, 1908, 2207
+orch/db/safe_migrate.py                      326     59     58      6    82%   228-229, 262, 301-303, 349->352, 373-385, 395-426, 433-450, 512-515, 549->546, 552, 714-730, 776-792
+orch/db/session.py                            53     22     12      0    60%   71-80, 85-91, 105-113, 124-132
+orch/design_doc_parser.py                    185      8     94      5    94%   76->79, 108-110, 115->117, 262->261, 299-303, 363
+orch/diagram/install.py                       11      1      4      1    87%   18
+orch/diagram/render.py                        82     40     26      7    53%   24, 28-29, 33-34, 45, 49-50, 63-96, 106-129
+orch/diff_service.py                         109     18     38      1    82%   185-186, 201-212, 214-215, 236-237, 271->275
+orch/doc_diff.py                              36      1     10      1    96%   77
+orch/doc_report.py                            80      8     32      3    90%   48-49, 55-56, 67, 125-126, 199
+orch/doc_service.py                          457     36    212     20    90%   58, 68, 78, 176, 178, 184, 190, 298, 303-304, 327, 356-357, 414-441, 497, 516, 525->528, 534, 545->548, 551->556, 714-715, 745-750, 849, 851, 855-856, 925->929
+orch/evidences.py                             52      4     12      0    94%   30-31, 54-55
+orch/jobs/aggregator.py                      234     27     86      6    87%   146-153, 234-236, 597, 636, 641->644, 660, 682, 697-724, 757-763
+orch/keep_alive_service.py                   101      9     20      1    92%   154-156, 198, 247-250, 264-265
+orch/llm_usage.py                            197     10     54      1    96%   76, 409-411, 415-417, 434-437
+orch/oss/config_writer.py                     34      3      8      1    90%   51, 69-70
+orch/oss/fix_recipes/__init__.py              15      1      2      1    88%   13
+orch/oss/fix_recipes/ci_cd.py                111     24     22      2    79%   14-22, 29-34, 275-307
+orch/oss/fix_recipes/community.py            236     32     70      9    85%   15-20, 31-32, 71, 143-144, 217-218, 300, 555-557, 601-602, 610-634, 645-663
+orch/oss/fix_recipes/contributor.py           53     16     16      3    67%   61-62, 70-94, 105-123
+orch/oss/fix_recipes/governance.py            35      3      6      1    90%   19-20, 58
+orch/oss/fix_recipes/hygiene.py              112     21     40      9    75%   35, 39, 41, 43, 86, 108->107, 136-151, 165, 187
+orch/oss/fix_recipes/internal_refs.py         21      2      4      2    84%   20, 27
+orch/oss/fix_recipes/license_check.py        116     37     34      6    66%   15-20, 31-32, 67-68, 107-108, 116-141, 152-171, 210-211
+orch/oss/fix_recipes/release.py               60      8     18      2    82%   83-92, 150-158
+orch/oss/fix_recipes/secrets.py               48      3     10      1    93%   19-20, 46
+orch/oss/persistence.py                       64     19     24      0    69%   32-33, 38-45, 120-135
+orch/oss/scanner.py                           94      9     18      6    87%   39, 43, 110->118, 139-147, 168, 177->181
+orch/oss/tool_probe.py                        44      4      8      2    88%   47-48, 56, 59
+orch/qv_gate_validator.py                    122      6     52      3    95%   69, 93-94, 109, 276-277
+orch/rag/chat_repo.py                        126     18     38      5    84%   38->41, 46, 51-57, 61-67, 143->146, 188, 258-260, 353, 394-398
+orch/rag/classifier.py                        26      0      8      2    94%   74->78, 75->74
+orch/rag/condense.py                          32      2      6      0    95%   100-101
+orch/rag/doc_indexer.py                      190     10     52      7    93%   142-143, 173->exit, 269, 320-321, 333, 360, 365->368, 386-395
+orch/rag/doc_job.py                          102     16     24      5    83%   49, 80-81, 105-115, 120-121, 146, 154-156, 180, 203
+orch/rag/evidence.py                          41      3     10      2    86%   56-57, 61
+orch/rag/git_log_resolver.py                  34      1     12      1    96%   62
+orch/rag/index_gen.py                        120      6     46      2    95%   37, 48, 204-207
+orch/rag/indexer.py                          225     72     76     13    61%   82, 87-94, 96-103, 105-112, 149-153, 185, 212->218, 216->218, 240-291, 304-307, 320-321, 360-361, 367->373, 391-403, 405->411
+orch/rag/job.py                              183     56     44     10    66%   50, 59-80, 92, 105-106, 149-152, 159, 197->exit, 202->204, 223, 236-259, 267-268, 291, 298-300, 346-366, 384-387, 401
+orch/rag/mapgen.py                           127     20     30      9    80%   173, 189-191, 198, 214, 226-229, 235-237, 243, 248, 279-285, 390
+orch/rag/module_gen.py                       182     19     44      8    85%   98-101, 110-117, 124-125, 141, 144->148, 156->161, 157->156, 162->164, 167->169, 470-474
+orch/rag/module_progress.py                   61      5     10      2    90%   41, 45-46, 99, 110
+orch/rag/parser.py                            84      2     36      0    98%   26-27
+orch/rag/qa.py                               344     66    142     14    77%   192-200, 218, 397, 437-441, 469, 474-514, 517, 564-579, 625-644, 752->751, 768, 769->771, 780->779, 785->784, 808->807, 812->797
+orch/rag/symbol_gen.py                        72     56     22      0    17%   50-68, 71-91, 96-104, 107-111, 114-116, 119-120, 133-144
+orch/self_assess.py                           98     13     42     13    81%   79, 84, 88, 92, 97, 102, 113, 123, 127, 131, 138, 142, 198
+orch/skills/init_project.py                   83      6     14      2    88%   27, 177-181
+orch/skills/sync.py                           83      5     30      4    92%   39, 54->58, 56-57, 89, 93
+orch/skills/sync_agents.py                    60      5     10      0    93%   52-53, 118-120
+orch/staleness/alembic_check.py               95     14     32      5    85%   98->94, 124, 126, 227-229, 267-278, 287-294, 327->330
+orch/staleness/config.py                      85      1     32      1    98%   48
+orch/staleness/detection.py                  192     51     64     12    75%   41-45, 50-57, 65-66, 75-83, 106-107, 134, 142, 178-179, 194->198, 214, 236-238, 251, 277->275, 308-313, 319, 328-330, 351, 361-363, 390, 394-396, 402, 427->423, 430-431
+orch/staleness/git_lookup.py                  58     15     16      2    77%   78-83, 152-157, 172, 176-177
+orch/staleness/service.py                     94     14     24      1    87%   41-43, 140-145, 178-182, 245-247, 259-261
+orch/test_runner.py                          360    229     70     10    36%   47-48, 54-60, 78, 87->95, 128-162, 169, 185, 208-222, 238-452, 460-485, 495-526, 540-548, 550, 563-570, 589, 628, 640-641, 657-679, 691-700
+orch/utils/log_capture.py                     33      4      8      1    88%   43-46, 58->60
+--------------------------------------------------------------------------------------
+TOTAL                                      26097   4865   7536   1048    79%
+
+43 files skipped due to complete coverage.
+Coverage HTML written to dir tests/output/coverage/htmlcov
+Coverage XML written to file tests/output/coverage/coverage.xml
+Coverage JSON written to file tests/output/coverage/coverage.json
+3106 passed, 28 skipped, 4 xfailed, 3 xpassed, 197 warnings in 329.46s (0:05:29)
+uv run coverage xml -o tests/output/coverage/coverage-combined.xml
+Wrote XML report to tests/output/coverage/coverage-combined.xml
+uv run diff-cover tests/output/coverage/coverage-combined.xml --compare-branch=origin/main --fail-under=90
+-------------
+Diff Coverage
+Diff: origin/main...HEAD, staged and unstaged changes
+-------------
+No lines with coverage information in this diff.
+-------------
+```
+
+## Verdict
+
+```
+pass
+```

@@ -1,6 +1,6 @@
 ---
 name: iw-workflow
-version: "2.1.0"
+version: "2.3.0"
 description: IW AI Core workflow orchestration rules, manifest schema, and agent contract definitions. Use when executing work item workflows, parsing agent results, managing fix cycles, or understanding the automated development pipeline.
 allowed-tools: Bash
 ---
@@ -64,6 +64,12 @@ Every work item folder contains a manifest file at `ai-dev/active/{ID}/workflow-
 ```
 
 **Note**: The manifest defines WHAT to run. The DB tracks state (status, runs, fix cycles).
+
+## Step Granularity Rule (Canonical)
+
+An implementation step MUST target **one cohesive concern** — roughly one module or one closely-related file group. Work spanning several unrelated concerns is split across multiple steps. **Many small steps are preferred over one large step**; a single step bundling unrelated work is the primary failure mode that step-granularity guidance prevents. Documentation, skill, or plan updates that ride along with a code change get **their own step** rather than a tail bolted onto an implementation step.
+
+> **Why this matters**: CR-00076 S01 accumulated tool output across ~6 unrelated deliverables (3 test modules, a Makefile target, 3 documentation/skill/plan updates, quality gates) in one agent session — exceeding the runtime context budget and failing. The fix is to split work into single-concern steps so per-step agent context stays bounded. Small steps can run in parallel; one monolith cannot.
 
 ## Agent Mapping
 

@@ -1,6 +1,6 @@
 ---
 name: iw-new-cr
-version: "2.2.0"
+version: "2.3.0"
 description: Creates a new Change Request design document with all implementation prompts following the IW development workflow. Use when modifying existing functionality, requesting changes to current behavior, refactoring, or user says "new change request", "new CR", "create CR", "change request", "modify existing", "/iw-new-cr".
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 argument-hint: <brief description of the change needed>
@@ -181,6 +181,17 @@ Add the functional doc to the **File Manifest** table (add a row after CR_Design
 ## Step 6: Generate ALL Prompt Files (only after GO)
 
 Create all prompt files in `ai-dev/active/{ID}/prompts/`.
+
+### Step-Size Guidance
+
+Follow the **canonical step-granularity rule** in `skills/iw-workflow/SKILL.md`: each implementation step targets **one cohesive concern** (roughly one module or one closely-related file group); multi-concern work is split across multiple steps. Many small steps are preferred over one large step — a single step bundling unrelated work is the primary failure mode.
+
+Apply this checklist to every step you propose in the manifest:
+
+- Does this step touch more than one unrelated area / module? → **split it**.
+- Would the step's description need more than a handful of unrelated numbered sub-deliverables? → **split it**.
+- Do docs, skill, or plan updates ride along with code changes in this step? → **give them their own step**.
+- Would one agent run have to read + edit + test across several modules? → **split it**.
 
 ## Step 7: Generate Workflow Manifest (only after GO)
 
