@@ -547,3 +547,86 @@ div.mermaid-diagram span {
 .ctx-bar-green  { background-color: #22c55e; }
 .ctx-bar-yellow { background-color: #f59e0b; }
 .ctx-bar-red    { background-color: #ef4444; }
+
+/* CR-00078: overlap modal ignore controls */
+.iw-modal-body {
+  padding: 12px 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.iw-modal-section-block {
+  margin-bottom: 10px;
+}
+.iw-modal-section-block:last-child {
+  margin-bottom: 0;
+}
+.iw-modal-section-header {
+  font-size: 0.75rem;
+  color: var(--muted-foreground, #6b7280);
+  margin-bottom: 4px;
+}
+.iw-modal-section-header code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+}
+.iw-modal-file-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.iw-modal-file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--border, #e5e7eb);
+}
+.iw-modal-file-row:last-child {
+  border-bottom: none;
+}
+.iw-modal-file-row code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+  flex: 1 1 auto;
+}
+.iw-modal-ignore-btn {
+  background: var(--secondary, #f3f4f6);
+  color: var(--secondary-foreground, #111);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.iw-modal-ignore-btn:hover {
+  background: var(--muted, #e5e7eb);
+}
+.iw-modal-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border, #e5e7eb);
+  display: flex;
+  justify-content: flex-end;
+  background: var(--muted, #fafafa);
+}
+.iw-modal-ignore-all-btn {
+  background: var(--primary, #2563eb);
+  color: var(--primary-foreground, #fff);
+  border: none;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.iw-modal-ignore-all-btn:hover {
+  opacity: 0.9;
+}
+.iw-modal-empty-msg {
+  text-align: center;
+  color: var(--muted-foreground, #6b7280);
+  font-size: 0.875rem;
+  padding: 16px 0;
+}

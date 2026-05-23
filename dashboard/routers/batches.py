@@ -20,6 +20,7 @@ from orch.db.models import (
     AgentRuntimeOption,
     Batch,
     BatchItem,
+    BatchOverlapIgnore,
     BatchStatus,
     DaemonEvent,
     FixCycle,
@@ -199,7 +200,7 @@ def _get_scope_statuses(
             continue
         meta = ev.event_metadata or {}
         if ev.event_type == "item_held_for_scope":
-            blocking = meta.get("blocking_item_id", "")
+            blocking = meta.get("blocker_item_id", "")
             globs: list[str] = list(meta.get("conflicting_globs", []))
             if not globs:
                 continue
@@ -754,5 +755,110 @@ def batch_diagram_drawio(
         media_type="application/xml",
         headers={
             "Content-Disposition": f'attachment; filename="{batch_id}-execution-plan.drawio"',
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# CR-00078: Overlap ignore endpoints (batches.py — shares path prefix)
+# ---------------------------------------------------------------------------
+
+
+def _get_item_scope_events(
+    project_id: str,
+    held_item_id: str,
+    db: Session,
+    window_secs: int = 300,
+) -> list[DaemonEvent]:
+    """Fetch recent item_held_for_scope events for a work item.
+
+    Mirrors the event query in _get_scope_statuses so the same 300s window
+    and event ordering is used for ignore-all logic.
+    """
+    from datetime import timedelta
+
+    cutoff = datetime.now(UTC) - timedelta(seconds=window_secs)
+    return list(
+        db.scalars(
+            select(DaemonEvent)
+            .where(
+                DaemonEvent.project_id == project_id,
+                DaemonEvent.event_type == "item_held_for_scope",
+                DaemonEvent.entity_id == held_item_id,
+                DaemonEvent.entity_type == "work_item",
+                DaemonEvent.created_at >= cutoff,
+            )
+            .order_by(DaemonEvent.created_at.desc())
+        ).all()
+    )
+
+
+@router.get(
+    "/batch/{batch_id}/overlap/{held_item_id}",
+    response_class=HTMLResponse,
+)
+def overlap_modal(
+    project_id: str,
+    batch_id: str,
+    held_item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx modal: show current overlap sections for a held item, minus ignored pairs."""
+    project = _get_project_or_404(project_id, db)
+    _get_batch_or_404(project_id, batch_id, db)
+
+    # Verify the batch item exists
+    batch_item = db.scalar(
+        select(BatchItem).where(
+            BatchItem.project_id == project_id,
+            BatchItem.batch_id == batch_id,
+            BatchItem.work_item_id == held_item_id,
+        )
+    )
+    if batch_item is None:
+        raise HTTPException(status_code=404, detail=f"Batch item not found: {held_item_id}")
+
+    # Load pre-existing ignores for this batch + held_item
+    ignored_rows = db.scalars(
+        select(BatchOverlapIgnore).where(
+            BatchOverlapIgnore.project_id == project_id,
+            BatchOverlapIgnore.batch_id == batch_id,
+            BatchOverlapIgnore.held_item_id == held_item_id,
+        )
+    ).all()
+    ignored_set = {(row.blocking_item_id, row.file_pattern) for row in ignored_rows}
+
+    # Fetch recent scope-hold events for this item (same window as _get_scope_statuses)
+    events = _get_item_scope_events(project_id, held_item_id, db, window_secs=300)
+
+    # Group into sections keyed by (blocking_item_id, file_pattern) → globs list
+    sections: dict[tuple[str, str], list[str]] = {}
+    for ev in events:
+        meta = ev.event_metadata or {}
+        blocking_id: str = meta.get("blocker_item_id", "")
+        globs: list[str] = list(meta.get("conflicting_globs", []))
+        if not globs or not blocking_id:
+            continue
+        for g in globs:
+            if (blocking_id, g) not in ignored_set:
+                sections.setdefault((blocking_id, g), []).append(g)
+
+    # Build render data (ignored_set already deduped per (blocking_id, glob) key)
+    section_rows = [
+        {"blocking_item_id": blocking_id, "file_pattern": glob} for blocking_id, glob in sections
+    ]
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/batch_overlap_modal.html",
+        {
+            "current_project": project,
+            "project_id": project.id,
+            "batch_id": batch_id,
+            "held_item_id": held_item_id,
+            "sections": section_rows,
+            "ignored_set": ignored_set,
         },
     )

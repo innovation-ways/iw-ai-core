@@ -1318,6 +1318,73 @@ class MigrationLock(Base):
     )
 
 
+class BatchOverlapIgnore(Base):
+    """Per-batch audit log of operator-ignored file-level overlap pairs.
+
+    Records each (held_item_id, blocking_item_id, file_pattern) triple that the
+    operator has chosen to ignore for a given batch. The daemon's overlap
+    filter consults this table to exclude ignored pairs so held items can be
+    launched. The composite PK enforces per-batch isolation — ignores from
+    BATCH-A do not affect BATCH-B even when the same two work items conflict.
+
+    Note: held_item_id and blocking_item_id are work_item.id values (e.g.
+    "CR-00072"). They are NOT FKs to work_items because ignore records outlive
+    the batch lifecycle and must preserve audit history when archive cleans up.
+    """
+
+    __tablename__ = "batch_overlap_ignore"
+
+    project_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    batch_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    held_item_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    blocking_item_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    file_pattern: Mapped[str] = mapped_column(Text, primary_key=True)
+
+    ignored_by: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Operator identifier; placeholder 'operator' until auth lands",
+    )
+    ignored_at: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=False,
+        server_default=func.now(),
+    )
+    reason: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="Optional operator-supplied reason; forward-compat for future CR",
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"BatchOverlapIgnore("
+            f"held={self.held_item_id!r}, blocked_by={self.blocking_item_id!r}, "
+            f"file={self.file_pattern!r}, batch={self.batch_id!r})"
+        )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "batch_id"],
+            ["batches.project_id", "batches.id"],
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "batch_id", "held_item_id"],
+            ["batch_items.project_id", "batch_items.batch_id", "batch_items.work_item_id"],
+            ondelete="CASCADE",
+        ),
+        {
+            "comment": (
+                "Per-batch audit log of operator-ignored file-level overlap pairs "
+                "(CR-00078). Composite PK enforces per-batch isolation. "
+                "file_pattern match uses exact string equality with the glob emitted "
+                "by scope_overlap.find_blocking_items — no fnmatch normalisation."
+            )
+        },
+    )
+
+
 class IwCoreInstance(Base):
     """Orchestration DB identity fingerprint — single-row table.
 

@@ -1,0 +1,60 @@
+{# htmx modal fragment: overlap details for a held batch item (CR-00077 + CR-00078) #}
+{# Context: current_project, batch_id, held_item_id, sections, ignored_set #}
+<div id="overlap-modal-root">
+  {% if sections %}
+  <div class="iw-modal-body">
+    {# CR-00078: per-file Ignore buttons — one row per (blocking_item_id, file_pattern) pair #}
+    {% for section in sections %}
+      <div class="iw-modal-section-block">
+        <div class="iw-modal-section-header">
+          Blocks: <code>{{ section.blocking_item_id }}</code>
+        </div>
+        <ul class="iw-modal-file-list">
+          <li class="iw-modal-file-row">
+            <code>{{ section.file_pattern }}</code>
+            <button type="button"
+                    class="iw-modal-ignore-btn"
+                    hx-post="/project/{{ current_project.id }}/batch/{{ batch_id }}/overlap/{{ held_item_id }}/ignore"
+                    hx-vals='{"blocking_item_id": "{{ section.blocking_item_id }}", "file_pattern": "{{ section.file_pattern }}"}'
+                    hx-target="closest .iw-modal-file-row"
+                    hx-swap="outerHTML">Ignore</button>
+          </li>
+        </ul>
+      </div>
+    {% endfor %}
+  </div>
+
+  {# CR-00078: master "Ignore all &amp; start" button — only when sections remain #}
+  <footer class="iw-modal-footer">
+    <button type="button"
+            class="iw-modal-ignore-all-btn"
+            hx-post="/project/{{ current_project.id }}/batch/{{ batch_id }}/overlap/{{ held_item_id }}/ignore-all"
+            hx-target="#overlap-modal-root"
+            hx-swap="innerHTML"
+            hx-confirm="Ignore every remaining overlap for {{ held_item_id }} in this batch and let it start?">
+      Ignore all &amp; start
+    </button>
+  </footer>
+
+  {% else %}
+  {# CR-00077: empty state — no sections means no un-ignored overlaps remain #}
+  <div class="iw-modal-body">
+    <p class="iw-modal-empty-msg">No remaining overlaps for <strong>{{ held_item_id }}</strong> in this batch.</p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  (function () {
+    // Esc key closes the modal (CR-00077)
+    function handleKeydown (e) {
+      if (e.key === 'Escape') {
+        var overlay = document.getElementById('overlap-modal-overlay');
+        if (overlay) {
+          overlay.click();
+        }
+      }
+    }
+    document.addEventListener('keydown', handleKeydown);
+  })();
+</script>

@@ -9,7 +9,20 @@
 <!-- Confirm dialog container (htmx swaps fragment here) -->
 <div id="confirm-dialog"></div>
 
-<div id="batch-header-container">
+<!-- CR-00078: overlap ignore modal overlay (populated by htmx on held pill click) -->
+<div id="overlap-modal-overlay"
+     class="fixed inset-0 z-50"
+     style="display:none; background:rgba(0,0,0,.55); align-items:center; justify-content:center;"
+     onclick="if(event.target===this)this.style.display='none'">
+  <div id="overlap-modal-inner"
+       style="background:var(--card); border:1px solid var(--border); border-radius:8px; max-width:36rem; width:100%; max-height:90vh; overflow:auto; box-shadow:0 25px 50px -12px rgba(0,0,0,.25);"
+       onclick="event.stopPropagation()">
+  </div>
+</div>
+
+<div id="batch-header-container"
+     data-batch-id="{{ batch.id }}"
+     data-project-id="{{ current_project.id }}">
   {% include "fragments/batch_detail_header.html" %}
 </div>
 
@@ -271,6 +284,81 @@
 
 {% block scripts %}
 {% include "components/toast.html" %}
+<script>
+// CR-00078: make the Held scope pill clickable to open the overlap ignore modal
+(function () {
+  document.addEventListener('htmx:afterSwap', function (evt) {
+    var detail = evt.detail;
+    // The overlap modal fragment is #overlap-modal-root; once htmx swaps it in,
+    // show the overlay container
+    if (detail.target && detail.target.id === 'overlap-modal-inner') {
+      var overlay = document.getElementById('overlap-modal-overlay');
+      if (overlay) overlay.style.display = 'flex';
+    }
+    // Per-file ignore: htmx swaps in empty outerHTML — hide the overlay once all
+    // rows are gone and the modal's "Ignore all" is the only remaining action
+    if (detail.target && detail.target.classList && detail.target.classList.contains('iw-modal-file-row')) {
+      // Row was removed — nothing extra needed; modal content auto-updates
+    }
+  });
+
+  document.addEventListener('htmx:afterRequest', function (evt) {
+    var detail = evt.detail;
+    if (!detail.xhr) return;
+    // CR-00078: close overlay when modal content is replaced with empty (ignore or ignore-all)
+    var reqEl = detail.requestConfig && detail.requestConfig.elt;
+    if (reqEl && reqEl.matches && reqEl.matches('.iw-modal-ignore-btn, .iw-modal-ignore-all-btn')) {
+      var xhr = detail.xhr;
+      if (xhr.status === 200) {
+        var overlay = document.getElementById('overlap-modal-overlay');
+        if (overlay) {
+          // Check if modal is now empty / showing no sections
+          var root = document.getElementById('overlap-modal-root');
+          if (!root || !root.querySelector('.iw-modal-section-block')) {
+            overlay.style.display = 'none';
+          }
+        }
+      }
+    }
+    var trigger = detail.xhr.getResponseHeader('HX-Trigger');
+    try { trigger = trigger ? JSON.parse(trigger) : {}; } catch (_) { trigger = {}; }
+    if (trigger.showToast) showToast(trigger.showToast);
+  });
+
+  // Wire up Held pill clicks in the batch items table
+  document.addEventListener('click', function (e) {
+    // The Held pill is a <span class="text-warning ..."> containing the text "Held:"
+    var el = e.target;
+    // Walk up to the scope_status cell
+    var cell = el.closest('[aria-label]');
+    if (!cell) return;
+    var label = cell.getAttribute('aria-label') || '';
+    if (!label.startsWith('Held:')) return;
+    // Extract batch_id and held_item_id from the page context
+    // The page exposes batch_id via data attributes on a known element
+    var batchIdEl = document.querySelector('[data-batch-id]');
+    var projectIdEl = document.querySelector('[data-project-id]');
+    var batchId = batchIdEl ? batchIdEl.getAttribute('data-batch-id') : null;
+    var projectId = projectIdEl ? projectIdEl.getAttribute('data-project-id') : null;
+    if (!batchId || !projectId) return;
+    // Find the held item id from the row
+    var row = cell.closest('tr');
+    if (!row) return;
+    var itemLink = row.querySelector('a[href*="/item/"]');
+    if (!itemLink) return;
+    var m = itemLink.getAttribute('href').match(/\/item\/([^/?#]+)/);
+    if (!m) return;
+    var heldItemId = m[1];
+    // Fetch modal content via htmx and inject into #overlap-modal-inner
+    var modalUrl = '/project/' + encodeURIComponent(projectId) + '/batch/' +
+                    encodeURIComponent(batchId) + '/overlap/' + encodeURIComponent(heldItemId);
+    htmx.ajax('GET', modalUrl, {
+      target: '#overlap-modal-inner',
+      swap: 'innerHTML',
+    });
+  });
+})();
+</script>
 <script>
 iwSSE.on('running-update', function () {
   if (document.getElementById('batch-items-sse-trigger')) {

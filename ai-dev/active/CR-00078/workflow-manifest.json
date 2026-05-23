@@ -19,14 +19,16 @@
       "tests/unit/test_daemon_overlap_filter.py",
       "tests/integration/test_batch_overlap_ignore_flow.py",
       "tests/dashboard/test_batch_overlap_ignore_endpoints.py",
-      "tests/dashboard/test_batch_overlap_modal.py"
+      "tests/dashboard/test_batch_overlap_modal.py",
+      "tests/integration/daemon/test_phase2_apply_no_self_deadlock.py",
+      "tests/dashboard/test_route_contract_sweep.py"
     ]
   },
   "steps": [
     {
       "step": "S01",
       "agent": "database-impl",
-      "description": "Add `BatchOverlapIgnore` ORM model to orch/db/models.py with composite PK (project_id, batch_id, held_item_id, blocking_item_id, file_pattern) and FKs to batches and batch_items; nullable `reason` TEXT, `ignored_by` VARCHAR NOT NULL, `ignored_at` TIMESTAMP NOT NULL DEFAULT now(). Generate the Alembic revision via `uv run alembic revision --autogenerate -m \"CR-00078 add batch_overlap_ignore\"`. Verify the autogen produced the table create + both FKs; tighten the migration manually if autogen missed the composite FK to batch_items(project_id, batch_id, work_item_id). Do NOT apply the migration to the live DB — that is the daemon's job. Add Python-side validators only if essential.",
+      "description": "Add `BatchOverlapIgnore` ORM model to orch/db/models.py with composite PK (project_id, batch_id, held_item_id, blocking_item_id, file_pattern) and FKs to batches and batch_items; nullable `reason` TEXT, `ignored_by` VARCHAR NOT NULL, `ignored_at` TIMESTAMP NOT NULL DEFAULT now(). Generate the Alembic revision via `uv run alembic revision --autogenerate -m \"CR-00078 add batch_overlap_ignore\"`. Verify the autogen produced the table create + both FKs; tighten the migration manually if autogen missed the composite FK to batch_items(project_id, batch_id, work_item_id). Do NOT apply the migration to the live DB \u2014 that is the daemon's job. Add Python-side validators only if essential.",
       "prompt": "prompts/CR-00078_S01_Database_prompt.md"
     },
     {
@@ -35,35 +37,41 @@
       "description": "Per-agent review of S01: model fields match the schema (PK composition, NOT NULL on five PK cols + ignored_by + ignored_at, NULL on reason); both FKs declared correctly (cascade rules: ON DELETE CASCADE for the batch_items FK is acceptable, ON DELETE NO ACTION for the batches FK to preserve audit when batches are archived); the migration's upgrade() creates the table and downgrade() drops it cleanly; no other table touched by the migration (no incidental autogen drift); the new model is registered in models.py imports so Base.metadata.create_all() picks it up in testcontainer fixtures.",
       "prompt": "prompts/CR-00078_S02_CodeReview_prompt.md"
     },
-    {"step": "S03", "agent": "qv-gate", "gate": "migration-check", "command": "make migration-check", "description": "QV: Alembic migration round-trip + drift check"},
+    {
+      "step": "S03",
+      "agent": "qv-gate",
+      "gate": "migration-check",
+      "command": "make migration-check",
+      "description": "QV: Alembic migration round-trip + drift check"
+    },
     {
       "step": "S04",
       "agent": "backend-impl",
-      "description": "Add a pure helper `filter_blocked_by_ignores(blocked_by, ignores) -> blocked_by'` in orch/daemon/scope_overlap.py (or a new orch/daemon/overlap_ignore.py — pick whichever keeps scope_overlap.py pure of DB knowledge). The helper takes the `list[tuple[blocking_item_id, list[file_pattern]]]` returned by find_blocking_items and a `set[tuple[blocking_item_id, file_pattern]]` of ignored pairs; returns the same shape with ignored entries removed; tuples whose globs list becomes empty are dropped. In orch/daemon/batch_manager.py after the find_blocking_items call (~line 462), query the BatchOverlapIgnore table for the current (project_id, batch_id, held_item_id), build the set of ignored pairs, and call the helper. If the filtered list is empty AND `blocked_by` was non-empty, emit a `batch_overlap_allowed_by_ignore` DaemonEvent with event_metadata={candidate_item_id, ignored_pairs:[{blocking_item_id, file_pattern}, ...]}; otherwise emit the existing item_held_for_scope events only for the surviving entries. Add `tdd_red_evidence` for the unit test in tests/unit/test_daemon_overlap_filter.py.",
+      "description": "Add a pure helper `filter_blocked_by_ignores(blocked_by, ignores) -> blocked_by'` in orch/daemon/scope_overlap.py (or a new orch/daemon/overlap_ignore.py \u2014 pick whichever keeps scope_overlap.py pure of DB knowledge). The helper takes the `list[tuple[blocking_item_id, list[file_pattern]]]` returned by find_blocking_items and a `set[tuple[blocking_item_id, file_pattern]]` of ignored pairs; returns the same shape with ignored entries removed; tuples whose globs list becomes empty are dropped. In orch/daemon/batch_manager.py after the find_blocking_items call (~line 462), query the BatchOverlapIgnore table for the current (project_id, batch_id, held_item_id), build the set of ignored pairs, and call the helper. If the filtered list is empty AND `blocked_by` was non-empty, emit a `batch_overlap_allowed_by_ignore` DaemonEvent with event_metadata={candidate_item_id, ignored_pairs:[{blocking_item_id, file_pattern}, ...]}; otherwise emit the existing item_held_for_scope events only for the surviving entries. Add `tdd_red_evidence` for the unit test in tests/unit/test_daemon_overlap_filter.py.",
       "prompt": "prompts/CR-00078_S04_Backend_prompt.md"
     },
     {
       "step": "S05",
       "agent": "code-review-impl",
-      "description": "Per-agent review of S04: helper is pure (no DB, no logger side effects); batch_manager queries the ignore table with the project_id+batch_id+held_item_id triple (NOT held_item_id alone — verify with grep); the existing item_held_for_scope event emission path still works when no ignores exist (no behavioural regression); the new event type `batch_overlap_allowed_by_ignore` is registered in the canonical event-type list if there is one; the daemon's commit pattern matches the existing site (one commit per item, not per event); thread/lock safety vs the existing _emit_overlap_allowed_by_policy_if_needed branch.",
+      "description": "Per-agent review of S04: helper is pure (no DB, no logger side effects); batch_manager queries the ignore table with the project_id+batch_id+held_item_id triple (NOT held_item_id alone \u2014 verify with grep); the existing item_held_for_scope event emission path still works when no ignores exist (no behavioural regression); the new event type `batch_overlap_allowed_by_ignore` is registered in the canonical event-type list if there is one; the daemon's commit pattern matches the existing site (one commit per item, not per event); thread/lock safety vs the existing _emit_overlap_allowed_by_policy_if_needed branch.",
       "prompt": "prompts/CR-00078_S05_CodeReview_prompt.md"
     },
     {
       "step": "S06",
       "agent": "api-impl",
-      "description": "Add two POST endpoints. (1) POST /project/{project_id}/batch/{batch_id}/overlap/{held_item_id}/ignore — body fields blocking_item_id, file_pattern, optional reason. Insert BatchOverlapIgnore via INSERT ... ON CONFLICT DO NOTHING (use sqlalchemy.dialects.postgresql.insert with on_conflict_do_nothing). Emit `batch_overlap_ignored_by_operator` DaemonEvent (entity_type='work_item', entity_id=held_item_id). Return HTTP 200 with an empty fragment string `''`. (2) POST .../ignore-all — query the most recent 300s window of item_held_for_scope DaemonEvents for held_item_id, expand to (blocking_item_id, file_pattern) pairs, insert one ignore row per pair via the same on-conflict-do-nothing pattern, emit a single `batch_overlap_ignore_all_by_operator` event with event_metadata={count, pairs}. Return HTTP 200 with empty fragment (modal closes via outerHTML swap of #overlap-modal-root). Additionally: modify the existing GET /project/{p}/batch/{b}/overlap/{h} endpoint from CR-00077 to filter out file globs already present in batch_overlap_ignore — query the table early and pass a set into group_overlap_events (or filter inside the route). Update the Timeline rendering function in dashboard/routers/batches.py to recognise the 3 new event types and render the lines per CR-00078 §5. Use the placeholder string \"operator\" for ignored_by with a `# TODO(auth):` comment.",
+      "description": "Add two POST endpoints. (1) POST /project/{project_id}/batch/{batch_id}/overlap/{held_item_id}/ignore \u2014 body fields blocking_item_id, file_pattern, optional reason. Insert BatchOverlapIgnore via INSERT ... ON CONFLICT DO NOTHING (use sqlalchemy.dialects.postgresql.insert with on_conflict_do_nothing). Emit `batch_overlap_ignored_by_operator` DaemonEvent (entity_type='work_item', entity_id=held_item_id). Return HTTP 200 with an empty fragment string `''`. (2) POST .../ignore-all \u2014 query the most recent 300s window of item_held_for_scope DaemonEvents for held_item_id, expand to (blocking_item_id, file_pattern) pairs, insert one ignore row per pair via the same on-conflict-do-nothing pattern, emit a single `batch_overlap_ignore_all_by_operator` event with event_metadata={count, pairs}. Return HTTP 200 with empty fragment (modal closes via outerHTML swap of #overlap-modal-root). Additionally: modify the existing GET /project/{p}/batch/{b}/overlap/{h} endpoint from CR-00077 to filter out file globs already present in batch_overlap_ignore \u2014 query the table early and pass a set into group_overlap_events (or filter inside the route). Update the Timeline rendering function in dashboard/routers/batches.py to recognise the 3 new event types and render the lines per CR-00078 \u00a75. Use the placeholder string \"operator\" for ignored_by with a `# TODO(auth):` comment.",
       "prompt": "prompts/CR-00078_S06_API_prompt.md"
     },
     {
       "step": "S07",
       "agent": "code-review-impl",
-      "description": "Per-agent review of S06: both POST endpoints idempotent (ON CONFLICT DO NOTHING verified, not a try/except swallow); ignore-all reads the 300s window (consistent with GET endpoint and _get_scope_statuses); event payloads carry enough audit detail (the file_pattern, the blocking_item_id, the holding item, the count for ignore-all); the GET endpoint correctly filters ignored files; Timeline lines escape user-controlled text (item_ids are project-controlled so low risk, but file_pattern is) — Jinja autoescape suffices but verify in the templated text helper; placeholder `ignored_by=\"operator\"` is a single literal with a clear TODO; no DB writes outside these endpoints.",
+      "description": "Per-agent review of S06: both POST endpoints idempotent (ON CONFLICT DO NOTHING verified, not a try/except swallow); ignore-all reads the 300s window (consistent with GET endpoint and _get_scope_statuses); event payloads carry enough audit detail (the file_pattern, the blocking_item_id, the holding item, the count for ignore-all); the GET endpoint correctly filters ignored files; Timeline lines escape user-controlled text (item_ids are project-controlled so low risk, but file_pattern is) \u2014 Jinja autoescape suffices but verify in the templated text helper; placeholder `ignored_by=\"operator\"` is a single literal with a clear TODO; no DB writes outside these endpoints.",
       "prompt": "prompts/CR-00078_S07_CodeReview_prompt.md"
     },
     {
       "step": "S08",
       "agent": "frontend-impl",
-      "description": "Extend dashboard/templates/fragments/batch_overlap_modal.html (introduced by CR-00077) — for each `<li>` in the file list, add the Ignore button per design §2 with hx-post + hx-vals + hx-target='closest .iw-modal-file-row' hx-swap='outerHTML'. The `<li>` must gain class `iw-modal-file-row`. At the bottom of `.iw-modal-body`, add a `<footer class=\"iw-modal-footer\">` containing the master button per §3 with hx-post .../ignore-all + hx-target='#overlap-modal-root' hx-swap='innerHTML' + hx-confirm. Append CSS to dashboard/static/styles.css for `.iw-modal-ignore-btn` (small, right-aligned in row), `.iw-modal-ignore-all-btn` (primary-styled, footer placement), `.iw-modal-footer` (border-top, padding, right-align), `.iw-modal-file-row` (flex layout for the glob + button). Do NOT modify the read-only 404 branch — when `empty=true` from CR-00077, there are no files and no master button is rendered.",
+      "description": "Extend dashboard/templates/fragments/batch_overlap_modal.html (introduced by CR-00077) \u2014 for each `<li>` in the file list, add the Ignore button per design \u00a72 with hx-post + hx-vals + hx-target='closest .iw-modal-file-row' hx-swap='outerHTML'. The `<li>` must gain class `iw-modal-file-row`. At the bottom of `.iw-modal-body`, add a `<footer class=\"iw-modal-footer\">` containing the master button per \u00a73 with hx-post .../ignore-all + hx-target='#overlap-modal-root' hx-swap='innerHTML' + hx-confirm. Append CSS to dashboard/static/styles.css for `.iw-modal-ignore-btn` (small, right-aligned in row), `.iw-modal-ignore-all-btn` (primary-styled, footer placement), `.iw-modal-footer` (border-top, padding, right-align), `.iw-modal-file-row` (flex layout for the glob + button). Do NOT modify the read-only 404 branch \u2014 when `empty=true` from CR-00077, there are no files and no master button is rendered.",
       "prompt": "prompts/CR-00078_S08_Frontend_prompt.md"
     },
     {
@@ -75,7 +83,7 @@
     {
       "step": "S10",
       "agent": "tests-impl",
-      "description": "Four new test files. (1) tests/unit/test_daemon_overlap_filter.py — filter_blocked_by_ignores: empty ignores returns input unchanged; full ignore returns empty; partial ignore drops only matching pairs; tuple with all globs ignored is dropped from result; exact string equality on glob (no fnmatch). (2) tests/unit/test_batch_overlap_ignore.py — model instantiation, repr, composite PK uniqueness (sqlite-compat or testcontainer). (3) tests/integration/test_batch_overlap_ignore_flow.py — seed Project+Batch+held WorkItem+blocking WorkItem+BatchItem+two item_held_for_scope events; pre-populate BatchOverlapIgnore with one pair; invoke the batch_manager's poll path (or the helper that exercises it) on a testcontainer; assert remaining blocking pair still holds (AC4); pre-populate ALL pairs as ignored; re-invoke; assert item is launched + batch_overlap_allowed_by_ignore event emitted (AC3). Also a per-batch isolation case (AC5): ignore in BATCH-A leaves BATCH-B held. (4) tests/dashboard/test_batch_overlap_ignore_endpoints.py — POST /ignore inserts row + emits event (assert exact event_type string + exact event_metadata payload); POST /ignore twice → no duplicate row but second event still emitted (AC2 idempotency); POST /ignore-all inserts N rows + emits ignore-all event with count=N; GET modal after partial ignore filters out ignored files (assert ignored glob NOT in response.text); a Timeline-rendering test (AC6) that seeds one DaemonEvent of each of the 3 new event types and asserts the exact §5 human-readable line for each. Plus: extend tests/dashboard/test_batch_overlap_modal.py if needed so the existing happy-path test still passes when an ignore row is present (it should — the filter is server-side). Capture tdd_red_evidence for each new module.",
+      "description": "Four new test files. (1) tests/unit/test_daemon_overlap_filter.py \u2014 filter_blocked_by_ignores: empty ignores returns input unchanged; full ignore returns empty; partial ignore drops only matching pairs; tuple with all globs ignored is dropped from result; exact string equality on glob (no fnmatch). (2) tests/unit/test_batch_overlap_ignore.py \u2014 model instantiation, repr, composite PK uniqueness (sqlite-compat or testcontainer). (3) tests/integration/test_batch_overlap_ignore_flow.py \u2014 seed Project+Batch+held WorkItem+blocking WorkItem+BatchItem+two item_held_for_scope events; pre-populate BatchOverlapIgnore with one pair; invoke the batch_manager's poll path (or the helper that exercises it) on a testcontainer; assert remaining blocking pair still holds (AC4); pre-populate ALL pairs as ignored; re-invoke; assert item is launched + batch_overlap_allowed_by_ignore event emitted (AC3). Also a per-batch isolation case (AC5): ignore in BATCH-A leaves BATCH-B held. (4) tests/dashboard/test_batch_overlap_ignore_endpoints.py \u2014 POST /ignore inserts row + emits event (assert exact event_type string + exact event_metadata payload); POST /ignore twice \u2192 no duplicate row but second event still emitted (AC2 idempotency); POST /ignore-all inserts N rows + emits ignore-all event with count=N; GET modal after partial ignore filters out ignored files (assert ignored glob NOT in response.text); a Timeline-rendering test (AC6) that seeds one DaemonEvent of each of the 3 new event types and asserts the exact \u00a75 human-readable line for each. Plus: extend tests/dashboard/test_batch_overlap_modal.py if needed so the existing happy-path test still passes when an ignore row is present (it should \u2014 the filter is server-side). Capture tdd_red_evidence for each new module.",
       "prompt": "prompts/CR-00078_S10_Tests_prompt.md"
     },
     {
@@ -87,26 +95,63 @@
     {
       "step": "S12",
       "agent": "code-review-final-impl",
-      "description": "Global cross-agent review across S01..S11: every AC1-AC8 has at least one verifying artifact (test or browser_verification step); scope discipline — git diff origin/main -- executor/ MUST be empty; orch/ diff confined to models.py, db/migrations/, daemon/batch_manager.py, and the new daemon/overlap_ignore.py (if created); the new migration's downgrade() works (make migration-check at S03 passed); the modal partial extension does not break CR-00077's happy-path tests; the read-only contract from CR-00077 — opening the modal without any operator action — still does NOT write to the database (verify by inspecting the GET endpoint).",
+      "description": "Global cross-agent review across S01..S11: every AC1-AC8 has at least one verifying artifact (test or browser_verification step); scope discipline \u2014 git diff origin/main -- executor/ MUST be empty; orch/ diff confined to models.py, db/migrations/, daemon/batch_manager.py, and the new daemon/overlap_ignore.py (if created); the new migration's downgrade() works (make migration-check at S03 passed); the modal partial extension does not break CR-00077's happy-path tests; the read-only contract from CR-00077 \u2014 opening the modal without any operator action \u2014 still does NOT write to the database (verify by inspecting the GET endpoint).",
       "prompt": "prompts/CR-00078_S12_CodeReview_Final_prompt.md"
     },
-    {"step": "S13", "agent": "qv-gate", "gate": "lint", "command": "make lint", "description": "QV: Linting"},
-    {"step": "S14", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
-    {"step": "S15", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
-    {"step": "S16", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
-    {"step": "S17", "agent": "qv-gate", "gate": "integration-tests", "command": "make test-integration", "description": "QV: Integration tests", "timeout": 1800},
-    {"step": "S18", "agent": "qv-gate", "gate": "assertions", "command": "make test-assertions", "description": "QV: Assertion scanner"},
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S16",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S17",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S18",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner"
+    },
     {
       "step": "S19",
       "agent": "qv-browser",
-      "description": "QV: Browser verification — open modal on a held item, click Ignore on one file (row disappears), reopen modal (ignored file is gone), click Ignore all & start (modal closes), confirm via the Items tab list that the held item transitions out of Held within one poll interval (~60s). No regression check on the GET modal endpoint for items that have no ignores.",
+      "description": "QV: Browser verification \u2014 open modal on a held item, click Ignore on one file (row disappears), reopen modal (ignored file is gone), click Ignore all & start (modal closes), confirm via the Items tab list that the held item transitions out of Held within one poll interval (~60s). No regression check on the GET modal endpoint for items that have no ignores.",
       "prompt": "prompts/CR-00078_S19_BrowserVerification_prompt.md"
     },
     {
       "step": "S20",
       "agent": "self-assess-impl",
       "step_type": "self_assess",
-      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Focus: (1) whether the daemon-hook isolation held — the helper stayed pure and the batch_manager change was minimal; (2) whether the per-batch isolation case (AC5) was tested with two distinct batches; (3) whether the modal partial extension preserved CR-00077's happy-path tests; (4) cost analysis: did any fix cycle trace back to a misunderstanding of the ON CONFLICT semantics or the 300s window inheritance from CR-00077?",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Focus: (1) whether the daemon-hook isolation held \u2014 the helper stayed pure and the batch_manager change was minimal; (2) whether the per-batch isolation case (AC5) was tested with two distinct batches; (3) whether the modal partial extension preserved CR-00077's happy-path tests; (4) cost analysis: did any fix cycle trace back to a misunderstanding of the ON CONFLICT semantics or the 300s window inheritance from CR-00077?",
       "prompt": "prompts/CR-00078_S20_SelfAssess_prompt.md"
     }
   ]

@@ -119,6 +119,7 @@ EXPECTED_UNRESOLVED: frozenset[str] = frozenset(
         "/project/{project_id}/api/confirm/{action}/{item_id}/{step_id}",  # free-text action verb
         "/project/{project_id}/api/docs/{doc_id}/diff/sections/{section_name}",  # diff section name
         "/project/{project_id}/auto-merge/events/{event_id}",  # auto-merge event id not seeded
+        "/project/{project_id}/batch/{batch_id}/overlap/{held_item_id}",  # overlap modal (CR-00077)
         "/project/{project_id}/item/{item_id}/evidence/{phase}/{filename}",  # evidence file path
         "/project/{project_id}/item/{item_id}/log-content/{step_db_id}/{run_number}",  # log coords
         "/project/{project_id}/jobs/{job_type}/{job_id}",  # job_type discriminator literal

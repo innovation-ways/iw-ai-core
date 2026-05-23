@@ -5,9 +5,9 @@ the pending migration will ALTER. Verifies both the pre-fix (hangs forever) and
 post-fix (SelfBlockerError / lock_timeout / success) behaviors.
 
 The testcontainer is stamped at 891343247f66 (cr00066_add_context_tokens_columns),
-leaving one migration pending:
-- aeb0e4106b55 (add_manifest_digest_to_work_items, I-00102) — adds the
-  manifest_digest column to work_items.
+leaving two migrations pending:
+- 3a3dfec7bfbd (CR-00078) — adds batch_overlap_ignore table
+- aeb0e4106b55 (I-00102) — adds manifest_digest column to work_items.
 
 This migration does NOT ALTER TABLE batch_items, so the AccessShareLock on
 batch_items held by the test's outer session does NOT conflict with the pending
@@ -36,10 +36,8 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "aeb0e4106b55"  # add_manifest_digest_to_work_items (I-00102, current head)
-_PREV_REVISION = (
-    "891343247f66"  # cr00066_add_context_tokens_columns (stamped here; digest migration pending)
-)
+_HEAD_REVISION = "3a3dfec7bfbd"  # CR-00078 add batch_overlap_ignore (current head)
+_PREV_REVISION = "891343247f66"  # cr00066 (stamped here; CR-00078+digest pending)
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +65,7 @@ def db_engine_at_prev_revision(db_url: str) -> Engine:
 
     Strategy: on a fresh testcontainer (no alembic_version row), upgrade to
     PREV_REVISION only. This applies all migrations up to and including
-    891343247f66, leaving the manifest_digest migration pending.
+    891343247f66, leaving CR-00078 + the manifest_digest migration pending.
 
     NOTE: we intentionally do NOT call Base.metadata.create_all() here.
     Alembic's online migration is the sole mechanism for schema creation in
@@ -170,8 +168,8 @@ def test_i_00063_apply_does_not_self_deadlock_when_caller_holds_share_lock(
             )
 
     # Assert: apply() returned within 45s — it should succeed because none
-    # of the three pending migrations (chat_tabs CREATE, step_runs ADD COLUMN,
-    # agent_runtime_options UPDATE) touch batch_items.
+    # of the pending migrations (3a3dfec7bfbd CREATE TABLE, aeb0e4106b55 ADD COLUMN)
+    # touch batch_items.
     assert apply_result is not None
     assert apply_result.success is True or (
         apply_result.error_message is not None
