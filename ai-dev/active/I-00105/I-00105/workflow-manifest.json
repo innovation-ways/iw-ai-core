@@ -16,9 +16,7 @@
       "dashboard/static/chat_assistant/**",
       "executor/**",
       "tests/**",
-      "docs/IW_AI_Core_Daemon_Design.md",
-      "dashboard/routers/batches.py",
-      "dashboard/routers/actions.py"
+      "docs/IW_AI_Core_Daemon_Design.md"
     ]
   },
   "steps": [

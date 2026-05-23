@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "3a3dfec7bfbd"  # CR-00078 add batch_overlap_ignore (current head)
+_HEAD_REVISION = "2be8dc12874f"  # I-00105 add max_output_tokens (current head)
 _PREV_REVISION = "891343247f66"  # cr00066 (stamped here; CR-00078+digest pending)
 
 

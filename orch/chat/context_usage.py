@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
+DEFAULT_SAFETY_BUFFER_TOKENS = 20_000
+
 
 class _TokensShape(TypedDict, total=False):
     input: int
@@ -65,6 +67,64 @@ def normalize_pi_messages(
             }
         result.append(normalized)
     return result
+
+
+def compute_effective_context_pct(
+    used_tokens: int,
+    context_window: int | float | None,
+    max_output_tokens: int | float | None,
+    safety_buffer: int = DEFAULT_SAFETY_BUFFER_TOKENS,
+) -> float | None:
+    """Return effective-budget usage as a percentage, or None.
+
+
+    The effective budget is the portion of the context window that can be used
+    for input after reserving space for output and a safety buffer::
+
+
+        effective_budget = context_window − max_output_tokens − safety_buffer
+        pct = (used_tokens / effective_budget) * 100.0
+
+    The returned value may exceed 100 when ``used_tokens`` is at or past the
+    effective ceiling — this is intentional (AC1: near-ceiling steps must read
+    near/over 100%).
+
+
+    Returns None when ``effective_budget`` is not positive, or when
+    ``context_window`` is missing / not positive (degrades gracefully).
+
+    Parameters
+    ----------
+    used_tokens:
+        Total tokens consumed (input + output + reasoning + cache read/write).
+    context_window:
+        The active model's context-window limit (max tokens).
+    max_output_tokens:
+        Maximum tokens the model can generate in a single response.
+        ``None`` → fall back to the raw-window percentage
+        (degrades gracefully to existing behaviour).
+    safety_buffer:
+        Reserve kept free for the model's own operation overhead
+        (default 20,000 tokens — opencode convention, per R-00078).
+    """
+    if context_window is None or context_window <= 0:
+        return None
+
+    if max_output_tokens is None:
+        # Fall back to raw-window behaviour
+        pct = (used_tokens / context_window) * 100.0
+        if pct < 0:
+            return 0.0
+        return pct
+
+    effective_budget = float(context_window) - float(max_output_tokens) - float(safety_buffer)
+    if effective_budget <= 0:
+        return None
+
+    pct = (used_tokens / effective_budget) * 100.0
+    if pct < 0:
+        return 0.0
+    return pct
 
 
 def compute_context_pct(
