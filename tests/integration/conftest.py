@@ -34,6 +34,7 @@ from orch.db.models import (
     Project,
 )
 from orch.db.safe_migrate import _build_alembic_config, _run_alembic_upgrade
+from tests.fixtures.dual_project_seed import TwoProjects, seed_two_projects
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
@@ -358,6 +359,24 @@ def cli_get_session(db_session: Session) -> Callable[[], contextmanager]:  # typ
         yield db_session
 
     return _get_session  # type: ignore[return-value]
+
+
+@pytest.fixture
+def second_project(db_session: Session, test_project: Project) -> TwoProjects:
+    """Seed a second project alongside the existing test_project.
+
+    Project A is the existing ``test_project`` row; project B is a fresh
+    ``Project`` created here. Both projects are seeded with the full set of
+    project-scoped entities (WorkItem, Batch, architecture + research
+    ProjectDoc, CodeIndexJob, DocGenerationJob) with guaranteed-distinct
+    identifiers so cross-project isolation assertions can safely check that
+    project A's identifiers are absent from project B's scoped responses.
+
+    Function-scoped to preserve the per-test template-clone isolation
+    guarantee introduced in CR-00055 — it introduces no shared mutable
+    state across tests.
+    """
+    return seed_two_projects(db_session, proj_a=test_project)
 
 
 @pytest.fixture
