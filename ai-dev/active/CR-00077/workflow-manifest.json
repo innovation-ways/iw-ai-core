@@ -12,14 +12,16 @@
       "dashboard/templates/pages/project/batch_detail.html",
       "dashboard/static/styles.css",
       "tests/dashboard/test_batch_overlap_modal.py",
-      "tests/unit/test_batch_overlap_grouping.py"
+      "tests/unit/test_batch_overlap_grouping.py",
+      "dashboard/routers/actions.py",
+      "tests/dashboard/test_batch_held_indicator.py"
     ]
   },
   "steps": [
     {
       "step": "S01",
       "agent": "api-impl",
-      "description": "Add GET /project/{slug}/batch/{batch_id}/overlap/{held_item_id} to dashboard/routers/batches.py. The endpoint queries DaemonEvent rows where event_type='item_held_for_scope' AND entity_id=held_item_id AND project_id resolved from slug AND created_at within the same 300s window used by _get_scope_statuses; for each unique blocking_item_id (preserving most-recent-wins on duplicates) it joins WorkItem to fetch the title; groups payloads by blocking_item_id; renders dashboard/templates/fragments/batch_overlap_modal.html with the grouped data. On no matching event: 404 with a small fragment 'No overlap details available — the item may have been released since this page rendered.' Add a pure helper `group_overlap_events(events) -> list[tuple[str, list[str]]]` (blocking_item_id, conflicting_globs) co-located in batches.py and importable from tests/unit/; the route fetches each blocking item's title separately via WorkItem. Read-only — no DB writes, no SELECT FOR UPDATE.",
+      "description": "Add GET /project/{slug}/batch/{batch_id}/overlap/{held_item_id} to dashboard/routers/batches.py. The endpoint queries DaemonEvent rows where event_type='item_held_for_scope' AND entity_id=held_item_id AND project_id resolved from slug AND created_at within the same 300s window used by _get_scope_statuses; for each unique blocking_item_id (preserving most-recent-wins on duplicates) it joins WorkItem to fetch the title; groups payloads by blocking_item_id; renders dashboard/templates/fragments/batch_overlap_modal.html with the grouped data. On no matching event: 404 with a small fragment 'No overlap details available \u2014 the item may have been released since this page rendered.' Add a pure helper `group_overlap_events(events) -> list[tuple[str, list[str]]]` (blocking_item_id, conflicting_globs) co-located in batches.py and importable from tests/unit/; the route fetches each blocking item's title separately via WorkItem. Read-only \u2014 no DB writes, no SELECT FOR UPDATE.",
       "prompt": "prompts/CR-00077_S01_API_prompt.md"
     },
     {
@@ -31,43 +33,80 @@
     {
       "step": "S03",
       "agent": "frontend-impl",
-      "description": "Make the Held pill clickable in dashboard/templates/fragments/batch_items_rows.html: convert the `<span ... class=\"text-warning ...\">` wrapping pill_text into a `<button type=\"button\">` with hx-get='/project/{project}/batch/{batch_id}/overlap/{item_id}' hx-target='#overlap-modal-root' hx-swap='innerHTML'; the trigger button MUST keep the existing title (tooltip), aria-label, and visual style — only behaviour is added. Add `<div id=\"overlap-modal-root\"></div>` once to the batch detail page template dashboard/templates/pages/project/batch_detail.html (outside the polled items fragment); queue.html is out of scope. Create dashboard/templates/fragments/batch_overlap_modal.html — does NOT extend base.html — with: translucent backdrop (`<div class=\"iw-modal-backdrop\" onclick=\"document.getElementById('overlap-modal-root').innerHTML=''\">`), centred container with title `Overlap details — {{ held_item_id }}` and an `×` close button (same handler), one section per (blocking_item_id, blocking_item_title, conflicting_globs) tuple — header is `<a href=\"/project/{slug}/item/{blocking_item_id}\">{blocking_item_id} — {blocking_item_title}</a>`, body is `<ul>` of `<li>` per file glob (NO truncation). On Esc keypress: same close handler (vanilla JS in the partial, scoped). Append plain CSS rules to dashboard/static/styles.css for `.iw-modal-backdrop`, `.iw-modal-container`, `.iw-modal-section`, `.iw-modal-section-header`, `.iw-modal-file-list` (per the CLAUDE.md rule: plain CSS, no Tailwind recompile). The CSS must not break existing layouts.",
+      "description": "Make the Held pill clickable in dashboard/templates/fragments/batch_items_rows.html: convert the `<span ... class=\"text-warning ...\">` wrapping pill_text into a `<button type=\"button\">` with hx-get='/project/{project}/batch/{batch_id}/overlap/{item_id}' hx-target='#overlap-modal-root' hx-swap='innerHTML'; the trigger button MUST keep the existing title (tooltip), aria-label, and visual style \u2014 only behaviour is added. Add `<div id=\"overlap-modal-root\"></div>` once to the batch detail page template dashboard/templates/pages/project/batch_detail.html (outside the polled items fragment); queue.html is out of scope. Create dashboard/templates/fragments/batch_overlap_modal.html \u2014 does NOT extend base.html \u2014 with: translucent backdrop (`<div class=\"iw-modal-backdrop\" onclick=\"document.getElementById('overlap-modal-root').innerHTML=''\">`), centred container with title `Overlap details \u2014 {{ held_item_id }}` and an `\u00d7` close button (same handler), one section per (blocking_item_id, blocking_item_title, conflicting_globs) tuple \u2014 header is `<a href=\"/project/{slug}/item/{blocking_item_id}\">{blocking_item_id} \u2014 {blocking_item_title}</a>`, body is `<ul>` of `<li>` per file glob (NO truncation). On Esc keypress: same close handler (vanilla JS in the partial, scoped). Append plain CSS rules to dashboard/static/styles.css for `.iw-modal-backdrop`, `.iw-modal-container`, `.iw-modal-section`, `.iw-modal-section-header`, `.iw-modal-file-list` (per the CLAUDE.md rule: plain CSS, no Tailwind recompile). The CSS must not break existing layouts.",
       "prompt": "prompts/CR-00077_S03_Frontend_prompt.md"
     },
     {
       "step": "S04",
       "agent": "code-review-impl",
-      "description": "Per-agent review of S03: the batch_items_rows.html trigger calls the modal endpoint via hx-target; the modal partial is the single source of truth (no template duplication); queue.html is unchanged (out of scope); CSS additions are appended (not replacing) and use the `iw-modal-*` prefix to avoid colliding with existing classes; Esc handler is scoped (no global document.body keydown leak); no `<form>`, `<input>`, no POST endpoints introduced anywhere — this is read-only display.",
+      "description": "Per-agent review of S03: the batch_items_rows.html trigger calls the modal endpoint via hx-target; the modal partial is the single source of truth (no template duplication); queue.html is unchanged (out of scope); CSS additions are appended (not replacing) and use the `iw-modal-*` prefix to avoid colliding with existing classes; Esc handler is scoped (no global document.body keydown leak); no `<form>`, `<input>`, no POST endpoints introduced anywhere \u2014 this is read-only display.",
       "prompt": "prompts/CR-00077_S04_CodeReview_prompt.md"
     },
     {
       "step": "S05",
       "agent": "tests-impl",
-      "description": "Two new test modules. (1) tests/unit/test_batch_overlap_grouping.py — exercise group_overlap_events with: empty list, single event, multiple events to same blocking_item_id (most recent wins, older payload dropped), events to multiple blocking items (insertion order preserved), event missing event_metadata key (graceful skip). (2) tests/dashboard/test_batch_overlap_modal.py — TestClient + db_session testcontainer fixture, seed a Project + WorkItem (held + blocking) + Batch + BatchItem + two DaemonEvent rows of type item_held_for_scope, hit the new endpoint, assert: 200 + Content-Type starts with 'text/html'; response body contains BOTH blocking_item_ids; response body contains EVERY glob from the seeded payloads (use exact string contains); response body contains links to /project/<slug>/item/<blocking_item_id>; response is a fragment (asserts NOT contains '<html' and NOT contains '<body'). Also: 404 case when there is no recent event — assert status code is 404 and the fragment contains 'No overlap details available'. Demonstrate each new test fails before the implementation by capturing tdd_red_evidence (run targeted file with deliberate broken assertion / missing route).",
+      "description": "Two new test modules. (1) tests/unit/test_batch_overlap_grouping.py \u2014 exercise group_overlap_events with: empty list, single event, multiple events to same blocking_item_id (most recent wins, older payload dropped), events to multiple blocking items (insertion order preserved), event missing event_metadata key (graceful skip). (2) tests/dashboard/test_batch_overlap_modal.py \u2014 TestClient + db_session testcontainer fixture, seed a Project + WorkItem (held + blocking) + Batch + BatchItem + two DaemonEvent rows of type item_held_for_scope, hit the new endpoint, assert: 200 + Content-Type starts with 'text/html'; response body contains BOTH blocking_item_ids; response body contains EVERY glob from the seeded payloads (use exact string contains); response body contains links to /project/<slug>/item/<blocking_item_id>; response is a fragment (asserts NOT contains '<html' and NOT contains '<body'). Also: 404 case when there is no recent event \u2014 assert status code is 404 and the fragment contains 'No overlap details available'. Demonstrate each new test fails before the implementation by capturing tdd_red_evidence (run targeted file with deliberate broken assertion / missing route).",
       "prompt": "prompts/CR-00077_S05_Tests_prompt.md"
     },
     {
       "step": "S06",
       "agent": "code-review-impl",
-      "description": "Per-agent review of S05: assertion strength — uses substring-contains on full glob strings (NOT vacuous .ok or count==N tests); both error paths exercised (200 and 404); the unit test for grouping is pure (no DB); the dashboard test uses the testcontainer db_session and does NOT touch the live DB; tdd_red_evidence is captured for both new modules and shows an AssertionError or 404-where-200-expected style failure, not a collection error.",
+      "description": "Per-agent review of S05: assertion strength \u2014 uses substring-contains on full glob strings (NOT vacuous .ok or count==N tests); both error paths exercised (200 and 404); the unit test for grouping is pure (no DB); the dashboard test uses the testcontainer db_session and does NOT touch the live DB; tdd_red_evidence is captured for both new modules and shows an AssertionError or 404-where-200-expected style failure, not a collection error.",
       "prompt": "prompts/CR-00077_S06_CodeReview_prompt.md"
     },
     {
       "step": "S07",
       "agent": "code-review-final-impl",
-      "description": "Global cross-agent review of S01..S06: every AC (AC1-AC6) verified; scope discipline — git diff origin/main -- orch/ executor/ MUST be empty (no daemon or CLI changes); orch/db/migrations/ MUST be empty (no schema change); the modal partial is a single fragment file (structured for CR-00078 reuse); the read-only contract holds (no POST endpoints, no DB writes); the Esc handler is properly scoped; CSS uses the iw-modal-* prefix and is appended (no Tailwind recompile required per CLAUDE.md).",
+      "description": "Global cross-agent review of S01..S06: every AC (AC1-AC6) verified; scope discipline \u2014 git diff origin/main -- orch/ executor/ MUST be empty (no daemon or CLI changes); orch/db/migrations/ MUST be empty (no schema change); the modal partial is a single fragment file (structured for CR-00078 reuse); the read-only contract holds (no POST endpoints, no DB writes); the Esc handler is properly scoped; CSS uses the iw-modal-* prefix and is appended (no Tailwind recompile required per CLAUDE.md).",
       "prompt": "prompts/CR-00077_S07_CodeReview_Final_prompt.md"
     },
-    {"step": "S08", "agent": "qv-gate", "gate": "lint", "command": "make lint", "description": "QV: Linting"},
-    {"step": "S09", "agent": "qv-gate", "gate": "format", "command": "make format-check", "description": "QV: Formatting"},
-    {"step": "S10", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
-    {"step": "S11", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
-    {"step": "S12", "agent": "qv-gate", "gate": "integration-tests", "command": "make test-integration", "description": "QV: Integration tests", "timeout": 1800},
-    {"step": "S13", "agent": "qv-gate", "gate": "assertions", "command": "make test-assertions", "description": "QV: Assertion scanner (forbid new vacuous tests)"},
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
     {
       "step": "S14",
       "agent": "qv-browser",
-      "description": "QV: Browser verification — open the batch detail page for a live Held item (BATCH-00127 if available in seed; else any held item visible in the e2e stack), click the Held pill, assert modal opens with at least one grouped section and a Close control, click Close, assert modal disappears.",
+      "description": "QV: Browser verification \u2014 open the batch detail page for a live Held item (BATCH-00127 if available in seed; else any held item visible in the e2e stack), click the Held pill, assert modal opens with at least one grouped section and a Close control, click Close, assert modal disappears.",
       "prompt": "prompts/CR-00077_S14_BrowserVerification_prompt.md"
     },
     {
