@@ -1,0 +1,51 @@
+{
+  "item_id": "CR-00074",
+  "bottom_line": "CR-00074 delivered a clean, well-executed cross-project isolation test matrix (14 tests, 4 axes) with zero genuine leaks found, zero fix cycles, zero operator recovery needed, complete TDD RED evidence on both axes, and all 8 quality gates passing on first attempt. KNOWN_LEAK is empty (0 Incidents filed). The matrix is now part of the regression suite.",
+  "coverage_notes": "All logs read in full. S01_run4.log (2.1KB) is the canonical S01 log; S01_run1/run2 were empty (execution failures from earlier runs). S09 log is the largest at ~416KB; used grep+tail for error patterns. S08 (unit-tests) and S11 (security-secrets) logs small. Reports dir contains all 11 step reports (S01-S11). DB telemetry: DB:UP verified via step lifecycle. No archived tarball needed.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "testing",
+      "target": "iw-ai-core",
+      "title": "No genuine cross-project isolation leaks found on main — establish periodic regression cadence",
+      "recommendation": "The isolation matrix found 0 leaks on main, confirming the project's current isolation posture. Establish a periodic run cadence (e.g., weekly CI trigger) for `make test-isolation` so future regressions are caught before the quarterly full integration suite. The matrix is fast (~15s) and self-contained.",
+      "evidence": [
+        "ai-dev/work/CR-00074/reports/CR-00074_S01_Backend_report.md — 'KNOWN_LEAK allowlist (keyed by route/command) → empty; the _xfail_marks helper attaches xfail(strict=True) automatically for any future entry. No genuine isolation leak found on main.'",
+        "ai-dev/work/CR-00074/reports/CR-00074_S01_Backend_report.md — 'No genuine cross-project leak was found on main: every project-scoped route handler and iw command audited filters correctly by project_id. 0 high-priority Incidents filed.'",
+        "ai-dev/active/CR-00074/reports/CR-00074_S09_QvGate_report.md — '= 2995 passed, 27 skipped, 3 xfailed, 3 xpassed, 158 warnings in 1091.90s (0:18:11) =' (all 14 new isolation tests green within full suite)"
+      ],
+      "effort": "M",
+      "frequency": "systemic",
+      "paste_prompt": "/iw-new-cr Add periodic isolation-matrix regression run to CI cadence; analyzed in CR-00074 (see ai-dev/work/CR-00074/reports/CR-00074_self_assess_report.md). Target: Makefile or CI config. Effort: M."
+    },
+    {
+      "severity": "LOW",
+      "class": "testing",
+      "target": "iw-ai-core",
+      "title": "dual_project_seed.py had 3 latent import-level bugs in earlier S01 run",
+      "recommendation": "The earlier S01 run (CR-00074_S01_run1.log, S01_run2.log — both empty) left a dual_project_seed.py with three import-killing bugs: NameError from forward-referencing ProjectIds in default_factory, WorkItem(item_type=...) using invalid kwarg (should be type= with WorkItemType enum), and duplicate-PK IntegrityError from re-creating test-proj. The subsequent run fixed all three. Consider adding a `python -c \"import tests.fixtures.dual_project_seed\"` smoke test to the Makefile target so fixture import failures surface immediately.",
+      "evidence": [
+        "ai-dev/work/CR-00074/reports/CR-00074_S01_Backend_report.md — 'The file left by an earlier run did not import at all (three latent bugs: ProjectIds referenced in field(default_factory=...) before its own definition → NameError at import; WorkItem(item_type=\"feature\", ...) — item_type is not a WorkItem column, the real column is type and takes a WorkItemType enum; and seed_two_projects re-created the test-proj Project already inserted by test_project → duplicate-PK IntegrityError). The rewrite exposes seed_two_projects(session, proj_a=None)'",
+        "ai-dev/logs/CR-00074_S01_run1.log — empty file (execution failure)",
+        "ai-dev/logs/CR-00074_S01_run2.log — empty file (execution failure)"
+      ],
+      "effort": "S",
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-cr Add fixture import smoke test to Makefile test-isolation target; analyzed in CR-00074 (see ai-dev/work/CR-00074/reports/CR-00074_self_assess_report.md). Target: Makefile. Effort: S."
+    },
+    {
+      "severity": "LOW",
+      "class": "testing",
+      "target": "iw-ai-core",
+      "title": "iw next-id is a global allocator excluded from Axis 2 — follow-up could add positive assertion",
+      "recommendation": "The matrix correctly excluded iw next-id from Axis 2 (id_sequences is global, not project-scoped). A follow-up CR could add a positive assertion that next-id is indeed global (returns the same sequence regardless of project scope), converting the exclusion into a confirmed property. This is LOW priority.",
+      "evidence": [
+        "ai-dev/work/CR-00074/reports/CR-00074_S01_Backend_report.md — 'iw next-id is not project-scoped — id_sequences is a global per-prefix allocator. Correctly excluded from Axis 2 (documented in the module).'",
+        "ai-dev/work/CR-00074/reports/CR-00074_S02_CodeReview_report.md — 'iw next-id correctly excluded — global per-prefix allocator.'"
+      ],
+      "effort": "S",
+      "frequency": "none-yet",
+      "paste_prompt": "/iw-new-cr Add positive global-allocator assertion for iw next-id to isolation matrix; analyzed in CR-00074 (see ai-dev/work/CR-00074/reports/CR-00074_self_assess_report.md). Target: tests/integration/test_cross_project_isolation.py. Effort: S."
+    }
+  ]
+}

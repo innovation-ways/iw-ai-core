@@ -59,8 +59,10 @@ Verify each acceptance criterion end-to-end:
   existing `test_project` tests.
 - **AC2** — Dashboard-route isolation matrix: project B requests return no project A
   identifiers, behavioural assertions (`not in response.text` or equivalent),
-  parametrized per route, `KNOWN_LEAK` entries carry filed high-priority Incidents +
-  `xfail`, matrix exits 0 on `main`.
+  parametrized per route, `KNOWN_LEAK` entries carry `TODO(file-incident)` placeholders
+  + rationale + `xfail` and are listed under "Operator follow-up" in the S01 report;
+  no `ai-dev/active/I-NNNNN/**` package was created in the worktree → **CRITICAL** if
+  present; matrix exits 0 on `main`.
 - **AC3** — `iw`-command isolation: read/query commands assert *output isolation*
   (project A identifiers absent from the project-B command output); mutating
   commands assert *mutation isolation* (project A rows byte-for-byte unchanged);
@@ -73,9 +75,11 @@ Verify each acceptance criterion end-to-end:
   testcontainers, sessions see only their own rows, `_prefer` fallback verified —
   NOT two unrelated sessions (a tautology → **HIGH**); references the F-00062
   contract.
-- **AC6** — `KNOWN_LEAK` mechanism + TDD RED evidence: `tdd_red_evidence` records
-  the deliberate-break demonstration (isolation case fail + boundary case fail);
-  both injections confirmed reverted.
+- **AC6** — `KNOWN_LEAK` mechanism + TDD RED evidence: `KNOWN_LEAK` entries carry
+  `TODO(file-incident)` placeholders (not real Incident IDs); `tdd_red_evidence`
+  records the deliberate-break demonstration (inverted assertion in the test file
+  → isolation case fails RED; inverted URL-not-equal assertion → boundary case
+  fails RED); both test-file edits confirmed reverted; no production code touched.
 - **AC7** — strategy doc, skill, and plan updated; `.claude/skills/iw-ai-core-testing/SKILL.md`
   byte-identical to its master (run `diff`).
 
@@ -84,10 +88,11 @@ Verify each acceptance criterion end-to-end:
 - Every changed file is within `scope.allowed_paths`. No `orch/` / `dashboard/` /
   `executor/` / `scripts/` production code edited.
 - **No residual deliberate-break injection** — run
-  `git diff origin/main -- dashboard/ orch/` and confirm it is empty. S01 removes
-  a `project_id` filter from a route handler and breaks `orch/config.py`'s
-  env-var resolution to prove the tests can fail, then reverts both; a leftover
-  injection would cause a real isolation leak in production → **CRITICAL**.
+  `git diff origin/main -- orch/ dashboard/ executor/ scripts/` and confirm it is
+  empty. S01 proves the tests can fail by inverting assertions inside the test file
+  (never editing production code), then reverts the test-file edits; a leftover
+  production-code edit, or a residual inverted assertion in the committed test
+  files, is **CRITICAL**.
 - No migration file was added → **CRITICAL** if present.
 
 ### 3. Cross-cutting coherence
@@ -105,9 +110,9 @@ Verify each acceptance criterion end-to-end:
 
 - The isolation matrix **can fail** — confirm `tdd_red_evidence` records the
   deliberate-break demonstration. As an independent spot-check, you MAY (when
-  quick and safe) re-run one parametrized case after temporarily removing a
-  `project_id` filter from a trivial route, then revert — state explicitly
-  whether you did this.
+  quick and safe) invert one `not in` assertion inside the test file, confirm
+  that case fails RED, then revert — state explicitly whether you did this, and
+  confirm you never edited production `orch/` or `dashboard/` code.
 - Assertions are behavioural and strong (apply `skills/iw-ai-core-testing/SKILL.md`'s
   red-flag checklist). An assertion of `assert response.status_code == 200`
   alone is not sufficient for an isolation check → **HIGH**.
@@ -122,9 +127,11 @@ Verify each acceptance criterion end-to-end:
   testcontainer + SQLAlchemy session patterns.
 - No hardcoded secrets, URLs, credentials, or port numbers in the test file
   or the fixture.
-- `KNOWN_LEAK` entries for genuine isolation leaks each carry a filed
-  high-priority Incident — a genuine leak with no Incident and no blocker is a
-  security-class finding → **HIGH**.
+- `KNOWN_LEAK` entries for genuine isolation leaks each carry a `TODO(file-incident)`
+  placeholder and are listed for operator follow-up in the S01 report — a genuine
+  leak with no placeholder and no blocker is a security-class finding → **HIGH**.
+  A real Incident ID in `KNOWN_LEAK` (meaning `/iw-new-incident` was run from the
+  worktree, creating `ai-dev/active/I-NNNNN/**`) is a **CRITICAL** scope violation.
 
 ## Test Verification (NON-NEGOTIABLE)
 

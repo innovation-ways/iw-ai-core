@@ -67,11 +67,12 @@ is **CRITICAL**. If a command is unavailable, STOP and raise a blocker.
   Any edit to `orch/`, `dashboard/`, `executor/`, `scripts/` is a **CRITICAL**
   scope violation — including a "fix" for an isolation leak the matrix found
   (those must be allowlisted, not fixed; see AC2/AC6).
-- **No deliberate-break injection left behind.** S01's TDD demonstration removes
-  a `project_id` filter from a route handler and breaks `orch/config.py`'s
-  env-var resolution (`get_orch_db_url()` made to return `get_db_url()`), then
-  reverts both. Confirm via `git diff origin/main -- dashboard/ orch/` that
-  **nothing** remains — any residual injection is **CRITICAL**.
+- **No deliberate-break injection left behind.** S01's TDD demonstration inverts
+  assertions inside the test file (never editing production code), then reverts
+  both. Confirm via `git diff origin/main -- orch/ dashboard/ executor/ scripts/`
+  that it is **empty** (no production code touched), and that no inverted assertion
+  remains in the committed test files. Any production-code edit, or a residual
+  inverted assertion, is **CRITICAL**.
 
 ### 2. AC1 — `second_project` fixture correctness
 
@@ -95,9 +96,13 @@ is **CRITICAL**. If a command is unavailable, STOP and raise a blocker.
   (or equivalent). An assertion like `assert response.status_code == 200` alone
   is NOT sufficient for isolation → **HIGH**.
 - Cases are parametrized one per route so failures name the leaking route.
-- `KNOWN_LEAK` entries each carry a filed high-priority Incident ID and rationale,
+- `KNOWN_LEAK` entries each carry a `TODO(file-incident)` placeholder and rationale,
   and the corresponding case is `xfail`-ed — not deleted, not skipped silently.
-  An allowlisted route with no Incident and no blocker is **HIGH**.
+  Each placeholder must also be listed under "Operator follow-up" in the S01
+  report. An allowlisted route with no placeholder, no rationale, or not listed
+  for the operator is **HIGH**. An entry with a real Incident ID (meaning S01 ran
+  `/iw-new-incident` from inside the worktree) is a **CRITICAL** scope violation —
+  check that no `ai-dev/active/I-NNNNN/**` path appears in the changeset.
 - The matrix exits 0 on current `main`.
 
 ### 4. AC3 — `iw`-command isolation assertions
@@ -140,11 +145,14 @@ is **CRITICAL**. If a command is unavailable, STOP and raise a blocker.
 ### 7. AC6 — KNOWN_LEAK allowlist mechanism + TDD RED evidence
 
 - The `KNOWN_LEAK` allowlist is a module-level dict with the correct structure
-  (route/command key → Incident ID + rationale).
+  (route/command key → `TODO(file-incident)` placeholder + rationale).
 - `tdd_red_evidence` records the **deliberate-break demonstration** for both the
-  isolation axis and the boundary axis. If `tdd_red_evidence` is missing or just
-  says `n/a` with no demonstration, raise a **HIGH** finding: an isolation matrix
-  that cannot be shown to fail is worthless.
+  isolation axis and the boundary axis — S01 inverts assertions inside the test
+  file (never editing production code), confirms RED, then reverts. If
+  `tdd_red_evidence` is missing, says `n/a` with no demonstration, or describes
+  editing production `orch/` / `dashboard/` code, raise a **HIGH** finding: an
+  isolation matrix that cannot be shown to fail (or whose proof edits production
+  code) is worthless.
 
 ### 8. AC7 — Docs / skill / plan
 
@@ -168,9 +176,11 @@ is **CRITICAL**. If a command is unavailable, STOP and raise a blocker.
 ## TDD RED Evidence
 
 S01 is a test-infrastructure step. Confirm `tdd_red_evidence` records the
-**deliberate-break demonstration** (an isolation case failing when a project_id
-filter is removed; a boundary case failing when `orch/config.py`'s env-var
-resolution is broken) — this is the "every test must be able to fail" proof.
+**deliberate-break demonstration** — S01 inverts assertions inside the test file
+(an isolation case failing RED when a `not in` check is temporarily changed to
+`in`; a boundary case failing RED when the URL-not-equal assertion is inverted),
+then reverts both test-file edits. The demonstration NEVER touches production
+`orch/` or `dashboard/` code. This is the "every test must be able to fail" proof.
 
 ## Test Verification (NON-NEGOTIABLE)
 

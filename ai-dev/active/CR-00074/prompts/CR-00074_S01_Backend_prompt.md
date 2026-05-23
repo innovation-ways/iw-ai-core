@@ -106,13 +106,20 @@ Create a new test module implementing the parametrized matrix across four axes.
 - Parametrize one case per route so a failure names the leaking route.
 - **`KNOWN_LEAK` allowlist**: a module-level dict keyed by route path. If you find
   a genuine isolation leak on current `main` (not a test-harness artefact), add
-  the route to `KNOWN_LEAK` with a filed **high-priority** Incident ID and a
+  the route to `KNOWN_LEAK` with a `TODO(file-incident)` placeholder and a
   one-line rationale, and `xfail` that parametrized case. **Investigate every
   apparent leak before allowlisting** — most will be harness artefacts (wrong
   seed, wrong path parameter). Only genuine handler bugs are allowlisted.
+  **Do NOT run `/iw-new-incident`** — running it from inside the worktree would
+  create an incident package under `ai-dev/active/I-NNNNN/`, which is outside
+  `scope.allowed_paths` and would fail the merge-time scope gate. Instead, for
+  each genuine leak, record a `TODO(file-incident)` placeholder in `KNOWN_LEAK`
+  and list it prominently in your step report under an **"Operator follow-up"**
+  heading (route/command + one-line rationale + a short failing-response snippet)
+  so the operator files the Incident on `main` post-merge. A genuine pre-existing
+  leak is **not** a blocker — allowlist it, `xfail` it, report it, and keep going.
 - **A genuine leak is a security/correctness bug — do NOT fix it in production code.**
-  File an Incident via `/iw-new-incident` (or flag as a blocker if you cannot)
-  and allowlist it. CR-00074 stays test-only.
+  CR-00074 stays test-only.
 
 #### Axis 2: `iw`-command isolation
 
@@ -141,7 +148,9 @@ that matches each command. Consult `orch/CLAUDE.md` (CLI command table),
 - Only project-scoped commands are in scope — skip global commands like
   `iw db-identity check`.
 - If a command's isolation is already broken on `main`, add it to the
-  `KNOWN_LEAK` allowlist following the same rules as Axis 1.
+  `KNOWN_LEAK` allowlist following the same rules as Axis 1 — `TODO(file-incident)`
+  placeholder + rationale, `xfail`, and list it under "Operator follow-up" in
+  the step report.
 
 #### Axis 3: Global-aggregation positive assertion
 
@@ -209,22 +218,28 @@ Exercise the actual resolution path instead:
 ## "Every test must be able to fail" — required demonstration
 
 This is a test-infrastructure CR, so there is no production code to RED-GREEN.
-Instead, **prove each new test can fail**:
+Instead, **prove each new test can fail** — and do it **entirely within the new
+test files**, never by editing production `dashboard/` or `orch/` code (those
+are out of scope; a botched revert would trip the merge-time scope gate):
 
-1. **Isolation matrix (Axis 1)**: temporarily remove the `project_id` filter from
-   one project-scoped route handler (e.g. comment out the `.where(Project.id == project_id)`
-   clause), run `make test-isolation`, confirm the corresponding parametrized case
-   fails (project A's identifier appears in project B's response), then **revert
-   the change completely**.
-2. **Per-worktree-DB boundary (Axis 4)**: temporarily break the env-var
-   resolution in `orch/config.py` — e.g. make `get_orch_db_url()` return
-   `get_db_url()`, ignoring `IW_CORE_ORCH_DB_*` — run `make test-isolation`,
-   confirm the boundary case fails (the orch session now sees per-worktree
-   rows / the two URLs are equal), then **revert the change completely**.
+1. **Isolation matrix (Axis 1)**: temporarily **invert one isolation-matrix
+   assertion inside the test file** — e.g. change
+   `assert str(proj_a_item_id) not in response.text` to
+   `assert str(proj_a_item_id) in response.text` for one parametrized case.
+   Run `make test-isolation`, confirm that case fails RED (the assertion now
+   requires the identifier to be present, and it isn't), then **revert the
+   test-file edit**.
+2. **Per-worktree-DB boundary (Axis 4)**: temporarily **invert the URL-not-equal
+   assertion inside the test file** — e.g. change
+   `assert get_db_url() != get_orch_db_url()` to
+   `assert get_db_url() == get_orch_db_url()`. Run `make test-isolation`,
+   confirm the boundary case fails RED, then **revert the test-file edit**.
 
 Record both demonstrations (the failing output snippets) as your
-`tdd_red_evidence`. Double-check via `git status` / `git diff` that **no
-injection remains** before reporting completion.
+`tdd_red_evidence`. Before reporting completion, confirm via
+`git diff origin/main -- orch/ dashboard/ executor/ scripts/` that it is
+**empty** (no production code touched) and that **no inverted assertion
+remains** in the committed test files.
 
 ## Project Conventions
 
@@ -277,12 +292,14 @@ Do not report `tests_passed: true` unless the isolation matrix is green
   },
   "tests_passed": true,
   "test_summary": "X passed, Y xfailed, 0 failed (isolation matrix)",
-  "tdd_red_evidence": "deliberate-break demonstration — Axis 1: <route> case failed with project A identifier in project B response after removing project_id filter; Axis 4: boundary case failed after breaking orch/config.py env-var resolution (get_orch_db_url returned get_db_url). Both injections reverted (git status clean).",
+  "tdd_red_evidence": "deliberate-break demonstration — Axis 1: inverted one not-in assertion in the test file; <route> case failed RED (assertion required identifier to be present, it was not); test-file edit reverted. Axis 4: inverted the URL not-equal assertion in the test file; boundary case failed RED; test-file edit reverted. git diff origin/main -- orch/ dashboard/ executor/ scripts/ is empty.",
   "blockers": [],
-  "notes": "KNOWN_LEAK allowlist: <N> route(s)/command(s) — list each with Incident ID. Total routes asserted: <T>. Commands asserted: <C>. Aggregation routes confirmed: <A>. Boundary cases: <B>."
+  "notes": "KNOWN_LEAK allowlist: <N> route(s)/command(s) — list each with TODO(file-incident) rationale. Total routes asserted: <T>. Commands asserted: <C>. Aggregation routes confirmed: <A>. Boundary cases: <B>."
 }
 ```
 
 - In `notes`, report: total project-scoped routes asserted, total commands asserted,
-  the `KNOWN_LEAK` count + each Incident ID, and any genuine leak you could not file
-  an Incident for (set `completion_status: partial` and list it in `blockers`).
+  the `KNOWN_LEAK` count + each entry's `TODO(file-incident)` rationale, and the
+  "Operator follow-up" list (so the operator can file Incidents on `main` post-merge).
+  A genuine pre-existing leak is **not** a blocker — set `completion_status: partial`
+  only if the matrix cannot be made green for some other reason.

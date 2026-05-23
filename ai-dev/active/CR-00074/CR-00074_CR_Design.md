@@ -39,7 +39,7 @@ Read the project's `CLAUDE.md` for architecture, conventions, and hard rules. Re
   2. **`iw`-command isolation**: run project-scoped `iw` commands scoped to project B. Project-scoped commands split into two isolation modes, each asserted appropriately: **read/query commands** (e.g. `iw search --project`, `iw item-status`, `iw item-report`) — assert the command's *output* contains none of project A's identifiers (output isolation, the CLI analogue of axis 1); **mutating commands** (e.g. `iw next-id`, `iw doc-update`) — assert project A's rows are byte-for-byte unchanged, counts AND content, before and after (mutation isolation). A bare "rows unchanged after a read" assertion is vacuous (a read never mutates) and must NOT be used.
   3. **Global-aggregation positive assertion**: the global `/docs` and `/jobs` routes DO show both projects' data; isolation must not over-filter.
   4. **Per-worktree-DB vs orch-DB boundary (F-00062)**: exercise the *actual* resolution code in `orch/config.py`, not two unrelated SQLAlchemy sessions. With `IW_CORE_DB_*` and `IW_CORE_ORCH_DB_*` pointed at two distinct testcontainers, assert `get_db_url()` resolves to the per-worktree container and `get_orch_db_url()` to the orch container (distinct URLs); that a session built on each URL sees only its own rows; and that `get_orch_db_url()` falls back to `IW_CORE_DB_*` when `IW_CORE_ORCH_DB_*` is unset (the `_prefer` contract). References `tests/integration/test_per_worktree_isolation.py` and the F-00062 rules in `CLAUDE.md`.
-- A `KNOWN_LEAK` allowlist (keyed by route/command, each entry carrying a filed high-priority Incident ID + rationale) absorbs any genuine isolation leak found on current `main` — the corresponding case is `xfail`-ed. A real leak is fixed in a SEPARATE incident; this CR stays strictly test-only.
+- A `KNOWN_LEAK` allowlist (keyed by route/command, each entry carrying a `TODO(file-incident)` placeholder + rationale) absorbs any genuine isolation leak found on current `main` — the corresponding case is `xfail`-ed. The implementer does **not** file the Incident from inside the worktree (an incident package would land outside `scope.allowed_paths`); each placeholder is surfaced as operator follow-up in the S01 report, and the operator files the Incident on `main` post-merge. A genuine pre-existing leak is **not** a blocker — allowlist it, report it, continue. A real leak is fixed in a SEPARATE incident; this CR stays strictly test-only.
 - Tests land under `tests/integration/` so the existing `integration-tests` daemon QV gate runs them — **no new canonical QV gate**. A `test-isolation` convenience target is added to the `Makefile`.
 - At S01 time, update `docs/IW_AI_Core_Testing_Strategy.md` (§3/§5/§9), `skills/iw-ai-core-testing/SKILL.md` (+ synced `.claude/skills/iw-ai-core-testing/SKILL.md` via `iw sync-skills --force iw-ai-core-testing`), and `ai-dev/work/TESTS_ENHANCEMENT.md` (mark item 3.4 DONE + §11 changelog entry).
 
@@ -157,7 +157,8 @@ Then for every project-scoped dashboard route, a request scoped to project B
      (work item IDs, batch IDs, doc titles/slugs, job IDs)
 And each case is parametrized one route at a time so a failure names the leaking route
 And genuine pre-existing leaks are recorded in the KNOWN_LEAK allowlist with a
-     filed high-priority Incident ID and rationale, and their cases are xfail-ed
+     TODO(file-incident) placeholder and rationale, their cases are xfail-ed,
+     and each placeholder is surfaced as operator follow-up in the S01 report
 And the isolation matrix exits 0 on current main
 ```
 
@@ -211,13 +212,20 @@ And env vars are set via monkeypatch.setenv (never importlib.reload(orch.config)
 
 ```
 Given a genuine isolation leak exists (or is deliberately injected for the demo)
-When a KNOWN_LEAK entry is added for that route/command with a filed Incident ID
+When a KNOWN_LEAK entry is added for that route/command with a TODO(file-incident)
+     placeholder and rationale
 Then the corresponding parametrized case is xfail-ed (not deleted, not skipped silently)
+And the placeholder is surfaced as operator follow-up in the S01 report so the
+     operator files the Incident on main post-merge; S01 never runs /iw-new-incident
+     or creates an incident package inside the worktree
 And every other case without a KNOWN_LEAK entry would fail if the corresponding
-     isolation were broken — demonstrated by a deliberate-break-then-revert
-     (e.g. temporarily removing the project_id filter from a route handler),
-     confirmed failing, then reverted, and the failing output recorded as
-     tdd_red_evidence
+     isolation were broken — demonstrated by temporarily inverting one isolation-matrix
+     assertion inside the test file (e.g. assert that project B's response SHOULD
+     contain project A's identifier), confirmed failing RED, then reverted, and the
+     failing output recorded as tdd_red_evidence
+And the demonstration NEVER touches orch/, dashboard/, executor/, or scripts/
+And git diff origin/main -- orch/ dashboard/ executor/ scripts/ is empty before
+     reporting completion
 ```
 
 ### AC7: Docs, skill, and plan updated and synced
@@ -260,15 +268,15 @@ And ai-dev/work/TESTS_ENHANCEMENT.md marks item 3.4 DONE with a §11 changelog e
 
 This is a test-infrastructure CR — the new tests *are* the deliverable, so classic RED-GREEN does not apply to production code. The "every test must be able to fail" requirement is satisfied differently:
 
-- **Isolation matrix — prove it can fail.** Before reporting completion, S01 must demonstrate the matrix catches a leak: temporarily remove the `project_id` filter from one project-scoped route handler (or equivalent), run `make test-isolation`, confirm the corresponding parametrized case fails (project A's identifier appears in project B's response), then revert. The captured failing output is recorded as `tdd_red_evidence`.
-- **Per-worktree/orch-DB boundary — prove it can fail.** Temporarily break `orch/config.py`'s env-var resolution (e.g. make `get_orch_db_url()` ignore `IW_CORE_ORCH_DB_*` and return `get_db_url()`), confirm the boundary case fails — the orch session now sees per-worktree rows — then revert.
+- **Isolation matrix — prove it can fail.** Before reporting completion, S01 must demonstrate the matrix catches a leak — **entirely within the test file**, no production code touched: temporarily invert one isolation-matrix assertion inside the test file (e.g. assert that project B's response SHOULD contain project A's identifier), run `make test-isolation`, confirm the corresponding parametrized case fails RED, then **revert the test-file edit**. The captured failing output is recorded as `tdd_red_evidence`. The demonstration MUST NOT touch `orch/`, `dashboard/`, `executor/`, or `scripts/`.
+- **Per-worktree/orch-DB boundary — prove it can fail.** Similarly, and again entirely within the test file: temporarily assert that the two URLs ARE equal (invert the not-equal assertion), confirm the boundary case fails RED, then revert the test-file edit.
 - **Unit tests**: none — there is no pure logic to unit-test; the deliverable is integration-level DB + TestClient assertions.
 - **Integration tests**: `test_cross_project_isolation.py` — the full parametrized matrix. Uses the testcontainer `db_session` fixture; never touches the live DB.
 - **Updated tests**: `tests/integration/conftest.py` gains the `second_project` fixture. Existing tests are unaffected.
 
 ## Notes
 
-- **Risk — the matrix finds real leaks on `main`.** Expected and acceptable. The `KNOWN_LEAK` allowlist absorbs them so the CR can merge without expanding into a production fix; each leaked route gets a filed high-priority Incident so the bug is tracked. The implementer MUST NOT edit production code — `scope.allowed_paths` excludes it and the merge-time scope gate enforces this.
+- **Risk — the matrix finds real leaks on `main`.** Expected and acceptable. The `KNOWN_LEAK` allowlist absorbs them so the CR can merge without expanding into a production fix; each entry carries a `TODO(file-incident)` placeholder and is surfaced as operator follow-up in the S01 report, and the operator files the high-priority Incident on `main` post-merge so the bug is tracked. The implementer must NOT edit production code and must NOT create an incident package inside the worktree (it would land outside `scope.allowed_paths`) — the merge-time scope gate enforces this.
 - **Shared-file conflict risk.** CR-00074 touches the same shared files as CR-00072, CR-00073, CR-00075, CR-00076. The batch executor MUST serialize these five CRs. The Dependencies section above states this explicitly; the operator must enforce it at batch-plan time.
 - **`second_project` fixture scope.** The fixture must be function-scoped (or at most session-scoped with per-test cleanup) to preserve the isolation guarantee of the `pgtestdbpy` template-clone strategy introduced in CR-00055. Do not introduce shared mutable state across tests via this fixture.
 - **Seeding completeness matters.** A sparse seed (e.g., only a Project row, no work items) means project-scoped routes that join on work items return empty results for BOTH projects — a false-positive isolation pass. The seed must be rich enough that each entity type is present in both projects with distinguishable identifiers.

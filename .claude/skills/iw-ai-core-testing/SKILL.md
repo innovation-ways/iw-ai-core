@@ -215,9 +215,22 @@ The three surfaces: (a) `addopts` deselects `quarantine` on the merge gate; (b) 
 
 IW AI Core is **multi-project** (`projects.toml` → `Project` rows). Project A's data must never appear in Project B's dashboard pages, RAG answers, job lists, or worktrees; project-scoped `iw` commands must never touch another project's rows; and the *global* views (`/docs`, `/jobs`) must aggregate *across* projects.
 
-When you add or change a project-scoped route, query, or `iw` command, add an isolation assertion: create two `Project` rows, populate one, assert the other's scoped view is empty and the global view aggregates. (A systematic cross-project isolation matrix is roadmap item 3.4 — until it exists, do this inline.)
+When you add or change a project-scoped route, query, or `iw` command, add an isolation assertion: create two `Project` rows, populate one, assert the other's scoped view is empty and the global view aggregates.
 
 Also keep the two DBs separate in tests: the agent runtime uses `IW_CORE_DB_*` (per-worktree DB); the orch DB is `IW_CORE_ORCH_DB_*` on 5433. Never let a test assume they're the same.
+
+### The cross-project isolation matrix (CR-00074)
+
+`tests/integration/test_cross_project_isolation.py` is the systematic matrix that proves tenancy isolation. It seeds two fully-populated projects via the **`second_project`** fixture (`tests/integration/conftest.py`, backed by `tests/fixtures/dual_project_seed.py` — both projects get a work item, a batch, an architecture doc, a research doc, a code-index row and a doc-generation row with guaranteed-distinct identifiers), then runs a parametrized suite across four axes:
+
+- **Axis 1 — dashboard-route isolation**: each project-scoped list/index route, scoped to project B, renders B's own identifier and **none** of project A's.
+- **Axis 2 — `iw`-command isolation**: read commands leak no A identifiers in their output; mutating commands leave A's rows byte-for-byte unchanged while changing B's.
+- **Axis 3 — global-aggregation positive assertion**: the global `/docs` surfaces aggregate **both** projects.
+- **Axis 4 — per-worktree-DB vs orch-DB boundary (F-00062)**: `orch/config.get_db_url()` / `get_orch_db_url()` resolve `IW_CORE_DB_*` / `IW_CORE_ORCH_DB_*` to distinct databases, including the `_prefer` fallback.
+
+A module-level **`KNOWN_LEAK`** dict (keyed by route path / command label) absorbs any *genuine* pre-existing leak — each entry carries a filed high-priority Incident ID and `xfail`s that case. A real leak is fixed in a separate Incident; the matrix CR stays test-only.
+
+**How to extend it**: when you add a new project-scoped dashboard route or `iw` command, consider it for the matrix — add a parametrized case to Axis 1 (`_AXIS1_ROUTES`) or Axis 2 (`_AXIS2_COMMANDS`). If the matrix surfaces a genuine leak, add a `KNOWN_LEAK` entry + file a high-priority Incident — never fix production code inside the test CR. Run `make test-isolation` to verify.
 
 ---
 

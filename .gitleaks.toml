@@ -85,6 +85,10 @@ paths = [
   '''(?i)(?:^|/)ai-dev/''',
   # why: .tmp/ — temporary working files during agent execution
   '''(?i)(?:^|/)\.tmp/''',
+  # why: .env — gitignored development credential file; contains dev credentials
+  # (e.g., IW_BROWSER_E2E_USER=dev@example.local) that are not real secrets.
+  # Excluded from git history entirely; gitleaks should skip it too.
+  '''(?i)\.env$''',
   # why: skills/iw-oss-publish/ — published skill copies with info@innovation-ways.com
   # contact email in prose (not a secret — published in public README/CODE_OF_CONDUCT)
   '''(?i)(?:^|/)skills/iw-oss-publish/''',

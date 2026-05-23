@@ -14,7 +14,7 @@
           allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
           e2e-health e2e-logs e2e-stats \
           security-deps security-iac security-image-dashboard security-secrets security-all security-report security-sast \
-          test-security-module \
+          test-security-module test-isolation \
           arch-check test-frontend dead-code dep-check
 
 # --- Setup ---
@@ -131,6 +131,11 @@ test-browser:
 	uv run pytest tests/dashboard/browser/ --no-cov -v
 
 test: test-unit test-integration
+
+# Convenience target — runs ONLY the cross-project isolation matrix (CR-00074).
+# The `integration-tests` gate already runs it as part of `make test-integration`.
+test-isolation:  ## Run the cross-project isolation test matrix (CR-00074)
+	uv run pytest tests/integration/test_cross_project_isolation.py -v --no-cov
 
 test-parallel:
 	uv run pytest tests/unit tests/integration tests/dashboard --ignore=tests/dashboard/browser -v -n auto --dist=loadfile
