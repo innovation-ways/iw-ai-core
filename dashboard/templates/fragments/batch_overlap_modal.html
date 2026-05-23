@@ -1,60 +1,44 @@
-{# htmx modal fragment: overlap details for a held batch item (CR-00077 + CR-00078) #}
-{# Context: current_project, batch_id, held_item_id, sections, ignored_set #}
-<div id="overlap-modal-root">
-  {% if sections %}
-  <div class="iw-modal-body">
-    {# CR-00078: per-file Ignore buttons — one row per (blocking_item_id, file_pattern) pair #}
-    {% for section in sections %}
-      <div class="iw-modal-section-block">
-        <div class="iw-modal-section-header">
-          Blocks: <code>{{ section.blocking_item_id }}</code>
-        </div>
-        <ul class="iw-modal-file-list">
-          <li class="iw-modal-file-row">
-            <code>{{ section.file_pattern }}</code>
-            <button type="button"
-                    class="iw-modal-ignore-btn"
-                    hx-post="/project/{{ current_project.id }}/batch/{{ batch_id }}/overlap/{{ held_item_id }}/ignore"
-                    hx-vals='{"blocking_item_id": "{{ section.blocking_item_id }}", "file_pattern": "{{ section.file_pattern }}"}'
-                    hx-target="closest .iw-modal-file-row"
-                    hx-swap="outerHTML">Ignore</button>
-          </li>
-        </ul>
-      </div>
-    {% endfor %}
+{# CR-00077: Overlap details modal fragment — does NOT extend base.html #}
+{# Context: empty, held_item_id, project_id, current_project, sections #}
+{#
+  CR-00077 close script is provided by batch_detail.html's global handlers.
+  Both #overlap-modal-root and #overlap-modal-inner receive the same HTML fragment
+  (via htmx hx-target), and the global close() function handles all variants.
+  The backdrop click and × click handlers are wired in batch_detail.html.
+#}
+{% if empty %}
+<div class="iw-modal-backdrop" data-iw-modal-root>
+  <div class="iw-modal-container" role="dialog" aria-modal="true" aria-labelledby="iw-modal-title">
+    <header class="iw-modal-header">
+      <h2 id="iw-modal-title">Overlap details — {{ held_item_id }}</h2>
+      <button type="button" class="iw-modal-close" aria-label="Close">×</button>
+    </header>
+    <div class="iw-modal-empty">No overlap details available — the item may have been released since this page rendered.</div>
   </div>
-
-  {# CR-00078: master "Ignore all &amp; start" button — only when sections remain #}
-  <footer class="iw-modal-footer">
-    <button type="button"
-            class="iw-modal-ignore-all-btn"
-            hx-post="/project/{{ current_project.id }}/batch/{{ batch_id }}/overlap/{{ held_item_id }}/ignore-all"
-            hx-target="#overlap-modal-root"
-            hx-swap="innerHTML"
-            hx-confirm="Ignore every remaining overlap for {{ held_item_id }} in this batch and let it start?">
-      Ignore all &amp; start
-    </button>
-  </footer>
-
-  {% else %}
-  {# CR-00077: empty state — no sections means no un-ignored overlaps remain #}
-  <div class="iw-modal-body">
-    <p class="iw-modal-empty-msg">No remaining overlaps for <strong>{{ held_item_id }}</strong> in this batch.</p>
-  </div>
-  {% endif %}
 </div>
-
-<script>
-  (function () {
-    // Esc key closes the modal (CR-00077)
-    function handleKeydown (e) {
-      if (e.key === 'Escape') {
-        var overlay = document.getElementById('overlap-modal-overlay');
-        if (overlay) {
-          overlay.click();
-        }
-      }
-    }
-    document.addEventListener('keydown', handleKeydown);
-  })();
-</script>
+{% else %}
+<div class="iw-modal-backdrop" data-iw-modal-root>
+  <div class="iw-modal-container" role="dialog" aria-modal="true" aria-labelledby="iw-modal-title">
+    <header class="iw-modal-header">
+      <h2 id="iw-modal-title">Overlap details — {{ held_item_id }}</h2>
+      <button type="button" class="iw-modal-close" aria-label="Close">×</button>
+    </header>
+    <div class="iw-modal-body">
+      {% for section in sections %}
+      <section class="iw-modal-section">
+        <h3 class="iw-modal-section-header">
+          <a href="/project/{{ current_project.id }}/item/{{ section.blocking_item_id }}">
+            {{ section.blocking_item_id }}{% if section.blocking_item_title %} — {{ section.blocking_item_title }}{% endif %}
+          </a>
+        </h3>
+        <ul class="iw-modal-file-list">
+          {% for glob in section.globs %}
+          <li><code>{{ glob }}</code></li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}

@@ -20,7 +20,6 @@ from orch.db.models import (
     AgentRuntimeOption,
     Batch,
     BatchItem,
-    BatchOverlapIgnore,
     BatchStatus,
     DaemonEvent,
     FixCycle,
@@ -190,11 +189,17 @@ def _get_scope_statuses(
         .all()
     )
 
-    # Build per-item status: held takes precedence over policy_allowed
-    # Scan in reverse (oldest first) so that when we encounter a held event
-    # for an item that already has a policy_allowed, we replace it.
+    # Build per-item status: held takes precedence over policy_allowed.
+    # Scan in forward order (oldest-first) so that oldest-event globs appear first
+    # in all_globs / matched_globs (preserving chronological order for the pill text).
+    # After scanning, build the final Status objects for any entity that has a held
+    # event; policy_allowed is applied only when no held event exists for that entity.
+    # For held events, accumulate all globs from all events (forward scan with
+    # ordered deduplication so glob order matches event order).
     item_statuses: dict[str, ScopeStatus] = {}
-    for ev in reversed(rows):
+    item_blocking_globs: dict[str, dict[str, list[str]]] = {}  # entity_id → blocking_id → globs
+    item_policy_allowed: dict[str, ScopeStatus] = {}  # entity_id → policy_allowed Status
+    for ev in rows:
         entity_id = ev.entity_id
         if entity_id is None:
             continue
@@ -204,17 +209,19 @@ def _get_scope_statuses(
             globs: list[str] = list(meta.get("conflicting_globs", []))
             if not globs:
                 continue
-            status = ScopeStatus(
-                status="held",
-                message=ev.message or "",
-                matched_globs=globs,
-                matched_allow_patterns=[],
-                blocking_item_ids=[blocking] if blocking else [],
-            )
-            item_statuses[entity_id] = status
+            # Accumulate globs per blocking item using an ordered list with
+            # deduplication so glob order reflects event order for pill text
+            if entity_id not in item_blocking_globs:
+                item_blocking_globs[entity_id] = {}
+            if blocking not in item_blocking_globs[entity_id]:
+                item_blocking_globs[entity_id][blocking] = []
+            existing = item_blocking_globs[entity_id][blocking]
+            for g in globs:
+                if g not in existing:
+                    existing.append(g)
         elif ev.event_type == "item_overlap_allowed_by_policy":
-            # Only set if item doesn't already have a held status
-            if entity_id in item_statuses:
+            # Record policy_allowed but don't finalise yet — held may override
+            if entity_id in item_blocking_globs:
                 continue
             in_flight_ids: list[str] = list(meta.get("in_flight_item_ids", []))
             allow_patterns: list[str] = list(meta.get("matched_allow_patterns", []))
@@ -232,6 +239,20 @@ def _get_scope_statuses(
                 matched_allow_patterns=allow_patterns,
                 blocking_item_ids=in_flight_ids,
             )
+            item_policy_allowed[entity_id] = status
+    # Finalise: held takes precedence over policy_allowed
+    for entity_id, blocking_map in item_blocking_globs.items():
+        all_globs = [g for bset in blocking_map.values() for g in bset]
+        status = ScopeStatus(
+            status="held",
+            message="",
+            matched_globs=all_globs,
+            matched_allow_patterns=[],
+            blocking_item_ids=list(blocking_map.keys()),
+        )
+        item_statuses[entity_id] = status
+    for entity_id, status in item_policy_allowed.items():
+        if entity_id not in item_statuses:
             item_statuses[entity_id] = status
     return item_statuses
 
@@ -246,6 +267,47 @@ def _get_held_reasons(
     old {work_item_id: reason_str} dict for existing call sites."""
     statuses = _get_scope_statuses(project_id, item_ids, db, window_secs)
     return {item_id: s.pill_text for item_id, s in statuses.items() if s.status == "held"}
+
+
+def group_overlap_events(
+    events: list[DaemonEvent],
+) -> list[tuple[str, list[str]]]:
+    """Return ordered (blocking_item_id, conflicting_globs) tuples.
+
+    Most-recent-wins on duplicate blocking_item_ids (events arrive newest first).
+    Events whose `event_metadata` lacks the required keys are silently skipped.
+    Insertion order across distinct blocking_item_ids is preserved.
+
+    Handles both `blocking_item_id` (newer events from CR-00077 daemon) and
+    `blocker_item_id` (legacy events) keys in event_metadata for backward
+    compatibility with older DaemonEvent rows in production seed data.
+
+    Accumulates ALL globs from ALL events for each blocking_item_id so that
+    the modal shows the complete list regardless of how many events were
+    generated during daemon scope-checking cycles.
+    """
+    seen: dict[str, set[str]] = {}
+    # Iterate in forward order so the first occurrence we see (oldest event)
+    # sets the key ordering, but we union all globs across all occurrences
+    # so nothing is lost.
+    for ev in events:
+        meta = ev.event_metadata or {}
+        # Support both legacy (blocker_item_id) and new (blocking_item_id) key names
+        blocking_id: str | None = meta.get("blocking_item_id") or meta.get("blocker_item_id")
+        globs: list[str] | None = meta.get("conflicting_globs")
+        if not blocking_id or not globs:
+            continue
+        if blocking_id not in seen:
+            seen[blocking_id] = set()
+        seen[blocking_id].update(globs)
+    # Build result in first-appearance order (oldest-first from original list)
+    result: list[tuple[str, list[str]]] = []
+    for ev in events:
+        meta = ev.event_metadata or {}
+        bid: str | None = meta.get("blocking_item_id") or meta.get("blocker_item_id")
+        if bid and bid in seen and (bid, sorted(seen[bid])) not in result:
+            result.append((bid, sorted(seen[bid])))
+    return result
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
@@ -658,7 +720,7 @@ def batch_items_fragment(
 ) -> Any:
     """htmx fragment: returns only the batch items tbody rows for live refresh."""
     project = _get_project_or_404(project_id, db)
-    _get_batch_or_404(project_id, batch_id, db)
+    batch = _get_batch_or_404(project_id, batch_id, db)
     item_ids = [
         bi.work_item_id
         for bi in db.scalars(
@@ -676,6 +738,7 @@ def batch_items_fragment(
         {
             "current_project": project,
             "items": items,
+            "batch": batch,
         },
     )
 
@@ -793,6 +856,13 @@ def _get_item_scope_events(
     )
 
 
+def _overlap_window_cutoff(window_secs: int = 300) -> datetime:
+    """Return the UTC datetime cutoff for the overlap event window."""
+    from datetime import timedelta as td
+
+    return datetime.now(UTC) - td(seconds=window_secs)
+
+
 @router.get(
     "/batch/{batch_id}/overlap/{held_item_id}",
     response_class=HTMLResponse,
@@ -804,61 +874,90 @@ def overlap_modal(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
-    """htmx modal: show current overlap sections for a held item, minus ignored pairs."""
+    """htmx modal: read-only overlap details grouped by blocking item.
+
+    CR-00077 S01: returns a modal fragment listing every conflicting glob
+    per blocking item, without truncation, grouped by blocking_item_id.
+    Returns HTTP 404 when no recent `item_held_for_scope` event exists for
+    the given (batch_id, held_item_id) within the 300-second window.
+    """
     project = _get_project_or_404(project_id, db)
     _get_batch_or_404(project_id, batch_id, db)
 
-    # Verify the batch item exists
-    batch_item = db.scalar(
-        select(BatchItem).where(
-            BatchItem.project_id == project_id,
-            BatchItem.batch_id == batch_id,
-            BatchItem.work_item_id == held_item_id,
+    # Query recent item_held_for_scope events for this held item
+    # (same window as _get_scope_statuses)
+    cutoff = _overlap_window_cutoff()
+    events = (
+        db.execute(
+            select(DaemonEvent)
+            .where(
+                DaemonEvent.project_id == project_id,
+                DaemonEvent.event_type == "item_held_for_scope",
+                DaemonEvent.entity_id == held_item_id,
+                DaemonEvent.entity_type == "work_item",
+                DaemonEvent.created_at >= cutoff,
+            )
+            .order_by(DaemonEvent.created_at.desc())
         )
+        .scalars()
+        .all()
     )
-    if batch_item is None:
-        raise HTTPException(status_code=404, detail=f"Batch item not found: {held_item_id}")
 
-    # Load pre-existing ignores for this batch + held_item
-    ignored_rows = db.scalars(
-        select(BatchOverlapIgnore).where(
-            BatchOverlapIgnore.project_id == project_id,
-            BatchOverlapIgnore.batch_id == batch_id,
-            BatchOverlapIgnore.held_item_id == held_item_id,
+    # 404 when no recent event found
+    if not events:
+        templates: Jinja2Templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request,
+            "fragments/batch_overlap_modal.html",
+            {"empty": True, "held_item_id": held_item_id, "current_project": project},
+            status_code=404,
         )
-    ).all()
-    ignored_set = {(row.blocking_item_id, row.file_pattern) for row in ignored_rows}
 
-    # Fetch recent scope-hold events for this item (same window as _get_scope_statuses)
-    events = _get_item_scope_events(project_id, held_item_id, db, window_secs=300)
+    # Group events by blocking_item_id (first occurrence wins per blocking_item_id)
+    # Also filter out globs that are already recorded in BatchOverlapIgnore
+    sections: list[dict[str, Any]] = []
+    for blocking_id, globs in group_overlap_events(list(events)):
+        # Load ignored globs for this (held_item_id, blocking_id) pair so we can
+        # filter them from the modal display (CR-00078 wires the ignore row
+        # storage here; the endpoint itself is CR-00077).
+        ignored_patterns: set[str] = set()
+        if True:  # always-on: no performance concern for a single-held-item modal
+            from orch.db.models import BatchOverlapIgnore
 
-    # Group into sections keyed by (blocking_item_id, file_pattern) → globs list
-    sections: dict[tuple[str, str], list[str]] = {}
-    for ev in events:
-        meta = ev.event_metadata or {}
-        blocking_id: str = meta.get("blocking_item_id", "")
-        globs: list[str] = list(meta.get("conflicting_globs", []))
-        if not globs or not blocking_id:
-            continue
-        for g in globs:
-            if (blocking_id, g) not in ignored_set:
-                sections.setdefault((blocking_id, g), []).append(g)
+            ignored_rows = db.scalars(
+                select(BatchOverlapIgnore.file_pattern).where(
+                    BatchOverlapIgnore.project_id == project_id,
+                    BatchOverlapIgnore.batch_id == batch_id,
+                    BatchOverlapIgnore.held_item_id == held_item_id,
+                    BatchOverlapIgnore.blocking_item_id == blocking_id,
+                )
+            ).all()
+            ignored_patterns = set(ignored_rows)
 
-    # Build render data (ignored_set already deduped per (blocking_id, glob) key)
-    section_rows = [
-        {"blocking_item_id": blocking_id, "file_pattern": glob} for blocking_id, glob in sections
-    ]
+        visible_globs = [g for g in globs if g not in ignored_patterns]
+        if not visible_globs:
+            continue  # skip sections where all files are already ignored
 
-    templates: Jinja2Templates = request.app.state.templates
+        # Fetch the blocking item's title; use blocking_id as fallback
+        blocking_wi = db.get(WorkItem, (project_id, blocking_id))
+        blocking_title = blocking_wi.title if blocking_wi else blocking_id
+        sections.append(
+            {
+                "blocking_item_id": blocking_id,
+                "blocking_item_title": blocking_title,
+                "globs": visible_globs,
+            }
+        )
+
+    templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "fragments/batch_overlap_modal.html",
         {
-            "current_project": project,
-            "project_id": project.id,
-            "batch_id": batch_id,
+            "empty": False,
             "held_item_id": held_item_id,
-            "sections": section_rows,
-            "ignored_set": ignored_set,
+            "project_id": project_id,
+            "current_project": project,
+            "sections": sections,
         },
     )

@@ -44,7 +44,8 @@ if TYPE_CHECKING:
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
     """FastAPI TestClient wired to the testcontainer db_session."""
-    original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+    original_instance_id = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
+    original_agent_ctx = os.environ.pop("IW_CORE_AGENT_CONTEXT", None)
     try:
 
         def override_get_db() -> Generator[Session, None, None]:
@@ -58,8 +59,10 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
         app.dependency_overrides.clear()
     finally:
-        if original is not None:
-            os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
+        if original_instance_id is not None:
+            os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original_instance_id
+        if original_agent_ctx is not None:
+            os.environ["IW_CORE_AGENT_CONTEXT"] = original_agent_ctx
 
 
 # ---------------------------------------------------------------------------

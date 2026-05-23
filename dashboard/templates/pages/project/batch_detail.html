@@ -9,6 +9,9 @@
 <!-- Confirm dialog container (htmx swaps fragment here) -->
 <div id="confirm-dialog"></div>
 
+<!-- CR-00077: htmx swap target for overlap modal (populated by htmx on held pill click) -->
+<div id="overlap-modal-root"></div>
+
 <!-- CR-00078: overlap ignore modal overlay (populated by htmx on held pill click) -->
 <div id="overlap-modal-overlay"
      class="fixed inset-0 z-50"
@@ -284,6 +287,41 @@
 
 {% block scripts %}
 {% include "components/toast.html" %}
+<script>
+// CR-00077: close the overlap modal — wired to Esc key, backdrop click, × button
+function _iwCloseOverlapModal() {
+  var overlay = document.getElementById('overlap-modal-overlay');
+  var inner   = document.getElementById('overlap-modal-inner');
+  if (overlay) overlay.style.display = 'none';
+  if (inner)   inner.innerHTML = '';
+}
+
+(function () {
+  // Esc key closes the modal
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      var overlay = document.getElementById('overlap-modal-overlay');
+      if (overlay && overlay.style.display !== 'none') {
+        _iwCloseOverlapModal();
+      }
+    }
+  });
+
+  // Backdrop (dimmed area outside the white box) closes the modal
+  document.addEventListener('click', function (e) {
+    var overlay = document.getElementById('overlap-modal-overlay');
+    if (!overlay || overlay.style.display === 'none') return;
+    // Only close when clicking the backdrop itself, not the inner container
+    if (e.target === overlay) {
+      _iwCloseOverlapModal();
+    }
+    // × close button
+    if (e.target.matches && e.target.matches('.iw-modal-close')) {
+      _iwCloseOverlapModal();
+    }
+  });
+})();
+</script>
 <script>
 // CR-00078: make the Held scope pill clickable to open the overlap ignore modal
 (function () {
