@@ -32,10 +32,12 @@ phase = 1
 
 [allowlist]
 # Conflicts whose ALL files match these globs are eligible for LLM resolution.
-# Phase 1 starts narrow: test files, design-doc reports, and project docs.
+# Phase 1 starts narrow: test files, any markdown, and design-doc reports.
+# Markdown is text-only (no executable consequences); the refuse-list below
+# still protects sensitive configs.
 patterns = [
   "tests/**/*.py",
-  "docs/**/*.md",
+  "**/*.md",
   "ai-dev/active/**/reports/**",
   "ai-dev/active/**/I-*/reports/**",
   "ai-dev/active/**/F-*/reports/**",
