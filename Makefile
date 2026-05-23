@@ -4,7 +4,7 @@
 
 .PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
           test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
-          test-assertions diff-coverage data-layer-check \
+          test-assertions diff-coverage data-layer-check test-cli-contract \
           test-route-sweep test-contract-fuzz \
           test-properties test-properties-deep \
           test-quarantine test-flake-detect \
@@ -105,6 +105,12 @@ test-unit:
 # Browser-level coverage runs separately via the qv-browser step.
 test-integration:
 	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser -v
+
+# CLI contract layer — per-command contract tests + spec-conformance check.
+# Developer convenience only: the integration-tests gate (make test-integration)
+# already runs these tests automatically via the tests/integration/ collection.
+test-cli-contract:
+	uv run pytest tests/integration/cli/ tests/integration/test_cli_spec_conformance.py -v --no-cov
 
 # Dashboard-only target for fast local iteration on routers/templates.
 # --no-cov: this slice naturally falls below the global coverage threshold;

@@ -828,38 +828,74 @@ iw projects list [--json]
 
 ## 4. Command Summary
 
+This tree is the **canonical command list**. It is kept in sync with the actual
+Click command tree by `tests/integration/test_cli_spec_conformance.py`, which
+fails the build on any drift in either direction (see §7).
+
 ```
 iw
-├── next-id             Allocate next sequential ID
-├── current-project     Show current project (from .iw-orch.json)
-├── register            Register a new work item
-├── approve             Approve work item for execution
-├── unapprove           Revert approved item to draft
-├── item-cancel         Cancel a single non-batched work item
-├── archive             Archive completed work item (Tier 1 + Tier 2)
-├── item-status         Show work item status
-├── step-start          Mark step as started (agent use)
-├── step-done           Mark step as completed (agent use)
-├── step-fail           Mark step as failed (agent use)
-├── batch-create        Create a new batch
-├── batch-approve       Approve batch for execution
-├── batch-status        Show batch status
-├── batch-pause         Pause a running batch
-├── batch-resume        Resume a paused batch
+├── next-id             Atomically allocate the next sequential ID for a work item type
+├── current-project     Print the current project ID detected from .iw-orch.json
+├── register            Register a new work item in the database (idempotent)
+├── approve             Approve a work item for execution (draft → approved)
+├── approve-merge       Approve a manual merge for a batch item awaiting approval
+├── unapprove           Revert an approved work item back to draft (approved → draft)
+├── item-cancel         Cancel a single work item not owned by an active batch
+├── item-status         Show the current status of a work item
+├── item-report         Generate and write the execution report for a work item
+├── archive             Archive completed work items (Tier 1 DB + Tier 2 .tar.zst)
+├── step-start          Mark a workflow step as started (pending → in_progress)
+├── step-done           Mark a workflow step as completed (in_progress → completed)
+├── step-fail           Mark a workflow step as failed (in_progress → failed)
+├── step-restart        Restart a failed step: reset to pending so the daemon relaunches it
+├── step-restart-from   Reset a step and all subsequent steps to pending
+├── step-skip           Skip a failed step (failed → skipped)
+├── step-kill           Kill a running step's process and mark it as failed
+├── batch-create        Create a new batch from a list of approved work items
+├── batch-approve       Approve a batch for execution (planning → approved)
+├── batch-status        Show the current status of a batch
+├── batch-pause         Pause a running batch (executing → paused)
+├── batch-resume        Resume a paused batch (paused → executing)
 ├── batch-cancel        Cancel a batch and its non-terminal items
-├── migration-lock
-│   ├── acquire         Acquire migration lock
-│   ├── release         Release migration lock
-│   └── status          Show lock status
-├── sync-skills         Sync platform skills to project
-├── init-project        Initialize a new project
+├── doc-update          Upsert a project documentation record
+├── doc-job-start       Mark a queued DocGenerationJob as running
+├── doc-job-done        Mark a running DocGenerationJob as completed (or failed)
+├── doc-job-status      Show the full context of a DocGenerationJob (read-only)
+├── docs-export         Export project docs as ZIP bundles
 ├── search              Full-text search across work items
-├── daemon
-│   ├── start           Start the daemon
-│   ├── stop            Stop the daemon
-│   └── status          Show daemon health
-└── projects
-    └── list            List registered projects
+├── worktree-status     Show git health of all active agent worktrees
+├── sync-skills         Sync platform skills to a project's .claude/skills/ directory
+├── sync-agents         Sync platform agents and commands to a project
+├── sync-templates      Sync design templates to all registered projects
+├── init-project        Initialize a new project for IW AI Core management
+├── db-identity         Show or verify the orchestration DB instance identity fingerprint
+│   ├── show            Show live DB instance UUID, expected UUID, and mode
+│   └── check           Verify DB instance identity
+├── migration-lock      Control migration lock for Alembic migrations (one holder per project)
+│   ├── acquire         Acquire the migration lock for a work item
+│   ├── release         Release the migration lock held by a work item
+│   └── status          Show the current migration lock status
+├── migrations          Manage Alembic migrations with safe operator gates
+│   ├── list-pending    Show revisions present in files but not yet applied to the live DB
+│   ├── dry-run         Apply pending revisions in a testcontainer, report success/failure
+│   └── apply           Apply pending alembic revisions to the live database
+├── merge-queue         Show and control the merge queue frozen state
+│   ├── status          Show current merge queue frozen state
+│   ├── unfreeze        Clear the merge queue frozen flag
+│   └── retry-merge     Reset a failed merge so the daemon re-attempts it
+├── oss                 OSS compliance workflow management
+│   ├── enable          Enable OSS compliance for a project
+│   ├── disable         Disable OSS compliance for a project
+│   ├── scan            Run OSS compliance scan against a project
+│   ├── status          Show the latest OSS scan status for a project
+│   ├── install         Probe or install Tier-1 OSS compliance tools
+│   └── fix             Preview or apply the auto-fix for a single OSS check
+├── daemon              Control the IW AI Core orchestration daemon
+│   ├── start           Start the orchestration daemon
+│   ├── stop            Stop the running daemon gracefully
+│   └── status          Show daemon health and operational statistics
+└── projects            Manage registered projects
+    └── list            List all registered projects
 ```
 
 ---

@@ -353,3 +353,35 @@ Two contract-level modules under `tests/dashboard/` prove the dashboard's HTTP s
 - A **newly-added route is swept automatically** — no test change needed. If the new route needs a path parameter the sweep can't resolve, `test_unresolved_routes_match_expected` fails — seed the entity (so it resolves) or add the route to `EXPECTED_UNRESOLVED` with a rationale.
 - A **newly-added JSON endpoint** (handler returning `JSONResponse` / a pydantic model) should be added to `JSON_API_PATHS` in `test_schemathesis_contract.py` so schemathesis fuzzes it. HTML/htmx routes are *not* fuzzed — the route sweep covers those.
 - A genuine 5xx schemathesis surfaces goes in `KNOWN_CONTRACT_5XX` (excluded from the fuzz, surfaced as operator follow-up) — same "never fix production code in-CR" rule.
+
+## 12. CLI contract layer (CR-00073)
+
+The `iw` CLI is the agent-to-DB bridge — every agent call passes through it. The **CLI contract layer** makes its exit-code / stdout / DB-effect contract a tested invariant.
+
+**Per-command contract tests** live in `tests/integration/cli/test_<command>_contract.py` — one file (a test class or grouped functions) per priority command. For each command they assert, against the testcontainer `db_session`:
+
+| Assertion | What it checks |
+|-----------|----------------|
+| Exit code 0 | every documented success path |
+| Non-zero exit + stderr | every documented error path, with a clear message asserted via `in` / `match=` |
+| stdout shape | the documented format — `json.loads` the output and assert specific fields, or pattern-match |
+| DB effect | the row(s) created or mutated — query the model after the command and assert the changed fields |
+| Idempotence / atomicity | where the spec promises it (`next-id` unique under a `ThreadPoolExecutor`; `register` re-registration is a no-op) |
+
+Use Click's `CliRunner` for in-process commands — inject the test session via `obj={"get_session": cli_get_session}` so the command never touches `orch.db.session`. Use `subprocess` invocation where a command spawns subprocesses or relies on process-level env vars (the `db_engine` fixture monkeypatches `IW_CORE_DB_*` so a subprocess inherits the per-test clone). Match the existing files under `tests/integration/cli/`.
+
+**Spec-conformance** is `tests/integration/test_cli_spec_conformance.py`: it parses the §4 "Command Summary" ASCII tree of `docs/IW_AI_Core_CLI_Spec.md`, introspects the live Click command tree (`orch.cli.main`), and asserts bidirectional coverage plus contract-test coverage. Two module-level allowlists make it a *ratchet*: `KNOWN_SPEC_DRIFT` (existence drift — each entry carries an Incident ID or rationale + a `"direction"`) and `KNOWN_UNTESTED_COMMANDS` (the coverage gap — pre-seeded with every non-priority command).
+
+**How to extend:**
+
+- **Adding contract coverage for a new command** → create `tests/integration/cli/test_<command>_contract.py` with the five assertion classes above, then **remove that command from `KNOWN_UNTESTED_COMMANDS`** in `test_cli_spec_conformance.py` (shrinking that allowlist is the explicit follow-up).
+- **Adding a new CLI command** → document it in `docs/IW_AI_Core_CLI_Spec.md` §4, then re-run `make test-cli-contract`; the conformance test fails until §4 and the contract-test (or `KNOWN_UNTESTED_COMMANDS`) coverage are both in place.
+- **Updating the spec** → after editing §4, re-run the conformance test to verify bidirectional coverage still holds.
+- **A genuine CLI bug surfaced by a contract test** → mark the test `@pytest.mark.xfail` (or record it in a `KNOWN_CLI_BUG` allowlist in that contract file) with a filed Incident ID — never fix production code in a test CR. A CLI bug is neither spec drift nor a coverage gap, so it does **not** belong in `KNOWN_SPEC_DRIFT` or `KNOWN_UNTESTED_COMMANDS`.
+
+**Run the layer:**
+```bash
+make test-cli-contract      # per-command contract tests + conformance check
+# also runs as part of:
+make test-integration       # all integration tests including the CLI contract layer
+```
