@@ -278,3 +278,25 @@ def find_blocking_items(
             result.append((item_id, allowed))
 
     return result
+
+
+def filter_blocked_by_ignores(
+    blocked_by: list[tuple[str, list[str]]],
+    ignored_pairs: set[tuple[str, str]],
+) -> list[tuple[str, list[str]]]:
+    """Return blocked_by with ignored (blocking_item_id, file_pattern) pairs removed.
+
+    - For each (blocking_id, globs) tuple, drop each glob whose
+      (blocking_id, glob) is in `ignored_pairs`.
+    - Tuples whose globs list becomes empty are dropped from the result.
+    - Pure: no DB access, no I/O. String equality match on the glob.
+    """
+    if not ignored_pairs:
+        return list(blocked_by)
+
+    result: list[tuple[str, list[str]]] = []
+    for blocking_id, globs in blocked_by:
+        filtered_globs = [g for g in globs if (blocking_id, g) not in ignored_pairs]
+        if filtered_globs:
+            result.append((blocking_id, filtered_globs))
+    return result

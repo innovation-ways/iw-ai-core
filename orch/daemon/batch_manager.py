@@ -17,13 +17,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import select
+
 from orch.daemon import scope_overlap, worktree_compose
+from orch.daemon.scope_overlap import filter_blocked_by_ignores
 from orch.db.alembic_guard import check_db_at_head, remediation_message
 from orch.db.models import (
     TERMINAL_BATCH_ITEM_STATUSES,
     Batch,
     BatchItem,
     BatchItemStatus,
+    BatchOverlapIgnore,
     BatchStatus,
     DaemonEvent,
     QvBaseline,
@@ -460,6 +464,45 @@ class BatchManager:
                     block_patterns=cfg.overlap_block_patterns,
                     allow_patterns=cfg.overlap_allow_patterns,
                 )
+                if blocked_by:
+                    # CR-00078: filter against per-batch ignore set
+                    ignored_pairs: set[tuple[str, str]] = {
+                        (row.blocking_item_id, row.file_pattern)
+                        for row in db.execute(
+                            select(BatchOverlapIgnore).where(
+                                BatchOverlapIgnore.project_id == self.project_id,
+                                BatchOverlapIgnore.batch_id == batch.id,
+                                BatchOverlapIgnore.held_item_id == item.work_item_id,
+                            )
+                        ).scalars()
+                    }
+                    filtered_blocked_by = filter_blocked_by_ignores(blocked_by, ignored_pairs)
+                    if not filtered_blocked_by and ignored_pairs:
+                        _emit_event(
+                            db,
+                            self.project_id,
+                            "batch_overlap_allowed_by_ignore",
+                            item.work_item_id,
+                            "work_item",
+                            f"Allowed: {item.work_item_id} — all overlaps ignored by operator",
+                            {
+                                "candidate_item_id": item.work_item_id,
+                                "ignored_pairs": [
+                                    {"blocking_item_id": b, "file_pattern": f}
+                                    for (b, f) in sorted(ignored_pairs)
+                                ],
+                            },
+                        )
+                        db.commit()
+                    # Always narrow blocked_by to the surviving (non-ignored) entries.
+                    # When every pair was ignored this is [], so the held branch below is
+                    # skipped and the item falls through to the launch path. When only some
+                    # pairs were ignored it holds the remainder; when there were no ignores
+                    # it is unchanged. Forgetting this assignment on the cleared path is the
+                    # classic bug — the held branch would still see the original non-empty
+                    # list and the item would never launch.
+                    blocked_by = filtered_blocked_by
+
                 if blocked_by:
                     for blocking_id, conflicting_globs in blocked_by:
                         _emit_event(

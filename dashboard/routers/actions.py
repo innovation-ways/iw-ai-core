@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from dashboard.dependencies import get_db
 from dashboard.middlewares.alembic_guard import require_db_at_head
@@ -31,6 +32,7 @@ from orch.db.models import (
     Batch,
     BatchItem,
     BatchItemStatus,
+    BatchOverlapIgnore,
     BatchStatus,
     DaemonEvent,
     Project,
@@ -1977,3 +1979,199 @@ def update_batch_auto_merge(
         f"Auto-merge set to {'on' if new_value else 'off'}.",
         toast_type="success",
     )
+
+
+def _resolve_overlap_context(
+    db: Session,
+    project_id: str,
+    batch_id: str,
+    held_item_id: str,
+) -> tuple[Project, Batch, BatchItem]:
+    """Resolve project, batch, and batch_item; raise HTTPException on 404."""
+    project = db.scalar(select(Project).where(Project.id == project_id))
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
+    batch = db.scalar(
+        select(Batch).where(
+            Batch.project_id == project_id,
+            Batch.id == batch_id,
+        )
+    )
+    if batch is None:
+        raise HTTPException(status_code=404, detail=f"Batch {batch_id!r} not found")
+    batch_item = db.scalar(
+        select(BatchItem).where(
+            BatchItem.project_id == project_id,
+            BatchItem.batch_id == batch_id,
+            BatchItem.work_item_id == held_item_id,
+        )
+    )
+    if batch_item is None:
+        raise HTTPException(status_code=404, detail=f"Batch item not found: {held_item_id}")
+    return project, batch, batch_item
+
+
+@router.post(
+    "/batch/{batch_id}/overlap/{held_item_id}/ignore",
+    response_class=HTMLResponse,
+)
+def ignore_single_overlap(
+    project_id: str,
+    batch_id: str,
+    held_item_id: str,
+    blocking_item_id: str = Form(...),
+    file_pattern: str = Form(...),
+    reason: str | None = Form(None),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Record a single (blocking_item_id, file_pattern) overlap pair as ignored.
+
+    Uses INSERT ... ON CONFLICT DO NOTHING against the composite PK so the
+    call is idempotent — repeated POSTs are a no-op.
+    """
+    _resolve_overlap_context(db, project_id, batch_id, held_item_id)
+
+    # TODO(auth): replace placeholder when session subjects land
+    stmt = pg_insert(BatchOverlapIgnore).values(
+        project_id=project_id,
+        batch_id=batch_id,
+        held_item_id=held_item_id,
+        blocking_item_id=blocking_item_id,
+        file_pattern=file_pattern,
+        ignored_by="operator",
+        reason=reason,
+    )
+    stmt = stmt.on_conflict_do_nothing(
+        index_elements=[
+            "project_id",
+            "batch_id",
+            "held_item_id",
+            "blocking_item_id",
+            "file_pattern",
+        ]
+    )
+    db.execute(stmt)
+
+    _emit(
+        db,
+        "batch_overlap_ignored_by_operator",
+        project_id,
+        held_item_id,
+        "work_item",
+        f"Operator ignored overlap on {file_pattern} "
+        f"with {blocking_item_id} (held: {held_item_id})",
+        {
+            "candidate_item_id": held_item_id,
+            "blocking_item_id": blocking_item_id,
+            "file_pattern": file_pattern,
+            "reason": reason,
+            "ignored_by": "operator",
+        },
+    )
+    db.commit()
+
+    # htmx: outerHTML swap on closest .iw-modal-file-row removes the row
+    return HTMLResponse("")
+
+
+def _get_item_scope_events(
+    project_id: str,
+    held_item_id: str,
+    db: Session,
+    window_secs: int = 300,
+) -> list[DaemonEvent]:
+    """Fetch recent item_held_for_scope events for a work item.
+
+    Reuses the same 300s window as _get_scope_statuses in batches.py so
+    ignore-all operates on the same data as the overlap modal.
+    """
+    from datetime import timedelta
+
+    cutoff = datetime.now(UTC) - timedelta(seconds=window_secs)
+    return list(
+        db.scalars(
+            select(DaemonEvent)
+            .where(
+                DaemonEvent.project_id == project_id,
+                DaemonEvent.event_type == "item_held_for_scope",
+                DaemonEvent.entity_id == held_item_id,
+                DaemonEvent.entity_type == "work_item",
+                DaemonEvent.created_at >= cutoff,
+            )
+            .order_by(DaemonEvent.created_at.desc())
+        ).all()
+    )
+
+
+@router.post(
+    "/batch/{batch_id}/overlap/{held_item_id}/ignore-all",
+    response_class=HTMLResponse,
+)
+def ignore_all_overlaps(
+    project_id: str,
+    batch_id: str,
+    held_item_id: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Ignore all currently held (blocking_item_id, file_pattern) pairs for a held item.
+
+    Queries the same recent item_held_for_scope events used by the overlap modal,
+    extracts the deduped set of (blocking_item_id, file_pattern) pairs, and inserts
+    one BatchOverlapIgnore row per pair (idempotent via ON CONFLICT DO NOTHING).
+    """
+    _resolve_overlap_context(db, project_id, batch_id, held_item_id)
+
+    events = _get_item_scope_events(project_id, held_item_id, db, window_secs=300)
+
+    # Build deduped set of (blocking_item_id, file_pattern) pairs
+    pairs: set[tuple[str, str]] = set()
+    for ev in events:
+        meta = ev.event_metadata or {}
+        blocking_id: str = meta.get("blocker_item_id", "")
+        globs: list[str] = list(meta.get("conflicting_globs", []))
+        if not globs or not blocking_id:
+            continue
+        for g in globs:
+            pairs.add((blocking_id, g))
+
+    if pairs:
+        rows = [
+            {
+                "project_id": project_id,
+                "batch_id": batch_id,
+                "held_item_id": held_item_id,
+                "blocking_item_id": bid,
+                "file_pattern": fp,
+                "ignored_by": "operator",
+            }
+            for bid, fp in pairs
+        ]
+        stmt = pg_insert(BatchOverlapIgnore).values(rows)
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=[
+                "project_id",
+                "batch_id",
+                "held_item_id",
+                "blocking_item_id",
+                "file_pattern",
+            ]
+        )
+        db.execute(stmt)
+
+    _emit(
+        db,
+        "batch_overlap_ignore_all_by_operator",
+        project_id,
+        held_item_id,
+        "work_item",
+        f"Operator ignored all {len(pairs)} remaining overlaps for {held_item_id}",
+        {
+            "candidate_item_id": held_item_id,
+            "count": len(pairs),
+            "pairs": [{"blocking_item_id": bid, "file_pattern": fp} for bid, fp in pairs],
+        },
+    )
+    db.commit()
+
+    # htmx: innerHTML swap on #overlap-modal-root closes the modal
+    return HTMLResponse("")
