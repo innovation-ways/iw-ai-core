@@ -56,6 +56,7 @@ Static:   Quality gates (ruff, mypy…)   — Enforced by `make quality` / `make
 | Integration | ~1,510 | 169 | pytest + testcontainers[postgres] | `tests/integration/` | `make test-integration` (also runs `tests/dashboard/`) |
 | Dashboard | ~650 | 69 | pytest + FastAPI `TestClient` + `db_session` | `tests/dashboard/` (excl. `browser/`) | part of `make test-integration`; fast slice via `make test-dashboard` |
 | **Security** | ~85 | 4 | pytest + testcontainers + subprocess | `tests/integration/security/` | `make test-security-module` (also part of `make test-integration`) |
+| **E2E browser journeys** | 6 journeys | 7 modules | pytest + `playwright-cli` + isolated E2E stack | `tests/e2e/` | `make test-e2e` (all 6); `make test-e2e-smoke` (2 smoke journeys); CI: `.github/workflows/e2e.yml` |
 | Browser | small | 7 | pytest + `playwright-cli` + live Uvicorn | `tests/dashboard/browser/` | `make test-browser` (not in `make test`); also the `qv-browser` workflow step |
 | **Total** | **~4,470+** | **417** | | | `make test` = unit + integration (+ dashboard + security) |
 
@@ -79,7 +80,32 @@ Real PostgreSQL via `testcontainers[postgres]` — never the live DB. Cover: ORM
 
 FastAPI behaviour via `TestClient` with the testcontainer `db_session` injected through `app.dependency_overrides[get_db]` (see `tests/dashboard/conftest.py` and the pattern in `tests/dashboard/test_jobs_filter_ui.py`). Cover: route status/redirects/shapes; Jinja2 template rendering; htmx fragment swaps; SSE wiring (`test_code_qa_sse_wire`); chat panel a11y/security/templates; the alembic-guard banner; coverage page; staleness router; project onboarding; runtime overrides; session isolation (`test_F00077_session_isolation`). Run as part of `make test-integration`; `make test-dashboard` is a fast `--no-cov` slice for local iteration.
 
-### Layer 4 — Browser tests (`tests/dashboard/browser/`)
+### Layer 4 — E2E browser journey tests (`tests/e2e/` — F-00088, 2026-05-21)
+
+Six structured journey modules under `tests/e2e/` drive a real Chromium via **`playwright-cli` only** (never `agent-browser`, never `chromium.launch()`, never `npx playwright install` — see the root `CLAUDE.md`):
+
+| Journey | What it exercises |
+|---------|------------------|
+| `test_journey_home_navigation.py` | Dashboard home → project → cross-tab navigation |
+| `test_journey_queue_to_merge.py` | Queue → batch creation → batch detail |
+| `test_journey_code_qa_sse.py` | Code Q&A SSE stream renders with citations |
+| `test_journey_docs_export.py` | Docs HTML and PDF export round-trip |
+| `test_journey_jobs_filters.py` | Jobs page multi-select filters |
+| `test_journey_htmx_fragments.py` | htmx browser runtime: no dangling hx-target, no console errors |
+
+**Markers:**
+- `@pytest.mark.e2e` — all six; excluded from default `pytest` selection (`addopts`)
+- `@pytest.mark.e2e_smoke` — `home_navigation` + `queue_to_merge`; **blocking** on `pull_request` / `push` via `.github/workflows/e2e.yml`
+
+**Execution:** `make test-e2e` (all 6), `make test-e2e-smoke` (2 smoke journeys), CI workflow `.github/workflows/e2e.yml`.
+
+**Journey conventions:** every journey asserts `pw.assert_accessibility()` on ≥1 page and `pw.assert_no_console_errors()` throughout; screenshots go to `IW_E2E_EVIDENCE_DIR` (`tests/e2e/_artifacts/`); navigation is via the UI, not hardcoded URLs; seed via `scripts/e2e_seed.py`.
+
+**Relationship to CR-00072:** Journey 6 (`test_journey_htmx_fragments.py`) is the browser-level complement to `test_route_contract_sweep.py` — CR-00072 asserts no 5xx server-side with no JS runtime; Journey 6 asserts htmx attributes resolve, no client-side errors, and no dangling `hx-target` references in a real browser. Complementary, not redundant.
+
+**Adding a new journey:** create `tests/e2e/test_journey_<name>.py`, mark `@pytest.mark.e2e`, assert `pw.assert_accessibility()` and `pw.assert_no_console_errors()` on at least one page, add a one-line comment naming the single assertion whose inversion proves the journey can fail. Extend `scripts/e2e_seed.py` idempotently if needed. Promote to `e2e_smoke` only if ≤30 s, covers a critical path, and there are ≤2 total in smoke.
+
+### Layer 5 — Security tests (`tests/integration/security/` — CR-00075)
 
 Real Chromium via **`playwright-cli` only** (never `agent-browser`, never `chromium.launch()` directly, never `npx playwright install`, never modify `.playwright/cli.config.json` — see the root `CLAUDE.md`). Marked `@pytest.mark.browser` and **deselected by default** (`addopts` has `-m 'not browser'`); run with `make test-browser` against a live Uvicorn dashboard the test data is visible to. The workflow's `qv-browser` step also exercises browser-level verification per work item, capturing screenshots into `ai-dev/active/<ITEM>/evidences/post/`.
 
@@ -326,6 +352,8 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Data-layer suite | pytest `tests/integration/data_layer/` (FTS-trigger invariant, revision-skew regression, DB-identity invariants — CR-00076) | 100 % pass | `make data-layer-check` (runs `make migration-check` first; no new daemon QV gate — the modules also run inside `make test-integration`) |
 | CLI contract layer | pytest `tests/integration/cli/` per-command contract tests + `test_cli_spec_conformance.py` bidirectional spec-conformance check (CR-00073) | 100 % pass (xfailed genuine CLI bugs allowed with Incident ID) | `make test-cli-contract` (developer convenience; no new daemon QV gate — the tests also run inside `make test-integration`) |
 | Smoke | pytest `-m smoke --strict-markers --no-cov` | 100 % pass | `make smoke` |
+| E2E smoke (F-00088) | pytest `tests/e2e/` `-m e2e_smoke` — `home_navigation` + `queue_to_merge` | 100 % pass; **blocking** on `pull_request` / `push` | `.github/workflows/e2e.yml` `e2e-smoke` job; also `make test-e2e-smoke` |
+| E2E full (F-00088) | pytest `tests/e2e/` `-m e2e` — all 6 journey modules | informational; alerts on regression; `continue-on-error` in CI | `.github/workflows/e2e.yml` `e2e-full` job (nightly cron + workflow_dispatch); also `make test-e2e` |
 | Mutation testing | `mutmut>=2.5,<3.0` | on-demand only (NOT in CI); spike score on `orch/daemon/` = 0.00% (CR-00059); follow-up CR will wire blocking PR gate | `make mutation-check MODULE=...` / `make mutation-audit` |
 | Property tests (ci profile) | hypothesis | included in `make test-unit` via `tests/unit/properties/` conftest default; `--strict-markers` via `pyproject.toml`; deterministic via `derandomize=True` | `make test-properties` (explicit); also via `make test-unit` |
 | Property tests (deep profile) | hypothesis | NOT in CI; on-demand | `make test-properties-deep` |
@@ -420,7 +448,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Mutation testing | ⚠️ (CR-00059, 2026-05-18) — foundation + spike landed; broader scope + blocking PR gate deferred to P2-CR-A-followup-mutation-block |
 | Property-based tests (Hypothesis) on state machines | ✅ (CR-00060, 2026-05-18) — five modules under `tests/unit/properties/`; ci profile in `make test-unit`; deep profile on-demand via `make test-properties-deep` |
 | Flaky/quarantine workflow | ✅ (CR-00061, 2026-05-18) — quarantine marker; addopts deselection; make test-quarantine / make test-flake-detect; quarantining requires filing an Incident (rule in tests/CLAUDE.md) |
-| Structured dashboard E2E layer | ❌ (3.1) — only ad-hoc `-m browser` tests today |
+| Structured dashboard E2E layer | ✅ DONE 2026-05-21 (F-00088) — `tests/e2e/` with 6 journey modules (`home_navigation`, `queue_to_merge`, `code_qa_sse`, `docs_export`, `jobs_filters`, `htmx_fragments`); `make test-e2e` / `make test-e2e-smoke`; `.github/workflows/e2e.yml` (`e2e-smoke` blocking, `e2e-full` informational); documented in §2 Layer 4 + §5 gate table + skill (3.1) |
 | Contract / no-5xx route sweep + `schemathesis` | ✅ DONE 2026-05-21 (CR-00072) — `tests/dashboard/test_route_contract_sweep.py` (every GET/HEAD route, `status_code < 500`, blocking via `make test-integration`) + `tests/dashboard/test_schemathesis_contract.py` (`schemathesis>=4` JSON-API fuzz, `contract_fuzz`-marked, nightly `contract-fuzz.yml` burn-in); genuine pre-existing 5xx → `EXPECTED_5XX`/`KNOWN_CONTRACT_5XX` allowlist + operator follow-up; documented in §2 Layer 6 + §5 gate table + skill (3.2) |
 | `iw` CLI-contract layer | ✅ DONE 2026-05-21 (CR-00073) — per-command contract tests for the 6 priority commands (`step-done`, `register`, `doc-update`, `approve`, `next-id`, evidence-ingestion hooks) under `tests/integration/cli/` + bidirectional spec-conformance check `test_cli_spec_conformance.py` with `KNOWN_SPEC_DRIFT` / `KNOWN_UNTESTED_COMMANDS` allowlists; `make test-cli-contract`; documented in §2 Layer 2 sub-layer + §5 gate table + skill + TESTS_ENHANCEMENT.md (3.3) |
 | Cross-project isolation matrix | ✅ DONE 2026-05-21 (CR-00074) — `tests/integration/test_cross_project_isolation.py`; `second_project` fixture + `tests/fixtures/dual_project_seed.py`; parametrized over dashboard routes / `iw` commands / global aggregation / per-worktree-DB boundary; `KNOWN_LEAK` allowlist (empty); `make test-isolation`; documented in §2 Layer 7 + §5 gate table + skill + TESTS_ENHANCEMENT.md (3.4) |

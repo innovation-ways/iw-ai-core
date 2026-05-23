@@ -385,3 +385,44 @@ make test-cli-contract      # per-command contract tests + conformance check
 # also runs as part of:
 make test-integration       # all integration tests including the CLI contract layer
 ```
+
+## 13. E2E browser journey layer (F-00088)
+
+Six structured journey modules under `tests/e2e/` drive a real Chromium via `playwright-cli` (never `agent-browser`, `chromium.launch()`, or `npx playwright install` — per the root `CLAUDE.md`):
+
+| Journey module | What it exercises |
+|----------------|-------------------|
+| `test_journey_home_navigation.py` | Dashboard home → project → cross-tab navigation (Queue / Code / Docs / Jobs) |
+| `test_journey_queue_to_merge.py` | Queue → approved item → batch creation → batch detail |
+| `test_journey_code_qa_sse.py` | Code Q&A: SSE stream renders incrementally with citations |
+| `test_journey_docs_export.py` | Docs: HTML and PDF export round-trip |
+| `test_journey_jobs_filters.py` | Jobs page multi-select filter interactions |
+| `test_journey_htmx_fragments.py` | htmx browser runtime: no dangling hx-target, no console errors, interactive swaps |
+
+**Markers:**
+- `@pytest.mark.e2e` — all six; excluded from default `pytest` selection (`addopts`)
+- `@pytest.mark.e2e_smoke` — `home_navigation` + `queue_to_merge` only; **blocking** on `pull_request` / `push` via `.github/workflows/e2e.yml`
+
+**Execution:** `make test-e2e` (all 6), `make test-e2e-smoke` (2 smoke), CI `.github/workflows/e2e.yml`.
+
+**Journey conventions:**
+- Every journey asserts `pw.assert_accessibility()` on ≥1 page and `pw.assert_no_console_errors()` throughout.
+- Screenshots go to `IW_E2E_EVIDENCE_DIR` (default: `tests/e2e/_artifacts/`).
+- Navigation is via the UI (snapshot + click), never hardcoded URLs (except the initial `goto`).
+- Seed via `scripts/e2e_seed.py` — extend idempotently if a journey needs rows.
+- Every module carries a one-line comment naming the single assertion whose inversion proves the journey can fail (RED run executed at S14 against the live stack).
+
+**Adding a new journey:**
+1. Create `tests/e2e/test_journey_<name>.py`.
+2. Mark `@pytest.mark.e2e` (promote to `e2e_smoke` only if <30 s, covers a critical path, ≤2 total in smoke).
+3. Assert `pw.assert_accessibility()` and `pw.assert_no_console_errors()` on at least one page.
+4. Add the one-line assertion-inversion comment.
+5. Extend `scripts/e2e_seed.py` idempotently if needed. Document the extension in the step report.
+
+**Relationship to CR-00072:** `test_journey_htmx_fragments.py` (Journey 6) is the browser-level complement to `test_route_contract_sweep.py`. CR-00072 exercises every GET route via TestClient with no JS/HTMX runtime — it asserts no 5xx. Journey 6 exercises the same routes in a real browser and asserts htmx attributes resolve, no client-side errors, and no dangling `hx-target` references. They are complementary, not redundant.
+
+**TDD for the E2E layer:** Browser journeys are not subject to classic RED-GREEN (they require a live stack). The "every test can fail" requirement is satisfied via two in-scope mechanisms:
+- **Harness self-check unit tests** (`tests/e2e/test_harness_selfcheck.py` — unmarked, run as normal unit tests): pure failure-detection logic (console-error parsing, accessibility check, dangling-`hx-target` detector, SSE-timeout detector) is fed synthetic bad input and asserted to flag the failure. RED evidence is recorded in the step report.
+- **Per-journey assertion inversion:** each journey module contains a one-line comment naming the single behavioural assertion whose inversion proves the journey can fail. The actual RED run is executed at S14 (`qv-browser`) against the live stack — not in this step.
+
+**Scope discipline:** the E2E layer is strictly test-infrastructure. No production code in `orch/` / `dashboard/` / `executor/` may be edited. The merge-time `scope.allowed_paths` gate enforces this.

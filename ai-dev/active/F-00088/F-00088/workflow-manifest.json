@@ -1,0 +1,126 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "F-00088",
+  "type": "Feature",
+  "title": "Structured Dashboard E2E Test Layer",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "tests/e2e/**",
+      "pyproject.toml",
+      "uv.lock",
+      "Makefile",
+      "scripts/e2e_seed.py",
+      ".github/workflows/e2e.yml",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "skills/iw-ai-core-testing/**",
+      ".claude/skills/iw-ai-core-testing/**",
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "E2E harness foundation: create tests/e2e/ with __init__.py, conftest.py, and playwright_wrapper.py (subprocess-only wrapper around the playwright-cli binary — NEVER chromium.launch/agent-browser/npx playwright install); register the e2e and e2e_smoke markers in pyproject.toml and extend the addopts -m exclusion to also exclude e2e; add make test-e2e and make test-e2e-smoke targets to Makefile (.PHONY); implement test_journey_home_navigation.py (journey 1 — dashboard home → project → cross-tab navigation; the dashboard has no authentication, so no login/logout) as the proof-of-harness, including accessibility check and no-console-errors assertion. Add tests/e2e/test_harness_selfcheck.py (unmarked unit tests) exercising the wrapper's failure detectors with synthetic bad input, RED-first, and record as tdd_red_evidence. Test-infrastructure only — no production code may be edited, including for the RED demonstration.",
+      "prompt": "prompts/F-00088_S01_Backend_prompt.md",
+      "timeout": 2400
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01: scope discipline (no production code touched); playwright-cli wrapper uses subprocess only (no chromium.launch / agent-browser); e2e + e2e_smoke markers registered; addopts exclusion verified via --collect-only; make test-e2e / make test-e2e-smoke targets present and in .PHONY; test_journey_home_navigation.py asserts a11y + no-console-errors; tdd_red_evidence records the harness self-check (test_harness_selfcheck.py) demonstration; no production code edited. Pre-review lint + format + test-assertions gate.",
+      "prompt": "prompts/F-00088_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Remaining 5 journey modules: test_journey_queue_to_merge.py, test_journey_code_qa_sse.py, test_journey_docs_export.py, test_journey_jobs_filters.py, test_journey_htmx_fragments.py — each asserting a11y + no-console-errors, every journey additionally checking its specific user flow; designate e2e_smoke subset (home-navigation + queue-to-merge); create .github/workflows/e2e.yml with blocking e2e-smoke job (pull_request + push) and informational e2e-full job (schedule nightly + workflow_dispatch, continue-on-error: true); extend scripts/e2e_seed.py if any journey needs extra rows; update docs/IW_AI_Core_Testing_Strategy.md (§3/§5/§9), skills/iw-ai-core-testing/SKILL.md (+ iw sync-skills --force iw-ai-core-testing), and ai-dev/work/TESTS_ENHANCEMENT.md (item 3.1 DONE + §11 changelog). Extend tests/e2e/test_harness_selfcheck.py with RED-first detector unit tests (dangling-reference, SSE-timeout) and add a per-journey assertion-inversion comment; record as tdd_red_evidence. Test-infrastructure only — no production code may be edited, including for the RED demonstration.",
+      "prompt": "prompts/F-00088_S03_Backend_prompt.md",
+      "timeout": 2400
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S03: scope discipline; all 5 remaining journey modules present and assert a11y + no-console-errors; e2e_smoke subset is exactly home-navigation + queue-to-merge; e2e.yml has blocking e2e-smoke (pull_request + push) and informational e2e-full (schedule + workflow_dispatch, continue-on-error: true) — never fires both jobs on the same trigger; htmx-fragments journey is the browser-level complement to CR-00072 (note relationship in design); docs/skill/plan updated and .claude/skills byte-identical; tdd_red_evidence records the extended harness self-check (no production code edited).",
+      "prompt": "prompts/F-00088_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review of S01..S04: every AC (AC1-AC7) verified end-to-end; scope integrity (git diff origin/main -- dashboard/ orch/ executor/ is empty — no production code edited); e2e marker exclusion independently verified via --collect-only; e2e_smoke subset is exactly the two designated journeys; e2e.yml trigger logic correct; playwright-cli wrapper uses subprocess only throughout; skills/iw-workflow/SKILL.md canonical QV-gate list NOT modified (scope creep check); .claude/skills byte-identical; TESTS_ENHANCEMENT.md changelog present. Runs the full unit + integration suites — make test-integration must not collect any e2e test.",
+      "prompt": "prompts/F-00088_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests — confirms e2e tests are NOT collected here",
+      "timeout": 1800
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scanning (gitleaks)"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-browser",
+      "description": "Browser verification: run the full E2E journey matrix (uv run pytest tests/e2e/ -m e2e) in the daemon's isolated worktree stack and verify all six journeys pass. See prompt for V1..V7 verification steps (one per journey) plus the final no-regressions check.",
+      "prompt": "prompts/F-00088_S14_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S15",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Note the tdd_red_evidence coverage across S01 and S03, whether any journeys were xfailed for genuine dashboard bugs (and the Incidents filed), whether the e2e marker exclusion held across all QV gates, and any SSE-timing or stack-stability findings from S14.",
+      "prompt": "prompts/F-00088_S15_SelfAssess_prompt.md"
+    }
+  ]
+}

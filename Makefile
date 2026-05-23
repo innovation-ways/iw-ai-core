@@ -13,6 +13,7 @@
           daemon-start daemon-stop dashboard-start css \
           allure-unit allure-integration allure-all allure-report allure-serve allure-clean \
           e2e-health e2e-logs e2e-stats \
+          test-e2e test-e2e-smoke \
           security-deps security-iac security-image-dashboard security-secrets security-all security-report security-sast \
           test-security-module test-isolation \
           arch-check test-frontend dead-code dep-check
@@ -135,6 +136,18 @@ test-frontend: test-dashboard
 # Not run by `make test`; invoke explicitly when validating browser flows.
 test-browser:
 	uv run pytest tests/dashboard/browser/ --no-cov -v
+
+# E2E browser journey tests — require the isolated E2E stack.
+# Runs ALL six journey modules (full suite).  The ``e2e`` marker is excluded
+# from the default ``pytest`` selection (addopts in pyproject.toml), so these
+# are intentionally NOT collected by ``make test-integration``.
+test-e2e:
+	uv run pytest tests/e2e/ -m e2e -v --no-cov
+
+# Smoke subset of the E2E suite — ``e2e_smoke``-marked journeys only.
+# This is the blocking smoke gate on pull_request / push (see .github/workflows/e2e.yml).
+test-e2e-smoke:
+	uv run pytest tests/e2e/ -m e2e_smoke -v --no-cov
 
 test: test-unit test-integration
 
