@@ -144,10 +144,11 @@
           <td class="px-4 py-2 min-w-[90px]">
             {% set ctx_peak = step.context_tokens_peak %}
             {% set ctx_window = step.context_window_tokens %}
+            {% set ctx_eff_pct = step.context_effective_pct %}
             {% if ctx_peak is not none %}
               {% if ctx_window %}
-                {% set ctx_pct = (ctx_peak / ctx_window * 100) | round(0) | int %}
-                {% if ctx_pct > 100 %}{% set ctx_pct = 100 %}{% endif %}
+                {# I-00105 S05: use precomputed effective-budget percentage; bar width clamps to 100% but label may read ≥100% #}
+                {% set ctx_pct = ctx_eff_pct | round(0) | int if ctx_eff_pct is not none else ((ctx_peak / ctx_window * 100) | round(0) | int) %}
                 {% if ctx_pct <= 60 %}{% set ctx_color_class = "ctx-bar-green" %}
                 {% elif ctx_pct <= 85 %}{% set ctx_color_class = "ctx-bar-yellow" %}
                 {% else %}{% set ctx_color_class = "ctx-bar-red" %}{% endif %}
@@ -155,7 +156,7 @@
                   {{ (ctx_peak / 1000) | round(0) | int }}K / {{ (ctx_window / 1000) | round(0) | int }}K
                 </div>
                 <div class="ctx-bar-track mt-0.5">
-                  <div class="ctx-bar-fill {{ ctx_color_class }}" style="width: {{ ctx_pct }}%"></div>
+                  <div class="ctx-bar-fill {{ ctx_color_class }}" style="width: {{ [ctx_pct, 100] | min }}%"></div>
                 </div>
                 <div class="text-xs text-muted-foreground">{{ ctx_pct }}%</div>
               {% else %}

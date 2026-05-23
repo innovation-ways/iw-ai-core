@@ -12,7 +12,9 @@ from typing import Any
 import pytest
 
 from orch.chat.context_usage import (
+    DEFAULT_SAFETY_BUFFER_TOKENS,
     compute_context_pct,
+    compute_effective_context_pct,
     lookup_context_window,
     normalize_pi_messages,
     resolve_model_from_tab,
@@ -472,15 +474,102 @@ class TestResolveModelFromTab:
 
 
 # ---------------------------------------------------------------------------
-# RED output record
+# compute_effective_context_pct tests  (I-00105 S03)
 # ---------------------------------------------------------------------------
 
-RED_OUTPUT = """
-$ uv run pytest tests/unit/test_context_usage.py -v
-  ERROR collecting tests/unit/test_context_usage.py
-    ImportError: cannot import name 'compute_context_pct' from 'orch.chat.context_usage'
 
-PASS: 0 | FAIL: 0 | ERROR: 1 | SKIP: 0
-"""
+class TestComputeEffectiveContextPct:
+    """I-00105 S03: effective-budget meter for per-step context gauge."""
+
+    def test_null_max_output_falls_back_to_raw_window(self) -> None:
+        """max_output_tokens=None → raw-window percentage (no crash)."""
+        # 50 000 used / 100 000 window = 50 %
+        result = compute_effective_context_pct(50_000, 100_000, None)
+        assert result == 50.0
+
+    def test_null_max_output_clamps_below_zero(self) -> None:
+        """Negative used_tokens with max_output_tokens=None → 0.0."""
+        result = compute_effective_context_pct(-1000, 100_000, None)
+        assert result == 0.0
+
+    def test_minimax_m2_7_near_ceiling_reads_over_100_pct(self) -> None:
+        """MiniMax-M2.7 at 131 K input (131 072 tokens) reads ≥100 %.
+
+
+        Effective budget = 204 800 − 131 072 − 20 000 = 53 728.
+        131 072 / 53 728 * 100 ≈ 244 %.
+        """
+        result = compute_effective_context_pct(131_072, 204_800, 131_072)
+        assert result is not None
+        assert result >= 100.0
+        assert result > 200.0  # well above 100 %
+
+    def test_minimax_m2_7_raw_would_read_64_pct(self) -> None:
+        """Same step with max_output_tokens=None falls back to raw 64 %."""
+        result = compute_effective_context_pct(131_072, 204_800, None)
+        assert result is not None
+        assert result == pytest.approx(64.0)
+
+    def test_50_pct_usage_normal_runtime(self) -> None:
+        """Half the effective budget consumed → 50 %."""
+        # gpt-4o: 128 000 window, 64 000 output → effective = 128 000 − 64 000 − 20 000 = 44 000
+        result = compute_effective_context_pct(22_000, 128_000, 64_000)
+        assert result == 50.0
+
+    def test_can_exceed_100_when_at_effective_ceiling(self) -> None:
+        """At the effective ceiling the meter reads exactly 100 %."""
+        # effective = 100 000 − 50 000 − 20 000 = 30 000
+        result = compute_effective_context_pct(30_000, 100_000, 50_000)
+        assert result == 100.0
+
+    def test_can_exceed_100_when_over_effective_ceiling(self) -> None:
+        """Over the effective ceiling reads > 100 %."""
+        result = compute_effective_context_pct(35_000, 100_000, 50_000)
+        assert result == pytest.approx(116.6667)
+
+    def test_none_context_window_returns_none(self) -> None:
+        """ "context_window=None → None (degrades gracefully)."""
+        assert compute_effective_context_pct(50_000, None, 50_000) is None
+
+    def test_zero_context_window_returns_none(self) -> None:
+        assert compute_effective_context_pct(50_000, 0, 50_000) is None
+
+    def test_negative_context_window_returns_none(self) -> None:
+        assert compute_effective_context_pct(50_000, -1, 50_000) is None
+
+    def test_effective_budget_zero_returns_none(self) -> None:
+        """Effective budget exactly 0 → None (defensive guard)."""
+        # 100 000 − 80 000 − 20 000 = 0
+        assert compute_effective_context_pct(50_000, 100_000, 80_000) is None
+
+    def test_effective_budget_negative_returns_none(self) -> None:
+        """Effective budget negative → None (defensive guard)."""
+        # 100 000 − 90 000 − 20 000 = −10 000
+        assert compute_effective_context_pct(50_000, 100_000, 90_000) is None
+
+    def test_negative_used_tokens_clamps_to_zero(self) -> None:
+        """Negative used_tokens → 0.0 (never returns a negative percentage)."""
+        result = compute_effective_context_pct(-1000, 100_000, 50_000)
+        assert result == 0.0
+
+    def test_custom_safety_buffer(self) -> None:
+        """Custom safety_buffer affects effective budget calculation."""
+        # default: 100 000 − 50 000 − 20 000 = 30 000 → 50 % of 30 000 = 15 000
+        result_default = compute_effective_context_pct(15_000, 100_000, 50_000)
+        # custom 10 000 buffer: 100 000 − 50 000 − 10 000 = 40 000 → 15 000/40 000*100 = 37.5 %
+        result_custom = compute_effective_context_pct(15_000, 100_000, 50_000, safety_buffer=10_000)
+        assert result_default == 50.0
+        assert result_custom == 37.5
+
+    def test_default_safety_buffer_constant_exists(self) -> None:
+        """DEFAULT_SAFETY_BUFFER_TOKENS is exported and is a positive integer."""
+        assert isinstance(DEFAULT_SAFETY_BUFFER_TOKENS, int)
+        assert DEFAULT_SAFETY_BUFFER_TOKENS > 0
+
+    def test_float_inputs_coerced(self) -> None:
+        """Float context_window/max_output_tokens are coerced to float."""
+        result = compute_effective_context_pct(15_000, 100_000.0, 50_000.0)
+        assert result == 50.0
+
 
 # Modules with no DB I/O — safe to import at unit-test collection time.

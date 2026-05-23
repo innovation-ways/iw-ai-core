@@ -97,6 +97,10 @@ class StepDetail:
     context_tokens_peak: int | None = None
     context_tokens_last: int | None = None
     context_window_tokens: int | None = None
+    max_output_tokens: int | None = None
+    # I-00105 S05: effective-budget % precomputed via compute_effective_context_pct
+    # (may be None when effective_budget is non-positive; bar width clamps to 100%)
+    context_effective_pct: float | None = None
 
 
 @dataclass
@@ -398,16 +402,18 @@ def _get_steps(
         ).all()
         fix_cycle_counts = {row.step_id: row.cnt for row in rows}
 
-    # CR-00066: build id→context_window_tokens lookup from AgentRuntimeOption
-    runtime_opt_tokens: dict[int, int] = {}
+    # CR-00066: build id→(context_window_tokens, max_output_tokens) lookup from AgentRuntimeOption
+    runtime_opt_data: dict[int, tuple[int, int]] = {}
     opt_rows = db.execute(
-        select(AgentRuntimeOption.id, AgentRuntimeOption.context_window_tokens).where(
-            AgentRuntimeOption.enabled.is_(True)
-        )
+        select(
+            AgentRuntimeOption.id,
+            AgentRuntimeOption.context_window_tokens,
+            AgentRuntimeOption.max_output_tokens,
+        ).where(AgentRuntimeOption.enabled.is_(True))
     ).all()
     for row in opt_rows:
         if row.context_window_tokens is not None:
-            runtime_opt_tokens[row.id] = row.context_window_tokens
+            runtime_opt_data[row.id] = (row.context_window_tokens, row.max_output_tokens)
 
     step_spans = _aggregate_step_spans(db, step_db_ids)
 
@@ -529,11 +535,23 @@ def _get_steps(
         run_opt_id = last_run_option_map.get(step.id)
         step_opt_id = step.agent_runtime_option_id  # explicit step-level override
 
-        # CR-00066: resolve context_window_tokens from runtime option
+        # CR-00066: resolve context_window_tokens + max_output_tokens from runtime option
         resolved_opt_id = (
             run_opt_id if run_opt_id is not None else (step_opt_id or item_runtime_option_id)
         )
-        context_window_tokens = runtime_opt_tokens.get(resolved_opt_id) if resolved_opt_id else None
+        ctx_win = None
+        max_out = None
+        opt_data = runtime_opt_data.get(resolved_opt_id) if resolved_opt_id else None
+        if opt_data:
+            ctx_win, max_out = opt_data
+
+        # I-00105 S05: precompute effective-budget percentage via compute_effective_context_pct
+        context_effective_pct: float | None = None
+        ctx_peak = last_run.context_tokens_peak if last_run else None
+        if ctx_peak is not None and ctx_win is not None and ctx_win > 0:
+            from orch.chat.context_usage import compute_effective_context_pct
+
+            context_effective_pct = compute_effective_context_pct(ctx_peak, ctx_win, max_out)
 
         result.append(
             StepDetail(
@@ -555,9 +573,11 @@ def _get_steps(
                 has_prompt=has_prompt_map.get(step.id, False),
                 scope_violations=scope_violations_map.get(step.id),
                 # CR-00066: context window data
-                context_tokens_peak=last_run.context_tokens_peak if last_run else None,
+                context_tokens_peak=ctx_peak,
                 context_tokens_last=last_run.context_tokens_last if last_run else None,
-                context_window_tokens=context_window_tokens,
+                context_window_tokens=ctx_win,
+                max_output_tokens=max_out,
+                context_effective_pct=context_effective_pct,
             )
         )
     result.append(_synthetic_merge_step(bi))

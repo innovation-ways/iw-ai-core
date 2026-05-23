@@ -2127,7 +2127,7 @@ def ignore_all_overlaps(
     pairs: set[tuple[str, str]] = set()
     for ev in events:
         meta = ev.event_metadata or {}
-        blocking_id: str = meta.get("blocker_item_id", "")
+        blocking_id: str = meta.get("blocking_item_id", "")
         globs: list[str] = list(meta.get("conflicting_globs", []))
         if not globs or not blocking_id:
             continue

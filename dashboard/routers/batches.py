@@ -200,7 +200,7 @@ def _get_scope_statuses(
             continue
         meta = ev.event_metadata or {}
         if ev.event_type == "item_held_for_scope":
-            blocking = meta.get("blocker_item_id", "")
+            blocking = meta.get("blocking_item_id", "")
             globs: list[str] = list(meta.get("conflicting_globs", []))
             if not globs:
                 continue
@@ -836,7 +836,7 @@ def overlap_modal(
     sections: dict[tuple[str, str], list[str]] = {}
     for ev in events:
         meta = ev.event_metadata or {}
-        blocking_id: str = meta.get("blocker_item_id", "")
+        blocking_id: str = meta.get("blocking_item_id", "")
         globs: list[str] = list(meta.get("conflicting_globs", []))
         if not globs or not blocking_id:
             continue

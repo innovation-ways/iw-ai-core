@@ -80,6 +80,15 @@ class AgentRuntimeOption(Base):
             "NULL = unknown / not yet configured. (CR-00066)"
         ),
     )
+    max_output_tokens: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment=(
+            "Maximum output tokens this model can generate in a single response. "
+            "Used to compute the EFFECTIVE input budget (context_window - max_output - buffer). "
+            "NULL = unknown / not yet configured. (I-00105)"
+        ),
+    )
 
     __table_args__ = (
         UniqueConstraint(
