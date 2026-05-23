@@ -328,6 +328,20 @@ def _seed_work_items(db: Session) -> None:
             ),
             "summary": "E2E stack QA endpoint 500 error root cause investigation",
         },
+        # S03: approved work item for test_journey_queue_to_merge (Journey 2)
+        {
+            "id": "F-E2E-001",
+            "type": WorkItemType.Feature,
+            "title": "E2E queue-to-merge smoke item",
+            "status": "approved",
+            "phase": "active",
+            "design_doc_content": (
+                "This item exists to support browser-verification journey tests. "
+                "It is in 'approved' status so the Queue page shows a batch-creation "
+                "action, enabling the queue-to-merge smoke journey."
+            ),
+            "summary": "E2E smoke — approved item for queue-to-merge journey",
+        },
     ]
 
     now = datetime.now(UTC)
@@ -336,6 +350,8 @@ def _seed_work_items(db: Session) -> None:
         if existing is not None:
             existing.design_doc_content = item_data["design_doc_content"]
             existing.summary = item_data["summary"]
+            existing.status = item_data["status"]
+            existing.phase = item_data["phase"]
             continue
         db.add(
             WorkItem(
@@ -347,6 +363,29 @@ def _seed_work_items(db: Session) -> None:
                 phase=item_data["phase"],
                 design_doc_content=item_data["design_doc_content"],
                 summary=item_data["summary"],
+                created_at=now,
+            )
+        )
+
+    # S03: Seed a second work item in 'approved' state for Journey 5 (Jobs filters).
+    # The Jobs page shows at least 2–3 different job types: code_index, doc_generation,
+    # and research_draft jobs. The existing _seed_index_job already creates one
+    # completed CodeIndexJob. We add one more approved item so the queue is non-empty.
+    approved_item_id = "CR-E2E-SEED"
+    if db.get(WorkItem, (PROJECT_ID, approved_item_id)) is None:
+        db.add(
+            WorkItem(
+                project_id=PROJECT_ID,
+                id=approved_item_id,
+                type=WorkItemType.ChangeRequest,
+                title="E2E jobs-filter seed item",
+                status="approved",
+                phase="active",
+                design_doc_content=(
+                    "Approved item for E2E jobs-filter journey — provides "
+                    "an approved queue entry for testing multi-select filters."
+                ),
+                summary="E2E seed for Jobs filter journey",
                 created_at=now,
             )
         )
