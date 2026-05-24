@@ -45,6 +45,14 @@ def _make_wrapper() -> PlaywrightWrapper:
 class TestReadConsoleErrors:
     """Unit tests for ``read_console_errors()``."""
 
+    @pytest.fixture(autouse=True)
+    def _isolated_cwd(self, tmp_path, monkeypatch) -> None:
+        # read_console_errors() scans every .playwright-cli/console-*.log under
+        # CWD by design (I-00097: don't let a clean later log mask an earlier
+        # error). chdir into tmp_path so each test sees only its own log file
+        # and is not polluted by accumulated logs from real browser E2E runs.
+        monkeypatch.chdir(tmp_path)
+
     def test_flags_error_level_line(self) -> None:
         """When the log contains a line starting with 'error', it is returned."""
         playwright_dir = Path(".playwright-cli")
@@ -86,6 +94,16 @@ class TestReadConsoleErrors:
 
 class TestAssertNoConsoleErrors:
     """Unit tests for ``assert_no_console_errors()``."""
+
+    @pytest.fixture(autouse=True)
+    def _isolated_cwd(self, tmp_path, monkeypatch) -> None:
+        # Same reasoning as TestReadConsoleErrors: assert_no_console_errors()
+        # delegates to read_console_errors(), which scans every
+        # .playwright-cli/console-*.log under CWD. Isolate per-test so the
+        # accumulated logs from real browser runs don't make the "clean log"
+        # assertions false-fail (or the "raises on error" test accidentally
+        # pass on someone else's error).
+        monkeypatch.chdir(tmp_path)
 
     def test_raises_on_error_in_log(self) -> None:
         """When the log contains an error, ``AssertionError`` is raised."""
