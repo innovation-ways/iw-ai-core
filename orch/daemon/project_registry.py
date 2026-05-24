@@ -605,7 +605,7 @@ class ProjectRegistry:
 
         Returns:
             (new_projects, changes) where changes maps project_id → one of:
-            "added", "removed", "disabled", "enabled", "unchanged".
+            "added", "removed", "disabled", "enabled", "unchanged", "changed".
         """
         new_projects = try_load_projects_toml(self.path)
         try:
@@ -636,6 +636,9 @@ class ProjectRegistry:
                     changes[pid] = "disabled"
                 elif not was_enabled and is_enabled:
                     changes[pid] = "enabled"
+                elif old[pid] != new_projects[pid]:
+                    # Both enabled (or both disabled) but .iw-orch.json content drifted.
+                    changes[pid] = "changed"
                 else:
                     changes[pid] = "unchanged"
 

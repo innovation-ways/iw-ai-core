@@ -22,6 +22,7 @@ import threading
 import time
 import traceback
 from contextlib import contextmanager
+from dataclasses import fields
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -644,15 +645,54 @@ class Daemon:
                 logger.info("Project removed: %r", project_id)
 
             elif change == "disabled":
-                if project_id in self.projects:
-                    self.projects[project_id] = new_projects[project_id]
+                self.projects[project_id] = new_projects[project_id]
+                self.managers.pop(project_id, None)
                 logger.info("Project disabled: %r", project_id)
                 with self._session_factory() as db:
                     emit_event(db, project_id=project_id, event_type="project_disabled")
 
             elif change == "enabled":
-                self.projects[project_id] = new_projects[project_id]
+                cfg = new_projects[project_id]
+                self.projects[project_id] = cfg
+                self.managers[project_id] = BatchManager(
+                    project_id, cfg, self._session_factory, self.config
+                )
                 logger.info("Project re-enabled: %r", project_id)
+
+            elif change == "changed":
+                old_cfg = self.projects.get(project_id)
+                new_cfg = new_projects[project_id]
+                self.projects[project_id] = new_cfg
+                self.managers[project_id] = BatchManager(
+                    project_id, new_cfg, self._session_factory, self.config
+                )
+                changed_fields: list[str] = []
+                if old_cfg is not None:
+                    changed_fields = sorted(
+                        f.name
+                        for f in fields(old_cfg)
+                        if getattr(old_cfg, f.name) != getattr(new_cfg, f.name)
+                    )
+                logger.info(
+                    "Project config reloaded: %r (%d field(s) changed)",
+                    project_id,
+                    len(changed_fields),
+                )
+                with self._session_factory() as db:
+                    sync_project_to_db(db, new_cfg)
+                    emit_event(
+                        db,
+                        project_id=project_id,
+                        event_type="project_config_reloaded",
+                        entity_id=project_id,
+                        entity_type="project",
+                        message=f"Project config reloaded for {project_id}: "
+                        f"{len(changed_fields)} changes",
+                        metadata={
+                            "project_id": project_id,
+                            "changed_fields": changed_fields,
+                        },
+                    )
 
     # ------------------------------------------------------------------
     # Shutdown
