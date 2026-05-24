@@ -1,0 +1,110 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00110",
+  "type": "Issue",
+  "title": "Keep-alive slot endpoints return HTTP 500 on out-of-BIGINT slot_id path param",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/routers/keep_alive.py",
+      "tests/dashboard/test_schemathesis_contract.py",
+      "tests/dashboard/test_keep_alive_slot_overflow.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Backend: add Path(..., ge=1, le=_BIGINT_MAX) to slot_id on both keep-alive handlers in dashboard/routers/keep_alive.py (DELETE /api/keep-alive/slots/{slot_id} and PATCH /api/keep-alive/slots/{slot_id}/toggle). Introduce a module-level constant `_BIGINT_MAX = 2**63 - 1` with a short explanatory comment referencing I-00110. Use the modern Annotated[int, Path(...)] form to avoid parameter-order issues. Do NOT touch orch/keep_alive_service.py (the design explicitly rejects a service-layer try/except). Do NOT create test files in this step — the regression tests live in S03 (tests-impl).",
+      "prompt": "prompts/I-00110_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01 (backend route-boundary fix): both handlers updated symmetrically; the magic number is a named constant (not inlined twice); the Annotated[int, Path(ge=1, le=_BIGINT_MAX)] form is used; no changes to orch/keep_alive_service.py (scope check); no test files created in S01 (tests belong in S03).",
+      "prompt": "prompts/I-00110_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Tests: (a) CREATE tests/dashboard/test_keep_alive_slot_overflow.py with SIX regression tests verbatim from the design's `## Test to Reproduce` section — test_delete_slot_overflow_returns_422_not_500, test_toggle_slot_overflow_returns_422_not_500, test_delete_slot_at_bigint_max_does_not_500, test_toggle_slot_at_bigint_max_does_not_500, test_delete_slot_zero_returns_422, test_toggle_slot_negative_returns_422. Tests live under tests/dashboard/ (the `client` fixture is registered only there per I-00067). (b) MODIFY tests/dashboard/test_schemathesis_contract.py — remove both KNOWN_CONTRACT_5XX entries ('/api/keep-alive/slots/{slot_id}' and '/api/keep-alive/slots/{slot_id}/toggle') around lines 97-108; leave KNOWN_CONTRACT_5XX as `dict[str, str] = {}` (do NOT delete the dict itself). The JSON_API_FUZZ_PATHS derivation recomputes automatically. (c) Targeted verification only: `uv run pytest tests/dashboard/test_keep_alive_slot_overflow.py -v --no-cov` — six tests must PASS (S01 already applied the fix). Do NOT run make test-unit / make test-integration / make allure-integration (the QV gates own full-suite). Every assertion must be SEMANTIC — specific status codes (422 / 200 / 404) and structured `detail.loc` content — never shape-only.",
+      "prompt": "prompts/I-00110_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S03 (tests + schemathesis allowlist edit): all six tests present and named exactly as in the design; every assertion is semantic (specific status codes + loc content), never shape-only; file lives under tests/dashboard/ (not tests/unit/ or tests/integration/); both KNOWN_CONTRACT_5XX entries removed (not just one), dict left intact (possibly empty), JSON_API_FUZZ_PATHS derivation unchanged; no full-suite test runs in the step.",
+      "prompt": "prompts/I-00110_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review of S01..S04: AC1 (overflow on both handlers -> 422 with slot_id in detail.loc), AC2 (six regression tests green + both KNOWN_CONTRACT_5XX entries removed + schemathesis contract suite stays green with both routes back in JSON_API_FUZZ_PATHS), and AC3 (in-range and BIGINT_MAX boundary values continue to behave as before — 200/404, never 422 from the new bound) are all verified end-to-end. Scope check: diff is limited to files inside scope.allowed_paths. Full unit + integration suites run as part of the review.",
+      "prompt": "prompts/I-00110_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "frontend-tests",
+      "command": "make test-frontend",
+      "description": "QV: Dashboard tests (test-frontend alias)"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S14",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00110_S14_SelfAssess_prompt.md"
+    }
+  ]
+}
