@@ -202,8 +202,8 @@ def compute_effective_context_pct(
         Usage percentage (may exceed 100 when input has passed the effective
         ceiling), or None when the computation is not possible / meaningful.
     """
-    # Guard: no meaningful usage data
-    if used_tokens is None or (isinstance(used_tokens, (int, float)) and used_tokens <= 0):
+    # Guard: missing usage data
+    if used_tokens is None:
         return None
 
     # Guard: no meaningful context window
@@ -221,6 +221,11 @@ def compute_effective_context_pct(
     if effective_budget <= 0:
         # window is too small for the output reservation to leave any input budget.
         return None
+
+    # Clamp non-positive used_tokens to 0% rather than returning None — the
+    # caller distinguishes "no data" (None) from "no input consumed yet" (0%).
+    if used_tokens <= 0:
+        return 0.0
 
     return (float(used_tokens) / effective_budget) * 100.0
 
