@@ -235,6 +235,46 @@ fi
 # When the agent runs the step, it handles QV internally via the /execute skill.
 # No special handling needed here beyond checking exit code.
 
+# --------------------------------------------------------------------------
+# S07 / I-00105: context-overflow detection — AC4
+#
+# When the runtime hits the context limit it returns an overflow error,
+# auto-compacts, and continues in a degraded state without calling step-done.
+# Causes 1–3 reduce the likelihood; this converts the residual case into a
+# clean, clearly-attributed step-fail instead of a silent limp-on.
+#
+# The check runs on the captured STEP_LOG after the runtime exits.  It only
+# overrides STEP_OUTCOME when overflow IS detected AND the step has not yet
+# reached a clean success state.
+# --------------------------------------------------------------------------
+if [[ -f "$STEP_LOG" ]]; then
+    CONTEXT_OVERFLOW_RESULT=$( \
+        "$SCRIPT_DIR/../venv/bin/python" -c "
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname('${SCRIPT_DIR}'), '..'))
+from executor.context_overflow import detect_context_overflow
+text = open('${STEP_LOG}', 'r', errors='replace').read()
+result = detect_context_overflow(text)
+# Print only when detected to avoid confusing non-detection path
+if result.detected:
+    print('DETECTED|' + '|'.join(result.signatures_found))
+" 2>/dev/null \
+    ) || CONTEXT_OVERFLOW_RESULT=""
+
+    if [[ "$CONTEXT_OVERFLOW_RESULT" == DETECTED* ]]; then
+        _lib_log_error "  CONTEXT OVERFLOW DETECTED in agent log: ${CONTEXT_OVERFLOW_RESULT#DETECTED|}"
+        # Only fail if the step has not already been marked as success.
+        # If the agent DID call step-done (unlikely in overflow case), keep success.
+        if [[ "$STEP_OUTCOME" != "success" ]]; then
+            STEP_OUTCOME="context_overflow"
+            FAIL_REASON="Agent runtime overflowed the model's context window (I-00105 AC4). Check .tool-cache for spilled output."
+            _lib_log_error "  CONTEXT OVERFLOW: finalizing step as clean failure."
+        else
+            _lib_log "  CONTEXT OVERFLOW detected but step already marked success — keeping success state."
+        fi
+    fi
+fi
+
 # ---------------------------------------------------------------------------
 # Report outcome to DB via iw CLI
 # ---------------------------------------------------------------------------

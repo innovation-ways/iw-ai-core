@@ -35,6 +35,51 @@ MAX_STEP_TIMEOUT_BROWSER="${MAX_STEP_TIMEOUT_BROWSER:-1800}"  # 30 min
 # Caller must set WORKTREE_PATH before sourcing
 : "${WORKTREE_PATH:?WORKTREE_PATH must be set before sourcing step_executor_lib.sh}"
 
+# --------------------------------------------------------------------------
+# S07 / I-00105: effective-budget compaction threshold
+#
+# Proactive compaction must fire at ~75% of the effective budget
+# (window − max_output − safety_buffer), not at the nominal window.
+# R-00078 §"Proactive compaction at ~70–80% of the effective budget".
+#
+# The default values mirror orch/config.py's DaemonConfig fields:
+#   IW_CORE_TOOL_OUTPUT_CAP_BYTES           → 25 KB (cap per tool result)
+#   IW_CORE_EFFECTIVE_BUDGET_SAFETY_BUFFER  → 20,000 tokens (output reserve)
+#   IW_CORE_COMPACTION_THRESHOLD_FRACTION   → 0.75 (fire at 75% of effective budget)
+#
+# Runtimes with controllable compaction thresholds:
+#   opencode  → CONTEXT_BUDGET_THRESHOLD (tokens) — exported before opencode launch
+#   claude    → compaction fires at window-13,000; not directly controllable per env
+#               → BASH_MAX_OUTPUT_LENGTH controls per-call Bash output, not threshold
+#   pi        → compaction fires at window-16,384; not configurable via env var
+#
+# When a runtime's native cap env var can be set low, do so here so the
+# executor-side cap + spill gets a chance before built-in truncation fires.
+# --------------------------------------------------------------------------
+MAX_TOOL_OUTPUT_CAP_BYTES="${IW_CORE_TOOL_OUTPUT_CAP_BYTES:-25600}"   # 25 KB default
+EFFECTIVE_BUDGET_SAFETY_BUFFER="${IW_CORE_EFFECTIVE_BUDGET_SAFETY_BUFFER:-20000}"  # 20 K tokens
+COMPACTION_THRESHOLD_FRACTION="${IW_CORE_COMPACTION_THRESHOLD_FRACTION:-0.75}"  # fire at 75%
+
+# get_compaction_threshold_tokens <context_window> <max_output_tokens>
+# Returns the token count at which proactive compaction should fire.
+# Returns 0 when window/max_output are unavailable or effective budget ≤ 0.
+get_compaction_threshold_tokens() {
+    local window="${1:-}"
+    local max_output="${2:-}"
+    if [[ -z "$window" ]] || [[ -z "$max_output" ]]; then
+        echo "0"
+        return
+    fi
+    local effective=$((window - max_output - EFFECTIVE_BUDGET_SAFETY_BUFFER))
+    if [[ $effective -le 0 ]]; then
+        echo "0"
+        return
+    fi
+    # Fire at (fraction × effective_budget) tokens of input.
+    python3 -c "print(int($effective * $COMPACTION_THRESHOLD_FRACTION))" 2>/dev/null \
+        || echo "0"
+}
+
 # ---------------------------------------------------------------------------
 # Logging (uses LOG_FILE from caller if set, otherwise stderr only)
 # ---------------------------------------------------------------------------
