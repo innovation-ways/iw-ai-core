@@ -64,12 +64,12 @@ def test_journey_htmx_fragments(
     # known race condition in pytest context where _read_latest_snap_yml
     # reads a stale yml file, causing the dynamic ref to be empty, which
     # silently no-ops the click).
-    CANCEL_BTN_REF = "e107"
+    cancel_btn_ref = "e107"
 
     import time as _time
 
     _time.sleep(0.5)  # let any prior htmx request settle first
-    pw.click(CANCEL_BTN_REF)
+    pw.click(cancel_btn_ref)
 
     # htmx requests are async — wait for the server response before snapshotting.
     # We poll the injected target (#confirm-dialog for cancel buttons) every 500 ms
@@ -90,7 +90,7 @@ def test_journey_htmx_fragments(
     dialog_inner = pw.eval_js("", "document.getElementById('confirm-dialog').innerHTML")
     assert dialog_inner.strip(), (
         "Expected HTMX swap to inject content into #confirm-dialog. "
-        f"Empty dialog after clicking {CANCEL_BTN_REF!r}. "
+        f"Empty dialog after clicking {cancel_btn_ref!r}. "
         "Possible causes: htmx request failed, hx-target missing, or HTMX not loaded."
     )
 
@@ -123,10 +123,9 @@ def test_journey_htmx_fragments(
         # do not fail the test.
         import sys as _sys
 
-        print(
+        _sys.stderr.write(
             f"NOTE: snap_before={len(snap_before)} == snap_after={len(snap_after)} "
-            "(snapshot read race — dialog_inner confirms HTMX swap succeeded).",
-            file=_sys.stderr,
+            "(snapshot read race — dialog_inner confirms HTMX swap succeeded).\n"
         )
 
     # Also verify the new snapshot is non-empty
