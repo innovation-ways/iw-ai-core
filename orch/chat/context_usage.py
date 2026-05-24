@@ -69,64 +69,6 @@ def normalize_pi_messages(
     return result
 
 
-def compute_effective_context_pct(
-    used_tokens: int,
-    context_window: int | float | None,
-    max_output_tokens: int | float | None,
-    safety_buffer: int = DEFAULT_SAFETY_BUFFER_TOKENS,
-) -> float | None:
-    """Return effective-budget usage as a percentage, or None.
-
-
-    The effective budget is the portion of the context window that can be used
-    for input after reserving space for output and a safety buffer::
-
-
-        effective_budget = context_window − max_output_tokens − safety_buffer
-        pct = (used_tokens / effective_budget) * 100.0
-
-    The returned value may exceed 100 when ``used_tokens`` is at or past the
-    effective ceiling — this is intentional (AC1: near-ceiling steps must read
-    near/over 100%).
-
-
-    Returns None when ``effective_budget`` is not positive, or when
-    ``context_window`` is missing / not positive (degrades gracefully).
-
-    Parameters
-    ----------
-    used_tokens:
-        Total tokens consumed (input + output + reasoning + cache read/write).
-    context_window:
-        The active model's context-window limit (max tokens).
-    max_output_tokens:
-        Maximum tokens the model can generate in a single response.
-        ``None`` → fall back to the raw-window percentage
-        (degrades gracefully to existing behaviour).
-    safety_buffer:
-        Reserve kept free for the model's own operation overhead
-        (default 20,000 tokens — opencode convention, per R-00078).
-    """
-    if context_window is None or context_window <= 0:
-        return None
-
-    if max_output_tokens is None:
-        # Fall back to raw-window behaviour
-        pct = (used_tokens / context_window) * 100.0
-        if pct < 0:
-            return 0.0
-        return pct
-
-    effective_budget = float(context_window) - float(max_output_tokens) - float(safety_buffer)
-    if effective_budget <= 0:
-        return None
-
-    pct = (used_tokens / effective_budget) * 100.0
-    if pct < 0:
-        return 0.0
-    return pct
-
-
 def compute_context_pct(
     messages: list[dict[str, Any]] | None,
     context_window: int | float | None,
@@ -214,6 +156,120 @@ def compute_context_pct(
     if pct > 100.0:
         return 100.0
     return pct
+
+
+def compute_effective_context_pct(
+    used_tokens: int | float | None,
+    context_window: int | float | None,
+    max_output_tokens: int | float | None,
+    safety_buffer: int | float = DEFAULT_SAFETY_BUFFER_TOKENS,
+) -> float | None:
+    """Return context-window usage as a percentage against the EFFECTIVE budget.
+
+    The effective budget is ``context_window − max_output_tokens − safety_buffer``.
+    This is the number of input tokens that can actually fit alongside the model's
+    maximum possible output without overflowing the context window.
+
+    Unlike ``compute_context_pct`` which divides by the raw ``context_window``,
+    this function accounts for the output reservation — required for models where
+    ``max_output_tokens`` is a large fraction of the window (e.g. MiniMax-M2.7:
+    204,800 window / 131,072 max output → effective budget ~74K).
+
+    The percentage is **allowed to exceed 100%** so callers can display a
+    "PAST CEILING" warning; use ``min(result, 100)`` if a clamped gauge is needed.
+
+    Parameters
+    ----------
+    used_tokens:
+        Total tokens accumulated in the conversation so far (input side).
+        None / 0 / negative → return None (nothing to compute).
+    context_window:
+        The model's total context-window limit in tokens.
+        None / ≤ 0 → return None.
+    max_output_tokens:
+        The model's maximum output capacity in tokens (from ``agent_runtime_options``).
+        **None → fall back to raw-window behaviour** (divide by ``context_window``)
+        so the meter degrades gracefully when no output reservation is stored.
+    safety_buffer:
+        Extra headroom reserved for the model's response itself, in tokens.
+        Defaults to 20,000 (opencode's convention, per R-00078). Set to 0 to
+        disable the reserve. The effective budget is always
+        ``context_window − max_output − safety_buffer``.
+
+    Returns
+    -------
+    float | None
+        Usage percentage (may exceed 100 when input has passed the effective
+        ceiling), or None when the computation is not possible / meaningful.
+    """
+    # Guard: no meaningful usage data
+    if used_tokens is None or (isinstance(used_tokens, (int, float)) and used_tokens <= 0):
+        return None
+
+    # Guard: no meaningful context window
+    if context_window is None or context_window <= 0:
+        return None
+
+    # Guard: effective budget must be positive (window must exceed output+buffer)
+    effective_budget: float
+    if max_output_tokens is None:
+        # NULL max_output → fall back to raw-window behaviour (degrade gracefully).
+        effective_budget = float(context_window)
+    else:
+        effective_budget = float(context_window) - float(max_output_tokens) - float(safety_buffer)
+
+    if effective_budget <= 0:
+        # window is too small for the output reservation to leave any input budget.
+        return None
+
+    return (float(used_tokens) / effective_budget) * 100.0
+
+
+def lookup_max_output_tokens(
+    providers_raw: dict[str, Any],
+    provider_id: str,
+    model_id: str,
+) -> int | None:
+    """Return the ``limit.max_output`` value for a given provider+model pair.
+
+    Mirrors the structure of ``lookup_context_window`` but reads the
+    ``max_output`` field from the provider configuration. This field is optional
+    and may not be present in all provider configs; return None when absent.
+
+    Parameters
+    ----------
+    providers_raw:
+        The decoded JSON from ``GET /config/providers`` —
+        ``{"providers": [{"id": "...", "models": {"<modelId>": {"limit": {"max_output": N}}}}]}``.
+    provider_id:
+        The provider identifier (e.g. ``"openai"``).
+    model_id:
+        The model identifier (e.g. ``"gpt-4o"``).
+    """
+    providers = providers_raw.get("providers")
+    if not isinstance(providers, list):
+        return None
+
+    for p in providers:
+        if not isinstance(p, dict):
+            continue
+        if p.get("id") != provider_id:
+            continue
+        models = p.get("models")
+        if not isinstance(models, dict):
+            return None
+        model_entry = models.get(model_id)
+        if not isinstance(model_entry, dict):
+            return None
+        limit = model_entry.get("limit")
+        if not isinstance(limit, dict):
+            return None
+        max_output = limit.get("max_output")
+        if isinstance(max_output, (int, float)) and max_output > 0:
+            return int(max_output)
+        return None
+
+    return None
 
 
 def lookup_context_window(

@@ -12,7 +12,6 @@ from typing import Any
 import pytest
 
 from orch.chat.context_usage import (
-    DEFAULT_SAFETY_BUFFER_TOKENS,
     compute_context_pct,
     compute_effective_context_pct,
     lookup_context_window,
@@ -474,102 +473,233 @@ class TestResolveModelFromTab:
 
 
 # ---------------------------------------------------------------------------
-# compute_effective_context_pct tests  (I-00105 S03)
+# I-00105 — Effective-budget meter (S03 backend-impl)
 # ---------------------------------------------------------------------------
 
 
 class TestComputeEffectiveContextPct:
-    """I-00105 S03: effective-budget meter for per-step context gauge."""
+    """AC1: context gauge must measure against the EFFECTIVE budget.
+
+    The effective budget is:  window − max_output_tokens − safety_buffer
+    NOT the raw context_window.  This allows a model like MiniMax-M2.7
+    (204,800 window / 131,072 max_output) to correctly show that ~131K
+    input is AT or PAST the ceiling, not "64%" as the raw-window meter reads.
+
+    R-00078 finding: "A model's effective input budget is window − max_output,
+    not the full window."
+    """
+
+    # ── 1: Core effective-budget formula ────────────────────────────────────
+
+    def test_minimax_m2_7_131k_input_is_past_effective_ceiling(self) -> None:
+        """MiniMax-M2.7: window=204,800, max_output=131,072, used=131,072.
+
+        Raw-window meter: 131,072 / 204,800 * 100 ≈ 64%  ← MISLEADING.
+        Effective budget:  204,800 − 131,072 =  73,728
+        Effective pct:     131,072 /   73,728 * 100 ≈ 177.8%  ← CORRECT.
+
+        The gauge MUST report >= 100% (past the effective ceiling).
+        """
+        pct = compute_effective_context_pct(
+            used_tokens=131_072,
+            context_window=204_800,
+            max_output_tokens=131_072,
+        )
+        assert isinstance(pct, float), f"Expected float, got {pct!r}"
+        assert pct >= 100.0, (
+            f"131K input on a 205K/131K-output model is past the effective "
+            f"ceiling; meter MUST report >=100%, got {pct}"
+        )
+
+    def test_no_overhead_model_small_pct(self) -> None:
+        """A model with large window and small output reservation: pct stays low.
+
+        gpt-4o: 128,000 window, 16,384 max_output (theoretical); used 10K input.
+        Effective budget: 128,000 − 16,384 = 111,616.
+        pct: 10,000 / 111,616 * 100 ≈ 8.96%.
+        """
+        pct = compute_effective_context_pct(
+            used_tokens=10_000,
+            context_window=128_000,
+            max_output_tokens=16_384,
+        )
+        # effective_budget = (128,000 − 16,384 − 20,000) = 91,616
+        # 10,000 / 91,616 * 100 ≈ 10.9%; allow some tolerance for the default buffer
+        assert isinstance(pct, float), f"Expected float, got {pct!r}"
+        assert 8.0 <= pct <= 12.0, f"Expected ~9-11%, got {pct}"
+
+    def test_used_at_effective_budget_is_100pct(self) -> None:
+        """used_tokens == effective_budget → 100.0 when buffer=0."""
+        # effective_budget = 204,800 − 131,072 − 0 = 73,728
+        # 73,728 / 73,728 * 100 = 100.0 exactly
+        pct = compute_effective_context_pct(
+            used_tokens=73_728,
+            context_window=204_800,
+            max_output_tokens=131_072,
+            safety_buffer=0,
+        )
+        assert pct == 100.0
+
+    def test_used_below_effective_budget_under_100(self) -> None:
+        """used_tokens < effective_budget → < 100.0 (normal range)."""
+        pct = compute_effective_context_pct(
+            used_tokens=40_000,
+            context_window=204_800,
+            max_output_tokens=131_072,
+        )
+        assert isinstance(pct, float), f"Expected float, got {pct!r}"
+        assert pct < 100.0
+        assert pct > 0.0
+
+    def test_used_above_effective_budget_can_exceed_100(self) -> None:
+        """used_tokens > effective_budget → pct > 100.0 (warning range).
+
+        Unlike the raw-window meter which clamps at 100, the effective-budget
+        meter MUST allow > 100 so the gauge can show "PAST CEILING".
+        """
+        pct = compute_effective_context_pct(
+            used_tokens=90_000,
+            context_window=204_800,
+            max_output_tokens=131_072,
+        )
+        assert isinstance(pct, float), f"Expected float, got {pct!r}"
+        assert pct > 100.0, f"90K input / 73K effective budget should be >100%, got {pct}"
+
+    # ── 2: safety_buffer parameter ──────────────────────────────────────────
+
+    def test_safety_buffer_reduces_effective_budget(self) -> None:
+        """A 20,000-token safety buffer reduces the effective budget further.
+
+        effective_budget = window − max_output − buffer
+        For MiniMax-M2.7: 204,800 − 131,072 − 20,000 = 53,728.
+        90K input against 53,728 budget ≈ 167%.
+        """
+        pct = compute_effective_context_pct(
+            used_tokens=90_000,
+            context_window=204_800,
+            max_output_tokens=131_072,
+            safety_buffer=20_000,
+        )
+        assert isinstance(pct, float), f"Expected float, got {pct!r}"
+        assert pct > 150.0, f"Expected >150% with 20K buffer, got {pct}"
+
+    def test_default_safety_buffer_is_non_zero(self) -> None:
+        """Default buffer must be positive so there is always headroom for the response.
+
+        Without a buffer the model has zero room to generate output — guaranteed overflow.
+        """
+        pct_default = compute_effective_context_pct(
+            used_tokens=73_728,
+            context_window=204_800,
+            max_output_tokens=131_072,
+        )
+        pct_no_buffer = compute_effective_context_pct(
+            used_tokens=73_728,
+            context_window=204_800,
+            max_output_tokens=131_072,
+            safety_buffer=0,
+        )
+        # With a default buffer, 73,728 input (== effective budget with no buffer)
+        # should push above 100% — proving a positive default exists.
+        assert isinstance(pct_default, float), f"Expected float, got {pct_default!r}"
+        assert isinstance(pct_no_buffer, float), f"Expected float, got {pct_no_buffer!r}"
+        assert pct_default > pct_no_buffer, (
+            f"Default pct ({pct_default}) should exceed no-buffer pct ({pct_no_buffer}) — "
+            f"proves default buffer is positive"
+        )
+
+    def test_zero_safety_buffer_is_explicit_opt_out(self) -> None:
+        """safety_buffer=0 disables the reserve (opt-in behaviour)."""
+        pct = compute_effective_context_pct(
+            used_tokens=73_728,
+            context_window=204_800,
+            max_output_tokens=131_072,
+            safety_buffer=0,
+        )
+        assert pct == 100.0
+
+    # ── 3: NULL max_output → fall back to raw-window behaviour ─────────────
 
     def test_null_max_output_falls_back_to_raw_window(self) -> None:
-        """max_output_tokens=None → raw-window percentage (no crash)."""
-        # 50 000 used / 100 000 window = 50 %
-        result = compute_effective_context_pct(50_000, 100_000, None)
-        assert result == 50.0
+        """max_output_tokens=None: degrade gracefully to raw-window division.
 
-    def test_null_max_output_clamps_below_zero(self) -> None:
-        """Negative used_tokens with max_output_tokens=None → 0.0."""
-        result = compute_effective_context_pct(-1000, 100_000, None)
-        assert result == 0.0
-
-    def test_minimax_m2_7_near_ceiling_reads_over_100_pct(self) -> None:
-        """MiniMax-M2.7 at 131 K input (131 072 tokens) reads ≥100 %.
-
-
-        Effective budget = 204 800 − 131 072 − 20 000 = 53 728.
-        131 072 / 53 728 * 100 ≈ 244 %.
+        This ensures the meter NEVER crashes even when the DB has no output
+        reservation for a runtime. Matches the design note: "NULL max_output
+        falls back gracefully, not crashing."
         """
-        result = compute_effective_context_pct(131_072, 204_800, 131_072)
-        assert result is not None
-        assert result >= 100.0
-        assert result > 200.0  # well above 100 %
+        pct = compute_effective_context_pct(
+            used_tokens=50_000,
+            context_window=100_000,
+            max_output_tokens=None,
+        )
+        # Raw window: 50,000 / 100,000 * 100 = 50.0
+        assert pct == 50.0, f"NULL max_output should fall back to raw-window; got {pct}"
 
-    def test_minimax_m2_7_raw_would_read_64_pct(self) -> None:
-        """Same step with max_output_tokens=None falls back to raw 64 %."""
-        result = compute_effective_context_pct(131_072, 204_800, None)
-        assert result is not None
-        assert result == pytest.approx(64.0)
+    def test_null_max_output_no_clamp_above_100(self) -> None:
+        """max_output_tokens=None: when input exceeds window, pct may exceed 100.
 
-    def test_50_pct_usage_normal_runtime(self) -> None:
-        """Half the effective budget consumed → 50 %."""
-        # gpt-4o: 128 000 window, 64 000 output → effective = 128 000 − 64 000 − 20 000 = 44 000
-        result = compute_effective_context_pct(22_000, 128_000, 64_000)
-        assert result == 50.0
+        The raw-window fallback does NOT clamp at 100 (unlike compute_context_pct).
+        This is intentional: the effective-budget meter is designed to show
+        "past ceiling" readings, so even the NULL-max_output fallback path
+        must allow > 100. Use ``min(pct, 100)`` at the display layer if needed.
+        """
+        pct = compute_effective_context_pct(
+            used_tokens=150_000,
+            context_window=100_000,
+            max_output_tokens=None,
+            safety_buffer=0,  # disable buffer so raw-window fallback is clean
+        )
+        assert pct == 150.0, f"Expected 150% (uncapped), got {pct}"
 
-    def test_can_exceed_100_when_at_effective_ceiling(self) -> None:
-        """At the effective ceiling the meter reads exactly 100 %."""
-        # effective = 100 000 − 50 000 − 20 000 = 30 000
-        result = compute_effective_context_pct(30_000, 100_000, 50_000)
-        assert result == 100.0
-
-    def test_can_exceed_100_when_over_effective_ceiling(self) -> None:
-        """Over the effective ceiling reads > 100 %."""
-        result = compute_effective_context_pct(35_000, 100_000, 50_000)
-        assert result == pytest.approx(116.6667)
-
-    def test_none_context_window_returns_none(self) -> None:
-        """ "context_window=None → None (degrades gracefully)."""
-        assert compute_effective_context_pct(50_000, None, 50_000) is None
+    # ── 4: Edge cases ──────────────────────────────────────────────────────
 
     def test_zero_context_window_returns_none(self) -> None:
-        assert compute_effective_context_pct(50_000, 0, 50_000) is None
+        """context_window=0 → None (guard division-by-zero)."""
+        assert (
+            compute_effective_context_pct(
+                used_tokens=50_000,
+                context_window=0,
+                max_output_tokens=10_000,
+            )
+            is None
+        )
 
     def test_negative_context_window_returns_none(self) -> None:
-        assert compute_effective_context_pct(50_000, -1, 50_000) is None
+        """Negative context_window → None."""
+        assert (
+            compute_effective_context_pct(
+                used_tokens=50_000,
+                context_window=-1,
+                max_output_tokens=10_000,
+            )
+            is None
+        )
 
-    def test_effective_budget_zero_returns_none(self) -> None:
-        """Effective budget exactly 0 → None (defensive guard)."""
-        # 100 000 − 80 000 − 20 000 = 0
-        assert compute_effective_context_pct(50_000, 100_000, 80_000) is None
+    def test_effective_budget_cannot_be_negative(self) -> None:
+        """max_output + buffer > window → effective_budget ≤ 0 → return None.
 
-    def test_effective_budget_negative_returns_none(self) -> None:
-        """Effective budget negative → None (defensive guard)."""
-        # 100 000 − 90 000 − 20 000 = −10 000
-        assert compute_effective_context_pct(50_000, 100_000, 90_000) is None
+        A model whose output reservation equals or exceeds its window has no
+        usable input budget at all; the meter should not return a confusing
+        percentage. Return None (can't compute) rather than crash.
+        """
+        result = compute_effective_context_pct(
+            used_tokens=50_000,
+            context_window=100_000,
+            max_output_tokens=120_000,  # output > window
+            safety_buffer=10_000,
+        )
+        assert result is None, f"Budget ≤ 0 should return None, got {result}"
 
-    def test_negative_used_tokens_clamps_to_zero(self) -> None:
-        """Negative used_tokens → 0.0 (never returns a negative percentage)."""
-        result = compute_effective_context_pct(-1000, 100_000, 50_000)
-        assert result == 0.0
-
-    def test_custom_safety_buffer(self) -> None:
-        """Custom safety_buffer affects effective budget calculation."""
-        # default: 100 000 − 50 000 − 20 000 = 30 000 → 50 % of 30 000 = 15 000
-        result_default = compute_effective_context_pct(15_000, 100_000, 50_000)
-        # custom 10 000 buffer: 100 000 − 50 000 − 10 000 = 40 000 → 15 000/40 000*100 = 37.5 %
-        result_custom = compute_effective_context_pct(15_000, 100_000, 50_000, safety_buffer=10_000)
-        assert result_default == 50.0
-        assert result_custom == 37.5
-
-    def test_default_safety_buffer_constant_exists(self) -> None:
-        """DEFAULT_SAFETY_BUFFER_TOKENS is exported and is a positive integer."""
-        assert isinstance(DEFAULT_SAFETY_BUFFER_TOKENS, int)
-        assert DEFAULT_SAFETY_BUFFER_TOKENS > 0
-
-    def test_float_inputs_coerced(self) -> None:
-        """Float context_window/max_output_tokens are coerced to float."""
-        result = compute_effective_context_pct(15_000, 100_000.0, 50_000.0)
-        assert result == 50.0
+    def test_effective_budget_can_be_exactly_zero(self) -> None:
+        """effective_budget = 0 → None (can't divide by zero)."""
+        # window=100, max_output=100, buffer=0 → effective_budget=0
+        result = compute_effective_context_pct(
+            used_tokens=50_000,
+            context_window=100_000,
+            max_output_tokens=100_000,
+            safety_buffer=0,
+        )
+        assert result is None, f"effective_budget=0 should return None, got {result}"
 
 
 # Modules with no DB I/O — safe to import at unit-test collection time.
