@@ -17,6 +17,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+from orch.daemon.scope_overlap import globs_intersect  # noqa: E402
 from orch.design_doc_parser import strip_excluded_sections
 
 logger = logging.getLogger("iw-ai-core.batch_planner")
@@ -205,9 +206,9 @@ def analyze_dependencies(
     # Phase 3: File overlap detection (intra-batch)
     for i, id_a in enumerate(item_ids):
         for id_b in item_ids[i + 1 :]:
-            files_a = set(analysis[id_a].affected_files)
-            files_b = set(analysis[id_b].affected_files)
-            overlap = files_a & files_b
+            files_a = list(analysis[id_a].affected_files)
+            files_b = list(analysis[id_b].affected_files)
+            overlap = globs_intersect(files_a, files_b)
             if overlap:
                 analysis[id_a].overlap_with.append(id_b)
                 analysis[id_b].overlap_with.append(id_a)
@@ -229,7 +230,7 @@ def analyze_dependencies(
             active_batch_id = active.get("batch_id", "?")
             active_item_id = active.get("id", "?")
             for iid in item_ids:
-                overlap = set(analysis[iid].affected_files) & active_files
+                overlap = globs_intersect(list(analysis[iid].affected_files), list(active_files))
                 if overlap:
                     analysis[iid].cross_batch_conflicts.append(
                         (active_batch_id, active_item_id, sorted(overlap))
