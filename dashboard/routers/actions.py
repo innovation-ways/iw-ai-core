@@ -891,9 +891,9 @@ async def create_batch_from_selection(
 
     def _build_plan() -> tuple[Any, Any, Any, Any]:
         _analysis = analyze_dependencies(items_data, active_items_data)
-        _md = generate_execution_plan_md(batch_id, _analysis, 4)
-        _drawio = generate_drawio(batch_id, _analysis, 4)
-        _png = generate_png(batch_id, _analysis, 4)
+        _md = generate_execution_plan_md(batch_id, _analysis, batch.max_parallel)
+        _drawio = generate_drawio(batch_id, _analysis, batch.max_parallel)
+        _png = generate_png(batch_id, _analysis, batch.max_parallel)
         return _analysis, _md, _drawio, _png
 
     analysis, plan_md, plan_drawio, plan_png = await _asyncio.to_thread(_build_plan)
