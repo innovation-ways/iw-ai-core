@@ -142,9 +142,9 @@
             {% endif %}
           </td>
           <td class="px-4 py-2 min-w-[90px]">
-            {% set ctx_peak = step.context_tokens_peak %}
-            {% set ctx_window = step.context_window_tokens %}
-            {% set ctx_eff_pct = step.context_effective_pct %}
+            {% set ctx_peak = step.context_tokens_peak | default(none) %}
+            {% set ctx_window = step.context_window_tokens | default(none) %}
+            {% set ctx_eff_pct = step.context_effective_pct | default(none) %}
             {% if ctx_peak is not none %}
               {% if ctx_window %}
                 {# I-00105 S05: use precomputed effective-budget percentage; bar width clamps to 100% but label may read ≥100% #}

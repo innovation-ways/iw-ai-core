@@ -1,6 +1,0 @@
-{
-  "item_id": "CR-00072",
-  "bottom_line": "Item ran cleanly — 11 of 12 steps passed on first run, 1 fix cycle on a gitleaks false positive (informational only). No process improvements warranted.",
-  "coverage_notes": "S01_run1.log and S01_run2.log are 0 bytes (no per-run log captured; summary in S01_run4.log). S08 (414 KB) and S09 (431 KB) sampled with tail -500; no errors. S10 (86 KB) tail confirmed. S02 (1.9 KB) and S03 (2 KB) read in full. S11 fix log (807 bytes) read in full. DB telemetry: full (DB:UP). Step reports at ai-dev/active/CR-00072/reports/ used as secondary evidence.",
-  "findings": []
-}

@@ -166,6 +166,32 @@ class DaemonConfig:
     opencode_port: int = 4096
     opencode_bin: str = "opencode"
 
+    # ── S07 / I-00105: tool-output cap + context-overflow detection ──────────
+    # Per-tool-output cap: write oversized results to disk and return a preview.
+    # Order of magnitude of Claude Code's 30 KB Bash cap (R-00078).
+    tool_output_cap_bytes: int = 25 * 1024  # 25 KB default
+
+    # Safety buffer subtracted from context window when computing the effective
+    # input budget (window − max_output − buffer).  Default 20 K matches opencode's
+    # convention (R-00078).
+    effective_budget_safety_buffer_tokens: int = 20_000
+
+    # Fraction of the effective budget at which proactive compaction fires.
+    # R-00078 §"Proactive compaction at ~70–80%": fire at ~75% of effective budget.
+    # Value is a float multiplier: 0.75 = 75%.
+    compaction_threshold_fraction: float = 0.75
+
+    # Context-overflow detection: whether to fail a step when overflow is detected
+    # but step-done was not called.  Default True (clean failure per AC4).
+    fail_on_context_overflow: bool = True
+
+    # For runtimes that expose a compaction-threshold setting, set this env-var
+    # name in the runtime-specific section below.  None means not controllable.
+    # Current known: claude → BASH_MAX_OUTPUT_LENGTH (Claude Code Bash cap, not the
+    # compaction threshold itself — opencode is the one that exposes
+    # CONTEXT_WINDOW − OUTPUT − BUFFER as a calibrated threshold).
+    runtime_compaction_env_var: str | None = None  # None = not controllable for all runtimes
+
 
 def _parse_truthy(value: str) -> bool:
     """Return True for truthy env-var values, False otherwise."""
@@ -209,4 +235,16 @@ def load_config() -> DaemonConfig:
         evidence_max_bytes=int(os.environ.get("IW_CORE_EVIDENCE_MAX_BYTES", str(5 * 1024 * 1024))),
         opencode_port=int(os.environ.get("IW_CORE_OPENCODE_PORT", "4096")),
         opencode_bin=os.environ.get("IW_CORE_OPENCODE_BIN", "opencode"),
+        # S07 / I-00105: tool-output cap + context-overflow detection
+        tool_output_cap_bytes=int(os.environ.get("IW_CORE_TOOL_OUTPUT_CAP_BYTES", str(25 * 1024))),
+        effective_budget_safety_buffer_tokens=int(
+            os.environ.get("IW_CORE_EFFECTIVE_BUDGET_SAFETY_BUFFER_TOKENS", "20000")
+        ),
+        compaction_threshold_fraction=float(
+            os.environ.get("IW_CORE_COMPACTION_THRESHOLD_FRACTION", "0.75")
+        ),
+        fail_on_context_overflow=_parse_truthy(
+            os.environ.get("IW_CORE_FAIL_ON_CONTEXT_OVERFLOW", "true")
+        ),
+        runtime_compaction_env_var=os.environ.get("IW_CORE_RUNTIME_COMPACTION_ENV_VAR"),
     )

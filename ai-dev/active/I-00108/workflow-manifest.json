@@ -1,0 +1,110 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00108",
+  "type": "Issue",
+  "title": "doc-update new-doc without --tier/--editorial-category should be exit 2 usage error, not exit 3 TypeError",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/cli/doc_commands.py",
+      "tests/integration/cli/test_doc_update_contract.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Backend: in orch/cli/doc_commands.py doc_update, add a pre-check that runs BEFORE svc.upsert_doc — if svc.get_doc(project_id, doc_id) returns None (new-doc path) AND (tier is None OR editorial_category is None) → output_error(ctx, '<clear usage message naming the two missing flags>', 2) so no TypeError ever escapes from DocService.create_doc(). The update path (doc already exists) MUST remain unchanged — tier/editorial-category stay optional there. Do not edit DocService, do not change the Click signature. Pre-check uses the existing `svc.get_doc` already called for the old_content_hash lookup — reorder if needed, but no new DocService method.",
+      "prompt": "prompts/I-00108_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01: pre-check is in the CLI layer (not in DocService); the update path is verifiably unchanged (no extra branches triggered when get_doc returns a doc); the error message names both flags; exit code 2 (not 3); no orch/ production code outside orch/cli/doc_commands.py touched.",
+      "prompt": "prompts/I-00108_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Tests: (a) remove the @pytest.mark.xfail(strict=True) marker from test_doc_update_new_doc_without_tier_is_clean_usage_error in tests/integration/cli/test_doc_update_contract.py — the test now passes GREEN; (b) add test_doc_update_existing_doc_update_without_tier_succeeds — seeds an existing ProjectDoc, runs doc-update without --tier/--editorial-category, asserts exit 0 (update path optional flags preserved); (c) add test_doc_update_new_doc_with_tier_and_category_succeeds — runs doc-update for a NEW doc with all required flags, asserts exit 0 and the ProjectDoc row was created. All in-process via CliRunner against the testcontainer db_session. Targeted verification only: run `uv run pytest tests/integration/cli/test_doc_update_contract.py -v --no-cov` — do NOT call make test-integration or make test-unit.",
+      "prompt": "prompts/I-00108_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S03: xfail marker removed (the test now asserts the GREEN contract directly); both regression tests assert SEMANTIC correctness (specific exit codes, specific stderr substrings, DB row state) — not just shape; no full-suite test runs in the step.",
+      "prompt": "prompts/I-00108_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent review of S01..S04: AC1 (exit 2 + clear stderr + no DB row created) and AC2 (xfail removed, both regression tests green) verified end-to-end. Scope check: git diff origin/main is limited to orch/cli/doc_commands.py + tests/integration/cli/test_doc_update_contract.py. Full unit + integration suites run.",
+      "prompt": "prompts/I-00108_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests — runs the doc-update contract tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scanning (gitleaks)"
+    },
+    {
+      "step": "S14",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00108_S14_SelfAssess_prompt.md"
+    }
+  ]
+}
