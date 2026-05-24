@@ -1,0 +1,103 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00107",
+  "type": "Issue",
+  "title": "daemon reload does not apply .iw-orch.json changes for an already-running project",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/main.py",
+      "orch/daemon/project_registry.py",
+      "tests/unit/daemon/test_daemon_config_reload.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Backend: detect .iw-orch.json content drift in ProjectRegistry.reload() and rebuild BatchManager for existing projects in Daemon._reload_projects_if_stale()",
+      "prompt": "prompts/I-00107_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Review S01 (backend)",
+      "prompt": "prompts/I-00107_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Tests: reproduction + regression coverage for the daemon-reload refresh path",
+      "prompt": "prompts/I-00107_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 (tests)",
+      "prompt": "prompts/I-00107_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-agent review of S01..S04",
+      "prompt": "prompts/I-00107_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00107_S13_SelfAssess_prompt.md"
+    }
+  ]
+}
