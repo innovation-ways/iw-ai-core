@@ -160,7 +160,17 @@ testpaths = ["tests"]
 #     uv run pytest tests/integration/ -p randomly --randomly-seed=<N> -q
 # Earlier fallback (CR-00048): `-p no:randomly` was in addopts 2026-05-13 → 2026-05-16
 # after 5 fix cycles could not converge; superseded by CR-00055's template-clone strategy.
-addopts = "--import-mode=importlib --cov=orch --cov=dashboard --cov=executor --cov-report=term-missing:skip-covered --cov-report=html:tests/output/coverage/htmlcov --cov-report=xml:tests/output/coverage/coverage.xml --cov-report=json:tests/output/coverage/coverage.json -m 'not browser and not quarantine and not contract_fuzz and not e2e' --strict-markers"
+#
+# Coverage flags (--cov / --cov-report) are intentionally NOT in addopts.
+# History: 2026-05-25 — keeping them here broke every narrow pytest invocation
+# (e.g. `pytest tests/visual/` from a code-review fix prompt), because the
+# global `fail_under = 50` tripped on slices that don't exercise orch/dashboard/executor.
+# That structurally-impossible verification command stalled CR-00082 for 11 review runs
+# and 5 fix cycles. Now coverage is opt-in from the make targets that own
+# full-suite gating: `make test-unit`, `make test-integration`, `make test-parallel`,
+# `make allure-unit`, `make allure-all`. Ad-hoc `pytest <path>` and the dozens of
+# `--no-cov` overrides in narrow targets work as expected without escaping.
+addopts = "--import-mode=importlib -m 'not browser and not quarantine and not contract_fuzz and not e2e' --strict-markers"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
     "smoke: fast critical-path tests; <=15 tests, <=5 critical paths, <60s wall-clock; documented in tests/CLAUDE.md; run via `make smoke`",

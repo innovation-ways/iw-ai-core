@@ -116,6 +116,36 @@ a **CRITICAL** finding in your review result contract with:
 If a command is unavailable (e.g., `make` not found), STOP and raise a blocker.
 Do NOT skip this step or mark it as optional.
 
+## Scope Discipline — Implicitly Allowed Paths (READ BEFORE FLAGGING SCOPE CREEP)
+
+When checking the diff against `workflow-manifest.json` → `scope.allowed_paths`,
+the daemon **also** allows these three paths implicitly (it writes them itself
+during the workflow):
+
+- `ai-dev/active/<ITEM_ID>/**` — the work item's prompts, manifest, design doc
+- `ai-dev/archive/<ITEM_ID>/**` — archived assets
+- `ai-dev/work/<ITEM_ID>/**` — reports, intermediate outputs, logs
+
+Edits under these three paths are **NOT** scope-creep findings, even when the
+manifest doesn't list them. The merge-time scope gate (`executor/scope_gate.py`)
+and the fix-cycle reconciliation (`orch/daemon/fix_cycle.py:_implicit_allows`)
+both whitelist them.
+
+Flagging `ai-dev/work/<ID>/` as scope creep was a recurring failure pattern
+(diagnosed 2026-05-25 from CR-00082's 11-run review thrash). Do not repeat it.
+
+## Test Verification — Coverage Note
+
+When the design's test verification step is a NARROW pytest target (e.g.
+`uv run pytest tests/<module>/ -v`), that command will NOT hit the
+project's coverage gate — coverage is opt-in via the make targets that own
+full-suite gating (`make test-unit`, `make test-integration`, etc.). If a
+prior version of the design embedded `pytest <narrow path>` AND that command
+exits non-zero with a `coverage.exceptions.CoverageException` / "Total
+coverage ... is less than fail_under", the design is referencing a stale
+behaviour. Treat coverage failures on narrow targeted-test runs as a
+project-config bug (not a code defect) and call it out under blockers.
+
 ## Review Checklist
 
 ### 1. Architecture Compliance

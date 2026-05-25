@@ -133,11 +133,21 @@ def _load_allowed_paths(worktree_path: Path, item_id: str) -> list[str]:
     return []
 
 
-def _build_scope_block(allowed: list[str]) -> str:
+def _build_scope_block(allowed: list[str], item_id: str | None = None) -> str:
     """Return the scope section to inject into fix-cycle prompts.
 
     Returns an empty string when allowed_paths is empty (scope enforcement
     disabled for this item — legacy mode).
+
+    When ``item_id`` is provided, the rendered prompt also lists the
+    daemon's implicit-allow patterns (``ai-dev/active/<id>/**``,
+    ``ai-dev/archive/<id>/**``, ``ai-dev/work/<id>/**``) so the agent does
+    NOT mistake them for scope-creep targets and waste cycles deleting
+    legitimate report directories the workflow itself created. The
+    reconciliation logic in ``run_fix_cycle`` already treats these as
+    allowed — this block makes that contract visible to the agent's prompt.
+    (Diagnosed 2026-05-25 during CR-00082 review thrashing where every
+    fix cycle re-flagged ``ai-dev/work/CR-00082/`` as a CRITICAL finding.)
     """
     if not allowed:
         return (
@@ -145,14 +155,25 @@ def _build_scope_block(allowed: list[str]) -> str:
             "(none declared — scope enforcement disabled for this item)\n\n"
         )
     path_lines = "\n".join(f"  {p}" for p in allowed)
+    implicit_block = ""
+    if item_id is not None:
+        implicit = _implicit_allows(item_id)
+        if implicit:
+            implicit_lines = "\n".join(f"  {p}" for p in implicit)
+            implicit_block = (
+                "\nThe following paths are ALSO allowed by daemon convention "
+                "(do NOT flag them as out-of-scope; the workflow itself writes here):\n\n"
+                f"{implicit_lines}\n"
+            )
     return (
         "## Scope (allowed_paths from workflow-manifest.json)\n\n"
         "You MAY only modify files matching these globs:\n\n"
-        f"{path_lines}\n\n"
-        "Edits to files outside this list will block the cycle. If the failing gate\n"
-        "appears to require an out-of-scope edit, do NOT make it — instead document\n"
-        'the required out-of-scope path(s) under "blockers" in your result contract,\n'
-        "and the operator will amend allowed_paths.\n\n"
+        f"{path_lines}\n"
+        f"{implicit_block}\n"
+        "Edits to files outside the combined list will block the cycle. If the\n"
+        "failing gate appears to require an out-of-scope edit, do NOT make it —\n"
+        'instead document the required out-of-scope path(s) under "blockers" in\n'
+        "your result contract, and the operator will amend allowed_paths.\n\n"
     )
 
 
@@ -213,7 +234,7 @@ def run_fix_cycle(
     7. If no violations: return ``FixCycleResult(FixStatus.completed)``.
     """
     allowed = _load_allowed_paths(worktree_path, item_id)
-    scope_block = _build_scope_block(allowed)
+    scope_block = _build_scope_block(allowed, item_id)
 
     prompt = (
         f"# {item_id} {step_id} Fix Cycle {cycle_number}\n\n"
@@ -1913,7 +1934,7 @@ def _generate_fix_prompt(
 
     # I-00082: load scope.allowed_paths and build the scope block to inject.
     allowed = _load_allowed_paths(Path(worktree_path), item_id)
-    scope_block = _build_scope_block(allowed)
+    scope_block = _build_scope_block(allowed, item_id)
 
     # Build the prompt content — QV and browser steps get step-specific prompts
     if step.step_type == StepType.quality_validation:
@@ -2033,6 +2054,14 @@ def _build_qv_fix_prompt_content(
         f"2. **Preserve existing behavior.** Fixes must not break working functionality.\n"
         f"3. **Follow project conventions.** Read `CLAUDE.md` for patterns.\n"
         f"4. **Run the gate command after every fix** to verify resolution.\n"
+        f"5. **Post-edit cross-gate check (MANDATORY before exit).** When the\n"
+        f"   failing gate is NOT lint/format, your edits may still introduce a\n"
+        f"   new ruff violation that the next review run trips on. Before exiting,\n"
+        f"   run `make format-check` and `make lint` and resolve any NEW violation\n"
+        f"   your edits introduced (`uv run ruff format <file>` for format issues;\n"
+        f"   targeted edit for lint). Diagnosed 2026-05-25 from CR-00082 S04's\n"
+        f"   ping-pong between fix cycles where each agent re-broke the gate the\n"
+        f"   previous one fixed.\n"
         f"{escalation}\n\n"
         f"**IMPORTANT**: Do NOT call `iw step-done` or `iw step-fail`. "
         f"Simply apply the fixes and exit. The orchestrator handles the rest.\n"
@@ -2226,12 +2255,29 @@ def _build_fix_prompt_content(
         f"3. **Follow project conventions.** Read `CLAUDE.md` for patterns.\n"
         f"4. **Run tests after every fix.** Ensure no regressions.\n"
         f"{escalation}\n\n"
+        f"## Post-Edit Gate (MANDATORY before exit)\n\n"
+        f"After your final edit, run these two commands and fix any NEW violation\n"
+        f"your edits introduced:\n\n"
+        f"```bash\n"
+        f"make format-check\n"
+        f"make lint\n"
+        f"```\n\n"
+        f"If either command reports a violation in a file you touched this cycle,\n"
+        f"resolve it before exiting — `uv run ruff format <file>` for format-check\n"
+        f"failures, targeted edit for lint failures. Re-run both commands to confirm\n"
+        f"green. The next review run WILL fail on these gates and burn another fix\n"
+        f"cycle, so closing them now is strictly cheaper.\n\n"
+        f"(Diagnosed 2026-05-25: in CR-00082 S04, cycle N reformatted "
+        f"`playwright_wrapper.py` while cycle N+1 introduced a new line-length\n"
+        f"violation in the same file; the loop never converged because no fix\n"
+        f"agent self-checked these gates. This gate exists to break that loop.)\n\n"
         f"## Instructions\n\n"
         f"1. Walk through the Pre-fix Procedure above before editing any file\n"
         f"2. Apply the minimum changes needed to align code with the spec and "
         f"resolve each finding\n"
         f"3. Run tests to verify no regressions\n"
-        f"4. Exit when done — the daemon will detect completion and re-run the review\n\n"
+        f"4. Run the Post-Edit Gate above and resolve any NEW violations\n"
+        f"5. Exit when done — the daemon will detect completion and re-run the review\n\n"
         f"**IMPORTANT**: Do NOT call `iw step-done` or `iw step-fail`. "
         f"Simply apply the fixes and exit. The orchestrator handles the rest.\n"
     )
