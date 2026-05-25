@@ -1,0 +1,112 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00087",
+  "type": "ChangeRequest",
+  "title": "Auto-amend scope violations matching per-project allow-patterns",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/project_registry.py",
+      "orch/daemon/scope_amendment.py",
+      "orch/daemon/scope_overlap.py",
+      "orch/daemon/fix_cycle.py",
+      "docs/IW_AI_Core_Daemon_Design.md",
+      ".iw-orch.json",
+      "tests/unit/daemon/test_project_registry_auto_amend_scope.py",
+      "tests/unit/daemon/test_scope_amendment.py",
+      "tests/unit/test_fix_cycle.py",
+      "tests/integration/test_scope_amend_endpoints.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "step_type": "implementation",
+      "description": "Parse auto_amend_scope from .iw-orch.json in orch/daemon/project_registry.py; add ProjectConfig.auto_amend_allow_patterns and auto_amend_max_paths fields with malformed-input tolerance",
+      "prompt": "prompts/CR-00087_S01_BackendImpl_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "backend-impl",
+      "step_type": "implementation",
+      "description": "Add pure should_auto_amend(violations, allow_patterns, max_paths) helper to orch/daemon/scope_amendment.py reusing the violation-detector matcher (_scope_match from orch/daemon/fix_cycle.py) for semantic consistency",
+      "prompt": "prompts/CR-00087_S02_BackendImpl_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "step_type": "implementation",
+      "description": "Hook auto-amend inline into orch/daemon/fix_cycle.py:_complete_fix_cycle after the escalation branch; emit scope_auto_amended event, create new StepRun, set step to pending. Update docs/IW_AI_Core_Daemon_Design.md and .iw-orch.json example (commented-out block).",
+      "prompt": "prompts/CR-00087_S03_BackendImpl_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "tests-impl",
+      "step_type": "implementation",
+      "description": "Extend tests/integration/test_scope_amend_endpoints.py with positive + negative auto-amend integration tests covering manifest update, both events emitted, StepRun creation, step transition, and no-match fallback",
+      "prompt": "prompts/CR-00087_S04_TestsImpl_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent code review of all implementation work in S01-S04",
+      "prompt": "prompts/CR-00087_S05_CodeReview_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Cross-agent final review of all changes for consistency, integration correctness, completeness",
+      "prompt": "prompts/CR-00087_S06_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint (Ruff + node --check + template check)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "format",
+      "command": "make format",
+      "description": "QV: Format check (Ruff)"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type check (mypy)"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests (no testcontainers)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests (PostgreSQL testcontainer)"
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00087_S12_SelfAssess_prompt.md"
+    }
+  ]
+}

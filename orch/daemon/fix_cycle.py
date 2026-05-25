@@ -37,6 +37,7 @@ from orch.db.models import (
     StepType,
     WorkflowStep,
     WorkItem,
+    WorkItemStatus,
 )
 
 if TYPE_CHECKING:
@@ -56,10 +57,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _scope_match(path: str, pattern: str) -> bool:
-    """Mirror of executor/scope_gate.py:_matches().
+def scope_match(path: str, pattern: str) -> bool:
+    """Mirror of executor/scope_gate.py:_matches() — public name.
 
-    Do NOT import from executor/ — that script must remain self-contained.
     Pattern syntax:
       - "path/to/file.py"  — exact match
       - "dir/**"           — directory itself or any path below
@@ -236,7 +236,7 @@ def run_fix_cycle(
     if allowed:
         implicit = _implicit_allows(item_id)
         violations = [
-            p for p in agent_touched if not any(_scope_match(p, pat) for pat in allowed + implicit)
+            p for p in agent_touched if not any(scope_match(p, pat) for pat in allowed + implicit)
         ]
     else:
         # No scope declared — skip reconciliation (legacy mode)
@@ -1090,7 +1090,7 @@ def _complete_fix_cycle(
                 violations = [
                     p
                     for p in agent_touched
-                    if not any(_scope_match(p, pat) for pat in allowed + implicit)
+                    if not any(scope_match(p, pat) for pat in allowed + implicit)
                 ]
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
@@ -1147,6 +1147,16 @@ def _complete_fix_cycle(
                     step_id,
                     cycle.cycle_number,
                     violations,
+                )
+                _try_auto_amend_after_escalation(
+                    db,
+                    project_id,
+                    project_config,
+                    cycle,
+                    step,
+                    violations,
+                    worktree_path,
+                    now,
                 )
                 return  # Do NOT advance the step — operator must intervene
 
@@ -2574,8 +2584,107 @@ def _emit_event(
     db.add(event)
 
 
+def _try_auto_amend_after_escalation(
+    db: Session,
+    project_id: str,
+    project_config: ProjectConfig | None,
+    cycle: FixCycle,
+    step: WorkflowStep,
+    violations: list[str],
+    worktree_path: Path,
+    _now: datetime,  # noqa: ARG001 future-facing signature; no-op for now
+) -> bool:
+    """If the project's auto-amend policy allows, apply scope amend inline.
+
+    Called *after* the escalation commit so the audit trail
+    (``scope_violation_escalation``) is preserved regardless of whether
+    auto-amend fires. Returns True when the amend ran, False when it was
+    skipped (config absent, no-match, or over budget).
+
+    All DB mutations (new StepRun, step status flip, item status flip, event
+    emit) are committed inside this helper.
+    """
+    # Short-circuit: no config means backward-compat (skip)
+    if project_config is None:
+        return False
+
+    # Evaluate the policy gate
+    allow_patterns = list(project_config.auto_amend_allow_patterns or [])
+    max_paths = project_config.auto_amend_max_paths
+
+    # Import here to avoid a module-level cycle (deferred import, safe).
+    from orch.daemon.scope_amendment import amend_allowed_paths, should_auto_amend
+
+    if not should_auto_amend(violations, allow_patterns, max_paths):
+        return False
+
+    item_id = step.work_item_id
+    step_id = step.step_id
+
+    # Apply the manifest amendment (worktree + parent)
+    amend_result = amend_allowed_paths(worktree_path, item_id, violations)
+
+    # Emit the scope_auto_amended audit event
+    _emit_event(
+        db,
+        project_id,
+        "scope_auto_amended",
+        item_id,
+        "work_item",
+        (
+            f"Auto-amended scope for {step_id} (cycle {cycle.cycle_number}): "
+            f"added {len(violations)} path(s) matching project patterns"
+        ),
+        {
+            "step_id": step_id,
+            "cycle_number": cycle.cycle_number,
+            "added_paths": violations,
+            "manifests_updated": [str(p) for p in amend_result.manifests_updated],
+            "matched_patterns": allow_patterns,
+        },
+    )
+    # Mirror scope_amend_and_restart from dashboard/routers/actions.py
+    last_run = (
+        db.query(StepRun)
+        .filter(StepRun.step_id == step.id)
+        .order_by(StepRun.run_number.desc())
+        .first()
+    )
+    new_run = StepRun(
+        step_id=step.id,
+        run_number=(last_run.run_number + 1) if last_run else 1,
+        status=RunStatus.pending,
+        command=last_run.command if last_run else None,
+        worktree_path=last_run.worktree_path if last_run else None,
+        cli_tool=last_run.cli_tool if last_run else None,
+        timeout_secs=last_run.timeout_secs if last_run else None,
+    )
+    db.add(new_run)
+
+    step.status = StepStatus.pending
+    step.started_at = None
+    step.completed_at = None
+
+    item = db.query(WorkItem).filter_by(project_id=step.project_id, id=step.work_item_id).first()
+    if item is not None and item.status == WorkItemStatus.failed:
+        item.status = WorkItemStatus.in_progress
+
+    db.commit()
+    logger.info(
+        "[%s] Auto-amended scope for %s/%s cycle %d: added %d path(s) matching patterns %s",
+        project_id,
+        item_id,
+        step_id,
+        cycle.cycle_number,
+        len(violations),
+        allow_patterns,
+    )
+    return True
+
+
 def _parse_and_store_fix_summary(cycle: Any) -> None:
-    """Read fix_summary from the fix agent's JSON log file and store it on the cycle.
+    """ "Read fix_summary from the fix agent's JSON log file and store it on the cycle.
+
 
     Silently handles all errors (missing key, malformed JSON, file not found) so the
     caller never throws — the fix summary is best-effort only.

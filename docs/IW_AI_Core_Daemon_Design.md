@@ -758,6 +758,26 @@ def _check_batch_completion(self, batch: Batch, items: list[BatchItem]):
     # else: some items still executing — not done yet
 ```
 
+### 4.8.1. Auto-Amend Scope Violations (CR-00087)
+When a fix-cycle agent edits a file outside `scope.allowed_paths`, the daemon marks the cycle `escalated` and emits `scope_violation_escalation` as usual. If the project's `.iw-orch.json` configures an `auto_amend_scope` block with non-empty `auto_allow_patterns`, the daemon evaluates whether every violation matches one of those patterns and whether the total count is within `max_paths`. If so, it auto-amends the manifest and restarts the step inline without waiting for operator input.
+
+**Decision conditions** (all must hold):
+1. `auto_amend_scope.auto_allow_patterns` is non-empty (feature opt-in, default off).
+2. Every violation in `scope_violations` matches at least one pattern — the same `scope_match` algorithm the violation detector uses.
+3. `len(violations) <= max_paths` (or `max_paths` is null).
+
+**Effect**: both `scope_violation_escalation` **and** `scope_auto_amended` events are emitted to preserve a full audit trail. The step is re-queued with a new `StepRun`, its `status` reset to `pending`, and any `WorkItemStatus.failed` parent transitions to `in_progress`. A second `db.commit()` is issued inside the auto-amend helper.
+
+**Configuration** (`.iw-orch.json`, per-project):
+```jsonc
+{
+  "auto_amend_scope": {
+    "auto_allow_patterns": ["tests/**", "**/*.md", "docs/**", "ai-dev/**"],
+    "max_paths": 10
+  }
+}
+```
+
 ---
 
 ## 4.9. Cross-batch Overlap Gate (Configurable)

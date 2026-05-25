@@ -565,3 +565,202 @@ class TestLatestScopeViolation:
         result = latest_scope_violation(db_session, step.id)
 
         assert result is None, f"status=failed (not escalated) must return None; got {result!r}"
+
+
+# ---------------------------------------------------------------------------
+# should_auto_amend tests  (CR-00087 S02)
+# ---------------------------------------------------------------------------
+
+
+class TestShouldAutoAmend:
+    """Unit tests for should_auto_amend — pure logic, no I/O, no DB."""
+
+    def test_should_auto_amend_returns_false_when_allow_patterns_empty(self) -> None:
+        """Feature is off when allow_patterns is empty."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=["tests/unit/test_foo.py"],
+                allow_patterns=[],
+                max_paths=None,
+            )
+            is False
+        )
+
+    def test_should_auto_amend_returns_false_when_violations_empty(self) -> None:
+        """Nothing to amend means nothing to do."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=[],
+                allow_patterns=["tests/**"],
+                max_paths=None,
+            )
+            is False
+        )
+
+    def test_should_auto_amend_returns_true_for_single_matching_violation(self) -> None:
+        """Single violation that matches the allow-pattern -> True."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=["tests/unit/test_foo.py"],
+                allow_patterns=["tests/**"],
+                max_paths=None,
+            )
+            is True
+        )
+
+    def test_should_auto_amend_returns_true_when_all_violations_match(self) -> None:
+        """Every violation matches at least one allow-pattern -> True."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=["tests/unit/test_foo.py", "docs/notes.md"],
+                allow_patterns=["tests/**", "**/*.md"],
+                max_paths=10,
+            )
+            is True
+        )
+
+    def test_should_auto_amend_returns_false_when_any_violation_not_matched(self) -> None:
+        """Partial match — one violation falls outside allow-patterns -> False."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=["tests/unit/test_foo.py", "orch/daemon/fix_cycle.py"],
+                allow_patterns=["tests/**"],
+                max_paths=10,
+            )
+            is False
+        )
+
+    def test_should_auto_amend_returns_false_when_exceeds_max_paths(self) -> None:
+        """Count exceeds max_paths cap -> False."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=["tests/a.py", "tests/b.py", "tests/c.py", "tests/d.py"],
+                allow_patterns=["tests/**"],
+                max_paths=3,
+            )
+            is False
+        )
+
+    def test_should_auto_amend_returns_true_when_at_max_paths(self) -> None:
+        """At-cap is allowed (violations <= max_paths)."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=["tests/a.py"],
+                allow_patterns=["tests/**"],
+                max_paths=1,
+            )
+            is True
+        )
+
+    def test_should_auto_amend_returns_true_for_docs_directory_glob(self) -> None:
+        """dir/** glob covers the directory itself and all paths under it."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=["docs/sub/notes.md"],
+                allow_patterns=["docs/**"],
+                max_paths=None,
+            )
+            is True
+        )
+
+    def test_should_auto_amend_returns_true_for_dashboard_glob(self) -> None:
+        """dashboard/** matches any path under dashboard/."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=["dashboard/static/chat.js"],
+                allow_patterns=["dashboard/**"],
+                max_paths=None,
+            )
+            is True
+        )
+
+    def test_should_auto_amend_returns_false_when_max_paths_zero(self) -> None:
+        """max_paths=0 is a valid cap that no violation list can satisfy."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=["tests/a.py"],
+                allow_patterns=["tests/**"],
+                max_paths=0,
+            )
+            is False
+        )
+
+    def test_should_auto_amend_returns_false_gracefully_for_non_list_violations(self) -> None:
+        """Non-list violations input must not raise — return False."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations="tests/a.py",  # type: ignore[arg-type]
+                allow_patterns=["tests/**"],
+                max_paths=None,
+            )
+            is False
+        )
+
+    def test_should_auto_amend_returns_false_gracefully_for_non_list_allow_patterns(self) -> None:
+        """Non-list allow_patterns input must not raise — return False."""
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        assert (
+            should_auto_amend(
+                violations=["tests/a.py"],
+                allow_patterns="tests/**",  # type: ignore[arg-type]
+                max_paths=None,
+            )
+            is False
+        )
+
+    def test_should_auto_amend_matches_violation_detector_by_construction(self) -> None:
+        """Guard against future matcher drift (CR-00087 AC3).
+
+        For every (violation, pattern) pair used across the test matrix above,
+        should_auto_amend and scope_match must agree.  If someone refactors
+        scope_match in the future, this test will catch any divergence from the
+        auto-amend filter.
+        """
+        from orch.daemon.fix_cycle import scope_match
+        from orch.daemon.scope_amendment import should_auto_amend
+
+        # Pairs from the full test matrix above
+        pairs: list[tuple[str, str]] = [
+            ("tests/unit/test_foo.py", "tests/**"),
+            ("tests/unit/test_foo.py", "tests/**"),
+            ("tests/unit/test_foo.py", "**/*.md"),
+            ("docs/notes.md", "tests/**"),
+            ("docs/notes.md", "**/*.md"),
+            ("orch/daemon/fix_cycle.py", "tests/**"),
+            ("docs/sub/notes.md", "docs/**"),
+            ("dashboard/static/chat.js", "dashboard/**"),
+            ("tests/a.py", "tests/**"),
+            ("tests/a.py", "tests/**"),
+        ]
+
+        for violation, pattern in pairs:
+            auto_result = should_auto_amend([violation], [pattern], None)
+            matcher_result = scope_match(violation, pattern)
+            assert auto_result is matcher_result, (
+                f"Mismatch for violation={violation!r}, pattern={pattern!r}: "
+                f"should_auto_amend={auto_result}, scope_match={matcher_result}. "
+                "Auto-amend filter and violation detector must always agree."
+            )

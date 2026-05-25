@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from orch.daemon.fix_cycle import (
     _FIXABLE_STEP_TYPES,
@@ -17,6 +17,7 @@ from orch.daemon.fix_cycle import (
     _extract_step_section,
     _find_design_doc,
     _get_browser_findings,
+    _try_auto_amend_after_escalation,
     is_spec_mismatch_failure,
 )
 from orch.db.models import RunStatus, StepType
@@ -664,3 +665,61 @@ def test_build_fix_launch_argv_keeps_inner_command_as_single_element() -> None:
     assert argv.count(inner) == 1
     assert argv[2] == inner
     assert all('"$(cat ' not in tok for tok in argv if tok != inner)
+
+
+# ---------------------------------------------------------------------------
+# _try_auto_amend_after_escalation  (CR-00087)
+# ---------------------------------------------------------------------------
+
+
+def test_try_auto_amend_short_circuits_when_project_config_none() -> None:
+    """When project_config is None the feature is off — short-circuit with False.
+
+    No imports from scope_amendment are reached; db is untouched.
+    """
+    mock_db = MagicMock()
+    result = _try_auto_amend_after_escalation(
+        db=mock_db,
+        project_id="TEST",
+        project_config=None,
+        cycle=MagicMock(),
+        step=MagicMock(),
+        violations=["tests/foo_test.py"],
+        worktree_path=Path("/tmp/wt"),
+        _now=MagicMock(),
+    )
+    assert result is False
+    # No DB writes should have occurred
+    assert mock_db.add.call_count == 0
+    assert mock_db.commit.call_count == 0
+
+
+def test_try_auto_amend_short_circuits_when_should_auto_amend_is_false() -> None:
+    """When should_auto_amend returns False the function returns early — no DB writes.
+
+    This covers the empty allow-patterns, over-budget, and partial-match cases.
+    """
+    mock_db = MagicMock()
+    mock_cycle = MagicMock()
+    mock_step = MagicMock()
+
+    fake_config = MagicMock()
+    fake_config.auto_amend_allow_patterns = []  # feature off: empty patterns
+    fake_config.auto_amend_max_paths = None
+
+    with patch("orch.daemon.scope_amendment.should_auto_amend", return_value=False):
+        result = _try_auto_amend_after_escalation(
+            db=mock_db,
+            project_id="TEST",
+            project_config=fake_config,
+            cycle=mock_cycle,
+            step=mock_step,
+            violations=["tests/foo_test.py"],
+            worktree_path=Path("/tmp/wt"),
+            _now=MagicMock(),
+        )
+
+    assert result is False
+    # No DB writes: amend_allowed_paths and new StepRun must not be reached
+    assert mock_db.add.call_count == 0
+    assert mock_db.commit.call_count == 0

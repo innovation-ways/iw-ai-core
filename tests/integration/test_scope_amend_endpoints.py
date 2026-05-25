@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,6 +26,7 @@ from fastapi.testclient import TestClient
 
 from dashboard.app import create_app
 from dashboard.dependencies import get_db
+from orch.daemon.fix_cycle import _complete_fix_cycle
 from orch.db.models import (
     DaemonEvent,
     FixCycle,
@@ -600,3 +603,693 @@ class TestScopeAmendAndRestartEndpoint:
         assert ".gitleaks.toml" in html, (
             f"Modal must contain the offending path as checkbox; got {html[:500]}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Auto-amend integration tests (CR-00087 S04)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _FakeProjectConfig:
+    """Minimal stand-in for ProjectConfig used only in these tests."""
+
+    auto_amend_allow_patterns: list[str] = field(default_factory=list)
+    auto_amend_max_paths: int | None = None
+
+
+class TestAutoAmendFixCycle:
+    """CR-00087 S04: Integration tests for daemon auto-amend inside _complete_fix_cycle.
+
+
+    These tests drive _complete_fix_cycle against a real testcontainer Postgres
+    with a real worktree on disk — no mocks, no stubs, no mocked DB state.
+    The fixture pattern follows the existing test_scope_amend_endpoints.py style.
+    """
+
+    @staticmethod
+    def _write_worktree_with_git(
+        tmp_path: Path,
+        item_id: str,
+        initial_allowed_paths: list[str],
+        pre_cycle_paths: list[str],
+    ) -> tuple[Path, Path]:
+        """Create a real linked git worktree with a parent repo.
+
+        The worktree's ``.git`` file points to the parent so that
+        ``_resolve_parent_manifest`` in scope_amendment.py can find the
+        parent manifest via the gitdir pointer.
+
+        Pre-cycle files are committed to give the worktree a HEAD — this is
+        essential because ``_captured_paths`` uses ``git diff HEAD`` which
+        requires HEAD to exist. The pre-cycle files are part of the committed
+        baseline, so only *new* untracked files (violations) appear in
+        ``git ls-files --others``.
+
+        Violation files should be written to disk WITHOUT running ``git add``
+        so that ``_captured_paths`` picks them up as untracked files.
+
+        Returns (worktree_path, parent_manifest_path).
+        """
+        parent_root = tmp_path / "parent_repos" / item_id
+        parent_root.mkdir(parents=True, exist_ok=True)
+
+        subprocess.run(["git", "init", str(parent_root)], capture_output=True, check=True)
+        subprocess.run(
+            ["git", "-C", str(parent_root), "config", "user.email", "test@test.com"],
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(parent_root), "config", "user.name", "Test"],
+            capture_output=True,
+            check=True,
+        )
+
+        # Write and commit a placeholder in the parent so it has HEAD
+        readme = parent_root / "README"
+        readme.write_text(f"parent for {item_id}\n")
+        subprocess.run(
+            ["git", "-C", str(parent_root), "add", "README"],
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(parent_root), "commit", "-m", "init"],
+            capture_output=True,
+            check=True,
+        )
+
+        # Create the linked worktree on a fresh orphan branch
+        wt = tmp_path / "worktrees" / item_id
+        wt.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "-C", str(parent_root), "worktree", "add", str(wt), "-b", f"wt-{item_id}"],
+            capture_output=True,
+            check=True,
+        )
+
+        # Configure git user in the worktree
+        subprocess.run(
+            ["git", "-C", str(wt), "config", "user.email", "test@test.com"],
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(wt), "config", "user.name", "Test"],
+            capture_output=True,
+            check=True,
+        )
+
+        # Write and COMMIT pre-cycle files (committed = part of baseline)
+        for rel_path in pre_cycle_paths:
+            file_path = wt / rel_path
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(f"initial content of {rel_path}\n")
+            subprocess.run(
+                ["git", "-C", str(wt), "add", rel_path],
+                capture_output=True,
+                check=True,
+            )
+
+        # Write and commit the worktree manifest
+        manifest_dir = wt / "ai-dev" / "active" / item_id
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        manifest_data = {
+            "id": item_id,
+            "type": "Feature",
+            "title": f"Test item {item_id}",
+            "scope": {"allowed_paths": list(initial_allowed_paths)},
+            "steps": [{"step_id": "S01", "status": "pending"}],
+        }
+        manifest_path = manifest_dir / "workflow-manifest.json"
+        manifest_path.write_text(json.dumps(manifest_data, indent=2) + "\n")
+        subprocess.run(
+            ["git", "-C", str(wt), "add", "ai-dev/active"],
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(wt), "commit", "-m", "baseline commit"],
+            capture_output=True,
+            check=True,
+        )
+
+        # Write the parent manifest so _resolve_parent_manifest finds it
+        parent_manifest_dir = parent_root / "ai-dev" / "active" / item_id
+        parent_manifest_dir.mkdir(parents=True, exist_ok=True)
+        parent_manifest_path = parent_manifest_dir / "workflow-manifest.json"
+        parent_manifest_path.write_text(json.dumps(manifest_data, indent=2) + "\n")
+
+        return wt, parent_manifest_path
+
+    def test_complete_fix_cycle_auto_amends_when_all_violations_match(
+        self, db_session: Session, tmp_path: Path
+    ) -> None:
+        """AC2: when every violation matches auto_amend_allow_patterns,
+        _complete_fix_cycle auto-amends, updates both manifests, emits both events,
+        and restarts the step.
+        """
+        item_id = "CR-00087-AUTO-AMEND-POSITIVE"
+        project_id = "test-auto-amend-positive"
+
+        # Project + config: tests/** and **/*.md are auto-approved
+        project = _seed_project(db_session, project_id)
+        initial_allowed = ["src/"]
+        # The only file committed at start
+        pre_cycle = ["src/main.py"]
+        wt, parent_manifest_path = self._write_worktree_with_git(
+            tmp_path, item_id, initial_allowed, pre_cycle
+        )
+        assert parent_manifest_path.exists(), (
+            "Parent manifest must exist so _resolve_parent_manifest finds it"
+        )
+
+        # Simulate agent creating two new untracked files (both match allow-patterns).
+        # DO NOT git add / git commit these — _captured_paths uses git ls-files --others
+        # which only returns files that are genuinely untracked.
+        new_file_1 = wt / "tests" / "unit" / "new_test.py"
+        new_file_1.parent.mkdir(parents=True, exist_ok=True)
+        new_file_1.write_text("def test_new():\n    pass\n")
+        # Leave untracked — do NOT git add or commit
+
+        new_file_2 = wt / "docs" / "notes.md"
+        new_file_2.parent.mkdir(parents=True, exist_ok=True)
+        new_file_2.write_text("# Notes\n")
+        # Leave untracked — do NOT git add or commit
+
+        # Seed WorkItem + WorkflowStep + StepRun + FixCycle
+        item = WorkItem(
+            project_id=project.id,
+            id=item_id,
+            type=WorkItemType.Feature,
+            title=f"CR-00087 test {item_id}",
+            status=WorkItemStatus.in_progress,
+            phase=WorkItemPhase.active,
+            config={},
+            depends_on=[],
+            blocks=[],
+            impacted_paths=[],
+        )
+        db_session.add(item)
+        db_session.flush()
+
+        step = WorkflowStep(
+            project_id=project.id,
+            work_item_id=item.id,
+            step_number=1,
+            step_id="S01",
+            agent_label="test",
+            step_type=StepType.quality_validation,
+            gate="security-secrets",
+            status=StepStatus.needs_fix,
+        )
+        db_session.add(step)
+        db_session.flush()
+
+        last_run = StepRun(
+            step_id=step.id,
+            run_number=1,
+            status=RunStatus.failed,
+            worktree_path=str(wt),
+        )
+        db_session.add(last_run)
+
+        cycle = FixCycle(
+            step_id=step.id,
+            cycle_number=1,
+            status=FixStatus.in_progress,
+            trigger_type=FixTrigger.quality_validation,
+            fix_metadata={
+                "worktree_path": str(wt),
+                "pre_cycle_paths": pre_cycle,
+            },
+        )
+        db_session.add(cycle)
+        db_session.commit()
+
+        # ProjectConfig for this test: auto-approve tests/** and **/*.md
+        cfg = _FakeProjectConfig(
+            auto_amend_allow_patterns=["tests/**", "**/*.md"],
+            auto_amend_max_paths=10,
+        )
+        now = datetime.now(tz=UTC)
+
+        _complete_fix_cycle(db_session, cycle, project_id, now, cfg)
+
+        db_session.expire_all()
+
+        # --- FixCycle is escalated (audit step, as per design notes) ---
+        fc = db_session.get(FixCycle, cycle.id)
+        assert fc is not None, "FixCycle must exist"
+        assert fc.status == FixStatus.escalated, f"FixCycle must be escalated; got {fc.status}"
+        assert isinstance(fc.fix_metadata, dict), "fix_metadata must be a dict"
+        violations = fc.fix_metadata.get("scope_violations", [])
+        assert "tests/unit/new_test.py" in violations, (
+            f"scope_violations must contain tests/unit/new_test.py; got {violations}"
+        )
+        assert "docs/notes.md" in violations, (
+            f"scope_violations must contain docs/notes.md; got {violations}"
+        )
+
+        # --- scope_violation_escalation event (preserved audit trail) ---
+        esc_events = (
+            db_session.query(DaemonEvent)
+            .filter(DaemonEvent.entity_id == item.id)
+            .filter(DaemonEvent.event_type == "scope_violation_escalation")
+            .all()
+        )
+        assert len(esc_events) == 1, (
+            f"Expected 1 scope_violation_escalation event; got {len(esc_events)}"
+        )
+        esc_meta = esc_events[0].event_metadata
+        assert esc_meta.get("step_id") == "S01"
+        assert isinstance(esc_meta.get("scope_violations"), list)
+
+        # --- scope_auto_amended event ---
+        amend_events = (
+            db_session.query(DaemonEvent)
+            .filter(DaemonEvent.entity_id == item.id)
+            .filter(DaemonEvent.event_type == "scope_auto_amended")
+            .all()
+        )
+        assert len(amend_events) == 1, (
+            f"Expected 1 scope_auto_amended event; got {len(amend_events)}"
+        )
+        amend_meta = amend_events[0].event_metadata
+        assert amend_meta.get("step_id") == "S01"
+        assert sorted(amend_meta.get("added_paths", [])) == sorted(
+            [
+                "tests/unit/new_test.py",
+                "docs/notes.md",
+            ]
+        )
+        assert isinstance(amend_meta.get("matched_patterns"), list)
+        assert isinstance(amend_meta.get("manifests_updated"), list)
+
+        # --- Both manifests updated ---
+        wt_manifest_path = wt / "ai-dev" / "active" / item_id / "workflow-manifest.json"
+        wt_data = json.loads(wt_manifest_path.read_text())
+        wt_allowed = wt_data["scope"]["allowed_paths"]
+        assert "tests/unit/new_test.py" in wt_allowed, (
+            f"WT manifest must contain tests/unit/new_test.py; got {wt_allowed}"
+        )
+        assert "docs/notes.md" in wt_allowed, (
+            f"WT manifest must contain docs/notes.md; got {wt_allowed}"
+        )
+
+        assert parent_manifest_path.exists(), "Parent manifest must exist"
+        parent_data = json.loads(parent_manifest_path.read_text())
+        parent_allowed = parent_data["scope"]["allowed_paths"]
+        assert "tests/unit/new_test.py" in parent_allowed, (
+            f"Parent manifest must contain tests/unit/new_test.py; got {parent_allowed}"
+        )
+        assert "docs/notes.md" in parent_allowed, (
+            f"Parent manifest must contain docs/notes.md; got {parent_allowed}"
+        )
+
+        # --- Step transitioned to pending, new StepRun created ---
+        s = db_session.get(WorkflowStep, step.id)
+        assert s is not None, "Step must exist"
+        assert s.status == StepStatus.pending, f"Step must be pending; got {s.status}"
+        assert s.started_at is None, "started_at must be cleared"
+        assert s.completed_at is None, "completed_at must be cleared"
+
+        runs = (
+            db_session.query(StepRun)
+            .filter(StepRun.step_id == step.id)
+            .order_by(StepRun.run_number)
+            .all()
+        )
+        run_numbers = [r.run_number for r in runs]
+        assert run_numbers == [1, 2], f"Expected run_numbers [1, 2]; got {run_numbers}"
+        latest_run = runs[-1]
+        assert latest_run.status == RunStatus.pending, (
+            f"New run must be pending; got {latest_run.status}"
+        )
+
+    # -------------------------------------------------------------------
+    # Negative: violation falls outside allow-patterns → no auto-amend
+    # -------------------------------------------------------------------
+
+    def test_complete_fix_cycle_does_not_auto_amend_when_violation_falls_outside_allow_patterns(
+        self, db_session: Session, tmp_path: Path
+    ) -> None:
+        """AC3: when any violation is outside auto_amend_allow_patterns,
+        _complete_fix_cycle escalated but does NOT auto-amend; step stays needs_fix
+        and no scope_auto_amended event is emitted.
+        """
+        item_id = "CR-00087-AMEND-NEGATIVE-OUT-OF-SCOPE"
+        project_id = "test-auto-amend-negative-oos"
+
+        project = _seed_project(db_session, project_id)
+        initial_allowed = ["src/"]
+        pre_cycle = ["src/main.py"]
+        wt, _ = self._write_worktree_with_git(tmp_path, item_id, initial_allowed, pre_cycle)
+
+        # Agent touches a tests file (matches) AND orch/daemon/fix_cycle.py (does not).
+        # Leave both untracked so _captured_paths picks them up.
+        new_file = wt / "tests" / "unit" / "ok_test.py"
+        new_file.parent.mkdir(parents=True, exist_ok=True)
+        new_file.write_text("def test_ok():\n    pass\n")
+
+        bad_file = wt / "orch" / "daemon" / "fix_cycle.py"
+        bad_file.parent.mkdir(parents=True, exist_ok=True)
+        bad_file.write_text("# rogue edit\n")
+
+        item = WorkItem(
+            project_id=project.id,
+            id=item_id,
+            type=WorkItemType.Feature,
+            title=f"CR-00087 test {item_id}",
+            status=WorkItemStatus.in_progress,
+            phase=WorkItemPhase.active,
+            config={},
+            depends_on=[],
+            blocks=[],
+            impacted_paths=[],
+        )
+        db_session.add(item)
+        db_session.flush()
+
+        step = WorkflowStep(
+            project_id=project.id,
+            work_item_id=item.id,
+            step_number=1,
+            step_id="S01",
+            agent_label="test",
+            step_type=StepType.quality_validation,
+            gate="security-secrets",
+            status=StepStatus.needs_fix,
+        )
+        db_session.add(step)
+        db_session.flush()
+
+        last_run = StepRun(
+            step_id=step.id,
+            run_number=1,
+            status=RunStatus.failed,
+            worktree_path=str(wt),
+        )
+        db_session.add(last_run)
+
+        cycle = FixCycle(
+            step_id=step.id,
+            cycle_number=1,
+            status=FixStatus.in_progress,
+            trigger_type=FixTrigger.quality_validation,
+            fix_metadata={
+                "worktree_path": str(wt),
+                "pre_cycle_paths": pre_cycle,
+            },
+        )
+        db_session.add(cycle)
+        db_session.commit()
+
+        # Config: only tests/** allowed — orch/daemon/* is NOT included
+        cfg = _FakeProjectConfig(
+            auto_amend_allow_patterns=["tests/**"],
+            auto_amend_max_paths=10,
+        )
+        now = datetime.now(tz=UTC)
+
+        _complete_fix_cycle(db_session, cycle, project_id, now, cfg)
+
+        db_session.expire_all()
+
+        # --- FixCycle is escalated ---
+        fc = db_session.get(FixCycle, cycle.id)
+        assert fc is not None
+        assert fc.status == FixStatus.escalated
+        violations = (fc.fix_metadata or {}).get("scope_violations", [])
+        assert "orch/daemon/fix_cycle.py" in violations or "tests/unit/ok_test.py" in violations
+
+        # --- scope_violation_escalation event fired ---
+        esc_events = (
+            db_session.query(DaemonEvent)
+            .filter(DaemonEvent.entity_id == item.id)
+            .filter(DaemonEvent.event_type == "scope_violation_escalation")
+            .all()
+        )
+        assert len(esc_events) == 1, f"Expected 1 scope_violation_escalation; got {len(esc_events)}"
+
+        # --- NO scope_auto_amended event ---
+        amend_events = (
+            db_session.query(DaemonEvent)
+            .filter(DaemonEvent.entity_id == item.id)
+            .filter(DaemonEvent.event_type == "scope_auto_amended")
+            .all()
+        )
+        assert len(amend_events) == 0, (
+            f"Expected NO scope_auto_amended event; got {len(amend_events)}"
+        )
+
+        # --- WT manifest UNCHANGED (no auto-amend ran) ---
+        wt_manifest_path = wt / "ai-dev" / "active" / item_id / "workflow-manifest.json"
+        wt_data = json.loads(wt_manifest_path.read_text())
+        assert "tests/unit/ok_test.py" not in wt_data["scope"]["allowed_paths"], (
+            "Manifest must NOT have been amended"
+        )
+        assert "orch/daemon/fix_cycle.py" not in wt_data["scope"]["allowed_paths"]
+
+        # --- Step stays needs_fix, NO new StepRun ---
+        s = db_session.get(WorkflowStep, step.id)
+        assert s is not None
+        assert s.status == StepStatus.needs_fix, f"Step must remain needs_fix; got {s.status}"
+
+        runs = db_session.query(StepRun).filter(StepRun.step_id == step.id).all()
+        run_numbers = [r.run_number for r in runs]
+        assert run_numbers == [1], f"Expected only run_number 1; got {run_numbers}"
+
+    # -------------------------------------------------------------------
+    # Negative: count exceeds max_paths → no auto-amend
+    # -------------------------------------------------------------------
+
+    def test_complete_fix_cycle_does_not_auto_amend_when_count_exceeds_max_paths(
+        self, db_session: Session, tmp_path: Path
+    ) -> None:
+        """AC4: when violation count exceeds auto_amend_max_paths,
+        _complete_fix_cycle escalates but does NOT auto-amend.
+        """
+        item_id = "CR-00087-AMEND-NEGATIVE-MAX-PATHS"
+        project_id = "test-auto-amend-negative-max"
+
+        project = _seed_project(db_session, project_id)
+        initial_allowed = ["src/"]
+        pre_cycle = ["src/main.py"]
+        wt, _ = self._write_worktree_with_git(tmp_path, item_id, initial_allowed, pre_cycle)
+
+        # Agent creates 3 files all in tests/ (matches allow-pattern, but exceeds max=2).
+        # Leave untracked so _captured_paths picks them up.
+        for i in range(3):
+            f = wt / "tests" / "unit" / f"test_{i}.py"
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(f"def test_{i}():\n    pass\n")
+
+        item = WorkItem(
+            project_id=project.id,
+            id=item_id,
+            type=WorkItemType.Feature,
+            title=f"CR-00087 test {item_id}",
+            status=WorkItemStatus.in_progress,
+            phase=WorkItemPhase.active,
+            config={},
+            depends_on=[],
+            blocks=[],
+            impacted_paths=[],
+        )
+        db_session.add(item)
+        db_session.flush()
+
+        step = WorkflowStep(
+            project_id=project.id,
+            work_item_id=item.id,
+            step_number=1,
+            step_id="S01",
+            agent_label="test",
+            step_type=StepType.quality_validation,
+            gate="security-secrets",
+            status=StepStatus.needs_fix,
+        )
+        db_session.add(step)
+        db_session.flush()
+
+        last_run = StepRun(
+            step_id=step.id,
+            run_number=1,
+            status=RunStatus.failed,
+            worktree_path=str(wt),
+        )
+        db_session.add(last_run)
+
+        cycle = FixCycle(
+            step_id=step.id,
+            cycle_number=1,
+            status=FixStatus.in_progress,
+            trigger_type=FixTrigger.quality_validation,
+            fix_metadata={
+                "worktree_path": str(wt),
+                "pre_cycle_paths": pre_cycle,
+            },
+        )
+        db_session.add(cycle)
+        db_session.commit()
+
+        cfg = _FakeProjectConfig(
+            auto_amend_allow_patterns=["tests/**"],
+            auto_amend_max_paths=2,  # below the 3 created files
+        )
+        now = datetime.now(tz=UTC)
+
+        _complete_fix_cycle(db_session, cycle, project_id, now, cfg)
+
+        db_session.expire_all()
+
+        # --- FixCycle is escalated ---
+        fc = db_session.get(FixCycle, cycle.id)
+        assert fc is not None
+        assert fc.status == FixStatus.escalated
+
+        # --- NOT auto-amended ---
+        amend_events = (
+            db_session.query(DaemonEvent)
+            .filter(DaemonEvent.entity_id == item.id)
+            .filter(DaemonEvent.event_type == "scope_auto_amended")
+            .all()
+        )
+        assert len(amend_events) == 0, (
+            f"Expect NO scope_auto_amended (over max_paths); got {len(amend_events)}"
+        )
+
+        # --- WT manifest unchanged ---
+        wt_manifest_path = wt / "ai-dev" / "active" / item_id / "workflow-manifest.json"
+        wt_data = json.loads(wt_manifest_path.read_text())
+        assert "tests/unit/test_0.py" not in wt_data["scope"]["allowed_paths"], (
+            "Manifest must NOT have been amended when count > max_paths"
+        )
+
+        # --- Step stays needs_fix, no new StepRun ---
+        s = db_session.get(WorkflowStep, step.id)
+        assert s is not None
+        assert s.status == StepStatus.needs_fix
+
+        runs = db_session.query(StepRun).filter(StepRun.step_id == step.id).all()
+        run_numbers = [r.run_number for r in runs]
+        assert run_numbers == [1], f"Expected run_number [1]; got {run_numbers}"
+
+    # -------------------------------------------------------------------
+    # Negative: feature disabled (empty allow_patterns) → no auto-amend
+    # -------------------------------------------------------------------
+
+    def test_complete_fix_cycle_does_not_auto_amend_when_feature_disabled(
+        self, db_session: Session, tmp_path: Path
+    ) -> None:
+        """AC1: when auto_amend_allow_patterns is empty (feature off),
+        _complete_fix_cycle escalates but does NOT auto-amend.
+        This guards backwards compatibility — the critical assertion.
+        """
+        item_id = "CR-00087-AMEND-NEGATIVE-FEATURE-OFF"
+        project_id = "test-auto-amend-disabled"
+
+        project = _seed_project(db_session, project_id)
+        initial_allowed = ["src/"]
+        pre_cycle = ["src/main.py"]
+        wt, _ = self._write_worktree_with_git(tmp_path, item_id, initial_allowed, pre_cycle)
+
+        # Agent creates a tests file (would match if feature were on).
+        # Leave untracked so _captured_paths picks it up.
+        new_file = wt / "tests" / "unit" / "feature_off_test.py"
+        new_file.parent.mkdir(parents=True, exist_ok=True)
+        new_file.write_text("def test_feature_off():\n    pass\n")
+
+        item = WorkItem(
+            project_id=project.id,
+            id=item_id,
+            type=WorkItemType.Feature,
+            title=f"CR-00087 test {item_id}",
+            status=WorkItemStatus.in_progress,
+            phase=WorkItemPhase.active,
+            config={},
+            depends_on=[],
+            blocks=[],
+            impacted_paths=[],
+        )
+        db_session.add(item)
+        db_session.flush()
+
+        step = WorkflowStep(
+            project_id=project.id,
+            work_item_id=item.id,
+            step_number=1,
+            step_id="S01",
+            agent_label="test",
+            step_type=StepType.quality_validation,
+            gate="security-secrets",
+            status=StepStatus.needs_fix,
+        )
+        db_session.add(step)
+        db_session.flush()
+
+        last_run = StepRun(
+            step_id=step.id,
+            run_number=1,
+            status=RunStatus.failed,
+            worktree_path=str(wt),
+        )
+        db_session.add(last_run)
+
+        cycle = FixCycle(
+            step_id=step.id,
+            cycle_number=1,
+            status=FixStatus.in_progress,
+            trigger_type=FixTrigger.quality_validation,
+            fix_metadata={
+                "worktree_path": str(wt),
+                "pre_cycle_paths": pre_cycle,
+            },
+        )
+        db_session.add(cycle)
+        db_session.commit()
+
+        # Config: feature OFF — empty allow_patterns
+        cfg = _FakeProjectConfig(
+            auto_amend_allow_patterns=[],  # feature disabled
+            auto_amend_max_paths=None,
+        )
+        now = datetime.now(tz=UTC)
+
+        _complete_fix_cycle(db_session, cycle, project_id, now, cfg)
+
+        db_session.expire_all()
+
+        # --- FixCycle is escalated ---
+        fc = db_session.get(FixCycle, cycle.id)
+        assert fc is not None
+        assert fc.status == FixStatus.escalated
+
+        # --- NO scope_auto_amended event ---
+        amend_events = (
+            db_session.query(DaemonEvent)
+            .filter(DaemonEvent.entity_id == item.id)
+            .filter(DaemonEvent.event_type == "scope_auto_amended")
+            .all()
+        )
+        assert len(amend_events) == 0, (
+            f"Expect NO scope_auto_amended when feature disabled; got {len(amend_events)}"
+        )
+
+        # --- WT manifest unchanged ---
+        wt_manifest_path = wt / "ai-dev" / "active" / item_id / "workflow-manifest.json"
+        wt_data = json.loads(wt_manifest_path.read_text())
+        assert "tests/unit/feature_off_test.py" not in wt_data["scope"]["allowed_paths"], (
+            "Manifest must NOT have been amended when feature is disabled"
+        )
+
+        # --- Step stays needs_fix, no new StepRun ---
+        s = db_session.get(WorkflowStep, step.id)
+        assert s is not None
+        assert s.status == StepStatus.needs_fix
+
+        runs = db_session.query(StepRun).filter(StepRun.step_id == step.id).all()
+        run_numbers = [r.run_number for r in runs]
+        assert run_numbers == [1], f"Expected run_number [1]; got {run_numbers}"

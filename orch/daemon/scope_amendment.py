@@ -204,6 +204,48 @@ def latest_scope_violation(db: Session, step_id: int) -> list[str] | None:
 # ---------------------------------------------------------------------------
 
 
+def should_auto_amend(
+    violations: list[str],
+    allow_patterns: list[str],
+    max_paths: int | None,
+) -> bool:
+    """Return True when an auto-amend should fire for these violations.
+
+    Returns True only when ALL of:
+      1. allow_patterns is non-empty (feature off when empty);
+      2. violations is non-empty (nothing to amend means nothing to do);
+      3. max_paths is None OR len(violations) <= max_paths;
+      4. EVERY violation in ``violations`` matches at least one pattern in
+         ``allow_patterns`` via ``scope_match`` from ``orch.daemon.fix_cycle``
+         — the SAME matcher the violation detector itself uses, so the two
+         layers cannot disagree on pattern semantics.
+
+    Gracefully returns False for non-list inputs without raising.
+    """
+    # Pure-helper hygiene: reject bad input shapes
+    if not isinstance(violations, list) or not isinstance(allow_patterns, list):
+        return False
+
+    if not allow_patterns:
+        return False
+    if not violations:
+        return False
+    if max_paths is not None and len(violations) > max_paths:
+        return False
+
+    # Import here to avoid any module-level import cycle (deferred import).
+    # scope_amendment does not import from fix_cycle at module load time;
+    # fix_cycle only imports scope_amendment inside _complete_fix_cycle
+    # (at function-call time, not module-load time), so this deferred
+    # import is safe and creates no cycle.
+    from orch.daemon.fix_cycle import scope_match  # noqa: PLC0415
+
+    return all(
+        any(scope_match(violation, pattern) for pattern in allow_patterns)
+        for violation in violations
+    )
+
+
 def _resolve_parent_manifest(worktree_path: Path, item_id: str) -> Path | None:
     """Resolve the parent repo's manifest path from the worktree's .git pointer.
 
