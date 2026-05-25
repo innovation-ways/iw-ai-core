@@ -65,13 +65,23 @@ Read the design document first (in particular AC1, AC3, AC4, AC8, and §"Pixel t
 
 ### 1. Add `Pillow` and `pixelmatch` to the dev dependency group
 
-Edit `pyproject.toml` under `[dependency-groups] dev` to add `Pillow` and `pixelmatch` (matching the version pins used in the InnoForge precedent repo, or the current latest stable if InnoForge does not pin). Regenerate `uv.lock` via `uv lock`. Commit both files.
+Edit `pyproject.toml` under `[dependency-groups] dev` to add `Pillow` and `pixelmatch`. Regenerate `uv.lock` via `uv lock`. Commit both files.
+
+- **`Pillow`** is the standard PIL package (`pip install Pillow`); InnoForge pins `Pillow>=10.0`, port that pin.
+- **`pixelmatch`** is the Python port of the JS `pixelmatch` library, published on PyPI under the name `pixelmatch` (NOT `pixelmatch-py`). The import alias is `from pixelmatch.contrib.PIL import pixelmatch`. Use the latest stable pin. InnoForge does NOT use this package — see §2 below for why this CR diverges from the InnoForge implementation.
 
 ### 2. Create the PDF visual-regression module
 
 Create `tests/visual/__init__.py` (empty) and `tests/visual/test_pdf_visual_regression.py`.
 
-Discovery: the module enumerates every PDF under `tests/visual/baselines/pdfs/<doc>/source.pdf` (one subdirectory per baseline doc). For each PDF, it shells out to `pdftoppm` (system binary; assume present in CI — if not, the test must skip with a clear message naming the missing binary). It produces one PNG per page into a per-test temp directory, then opens the matching committed baseline PNG at `tests/visual/baselines/pdfs/<doc>/page-NNN.png` and compares pixel-for-pixel via Pillow + `pixelmatch`.
+Discovery: the module enumerates every PDF under `tests/visual/baselines/pdfs/<doc>/source.pdf` (one subdirectory per baseline doc). For each PDF, it shells out to `pdftoppm` (system binary; assume present in CI — if not, use `pytest.mark.skipif(not shutil.which("pdftoppm"), reason="poppler (pdftoppm) not installed")` at module level, mirroring the InnoForge `pytestmark` pattern). It produces one PNG per page into a per-test temp directory, then opens the matching committed baseline PNG at `tests/visual/baselines/pdfs/<doc>/page-NNN.png` and compares pixel-for-pixel via Pillow + `pixelmatch`.
+
+**InnoForge precedent — what to port, what to diverge from**:
+
+- InnoForge (`/home/sergiog/dev/iw-doc-plan/main/iw-doc-plan/tests/visual/test_invoice_regression.py`, `src/innoforge/services/pdf_to_image_converter.py`, `src/innoforge/services/regression_test_service.py`) uses the `pdf2image` Python package (which internally shells out to poppler/pdftoppm) and a custom Pillow-only pixel diff inside `RegressionTestService` — NOT `pixelmatch`.
+- This CR deliberately diverges: use `pdftoppm` directly via `subprocess.run(["pdftoppm", ...])` (one fewer Python dep), and use `pixelmatch` for the diff (richer per-pixel diff PNG output for the failure path required by AC3).
+- **PORT FROM INNOFORGE**: the `pytestmark = pytest.mark.skipif(not shutil.which("pdftoppm"), ...)` pattern (lines ~19–22 of `test_invoice_regression.py`), the per-page iteration shape, and the tolerance value (search `RegressionTestService` for the threshold the precedent uses).
+- **DO NOT PORT FROM INNOFORGE**: `pdf2image`, `RegressionTestService`, the custom diff function, the `@allure.*` decorators (no allure in this repo), the `asyncio` shape (these tests are sync).
 
 Failure path (AC3): on mismatch, write three PNGs to `tests/output/visual-diff/<doc>-page<N>-actual.png`, `tests/output/visual-diff/<doc>-page<N>-baseline.png`, and `tests/output/visual-diff/<doc>-page<N>-diff.png`. The test failure message MUST include the absolute path to the `*-diff.png` file so a reviewer can open it directly. Use `pytest.fail(...)` with that message — do NOT swallow the failure.
 

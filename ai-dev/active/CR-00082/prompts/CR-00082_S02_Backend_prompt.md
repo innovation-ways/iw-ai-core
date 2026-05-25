@@ -85,11 +85,19 @@ Use the existing subprocess-wrapper patterns already in the file. Do NOT introdu
 
 Create `tests/visual/test_html_visual_regression.py`. (The `tests/visual/__init__.py` already exists from S01.)
 
-Discovery: enumerate baseline HTML docs under `tests/visual/baselines/html/<category>/source.html`. For each, start (or assume already-running) a dashboard test server — match the pattern used by existing dashboard E2E tests. Open the doc-view URL via the new `screenshot_to_baseline()` helper. Compare the captured PNG to the committed baseline at `tests/visual/baselines/html/<category>/baseline.png` using the **same Pillow + `pixelmatch` diff helper that S01 introduced** (DRY — import or share, do not copy-paste).
+Discovery: enumerate baseline HTML docs under `tests/visual/baselines/html/<category>/source.html`. For each, point `playwright-cli` at the source via a **`file://` URL** (preferred for full determinism — see strategy note below), screenshot via the new `screenshot_to_baseline()` helper, then compare the captured PNG to the committed baseline at `tests/visual/baselines/html/<category>/baseline.png` using the **same Pillow + `pixelmatch` diff helper that S01 introduced** (DRY — import or share, do not copy-paste).
+
+**Rendering strategy — `file://` over live dashboard**:
+
+- The `source.html` baselines are **self-contained** static snapshots of representative editorial output — each one inlines (or relatively-references via a sibling `styles.css` copy) the same CSS the live dashboard ships. This is the same approach that makes the PDF half deterministic.
+- Open them via `playwright-cli open file:///absolute/path/to/source.html`. NO dashboard server is needed.
+- **Why not the live dashboard?** The `tests/e2e/conftest.py` `base_url` fixture (which `pw` depends on) requires `IW_BROWSER_BASE_URL` to be set and points at a live dashboard whose DB content is not deterministic — flaky baselines. Visual regression needs byte-identical input for stable diffs, which `file://` guarantees.
+- **What about catching live-template / live-CSS regressions then?** A change to `dashboard/static/styles.css` is caught because the baseline `source.html` references that exact file (relative path or copied alongside). A change to `dashboard/templates/pdf/**` or `orch/doc_service.py`'s markdown→HTML pipeline is caught when the engineer regenerates a baseline by re-rendering through the dashboard and saving the output as the new `source.html` — that regeneration is a deliberate, review-gated act (per AC4 + Design Notes).
+- **DO NOT** import `tests/e2e/conftest.py`'s `base_url` / `pw` fixtures. The visual-regression tests construct their own `PlaywrightWrapper` instance directly from the source path (no `IW_BROWSER_BASE_URL` dependency).
 
 Failure path (AC3): same as S01 — write `tests/output/visual-diff/<doc>-actual.png`, `-baseline.png`, `-diff.png` and include the diff path in the failure message.
 
-If `playwright-cli` is not on PATH, skip with a clear message naming the missing binary.
+If `playwright-cli` is not on PATH, skip with a clear message naming the missing binary (`pytest.mark.skipif(not shutil.which("playwright-cli"), reason="playwright-cli not on PATH")`, mirroring the S01 `pdftoppm` skip pattern).
 
 ### 3. Populate the HTML baseline set
 
