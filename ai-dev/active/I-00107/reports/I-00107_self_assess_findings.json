@@ -1,6 +1,0 @@
-{
-  "item_id": "I-00107",
-  "bottom_line": "No actionable patterns detected. The workflow ran cleanly across all 12 steps with zero retries, zero fix-cycles, zero convention violations, and zero install-thrash events.",
-  "coverage_notes": "S11 log (428808 lines, 24 MB): sampled tail (last 50 lines) + summary line. S12 log (438488 lines, 24 MB): sampled tail (last 50 lines) + summary line. S01–S10 logs read in full (< 2 KB each). DB telemetry used for step list and status confirmation.",
-  "findings": []
-}

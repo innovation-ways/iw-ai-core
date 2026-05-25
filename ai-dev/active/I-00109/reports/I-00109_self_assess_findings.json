@@ -1,6 +1,0 @@
-{
-  "item_id": "I-00109",
-  "bottom_line": "No actionable patterns detected. Workflow ran cleanly across all steps; three QV-gate fix cycles were caused entirely by unrelated flaky infrastructure tests and required no changes to I-00109 code.",
-  "coverage_notes": "No raw run logs available — worktree was reaped before S14. Analysis based on DB item-status JSON, all 13 agent self-reports, 3 fix-cycle prompts, and all 8 QV gate reports (S06–S13). Signal quality: medium (self-reports and DB telemetry are internally consistent; no contradictory evidence).",
-  "findings": []
-}
