@@ -1,0 +1,127 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00088",
+  "type": "ChangeRequest",
+  "title": "Auto-merge — partial-allowlist semantics in Phase 1 dry-run",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/auto_merge.py",
+      "orch/daemon/merge_queue.py",
+      "tests/unit/test_auto_merge_classifier.py",
+      "tests/integration/test_auto_merge_phase1.py",
+      "tests/integration/test_auto_merge_partial_allowlist.py",
+      "docs/research/R-00076-llm-automated-merge-resolution.md",
+      "ai-dev/active/AUTO_MERGE_RESOLUTION.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "step_type": "implementation",
+      "description": "Add deferred_files field to ClassificationResult; change classify_conflicts() step 6 (allowlist check) from all-or-nothing to partition semantics; RED-first extend tests/unit/test_auto_merge_classifier.py with three new tests (partial-allowlist partition, all-deferred keeps skip reason, refuselist wins over partial)",
+      "prompt": "prompts/CR-00088_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "backend-impl",
+      "step_type": "implementation",
+      "description": "Thread deferred_files through event emission: extend EVENT_AUTO_RESOLUTION_ATTEMPTED, EVENT_AUTO_RESOLVED, and EVENT_AUTO_RESOLUTION_FAILED metadata in orch/daemon/auto_merge.py; extend EVENT_AUTO_RESOLUTION_SKIPPED metadata in orch/daemon/merge_queue.py; add four RED-first integration tests + tighten one existing skipped-event assertion in tests/integration/test_auto_merge_phase1.py (DB-touching tests must be integration, never unit); no functional change to refuse/binary/oversized paths",
+      "prompt": "prompts/CR-00088_S02_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "step_type": "implementation",
+      "description": "Add integration test tests/integration/test_auto_merge_partial_allowlist.py reproducing the CR-00084 conflict shape (3 files; 1 allowlisted, 2 deferred); assert event metadata partition and Phase-1 worktree non-mutation",
+      "prompt": "prompts/CR-00088_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent code review of S01+S02+S03 implementation against the design doc",
+      "prompt": "prompts/CR-00088_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Cross-agent final review of all changes for consistency, integration correctness, and AC coverage",
+      "prompt": "prompts/CR-00088_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Lint (Ruff + node --check + template check)"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Format check (Ruff)"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: Type check (mypy)"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests (no testcontainers)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests (PostgreSQL testcontainer)"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage (new/changed lines must be well-covered)",
+      "timeout_secs": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Gitleaks secret scan"
+    },
+    {
+      "step": "S14",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00088_S14_SelfAssess_prompt.md"
+    }
+  ]
+}
