@@ -16,7 +16,7 @@
           test-e2e test-e2e-smoke \
           security-deps security-iac security-image-dashboard security-secrets security-all security-report security-sast \
           test-security-module test-isolation \
-          arch-check test-frontend dead-code dep-check
+          arch-check test-frontend dead-code dep-check check-column-docs
 
 # --- Setup ---
 install:
@@ -94,6 +94,15 @@ dep-check:
 		--extend-exclude "skills/.*" || true
 
 quality: lint format typecheck test-assertions dead-code dep-check
+	@$(MAKE) check-column-docs || true
+
+# DB-column doc scanner gate (CR-00085, Phase-4 4.5) — flag SQLAlchemy
+# Column declarations missing a `doc=` description. See
+# scripts/check_db_column_docs.py and orch/db/column_docs_baseline.txt.
+# Warn-first during burn-in; a follow-up CR flips it blocking once the
+# baseline is small enough.
+check-column-docs:
+	uv run python scripts/check_db_column_docs.py --baseline orch/db/column_docs_baseline.txt
 
 # --- Tests ---
 test-unit:
