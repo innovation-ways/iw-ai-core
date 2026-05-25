@@ -49,12 +49,12 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
 You are implementing **Step 3** of CR-00087 — the integration step that wires everything from S01 and S02 into the daemon's fix-cycle path.
 
-The target is `orch/daemon/fix_cycle.py:_complete_fix_cycle` (~line 1043). The function currently has an escalation branch (~line 1117) that sets `cycle.status = FixStatus.escalated`, emits `scope_violation_escalation`, and returns — leaving the step in `needs_fix`. Your job is to layer auto-amend on top of that branch, INLINE in the same transaction, without disturbing the existing behaviour for projects that haven't opted in.
+The target is `orch/daemon/fix_cycle.py:_complete_fix_cycle` (function definition at ~line 1043). The function currently has an escalation branch (~line 1117) that sets `cycle.status = FixStatus.escalated`, emits `scope_violation_escalation`, calls `db.commit()`, and returns — leaving the step in `needs_fix`. Your job is to layer auto-amend on top of that branch, immediately after the escalation commit and before the `return`. The auto-amend uses a SECOND commit (the design accepts this — see Notes); the sub-second gap is too short for the dashboard's poll cadence to observe.
 
 The new behaviour (mirroring the manual operator flow in `dashboard/routers/actions.py:scope_amend_and_restart`):
 
-1. Existing escalation logic runs first (unchanged) — sets `cycle.status = escalated`, populates `fix_metadata.scope_violations`, emits `scope_violation_escalation`, calls `db.commit()`.
-2. NEW: after that commit, evaluate `should_auto_amend(violations, project_config.auto_amend_allow_patterns, project_config.auto_amend_max_paths)`.
+1. Existing escalation logic runs first (unchanged) — sets `cycle.status = escalated`, populates `fix_metadata.scope_violations`, emits `scope_violation_escalation`, calls `db.commit()`. This commit must remain (the escalation event is the load-bearing audit record and must persist whether or not auto-amend fires).
+2. NEW: after that commit, evaluate `should_auto_amend(violations, project_config.auto_amend_allow_patterns, project_config.auto_amend_max_paths)` (the helper from S02 — already imports `scope_match` from this same module so the auto-amend filter and the violation detector agree by construction).
 3. On `True`:
    a. Call `amend_allowed_paths(worktree_path, item_id, violations)` (returns an `AmendResult` with `paths_added` and `manifests_updated`).
    b. Emit a new `scope_auto_amended` DaemonEvent with payload:
@@ -186,9 +186,11 @@ Keep the update to ~10-20 lines. Do not rewrite the surrounding sections.
 
 (Do not enable the feature on `iw-ai-core` itself in this CR — that's a follow-up after the CR is verified. The example block exists for documentation and is ignored by the parser because the key isn't `auto_amend_scope`.)
 
-### 7. No new unit tests in this step
+### 7. Small unit test for the new helper
 
-This is an integration-heavy change. The behavioural test is the integration test in S04. For S03 itself, write only a small unit test for `_try_auto_amend_after_escalation`'s decision logic (e.g. a test that mocks `amend_allowed_paths` and asserts the helper short-circuits when `project_config` is None or `should_auto_amend` returns False). Put it next to the existing `_complete_fix_cycle` tests under `tests/unit/daemon/`.
+This is an integration-heavy change. The behavioural test is the integration test in S04. For S03 itself, write only a small unit test for `_try_auto_amend_after_escalation`'s decision logic (e.g. a test that mocks `amend_allowed_paths` and asserts the helper short-circuits when `project_config` is None or `should_auto_amend` returns False).
+
+Put it in `tests/unit/test_fix_cycle.py` — that file (NOT `tests/unit/daemon/test_fix_cycle.py`, which does not exist) already collects pure-logic fix_cycle unit tests that import helpers via MagicMock and require no DB. Match its existing style (see `_make_step_run` at the top of the file for the MagicMock factory pattern).
 
 **RED capture**: write the short-circuit test first; it should fail because `_try_auto_amend_after_escalation` doesn't exist yet (after writing a stub returning `False` to satisfy ImportError-vs-AssertionError TDD rules, the test should fail with `AssertionError` or `NotImplementedError`).
 
@@ -218,7 +220,7 @@ Before reporting `completion_status: complete`:
 Run only the targeted tests:
 
 ```bash
-uv run pytest tests/unit/daemon/test_scope_amendment.py tests/unit/daemon/test_fix_cycle.py -v -k "auto_amend or _try_auto"
+uv run pytest tests/unit/daemon/test_scope_amendment.py tests/unit/test_fix_cycle.py -v -k "auto_amend or _try_auto"
 ```
 
 (Adjust the `-k` selector to your actual test names.)
@@ -235,7 +237,7 @@ uv run pytest tests/unit/daemon/test_scope_amendment.py tests/unit/daemon/test_f
     "orch/daemon/fix_cycle.py",
     "docs/IW_AI_Core_Daemon_Design.md",
     ".iw-orch.json",
-    "tests/unit/daemon/test_fix_cycle.py"
+    "tests/unit/test_fix_cycle.py"
   ],
   "preflight": {
     "format": "ok|fixed|skipped:<reason>",
@@ -244,7 +246,7 @@ uv run pytest tests/unit/daemon/test_scope_amendment.py tests/unit/daemon/test_f
   },
   "tests_passed": true,
   "test_summary": "X passed, 0 failed",
-  "tdd_red_evidence": "tests/unit/daemon/test_fix_cycle.py::test_auto_amend_short_circuits_when_project_config_none — AssertionError or NotImplementedError",
+  "tdd_red_evidence": "tests/unit/test_fix_cycle.py::test_auto_amend_short_circuits_when_project_config_none — AssertionError or NotImplementedError",
   "blockers": [],
   "notes": "If you mirrored scope_amend_and_restart in dashboard/routers/actions.py, note any divergence (e.g. _get_last_run is only in dashboard, so you queried StepRun directly)."
 }

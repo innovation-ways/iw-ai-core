@@ -46,7 +46,8 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 - **Runtime step state** — prefer `uv run iw item-status CR-00087 --json` for current step list and prompt paths.
 - `ai-dev/active/CR-00087/CR-00087_CR_Design.md` — Design document (read this first).
 - `orch/daemon/project_registry.py` — file to modify.
-- `tests/unit/daemon/test_project_registry.py` — file where the new parsing unit tests go.
+- `tests/unit/daemon/test_project_registry_overlap_gate.py` — read this for the per-concern test-file pattern the new tests must follow.
+- `tests/unit/daemon/test_project_registry_auto_amend_scope.py` — NEW file where the new parsing unit tests go.
 
 ## Output Files
 
@@ -111,9 +112,11 @@ auto_amend_allow_patterns, auto_amend_max_paths = _parse_auto_amend_scope(
 
 Then wire them into the `ProjectConfig(...)` constructor call further down (alphabetical with the other new fields, or grouped with the overlap_* fields — match the existing style).
 
-### 4. Unit tests (tests/unit/daemon/test_project_registry.py)
+### 4. Unit tests (tests/unit/daemon/test_project_registry_auto_amend_scope.py — NEW FILE)
 
 Following **TDD (Red-Green-Refactor)**. Write the tests FIRST and confirm RED before implementing.
+
+The project uses per-concern test files under `tests/unit/daemon/` (see `test_project_registry_overlap_gate.py`, `test_project_registry_ai_assistant.py`). Create a NEW file `tests/unit/daemon/test_project_registry_auto_amend_scope.py` and match the existing fixture style from `test_project_registry_overlap_gate.py` exactly. Do NOT add tests to `tests/unit/test_project_registry.py` — that is a separate top-level unit test file with its own scope.
 
 Add tests covering:
 
@@ -127,9 +130,9 @@ Add tests covering:
 - Malformed: `max_paths` is a bool `True` → patterns populated, `max_paths is None`, WARNING logged (explicitly verify bool rejection).
 - Malformed: `max_paths` is `-1` → patterns populated, `max_paths is None`, WARNING logged.
 
-Use the **same test fixtures and project-registry-loading helpers** that the existing `test_project_registry.py` tests in this file use. Do NOT create a new fixture style — match the existing module's pattern.
+Use the **same test fixtures and project-registry-loading helpers** that `test_project_registry_overlap_gate.py` uses (a `tmp_path` + `_write_iw_orch_json(...)` style — read that file first). Do NOT create a new fixture style.
 
-**RED capture**: pick the first test (e.g. `test_auto_amend_scope_absent_uses_defaults`), implement only the test, and run it via `uv run pytest tests/unit/daemon/test_project_registry.py::<test_name> -v`. Confirm it fails with `AttributeError` (the dataclass field doesn't exist yet) or `AssertionError` (default doesn't match expected). Capture the test id and the first 2-3 lines of failure output. Record these in your `tdd_red_evidence` field.
+**RED capture**: pick the first test (e.g. `test_auto_amend_scope_absent_uses_defaults`), implement only the test, and run it via `uv run pytest tests/unit/daemon/test_project_registry_auto_amend_scope.py::<test_name> -v`. Confirm it fails with `AttributeError` (the dataclass field doesn't exist yet) or `AssertionError` (default doesn't match expected). Capture the test id and the first 2-3 lines of failure output. Record these in your `tdd_red_evidence` field.
 
 ## Project Conventions
 
@@ -172,10 +175,10 @@ In your Subagent Result Contract, populate the `preflight` object recording the 
 After implementation, run only the new test file(s) you touched:
 
 ```bash
-uv run pytest tests/unit/daemon/test_project_registry.py -v
+uv run pytest tests/unit/daemon/test_project_registry_auto_amend_scope.py -v
 ```
 
-Do NOT run the full unit suite or `make test-integration` — those are S12 / S13 QV gates with their own budgets.
+Do NOT run the full unit suite or `make test-integration` — those are S10 / S11 QV gates with their own budgets.
 
 ## Subagent Result Contract
 
@@ -189,7 +192,7 @@ When your work is complete, report results in this JSON structure:
   "completion_status": "complete|partial|blocked",
   "files_changed": [
     "orch/daemon/project_registry.py",
-    "tests/unit/daemon/test_project_registry.py"
+    "tests/unit/daemon/test_project_registry_auto_amend_scope.py"
   ],
   "preflight": {
     "format": "ok|fixed|skipped:<reason>",
@@ -198,7 +201,7 @@ When your work is complete, report results in this JSON structure:
   },
   "tests_passed": true,
   "test_summary": "X passed, 0 failed",
-  "tdd_red_evidence": "tests/unit/daemon/test_project_registry.py::test_auto_amend_scope_absent_uses_defaults — AttributeError: 'ProjectConfig' object has no attribute 'auto_amend_allow_patterns'",
+  "tdd_red_evidence": "tests/unit/daemon/test_project_registry_auto_amend_scope.py::test_auto_amend_scope_absent_uses_defaults — AttributeError: 'ProjectConfig' object has no attribute 'auto_amend_allow_patterns'",
   "blockers": [],
   "notes": ""
 }

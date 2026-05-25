@@ -1,7 +1,7 @@
-# CR-00087_S14_SelfAssess_prompt
+# CR-00087_S12_SelfAssess_prompt
 
 **Work Item**: CR-00087 -- Auto-amend scope violations matching per-project allow-patterns
-**Step**: S14
+**Step**: S12
 **Agent**: SelfAssess
 
 ---
@@ -121,7 +121,7 @@ When your work is complete, report results in this JSON structure:
 
 ```json
 {
-  "step": "S14",
+  "step": "S12",
   "agent": "self-assess-impl",
   "work_item": "CR-00087",
   "completion_status": "complete|partial|blocked",

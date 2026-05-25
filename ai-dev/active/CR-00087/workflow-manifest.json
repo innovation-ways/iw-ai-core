@@ -12,8 +12,9 @@
       "orch/daemon/fix_cycle.py",
       "docs/IW_AI_Core_Daemon_Design.md",
       ".iw-orch.json",
-      "tests/unit/daemon/test_project_registry.py",
+      "tests/unit/daemon/test_project_registry_auto_amend_scope.py",
       "tests/unit/daemon/test_scope_amendment.py",
+      "tests/unit/test_fix_cycle.py",
       "tests/integration/test_scope_amend_endpoints.py"
     ]
   },
@@ -29,7 +30,7 @@
       "step": "S02",
       "agent": "backend-impl",
       "step_type": "implementation",
-      "description": "Add pure should_auto_amend(violations, allow_patterns, max_paths) helper to orch/daemon/scope_amendment.py using fnmatch + anchor-containment matcher consistent with scope_overlap._matches",
+      "description": "Add pure should_auto_amend(violations, allow_patterns, max_paths) helper to orch/daemon/scope_amendment.py reusing the violation-detector matcher (_scope_match from orch/daemon/fix_cycle.py) for semantic consistency",
       "prompt": "prompts/CR-00087_S02_BackendImpl_prompt.md"
     },
     {
@@ -50,28 +51,18 @@
       "step": "S05",
       "agent": "code-review-impl",
       "step_type": "code_review",
-      "description": "Per-agent code review of all implementation work in S01-S04"
+      "description": "Per-agent code review of all implementation work in S01-S04",
+      "prompt": "prompts/CR-00087_S05_CodeReview_prompt.md"
     },
     {
       "step": "S06",
-      "agent": "code-review-fix-impl",
-      "step_type": "code_review_fix",
-      "description": "Apply CRITICAL and HIGH fixes from S05 review"
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Cross-agent final review of all changes for consistency, integration correctness, completeness",
+      "prompt": "prompts/CR-00087_S06_CodeReview_Final_prompt.md"
     },
     {
       "step": "S07",
-      "agent": "code-review-final-impl",
-      "step_type": "code_review_final",
-      "description": "Cross-agent final review of all changes for consistency, integration correctness, completeness"
-    },
-    {
-      "step": "S08",
-      "agent": "code-review-fix-final-impl",
-      "step_type": "code_review_fix_final",
-      "description": "Apply fixes from S07 final review"
-    },
-    {
-      "step": "S09",
       "agent": "qv-gate",
       "step_type": "quality_validation",
       "gate": "lint",
@@ -79,7 +70,7 @@
       "description": "QV: Lint (Ruff + node --check + template check)"
     },
     {
-      "step": "S10",
+      "step": "S08",
       "agent": "qv-gate",
       "step_type": "quality_validation",
       "gate": "format",
@@ -87,7 +78,7 @@
       "description": "QV: Format check (Ruff)"
     },
     {
-      "step": "S11",
+      "step": "S09",
       "agent": "qv-gate",
       "step_type": "quality_validation",
       "gate": "typecheck",
@@ -95,7 +86,7 @@
       "description": "QV: Type check (mypy)"
     },
     {
-      "step": "S12",
+      "step": "S10",
       "agent": "qv-gate",
       "step_type": "quality_validation",
       "gate": "unit-tests",
@@ -103,7 +94,7 @@
       "description": "QV: Unit tests (no testcontainers)"
     },
     {
-      "step": "S13",
+      "step": "S11",
       "agent": "qv-gate",
       "step_type": "quality_validation",
       "gate": "integration-tests",
@@ -111,11 +102,11 @@
       "description": "QV: Integration tests (PostgreSQL testcontainer)"
     },
     {
-      "step": "S14",
+      "step": "S12",
       "agent": "self-assess-impl",
       "step_type": "self_assess",
       "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
-      "prompt": "prompts/CR-00087_S14_SelfAssess_prompt.md"
+      "prompt": "prompts/CR-00087_S12_SelfAssess_prompt.md"
     }
   ]
 }

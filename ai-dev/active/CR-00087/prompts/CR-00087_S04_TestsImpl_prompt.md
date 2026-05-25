@@ -153,7 +153,7 @@ Run only the test file you modified:
 uv run pytest tests/integration/test_scope_amend_endpoints.py -v
 ```
 
-Do NOT run `make test-integration` — that is the S13 QV gate.
+Do NOT run `make test-integration` — that is the S11 QV gate.
 
 ## Subagent Result Contract
 

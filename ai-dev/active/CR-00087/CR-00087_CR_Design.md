@@ -24,11 +24,11 @@ Add a per-project `auto_amend_scope` config in `.iw-orch.json` that lets the dae
 
 Read the project's `CLAUDE.md` for architecture, conventions, and hard rules.
 
-This CR sits inside the daemon's fix-cycle subsystem introduced by I-00082 (scope enforcement) and I-00101 (scope-blocked badge + amend modal). The amend helper (`amend_allowed_paths`) and the matcher pattern (`scope_overlap._matches`) are reused as-is; nothing in this CR replaces existing behaviour — the manual click remains available when violations don't match the allow-patterns.
+This CR sits inside the daemon's fix-cycle subsystem introduced by I-00082 (scope enforcement) and I-00101 (scope-blocked badge + amend modal). The amend helper (`amend_allowed_paths`) is reused as-is, and the violation detector's matcher (`_scope_match` in `orch/daemon/fix_cycle.py` — promoted to public `scope_match` by this CR) is shared with the new auto-amend filter so the two layers cannot disagree on pattern semantics. Nothing in this CR replaces existing behaviour — the manual click remains available when violations don't match the allow-patterns.
 
 ## Current Behavior
 
-When a fix-cycle agent in `orch/daemon/fix_cycle.py:_complete_fix_cycle` (~line 1117) detects that the agent touched files outside `scope.allowed_paths`:
+When a fix-cycle agent in `orch/daemon/fix_cycle.py:_complete_fix_cycle` (function defined at ~line 1043; escalation branch at ~line 1117) detects that the agent touched files outside `scope.allowed_paths`:
 
 1. `FixCycle.status` is set to `escalated`.
 2. `FixCycle.fix_metadata.scope_violations` is populated with the list of out-of-scope paths.
@@ -73,7 +73,7 @@ When the block is **present**, the new flow inside `_complete_fix_cycle` is:
 3. **New**: evaluate `should_auto_amend(violations, project_config.auto_amend_allow_patterns, project_config.auto_amend_max_paths)`. The helper returns `True` only when:
    - The allow-patterns list is non-empty (feature off when empty).
    - `len(violations) <= max_paths` (when `max_paths` is `None`, no cap is applied).
-   - **Every** violation matches **some** allow-pattern via `fnmatch` + anchor-containment (the same matcher used by `orch/daemon/scope_overlap.py:_matches`).
+   - **Every** violation matches **some** allow-pattern via the **same matcher used by the violation detector itself** — `_scope_match` from `orch/daemon/fix_cycle.py` (handles `prefix/**` + plain `fnmatch`). Using the same matcher guarantees that no path can be classified as a violation but rejected by the auto-amend filter (or vice versa) because of pattern-semantics skew.
 4. On `True`:
    - Call `amend_allowed_paths(worktree_path, item_id, list(violations))` — same helper the operator endpoint uses.
    - Emit a new `scope_auto_amended` DaemonEvent (distinct event type so observers can distinguish auto vs. manual).
@@ -82,7 +82,7 @@ When the block is **present**, the new flow inside `_complete_fix_cycle` is:
    - Log a daemon INFO line summarising the auto-amend.
 5. On `False`: leave the step in `needs_fix` — today's manual flow remains untouched.
 
-The yellow scope_blocked badge therefore stops appearing for matched violations because the step never spends any visible time in `needs_fix` (the transition happens inline in the same DB transaction as the escalation).
+The yellow scope_blocked badge therefore stops appearing for matched violations in practice: the auto-amend block runs synchronously inside `_complete_fix_cycle`, completing in well under a second between the escalation commit and the amend commit. The dashboard's poll interval is far longer than this window, so the badge is never observed by an operator. (Strictly speaking the two state changes are in separate transactions, not a single one — see Notes for the rationale and the cost of merging them.)
 
 ## Impact Analysis
 
@@ -115,21 +115,19 @@ The yellow scope_blocked badge therefore stops appearing for matched violations 
 | Step | Agent | Scope | Parallel With |
 |------|-------|-------|---------------|
 | S01 | backend-impl | Parse `auto_amend_scope` in `orch/daemon/project_registry.py`; add `ProjectConfig.auto_amend_allow_patterns` + `auto_amend_max_paths` fields with malformed-input tolerance | — |
-| S02 | backend-impl | Add pure `should_auto_amend(violations, allow_patterns, max_paths)` helper to `orch/daemon/scope_amendment.py`, reusing fnmatch + anchor-containment matcher from `scope_overlap._matches` | — |
+| S02 | backend-impl | Add pure `should_auto_amend(violations, allow_patterns, max_paths)` helper to `orch/daemon/scope_amendment.py`, reusing the violation detector's matcher (`_scope_match` from `orch/daemon/fix_cycle.py`) for semantic consistency | — |
 | S03 | backend-impl | Hook auto-amend inline into `orch/daemon/fix_cycle.py:_complete_fix_cycle` after the escalation branch; emit `scope_auto_amended`, create new `StepRun`, set step → `pending` | — |
 | S04 | tests-impl | Extend `tests/integration/test_scope_amend_endpoints.py` with positive + negative auto-amend integration tests (manifest update, both events emitted, step transitions, no manifest update on no-match) | — |
 | S05 | code-review-impl | Per-agent code review of S01–S04 | — |
-| S06 | code-review-fix-impl | Apply review fixes | — |
-| S07 | code-review-final-impl | Cross-agent final review | — |
-| S08 | code-review-fix-final-impl | Apply final review fixes | — |
-| S09 | qv-gate (lint) | `make lint` | — |
-| S10 | qv-gate (format) | `make format` | — |
-| S11 | qv-gate (typecheck) | `make typecheck` | — |
-| S12 | qv-gate (unit-tests) | `make test-unit` | — |
-| S13 | qv-gate (integration-tests) | `make test-integration` | — |
-| S14 | self-assess-impl | Self-assessment via `iw-item-analyze` (project flag `self_assess = true`) | — |
+| S06 | code-review-final-impl | Cross-agent final review | — |
+| S07 | qv-gate (lint) | `make lint` | — |
+| S08 | qv-gate (format) | `make format` | — |
+| S09 | qv-gate (typecheck) | `make typecheck` | — |
+| S10 | qv-gate (unit-tests) | `make test-unit` | — |
+| S11 | qv-gate (integration-tests) | `make test-integration` | — |
+| S12 | self-assess-impl | Self-assessment via `iw-item-analyze` (project flag `self_assess = true`) | — |
 
-Agent slugs: `database-impl`, `backend-impl`, `api-impl`, `frontend-impl`, `tests-impl`, `pipeline-impl`, `template-impl`, `self-assess-impl`.
+Agent slugs: `database-impl`, `backend-impl`, `api-impl`, `frontend-impl`, `tests-impl`, `pipeline-impl`, `template-impl`, `self-assess-impl`. Fix cycles for failed `code-review-impl` / `code-review-final-impl` runs are handled automatically by the daemon's fix-cycle protocol — they are not declared as separate manifest steps (matching project convention; see CR-00080..CR-00085).
 
 ### Database Changes
 
@@ -162,7 +160,9 @@ All files for this work item live under `ai-dev/active/CR-00087/`:
 | `prompts/CR-00087_S02_BackendImpl_prompt.md` | Prompt | S02 — `should_auto_amend` helper |
 | `prompts/CR-00087_S03_BackendImpl_prompt.md` | Prompt | S03 — fix_cycle integration |
 | `prompts/CR-00087_S04_TestsImpl_prompt.md` | Prompt | S04 — integration tests |
-| `prompts/CR-00087_S14_SelfAssess_prompt.md` | Prompt | S14 — self-assessment |
+| `prompts/CR-00087_S05_CodeReview_prompt.md` | Prompt | S05 — per-agent code review |
+| `prompts/CR-00087_S06_CodeReview_Final_prompt.md` | Prompt | S06 — final cross-agent review |
+| `prompts/CR-00087_S12_SelfAssess_prompt.md` | Prompt | S12 — self-assessment |
 
 Reports are created during execution in `ai-dev/work/CR-00087/reports/`.
 
@@ -252,24 +252,25 @@ And the scope_auto_amended payload contains step_id, added_paths, manifests_upda
 - `orch/daemon/fix_cycle.py`
 - `docs/IW_AI_Core_Daemon_Design.md`
 - `.iw-orch.json`
-- `tests/unit/daemon/test_project_registry.py`
+- `tests/unit/daemon/test_project_registry_auto_amend_scope.py`
 - `tests/unit/daemon/test_scope_amendment.py`
+- `tests/unit/test_fix_cycle.py`
 - `tests/integration/test_scope_amend_endpoints.py`
 
 ## TDD Approach
 
 - **Unit tests** (S01–S02):
-  - `should_auto_amend` matrix in `tests/unit/daemon/test_scope_amendment.py`: empty allow-patterns → False; allow-patterns present + all violations match → True; partial match → False; over `max_paths` → False; `max_paths=None` skips the cap; matcher uses fnmatch + anchor-containment consistent with `scope_overlap._matches`.
-  - Registry parsing in `tests/unit/daemon/test_project_registry.py`: `auto_amend_scope` absent → defaults; valid block → parsed; malformed (non-dict, non-list patterns, non-string pattern entries, non-int max_paths) → defaults + WARNING; `max_paths` absent → `None`.
+  - `should_auto_amend` matrix in `tests/unit/daemon/test_scope_amendment.py`: empty allow-patterns → False; allow-patterns present + all violations match → True; partial match → False; over `max_paths` → False; `max_paths=None` skips the cap; matcher behaviour mirrors `_scope_match` from `orch/daemon/fix_cycle.py` (handles `prefix/**` + plain `fnmatch`) so the auto-amend filter cannot disagree with the violation detector.
+  - Registry parsing in a NEW file `tests/unit/daemon/test_project_registry_auto_amend_scope.py` (per-concern split mirrors the existing `test_project_registry_overlap_gate.py`): `auto_amend_scope` absent → defaults; valid block → parsed; malformed (non-dict, non-list patterns, non-string pattern entries, non-int max_paths) → defaults + WARNING; `max_paths` absent → `None`.
 - **Integration tests** (S04):
   - In `tests/integration/test_scope_amend_endpoints.py`: positive test — seed a worktree manifest with `scope.allowed_paths`, write a real workflow-manifest.json on disk via a tmp_path fixture, seed an escalated FixCycle with violations that all match the project's `auto_allow_patterns`, drive `_complete_fix_cycle`, assert the manifest is updated, the StepRun is created, the step is `pending`, and BOTH `scope_violation_escalation` + `scope_auto_amended` events appear.
   - Negative test — same setup but with a violation that falls outside the allow-patterns; assert no manifest update, no `scope_auto_amended` event, step stays `needs_fix`.
-- **Updated tests**: existing tests in `tests/unit/daemon/test_scope_amendment.py` and `tests/integration/test_scope_amend_endpoints.py` continue to pass (no behaviour change for projects without the new config).
+- **Updated tests**: existing tests in `tests/unit/daemon/test_scope_amendment.py` and `tests/integration/test_scope_amend_endpoints.py` continue to pass (no behaviour change for projects without the new config). S03 adds a small short-circuit unit test for the new `_try_auto_amend_after_escalation` helper in `tests/unit/test_fix_cycle.py` (matching the project's existing per-concern fix-cycle unit test location).
 
 ## Notes
 
 - **Why preserve `scope_violation_escalation` even when auto-amend fires?** Two reasons. (1) Operators auditing why a path was added to `allowed_paths` need to see that it was caused by a real scope violation — without the escalation event, the auto-amend looks like a spontaneous manifest edit. (2) Keeping the escalation event keeps the daemon's exit path identical regardless of auto-amend; the auto-amend is layered on top, not woven into the existing branch, which is easier to reason about and easier to revert.
-- **Why inline in `_complete_fix_cycle` instead of a separate poller pass?** Decided in the design conversation: inline avoids the yellow badge flicker (badge appears for one poll cycle then disappears) and keeps the entire transition in a single DB transaction. The trade-off is that `_complete_fix_cycle` now grows a second responsibility — handled by extracting the auto-amend block into a clearly-named helper function so the body of `_complete_fix_cycle` stays readable.
+- **Why inline in `_complete_fix_cycle` instead of a separate poller pass?** Decided in the design conversation: inline avoids the yellow badge flicker (badge would appear for one poll cycle then disappear). The auto-amend block runs in a second DB transaction inside the same function call — the two-commit gap is sub-second and well below the dashboard's poll interval, so the badge is not observed in practice. Merging the escalation and auto-amend writes into a single transaction was considered and rejected: the escalation commit is load-bearing (it must persist even when auto-amend doesn't fire), and rearranging the existing branch to defer that commit would complicate the recovery semantics for projects that don't opt in. The trade-off of two commits is acceptable; the auto-amend block is extracted into a clearly-named helper function (`_try_auto_amend_after_escalation`) so the body of `_complete_fix_cycle` stays readable.
 - **Why allow-pattern filter rather than blanket boolean?** Decided in the design conversation: blanket "auto-accept everything" effectively removes the scope gate. The allow-pattern filter preserves the gate's value for unexpected sprawl (e.g. a docs-only item touching `orch/daemon/`) while killing the noise for the routine cases.
-- **Match function reuse**: `should_auto_amend` should use the same matcher as `orch/daemon/scope_overlap.py:_matches` (fnmatch + anchor-containment) rather than reinventing a third matcher. The most economical implementation is to import `_matches` (rename it to a public name in `scope_overlap.py` if currently underscore-prefixed) or copy its body verbatim. Decision left to the implementer in S02 — capture in the report.
+- **Match function reuse**: `should_auto_amend` MUST use the same matcher the violation detector uses — `_scope_match` from `orch/daemon/fix_cycle.py`. Using a different matcher (e.g. the richer `_matches` in `scope_overlap.py`) could create edge cases where a path is detected as a violation but rejected by the auto-amend filter (or vice versa) because the two matchers interpret patterns differently. To reuse the function cleanly, S02 should promote `_scope_match` to a public name (e.g. `scope_match`) — keep `_scope_match` as a thin backward-compat alias if anything else in `fix_cycle.py` still references it — and import the public name into `scope_amendment.py`. Do NOT duplicate the matcher body.
 - **Revert flow remains manual**, by design: reverting agent edits is destructive (rewrites the working tree); the operator should always make that call.

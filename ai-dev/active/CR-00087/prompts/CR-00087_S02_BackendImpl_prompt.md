@@ -38,8 +38,9 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 - **Runtime step state** — prefer `uv run iw item-status CR-00087 --json`.
 - `ai-dev/active/CR-00087/CR-00087_CR_Design.md` — Design document.
 - `orch/daemon/scope_amendment.py` — file to modify.
-- `orch/daemon/scope_overlap.py` — reference for `_matches` (matcher to reuse).
+- `orch/daemon/fix_cycle.py` — file to modify (`_scope_match` lives at ~line 59; promote it to a public name `scope_match` and keep `_scope_match` as a thin alias for any internal callers).
 - `tests/unit/daemon/test_scope_amendment.py` — file where the new helper tests go.
+- `tests/unit/test_fix_cycle.py` — read this to confirm no test currently pins the private `_scope_match` name (if any do, leave the alias in place — do NOT delete `_scope_match`).
 
 ## Output Files
 
@@ -49,11 +50,28 @@ Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
 You are implementing **Step 2** of CR-00087. This step adds a single pure helper, `should_auto_amend`, to `orch/daemon/scope_amendment.py`. The helper does no I/O and no DB access — it answers a single yes/no question that S03 will call inside `_complete_fix_cycle`.
 
-Read the design doc first (especially **AC2, AC3, AC4**). Then read the existing `orch/daemon/scope_amendment.py` and `orch/daemon/scope_overlap.py:_matches` so you understand the matcher contract.
+**Critical design constraint**: `should_auto_amend` MUST use the exact same matcher as the violation detector in `_complete_fix_cycle`. The violation detector calls `_scope_match(path, pattern)` from `orch/daemon/fix_cycle.py` (line ~59). If the auto-amend filter used a different matcher (e.g. `scope_overlap._matches`, which has richer anchor-containment semantics), then edge cases could exist where a path is flagged as a violation but rejected by the auto-amend filter (or vice versa). Reusing the same function is the only way to guarantee semantic consistency.
+
+Read the design doc first (especially **AC2, AC3, AC4** and the Notes section about matcher reuse). Then read the existing `orch/daemon/scope_amendment.py` and `orch/daemon/fix_cycle.py:_scope_match` so you understand the matcher contract.
 
 ## Requirements
 
-### 1. Add the pure helper `should_auto_amend` (orch/daemon/scope_amendment.py)
+### 1. Promote `_scope_match` to a public name in `orch/daemon/fix_cycle.py`
+
+`_scope_match(path, pattern)` lives at the top of `orch/daemon/fix_cycle.py` (~line 59). Rename it to `scope_match` (public). Keep the old name as a thin alias for any existing internal callers:
+
+```python
+def scope_match(path: str, pattern: str) -> bool:
+    """Mirror of executor/scope_gate.py:_matches() — public name."""
+    # ...existing body...
+
+# Backward-compat alias; remove once all internal callers use scope_match.
+_scope_match = scope_match
+```
+
+If a `grep -rn "_scope_match" tests/ orch/` reveals no callers other than the local one inside `_complete_fix_cycle`, the alias can be omitted and the local caller updated to `scope_match`. State your choice in the report.
+
+### 2. Add the pure helper `should_auto_amend` (orch/daemon/scope_amendment.py)
 
 Signature and behaviour:
 
@@ -70,20 +88,20 @@ def should_auto_amend(
       2. violations is non-empty (nothing to amend means nothing to do);
       3. max_paths is None OR len(violations) <= max_paths;
       4. EVERY violation in `violations` matches at least one pattern in
-         `allow_patterns` via fnmatch + anchor-containment (the same
-         matcher semantics as orch.daemon.scope_overlap._matches).
+         `allow_patterns` via `scope_match` from `orch.daemon.fix_cycle`
+         — the SAME matcher the violation detector itself uses, so the
+         two layers cannot disagree on pattern semantics.
     """
 ```
 
 Implementation notes:
 
-- **Reuse the matcher.** `orch/daemon/scope_overlap.py` already has a `_matches(glob, pattern)` function and a `_pattern_to_anchor(pattern)` helper that together implement `fnmatch + anchor-containment`. Pick ONE of these approaches and capture the choice in your report:
-  - **(a) Promote `_matches` to a public name.** Rename `_matches` to `match_path_against_pattern` in `scope_overlap.py` (keep `_matches` as a thin backward-compat alias if it has other callers). Import the public name into `scope_amendment.py`. This is preferred because it avoids duplication.
-  - **(b) If you cannot promote because tests pin `_matches` directly**, import the underscore-prefixed function from `scope_overlap` (acceptable in same-package imports). Do NOT copy-paste the function body — duplicating a matcher creates a long-term divergence risk.
+- **Reuse the matcher** by importing it: `from orch.daemon.fix_cycle import scope_match`. Do NOT copy-paste the matcher body — duplicating it is exactly the long-term divergence risk the design wants to avoid.
 - The helper is **pure** — no logging, no exceptions, no side effects. Return `False` for any unexpected input shape (the caller in S03 will never pass bad input because the registry's `_parse_auto_amend_scope` from S01 has already sanitised it; but pure-helper hygiene means handle empty / non-list input gracefully without raising).
 - Place the helper directly in `orch/daemon/scope_amendment.py`. Add a module-level `__all__` entry if the file already maintains one (it currently does not — leave as-is if absent).
+- Be aware of an import-cycle risk: `scope_amendment.py` does not currently import from `fix_cycle.py`. Importing `scope_match` is safe (no cycle — `fix_cycle.py` already imports from `scope_amendment.py`, but only at function-call time inside `_complete_fix_cycle` for S03's hook, NOT at module-load time). If your edit introduces a module-level cycle (you'll see it the first time pytest imports the module), move the import inside the function body (deferred import) and document the choice in the report.
 
-### 2. Unit tests (tests/unit/daemon/test_scope_amendment.py)
+### 3. Unit tests (tests/unit/daemon/test_scope_amendment.py)
 
 Following **TDD (Red-Green-Refactor)**. Write the tests FIRST and confirm RED before implementing.
 
@@ -96,8 +114,9 @@ Add a new test class or test functions covering this matrix:
 - `violations=["tests/unit/test_foo.py", "orch/daemon/fix_cycle.py"]`, `allow_patterns=["tests/**"]`, `max_paths=10` → returns `False` (partial match — one violation doesn't match any pattern).
 - `violations=["tests/a.py", "tests/b.py", "tests/c.py", "tests/d.py"]`, `allow_patterns=["tests/**"]`, `max_paths=3` → returns `False` (exceeds cap).
 - `violations=["tests/a.py"]`, `allow_patterns=["tests/**"]`, `max_paths=1` → returns `True` (at-cap is allowed).
-- Anchor-containment: `violations=["docs/sub/notes.md"]`, `allow_patterns=["docs/**"]`, `max_paths=None` → returns `True` (matcher should treat `docs/**` as containing `docs/sub/notes.md`, matching `_matches` semantics).
-- Anchor-containment: `violations=["dashboard/static/chat.js"]`, `allow_patterns=["dashboard/**"]`, `max_paths=None` → returns `True`.
+- `violations=["docs/sub/notes.md"]`, `allow_patterns=["docs/**"]`, `max_paths=None` → returns `True` (the `prefix/**` shorthand in `scope_match` covers "docs or anything under docs").
+- `violations=["dashboard/static/chat.js"]`, `allow_patterns=["dashboard/**"]`, `max_paths=None` → returns `True`.
+- **Matcher parity**: for each `(violation, pattern)` pair used above, assert `should_auto_amend([v], [p], None) == (scope_match(v, p) is True)` so the auto-amend filter and the violation detector agree by construction. A single dedicated test using a small parametrised loop is enough; this is the guard against future drift if someone refactors `scope_match`.
 
 **RED capture**: pick the first test (e.g. `test_should_auto_amend_returns_true_for_single_matching_violation`), implement only the test, and run it via `uv run pytest tests/unit/daemon/test_scope_amendment.py::<test_name> -v`. Confirm it fails with `ImportError` or `AttributeError` (function doesn't exist yet) — wait, no: an ImportError is NOT acceptable as RED evidence (per CLAUDE.md TDD rules). Adjust by either:
   - Writing a stub `def should_auto_amend(*args, **kwargs): raise NotImplementedError` first, then running the test (it should fail with `NotImplementedError` — valid RED), OR
@@ -106,7 +125,7 @@ Capture the test id and the first 2-3 lines of failure output.
 
 ## Project Conventions
 
-Read `orch/CLAUDE.md` and root `CLAUDE.md`. Match existing helper signatures and docstring style in `orch/daemon/scope_amendment.py` and `orch/daemon/scope_overlap.py`.
+Read `orch/CLAUDE.md` and root `CLAUDE.md`. Match existing helper signatures and docstring style in `orch/daemon/scope_amendment.py` and `orch/daemon/fix_cycle.py`.
 
 ## TDD Requirement
 
@@ -125,14 +144,10 @@ Before reporting `completion_status: complete`:
 After implementation, run only the targeted tests:
 
 ```bash
-uv run pytest tests/unit/daemon/test_scope_amendment.py -v
+uv run pytest tests/unit/daemon/test_scope_amendment.py tests/unit/test_fix_cycle.py -v
 ```
 
-If you renamed `_matches` → `match_path_against_pattern` in `scope_overlap.py`, also run the overlap tests to confirm no regression:
-
-```bash
-uv run pytest tests/unit/daemon/test_scope_overlap.py -v
-```
+(The fix_cycle tests cover the `scope_match` rename / alias — make sure they still pass.)
 
 ## Subagent Result Contract
 
@@ -144,6 +159,7 @@ uv run pytest tests/unit/daemon/test_scope_overlap.py -v
   "completion_status": "complete|partial|blocked",
   "files_changed": [
     "orch/daemon/scope_amendment.py",
+    "orch/daemon/fix_cycle.py",
     "tests/unit/daemon/test_scope_amendment.py"
   ],
   "preflight": {
@@ -155,6 +171,6 @@ uv run pytest tests/unit/daemon/test_scope_overlap.py -v
   "test_summary": "X passed, 0 failed",
   "tdd_red_evidence": "tests/unit/daemon/test_scope_amendment.py::test_should_auto_amend_returns_true_for_single_matching_violation — AssertionError: assert False is True",
   "blockers": [],
-  "notes": "Matcher reuse choice: (a) renamed _matches → match_path_against_pattern in scope_overlap.py, OR (b) imported _matches directly from scope_overlap. State which and why."
+  "notes": "Matcher reuse: promoted _scope_match → scope_match in orch/daemon/fix_cycle.py (with or without alias — state which) and imported it into scope_amendment.py. Confirm no import-cycle was introduced."
 }
 ```
