@@ -3,7 +3,9 @@
   "cli_tool": "pi",
   "max_parallel": 4,
   "overlap_gate": {
-    "block_on_overlap": ["**/*"],
+    "block_on_overlap": [
+      "**/*"
+    ],
     "allow_on_overlap": [
       "tests/**",
       "test/**",
@@ -90,5 +92,15 @@
         "bundle": true
       }
     }
+  },
+  "_auto_amend_scope_example": {
+    "_note": "Uncomment by renaming to 'auto_amend_scope'. When present, the daemon auto-amends scope violations that all match auto_allow_patterns and stay within max_paths. Default (key absent) keeps today's manual amend flow.",
+    "auto_allow_patterns": [
+      "tests/**",
+      "**/*.md",
+      "docs/**",
+      "ai-dev/**"
+    ],
+    "max_paths": 10
   }
 }

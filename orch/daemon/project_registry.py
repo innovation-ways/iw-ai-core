@@ -107,6 +107,13 @@ class ProjectConfig:
     # preserves the previous behaviour (tests/** etc. allowed, everything else blocked).
     overlap_block_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_BLOCK_PATTERNS))
     overlap_allow_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_ALLOW_PATTERNS))
+    # Per-project auto-amend policy for scope violations. When auto_amend_allow_patterns
+    # is non-empty, the daemon will auto-run amend_allowed_paths() inside _complete_fix_cycle
+    # if every violated path matches one of the patterns and the count stays within
+    # auto_amend_max_paths (when set). Empty list means the feature is off (default).
+    # auto_amend_max_paths = None means no count cap.
+    auto_amend_allow_patterns: list[str] = field(default_factory=list)
+    auto_amend_max_paths: int | None = None
 
     @property
     def working_dir(self) -> str:
@@ -282,6 +289,11 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         )
         aggregate_fix_cycle_max = 25
 
+    # Per-project auto-amend policy for scope violations.
+    auto_amend_allow_patterns, auto_amend_max_paths = _parse_auto_amend_scope(
+        project_id, iw_config.get("auto_amend_scope")
+    )
+
     return ProjectConfig(
         id=project_id,
         display_name=display_name,
@@ -301,6 +313,8 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         aggregate_fix_cycle_max=aggregate_fix_cycle_max,
         overlap_block_patterns=overlap_block_patterns,
         overlap_allow_patterns=overlap_allow_patterns,
+        auto_amend_allow_patterns=auto_amend_allow_patterns,
+        auto_amend_max_paths=auto_amend_max_paths,
     )
 
 
@@ -399,6 +413,82 @@ def _parse_overlap_gate(project_id: str, raw: object) -> tuple[list[str], list[s
             allow_patterns = allow_filtered  # empty list is honoured
 
     return block_patterns, allow_patterns
+
+
+def _parse_auto_amend_scope(project_id: str, raw: object) -> tuple[list[str], int | None]:
+    """Parse the optional auto_amend_scope block from .iw-orch.json.
+
+    Returns (auto_allow_patterns, max_paths).
+    On any malformed input, returns ([], None) and logs a WARNING.
+
+    Validation rules:
+      - raw is None/absent → return ([], None) silently (field is optional).
+      - raw is not a dict  → warn, return ([], None).
+      - auto_allow_patterns missing → return ([], None).
+      - auto_allow_patterns not a list → warn, return ([], None).
+      - Non-string entries in auto_allow_patterns → drop with per-entry WARNING.
+      - max_paths missing → None (no cap).
+      - max_paths not an int (or is a bool) → warn, treat as None.
+      - max_paths < 0 → warn, treat as None.
+    """
+    if raw is None:
+        return [], None
+
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Project %r auto_amend_scope is not a dict — feature off for this project",
+            project_id,
+        )
+        return [], None
+
+    raw_patterns = raw.get("auto_allow_patterns")
+    if raw_patterns is None:
+        return [], None
+
+    if not isinstance(raw_patterns, list):
+        logger.warning(
+            "Project %r auto_amend_scope.auto_allow_patterns is not a list — feature off",
+            project_id,
+        )
+        return [], None
+
+    filtered_patterns: list[str] = []
+    for entry in raw_patterns:
+        if isinstance(entry, str):
+            filtered_patterns.append(entry)
+        else:
+            logger.warning(
+                "Project %r auto_amend_scope.auto_allow_patterns entry %r is not a str — dropped",
+                project_id,
+                entry,
+            )
+
+    # If no patterns survived, treat as absent — feature off
+    if not filtered_patterns:
+        return [], None
+
+    raw_max = raw.get("max_paths")
+    if raw_max is None:
+        max_paths: int | None = None
+    else:
+        # Explicitly reject bool (bool is an int subtype in Python)
+        if isinstance(raw_max, bool) or not isinstance(raw_max, int):
+            logger.warning(
+                "Project %r auto_amend_scope.max_paths is not an int — no cap applied",
+                project_id,
+            )
+            max_paths = None
+        elif raw_max < 0:
+            logger.warning(
+                "Project %r auto_amend_scope.max_paths is negative (%r) — no cap applied",
+                project_id,
+                raw_max,
+            )
+            max_paths = None
+        else:
+            max_paths = raw_max
+
+    return filtered_patterns, max_paths
 
 
 def _parse_ai_assistant_block(project_id: str, raw: object) -> dict[str, Any] | None:
