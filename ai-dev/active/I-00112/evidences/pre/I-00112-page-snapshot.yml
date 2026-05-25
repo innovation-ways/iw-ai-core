@@ -1,0 +1,230 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - region "AI Assistant chat" [ref=e3]:
+      - button "Expand AI Assistant panel (Ctrl+/)" [ref=e5] [cursor=pointer]:
+        - img [ref=e6]
+        - generic [ref=e8]: AI Assistant
+        - img [ref=e9]
+    - complementary [ref=e11]:
+      - link "IW AI Core IW AI Core" [ref=e12] [cursor=pointer]:
+        - /url: /
+        - img "IW AI Core" [ref=e13]
+        - generic [ref=e14]: IW AI Core
+      - navigation [ref=e15]:
+        - group [ref=e16]:
+          - generic "Projects" [ref=e17] [cursor=pointer]:
+            - generic [ref=e18]: Projects
+            - img [ref=e19]
+          - generic [ref=e21]:
+            - group [ref=e22]:
+              - generic "Curriculum Vitae" [ref=e23] [cursor=pointer]:
+                - generic [ref=e24]: Curriculum Vitae
+                - img [ref=e25]
+            - group [ref=e27]:
+              - generic "IW AI Core Platform" [ref=e28] [cursor=pointer]:
+                - generic [ref=e29]: IW AI Core Platform
+                - img [ref=e30]
+            - group [ref=e32]:
+              - generic "InnoForge Document Platform" [ref=e33] [cursor=pointer]:
+                - generic [ref=e34]: InnoForge Document Platform
+                - img [ref=e35]
+            - group [ref=e37]:
+              - generic "Podforger" [ref=e38] [cursor=pointer]:
+                - generic [ref=e39]: Podforger
+                - img [ref=e40]
+        - group [ref=e42]:
+          - generic "System" [ref=e43] [cursor=pointer]:
+            - generic [ref=e44]: System
+            - img [ref=e45]
+          - link "Running Tasks" [ref=e47] [cursor=pointer]:
+            - /url: /system/running
+            - generic [ref=e48]: Running Tasks
+          - link "Worktree Health 7 dirty worktrees" [ref=e49] [cursor=pointer]:
+            - /url: /system/worktrees
+            - generic [ref=e50]: Worktree Health
+            - generic "7 dirty worktrees" [ref=e240]
+          - link "Container Health" [ref=e52] [cursor=pointer]:
+            - /url: /system/containers
+            - generic [ref=e53]: Container Health
+          - link "System Status" [ref=e54] [cursor=pointer]:
+            - /url: /system/status
+            - generic [ref=e55]: System Status
+          - link "Test Coverage" [ref=e56] [cursor=pointer]:
+            - /url: /system/coverage
+            - generic [ref=e57]: Test Coverage
+          - link "Keep-Alive" [ref=e58] [cursor=pointer]:
+            - /url: /system/keep-alive
+            - generic [ref=e59]: Keep-Alive
+          - link "All Active Work" [ref=e60] [cursor=pointer]:
+            - /url: /system/all-active
+            - generic [ref=e61]: All Active Work
+          - link "Configuration" [ref=e62] [cursor=pointer]:
+            - /url: /system/config
+            - generic [ref=e63]: Configuration
+    - generic [ref=e64]:
+      - generic [ref=e65]:
+        - button "Toggle AI Assistant panel (Ctrl+/)" [ref=e66] [cursor=pointer]:
+          - img [ref=e67]
+        - searchbox "Search work items… (Ctrl+K)" [ref=e69]
+        - button "Help for this page" [ref=e71] [cursor=pointer]:
+          - generic: "?"
+      - main [ref=e72]:
+        - generic [ref=e73]:
+          - generic [ref=e74]:
+            - heading "Configuration" [level=2] [ref=e75]
+            - generic [ref=e77]:
+              - generic [ref=e78]:
+                - generic [ref=e79]: Claude Model
+                - combobox "Claude Model" [ref=e80]:
+                  - option "claude-sonnet-4-6" [selected]
+                  - option "claude-opus-4-7"
+                  - option "claude-haiku-4-5-20251001"
+              - generic [ref=e81]:
+                - generic [ref=e82]: Usage Window Duration
+                - combobox "Usage Window Duration" [ref=e83]:
+                  - option "3 hours"
+                  - option "4 hours"
+                  - option "5 hours" [selected]
+                  - option "6 hours"
+              - button "Save Config" [ref=e85] [cursor=pointer]
+          - generic [ref=e87]:
+            - generic [ref=e88]: Coverage Timeline
+            - generic [ref=e89]:
+              - generic [ref=e90]: 00:00
+              - generic [ref=e91]: 06:00
+              - generic [ref=e92]: 12:00
+              - generic [ref=e93]: 18:00
+              - generic [ref=e94]: 24:00
+            - generic [ref=e95]:
+              - generic "05:00 + 5h" [ref=e96]
+              - generic "10:02 + 5h" [ref=e97]
+              - generic "15:04 + 5h" [ref=e98]
+              - generic "20:06 + 5h (wraps)" [ref=e99]
+              - generic "20:06 + 5h (wraps)" [ref=e100]
+          - generic [ref=e101]:
+            - generic [ref=e102]:
+              - heading "Scheduled Slots" [level=2] [ref=e103]
+              - generic [ref=e104]:
+                - textbox "24-hour time, e.g. 05:00" [ref=e105]:
+                  - /placeholder: HH:MM
+                - button "Add Slot" [ref=e106] [cursor=pointer]
+            - table [ref=e109]:
+              - rowgroup [ref=e110]:
+                - row "Time Status Actions" [ref=e111]:
+                  - columnheader "Time" [ref=e112]
+                  - columnheader "Status" [ref=e113]
+                  - columnheader "Actions" [ref=e114]
+              - rowgroup [ref=e115]:
+                - row "05:00 Active Disable Delete" [ref=e116]:
+                  - cell "05:00" [ref=e117]
+                  - cell "Active" [ref=e118]:
+                    - generic [ref=e119]: Active
+                  - cell "Disable Delete" [ref=e120]:
+                    - button "Disable" [ref=e121] [cursor=pointer]
+                    - button "Delete" [ref=e122] [cursor=pointer]
+                - row "10:02 Active Disable Delete" [ref=e123]:
+                  - cell "10:02" [ref=e124]
+                  - cell "Active" [ref=e125]:
+                    - generic [ref=e126]: Active
+                  - cell "Disable Delete" [ref=e127]:
+                    - button "Disable" [ref=e128] [cursor=pointer]
+                    - button "Delete" [ref=e129] [cursor=pointer]
+                - row "15:04 Active Disable Delete" [ref=e130]:
+                  - cell "15:04" [ref=e131]
+                  - cell "Active" [ref=e132]:
+                    - generic [ref=e133]: Active
+                  - cell "Disable Delete" [ref=e134]:
+                    - button "Disable" [ref=e135] [cursor=pointer]
+                    - button "Delete" [ref=e136] [cursor=pointer]
+                - row "20:06 Active Disable Delete" [ref=e137]:
+                  - cell "20:06" [ref=e138]
+                  - cell "Active" [ref=e139]:
+                    - generic [ref=e140]: Active
+                  - cell "Disable Delete" [ref=e141]:
+                    - button "Disable" [ref=e142] [cursor=pointer]
+                    - button "Delete" [ref=e143] [cursor=pointer]
+          - generic [ref=e144]:
+            - heading "Recent Executions" [level=2] [ref=e145]
+            - table [ref=e241]:
+              - rowgroup [ref=e242]:
+                - row "Fired At Slot Status" [ref=e243]:
+                  - columnheader "Fired At" [ref=e244]
+                  - columnheader "Slot" [ref=e245]
+                  - columnheader "Status" [ref=e246]
+              - rowgroup [ref=e247]:
+                - row "2026-05-25 04:05:00 05:00 Success" [ref=e248]:
+                  - cell "2026-05-25 04:05:00" [ref=e249]
+                  - cell "05:00" [ref=e250]
+                  - cell "Success" [ref=e251]:
+                    - generic [ref=e252]: Success
+                - row "2026-05-24 19:09:57 20:06 Success" [ref=e253]:
+                  - cell "2026-05-24 19:09:57" [ref=e254]
+                  - cell "20:06" [ref=e255]
+                  - cell "Success" [ref=e256]:
+                    - generic [ref=e257]: Success
+                - row "2026-05-24 14:07:24 15:04 Success" [ref=e258]:
+                  - cell "2026-05-24 14:07:24" [ref=e259]
+                  - cell "15:04" [ref=e260]
+                  - cell "Success" [ref=e261]:
+                    - generic [ref=e262]: Success
+                - row "2026-05-24 09:02:21 10:02 Success" [ref=e263]:
+                  - cell "2026-05-24 09:02:21" [ref=e264]
+                  - cell "10:02" [ref=e265]
+                  - cell "Success" [ref=e266]:
+                    - generic [ref=e267]: Success
+                - row "2026-05-24 04:04:07 05:00 Success" [ref=e268]:
+                  - cell "2026-05-24 04:04:07" [ref=e269]
+                  - cell "05:00" [ref=e270]
+                  - cell "Success" [ref=e271]:
+                    - generic [ref=e272]: Success
+                - row "2026-05-23 19:09:01 20:06 Success" [ref=e273]:
+                  - cell "2026-05-23 19:09:01" [ref=e274]
+                  - cell "20:06" [ref=e275]
+                  - cell "Success" [ref=e276]:
+                    - generic [ref=e277]: Success
+                - row "2026-05-23 14:16:52 15:04 Success" [ref=e278]:
+                  - cell "2026-05-23 14:16:52" [ref=e279]
+                  - cell "15:04" [ref=e280]
+                  - cell "Success" [ref=e281]:
+                    - generic [ref=e282]: Success
+                - row "2026-05-23 09:11:00 10:02 Success" [ref=e283]:
+                  - cell "2026-05-23 09:11:00" [ref=e284]
+                  - cell "10:02" [ref=e285]
+                  - cell "Success" [ref=e286]:
+                    - generic [ref=e287]: Success
+                - row "2026-05-23 04:05:37 05:00 Success" [ref=e288]:
+                  - cell "2026-05-23 04:05:37" [ref=e289]
+                  - cell "05:00" [ref=e290]
+                  - cell "Success" [ref=e291]:
+                    - generic [ref=e292]: Success
+                - row "2026-05-22 19:06:58 20:06 Success" [ref=e293]:
+                  - cell "2026-05-22 19:06:58" [ref=e294]
+                  - cell "20:06" [ref=e295]
+                  - cell "Success" [ref=e296]:
+                    - generic [ref=e297]: Success
+  - contentinfo [ref=e204]:
+    - button "Toggle theme" [ref=e205] [cursor=pointer]:
+      - generic [ref=e206]: ☾
+      - generic [ref=e207]: Theme
+    - generic [ref=e208]: ·
+    - generic [ref=e209]:
+      - generic [ref=e212]: Claude
+      - generic [ref=e213]:
+        - generic [ref=e214]: 4h 26m
+        - generic [ref=e217]: 9%
+      - generic [ref=e218]:
+        - generic [ref=e219]: Tue 09:00
+        - generic [ref=e222]: 65%
+      - generic [ref=e223]: ·
+      - generic [ref=e224]: MiniMax
+      - generic "139 / 4500 requests" [ref=e225]:
+        - generic [ref=e226]: 2h 36m
+        - generic [ref=e229]: 3%
+      - generic [ref=e230]: ·
+      - generic [ref=e231]: Codex
+      - generic [ref=e232]:
+        - generic [ref=e233]: 5h
+        - generic [ref=e235]: 0%
+      - generic [ref=e236]:
+        - generic [ref=e237]: 7d
+        - generic [ref=e239]: 0%
