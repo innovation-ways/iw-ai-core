@@ -104,6 +104,46 @@ with pytest.raises(FixCycleExhausted):
 
 ---
 
+## DB-column documentation gate (CR-00085, P4-4.5)
+
+`scripts/check_db_column_docs.py` is a static SQLAlchemy-mapper-walking
+scanner that flags every `Column` declaration missing a `doc=` description.
+It runs as `make check-column-docs`, folded into `make quality` warn-first
+during the burn-in period, and as a step in `.github/workflows/test-quality.yml`'s
+`lint-typecheck` job (also warn-first).
+
+**The rule when you add a new column.** Every new `Column(...)` declaration
+on a SQLAlchemy model under `orch/db/` MUST carry a `doc="<one-line description>"`
+argument. Example:
+
+```python
+class WorkItem(Base):
+    foo = Column(Integer, nullable=False, doc="What this column means in one line.")
+```
+
+**The committed baseline at `orch/db/column_docs_baseline.txt`** lists today's
+undocumented columns so the gate fires only on **NEW** violations. Regenerate
+with:
+
+```bash
+uv run python scripts/check_db_column_docs.py \\
+    --write-baseline orch/db/column_docs_baseline.txt
+```
+
+**The right way to silence the gate is to write a `doc=` on the column, not
+to add the FQN to the baseline.** The baseline is a cleanup backlog, not an
+accept-list — reviewers should push back on baseline growth.
+
+**Reserved-name trap.** Because SQLAlchemy reserves `metadata` on the
+declarative base, the `DaemonEvent` table's `metadata` column is bound to
+the python attribute `event_metadata`. The scanner walks the SQL columns
+via `Base.registry.mappers` → `mapper.local_table.columns`, so it reports
+the SQL column name (`metadata`), not the python attribute name. If you
+encounter a similar SQLAlchemy-reserved-name collision, follow the same
+pattern.
+
+---
+
 ## 2. IW AI Core test infrastructure rules (NON-NEGOTIABLE)
 
 ### The live-DB write guard — do not fight it
