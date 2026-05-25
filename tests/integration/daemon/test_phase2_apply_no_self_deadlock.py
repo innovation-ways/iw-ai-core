@@ -274,7 +274,7 @@ def test_i_00063_assert_no_self_blockers_raises_when_caller_holds_share_lock(
 
 @pytest.mark.integration
 @pytest.mark.timeout(60)
-def test_i_00063_assert_no_self_blockers_clean_when_no_blocker(
+def test_i_00063_assert_no_self_blockers_clean_when_no_blocker(  # noqa: assertion-scanner
     db_engine_at_prev_revision: Engine,
 ) -> None:
     """Unit of _assert_no_self_blockers: returns cleanly when no lock is held."""

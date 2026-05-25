@@ -351,7 +351,7 @@ class TestExportRoute:
 
 
 class TestExportCli:
-    def test_export_cli_generates_files(self, tmp_path: object, db_session: Session) -> None:
+    def test_export_cli_generates_files(self, tmp_path: object, db_session: Session) -> None:  # noqa: assertion-scanner
         """docs-export CLI creates ZIP file in output-dir."""
         import tempfile
         from contextlib import contextmanager

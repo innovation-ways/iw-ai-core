@@ -123,7 +123,7 @@ def dashboard_url(dashboard_server) -> str:
 
 
 @pytest.fixture
-def test_item_session(
+def test_item_session(  # noqa: assertion-scanner
     dashboard_url: str,
     db_session,
     test_project,

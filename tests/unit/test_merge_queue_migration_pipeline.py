@@ -290,7 +290,7 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
     here document that the fix preserves this semantics.
     """
 
-    def test_rebase_not_called_when_batch_id_is_none(self) -> None:
+    def test_rebase_not_called_when_batch_id_is_none(self) -> None:  # noqa: assertion-scanner
         item = _make_batch_item(batch_id=None)
         db = MagicMock()
 
@@ -315,7 +315,7 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
 
         mock_rebase.assert_not_called()
 
-    def test_dry_run_not_called_when_batch_id_is_none(self) -> None:
+    def test_dry_run_not_called_when_batch_id_is_none(self) -> None:  # noqa: assertion-scanner
         item = _make_batch_item(batch_id=None)
         db = MagicMock()
 
@@ -340,7 +340,7 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
 
         mock_dry.assert_not_called()
 
-    def test_post_merge_apply_not_called_when_batch_id_is_none(self) -> None:
+    def test_post_merge_apply_not_called_when_batch_id_is_none(self) -> None:  # noqa: assertion-scanner
         item = _make_batch_item(batch_id=None)
         db = MagicMock()
 
@@ -494,6 +494,6 @@ class TestMergeItemRollbackGuard:
         result = self._run_merge_item(_make_failed_apply_result(revisions_applied=["abc123"]))
         result["rollback"].assert_called_once()
 
-    def test_no_rollback_on_successful_apply(self) -> None:
+    def test_no_rollback_on_successful_apply(self) -> None:  # noqa: assertion-scanner
         result = self._run_merge_item(_make_successful_apply_result())
         result["rollback"].assert_not_called()

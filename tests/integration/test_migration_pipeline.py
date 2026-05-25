@@ -87,7 +87,7 @@ def _run_pipeline_happy_path(batch_id: int) -> None:
 
 @pytest.mark.integration
 @pytest.mark.slow
-def test_pipeline_happy_path(unique_batch_id: int) -> None:
+def test_pipeline_happy_path(unique_batch_id: int) -> None:  # noqa: assertion-scanner
     """Valid migration → Phase 1 pass → Phase 2 pass."""
     _run_pipeline_happy_path(unique_batch_id)
 
@@ -262,7 +262,7 @@ def test_multi_head_state_rejected(unique_batch_id: int) -> None:
 
 
 @pytest.mark.integration
-def test_frozen_queue_blocks_merges() -> None:
+def test_frozen_queue_blocks_merges() -> None:  # noqa: assertion-scanner
     """When merge queue is frozen, process_merge_queue skips batches entirely."""
     from unittest.mock import MagicMock
 

@@ -145,7 +145,7 @@ def _run_alembic_upgrade_head(engine: Engine) -> None:
 
 
 class TestGuardAtHead:
-    def test_guard_passes_at_head(self, migrated_engine: Engine) -> None:
+    def test_guard_passes_at_head(self, migrated_engine: Engine) -> None:  # noqa: assertion-scanner
         """assert_db_at_head() does not raise when DB is at head."""
         current_rev = _get_current_rev(migrated_engine)
         head_rev = _get_head_rev(migrated_engine)

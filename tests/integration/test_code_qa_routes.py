@@ -81,7 +81,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
 
 @pytest.fixture
-def test_project_with_index(db_session: Session, tmp_path: Path) -> Project:
+def test_project_with_index(db_session: Session, tmp_path: Path) -> Project:  # noqa: assertion-scanner
     """Insert a Project row with code_understanding config using tmp_path for index."""
     project = Project(
         id="test-proj",
@@ -102,7 +102,7 @@ def test_project_with_index(db_session: Session, tmp_path: Path) -> Project:
 
 
 @pytest.fixture
-def test_project(db_session: Session) -> Project:
+def test_project(db_session: Session) -> Project:  # noqa: assertion-scanner
     """Insert a Project row with code_understanding config."""
     project = Project(
         id="test-proj",

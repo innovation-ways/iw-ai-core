@@ -52,7 +52,7 @@ def archive_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def test_project_with_root(db_session: Session, repo_root: Path) -> Project:
+def test_project_with_root(db_session: Session, repo_root: Path) -> Project:  # noqa: assertion-scanner
     """A project row pointing at a real tmp directory."""
     repo_root.mkdir(parents=True)
     project = Project(

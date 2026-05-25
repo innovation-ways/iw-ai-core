@@ -63,7 +63,7 @@ def db_session(db_engine):
 
 
 @pytest.fixture
-def test_project(db_session):
+def test_project(db_session):  # noqa: assertion-scanner
     project = Project(
         id="test-proj",
         display_name="Test Project",

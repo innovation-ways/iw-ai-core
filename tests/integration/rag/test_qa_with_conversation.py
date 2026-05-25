@@ -21,6 +21,24 @@ if TYPE_CHECKING:
     from tests.conftest import Project
 
 
+class _TestAsyncIterator:
+    """Minimal async iterator used in mock LLM responses."""
+
+    def __init__(self) -> None:
+        self._done = False
+
+    def __aiter__(self) -> _TestAsyncIterator:
+        return self
+
+    async def __anext__(self) -> MagicMock:
+        if not self._done:
+            self._done = True
+            mk = MagicMock()
+            mk.delta = "answer"
+            return mk
+        raise StopAsyncIteration
+
+
 class TestQAWithConversation:
     """answer_stream with conversation_id integration."""
 
@@ -220,22 +238,6 @@ class TestQAWithConversation:
             {"role": "assistant", "content": "keep_alive is a function..."},
         ]
 
-        class MockAsyncIteratorLegacy:
-            def __init__(self):
-                self.generated = False
-
-            def __aiter__(self):
-                return self
-
-            async def __anext__(self):
-                if not self.generated:
-                    self.generated = True
-                    return MagicMock(delta="answer")
-                raise StopAsyncIteration
-
-        async def mock_astream_chat_legacy(*args, **kwargs):
-            return MockAsyncIteratorLegacy()
-
         with patch("orch.rag.qa._condense_query") as mock_condense:
             mock_condense.return_value = "keep_alive function"
 
@@ -249,7 +251,7 @@ class TestQAWithConversation:
                 mock_embed_cls.return_value = mock_embed_instance
 
                 mock_ollama_instance = MagicMock()
-                mock_ollama_instance.astream_chat = AsyncMock(mock_astream_chat_legacy())
+                mock_ollama_instance.astream_chat = AsyncMock(return_value=_TestAsyncIterator())
                 mock_ollama_cls.return_value = mock_ollama_instance
 
                 tokens = []
@@ -263,5 +265,9 @@ class TestQAWithConversation:
                 ):
                     tokens.append(tok)
 
-        # condense was called since len(history) >= 2
-        mock_condense.assert_called_once()
+        # Observable: when conversation_id is None, the legacy path must use
+        # the passed-in history for the condense step (backwards compat). This
+        # assertion would fail if someone accidentally gated condense on
+        # conversation_id (making the legacy path skip condensing).
+        mock_condense.assert_called()
+        assert len(mock_condense.call_args[0][0]) == 2

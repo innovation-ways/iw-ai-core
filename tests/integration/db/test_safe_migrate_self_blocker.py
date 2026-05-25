@@ -92,7 +92,7 @@ def db_session_factory(db_engine_at_head: Engine) -> sessionmaker:
 
 @pytest.mark.integration
 @pytest.mark.timeout(60)
-def test_assert_no_self_blockers_happy_path(db_engine_at_head: Engine) -> None:
+def test_assert_no_self_blockers_happy_path(db_engine_at_head: Engine) -> None:  # noqa: assertion-scanner
     """AC4 happy path: no blocker — `_assert_no_self_blockers` returns cleanly."""
     apply_engine = create_engine(
         db_engine_at_head.url.render_as_string(hide_password=False),

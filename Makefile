@@ -375,7 +375,7 @@ allure-integration:
 	@rm -rf $(ALLURE_RESULTS)
 	@mkdir -p $(ALLURE_RESULTS)
 	@echo "[allure-integration] Running integration tests with Allure reporting..."
-	@uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser -v --alluredir=$(ALLURE_RESULTS)
+	@uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser --no-cov -n auto -v --alluredir=$(ALLURE_RESULTS)
 	@echo "[allure-integration] Run 'make allure-serve' to view report"
 
 allure-all:

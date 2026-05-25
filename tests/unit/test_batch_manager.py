@@ -30,6 +30,7 @@ from orch.db.models import (
     BatchItemStatus,
     BatchStatus,
     RunStatus,
+    StepStatus,
     StepType,
     WorkflowStep,
     WorkItem,
@@ -975,6 +976,11 @@ class TestBrowserEnvUpFailureTeardown:
             "F-00001",
             "S01",
         )
+        # Observable: step is marked failed when env_up fails — this assertion
+        # would fail if the step.status = StepStatus.failed line were removed
+        # from the env_up failure path in _launch_step.
+        db.refresh(step)
+        assert step.status == StepStatus.failed
 
     def test_env_down_called_even_when_it_raises(self, tmp_path):
         """run_env_down_hook raising must be caught — _launch_step must not propagate it."""
@@ -1021,7 +1027,18 @@ class TestBrowserEnvUpFailureTeardown:
             # Must not raise — the exception from run_env_down_hook is swallowed
             manager._launch_step(db, step, worktree_info)
 
-        mock_down.assert_called_once()
+        mock_down.assert_called_once_with(
+            manager.project_config,
+            "/wt/F-00002",
+            bv_env,
+            "F-00002",
+            "S01",
+        )
+        # Observable: step is already marked failed (set before env_down, which
+        # raised — the exception is caught and swallowed per H11 design, so
+        # _launch_step returns normally after the return statement above).
+        db.refresh(step)
+        assert step.status == StepStatus.failed
 
 
 # ---------------------------------------------------------------------------

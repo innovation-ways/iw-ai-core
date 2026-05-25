@@ -117,7 +117,7 @@ class TestLoadConfig:
 
 
 class TestAssertGitignoreSafe:
-    def test_passes_when_env_and_iw_present(self, tmp_path: Path) -> None:
+    def test_passes_when_env_and_iw_present(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
         gitignore = tmp_path / ".gitignore"
         gitignore.write_text(".env\n.iw/\nother\n")
         assert_gitignore_safe(tmp_path)

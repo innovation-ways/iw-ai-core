@@ -140,7 +140,7 @@ class TestAssertDbAtHead:
             assert "head_abc" in msg
             assert "make db-migrate" in msg
 
-    def test_silent_on_match(self) -> None:
+    def test_silent_on_match(self) -> None:  # noqa: assertion-scanner
         """No exception raised when status.ok is True."""
         status = GuardStatus(
             current_rev="abc123",
@@ -201,7 +201,7 @@ class TestRemediationMessage:
 
 
 class TestAssertDbAtHeadSkipsGuard:
-    def test_assert_db_at_head_skips_when_skip_guard_env(
+    def test_assert_db_at_head_skips_when_skip_guard_env(  # noqa: assertion-scanner
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """IW_CORE_SKIP_ALEMBIC_GUARD=true causes silent return without calling DB."""
@@ -210,7 +210,7 @@ class TestAssertDbAtHeadSkipsGuard:
             assert_db_at_head("postgresql://dummy")
             mock_check.assert_not_called()
 
-    def test_assert_db_at_head_skips_when_agent_context(
+    def test_assert_db_at_head_skips_when_agent_context(  # noqa: assertion-scanner
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """IW_CORE_AGENT_CONTEXT=true causes silent return without calling DB."""

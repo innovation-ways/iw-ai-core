@@ -93,7 +93,7 @@ def make_db(
 
 
 class TestProcessMergeQueue:
-    def test_no_merge_when_already_merging(self):
+    def test_no_merge_when_already_merging(self):  # noqa: assertion-scanner
         merging_item = make_batch_item("F-00001", status=BatchItemStatus.merging)
         db = MagicMock()
 
@@ -111,7 +111,7 @@ class TestProcessMergeQueue:
         # _merge_item should NOT be called while another merge is in progress
         mock_merge.assert_not_called()
 
-    def test_no_merge_when_queue_empty(self):
+    def test_no_merge_when_queue_empty(self):  # noqa: assertion-scanner
         db = MagicMock()
         q = MagicMock()
         q.filter.return_value.first.return_value = None  # no merging, no ready

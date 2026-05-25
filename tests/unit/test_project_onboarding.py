@@ -155,7 +155,7 @@ class TestSafeResolvePath:
 
 
 class TestValidateRepoRoot:
-    def test_valid_git_repo(self, tmp_path: Path):
+    def test_valid_git_repo(self, tmp_path: Path):  # noqa: assertion-scanner
         (tmp_path / ".git").mkdir()
         validate_repo_root(tmp_path)
 

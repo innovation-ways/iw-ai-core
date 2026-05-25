@@ -42,7 +42,7 @@ class TestAgentContextGuardSemantics:
             " true",
         ],
     )
-    def test_does_not_raise_for_non_exact_true(self, value: str) -> None:
+    def test_does_not_raise_for_non_exact_true(self, value: str) -> None:  # noqa: assertion-scanner
         with patch.dict("os.environ", {"IW_CORE_AGENT_CONTEXT": value}, clear=False):
             _assert_not_agent_context()
 
@@ -53,7 +53,7 @@ class TestAgentContextGuardSemantics:
             None,
         ],
     )
-    def test_does_not_raise_when_absent_or_empty(self, value: str | None) -> None:
+    def test_does_not_raise_when_absent_or_empty(self, value: str | None) -> None:  # noqa: assertion-scanner
         env = {} if value is None else {"IW_CORE_AGENT_CONTEXT": value}
         with patch.dict("os.environ", env, clear=False):
             _assert_not_agent_context()

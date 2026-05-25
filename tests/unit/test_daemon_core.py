@@ -335,7 +335,7 @@ def test_shutdown_removes_pid_file(tmp_path: Path) -> None:
     assert not pid_file.exists()
 
 
-def test_shutdown_does_not_raise_if_pid_file_missing(tmp_path: Path) -> None:
+def test_shutdown_does_not_raise_if_pid_file_missing(tmp_path: Path) -> None:  # noqa: assertion-scanner
     """_shutdown() is safe even if the PID file was already removed."""
     daemon = make_daemon(tmp_path)
     # Don't create the PID file

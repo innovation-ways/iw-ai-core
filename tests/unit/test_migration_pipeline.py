@@ -111,6 +111,9 @@ class TestSetMergeQueueFrozen:
 
                 mock_session.add.assert_called_once()
                 mock_session.commit.assert_called_once()
+                # Verify DaemonEvent row was created with correct frozen-state content
+                added_event = mock_session.add.call_args[0][0]
+                assert added_event.event_type == "merge_queue_frozen"
 
 
 class TestRunPreMergeDryRun:

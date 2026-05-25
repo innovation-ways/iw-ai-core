@@ -70,8 +70,8 @@ def client(db_session: Session) -> TestClient:
 
 
 @pytest.fixture
-def test_doc_project(db_session: Session) -> Project:
-    """Create a Project row with a writable repo_root for PDF cache tests."""
+def test_doc_project(db_session: Session) -> Project:  # noqa: assertion-scanner
+    """ "Create a Project row with a writable repo_root for PDF cache tests."""
     project = Project(
         id="test-proj-pdf",
         display_name="Test Project PDF",
@@ -84,7 +84,7 @@ def test_doc_project(db_session: Session) -> Project:
 
 
 @pytest.fixture
-def test_doc(db_session: Session, test_doc_project: Project) -> ProjectDoc:
+def test_doc(db_session: Session, test_doc_project: Project) -> ProjectDoc:  # noqa: assertion-scanner
     """Create a minimal ProjectDoc row for PDF route tests."""
     doc = ProjectDoc(
         id=f"{test_doc_project.id}:test-doc",

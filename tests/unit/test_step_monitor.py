@@ -479,7 +479,7 @@ def test_kill_process_group_returns_false_when_process_already_dead(
     assert result is False
 
 
-def test_kill_process_group_does_not_raise(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_kill_process_group_does_not_raise(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: assertion-scanner
     """H7: kill_process_group never raises even when everything fails."""
     monkeypatch.setattr(
         "orch.daemon.step_monitor.os.getpgid", MagicMock(side_effect=ProcessLookupError)
@@ -516,7 +516,7 @@ def test_kill_process_dead_pid_returns_false(monkeypatch: pytest.MonkeyPatch) ->
     assert result is False
 
 
-def test_kill_process_does_not_raise_on_dead_pid(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_kill_process_does_not_raise_on_dead_pid(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: assertion-scanner
     """Calling kill_process on a dead PID never raises."""
     monkeypatch.setattr(
         "orch.daemon.step_monitor.os.getpgid", MagicMock(side_effect=ProcessLookupError)
