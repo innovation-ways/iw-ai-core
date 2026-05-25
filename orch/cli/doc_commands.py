@@ -186,6 +186,19 @@ def doc_update(
 
             svc = DocService(session)
             existing = svc.get_doc(project_id, doc_id)
+
+            # Refuse new-doc creation when required fields are missing.
+            # tier/editorial_category are optional for updates (existing doc) but
+            # required for creates.  DocService.create_doc() raises a TypeError on
+            # missing required args — surface a clean exit-2 usage error instead.
+            if existing is None and (tier is None or editorial_category is None):
+                output_error(
+                    ctx,
+                    f"Creating a new doc requires --tier and --editorial-category "
+                    f"(no existing doc '{doc_id}' to update)",
+                    2,
+                )
+
             old_content_hash: str | None = None
             if existing is not None and existing.content is not None:
                 old_content_hash = hashlib.sha256(existing.content.encode("utf-8")).hexdigest()
