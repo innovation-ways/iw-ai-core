@@ -536,3 +536,47 @@ shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-sh
 ```
 
 **Every Makefile `--exclude-rule` carries a rationale comment block above the target** enumerating each excluded rule, the finding count, and why per-line annotation is not the right tool. If a future change invalidates the rationale (e.g. a macro previously known to emit constant output starts interpolating user input), the corresponding test invariant must fail loudly so the exclude flag is re-justified.
+
+---
+
+## 12. LLM-as-judge advisory signal (CR-00084 spike)
+
+A stronger model (Claude Opus 4.7) scores newly-written tests against an assertion-strength rubric as an advisory signal in the CodeReview step. **Complementary to — not a replacement for — the structural assertion scanner (§8, CR-00046).** The scanner catches patterns (no-assert / tautology / mock-only / broad-raises); the judge evaluates semantic strength.
+
+### The rubric
+
+Three axes, each scored 1–5:
+
+| Axis | What it measures |
+|------|------------------|
+| `assertion_specificity` | Does the assertion target a specific value/message/state rather than just truthiness or type? |
+| `behaviour_vs_mock` | Does the test assert on real behaviour or only on its own mocks/setup? |
+| `edge_coverage` | Does the test exercise edge cases and boundary values, or only the happy path? |
+
+Bucketing: `overall >= 4` → **STRONG** · `overall == 3` → **MEDIUM** · `overall <= 2` → **WEAK**.
+
+### Calibration outcome
+
+The spike ran against a hand-labelled set (`tests/llm_judge/labelled_set.jsonl`). Calibration was **DEFERRED** — `ANTHROPIC_API_KEY` was not set in the worktree, so the judge script (`scripts/llm_judge_test_review.py`) could not contact the model. Full evidence at `ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt`.
+
+Verdict: **DEFERRED** · Calibration bar: WEAK-recall ≥ 70% AND STRONG-FP ≤ 30%.
+
+### Current disposition
+
+**Advisory hook DORMANT** — the CodeReview agent spec (`agents/claude/code-review-impl.md` §6 · `agents/opencode/code-review-impl.md` §6) instructs agents **not to invoke the judge** pending re-calibration. Re-enable path: run `make llm-judge-calibrate` once `ANTHROPIC_API_KEY` is available, verify the Verdict line reads MET, then update §6 of both agent specs to the LIVE form (see the re-enable instruction in the DORMANT body).
+
+### Cost discipline
+
+- **Calibration budget**: < $2.00 (one-time run to generate the evidence file). The DEFERRED run cost $0.00 (no API calls made).
+- **Per-review cap**: < $0.50 per CodeReview invocation (declared in the agent spec; not enforced by a hard budget).
+- **No retry / no auto-loop**: if the judge fails it is skipped with a one-line log; no automatic retry.
+
+### What's out of scope
+
+Promoting the judge to a **blocking gate** — the tracker entry is explicit ("no judge is uniformly reliable") and this spike is explicitly an experiment. A follow-up CR that promotes the judge to a blocking gate is only possible after multiple weeks of advisory-line evidence and a re-calibration that shows stable metrics.
+
+---
+
+## Changelog
+
+- **2026-05-25** — **§12 added (CR-00084 spike outcome).** LLM-as-judge advisory signal spike: judge script `scripts/llm_judge_test_review.py`, labelled set `tests/llm_judge/labelled_set.jsonl`, `make llm-judge-calibrate` target — all shipped. Calibration DEFERRED (ANTHROPIC_API_KEY unavailable in worktree; evidence at `ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt`). Advisory hook in CodeReview agent specs shipped DORMANT (agents instructed not to invoke the judge pending re-calibration). Item 4.4 status → DEFERRED in tracker; §11 changelog entry added. Forward link from CR-00046's §8 entry.

@@ -59,6 +59,8 @@ dev = [
     # Type stubs
     "types-freezegun",
     "httpx>=0.27",
+    # anthropic Python SDK — used by scripts/llm_judge_test_review.py (CR-00084)
+    "anthropic>=0.40,<1.0",
 ]
 
 [project.scripts]
@@ -117,7 +119,7 @@ exclude = ["skills/", ".claude/", "ai-dev/"]
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN", "PIE", "PT", "RSE", "RET", "SLF", "SIM", "TCH", "ARG", "PTH", "ERA"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ARG001", "ARG002", "SLF001", "S603", "S607", "TC002", "TC003", "S110", "S108", "DTZ001"]  # assert ok; fixture side effects; private access in tests ok; git subprocess in test fixtures; TC002: Session alias kept at runtime for reuse across session/scope pattern; DTZ001: freezegun tests pass naive datetimes to freeze_time (legitimate pattern)
+"tests/**" = ["S101", "ARG001", "ARG002", "SLF001", "S603", "S607", "TC002", "TC003", "S110", "S108", "DTZ001", "B009", "F401"]  # assert ok; fixture side effects; private access in tests ok; git subprocess in test fixtures; TC002: Session alias kept at runtime for reuse across session/scope pattern; DTZ001: freezegun tests pass naive datetimes to freeze_time (legitimate pattern); B009: getattr on module-private names is intentional in unit tests; F401: underscore-prefixed re-import in conftest helpers
 "orch/db/migrations/**" = ["E501", "TC003", "F401", "UP035", "I001"]  # migration files: long column definitions; Sequence used at runtime in upgrade(); boilerplate imports unused in merge migrations
 "dashboard/routers/**" = ["B008", "TC001", "PT028"]  # FastAPI Depends() in default args is canonical; TC001 conflicts with FastAPI runtime model resolution; PT028 misfires on dashboard/routers/tests.py — ruff treats route handlers prefixed `tests_*` as pytest tests
 "dashboard/services/oss_service.py" = ["S603", "S607", "S108"]  # git subprocess; /tmp paths for worktrees
@@ -127,6 +129,7 @@ select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN
 "scripts/arch_check.py" = ["S112", "SIM102", "T201"]  # architecture checker script: prints to stdout; try-except-continue for file parsing; nested if for AST node type dispatch
 "scripts/check_test_assertions.py" = ["T201"]  # CLI script: prints violations + JSON to stdout
 "scripts/check_db_column_docs.py" = ["T201"]  # CLI script: prints violations + JSON to stdout
+"scripts/llm_judge_test_review.py" = ["ARG001", "T201"]  # CLI script: _call_judge has unused param; print output
 "tests/unit/test_assertion_scanner.py" = ["ERA001"]  # tests carry commented-example labels for the patterns the scanner detects (ERA001 false-positive)
 "orch/keep_alive_service.py" = ["S603", "S607"]  # claude CLI subprocess with hardcoded greetings; never user input
 "orch/daemon/browser_env.py" = ["S603", "S607"]  # docker logs is read-only; name from compose output
@@ -248,7 +251,7 @@ per_rule_ignores = [
     "DEP003 = pydantic",
     "DEP002 = hypothesis",
 ]
-extend_exclude = ["skills/.*"]
+extend_exclude = ["skills/.*", "tests/llm_judge/**"]
 
 # Hypothesis property-based testing (CR-00060, P2-CR-B)
 # Profile selection: set IW_HYPOTHESIS_PROFILE env var (ci | dev | deep).

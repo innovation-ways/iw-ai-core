@@ -70,6 +70,14 @@ Each finding must include:
 - **Description**: What is wrong
 - **Suggested fix**: How to fix it
 
+### 6. (Advisory) LLM-as-judge test-quality signal
+
+The judge utility (`scripts/llm_judge_test_review.py`) exists from CR-00084's spike, but the calibration bar (WEAK-recall ≥ 70% AND STRONG-FP ≤ 30%) was **DEFERRED** — live calibration could not run because `ANTHROPIC_API_KEY` is not available in agent worktrees at this time. See the calibration record at `ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt` (or its archive home under `ai-dev/archive/CR-00084/`).
+
+**DO NOT invoke the judge in this review.** Future re-calibration is required before the hook is enabled.
+
+To re-enable, file a small follow-up CR that re-runs `make llm-judge-calibrate` and flips this section to the LIVE form.
+
 ## Output
 
 Write the review report, then end with:

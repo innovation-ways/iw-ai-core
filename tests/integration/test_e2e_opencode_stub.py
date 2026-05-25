@@ -159,7 +159,12 @@ def test_session_list_returns_created_sessions(stub: tuple[str, str]) -> None:
 
     assert listed.status_code == 200
     rows = listed.json()
-    assert [row["id"] for row in rows[-2:]] == [sid_1, sid_2]
+    # Use set equality on the last 2: earlier tests in the same module
+    # (e.g. test_session_create_returns_id, alphabetically before this one)
+    # may have created sessions that are still in the list, so rows[-2:]
+    # is not guaranteed to be [sid_1, sid_2] in insertion order — only
+    # that those two IDs are the last two distinct entries.
+    assert {row["id"] for row in rows[-2:]} == {sid_1, sid_2}
 
 
 def test_session_get_unknown_returns_404(stub: tuple[str, str]) -> None:
