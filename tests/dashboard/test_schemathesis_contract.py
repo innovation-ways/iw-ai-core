@@ -18,16 +18,14 @@ rule "an operation whose OpenAPI response declares an ``application/json``
 media type": the keep-alive API (``/api/keep-alive/*``) and the
 runtime-overrides endpoint. The set is deliberately narrow — that is expected.
 
-OpenAPI generation work-around
-──────────────────────────────
-``create_app().openapi()`` raises a pre-existing Pydantic ``ForwardRef`` error
-(a handler elsewhere in the app has an unresolved ``-> Response`` annotation),
-so ``GET /openapi.json`` 500s app-wide. To fuzz the JSON operations we override
-``app.openapi`` on the *test* app instance with a schema built (via FastAPI's
-``get_openapi``) from only the JSON-API routes, whose annotations resolve
-cleanly. The override touches only the test app — no production code is
-modified. The broken full-app ``/openapi.json`` is surfaced as operator
-follow-up in the S01 step report.
+OpenAPI generation
+──────────────────
+``create_app().openapi()`` now generates the full app's OpenAPI schema cleanly
+(I-00111, 2026-05-24, fixed the Pydantic ForwardRef('Response') resolution
+error in the offending route handler). The ``contract_schema`` fixture loads
+the real full-app schema via ``schemathesis.openapi.from_asgi``; the fuzz
+target is narrowed downstream by the ``JSON_API_FUZZ_PATHS`` filter on the
+lazy schema. No production code override is needed.
 
 Marker
 ──────
@@ -115,18 +113,15 @@ def contract_app(
 
     Rebinds ``orch.db.session._engine`` to the testcontainer engine *before*
     importing ``dashboard.app`` so the live-DB guard resolves to the test DB,
-    overrides ``get_db`` with the testcontainer ``db_session``, seeds a
-    representative dataset, and overrides ``app.openapi`` with a schema built
-    from only the JSON-API routes (the full-app ``openapi()`` raises — see the
-    module docstring).
+    overrides ``get_db`` with the testcontainer ``db_session``, and seeds a
+    representative dataset.  No ``openapi()`` override is needed — I-00111
+    fixed the underlying Pydantic ForwardRef resolution error.
     """
     import orch.db.session as session_module
 
     monkeypatch.setattr(session_module, "_engine", db_engine, raising=False)
     monkeypatch.setattr(session_module, "_session_local", None, raising=False)
     monkeypatch.delenv("IW_CORE_EXPECTED_INSTANCE_ID", raising=False)
-
-    from fastapi.openapi.utils import get_openapi
 
     from dashboard.app import create_app
     from dashboard.dependencies import get_db
@@ -147,27 +142,14 @@ def contract_app(
 
     app = create_app()
     app.dependency_overrides[get_db] = _override_get_db
-
-    # The full app's app.openapi() raises a pre-existing Pydantic ForwardRef
-    # error, so build the schema from ONLY the JSON-API routes.
-    json_api_path_set = set(JSON_API_PATHS)
-    json_api_routes = [
-        route for route in app.routes if getattr(route, "path", None) in json_api_path_set
-    ]
-
-    def _json_api_openapi() -> dict[str, Any]:
-        return get_openapi(title=app.title, version=app.version, routes=json_api_routes)
-
-    monkeypatch.setattr(app, "openapi", _json_api_openapi, raising=False)
-    try:
-        yield app
-    finally:
-        app.dependency_overrides.clear()
+    yield app
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
 def contract_schema(contract_app: FastAPI) -> Any:
-    """Load the app's OpenAPI schema (built from the JSON_API_PATHS routes)."""
+    """Load the app's full OpenAPI schema (I-00111 restored full-app schema
+    generation; the JSON_API_FUZZ_PATHS filter narrows the fuzz target downstream)."""
     return schemathesis.openapi.from_asgi("/openapi.json", contract_app)
 
 

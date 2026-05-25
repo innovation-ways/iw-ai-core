@@ -76,15 +76,27 @@ def test_delete_slot_at_bigint_max_does_not_500(client: TestClient) -> None:
     """The boundary value 2**63 - 1 must NOT be rejected — it's a valid
     BIGINT, just non-existent. Expect 404 (not found) not 422 (validation)."""
     resp = client.delete(f"/api/keep-alive/slots/{BIGINT_MAX}")
-    # Either 404 (slot not found) or 200 (if a slot at MAX existed in seed).
-    # Critically: NOT 422 and NOT 500.
+    # Either 200 (deleted) or 404 (slot not found) — both are valid.
+    # Critically: NOT 422 (validation) and NOT 500 (server error).
     assert resp.status_code in (200, 404), resp.text
+    # For 200 responses: the body is a slot object with a non-empty slot_id.
+    # For 404 responses: the body is an error envelope {"detail": ...} — no slot_id field.
+    if resp.status_code == 200:
+        body = resp.json()
+        assert body.get("slot_id") not in (None, ""), body
+    # No 422 (path-param validation) and no 500 (server error) — the fix works.
 
 
 def test_toggle_slot_at_bigint_max_does_not_500(client: TestClient) -> None:
     """The boundary value 2**63 - 1 must NOT be rejected on toggle either."""
     resp = client.patch(f"/api/keep-alive/slots/{BIGINT_MAX}/toggle")
     assert resp.status_code in (200, 404), resp.text
+    # For 200 responses: the body is a slot object with a non-empty slot_id.
+    # For 404 responses: the body is an error envelope {"detail": ...} — no slot_id field.
+    if resp.status_code == 200:
+        body = resp.json()
+        assert body.get("slot_id") not in (None, ""), body
+    # No 422 (path-param validation) and no 500 (server error) — the fix works.
 
 
 def test_delete_slot_zero_returns_422(client: TestClient) -> None:

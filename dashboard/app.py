@@ -15,11 +15,12 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
     from starlette.requests import Request  # noqa: TC002
-    from starlette.responses import Response  # noqa: TC002
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.requests import Request  # noqa: TC002
+from starlette.responses import Response  # noqa: TC002
 
 from dashboard.middlewares.alembic_guard import AlembicGuardMiddleware, is_db_stale
 from dashboard.routers import (

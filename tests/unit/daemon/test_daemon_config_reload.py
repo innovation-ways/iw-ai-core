@@ -196,8 +196,14 @@ def test_reload_rebuilds_manager_on_enabled_toggle(tmp_path: Path) -> None:
     # Assert: a manager exists with the CURRENT .iw-orch.json (AC3)
     post_manager = daemon.managers["demo"]
     assert post_manager is not None, "enabled=true project must have a manager"
-    assert "**/*.md" in post_manager.project_config.overlap_allow_patterns, (
-        "I-00107 AC3: manager must be seeded from current .iw-orch.json"
+    # Verify the manager was seeded from the CURRENT .iw-orch.json, not a stale
+    # one from the enabled=false phase. We check for the marker that was added
+    # only in the new config. This assertion would FAIL if the old manager were
+    # retained (the old config had only "tests/**", not "**/*.md").
+    _ = post_manager.project_config  # assert the attribute is accessible (not a mock)
+    assert post_manager.project_config.overlap_allow_patterns == ["tests/**", "**/*.md"], (
+        "I-00107 AC3: overlap_allow_patterns must contain the new value "
+        f"from the reloaded .iw-orch.json; got {post_manager.project_config.overlap_allow_patterns}"
     )
 
 
