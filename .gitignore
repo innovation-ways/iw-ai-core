@@ -48,6 +48,9 @@ tests/output/allure-report/
 # Post-mortem evidence artifacts (not committed)
 .evidence/
 
+# iw-fix-gates session logs (per-run developer artefact — not committed)
+ai-dev/work/fix-gates-*.md
+
 # IDE
 .vscode/
 .idea/

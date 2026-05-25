@@ -1,6 +1,6 @@
 ---
 name: iw-fix-gates
-version: "1.0.0"
+version: "1.2.0"
 description: >
   Run both the project's test and quality gates end-to-end, gather every
   failure across all categories, then fix them iteratively with mandatory
@@ -76,6 +76,48 @@ created, no worktree is spawned, no commit is made. The operator reviews
    individual categories. Iterating per-category gives per-failure attribution
    — bundles would double-run the same code and merge failures together.
 
+5. **Check for a resumable previous run.** A 529-class API error, a manual
+   `Esc`-interrupt, or a connectivity blip can kill the agent mid-gather —
+   but the subprocesses already launched usually finish, and their logs
+   persist in `/tmp/iw-fix-gates-*`. To avoid forcing the operator to wait
+   another 17 minutes for the integration suite they already ran:
+
+   ```bash
+   # List recent gather logs and their sidecar exit codes.
+   for f in /tmp/iw-fix-gates-*.log; do
+     [ -f "$f" ] || continue
+     age=$(( $(date +%s) - $(stat -c %Y "$f") ))
+     exit_file="${f%.log}.exit"
+     ec=$( [ -f "$exit_file" ] && cat "$exit_file" || echo "?")
+     head_file="${f%.log}.head"
+     head_sha=$( [ -f "$head_file" ] && cat "$head_file" || echo "?")
+     echo "${f}  age=${age}s  exit=${ec}  head=${head_sha}"
+   done
+   ```
+
+   Reuse a category's previous result iff **all three** hold:
+   - The log file's age is < 30 minutes.
+   - The sidecar `.exit` file exists and contains a definite exit code.
+   - The sidecar `.head` file matches the current `git rev-parse HEAD`
+     (no edits since the log was written).
+
+   When reuse is possible, surface it to the operator and ask:
+   ```
+   Found resumable results from <N> minutes ago at git HEAD <sha>:
+     ✔ quality/lint        (exit 0, 3s ago)
+     ✗ test/integration    (exit 1, 14m ago)
+   Reuse these, or re-run from scratch? [reuse/rerun]
+   ```
+   Default to **rerun** if the operator does not answer affirmatively —
+   reusing a stale gather is worse than spending the wall time.
+
+   When launching new gathers, also write the sidecar files so the next
+   session can resume:
+   ```bash
+   echo "${gate_exit}" > /tmp/iw-fix-gates-<gate>-<category>.exit
+   git rev-parse HEAD  > /tmp/iw-fix-gates-<gate>-<category>.head
+   ```
+
 ---
 
 ## Phase 1 — Gather (READ-ONLY, NO CODE CHANGES)
@@ -83,17 +125,87 @@ created, no worktree is spawned, no commit is made. The operator reviews
 Run every non-bundle category of both gates and collect every failure. Do
 not stop on a failing category — keep going to capture the full landscape.
 
-**Order:**
-1. Quality categories first (lint, format, typecheck, …), fastest first.
-2. Test categories next (unit → integration → dashboard → e2e), fastest first.
+**Order and concurrency:**
+1. **Quality categories first**, sequentially, fastest first (lint, format,
+   typecheck, …). They are individually fast (~seconds each); parallelism
+   buys little and complicates log parsing.
+2. **Test categories next.** Run them **in parallel** when safe to do so;
+   the integration suite alone often dominates wall time, and serial
+   gathering wastes the slack. A test category is **safe to parallelise**
+   iff it declares **neither** `e2e_stack: true` **nor** a
+   `cleanup_command`. Any category that declares either signals exclusive
+   resource use (a docker stack, a shared port, a global teardown) and
+   MUST run alone — finish the parallel-safe categories first, then run
+   each exclusive category sequentially.
+3. Within each group (parallel or sequential), launch fastest first so
+   short-running failures surface early in the gather.
+
+For `iw-ai-core` today this means `unit` + `integration` may run
+concurrently; for projects like `innoforge` with an `e2e` category that
+declares `e2e_stack: true`, `e2e` runs after the parallel-safe group
+completes.
+
+### Operator-visible progress (NON-OPTIONAL)
+
+This skill runs gate commands that can take many minutes (especially the
+integration suite). The operator MUST be able to see what is happening,
+otherwise the session looks stalled and is indistinguishable from a hung
+agent. Therefore:
+
+1. **Announce every launch in plain text — not just via the tool call.**
+   Before each Bash invocation that launches a category, send a one-line
+   user-visible message of the form:
+   ```
+   ▶ <gate>/<category> — <command>
+   ```
+   When launching a parallel group, announce the group up front:
+   ```
+   ▶ Running test/unit + test/integration in parallel…
+   ```
+2. **Stream output live; do NOT silently redirect to a file.** Use `tee`
+   (see the launch incantation below) so the gate command's stdout/stderr
+   reach the operator's screen in real time AND a copy is captured for
+   Phase 3 parsing. The "I see tests scrolling by" feedback loop is the
+   whole reason for this rule.
+3. **Announce every completion in plain text** with a one-line summary:
+   ```
+   ✔ <gate>/<category> · PASS · <duration>
+   ✗ <gate>/<category> · FAIL · <N> findings · <duration>
+   ```
+   Append findings count once Phase-1 parsing has run; never delay the
+   announcement waiting for it.
+4. **For categories run in the background**, emit the start announcement,
+   then a short "running in background, will notify on completion" line.
+   On the completion notification, emit the finish announcement
+   immediately — do not bury it inside a larger paragraph.
+
+These announcements are not optional polish; the v1.0/1.1 skills omitted
+them and produced sessions that looked dead for ~20 minutes while the
+integration suite ran. **Silent gather is a bug.**
+
+### Launch incantation
 
 **For each category, in `cwd = repo_root`:**
 
 ```bash
-# Run the category's command, capture stdout+stderr and exit code.
-( set -o pipefail; <command> ) > /tmp/iw-fix-gates-<gate>-<category>.log 2>&1
-echo "exit=$?"
+# Stream stdout+stderr live to the operator AND capture to a log file
+# for Phase 3 parsing. `pipefail` makes the pipeline's exit code reflect
+# the gate command (not tee's exit code), and we additionally store the
+# gate's own exit via PIPESTATUS for clarity in the session log.
+( set -o pipefail; <command> ) 2>&1 | tee /tmp/iw-fix-gates-<gate>-<category>.log
+gate_exit=${PIPESTATUS[0]}
+# Sidecar files for cross-session resumability (Phase 0 step 5).
+echo "${gate_exit}"     > /tmp/iw-fix-gates-<gate>-<category>.exit
+git rev-parse HEAD      > /tmp/iw-fix-gates-<gate>-<category>.head
+echo "exit=${gate_exit}"
 ```
+
+For a long-running category (any test category, or any quality category
+that historically takes >60 s on this project) launch it with the Bash
+tool's `run_in_background: true` so the operator gets a completion
+notification rather than a frozen-looking turn. Foreground is fine for
+the short quality categories (lint / format / typecheck — each finishes
+in seconds).
 
 If the category declares `cleanup_command`, run it on exit (pass or fail) —
 e.g. `make e2e-cleanup-all` for e2e categories that spin up a stack.
@@ -138,6 +250,16 @@ read the full log in Phase 3.
 | test    | unit        | FAIL    | 3        |
 | test    | integration | PASS    | 0        |
 ```
+
+**Early exit — all-green shortcut.** If every category exited with code `0`
+AND the normalized failure list is empty, skip Phase 2, Phase 3, and
+Phase 4 entirely. Jump straight to Phase 5 with the all-green template
+(see Phase 5 below): the Phase-1 gather IS the authoritative verdict, and
+re-running every category a second time in Phase 4 just to re-confirm
+"already green" is pure wall-time burn — most painfully when the
+integration suite is the long pole. The early exit is only valid when
+nothing was edited; the moment Phase 2 applies an auto-fix or Phase 3
+applies any diff, Phase 4 is mandatory.
 
 ---
 
@@ -255,12 +377,16 @@ the cluster is flagged for human review even if the gate now passes.
 
 ## Phase 4 — Final verification
 
-After all clusters are either fixed or marked unresolved:
+**Skip Phase 4 entirely if no diffs were applied** (Phase 1 all-green or
+no auto-fixes and no clusters fixed). In that case the Phase-1 gather is
+already authoritative — see the early-exit rule at the end of Phase 1.
+
+Otherwise, after all clusters are either fixed or marked unresolved:
 
 1. **Re-run BOTH full gates from scratch**, every non-bundle category, in
-   the same order as Phase 1. This is the authoritative verdict — it mirrors
-   the dashboard's final-verification pass in `launch_quality_fix_run`
-   (`orch/test_runner.py:389`).
+   the same order and concurrency as Phase 1. This is the authoritative
+   verdict — it mirrors the dashboard's final-verification pass in
+   `launch_quality_fix_run` (`orch/test_runner.py:389`).
 
 2. **Compare before/after** per category and produce the final report.
 
