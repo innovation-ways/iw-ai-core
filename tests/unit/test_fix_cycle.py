@@ -13,6 +13,7 @@ from orch.daemon.fix_cycle import (
     _build_fix_launch_argv,
     _build_fix_prompt_content,
     _build_qv_fix_prompt_content,
+    _build_scope_block,
     _extract_mandatory_findings,
     _extract_step_section,
     _find_design_doc,
@@ -182,6 +183,51 @@ def test_build_fix_prompt_no_iw_cli_instructions() -> None:
     assert "iw step-done" in prompt
 
 
+def test_build_fix_prompt_includes_post_edit_format_lint_gate() -> None:
+    """CR-00082 root cause #3: fix prompt must mandate make format-check + make lint
+    before exit so cycle N+1 doesn't re-break the gate cycle N fixed.
+    """
+    prompt = _build_fix_prompt_content("CR-00002", "S06", 1, "findings", 5)
+    assert "Post-Edit Gate" in prompt
+    assert "make format-check" in prompt
+    assert "make lint" in prompt
+
+
+# ---------------------------------------------------------------------------
+# _build_scope_block (CR-00082 root cause #2: implicit-allow paths must surface)
+# ---------------------------------------------------------------------------
+
+
+def test_build_scope_block_lists_implicit_allows_when_item_id_passed() -> None:
+    """The rendered scope block must mention ai-dev/work/<id>/** etc so review and
+    fix agents do not flag those paths as scope creep. Reproduces the failure mode
+    that drove CR-00082 S04 to 5 fix cycles without convergence.
+    """
+    block = _build_scope_block(["tests/visual/**", "Makefile"], item_id="CR-00082")
+    assert "tests/visual/**" in block
+    assert "ai-dev/active/CR-00082/**" in block
+    assert "ai-dev/archive/CR-00082/**" in block
+    assert "ai-dev/work/CR-00082/**" in block
+    assert "allowed by daemon convention" in block
+
+
+def test_build_scope_block_omits_implicit_block_when_no_item_id() -> None:
+    """Backward compatibility: callers that don't pass item_id (legacy tests) still
+    get the plain manifest-only scope block — no implicit-allow section."""
+    block = _build_scope_block(["tests/visual/**"])
+    assert "tests/visual/**" in block
+    assert "ai-dev/work/" not in block
+    assert "allowed by daemon convention" not in block
+
+
+def test_build_scope_block_returns_legacy_message_for_empty_allowed_list() -> None:
+    """Empty allowed_paths still short-circuits to the 'none declared' legacy mode."""
+    block = _build_scope_block([], item_id="CR-00082")
+    assert "none declared" in block
+    # Implicit paths are not added in legacy mode — scope enforcement is off.
+    assert "ai-dev/work/CR-00082/**" not in block
+
+
 # ---------------------------------------------------------------------------
 # _build_qv_fix_prompt_content
 # ---------------------------------------------------------------------------
@@ -215,6 +261,18 @@ def test_qv_fix_prompt_no_gate_command() -> None:
     prompt = _build_qv_fix_prompt_content("CR-00002", "S09", 1, "errors", 5, "")
     assert "QV Fix Cycle 1/5" in prompt
     assert "Gate Command" not in prompt
+
+
+def test_qv_fix_prompt_includes_cross_gate_check() -> None:
+    """QV-fix prompts must remind the agent to also run make format-check / make lint
+    before exit, even when the failing gate is something else (e.g. typecheck or unit
+    tests). Diagnosed in CR-00082 S04 where non-format edits silently broke format-check.
+    """
+    prompt = _build_qv_fix_prompt_content(
+        "CR-00002", "S10", 1, "mypy errors", 5, "mypy orch/ dashboard/"
+    )
+    assert "make format-check" in prompt
+    assert "make lint" in prompt
 
 
 # ---------------------------------------------------------------------------

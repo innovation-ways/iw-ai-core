@@ -105,8 +105,19 @@ check-column-docs:
 	uv run python scripts/check_db_column_docs.py --baseline orch/db/column_docs_baseline.txt
 
 # --- Tests ---
+# Coverage flags live on the FULL-SUITE targets (here + test-parallel + allure-unit/all).
+# pyproject.toml's [tool.pytest.ini_options].addopts intentionally does NOT inject
+# --cov globally — that would trip the fail_under=50 gate on every narrow pytest
+# invocation (e.g. `pytest tests/visual/` from a review prompt). See pyproject
+# comment block above addopts and the 2026-05-25 root-cause note in CR-00082.
+COV_FLAGS := --cov=orch --cov=dashboard --cov=executor \
+              --cov-report=term-missing:skip-covered \
+              --cov-report=html:tests/output/coverage/htmlcov \
+              --cov-report=xml:tests/output/coverage/coverage.xml \
+              --cov-report=json:tests/output/coverage/coverage.json
+
 test-unit:
-	uv run pytest tests/unit/ -v
+	uv run pytest tests/unit/ $(COV_FLAGS) -v
 
 # Integration gate — testcontainer-backed tests.
 # Includes tests/dashboard/ (FastAPI TestClient + db_session fixture) but
@@ -114,7 +125,7 @@ test-unit:
 # live Uvicorn server, which the qv-gate environment doesn't provide.
 # Browser-level coverage runs separately via the qv-browser step.
 test-integration:
-	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser -v
+	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser $(COV_FLAGS) -v
 
 # CLI contract layer — per-command contract tests + spec-conformance check.
 # Developer convenience only: the integration-tests gate (make test-integration)
@@ -166,7 +177,7 @@ test-isolation:  ## Run the cross-project isolation test matrix (CR-00074)
 	uv run pytest tests/integration/test_cross_project_isolation.py -v --no-cov
 
 test-parallel:
-	uv run pytest tests/unit tests/integration tests/dashboard --ignore=tests/dashboard/browser -v -n auto --dist=loadfile
+	uv run pytest tests/unit tests/integration tests/dashboard --ignore=tests/dashboard/browser $(COV_FLAGS) -v -n auto --dist=loadfile
 
 smoke:
 	uv run pytest -m smoke --strict-markers --no-cov -v
@@ -196,8 +207,8 @@ smoke:
 diff-coverage:
 	# I-00084: sync stale origin/main so diff-cover compares against actual local main
 	@git fetch . main:refs/remotes/origin/main 2>/dev/null || true
-	uv run pytest tests/unit/ --cov-fail-under=0 -q
-	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser --cov-append --cov-fail-under=0 -q -n auto
+	uv run pytest tests/unit/ $(COV_FLAGS) --cov-fail-under=0 -q
+	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser $(COV_FLAGS) --cov-append --cov-fail-under=0 -q -n auto
 	uv run coverage xml -o tests/output/coverage/coverage-combined.xml
 	uv run diff-cover tests/output/coverage/coverage-combined.xml --compare-branch=origin/main --fail-under=90
 
@@ -369,7 +380,7 @@ allure-unit:
 	@rm -rf $(ALLURE_RESULTS)
 	@mkdir -p $(ALLURE_RESULTS)
 	@echo "[allure-unit] Running unit tests with Allure reporting..."
-	@uv run pytest tests/unit/ -v --alluredir=$(ALLURE_RESULTS)
+	@uv run pytest tests/unit/ $(COV_FLAGS) -v --alluredir=$(ALLURE_RESULTS)
 	@echo "[allure-unit] Run 'make allure-serve' to view report"
 
 allure-integration:
@@ -385,8 +396,8 @@ allure-all:
 	@rm -rf $(ALLURE_RESULTS)
 	@mkdir -p $(ALLURE_RESULTS)
 	@echo "[allure-all] Running all tests with Allure reporting..."
-	@uv run pytest tests/unit/ -v --alluredir=$(ALLURE_RESULTS)
-	@uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser -v --alluredir=$(ALLURE_RESULTS)
+	@uv run pytest tests/unit/ $(COV_FLAGS) -v --alluredir=$(ALLURE_RESULTS)
+	@uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser $(COV_FLAGS) --cov-append -v --alluredir=$(ALLURE_RESULTS)
 	@echo "[allure-all] Run 'make allure-serve' to view report"
 
 allure-report:
