@@ -78,7 +78,7 @@
     },
     {
       "step": "S10",
-      "agent": "code-review-impl",
+      "agent": "code-review-final-impl",
       "description": "CodeReview_Final: cross-step global review — harness API agreement, smoke-subset agreement across all consumers, test-only scope, Invariant 10 (gate not on own manifest)",
       "prompt": "prompts/F-00089_S10_CodeReview_Final_prompt.md"
     },

@@ -72,7 +72,7 @@ Read the project's `CLAUDE.md` for architecture, conventions, and hard rules. In
 | S07 | `backend-impl` | Makefile targets + `.github/workflows/daemon-chaos.yml` + `skills/iw-workflow/SKILL.md` canonical-gate update + `iw sync-skills --force iw-workflow` | — |
 | S08 | `backend-impl` | Tracker (`ai-dev/work/TESTS_ENHANCEMENT.md`) v1.4 + strategy doc Layer 9 + daemon-design cross-link + testing-skill harness section + `iw sync-skills --force iw-ai-core-testing` | — |
 | S09 | `code-review-impl` | Per-agent CodeReview of S01..S08 (one reviewer, all backend) | — |
-| S10 | `code-review-impl` | CodeReview_Final — global cross-step review | — |
+| S10 | `code-review-final-impl` | CodeReview_Final — global cross-step review | — |
 | S11 | `qv-gate` | QV: `lint` | — |
 | S12 | `qv-gate` | QV: `assertions` | — |
 | S13 | `qv-gate` | QV: `format` | — |
