@@ -12,10 +12,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 from click.testing import CliRunner
+from sqlalchemy import select
 
 from orch.cli.main import cli
 from orch.db.models import (
     Project,
+    ProjectDoc,
     WorkItem,
     WorkItemPhase,
     WorkItemStatus,
@@ -280,17 +282,6 @@ def test_doc_update_unknown_project_exit_1(
     assert "not found" in (result.stderr or "").lower()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "TODO(file-incident): doc-update accepts a new-doc upsert that omits "
-        "--tier/--editorial-category, then crashes with a raw TypeError from "
-        "DocService.create_doc() surfaced as exit 3 'Database error'. The "
-        "contract should be a clean exit 2 usage error naming the missing "
-        "options. Operator follow-up: file an Incident; the orch/cli fix is "
-        "out of scope for this test-only CR."
-    ),
-)
 def test_doc_update_new_doc_without_tier_is_clean_usage_error(
     db_session: Session,
     test_project: ProjectModel,
@@ -299,9 +290,8 @@ def test_doc_update_new_doc_without_tier_is_clean_usage_error(
     """A new-doc doc-update missing --tier/--editorial-category should be a clean
     exit-2 usage error — not a raw TypeError surfaced as exit 3.
 
-    Currently the CLI exits 3 ("Database error: ... missing ... arguments"), so
-    this test is a strict xfail pinning the desired contract until the bug is
-    fixed (see the xfail reason — operator to file an Incident).
+    Post-S01 (I-00108): the pre-check in doc_commands.py fires only on the new-doc
+    path and exits 2 with a message naming the missing flags.
     """
     runner = CliRunner()
     result = invoke(
@@ -311,3 +301,131 @@ def test_doc_update_new_doc_without_tier_is_clean_usage_error(
     )
     assert result.exit_code == 2, f"stdout: {result.output}\nstderr: {result.stderr}"
     assert "tier" in (result.stderr or "").lower()
+
+
+# ---------------------------------------------------------------------------
+# Regression guards — I-00108
+# ---------------------------------------------------------------------------
+
+
+def test_doc_update_existing_doc_update_without_tier_succeeds(
+    db_session: Session,
+    test_project: ProjectModel,
+    cli_get_session: object,
+) -> None:
+    """An update to an existing doc may omit --tier and --editorial-category —
+    they are required only when creating a brand-new doc, per upsert semantics.
+
+    Pins the 'update path stays optional' side of I-00108: making --tier /
+    --editorial-category required at the Click layer would have broken this
+    path; the pre-check in doc_commands.py must fire only when no existing doc
+    is found.
+    """
+    runner = CliRunner()
+
+    # Seed: create the doc with all required flags first.
+    first = runner.invoke(
+        cli,
+        [
+            "--project",
+            test_project.id,
+            "--json",
+            "doc-update",
+            "F-00200",
+            "--doc-type",
+            "module",
+            "--title",
+            "Original title",
+            "--tier",
+            "human_authored",
+            "--editorial-category",
+            "technical",
+            "--content",
+            "# Original body",
+        ],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert first.exit_code == 0, f"precondition failed — create call: {first.stderr}"
+
+    # Update WITHOUT --tier/--editorial-category — must succeed (not exit 2/3).
+    second = runner.invoke(
+        cli,
+        [
+            "--project",
+            test_project.id,
+            "--json",
+            "doc-update",
+            "F-00200",
+            "--title",
+            "Updated title",
+            "--content",
+            "# v2 body",
+        ],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert second.exit_code == 0, (
+        f"update without --tier/--editorial-category should succeed; got exit {second.exit_code}"
+    )
+    assert second.exit_code == 0, f"stderr: {second.stderr}"
+
+    # Semantic check: the row was updated, not crashed or re-created.
+    doc = db_session.execute(
+        select(ProjectDoc).where(
+            ProjectDoc.id == f"{test_project.id}:F-00200",
+        )
+    ).scalar_one()
+    assert doc.title == "Updated title"
+    assert doc.content is not None
+    assert "v2 body" in doc.content
+
+
+def test_doc_update_new_doc_with_tier_and_category_succeeds(
+    db_session: Session,
+    test_project: ProjectModel,
+    cli_get_session: object,
+) -> None:
+    """A new-doc upsert with all required flags creates the ProjectDoc row
+    cleanly — the pre-check added for I-00108 must not fire when both
+    --tier and --editorial-category are supplied.
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--project",
+            test_project.id,
+            "--json",
+            "doc-update",
+            "F-00201",
+            "--doc-type",
+            "module",
+            "--title",
+            "New module doc",
+            "--tier",
+            "human_authored",
+            "--editorial-category",
+            "technical",
+            "--content",
+            "# New doc body",
+        ],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, (
+        f"new-doc with full flags should succeed; got exit {result.exit_code}"
+    )
+    assert result.exit_code == 0, f"stderr: {result.stderr}"
+    data = json.loads(result.output)
+    assert data["doc_id"] == f"{test_project.id}:F-00201"
+    assert data["project_id"] == test_project.id
+
+    doc = db_session.execute(
+        select(ProjectDoc).where(
+            ProjectDoc.id == f"{test_project.id}:F-00201",
+        )
+    ).scalar_one()
+    assert doc.title == "New module doc"
+    assert doc.tier.value == "human_authored"
+    assert doc.editorial_category.value == "technical"
