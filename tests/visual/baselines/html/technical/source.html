@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IW AI Core — Architecture Overview</title>
+  <link rel="stylesheet" href="../../../../dashboard/static/styles.css" />
+  <style>
+    :root {
+      --primary: #5865f2;
+      --foreground: #28282d;
+      --muted: #f6f6f6;
+      --border: #dfdfe1;
+      --font-sans: system-ui, -apple-system, sans-serif;
+      --font-mono: ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      color: var(--foreground);
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      background: #fff;
+    }
+    .doc-header {
+      border-bottom: 2px solid var(--primary);
+      padding-bottom: 1rem;
+      margin-bottom: 2rem;
+    }
+    .doc-title { font-size: 24px; font-weight: 700; margin: 0 0 0.5rem 0; }
+    .doc-meta { display: flex; gap: 1rem; font-size: 12px; color: #6c6d76; }
+    .doc-meta span { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .content h1 { font-size: 20px; font-weight: 700; margin-top: 1.5em; margin-bottom: 0.5em; }
+    .content h2 { font-size: 16px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; margin-top: 1.5em; }
+    .content h3 { font-size: 14px; font-weight: 600; margin-top: 1.25em; }
+    .content p { margin-bottom: 0.75em; line-height: 1.7; }
+    .content ul, .content ol { padding-left: 1.5em; margin-bottom: 0.75em; }
+    .content li { margin-bottom: 0.25em; line-height: 1.6; }
+    .content code { font-family: var(--font-mono); font-size: 12px; background: var(--muted); padding: 0.1em 0.3em; border-radius: 3px; }
+    .content pre { background: var(--muted); border: 1px solid var(--border); padding: 1em; overflow-x: auto; margin-bottom: 1em; font-size: 12px; }
+    .content pre code { background: none; padding: 0; }
+    .content table { width: 100%; border-collapse: collapse; margin-bottom: 1em; font-size: 13px; }
+    .content th, .content td { border: 1px solid var(--border); padding: 0.5em 0.75em; text-align: left; }
+    .content th { background: var(--muted); font-weight: 600; }
+    .content blockquote { border-left: 3px solid var(--primary); padding-left: 1em; color: #6c6d76; margin: 1em 0; font-style: italic; }
+    .doc-footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); font-size: 11px; color: #6c6d76; display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+  <div class="doc-header">
+    <h1 class="doc-title">IW AI Core — Architecture Overview</h1>
+    <div class="doc-meta">
+      <span><strong>Type:</strong> Architecture</span>
+      <span><strong>Version:</strong> v1.4</span>
+      <span><strong>Status:</strong> Published</span>
+      <span><strong>Generated:</strong> 2026-05-24</span>
+    </div>
+  </div>
+  <div class="content">
+    <h2>Executive Summary</h2>
+    <p>IW AI Core is an AI orchestration platform that drives LLM-agent development across multiple git worktrees. It schedules agents in background jobs, aggregates their output, and surfaces a web UI for code understanding, documentation, research, tests, and batch control.</p>
+
+    <h2>System Components</h2>
+    <p>The platform consists of four primary components:</p>
+    <ul>
+      <li><strong>Orchestration Database (PostgreSQL)</strong> — stores all work items, batch state, daemon events, and job results. The single source of truth.</li>
+      <li><strong>Daemon</strong> — polls the database every 60 s, picks approved batches, creates git worktrees, launches LLM agents (opencode or claude-code), runs fix cycles, and squash-merges to main.</li>
+      <li><strong>Dashboard (FastAPI)</strong> — human interface on port 9900. Provides queue, history, batches, code browsing (RAG), docs, research, tests, jobs, and worktree views.</li>
+      <li><strong>iw CLI</strong> — the agent-to-DB bridge. Agents call <code>iw step-done</code> to record results. All operational state lives in PostgreSQL — no files, no race conditions.</li>
+    </ul>
+
+    <h2>Data Flow</h2>
+    <ol>
+      <li>Human approves a batch of work items via the Dashboard or CLI.</li>
+      <li>Daemon picks up the batch, acquires a row-level lock (FOR UPDATE), and creates a git worktree at a fixed path.</li>
+      <li>The agent runs inside the worktree, calls <code>iw step-done</code>, and exits.</li>
+      <li>Daemon detects completion, squash-merges the worktree branch to main, and marks the batch COMPLETE.</li>
+    </ol>
+
+    <h2>Component Reference</h2>
+    <table>
+      <thead><tr><th>Component</th><th>Technology</th><th>Port</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>DB</td><td>PostgreSQL</td><td>5433</td><td>All persistent state</td></tr>
+        <tr><td>Daemon</td><td>Python / subprocess</td><td>—</td><td>Poll + agent launch</td></tr>
+        <tr><td>Dashboard</td><td>FastAPI / Jinja2 / htmx</td><td>9900</td><td>Web UI</td></tr>
+        <tr><td>iw CLI</td><td>Click</td><td>—</td><td>Agent-to-DB bridge</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Known Limitations</h2>
+    <ul>
+      <li>Worktree names are derived from the CR number — collisions if two batches of the same CR run concurrently (mitigated by daemon locking).</li>
+      <li>Per-worktree DB exists only when <code>ai-dev/iw-config/</code> is present in the project.</li>
+    </ul>
+  </div>
+  <div class="doc-footer">
+    <span>Generated by IW AI Core</span>
+    <span>iw-ai-core</span>
+  </div>
+</body>
+</html>

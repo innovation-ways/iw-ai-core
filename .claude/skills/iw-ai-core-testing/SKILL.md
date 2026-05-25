@@ -470,3 +470,13 @@ Six structured journey modules under `tests/e2e/` drive a real Chromium via `pla
 - **Per-journey assertion inversion:** each journey module contains a one-line comment naming the single behavioural assertion whose inversion proves the journey can fail. The actual RED run is executed at S14 (`qv-browser`) against the live stack — not in this step.
 
 **Scope discipline:** the E2E layer is strictly test-infrastructure. No production code in `orch/` / `dashboard/` / `executor/` may be edited. The merge-time `scope.allowed_paths` gate enforces this.
+
+## 14. Visual regression — patterns and baseline-management rules
+
+The visual layer (`make visual-regression`) protects rendered docs (HTML + PDF) from CSS/template regressions.
+
+- Add a baseline for every new editorial category shipped under `doc-system/`.
+- Intentional baseline updates must be review-gated PRs that touch `tests/visual/baselines/**`.
+- Never auto-accept diffs in tests (forbidden pattern: "if diff > threshold, overwrite baseline").
+- Follow the Playwright CLI rules in the repository `CLAUDE.md` (use `playwright-cli` only; no `agent-browser`, no direct Playwright API).
+- Keep pixel tolerance disciplined: one shared constant per layer; do not inflate tolerances per test to force green.

@@ -262,6 +262,21 @@ test-flake-detect:
 	@uv run python scripts/flake_detect_aggregate.py tests/output/flake-detect-1.log tests/output/flake-detect-2.log tests/output/flake-detect-3.log
 
 # =============================================================================
+# VISUAL REGRESSION (CR-00082) — on-demand, NOT a CI gate yet
+# =============================================================================
+# Pixel-compares every committed baseline PDF against pdftoppm re-renders.
+# S01: PDF visual-regression module (pdftoppm + pixelmatch).
+# S02 adds HTML visual-regression; S03 adds the CI workflow.
+
+visual-regression-pdf:  ## Run the PDF visual-regression suite
+	uv run pytest tests/visual/test_pdf_visual_regression.py -v --no-cov
+
+visual-regression-html:  ## Run the HTML visual-regression suite
+	uv run pytest tests/visual/test_html_visual_regression.py -v --no-cov
+
+visual-regression: visual-regression-pdf visual-regression-html
+
+# =============================================================================
 # MUTATION TESTING (CR-00080, P2-CR-A follow-up) — on-demand, NOT a CI gate yet
 # =============================================================================
 # mutmut runs mutmut across orch/ (excluding migrations in mutation-audit).
