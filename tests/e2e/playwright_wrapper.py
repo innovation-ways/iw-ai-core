@@ -1,7 +1,7 @@
 """Thin subprocess wrapper around the playwright-cli binary.
 
-ALL browser interactions go through ``playwright-cli`` — never call
-``chromium.launch()``, ``agent-browser``, or run ``npx playwright install``.
+ALL browser interactions go through ``playwright-cli`` — never call direct
+browser-launch APIs or install browsers from tests.
 
 Binary: ``~/.local/bin/playwright-cli``
 Config: ``.playwright/cli.config.json``
@@ -29,13 +29,6 @@ from pathlib import Path
 
 PLAYWRIGHT_CLI = Path.home() / ".local" / "bin" / "playwright-cli"
 
-# Ensure the binary is present at import time so the error is loud and early.
-if not PLAYWRIGHT_CLI.exists():
-    raise RuntimeError(
-        f"playwright-cli binary not found at {PLAYWRIGHT_CLI!s}. "
-        "Install it or ensure ~/.local/bin/ is in your PATH."
-    )
-
 
 class PlaywrightWrapper:
     """Browser-automation wrapper via playwright-cli subprocess calls."""
@@ -47,6 +40,20 @@ class PlaywrightWrapper:
     # Internal subprocess helpers
     # ------------------------------------------------------------------
 
+    def _resolve_playwright_cli(self) -> str:
+        """Resolve the playwright-cli binary path.
+
+        Preference order:
+        1) Explicit ~/.local/bin/playwright-cli (project convention)
+        2) Any playwright-cli discovered on PATH
+        """
+        if PLAYWRIGHT_CLI.exists():
+            return str(PLAYWRIGHT_CLI)
+        which_path = shutil.which("playwright-cli")
+        if which_path:
+            return which_path
+        raise RuntimeError("playwright-cli binary not found. Install it or ensure it is on PATH.")
+
     def _run(
         self,
         args: list[str],
@@ -54,7 +61,7 @@ class PlaywrightWrapper:
     ) -> subprocess.CompletedProcess[str]:
         """Run ``playwright-cli <args>`` and return the completed process."""
         return subprocess.run(
-            [str(PLAYWRIGHT_CLI), *args],
+            [self._resolve_playwright_cli(), *args],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -221,6 +228,73 @@ class PlaywrightWrapper:
                 )
 
         shutil.copy(after.pop(), dest_path)
+
+    def screenshot_to_baseline(
+        self,
+        url: str,
+        output_path: Path,
+        *,
+        session: str | None = None,
+    ) -> Path:
+        """Open a URL, capture a screenshot, and move it to ``output_path``."""
+        import time as _time
+
+        output_path = output_path.resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                # Always start fresh (per CLAUDE.md rule).
+                self._run(["kill-all"], timeout=10)
+                _time.sleep(0.3)
+
+                open_args = ["open", url]
+                if session is not None:
+                    open_args = [f"-s={session}", *open_args]
+                self._run_checked(open_args, timeout=30)
+
+                before = set(Path(".playwright-cli").glob("page-*.png"))
+                self._run_checked(["screenshot"], timeout=15)
+
+                after: set[Path] = set()
+                for _ in range(10):
+                    after = set(Path(".playwright-cli").glob("page-*.png")) - before
+                    if after:
+                        break
+                    _time.sleep(0.2)
+
+                if not after:
+                    pages = sorted(
+                        Path(".playwright-cli").glob("page-*.png"),
+                        key=lambda p: p.stat().st_mtime,
+                        reverse=True,
+                    )
+                    if pages:
+                        after = {pages[0]}
+                    else:
+                        raise RuntimeError(
+                            "playwright-cli screenshot produced no .playwright-cli/page-*.png file"
+                        )
+
+                captured = after.pop()
+                try:
+                    captured.replace(output_path)
+                except OSError:
+                    shutil.copy2(captured, output_path)
+                return output_path
+            except RuntimeError as exc:
+                last_error = exc
+                msg = str(exc).lower()
+                if "eaddrinuse" in msg or "address already in use" in msg:
+                    self._run(["kill-all"], timeout=10)
+                    _time.sleep(attempt)
+                    continue
+                raise
+
+        raise RuntimeError(
+            f"Failed to capture visual baseline screenshot after retries: {last_error}"
+        )
 
     # ------------------------------------------------------------------
     # Console error detection

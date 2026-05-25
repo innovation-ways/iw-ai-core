@@ -19,8 +19,6 @@ dependencies = [
     "python-multipart>=0.0.26",
     # Archive
     "zstandard>=0.23",
-    # Diagrams
-    "Pillow>=10.0",
     # Config
     "python-dotenv>=1.0",
     # tomllib is stdlib in 3.12+
@@ -102,6 +100,8 @@ dev = [
     "vulture>=2.11",
     "deptry>=0.20",
     "pgtestdbpy>=0.0.1",
+    "Pillow",
+    "pixelmatch",
     # Pinned to the current major (4.x) — schemathesis's loader and check API
     # changed across majors; see tests/dashboard/test_schemathesis_contract.py.
     "schemathesis>=4.19,<5",

@@ -1,6 +1,6 @@
 # IW AI Core — Testing Strategy
 
-**Last updated**: 2026-05-11
+**Last updated**: 2026-05-24
 
 This document is the single reference for *how IW AI Core is tested* — the layers, the infrastructure, the conventions, the quality gates, and the known gaps. It is **descriptive of the current state** plus a pointer to where we're heading.
 
@@ -34,9 +34,10 @@ So our metrics and gates are chosen accordingly:
 
 ## 2. Test layers (current state)
 
-IW AI Core today has **seven test layers**, all pytest-based except the browser layer which drives a real Chromium via `playwright-cli`.
+IW AI Core today has **eight test layers**, all pytest-based except the browser layer which drives a real Chromium via `playwright-cli`.
 
 ```
+Layer 8:  Visual regression              — Pixel diffs for rendered HTML docs + PDF exports
 Layer 7:  Cross-project isolation matrix  — Two-project seed proves project-scoped surfaces don't leak
 Layer 6:  Contract tests (pytest)         — No-5xx route sweep + schemathesis OpenAPI fuzz
 Layer 5:  Security tests (pytest)         — Live-DB guard regression, authz negatives,
@@ -159,6 +160,18 @@ A module-level **`KNOWN_LEAK`** allowlist (keyed by route path / command label) 
 **Execution**: `make test-isolation` (convenience target — runs only the matrix); also runs as part of `make test-integration` via the `tests/integration/` collection — no new daemon QV gate.
 
 > **Extending the matrix**: a new project-scoped dashboard route or `iw` command should be added as a parametrized case (Axis 1 / Axis 2). Genuine leaks → `KNOWN_LEAK` entry + filed Incident, never an in-CR production fix.
+
+### Layer 8 — Visual regression (`tests/visual/`)
+
+Visual regression covers **rendered HTML document views and PDF exports**.
+
+- **Run command**: `make visual-regression`
+- **Committed baselines**: `tests/visual/baselines/`
+- **Failure artefacts**: pixel-diff images under `tests/output/visual-diff/*-diff.png`
+
+The layer compares fresh renders with committed baselines (4 PDF + 4 HTML in CR-00082) to catch CSS/template regressions that functional assertions miss.
+
+This layer is **CI-only** (nightly + path-filtered PR/manual runs) and is **not** part of the daemon QV merge gate because of wall-clock cost.
 
 
 ## E2E browser-verification stack
@@ -359,6 +372,7 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Property tests (ci profile) | hypothesis | included in `make test-unit` via `tests/unit/properties/` conftest default; `--strict-markers` via `pyproject.toml`; deterministic via `derandomize=True` | `make test-properties` (explicit); also via `make test-unit` |
 | Property tests (deep profile) | hypothesis | NOT in CI; on-demand | `make test-properties-deep` |
 | Quarantine deselection | `addopts` extends `-m` filter | `--strict-markers` ensures quarantine marker is registered; `quarantine` tests excluded from merge gate | automatic via `pyproject.toml` `addopts` (part of `make test-unit` / `make test-integration`) |
+| Visual regression (CR-00082) | pytest visual layer (`tests/visual/`) + baseline pixel-diff artefacts | CI-only; nightly + path-filtered PR/manual workflow; burn-in non-blocking until 2026-06-01 | `make visual-regression`; `.github/workflows/visual-regression.yml` |
 | Flake detector (on-demand / nightly) | `pytest-rerunfailures` + aggregator script | runs full suite 3×; any test with disagreeing outcomes across runs is a flake; NOT a CI gate | `make test-flake-detect` |
 
 Coverage is reported in four formats (`term-missing`, `html`, `xml`, `json`) under `tests/output/coverage/`. The dashboard has a coverage page that surfaces it.
@@ -460,7 +474,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Security test module (live-DB-guard net, authz negatives, doc-render SSRF) | ✅ DONE 2026-05-21 (CR-00075) — `tests/integration/security/` package; `test_live_db_write_guard`, `test_authz_negative_paths`, `test_doc_render_ssrf_path_traversal`, `test_agent_context_env_handling`; genuine vulns → xfail + Incident; `make test-security-module`; documented in §2 Layer 5 + §5 gate table + skill + TESTS_ENHANCEMENT.md (3.5) |
 | Data-layer module (migration round-trip / FTS invariant / revision-skew / DB-identity) | ✅ (CR-00076, 2026-05-21) — `tests/integration/data_layer/` package + `make data-layer-check`; extends, does not replace, the migration round-trip (3.6) |
 | DB-column doc gate (4.5) | ✅ (CR-00085, 2026-05-24) — `make check-column-docs` + baseline `orch/db/column_docs_baseline.txt`; warn-first during burn-in; follow-up CR-00085-followup-column-docs-gate-blocking will flip to blocking |
-| Visual regression for rendered HTML/PDF docs | ❌ (4.1) |
+| Visual regression for rendered HTML/PDF docs | ✅ (CR-00082, 2026-05-25) |
 | Performance budgets | ❌ (4.2) |
 | Daemon chaos / fault-injection | ❌ (4.3) |
 | `tests/factories.py` central entity factory | ❌ |
