@@ -94,19 +94,7 @@ JSON_API_PATHS: list[str] = [
 # surfaced as operator follow-up in the S01 step report; the operator files the
 # Incident on `main` post-merge. CR-00072 never edits production code.
 # ---------------------------------------------------------------------------
-KNOWN_CONTRACT_5XX: dict[str, str] = {
-    "/api/keep-alive/slots/{slot_id}": (
-        "TODO(file-incident): the keep-alive slot endpoints take an unbounded "
-        "int path param and pass it straight to a BIGINT keyed query; an id "
-        "above 2**63-1 raises psycopg NumericValueOutOfRange (-> HTTP 500) "
-        "instead of 404/422. Genuine pre-existing handler bug."
-    ),
-    "/api/keep-alive/slots/{slot_id}/toggle": (
-        "TODO(file-incident): same BIGINT-overflow 5xx as the slot DELETE "
-        "endpoint — an out-of-int64-range slot_id path param raises psycopg "
-        "NumericValueOutOfRange (-> HTTP 500). Genuine pre-existing handler bug."
-    ),
-}
+KNOWN_CONTRACT_5XX: dict[str, str] = {}
 
 # The operations schemathesis actually fuzzes — JSON_API_PATHS minus the
 # genuine pre-existing 5xx above.

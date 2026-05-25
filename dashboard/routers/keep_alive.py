@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
@@ -17,6 +17,11 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["keep-alive"])
+
+# BIGINT max — PostgreSQL's signed 64-bit integer upper bound.
+# slot_id is stored in a BIGINT column; values above this raise
+# psycopg.errors.NumericValueOutOfRange at query time (I-00110).
+_BIGINT_MAX = 2**63 - 1
 
 ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"]
 ALLOWED_WINDOW_HOURS = [3, 4, 5, 6]
@@ -173,7 +178,11 @@ def add_slot(payload: SlotPayload, request: Request, db: Session = Depends(get_d
 
 
 @router.delete("/api/keep-alive/slots/{slot_id}")
-def delete_slot(slot_id: int, request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+def delete_slot(
+    slot_id: Annotated[int, Path(ge=1, le=_BIGINT_MAX)],
+    request: Request,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
     """Delete a keep-alive slot."""
     deleted = svc.delete_slot(db, slot_id)
     if not deleted:
@@ -185,7 +194,11 @@ def delete_slot(slot_id: int, request: Request, db: Session = Depends(get_db)) -
 
 
 @router.patch("/api/keep-alive/slots/{slot_id}/toggle")
-def toggle_slot(slot_id: int, request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+def toggle_slot(
+    slot_id: Annotated[int, Path(ge=1, le=_BIGINT_MAX)],
+    request: Request,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
     """Toggle slot enabled/disabled."""
     slot = svc.toggle_slot(db, slot_id)
     if slot is None:
