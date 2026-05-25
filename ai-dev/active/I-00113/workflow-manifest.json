@@ -1,0 +1,119 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00113",
+  "type": "Issue",
+  "title": "Re-review StepRun marked PID-dead immediately after fix-cycle commit, burning fix-cycle budget",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/fix_cycle.py",
+      "orch/daemon/step_monitor.py",
+      "tests/unit/daemon/**",
+      "tests/integration/daemon/**",
+      "ai-dev/active/I-00113/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Backend: instrument and reproduce. Add structured logging (logger.info/debug) around the spawn -> wrapper-exit -> poll -> PID-check path in orch/daemon/fix_cycle.py and orch/daemon/step_monitor.py. Build a deterministic unit test under tests/unit/daemon/ that uses a real fast-exit subprocess wrapper to reproduce the PID-dead-without-work pattern (BUG-OBSERVED assertion direction). Produce a written RCA in the S01 report covering hypothesis status (confirmed/refuted), evidence with PID + timing values, adjacent rule-ins/rule-outs (wrapper-specific timing, fix-cycle commit duration correlation, db.commit-vs-poll race, _is_pid_alive Linux-vs-non-Linux), and ONE recommended fix approach for S03 with reasoning. NO production behaviour change in this step - logging additions only. Pre-flight gates (make lint / format-check / type-check) must pass. Targeted test verification only: `uv run pytest tests/unit/daemon/<new-test>.py -v` - do NOT run make test-unit or make test-integration.",
+      "prompt": "prompts/I-00113_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01. Pre-review gates: make lint + make format-check show zero new violations. Verify: (1) NO production behaviour change - diff in orch/daemon/* is logger.* additions only; any PID-capture / _is_pid_alive / _handle_crashed / _max_cycles_for change is CRITICAL. (2) Reproduction test under tests/unit/daemon/ uses real Popen of a fast-exit wrapper (not pure _is_pid_alive mock); asserts the BUG-OBSERVED state; runs deterministically. (3) RCA quality: takes a position; cites evidence; addresses every rule-in/rule-out from the design; recommends ONE fix approach. (4) Logging uses appropriate levels, no print(), includes step_id/item_id context. (5) Scope: only orch/daemon/fix_cycle.py, orch/daemon/step_monitor.py, tests/unit/daemon/**, ai-dev/active/I-00113/** touched. Test verification: `uv run pytest tests/unit/daemon/ -v --no-cov`. Do NOT run full suites.",
+      "prompt": "prompts/I-00113_S02_CodeReview_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Backend: apply the fix recommended by S01's RCA. Implement EXACTLY the approach S01 recommended - no alternative-fix bundling. The change touches one or more of: orch/daemon/fix_cycle.py:_launch_fix_agent (PID capture), orch/daemon/step_monitor.py:_check_step_health (first-poll grace), orch/daemon/step_monitor.py:_is_pid_alive (probe semantics). Preserve every existing lifecycle branch (real agent alive + heartbeating, real crash, timeout, hard stall) - only the wrapper-exit-before-agent-registered branch should change behaviour. Flip S01's reproduction test from BUG-OBSERVED to BUG-FIXED assertion direction. NO budget-logic change - _max_cycles_for stays untouched. Pre-flight gates + post-edit gate (make format-check, make lint, make type-check) must pass. Targeted verification: `uv run pytest tests/unit/daemon/<repro>.py -v` and `uv run pytest tests/unit/daemon/ -v --no-cov`. Do NOT run make test-unit or make test-integration. Depends on S01 RCA.",
+      "prompt": "prompts/I-00113_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "tests-impl",
+      "description": "Tests: expand regression coverage over the full spawn->monitor lifecycle. Required branches (AC3 from design): (a) wrapper-exit + healthy agent (NOT marked failed - the fixed branch); (b) wrapper-exit + no agent (STILL marked failed - true crash); (c) agent alive + producing output (still tracked); (d) agent timeout (fires via TIMEOUT branch, NOT PID-dead); (e) agent stall (fires via HARD-STALL branch, NOT PID-dead). Each test asserts a SPECIFIC observable value (status is RunStatus.failed AND 'PID dead' in error_message), not shape-only. No mocking the database. No `git checkout` / `git stash` at runtime. Tests in tests/unit/daemon/ (or tests/integration/daemon/ if S03 needed integration-level changes). Pre-flight + post-edit gates green. Targeted verification only: `uv run pytest tests/unit/daemon/<your-files>.py -v`. Do NOT run make test-unit or make test-integration. No production-code edits in this step - raise blockers if a real defect is found.",
+      "prompt": "prompts/I-00113_S04_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S03 + S04 in one pass. Pre-review gates: make lint + make format-check show zero new violations. Verify: (1) S03's fix matches S01's recommendation - any deviation is CRITICAL unless S03's report documents a blocker. (2) AC3 branch coverage in S04 - all 5 branches present with specific assertions; weak `status != running` is HIGH. (3) Test quality - semantic correctness, no DB mocking, no runtime git-stash, deterministic. (4) NO budget-logic change in _max_cycles_for or fix-cycle counting. (5) Scope: diff against main touches only allowed paths. (6) RED->GREEN audit trail intact between S01/S03 reports. (7) Logging from S01 still present or removal justified. Test verification: `uv run pytest tests/unit/daemon/ -v --no-cov`, `make lint`, `make format-check`, `make type-check`. Do NOT run full suites.",
+      "prompt": "prompts/I-00113_S05_CodeReview_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-agent final review covering AC1-AC4. AC1: reproduction test exists and proves bug pre-fix; assertion-direction flip from S01->S03 is a small focused diff. AC2: `uv run pytest tests/unit/daemon/<repro>.py -v --no-cov` exits 0; production diff addresses the wrapper-exit-before-agent-registered case specifically. AC3: all 5 lifecycle branches (wrapper-exit+healthy, wrapper-exit+no-agent, alive+heartbeating, timeout, stall) covered with specific assertions. AC4: bug-case test asserts StepRun.status stays running AND _handle_crashed was NOT called. Cross-step contract: S01 recommended one fix; S03 implemented THAT fix (deviation is CRITICAL unless blocker-documented). Scope: git diff --name-only main...HEAD is subset of orch/daemon/fix_cycle.py, orch/daemon/step_monitor.py, tests/unit/daemon/**, tests/integration/daemon/**, ai-dev/active/I-00113/**. Test verification (TARGETED ONLY - QV gates S11/S12 own full suites; per I-00073 do NOT run `make test-unit` or `make test-integration` here): `uv run pytest tests/unit/daemon/ -v --no-cov`, plus `uv run pytest tests/integration/daemon/ -v --no-cov` only if S04 added integration tests, plus `make lint` + `make format-check` + `make type-check`. Regression in those targeted runs is CRITICAL. Security: no hardcoded creds in log lines.",
+      "prompt": "prompts/I-00113_S06_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage (new/changed lines must be well-covered)",
+      "timeout": 1800
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scanning (gitleaks)"
+    },
+    {
+      "step": "S15",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment via iw-item-analyze skill. Look for: (a) did S01 produce a useful RCA or did S03 have to improvise; (b) did the chosen fix approach hold up under S04's branch coverage; (c) which QV gates burned fix cycles and why; (d) did the post-edit gate help (no format/lint thrash); (e) cross-agent integration friction.",
+      "prompt": "prompts/I-00113_S15_SelfAssess_prompt.md"
+    }
+  ]
+}
