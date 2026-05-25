@@ -8,7 +8,21 @@
 
 ## ⛔ Docker is off-limits
 
-Standard policy. This step touches no containers.
+You MUST NOT execute ANY of the following commands or any command that
+changes Docker container/volume/network state:
+
+  docker kill | docker stop | docker rm | docker restart
+  docker compose up | docker compose down | docker compose restart
+  docker-compose up | docker-compose down | docker-compose restart
+  docker volume rm | docker volume prune
+  docker system prune | docker container prune | docker image prune
+
+Allowed exceptions:
+  1. Testcontainers spun up by pytest fixtures (Ryuk-managed).
+  2. Read-only introspection: `docker ps`, `docker inspect`, `docker logs`.
+  3. Invoking `./ai-core.sh` or `make` targets.
+
+Full policy: docs/IW_AI_Core_Agent_Constraints.md
 
 ## ⛔ Migrations: agents generate, daemon applies
 
@@ -18,13 +32,11 @@ This CR adds **no** migrations.
 
 - `uv run iw item-status CR-00083 --json` — runtime step state.
 - `ai-dev/work/CR-00083/CR-00083_CR_Design.md` — design document.
-- `ai-dev/work/CR-00083/reports/CR-00083_S01_Backend_report.md` — initial daemon measurement + budget recorded here.
-- `ai-dev/work/CR-00083/reports/CR-00083_S02_Backend_report.md` — initial RAG + routes measurements + budgets recorded here.
-- `.github/workflows/e2e.yml` and `.github/workflows/test-quality.yml` — existing workflow patterns to mirror (uv setup, artifact upload, PR-comment mechanisms).
-- `docs/IW_AI_Core_Testing_Strategy.md` — strategy doc to update (§2, §5, §9, §11).
-- `skills/iw-ai-core-testing/SKILL.md` — skill to update (§4).
-- `.claude/skills/iw-ai-core-testing/SKILL.md` — sync target.
-- `ai-dev/work/TESTS_ENHANCEMENT.md` — tracker (§8 row 4.2, v1.3 header → v1.4, §11 changelog).
+- `ai-dev/work/CR-00083/reports/CR-00083_S02_Backend_report.md` — S02 report (uses its `seeded_orch_db` fixture).
+- `orch/rag/qa.py` — `CodeQA.answer_stream` (the RAG entry point you measure).
+- `dashboard/app.py` + `dashboard/routers/project_dashboard.py` + `dashboard/routers/items.py` + `dashboard/routers/batches.py` + `dashboard/routers/jobs_ui.py` + `dashboard/routers/code.py` — the 5 routes you measure.
+- `tests/integration/rag/conftest.py` — the existing Ollama-skip pattern; you take the OPPOSITE stance (stub embeddings, always run).
+- `tests/dashboard/conftest.py` — existing FastAPI `TestClient` patterns.
 
 ## Output Files
 
@@ -32,181 +44,199 @@ This CR adds **no** migrations.
 
 ## Context
 
-You are implementing **S03** of CR-00083 — the nightly CI workflow, strategy doc, skill doc, and tracker updates. This step ties the deliverables of S01 and S02 into the project's documented test-layer story.
+You are implementing **S03** of CR-00083 — the RAG query perf module, the dashboard routes perf module, and the umbrella + per-module + operator-only baseline Makefile targets.
+
+S01 has already shipped the `pytest-benchmark` dep + the `perf` marker. S02 has shipped the perf package skeleton + the `seeded_orch_db` testcontainer fixture + the daemon perf module + the first Makefile target. Reuse the fixture verbatim.
 
 ## Requirements
 
-### 1. Create `.github/workflows/perf-budgets.yml`
+### 1. Create `tests/perf/test_rag_query.py`
 
-Triggers:
-- `schedule: - cron: '17 3 * * *'` (nightly 03:17 UTC — offset from sibling workflows).
-- `workflow_dispatch:` (manual trigger for operator-on-demand runs).
-- **NO `pull_request` trigger** — per intake, per-PR perf measurement is too noisy.
+Build a deterministic `tmp_path`-backed LanceDB index fixture (10 documents) and STUB the embedding model. The RAG perf test must run unconditionally — opposite stance to `tests/integration/rag/`'s skip-when-no-Ollama hook. Goal: measure retrieval + ranking + result-assembly cost, NOT model latency.
 
-Job structure (single `perf-budgets` job on `ubuntu-latest`):
+> **LanceDB note**: LanceDB has no true in-memory backend — it always persists to a directory. Use `tmp_path` (or `tmp_path_factory` for session scope) so the index lives in pytest's tempdir, which is RAM-backed on most CI systems. The fixture's lifecycle handles cleanup automatically.
 
-1. `actions/checkout@v4`
-2. Install `uv` (mirror the pattern in `e2e.yml` or `test-quality.yml`).
-3. `uv sync --all-extras --dev`
-4. `make test-perf` (main step — produces baseline-compare output and fails on regression > 25%).
-5. `actions/upload-artifact@v4` with `if: always()` uploading `.benchmarks/**` and `tests/perf/baselines/**` (the latter for diff context).
-6. Final step `if: failure()` — append a one-line entry to a "Perf regression follow-ups" subsection in `ai-dev/work/TESTS_ENHANCEMENT.md` referencing the workflow run URL. Use the same PR-creation pattern as existing workflows that append to tracker files (look at `e2e.yml` / `test-quality.yml` for the `peter-evans/create-pull-request` or `gh pr create` pattern). The entry format:
+```python
+"""RAG query performance budget.
 
-   ```
-   - YYYY-MM-DD — Perf regression detected (nightly run): <workflow-run-url>. See artifact `perf-benchmarks` for diff. Investigate and either fix the regression or, if intentional, file a CR to update the baseline.
-   ```
+Methodology: measures one full `CodeQA.answer_stream` invocation against a
+tmp_path-backed LanceDB index fixture (10 documents) with a deterministic stub
+embedding (hash-to-fixed-dim vector — NO Ollama dependency, opposite stance to
+tests/integration/rag/'s skip-when-no-Ollama hook).
 
-Match the GitHub Actions permissions model used in `e2e.yml` (probably `contents: write`, `pull-requests: write`).
+Initial measurement (2026-05-24, S03 run): mean = <X> s, σ/μ = <Y>.
+Mean-vs-min: <mean|min> (σ/μ <0.3 = mean, ≥0.3 = min — record rationale).
+"""
+import pytest
+# ...
 
-### 2. Update `docs/IW_AI_Core_Testing_Strategy.md`
+BUDGET_S = <ceil(initial_mean * 1.5 * 100) / 100>  # frozen 2026-05-24
 
-Four surgical edits:
 
-**§2 (Test layers)** — append a new subsection AFTER the existing Layer 7 entry:
-
-```markdown
-### Layer 8 — Performance budgets (`tests/perf/` — CR-00083, 2026-05-24)
-
-Three modules under `tests/perf/` measure wall-clock latency against committed baselines:
-
-- `test_daemon_poll_loop.py` — one `Daemon._poll_cycle()` iteration against a seeded testcontainer DB.
-- `test_rag_query.py` — one `CodeQA.answer_stream` invocation against an in-memory LanceDB fixture with a deterministic stub embedding (no Ollama dependency — opposite stance to `tests/integration/rag/`'s skip hook).
-- `test_dashboard_routes.py` — p50 over ≥10 runs (parametrized) for `/`, `/project/{id}/queue`, `/project/{id}/batches`, `/project/{id}/jobs`, `/project/{id}/code`.
-
-**Budget methodology**: each module declares a module-level constant set to `initial_measurement × 1.5` (50% headroom). Default to `mean`; switch to `min` only when initial σ/μ > 0.3 (record the ratio in the module docstring). The pytest-benchmark `--benchmark-compare-fail=mean:25%` regression threshold is the START value — operators may ratchet it down as baselines stabilise, NEVER silently relax it.
-
-**Baseline-update policy**: baselines live under `tests/perf/baselines/` and are committed. `make test-perf-update-baseline` regenerates them locally; committing the regenerated baselines requires a CR review (no automated baseline updates from CI). This prevents a regression from being silently absorbed into the new baseline.
-
-**Run targets**: `make test-perf-daemon` / `make test-perf-rag` / `make test-perf-routes` for individual modules; `make test-perf` for the umbrella. Excluded from `make test-unit` / `make test-integration` via the `perf` marker + `addopts` filter.
-
-**CI surface**: nightly only via `.github/workflows/perf-budgets.yml` (`schedule` + `workflow_dispatch`); NOT on PR per intake (runner variance makes per-PR perf measurement too noisy). On regression, the workflow appends a follow-up entry to this tracker.
+def test_rag_query_within_budget(benchmark, tmp_path_rag_index):
+    result = benchmark.pedantic(
+        _run_one_rag_query,  # drains the async generator into a list
+        args=(tmp_path_rag_index, "What does the daemon do?"),
+        rounds=10,
+        warmup_rounds=5,
+    )
+    assert benchmark.stats.stats.mean < BUDGET_S, (
+        f"RAG query mean {benchmark.stats.stats.mean:.3f} s exceeds budget {BUDGET_S} s"
+    )
 ```
 
-**§5 (Quality gates)** — append a new row to the gates table:
+The `tmp_path_rag_index` fixture seeds 10 small synthetic documents into a `tmp_path`-backed LanceDB and patches the embedding-model factory to return a deterministic stub (`hashlib.blake2b(query.encode()).digest()` reshaped/padded to the model's expected dim, e.g., 768). Use a `monkeypatch.setattr` against the embedding factory's import site in `orch/rag/qa.py`.
 
-```
-| `perf-budgets` (nightly) | `make test-perf` | `tests/perf/**` | nightly + dispatch | regression > 25% mean fails | CR-00083 |
-```
-
-(Match the table's existing column layout — adjust columns to fit.)
-
-**§9 (Known gaps & roadmap)** — flip the row for item 4.2:
-
-Before:
-```
-| 4.2 | Performance budgets | TODO |
-```
-
-After:
-```
-| 4.2 | Performance budgets | ✅ DONE — CR-00083 (2026-05-24) |
-```
-
-(Match the actual table format in the doc.)
-
-**§11 (Changelog)** — append a new dated entry at the END of the section:
-
-```markdown
-### 2026-05-24 — Layer 8 performance budgets shipped (CR-00083)
-
-Phase 4 first item. `tests/perf/` package with 3 modules (daemon poll-loop, RAG query, dashboard routes); committed baselines per module under `tests/perf/baselines/`; 5 Makefile targets (`test-perf-daemon`, `test-perf-rag`, `test-perf-routes`, `test-perf`, `test-perf-update-baseline`); nightly `.github/workflows/perf-budgets.yml` (cron + `workflow_dispatch`, NOT on PR). Regression threshold `mean:25%` — start value, ratchetable. Test-only, no production code change.
-```
-
-### 3. Update `skills/iw-ai-core-testing/SKILL.md`
-
-Add a new subsection in §4 (after the existing "Property-based tests" subsection or wherever §4's structure best accommodates it):
-
-```markdown
-### Performance budgets (CR-00083, Phase 4 item 4.2)
-
-When adding a perf test for a new hot path:
-
-1. **Where**: `tests/perf/test_<area>.py`. The package is marker-isolated (`perf`) and excluded from default unit/integration runs.
-2. **Budget choice**: measure 10 times in a quiet environment, set `BUDGET = initial_mean × 1.5` as a module-level constant. Document the σ/μ ratio in the module docstring. Default to asserting `mean < BUDGET`; switch to `min < BUDGET` only when σ/μ > 0.3 (and explain why in the docstring).
-3. **Assertion strength**: a perf test must assert against the specific BUDGET constant — NOT against `pytest-benchmark`'s `--benchmark-compare-fail` flag alone. The flag is a regression gate; the explicit `assert <stat> < BUDGET` is the absolute upper bound. Forbidden: `assert mean > 0`, `assert min < float('inf')`, `assert ratio >= 0` — these are tautologies the assertion scanner will flag.
-4. **Baselines**: committed under `tests/perf/baselines/` per module. Operator-only regeneration via `make test-perf-update-baseline`; committing a regenerated baseline requires a CR review (no silent re-baselining of regressions).
-5. **External deps**: a perf test must NOT depend on a live external service (Ollama, GH API, etc.) — stub it deterministically. The RAG perf test takes the opposite stance to `tests/integration/rag/`'s skip-when-no-Ollama hook precisely so it ALWAYS runs.
-6. **CI**: nightly only via `.github/workflows/perf-budgets.yml`. Do NOT add perf tests to PR-blocking gates — runner variance makes per-PR signal too noisy.
-```
-
-Then run:
+Save baseline via:
 
 ```bash
-uv run iw sync-skills --force iw-ai-core-testing
-diff skills/iw-ai-core-testing/SKILL.md .claude/skills/iw-ai-core-testing/SKILL.md
+uv run pytest tests/perf/test_rag_query.py -v --benchmark-save=rag --benchmark-storage=file://tests/perf/baselines -m perf --no-cov
 ```
 
-Verify the diff is empty (byte-identical mirror).
+The concrete file pytest-benchmark produces is `tests/perf/baselines/<machine-id>/NNNN_rag.json` (e.g. `tests/perf/baselines/Linux-CPython-3.13-64bit/0001_rag.json`). Commit the whole subtree.
 
-### 4. Update `ai-dev/work/TESTS_ENHANCEMENT.md`
+### 2. Create `tests/perf/test_dashboard_routes.py`
 
-Three surgical edits:
+Parametrize over exactly these 5 routes:
 
-**§8 row 4.2** — flip from:
+1. `/`
+2. `/project/{project_id}/queue`
+3. `/project/{project_id}/batches`
+4. `/project/{project_id}/jobs`
+5. `/project/{project_id}/code`
+
+```python
+"""Dashboard routes performance budget (p50 over ≥10 runs).
+
+Methodology: p50 latency of each route via FastAPI `TestClient` against the
+session-scoped `seeded_orch_db` fixture from `tests/perf/conftest.py`. ≥3
+warmup hits per route (excluded from measurement). pytest-benchmark
+`warmup_rounds=3, rounds=10`.
+
+Initial measurements (2026-05-24, S03 run):
+  /                          mean = <Xa> ms, σ/μ = <Ya>
+  /project/{id}/queue        mean = <Xb> ms, σ/μ = <Yb>
+  /project/{id}/batches      mean = <Xc> ms, σ/μ = <Yc>
+  /project/{id}/jobs         mean = <Xd> ms, σ/μ = <Yd>
+  /project/{id}/code         mean = <Xe> ms, σ/μ = <Ye>
+"""
+import pytest
+
+BUDGET_MS_HOME = <ceil(Xa * 1.5)>
+BUDGET_MS_QUEUE = <ceil(Xb * 1.5)>
+BUDGET_MS_BATCHES = <ceil(Xc * 1.5)>
+BUDGET_MS_JOBS = <ceil(Xd * 1.5)>
+BUDGET_MS_CODE = <ceil(Xe * 1.5)>
+
+ROUTES = [
+    ("/", BUDGET_MS_HOME, "home"),
+    ("/project/{project_id}/queue", BUDGET_MS_QUEUE, "queue"),
+    ("/project/{project_id}/batches", BUDGET_MS_BATCHES, "batches"),
+    ("/project/{project_id}/jobs", BUDGET_MS_JOBS, "jobs"),
+    ("/project/{project_id}/code", BUDGET_MS_CODE, "code"),
+]
+
+
+@pytest.mark.parametrize("route_template,budget_ms,label", ROUTES, ids=[r[2] for r in ROUTES])
+def test_dashboard_route_p50_within_budget(benchmark, dashboard_test_client, project_id, route_template, budget_ms, label):
+    url = route_template.format(project_id=project_id)
+    # warmup outside benchmark
+    for _ in range(3):
+        dashboard_test_client.get(url)
+    benchmark.pedantic(
+        lambda: dashboard_test_client.get(url),
+        rounds=10,
+        warmup_rounds=0,  # already warmed above
+    )
+    p50_ms = benchmark.stats.stats.median * 1000
+    assert p50_ms < budget_ms, (
+        f"{label} route p50 {p50_ms:.1f} ms exceeds budget {budget_ms} ms"
+    )
 ```
-| 4.2 | Performance budgets | ... | ... | CR | TODO | |
-```
-to:
-```
-| 4.2 | Performance budgets | ... | ... | CR | ✅ DONE — CR-00083 (2026-05-24): Layer 8 (`tests/perf/`) with 3 modules + nightly workflow + threshold 25% start | CR-00083 |
+
+`dashboard_test_client` fixture builds the FastAPI app against the `seeded_orch_db` session-scoped fixture; `project_id` returns the seeded project's ID.
+
+Save baseline:
+
+```bash
+uv run pytest tests/perf/test_dashboard_routes.py -v --benchmark-save=routes --benchmark-storage=file://tests/perf/baselines -m perf --no-cov
 ```
 
-(Match the existing row's column structure.)
+The concrete file is `tests/perf/baselines/<machine-id>/NNNN_routes.json` (e.g. `tests/perf/baselines/Linux-CPython-3.13-64bit/0001_routes.json`). Commit the whole subtree.
 
-**v1.3 header status block** — bump to v1.4. The current header begins "Current status (2026-05-24): Phases 0, 1, 2, and 3 are all complete...". Insert a sentence into the "Next pickup" section noting **Phase 4 first item shipped (CR-00083 — perf budgets, 2026-05-24)**; the remaining Phase 4 items (4.3 chaos, 4.8 mutmut blocking, etc.) stay TODO. Keep the prose tight — one sentence added, header version bumped from v1.3 to v1.4 at the top.
+### 3. Add Makefile targets
 
-**§11 (Changelog)** — prepend a new dated entry at the top (newest first, matching the file's existing order):
+All in `.PHONY`:
 
-```markdown
-- **2026-05-24** — **CR-00083 shipped (Phase 4 item 4.2 — Performance-budget test layer).** New package `tests/perf/` with three modules: `test_daemon_poll_loop.py` (one `Daemon._poll_cycle()` iteration vs seeded testcontainer DB), `test_rag_query.py` (one `CodeQA.answer_stream` vs in-memory LanceDB + deterministic stub embedding — no Ollama dependency), `test_dashboard_routes.py` (p50 over ≥10 runs across `/`, `/project/{id}/queue`, `/project/{id}/batches`, `/project/{id}/jobs`, `/project/{id}/code`). Committed baselines under `tests/perf/baselines/` per module. 5 Makefile targets: `test-perf-daemon`, `test-perf-rag`, `test-perf-routes`, `test-perf` (umbrella), `test-perf-update-baseline` (operator-only — committing regenerated baselines requires CR review). Nightly `.github/workflows/perf-budgets.yml` (cron `17 3 * * *` + `workflow_dispatch`; NOT on PR per intake). Regression threshold `mean:25%` — start value, ratchetable. `pytest-benchmark>=4.0,<5` added to `[dependency-groups] dev`; `perf` marker registered + excluded from default runs via `addopts`. Strategy doc §2 grows new Layer 8, §5 grows nightly perf-budgets gate row, §9 row 4.2 flips ✅, §11 changelog updated. Skill `iw-ai-core-testing` §4 grows new "Performance budgets" subsection; `iw sync-skills` makes `.claude/skills/` byte-identical. **Test-only, NO production code change** — the precedent that genuine regressions surface as Incidents (not in-CR fixes) applies; budgets are observation-only.
+```makefile
+.PHONY: test-perf test-perf-rag test-perf-routes test-perf-update-baseline
+
+test-perf-rag:  ## Run RAG query performance budget test
+	uv run pytest tests/perf/test_rag_query.py -v --benchmark-compare=rag --benchmark-compare-fail=mean:25% --benchmark-storage=file://tests/perf/baselines -m perf --no-cov
+
+test-perf-routes:  ## Run dashboard routes performance budget tests (5 routes)
+	uv run pytest tests/perf/test_dashboard_routes.py -v --benchmark-compare=routes --benchmark-compare-fail=mean:25% --benchmark-storage=file://tests/perf/baselines -m perf --no-cov
+
+test-perf: test-perf-daemon test-perf-rag test-perf-routes  ## Run all performance budget tests (umbrella)
+
+test-perf-update-baseline:  ## OPERATOR-ONLY: regenerate committed perf baselines (requires CR review before commit per CR-00083)
+	@echo ">>> WARNING: Baseline updated locally — commit requires CR review per CR-00083 Notes section"
+	uv run pytest tests/perf/test_daemon_poll_loop.py -v --benchmark-save=daemon --benchmark-storage=file://tests/perf/baselines -m perf --no-cov
+	uv run pytest tests/perf/test_rag_query.py -v --benchmark-save=rag --benchmark-storage=file://tests/perf/baselines -m perf --no-cov
+	uv run pytest tests/perf/test_dashboard_routes.py -v --benchmark-save=routes --benchmark-storage=file://tests/perf/baselines -m perf --no-cov
 ```
+
+Add all four targets to the top-level `.PHONY` aggregation list.
+
+### 4. RED-first evidence
+
+`tdd_red_evidence` must record initial measurements + budgets + final-green pass for BOTH modules in the same field, e.g.:
+
+> `RAG query initial mean = <X> s (σ/μ = <Y>) → BUDGET_S = <Z>; final mean = <W> < Z. Dashboard routes initial p50 = {home: <Xa>, queue: <Xb>, batches: <Xc>, jobs: <Xd>, code: <Xe>} ms → BUDGETs = {<Za>, <Zb>, <Zc>, <Zd>, <Ze>}; all 5 routes pass.`
 
 ## Project Conventions
 
-Read CLAUDE.md for the skill-sync rules (`iw sync-skills`) and the strategy-doc conventions. The §2/§5/§9/§11 quadruple edit is the standard pattern from CR-00072/73/74/75/76 — mirror their cross-surface consistency exactly (same date, same CR-ID, same one-line summary across all four surfaces).
+Read CLAUDE.md and `docs/IW_AI_Core_Testing_Strategy.md`. Reuse the `seeded_orch_db` session-scoped fixture from S02's `tests/perf/conftest.py`. Do NOT spin up a new testcontainer per test — that destroys perf budget validity.
 
 ## TDD Requirement
 
-This step is doc + workflow YAML + skill sync. Use:
-
-> `tdd_red_evidence: "n/a — docs/CI/skill/tracker updates only; no production logic added"`
+Same as S02 — the perf tests ARE the RED-first behavioural artefacts. The initial-measurement → budget-set → final-green narrative is your RED evidence.
 
 ## Pre-flight Quality Gates (NON-NEGOTIABLE)
 
-1. `make format` — auto-fix on touched files (the workflow YAML and markdown have their own formatting rules — verify lint doesn't trip on them).
-2. `make typecheck` — N/A for this step's files; should pass.
-3. `make lint` — must pass; the new workflow YAML may trigger YAML-lint via the templates check — fix if so.
+1. `make format` — auto-fix on touched files.
+2. `make typecheck` — zero errors on touched files.
+3. `make lint` — zero errors on touched files.
 
-## Test Verification
+## Test Verification (NON-NEGOTIABLE)
 
-No targeted tests for this step. Skill sync verification:
-
-```bash
-diff skills/iw-ai-core-testing/SKILL.md .claude/skills/iw-ai-core-testing/SKILL.md  # must be empty
-```
-
-Workflow YAML syntax verification (if `actionlint` or similar is in the project):
+Run ONLY:
 
 ```bash
-# inspect .github/workflows/perf-budgets.yml manually — confirm cron + workflow_dispatch + no pull_request triggers
-grep -E "^(on:|  schedule:|  workflow_dispatch:|  pull_request:)" .github/workflows/perf-budgets.yml
-# expected output:
-# on:
-#   schedule:
-#   workflow_dispatch:
-# (no pull_request line should appear)
+uv run pytest tests/perf/test_rag_query.py tests/perf/test_dashboard_routes.py -v --benchmark-storage=file://tests/perf/baselines -m perf --no-cov
+make test-perf  # confirm umbrella target chains correctly
 ```
 
-## Scope discipline
+Do NOT run `make test-unit`, `make test-integration`, or `make check`.
+
+## Scope discipline (CR-00083 hard rule)
+
+NO production code changes under `orch/`, `dashboard/`, `executor/`, `scripts/`, `bin/`, `templates/`. If your work suggests a production-code change, STOP and raise a blocker.
 
 Files you are permitted to touch:
-- `.github/workflows/perf-budgets.yml` (new)
-- `docs/IW_AI_Core_Testing_Strategy.md`
-- `skills/iw-ai-core-testing/SKILL.md`
-- `.claude/skills/iw-ai-core-testing/SKILL.md` (regenerated by `iw sync-skills`)
-- `ai-dev/work/TESTS_ENHANCEMENT.md`
+- `tests/perf/test_rag_query.py` (new)
+- `tests/perf/test_dashboard_routes.py` (new)
+- `tests/perf/baselines/<machine-id>/NNNN_rag.json` (new — generated by pytest-benchmark)
+- `tests/perf/baselines/<machine-id>/NNNN_routes.json` (new — generated by pytest-benchmark)
+- `Makefile`
 
-NO `orch/`, `dashboard/`, `executor/`, `scripts/`, `bin/`, `templates/`, `tests/**`, `pyproject.toml`, `uv.lock`, `Makefile` — those are S01/S02 deliverables and must NOT be re-edited in S03.
+Files you may READ from S01/S02's deliverables (do NOT modify):
+- `tests/perf/__init__.py`
+- `tests/perf/conftest.py`
+- `tests/perf/test_daemon_poll_loop.py`
+- `tests/perf/baselines/<machine-id>/NNNN_daemon.json`
+- `pyproject.toml`
+- `uv.lock`
 
 ## Subagent Result Contract
 
@@ -217,11 +247,11 @@ NO `orch/`, `dashboard/`, `executor/`, `scripts/`, `bin/`, `templates/`, `tests/
   "work_item": "CR-00083",
   "completion_status": "complete|partial|blocked",
   "files_changed": [
-    ".github/workflows/perf-budgets.yml",
-    "docs/IW_AI_Core_Testing_Strategy.md",
-    "skills/iw-ai-core-testing/SKILL.md",
-    ".claude/skills/iw-ai-core-testing/SKILL.md",
-    "ai-dev/work/TESTS_ENHANCEMENT.md"
+    "tests/perf/test_rag_query.py",
+    "tests/perf/test_dashboard_routes.py",
+    "tests/perf/baselines/<machine-id>/NNNN_rag.json",
+    "tests/perf/baselines/<machine-id>/NNNN_routes.json",
+    "Makefile"
   ],
   "preflight": {
     "format": "ok|fixed|skipped:<reason>",
@@ -229,9 +259,9 @@ NO `orch/`, `dashboard/`, `executor/`, `scripts/`, `bin/`, `templates/`, `tests/
     "lint": "ok|skipped:<reason>"
   },
   "tests_passed": true,
-  "test_summary": "n/a — docs/CI/skill/tracker only",
-  "tdd_red_evidence": "n/a — docs/CI/skill/tracker updates only; no production logic added",
+  "test_summary": "6 passed (1 rag + 5 parametrized routes), 0 failed",
+  "tdd_red_evidence": "RAG initial mean = <X> s, BUDGET_S = <Z>, final pass at <W>. Routes initial p50s = {...}, BUDGETs = {...}, all 5 pass.",
   "blockers": [],
-  "notes": "Skill sync diff verified empty. Workflow YAML has cron + workflow_dispatch only (no pull_request). Strategy doc + skill + tracker all carry 2026-05-24 + CR-00083 + same one-line summary."
+  "notes": "RAG embedding stubbed deterministically (tmp_path LanceDB); dashboard routes warmed up x3 outside measurement; umbrella `make test-perf` verified chains all 3 modules. Baseline files: <full paths>."
 }
 ```

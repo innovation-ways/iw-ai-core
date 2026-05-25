@@ -1,8 +1,8 @@
-# CR-00083_S04_CodeReview_prompt
+# CR-00083_S05_CodeReview_prompt
 
 **Work Item**: CR-00083 -- Performance-budget test layer — pytest-benchmark assertions with regression-alert baselines
-**Step Being Reviewed**: S01 (backend-impl) + S02 (backend-impl) together
-**Review Step**: S04
+**Step Being Reviewed**: S01 (backend-impl) + S02 (backend-impl) + S03 (backend-impl) together
+**Review Step**: S05
 **Agent**: code-review-impl
 
 ---
@@ -19,17 +19,18 @@ This CR adds no migrations. If you see one in the diff, flag it CRITICAL.
 
 - `uv run iw item-status CR-00083 --json` — runtime step state.
 - `ai-dev/work/CR-00083/CR-00083_CR_Design.md` — design.
-- `ai-dev/work/CR-00083/reports/CR-00083_S01_Backend_report.md` — S01 report.
-- `ai-dev/work/CR-00083/reports/CR-00083_S02_Backend_report.md` — S02 report.
+- `ai-dev/work/CR-00083/reports/CR-00083_S01_Backend_report.md` — S01 report (pytest-benchmark dep + marker).
+- `ai-dev/work/CR-00083/reports/CR-00083_S02_Backend_report.md` — S02 report (perf package + daemon module).
+- `ai-dev/work/CR-00083/reports/CR-00083_S03_Backend_report.md` — S03 report (RAG + dashboard modules + umbrella Makefile).
 - All files listed in those reports' `files_changed`.
 
 ## Output Files
 
-- `ai-dev/work/CR-00083/reports/CR-00083_S04_CodeReview_report.md` — review report.
+- `ai-dev/work/CR-00083/reports/CR-00083_S05_CodeReview_report.md` — review report.
 
 ## Context
 
-You are reviewing S01 and S02 together — the perf-package skeleton, the `pytest-benchmark` dep, and the three perf modules + committed baselines + Makefile targets. S03 (CI workflow + docs) is reviewed by S05.
+You are reviewing S01, S02, and S03 together — the `pytest-benchmark` dep + `perf` marker (S01), the perf-package skeleton + `seeded_orch_db` fixture + daemon perf module + daemon baseline + first Makefile target (S02), and the RAG + dashboard perf modules + their baselines + umbrella/operator Makefile targets (S03). S04 (CI workflow + docs) is reviewed by S06.
 
 ## Read the Design Document FIRST
 
@@ -110,9 +111,10 @@ ANY file outside this list (especially `orch/**`, `dashboard/**`, `executor/**`)
 
 ### 7. TDD RED evidence
 
-- S01's `tdd_red_evidence` records the initial-measurement → budget-set → final-green narrative for the daemon module. Field MUST NOT be `"n/a"` — perf tests are behavioural tests with explicit measurement-based RED.
-- S02's `tdd_red_evidence` records the same for the RAG + 5 dashboard routes (single field covering both modules is acceptable).
-- If either field is missing or generic ("tests pass"), file HIGH finding under category `testing`.
+- S01's `tdd_red_evidence` is `"n/a — dependency + marker configuration only; behavioural perf tests are introduced in S02 onward"` (configuration-only step, allowed). Field MUST NOT be a generic "tests pass" — the n/a justification IS the required content.
+- S02's `tdd_red_evidence` records the initial-measurement → budget-set → final-green narrative for the daemon module. Field MUST NOT be `"n/a"` — perf tests are behavioural tests with explicit measurement-based RED.
+- S03's `tdd_red_evidence` records the same for the RAG + 5 dashboard routes (single field covering both modules is acceptable).
+- If S02 or S03 evidence is missing or generic ("tests pass"), file HIGH finding under category `testing`.
 
 ## Test Verification (NON-NEGOTIABLE)
 
@@ -122,7 +124,7 @@ uv run pytest --collect-only tests/perf/  # confirms perf tests are deselected b
 uv run pytest -m perf --collect-only tests/perf/  # confirms they're collectable with -m perf
 ```
 
-Report results in the contract. Do NOT run `make check` — that's S10/S11/S12.
+Report results in the contract. Do NOT run `make check` — that's S11/S12/S13's job (renumbered QV gates).
 
 ## Severity Levels
 
@@ -132,10 +134,10 @@ Standard: CRITICAL / HIGH / MEDIUM_FIXABLE / MEDIUM_SUGGESTION / LOW.
 
 ```json
 {
-  "step": "S04",
+  "step": "S05",
   "agent": "code-review-impl",
   "work_item": "CR-00083",
-  "step_reviewed": "S01,S02",
+  "step_reviewed": "S01,S02,S03",
   "verdict": "pass|fail",
   "findings": [],
   "mandatory_fix_count": 0,

@@ -1,7 +1,7 @@
-# CR-00083_S14_SelfAssess_prompt
+# CR-00083_S15_SelfAssess_prompt
 
 **Work Item**: CR-00083 -- Performance-budget test layer — pytest-benchmark assertions with regression-alert baselines
-**Step**: S14
+**Step**: S15
 **Agent**: SelfAssess (self-assess-impl)
 
 ---
@@ -39,12 +39,13 @@ This step is **soft** — failure does NOT block merge. Produce the best report 
 
 Beyond the skill's standard checks, weight these CR-00083-specific signals:
 
-1. **Budget revision mid-step.** Did S01 or S02 have to revise a BUDGET constant after the initial 10-run sample because of an outlier? If yes, the 10-run baseline methodology may need more rounds — record a finding pointing the strategy doc at a higher round count for the budget-set phase.
-2. **`perf` marker wiring**. Did S10 (`make test-unit`) or S11 (`make allure-integration`) burn a fix cycle because a perf test was accidentally collected? This is the most likely failure mode for this CR (the `not perf` `addopts` append is fragile). If it happened, recommend a CONTAINS guard test (`tests/unit/test_perf_marker_isolation.py` or similar) for a follow-up CR.
-3. **Cross-surface consistency**. Did S04/S05 catch a date or CR-ID mismatch across the strategy doc / skill / mirror / tracker quadruple? This is a recurring failure mode (CR-00072/73/74/75/76 each had >0 fix cycles around it). Record the count vs. those historical CRs.
-4. **RAG embedding stub coupling**. Did S02's deterministic-stub patch raise any unexpected coupling concerns (e.g., the stub had to patch a function that production code calls in a way that the patch can leak between tests)? If yes, the stub may need to be a fixture-scoped monkeypatch rather than a module-level patch.
-5. **Workflow YAML lint**. Did the `make lint` gate (S06) trip on the new `.github/workflows/perf-budgets.yml`? If yes, the project's lint pipeline may need a YAML linter integration follow-up.
-6. **Phase 4 comparison**. Compare against Phase 1/2/3 CR setup-cost patterns (CR-00059 mutmut spike, CR-00060 Hypothesis property tests, CR-00061 quarantine workflow, CR-00072 contract sweep, CR-00075 security tests). Look for: dep-installation cycles, marker-registration cycles, doc-sync cycles. Is CR-00083's cycle count higher or lower than the average? If higher, what specifically caused the excess?
+1. **Budget revision mid-step.** Did S02 or S03 have to revise a BUDGET constant after the initial 10-run sample because of an outlier? If yes, the 10-run baseline methodology may need more rounds — record a finding pointing the strategy doc at a higher round count for the budget-set phase.
+2. **`perf` marker wiring**. Did S11 (`make test-unit`) or S12 (`make test-integration`) burn a fix cycle because a perf test was accidentally collected? This is the most likely failure mode for this CR (the `not perf` `addopts` append is fragile). If it happened, recommend a CONTAINS guard test (`tests/unit/test_perf_marker_isolation.py` or similar) for a follow-up CR. Note: the S01 split (S01 = deps/marker only, S02 = perf package) was an explicit design choice to reduce the chance of this failure mode — record whether the split paid off.
+3. **Cross-surface consistency**. Did S05/S06 catch a date or CR-ID mismatch across the strategy doc / skill / mirror / tracker quadruple? This is a recurring failure mode (CR-00072/73/74/75/76 each had >0 fix cycles around it). Record the count vs. those historical CRs.
+4. **RAG embedding stub coupling**. Did S03's deterministic-stub patch raise any unexpected coupling concerns (e.g., the stub had to patch a function that production code calls in a way that the patch can leak between tests)? If yes, the stub may need to be a fixture-scoped monkeypatch rather than a module-level patch.
+5. **Daemon `_poll_cycle` isolation effort**. The S02 prompt enumerated 9 categories of collaborators to mock. Did S02 discover additional ones not listed? Did any mock turn out to mask a meaningful part of the cycle's cost? Record both lists for future perf-test authors.
+6. **Workflow YAML lint**. Did the `make lint` gate (S07) trip on the new `.github/workflows/perf-budgets.yml`? If yes, the project's lint pipeline may need a YAML linter integration follow-up.
+7. **Phase 4 comparison**. Compare against Phase 1/2/3 CR setup-cost patterns (CR-00059 mutmut spike, CR-00060 Hypothesis property tests, CR-00061 quarantine workflow, CR-00072 contract sweep, CR-00075 security tests). Look for: dep-installation cycles, marker-registration cycles, doc-sync cycles. Is CR-00083's cycle count higher or lower than the average? If higher, what specifically caused the excess?
 
 ## Soft-Step Semantics
 
@@ -52,13 +53,13 @@ Failure does NOT block merge — produce a usable report anyway. If the analysis
 
 ## TDD RED Evidence (behaviour-implementing steps only)
 
-S01 and S02 are behaviour-implementing (Backend) and added new behavioural tests (the perf modules themselves). Verify their reports' `tdd_red_evidence` fields record the initial-measurement → budget-set → final-green narrative — NOT `"n/a"` or a generic "tests pass". S03 (docs/CI/skill) should use `"n/a — docs/CI/skill/tracker only"`. Flag deviations.
+S02 and S03 are behaviour-implementing (Backend) and added new behavioural tests (the perf modules themselves). Verify their reports' `tdd_red_evidence` fields record the initial-measurement → budget-set → final-green narrative — NOT `"n/a"` or a generic "tests pass". S01 (deps/marker only) should use `"n/a — dependency + marker configuration only; behavioural perf tests are introduced in S02 onward"`. S04 (docs/CI/skill/tracker) should use `"n/a — docs/CI/skill/tracker only"`. Flag deviations.
 
 ## Subagent Result Contract
 
 ```json
 {
-  "step": "S14",
+  "step": "S15",
   "agent": "self-assess-impl",
   "work_item": "CR-00083",
   "completion_status": "complete|partial|blocked",
@@ -74,6 +75,6 @@ S01 and S02 are behaviour-implementing (Backend) and added new behavioural tests
   "tests_passed": true,
   "test_summary": "skipped: no tests for analysis step",
   "blockers": [],
-  "notes": "Analysis completed; findings written to two output files. CR-00083-specific signals reviewed (budget revision, perf marker wiring, cross-surface consistency, RAG stub coupling, workflow YAML lint, Phase 4 cycle-count comparison)."
+  "notes": "Analysis completed; findings written to two output files. CR-00083-specific signals reviewed (budget revision, perf marker wiring, S01-split payoff, cross-surface consistency, RAG stub coupling, _poll_cycle isolation effort, workflow YAML lint, Phase 4 cycle-count comparison)."
 }
 ```

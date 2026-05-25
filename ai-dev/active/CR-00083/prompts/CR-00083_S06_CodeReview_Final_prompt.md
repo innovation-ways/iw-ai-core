@@ -1,8 +1,8 @@
-# CR-00083_S05_CodeReview_Final_prompt
+# CR-00083_S06_CodeReview_Final_prompt
 
 **Work Item**: CR-00083 -- Performance-budget test layer — pytest-benchmark assertions with regression-alert baselines
-**Review Step**: S05 (Final Review)
-**Implementation Steps Reviewed**: S01..S03
+**Review Step**: S06 (Final Review)
+**Implementation Steps Reviewed**: S01..S04
 **Agent**: code-review-final-impl
 
 ---
@@ -19,17 +19,17 @@ This CR adds no migrations. Any migration in the diff = CRITICAL.
 
 - `uv run iw item-status CR-00083 --json` — runtime step state.
 - `ai-dev/work/CR-00083/CR-00083_CR_Design.md` — design.
-- All implementation reports: `ai-dev/work/CR-00083/reports/CR-00083_S0{1,2,3}_Backend_report.md`.
-- S04 review report: `ai-dev/work/CR-00083/reports/CR-00083_S04_CodeReview_report.md`.
+- All implementation reports: `ai-dev/work/CR-00083/reports/CR-00083_S0{1,2,3,4}_Backend_report.md`.
+- S05 review report: `ai-dev/work/CR-00083/reports/CR-00083_S05_CodeReview_report.md`.
 - All files in those reports' `files_changed`.
 
 ## Output Files
 
-- `ai-dev/work/CR-00083/reports/CR-00083_S05_CodeReview_Final_report.md` — final cross-agent review.
+- `ai-dev/work/CR-00083/reports/CR-00083_S06_CodeReview_Final_report.md` — final cross-agent review.
 
 ## Context
 
-You are performing the **global cross-agent review** for CR-00083. Per-step reviews handled S01 and S02 already (S04). Your scope is the WHOLE CR — the perf modules + the CI workflow + the four documentation-surface updates (strategy doc + skill master + skill mirror + tracker) — and the cross-cutting consistency checks per-step reviews cannot do.
+You are performing the **global cross-agent review** for CR-00083. Per-step reviews handled S01–S03 already (S05). Your scope is the WHOLE CR — the perf modules + the CI workflow + the four documentation-surface updates (strategy doc + skill master + skill mirror + tracker) — and the cross-cutting consistency checks per-step reviews cannot do.
 
 ## Read the Design Document FIRST
 
@@ -139,7 +139,7 @@ make test-unit
 uv run pytest tests/perf/ -m perf -v --no-cov  # the perf tests themselves
 ```
 
-Do NOT run `make check`, `make test-integration`, `make allure-integration`, `make diff-coverage`, `make security-secrets` — those are S10/S11/S12/S13 QV gates and have their own budgets.
+Do NOT run `make check`, `make test-integration`, `make allure-integration`, `make diff-coverage`, `make security-secrets` — those are S11/S12/S13/S14 QV gates (renumbered) and have their own budgets.
 
 ## Severity Levels
 
@@ -149,10 +149,10 @@ Standard.
 
 ```json
 {
-  "step": "S05",
+  "step": "S06",
   "agent": "code-review-final-impl",
   "work_item": "CR-00083",
-  "step_reviewed": "S01,S02,S03",
+  "step_reviewed": "S01,S02,S03,S04",
   "verdict": "pass|fail",
   "findings": [],
   "mandatory_fix_count": 0,
