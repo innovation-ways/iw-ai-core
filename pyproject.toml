@@ -245,13 +245,15 @@ extend_exclude = ["skills/.*"]
 [tool.hypothesis]
 database_file = ".hypothesis/examples"
 
-# Mutation testing (CR-00059, P2-CR-A) — runs on-demand, NOT in CI yet.
+# Mutation testing (CR-00080, P2-CR-A follow-up) — widened to orch/ and
+# runner now disables coverage fail-under for mutmut subprocess runs so mutants execute.
+# Spike measurements (S01): PARTIAL at 01:00:00 (timeout); generated=55, killed=0, survived=55 (score=0%). See evidence file.
 # Usage: make mutation-check MODULE=orch/daemon/auto_merge.py
-#        make mutation-audit (currently scoped to orch/daemon/; expand in follow-up CR P2-CR-A-followup-mutation-block)
+#        make mutation-audit
 [tool.mutmut]
-paths_to_mutate = "orch/daemon/"
+paths_to_mutate = "orch/"
 # tests_dir must be a single existing directory — mutmut 2.5.1 rejects space-joined
 # multi-path strings with FileNotFoundError. Test-scope narrowing happens in `runner`
 # (which mutmut invokes verbatim and DOES accept multiple paths).
 tests_dir = "tests/"
-runner = "uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q"
+runner = "sh -c 'IW_CORE_DB_PORT=5433 uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q --cov-fail-under=0'"

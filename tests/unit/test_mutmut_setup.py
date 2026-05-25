@@ -11,8 +11,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_pyproject_tool_mutmut_block_pins_orch_daemon_target() -> None:
-    """[tool.mutmut] must exist with the three expected keys scoped to orch/daemon/."""
+def test_pyproject_tool_mutmut_block_pins_orch_target() -> None:
+    """[tool.mutmut] must exist with the three expected keys scoped to orch/."""
     data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
 
     assert "mutmut" in data["tool"], (
@@ -20,9 +20,9 @@ def test_pyproject_tool_mutmut_block_pins_orch_daemon_target() -> None:
     )
     block = data["tool"]["mutmut"]
 
-    assert block["paths_to_mutate"] == "orch/daemon/", (
-        "paths_to_mutate must be 'orch/daemon/' "
-        f"(spike scope per CR-00059); got {block['paths_to_mutate']!r}"
+    assert block["paths_to_mutate"] == "orch/", (
+        "paths_to_mutate must be 'orch/' "
+        f"(widened scope per CR-00080); got {block['paths_to_mutate']!r}"
     )
     assert block["tests_dir"] == "tests/", (
         f"tests_dir must be the single existing directory 'tests/' — "
