@@ -16,7 +16,8 @@
           test-e2e test-e2e-smoke \
           security-deps security-iac security-image-dashboard security-secrets security-all security-report security-sast \
           test-security-module test-isolation \
-          arch-check test-frontend dead-code dep-check check-column-docs
+          arch-check test-frontend dead-code dep-check check-column-docs \
+          llm-judge-calibrate
 
 # --- Setup ---
 install:
@@ -552,3 +553,8 @@ security-report:
 # --- Architecture ---
 arch-check:
 	@uv run python scripts/arch_check.py
+
+# --- LLM-as-judge calibration (CR-00084 S01) ---
+llm-judge-calibrate:
+	@uv run python scripts/llm_judge_test_review.py \
+		--calibrate tests/llm_judge/labelled_set.jsonl

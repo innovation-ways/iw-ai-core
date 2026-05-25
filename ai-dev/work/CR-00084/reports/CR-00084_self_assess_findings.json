@@ -1,0 +1,176 @@
+{
+  "work_item": "CR-00084",
+  "step": "S14",
+  "agent": "self-assess-impl",
+  "completion_status": "complete",
+  "calibration_chain_consistent": true,
+  "advisory_contract_explicit": true,
+  "tdd_red_evidence_verified": true,
+  "labelled_set_defensible": true,
+  "scope_discipline": "clean",
+  "findings": [
+    {
+      "id": "SA-01",
+      "severity": "process_improvement",
+      "step": "S04",
+      "category": "procedure",
+      "file": "ai-dev/active/CR-00084/reports/CR-00084_S04_CodeReview_report.md",
+      "description": "S04's baseline overlap verification produced false negatives: the comparison method stripped trailing '# <reason>' suffixes from assertion_free_baseline.txt entries, so only bare 'file::test_name' was matched rather than the full line including the suffix. This caused CRITICAL F-01 to flag 11 tests as overlapping when in fact none overlapped the post-CR-00081 merged baseline.",
+      "impact": "CRITICAL F-01 was raised but was stale — CR-00081 scrubbed the baseline between S04 and S05. S05 corrected the method and verified 0/29 unique tests overlap. No fix cycle was needed.",
+      "suggestion": "Codify the baseline verification method in the S01 checklist: 'grep -F \"<file>::<test_name>\" tests/assertion_free_baseline.txt' (exact string including any trailing '# <reason>' suffix). This prevents the suffix-stripping false-negative.",
+      "resolved": true
+    },
+    {
+      "id": "SA-02",
+      "severity": "informational",
+      "step": "S05",
+      "category": "documentation",
+      "file": "ai-dev/active/CR-00084/reports/CR-00084_S01_Backend_report.md",
+      "description": "S01 report structured fields (labelled_set_size=39, labelled_set_strong_count=21, labelled_set_weak_count=18) are stale — the live labelled_set.jsonl has 40 records (15 STRONG, 0 MEDIUM, 25 WEAK). The file was updated by fix cycles between S01 and S05 submission.",
+      "impact": "Informational only — does not affect the spike's correctness. The live file is correct and S05 verified it directly.",
+      "suggestion": "S01 backend reports should include a note: 'Structured fields may be superseded by fix-cycle updates; always verify against live files.' Alternatively, a pre-commit hook could snapshot the actual file stats into the report at generation time.",
+      "resolved": false
+    },
+    {
+      "id": "SA-03",
+      "severity": "medium_fixable",
+      "step": "S12",
+      "category": "quality",
+      "file": "tests/unit/test_llm_judge_script.py",
+      "description": "Assertion-scanner violations: (1) test_accepts_well_formed at line 27 has no assertions, (2) test_token_spend_accumulated at line 387 has all-tautology asserts (is not None / isinstance / len > 0). Triggered S12 QV gate failure and one fix cycle.",
+      "impact": "Fix cycle burned on CR-00084's own code. The fix cycle resolved both violations and S12 passed on re-run. This is a legitimate quality finding in the new unit test suite.",
+      "suggestion": "Future spike implementations adding new test files should pre-check against the assertion scanner before submitting. Alternatively, the scanner could be run as part of the spike's own pre-flight gates in the agent spec.",
+      "resolved": true
+    },
+    {
+      "id": "SA-04",
+      "severity": "informational",
+      "step": "S11",
+      "category": "unrelated",
+      "file": "tests/integration/test_e2e_opencode_stub.py",
+      "description": "S11 diff-coverage gate failed with test_e2e_opencode_stub.py::test_session_list_returns_created_sessions — a pre-existing test unrelated to CR-00084. Triggered one fix cycle.",
+      "impact": "Fix cycle burned on unrelated code; no CR-00084 changes required. S11 passed on re-run.",
+      "suggestion": "No action needed — this was a pre-existing test issue that the diff-coverage gate surfaced.",
+      "resolved": true
+    },
+    {
+      "id": "SA-05",
+      "severity": "process_improvement",
+      "step": "S01",
+      "category": "cost_discipline",
+      "file": "agents/claude/code-review-impl.md",
+      "description": "The per-review cap (< $0.50) is documented in the LIVE form template but is not stated in the DORMANT form. When the hook is re-enabled in a future follow-up CR, the cap must be explicitly stated in the agent-instruction body (not just in the calibration evidence file) to ensure the agent enforces it during live reviews.",
+      "impact": "No impact now — hook is DORMANT, no live invocation. Will be relevant when a follow-up CR re-enables the hook.",
+      "suggestion": "When the follow-up CR ships the LIVE form, ensure the per-review cap is declared explicitly in the agent-instruction body. S04's checklist already has this as a gate item — no new process needed.",
+      "resolved": false
+    },
+    {
+      "id": "SA-06",
+      "severity": "informational",
+      "step": "S04/S05",
+      "category": "conventions",
+      "file": "docs/IW_AI_Core_Testing_Strategy.md",
+      "description": "Strategy doc changelog entry dated 2026-05-25 (ship date) vs S03 instruction of 2026-05-24 (design creation date). S04 flagged this as F-02; S05 resolved it as intentional — design date vs ship date are different dates and both are internally consistent within their own documents.",
+      "impact": "No impact — resolved as intentional. Both dates are used correctly per document convention.",
+      "suggestion": "No action needed. Document the convention: changelog entries use ship date; tracker rows use design creation date.",
+      "resolved": true
+    },
+    {
+      "id": "SA-07",
+      "severity": "informational",
+      "step": "S05",
+      "category": "evidence_quality",
+      "file": "ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt",
+      "description": "Evidence file (DEFERRED stub) was initially missing confusion-matrix and metric fields without explanation. S04 F-03 flagged this; S05 resolved it after the file was updated to explicitly document 'CONFUSION MATRIX / METRICS: ABSENT' with a clear reason. The updated evidence file fully satisfies AC3 for a DEFERRED verdict.",
+      "impact": "No impact — resolved. The evidence file explicitly explains why fields are absent rather than silently omitting them.",
+      "suggestion": "No action needed. The evidence file template is correct for DEFERRED state.",
+      "resolved": true
+    }
+  ],
+  "mandatory_fix_count": 0,
+  "crITICAL_f-01_stale": true,
+  "crITICAL_f-01_resolved_by": "S05 re-verification (CR-00081 baseline scrub made finding obsolete; 0/29 unique tests overlap)",
+  "fix_cycles_summary": {
+    "total": 5,
+    "S04": 2,
+    "S05": 1,
+    "S11": 1,
+    "S12": 1,
+    "on_cr00084_code": 2,
+    "on_unrelated_code": 3,
+    "zero_fix_cycles_needed_for_critical": true
+  },
+  "qv_gate_summary": {
+    "S06_lint": "PASS",
+    "S07_format": "PASS",
+    "S08_typecheck": "PASS",
+    "S09_unit_tests": "PASS",
+    "S10_integration": "PASS",
+    "S11_diff_coverage": "PASS (1 fix cycle)",
+    "S12_assertions": "PASS (1 fix cycle)",
+    "S13_security": "PASS"
+  },
+  "labelled_set_final_state": {
+    "total_records": 40,
+    "unique_tests": 29,
+    "strong": 15,
+    "medium": 0,
+    "weak": 25,
+    "strong_ratio_pct": 37.5,
+    "within_spec": true,
+    "baseline_overlap": 0,
+    "files": ["test_batch_manager", "test_cli_core", "test_archive", "test_state_machine"]
+  },
+  "calibration_chain": {
+    "verdict": "DEFERRED",
+    "reason": "ANTHROPIC_API_KEY not set",
+    "cost_usd": 0.0,
+    "hook_form": "DORMANT",
+    "consistent_across_surfaces": true,
+    "surfaces_verified": 6
+  },
+  "advisory_contract": {
+    "explicit": true,
+    "never_blocking": true,
+    "no_near_misses": true,
+    "live_form_not_shipped": true
+  },
+  "tdd_red_evidence": {
+    "real_red": true,
+    "not_placeholder": true,
+    "failure_types": ["AttributeError on undefined helpers", "SystemExit not raised"],
+    "cr00045_comparable": true,
+    "tests_written_before_impl": true,
+    "all_35_green_after_impl": true
+  },
+  "cr00059_comparison": {
+    "improvement_over_cr00059": true,
+    "proactive_dormant_ship": true,
+    "evidence_file_complete": true,
+    "assertion_scan_fix_cycles": 1,
+    "cr00059_assertion_scan_fix_cycles": 1,
+    "live_form_not_shipped_before_calibration": true,
+    "advisory_discipline_maintained": true
+  },
+  "scope_discipline": {
+    "orch_touched": false,
+    "dashboard_touched": false,
+    "executor_touched": false,
+    "migrations": false,
+    "new_deps": false,
+    "all_within_allowed_paths": true
+  },
+  "files_changed": [
+    "ai-dev/work/CR-00084/reports/CR-00084_self_assess_report.md",
+    "ai-dev/work/CR-00084/reports/CR-00084_self_assess_findings.json"
+  ],
+  "preflight": {
+    "format": "ok",
+    "typecheck": "ok",
+    "lint": "ok"
+  },
+  "tests_passed": true,
+  "test_summary": "skipped: no tests for analysis step",
+  "blockers": [],
+  "notes": "Analysis completed; findings written to two output files. Spike-specific focus areas (calibration propagation, cost discipline, advisory-only safety, TDD evidence quality, labelled-set defensibility) all surveyed. CRITICAL F-01 was stale (CR-00081 scrubbed baseline); no fix cycle needed. All 8 QV gates passed (2 with fix cycles, 1 on own code, 1 on unrelated). Advisory-only discipline held throughout. Hook is DORMANT pending re-calibration with valid API key."
+}

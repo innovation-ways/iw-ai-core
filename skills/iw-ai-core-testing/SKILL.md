@@ -480,3 +480,22 @@ The visual layer (`make visual-regression`) protects rendered docs (HTML + PDF) 
 - Never auto-accept diffs in tests (forbidden pattern: "if diff > threshold, overwrite baseline").
 - Follow the Playwright CLI rules in the repository `CLAUDE.md` (use `playwright-cli` only; no `agent-browser`, no direct Playwright API).
 - Keep pixel tolerance disciplined: one shared constant per layer; do not inflate tolerances per test to force green.
+
+---
+
+## 15. Advisory: LLM-as-judge signal (CR-00084)
+
+A judge utility (`scripts/llm_judge_test_review.py`) scores newly-written tests against a three-axis rubric (assertion specificity, behaviour-vs-mock, edge coverage — each 1–5, bucketed STRONG ≥4 / MEDIUM ==3 / WEAK ≤2) and is referenced in the CodeReview step.
+
+### Hook form: DORMANT
+
+The judge exists at `scripts/llm_judge_test_review.py` but **is not invoked** in the current CodeReview step because calibration was **DEFERRED** (ANTHROPIC_API_KEY was unavailable in the worktree during the CR-00084 spike). The hook will be in the DORMANT state until a re-calibration run produces a MET verdict.
+
+**If the hook were LIVE** (after re-calibration produces MET):
+- Your newly added test files may be sampled by the judge.
+- A per-test advisory JSON line (scores + rationale) may appear in the review report under an "Advisory: LLM-judge scores" subsection.
+- **This advisory score never raises the verdict to fail and never increments `mandatory_fix_count`.** It is informational only and never blocks merge.
+
+**If the hook is DORMANT (current state):** the judge exists but the CodeReview agent is instructed not to invoke it pending re-calibration. Full evidence at `ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt`.
+
+**Re-enable path:** run `make llm-judge-calibrate` once `ANTHROPIC_API_KEY` is available; if the Verdict line reads MET, update §6 of `agents/claude/code-review-impl.md` and `agents/opencode/code-review-impl.md` to the LIVE form.
