@@ -29,6 +29,7 @@ This step leaves migrations unchanged.
 
 - `ai-dev/active/F-00090/reports/F-00090_S05_Backend_report.md` — step report.
 - New: `scripts/backfill_regression_classification.py`
+- New: `tests/integration/test_backfill_regression_classification.py` — AC8 automated coverage (idempotency + "0 classifications persisted" invariant).
 - Modified: `docs/IW_AI_Core_Testing_Strategy.md`
 - Modified: `docs/IW_AI_Core_Database_Schema.md` (only if S01 didn't cover everything — extend, don't duplicate)
 - Modified: `docs/IW_AI_Core_Dashboard_Design.md`
@@ -81,11 +82,23 @@ uv run iw sync-skills
 
 To propagate the master copy to the project worktree. This is the canonical sync command. Capture its output in your report.
 
-### 5. RED-first discipline
+### 5. AC8 automated test — `tests/integration/test_backfill_regression_classification.py`
 
-This step adds no new behavioural tests (the backfill script is operator-run and the docs are doc edits). Use:
+The backfill script is operator-run, but AC8's invariants are testable:
 
-`tdd_red_evidence: "n/a — backfill script + docs + skill + tracker only; no production logic with behavioural tests"`
+- `test_backfill_processes_only_unclassified_incidents` — seed three Incidents (one with `regression_classification='regression'`, two with NULL); run the backfill; assert only the two NULL rows are visited (assert via captured stdout summary line "Processed 2 incidents").
+- `test_backfill_persists_no_classifications` — seed Incidents with NULL classification; run the backfill (NOT `--dry-run`); reload rows from the session; assert every `regression_classification IS NULL` and `classified_at IS NULL` after the run (Invariant 3 + AC8 "no row silently confirmed").
+- `test_backfill_is_idempotent` — run the backfill twice against the same seeded project; capture stdout from both runs; assert the summary lines are identical and no DB writes happened (compare row hashes / timestamps before vs after).
+- `test_backfill_handles_zero_incidents` — empty project; assert exit 0 and summary line reads "Processed 0 incidents".
+- `test_backfill_dry_run_emits_suggestions_without_writes` — seed Incidents, run with `--dry-run`; assert stdout contains suggestion lines; assert no DB write.
+
+Use the existing testcontainer fixtures (`tests/conftest.py`). Invoke the script via `subprocess.run([sys.executable, "scripts/backfill_regression_classification.py", "--project", pid, ...], capture_output=True, text=True, check=False)` so the test exercises the same entry point an operator would.
+
+### 6. RED-first discipline
+
+This step adds **one** new behavioural test file (`tests/integration/test_backfill_regression_classification.py`). Apply standard RED-first to it: write the failing tests against an empty `scripts/backfill_regression_classification.py`, capture an `AssertionError` from one test, then implement. Record that snippet in `tdd_red_evidence`.
+
+The docs / skill / tracker edits remain non-behavioural and contribute no additional RED evidence.
 
 ## Project Conventions
 
@@ -105,9 +118,20 @@ Read `CLAUDE.md` and `orch/CLAUDE.md`. Key constraints:
 
 ## Test Verification (NON-NEGOTIABLE)
 
-The backfill script has no dedicated unit test (operator-run, file-side-effect-free). Verify by running it in `--dry-run` against a fresh testcontainer (use the same pattern as `scripts/e2e_seed.py` tests if one exists; otherwise a smoke run with `--dry-run --project test_project` against the testcontainer is acceptable). Capture exit code 0.
+Run the new test file only (targeted):
 
-Do NOT run the full unit / integration suites.
+```bash
+uv run pytest tests/integration/test_backfill_regression_classification.py -v
+```
+
+Also smoke-run the script itself in `--dry-run` against an empty seeded project to confirm the operator path works end-to-end:
+
+```bash
+# inside a testcontainer-backed session, NOT against port 5433
+uv run python scripts/backfill_regression_classification.py --project test_project --dry-run
+```
+
+Capture exit code 0 for both. Do NOT run `make test-integration` or `make test-unit` — those are the QV gate steps.
 
 ## Subagent Result Contract
 
@@ -119,6 +143,7 @@ Do NOT run the full unit / integration suites.
   "completion_status": "complete|partial|blocked",
   "files_changed": [
     "scripts/backfill_regression_classification.py",
+    "tests/integration/test_backfill_regression_classification.py",
     "docs/IW_AI_Core_Testing_Strategy.md",
     "docs/IW_AI_Core_Dashboard_Design.md",
     "docs/IW_AI_Core_Database_Schema.md",
@@ -132,8 +157,8 @@ Do NOT run the full unit / integration suites.
     "lint": "ok"
   },
   "tests_passed": true,
-  "test_summary": "backfill smoke (dry-run): exit 0; iw sync-skills: OK",
-  "tdd_red_evidence": "n/a — backfill script + docs + skill + tracker only; no production logic with behavioural tests",
+  "test_summary": "tests/integration/test_backfill_regression_classification.py: N passed, 0 failed; backfill smoke (dry-run): exit 0; iw sync-skills: OK",
+  "tdd_red_evidence": "tests/integration/test_backfill_regression_classification.py::test_backfill_persists_no_classifications — AssertionError: WorkItem.regression_classification expected NULL after backfill run (RED before script implementation)",
   "blockers": [],
   "notes": ""
 }

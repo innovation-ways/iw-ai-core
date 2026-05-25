@@ -158,11 +158,15 @@ Then `WorkItem(I-00001).introduced_by_work_item_id == 'F-00001'`,
 ### AC3: Heuristic suggests the most-likely introducing merge
 
 ```
-Given an Incident whose fix touched files A and B
+Given an Incident I-00001 whose fix has been MERGED (status == 'done') and whose merge commit touched files A and B
 When `regression_link_service.suggest_introducer(I-00001)` is called
-Then the returned candidates list is sorted by descending blame frequency across A and B,
+Then the returned candidates list is sorted by descending score (files-touched count) then by recency,
   each candidate carries a `commit_sha` and (when resolvable) a `work_item_id` and `score`,
+  candidates resolving to a work item in a different project are filtered out,
   and an empty list is returned when no prior commit touches A or B.
+When the Incident is NOT yet merged (status != 'done')
+Then `suggest_introducer` returns `[]` immediately without running git,
+  and logs at INFO level "I-NNNNN not merged yet; no file list available".
 ```
 
 ### AC4: CLI command prints suggestions and accepts the top one
@@ -227,7 +231,9 @@ Then for each Incident, the heuristic is invoked and the top suggestion is logge
 
 | Scenario | Input/State | Expected Behavior |
 |----------|-------------|-------------------|
-| Incident with no fix files | files_changed = [] from heuristic perspective | `suggest_introducer` returns `[]`; UI form shows "No heuristic suggestion available" |
+| Incident with no fix files | merge SHA present but `git show --name-only` returns no files | `suggest_introducer` returns `[]`; UI form shows "No heuristic suggestion available" |
+| Incident not yet merged | `WorkItem.status != 'done'` | `suggest_introducer` returns `[]` without invoking git; INFO log line recorded; UI form omits "Accept suggestion" |
+| Candidate resolves to a different project | git blame surfaces a SHA whose commit message names `F-NNNNN` from another project | Candidate is dropped from the result list (cross-project FK rejected at write anyway) |
 | Incident classified as `pre_existing` | classification = pre_existing | `introduced_by_work_item_id` is NULL; regression KPI ignores this row; no badge attribution to any merge |
 | `introduced_by` references unknown work item | FK target not in `work_items` | Service raises `ValueError`; CLI exits 2 with a clear message; htmx form re-renders with a validation error |
 | Week with zero merges and N regressions | merges=0, regressions=N | Rate is reported as `0.0` (not NaN, not ZeroDivisionError); trend chart still plots regressions as raw counts |
@@ -269,6 +275,7 @@ Then for each Incident, the heuristic is invoked and the top suggestion is logge
 - `dashboard/static/styles.css`
 - `scripts/backfill_regression_classification.py`
 - `tests/integration/test_regression_link_service.py`
+- `tests/integration/test_backfill_regression_classification.py`
 - `tests/dashboard/test_regression_classification_form.py`
 - `tests/dashboard/test_quality_kpis_section.py`
 - `docs/IW_AI_Core_Testing_Strategy.md`
@@ -281,10 +288,10 @@ Then for each Incident, the heuristic is invoked and the top suggestion is logge
 ## TDD Approach
 
 - **Unit tests**: pure helpers in `orch/regression_link_service.py` (rate computation, candidate ranking) covered by `tests/integration/test_regression_link_service.py` (using the testcontainer fixture).
-- **Integration tests**: `tests/integration/test_regression_link_service.py` covering AC2..AC4 (classify, suggest, CLI accept flow); migration round-trip enforced by `make migration-check` (AC1) via the existing `tests/integration/test_migrations_round_trip.py` harness.
+- **Integration tests**: `tests/integration/test_regression_link_service.py` covering AC2..AC4 (classify, suggest, CLI accept flow); `tests/integration/test_backfill_regression_classification.py` covering AC8 (backfill processes only unclassified rows, persists no classifications, idempotent across re-runs, handles zero-incident project, `--dry-run` emits suggestions without writes); migration round-trip enforced by `make migration-check` (AC1) via the existing `tests/integration/test_migrations_round_trip.py` harness.
 - **Dashboard tests**: `tests/dashboard/test_regression_classification_form.py` covering AC5 (form rendering + htmx submit roundtrip); `tests/dashboard/test_quality_kpis_section.py` covering AC6 + AC7 (KPI numbers + trend SVG + badge presence/absence).
 - **Edge cases**: rows in the Boundary Behavior table — zero merges, zero candidates, unknown FK, cross-project FK rejection, pre-existing classification not contributing to KPIs, re-classification overwrites.
-- **RED-first discipline**: S02 must record `tdd_red_evidence` for the service tests (AssertionError snippet from the failing run before implementation). S03/S04 (Frontend) and S05 (script + docs) follow the `n/a — frontend/template/docs` form except where new behavioural assertions are introduced (the new dashboard tests in S03/S04 do require RED evidence).
+- **RED-first discipline**: S02, S03, S04, and S05 all add behavioural tests and must record `tdd_red_evidence` (AssertionError snippet from the failing run before implementation). S01 follows the `n/a — schema/migration only; verified by make migration-check round-trip` form.
 
 ## Notes
 
@@ -292,6 +299,6 @@ Then for each Incident, the heuristic is invoked and the top suggestion is logge
 - **Soft sequencing**: 4.6 (CR-00080 self-dashboarding) is the natural sibling; aligning the visual layout of the KPI section with 4.6's "Test Health" panel reduces dashboard sprawl.
 - **Migration lock**: free at design time (verified via `iw migration-lock status`). S01 will re-verify before writing the revision.
 - **No state-machine change**: the new fields are orthogonal to `WorkItem.status` / `phase`; the Incident lifecycle in `docs/IW_AI_Core_Database_Schema.md` is unchanged. S01's doc edit only adds field documentation.
-- **Heuristic limits**: the `git log -L` / `git blame` heuristic is best-effort — it can return false positives (a refactor commit touched the line; the introducing logic was somewhere else). The operator is the source of truth; the heuristic is a suggestion.
+- **Heuristic limits**: the `git log -L` / `git blame` heuristic is best-effort — it can return false positives (a refactor commit touched the line; the introducing logic was somewhere else). The operator is the source of truth; the heuristic is a suggestion. The heuristic only runs against **merged** Incidents (`status == 'done'` with a recorded merge SHA): the file list comes from `git show --name-only <merge_sha>`, and unmerged Incidents short-circuit to `[]` without invoking git. See S02 prompt "File-discovery contract" for the exact mechanism.
 - **No CI run of the backfill**: the backfill script is idempotent but expensive (one `git log -L` invocation per Incident's fix files). Running it in CI would inflate test time; running it as an operator-triggered command keeps the cost off the critical path.
 - **Browser evidence (pre)**: Deferred — the pre-state UI is the existing per-project home / Incident detail / Batches view *without* the new classification form, KPI section, or badge. qv-browser captures the post-state at S16.

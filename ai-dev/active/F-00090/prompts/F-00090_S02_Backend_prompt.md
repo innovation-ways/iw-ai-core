@@ -45,7 +45,7 @@ Expose:
 
 - `@dataclass class Candidate: commit_sha: str; work_item_id: str | None; score: int`
 - `def classify(session, *, project_id: str, item_id: str, introduced_by_work_item_id: str | None, introduced_by_commit_sha: str | None, classification: RegressionClassification, classified_by: str) -> WorkItem` — validates the inputs (cross-project FK rejected; `introduced_by_work_item_id` must reference a row whose `status == 'done'`), updates the `WorkItem`, sets `classified_at = datetime.now(timezone.utc)`. Returns the refreshed row. Raises `ValueError` on invalid inputs.
-- `def suggest_introducer(session, *, project_id: str, item_id: str, repo_path: Path | None = None) -> list[Candidate]` — runs `git log -L` / `git blame` against the files touched by the Incident's fix (read those from the Incident's commits or files; if you cannot derive a file list, return `[]`). Ranks candidates by frequency descending. Empty list when nothing found.
+- `def suggest_introducer(session, *, project_id: str, item_id: str, repo_path: Path | None = None) -> list[Candidate]` — see "File-discovery contract" below for the exact mechanism. Ranks candidates by frequency descending. Empty list when nothing found.
 
 Implementation notes:
 
@@ -53,6 +53,16 @@ Implementation notes:
 - The heuristic is best-effort; swallow `subprocess.CalledProcessError` and `FileNotFoundError` and return `[]`.
 - Resolve `commit_sha → work_item_id` by scanning recent merge commits' messages for `F-NNNNN` / `I-NNNNN` / `CR-NNNNN` patterns (this is how the daemon's squash merges are stamped). When the pattern is absent, leave `work_item_id = None`.
 - All public functions take a `session: Session` argument; do NOT open sessions inside the service.
+
+**File-discovery contract (NON-NEGOTIABLE)** — the heuristic only operates on Incidents whose fix has been merged. Concretely:
+
+1. Load the `WorkItem` row for `item_id`. If `status != 'done'` or there is no merge SHA recorded (check `merge_commit_sha` / equivalent field on `WorkItem`, or derive from the most-recent step run record if no field exists — match the existing column on `WorkItem` and document the choice in the report), return `[]` and log at INFO level: `"suggest_introducer: I-NNNNN not merged yet; no file list available"`.
+2. Given the merge SHA, derive the fix's file list with `git show --name-only --pretty=format: <merge_sha>` (filtering out empty lines). If the command fails or returns no files, return `[]`.
+3. For each file in the fix list, run `git log -n 50 --pretty=format:%H -- <file>` to enumerate the most-recent 50 commits that touched it, ignoring the Incident's own merge SHA. Aggregate counts across files; the score for a candidate is the number of files-it-touched in the fix's file list.
+4. For each candidate SHA, resolve to a `work_item_id` per the rule above (scan the commit message for `F-NNNNN` / `I-NNNNN` / `CR-NNNNN`). Drop candidates whose resolved `work_item_id` belongs to a different project (cross-project FK is rejected at write time anyway, so suggesting them is noise).
+5. Return the top 10 candidates sorted by `(score DESC, recency DESC)`.
+
+Add a docstring on `suggest_introducer` summarising this contract — the reader should not need to read the prompt to understand the boundary conditions.
 
 ### 2. `iw regression-classify` CLI command
 
@@ -79,8 +89,10 @@ Cover AC2..AC4 + relevant Boundary Behavior rows:
 - `test_classify_rejects_cross_project_fk` — Boundary row.
 - `test_classify_rejects_non_merged_target` — Boundary row.
 - `test_classify_overwrites_on_reclassify` — Boundary row.
-- `test_suggest_returns_empty_when_no_files` — Boundary row (AC3 corner).
-- `test_suggest_ranks_by_frequency` — AC3 happy path. Use a tmp git repo fixture (testcontainer Postgres + a real `git init` tmp dir; write a few commits touching specific files; assert ranking).
+- `test_suggest_returns_empty_when_no_files` — Boundary row (AC3 corner; Incident has merge but no files changed).
+- `test_suggest_returns_empty_when_incident_unmerged` — File-discovery contract step 1: Incident with `status != 'done'` returns `[]` immediately, no `git` invocation attempted.
+- `test_suggest_ranks_by_frequency` — AC3 happy path. Use a tmp git repo fixture (testcontainer Postgres + a real `git init` tmp dir; write a few commits touching specific files, then a "fix" merge commit that touches the same files; assert ranking by score then recency).
+- `test_suggest_drops_cross_project_candidates` — File-discovery contract step 4: candidate resolving to a different `project_id` is filtered out.
 - `test_cli_prints_suggestions` — AC4 happy path via Click's `CliRunner`.
 - `test_cli_accept_persists_with_heuristic_auto` — AC4 acceptance path.
 

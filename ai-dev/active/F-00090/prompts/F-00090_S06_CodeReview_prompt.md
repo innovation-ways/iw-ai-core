@@ -38,7 +38,7 @@ This is the **per-agent review** layer. S07 (CodeReview_Final) is the cross-agen
 Read the design **before** running the lint/format gate and **before** opening any changed files. Specifically:
 
 - Read the `## Acceptance Criteria` section in full — AC1..AC8 are all mandatory checks.
-- Read the `## TDD Approach` section — three test files are named by path: `tests/integration/test_regression_link_service.py`, `tests/dashboard/test_regression_classification_form.py`, `tests/dashboard/test_quality_kpis_section.py`. **All three must appear in some implementation step's `files_changed`** — missing test files = CRITICAL.
+- Read the `## TDD Approach` section — four test files are named by path: `tests/integration/test_regression_link_service.py`, `tests/integration/test_backfill_regression_classification.py`, `tests/dashboard/test_regression_classification_form.py`, `tests/dashboard/test_quality_kpis_section.py`. **All four must appear in some implementation step's `files_changed`** — missing test files = CRITICAL.
 - Read the `## Boundary Behavior` table — every row is a mandatory test case. Confirm each row has a covering test.
 - Read the `## Invariants` list — Invariant 3 (operator confirmation) and Invariant 6 (rate guard) are especially load-bearing.
 - **Distrust "no production code change needed".** The S01 migration introduces five new columns including an ENUM that flow through routes that previously never saw these values. Re-trace the render paths in `dashboard/routers/items.py` and `project_dashboard.py` for the new fields — latent crashes hide in shared templates (I-00075 cost case).
@@ -87,7 +87,7 @@ If a command is unavailable, STOP and raise a blocker.
 
 ### 5. Testing
 
-- All three test files from the TDD section present in `files_changed`? If any missing → CRITICAL.
+- All four test files from the TDD section present in `files_changed`? If any missing → CRITICAL.
 - Boundary rows covered:
   - Empty heuristic result → suggestion list empty + UI button hidden.
   - Cross-project FK rejected.
@@ -101,11 +101,11 @@ If a command is unavailable, STOP and raise a blocker.
 
 ### 5a. TDD RED Evidence (behaviour-implementing steps only)
 
-Applies to S02, S03, S04 (each adds behavioural tests).
+Applies to S02, S03, S04, S05 (each adds behavioural tests).
 
 1. Confirm `tdd_red_evidence` is present and plausible (AssertionError, not ImportError/SyntaxError/collection error).
 2. For at least one new test, reason about whether it would actually fail against pre-change code. A test that passes without the new code is HIGH severity.
-3. S01 and S05 use the `n/a — ...` form; that is acceptable for schema-only and docs-only steps.
+3. S01 uses the `n/a — schema/migration only; verified by make migration-check round-trip` form; that is acceptable for schema-only steps.
 
 ## Test Verification (NON-NEGOTIABLE)
 

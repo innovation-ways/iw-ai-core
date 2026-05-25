@@ -37,7 +37,7 @@ This review looks at the complete picture: how the database fields (S01), the se
 Same anchor as S06 plus:
 
 - Confirm AC1..AC8 each map to concrete code paths across the merged change set. Any AC with no matching code = missing requirement = CRITICAL.
-- The three TDD-named test files must appear in `files_changed` across S02..S04. Missing any one = CRITICAL.
+- The four TDD-named test files must appear in `files_changed` across S02..S05 (`test_regression_link_service.py` from S02, `test_regression_classification_form.py` from S03, `test_quality_kpis_section.py` from S04, `test_backfill_regression_classification.py` from S05). Missing any one = CRITICAL.
 
 ## Pre-Review Lint & Format Gate (NON-NEGOTIABLE)
 
@@ -72,7 +72,7 @@ Any NEW violations on changed files → CRITICAL, category `conventions`.
 ### 4. Test Coverage (Holistic)
 
 - End-to-end coverage: a single integration scenario `(classify → render KPI section → render badge → revisit page sees the same numbers)` would be valuable. Flag MEDIUM_SUGGESTION if absent.
-- All Boundary rows from the design covered somewhere? Cross-check the table against `tests/integration/test_regression_link_service.py`, `tests/dashboard/test_regression_classification_form.py`, `tests/dashboard/test_quality_kpis_section.py`.
+- All Boundary rows from the design covered somewhere? Cross-check the table against `tests/integration/test_regression_link_service.py`, `tests/integration/test_backfill_regression_classification.py`, `tests/dashboard/test_regression_classification_form.py`, `tests/dashboard/test_quality_kpis_section.py`.
 
 ### 5. Architecture Compliance
 
@@ -89,14 +89,25 @@ Any NEW violations on changed files → CRITICAL, category `conventions`.
 
 ## Test Verification (NON-NEGOTIABLE)
 
-Run the **full test suite** (both unit AND integration tests):
+Run only the unit suite for cross-agent regression detection:
 
 ```bash
 make test-unit
-make test-integration
 ```
 
-If integration tests fail, that is a CRITICAL finding.
+Do **NOT** run `make test-integration` from this review step — the integration
+suite is owned by the S15 `integration-tests` QV gate (which uses
+`make allure-integration`). Duplicating the full integration run here causes
+multi-minute thrash on the critical path (see the rule "any *-impl step: never
+make test-integration"). If the cross-agent review needs to confirm a specific
+integration behaviour, run the targeted test file instead, e.g.:
+
+```bash
+uv run pytest tests/integration/test_regression_link_service.py -v
+```
+
+If `make test-unit` is red on `main` already, note the baseline so the QV
+gates aren't blamed for pre-existing failures.
 
 ## Severity Levels
 
