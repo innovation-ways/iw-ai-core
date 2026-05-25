@@ -161,8 +161,8 @@ Given the CR has shipped
 When an operator opens ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt
 Then the file contains a confusion matrix (rows = true label, cols = predicted label, both over {STRONG, MEDIUM, WEAK})
 And the file states the WEAK-recall percentage and the STRONG-false-positive percentage as named lines
-And the file states explicitly whether the bar (WEAK-recall ≥ 70% AND STRONG-FP ≤ 30%) was MET or NOT MET
-And the file records the total token spend in USD and confirms it is < $2.00 (the S01 budget)
+And the file states explicitly whether the bar (WEAK-recall ≥ 70% AND STRONG-FP ≤ 30%) was MET, NOT MET, or DEFERRED (DEFERRED is reserved for the case where ANTHROPIC_API_KEY is unavailable in the worktree and the calibration did not run — the file is a stub naming the missing key, and the verdict is treated as NOT_MET for hook-form / tracker-row purposes)
+And the file records the total token spend in USD and confirms it is < $2.00 (the S01 budget) — DEFERRED runs record 0.00
 ```
 
 ### AC4: Advisory hook in code-review-impl is conditional on the calibration outcome

@@ -178,7 +178,7 @@ Required cases (all unit-level, no live API):
 
 ### 5. Calibration run
 
-After implementation, run `make llm-judge-calibrate > ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt 2>&1`. **This requires `ANTHROPIC_API_KEY` in the environment**; if the worktree does not have it, write a stub evidence file noting the calibration was deferred and raise a blocker — do NOT mark the step `complete` without the calibration evidence.
+After implementation, run `make llm-judge-calibrate > ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt 2>&1`. **This requires `ANTHROPIC_API_KEY` in the environment**. If the worktree does not have it, do NOT run the live calibration: write a stub evidence file (header + a single `Verdict: DEFERRED` line + a one-line note explaining the missing key) and set `calibration_verdict: "DEFERRED"` in your step report. This counts as a `complete` step (the spike's infrastructure ships; S02 reads `DEFERRED` and ships the hook dormant). Mention the missing key in `blockers` for surfacing, but do NOT set `completion_status: blocked` — `DEFERRED` is a recognized terminal verdict, not a blocker on the step itself.
 
 If the calibration runs:
 - Inspect the resulting file; verify the `Verdict:` line is either `MET` or `NOT MET`.
