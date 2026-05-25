@@ -94,14 +94,14 @@ Each AC not satisfied is a CRITICAL finding. List all unsatisfied ACs in `missin
 
 ## Test Verification (NON-NEGOTIABLE)
 
-Run the FULL suite:
+Run the unit suite (the QV S10 gate owns the integration suite — do NOT duplicate it here; running the full integration suite inside an `*-impl` step is forbidden, see I-00073/S03 lesson):
 
 ```bash
 make test-unit
-make test-integration
+uv run pytest tests/orch/db/test_column_docs.py -v
 ```
 
-Report results. If integration tests fail unrelated to CR-00085, note it but the CRITICAL bar applies only to failures this CR caused.
+Report results. If unit tests fail unrelated to CR-00085, note it but the CRITICAL bar applies only to failures this CR caused. Trust S10 (`qv-gate` integration-tests) for the integration suite.
 
 ## Severity Levels
 
