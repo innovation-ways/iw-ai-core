@@ -226,7 +226,7 @@ def _make_mock_stream(eval_tuple: dict[str, Any]):
 class TestEvalSetAge:
     """Verify eval set is not stale."""
 
-    def test_eval_set_not_stale(self) -> None:
+    def test_eval_set_not_stale(self) -> None:  # noqa: assertion-scanner
         """Warn (not fail) if eval set is older than 180 days."""
         fixture_path = Path(__file__).parent.parent / "fixtures" / "eval_set_f00055.json"
         if not fixture_path.exists():

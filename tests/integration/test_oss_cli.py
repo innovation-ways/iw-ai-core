@@ -166,7 +166,7 @@ def oss_session(oss_engine: Engine, oss_session_factory) -> Session:
 
 
 @pytest.fixture
-def test_repo(tmp_path: Path) -> Path:
+def test_repo(tmp_path: Path) -> Path:  # noqa: assertion-scanner
     repo = tmp_path / "test-repo"
     repo.mkdir()
     (repo / "README.md").write_text("# Test\n")

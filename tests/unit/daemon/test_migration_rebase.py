@@ -290,6 +290,10 @@ class TestEmitDaemonEvent:
 
                 mock_session.add.assert_called_once()
                 mock_session.commit.assert_called_once()
+                # Verify DaemonEvent row was created with correct event_type and message
+                added_event = mock_session.add.call_args[0][0]
+                assert added_event.event_type == "migration_rebase"
+                assert "Pre-merge rebase starting" in added_event.message
 
 
 class TestWriteRebaseLog:
@@ -317,6 +321,10 @@ class TestWriteRebaseLog:
 
                 mock_session.add.assert_called_once()
                 mock_session.commit.assert_called_once()
+                # Verify PendingMigrationLog row was created with correct revision fields
+                added_log = mock_session.add.call_args[0][0]
+                assert added_log.revision == "abc123"
+                assert added_log.old_revision == "def456"
 
 
 class TestRunPreMergeRebase:

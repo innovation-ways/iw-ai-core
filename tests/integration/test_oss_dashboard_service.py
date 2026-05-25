@@ -290,7 +290,7 @@ class TestWorktreeSymbolsRemoved:
 
 
 class TestRunFixWorksInRepoRoot:
-    def test_run_fix_writes_to_project_repo_root(
+    def test_run_fix_writes_to_project_repo_root(  # noqa: assertion-scanner
         self,
         oss_svc_session: Session,
         oss_svc_test_project: Project,

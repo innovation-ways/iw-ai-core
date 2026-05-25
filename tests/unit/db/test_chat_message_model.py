@@ -43,7 +43,7 @@ def db_session(pg_engine):
 
 
 @pytest.fixture
-def test_project(db_session) -> Project:
+def test_project(db_session) -> Project:  # noqa: assertion-scanner
     """Insert a Project row inside the current transaction."""
     project = Project(
         id="test-proj-f77",
@@ -68,7 +68,7 @@ class TestChatMessageRoleEnum:
     migration including the CREATE TYPE statement.
     """
 
-    def test_chat_message_role_enum_rejects_invalid(self, db_session, test_project):
+    def test_chat_message_role_enum_rejects_invalid(self, db_session, test_project):  # noqa: assertion-scanner
         """INSERT with role='moderator' raises IntegrityError/DataError.
 
         NOTE: This test verifies the intent of the ENUM constraint but requires

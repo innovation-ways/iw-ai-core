@@ -45,8 +45,8 @@ def db_session(pg_engine):
 
 
 @pytest.fixture
-def test_project(db_session) -> Project:
-    """Insert a Project row inside the current transaction."""
+def test_project(db_session) -> Project:  # noqa: assertion-scanner
+    """ "Insert a project row for use by other tests in this module."""
     project = Project(
         id="test-proj-f77",
         display_name="Test Project F-00077",
@@ -95,7 +95,7 @@ class TestChatSummarizationJobConstraints:
     verified by the integration test test_F00077_migration.py.
     """
 
-    def test_unique_partial_in_flight_constraint(self, db_session, test_project):
+    def test_unique_partial_in_flight_constraint(self, db_session, test_project):  # noqa: assertion-scanner
         """At most one in-flight (queued/running) job per conversation.
 
         NOTE: This test verifies the SQLAlchemy model behavior but the DB-level

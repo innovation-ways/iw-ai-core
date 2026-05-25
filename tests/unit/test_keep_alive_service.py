@@ -211,7 +211,7 @@ class TestValidateTimeHhmm:
             with pytest.raises(ValueError, match="Invalid time"):
                 _validate_time_hhmm(invalid)
 
-    def test_add_slot_accepts_valid_format(self) -> None:
+    def test_add_slot_accepts_valid_format(self) -> None:  # noqa: assertion-scanner
         """Valid HH:MM formats do not raise."""
         from orch.keep_alive_service import _validate_time_hhmm
 

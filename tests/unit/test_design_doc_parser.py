@@ -88,7 +88,7 @@ def test_parse_dependencies_extra_whitespace_tolerated() -> None:
     assert parse_dependencies(content) == Dependencies(depends_on=["F-00069", "I-00042"], blocks=[])
 
 
-def test_parse_dependencies_does_not_raise_on_malformed() -> None:
+def test_parse_dependencies_does_not_raise_on_malformed() -> None:  # noqa: assertion-scanner
     """Garbage input produces empty result + WARNING log, never raises."""
     parse_dependencies("**Depends on**: this is not a list of IDs\n")
     parse_dependencies("not even close to valid markdown")

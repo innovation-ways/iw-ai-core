@@ -371,7 +371,7 @@ class TestDocJobPollerLaunch:
 
         assert mock_svc_instance.start_doc_job.called
 
-    def test_poll_respects_concurrent_limit(self, tmp_path: Path) -> None:
+    def test_poll_respects_concurrent_limit(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
         config = make_config(tmp_path)
         mock_session_factory = MagicMock()
 

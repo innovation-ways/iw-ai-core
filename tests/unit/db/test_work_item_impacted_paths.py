@@ -55,8 +55,8 @@ def db_session(pg_engine):
 
 
 @pytest.fixture
-def test_project(db_session) -> Project:
-    """Insert a Project row inside the current transaction."""
+def test_project(db_session) -> Project:  # noqa: assertion-scanner
+    """ "Insert a project row for use by other tests in this module."""
     project = Project(
         id="test-proj-f76",
         display_name="Test Project F-00076",

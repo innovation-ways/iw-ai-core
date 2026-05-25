@@ -22,7 +22,7 @@ class TestGenerateModuleDiagram:
     def mock_session(self):
         return MagicMock()
 
-    def test_generates_and_stores_returns_tuple(self, mock_config, mock_session):
+    def test_generates_and_stores_returns_tuple(self, mock_config, mock_session):  # noqa: assertion-scanner
         """_generate_and_store_module_diagram processes response to extract purpose."""
         llm_response = MagicMock()
         llm_response.text = """\

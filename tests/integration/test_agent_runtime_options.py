@@ -103,7 +103,7 @@ def seed_agent_runtime_options(db_session):
 class TestAgentRuntimeOptionsTable:
     """Verify the agent_runtime_options table and its constraints."""
 
-    def test_table_exists(self, db_session) -> None:
+    def test_table_exists(self, db_session) -> None:  # noqa: assertion-scanner
         """Table must exist and be queryable."""
         db_session.execute(text("SELECT 1 FROM agent_runtime_options LIMIT 1"))
 

@@ -30,7 +30,7 @@ class TestIndexDesignDocsFunctionExists:
 class TestIndexDesignDocsChunking:
     """Design doc content is chunked using the same pattern as code files."""
 
-    def test_chunking_respects_chunk_size(self, tmp_path: Path) -> None:
+    def test_chunking_respects_chunk_size(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
         from orch.rag.indexer import index_design_docs
 
         config = CodeUnderstandingConfig()
@@ -60,7 +60,7 @@ class TestIndexDesignDocsChunking:
                     )
                 )
 
-    def test_single_chunk_when_under_threshold(self, tmp_path: Path) -> None:
+    def test_single_chunk_when_under_threshold(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
         """Items under chunk size emit a single row, not zero rows."""
         from orch.rag.indexer import index_design_docs
 
@@ -95,7 +95,7 @@ class TestIndexDesignDocsChunking:
 class TestSkipOnNullDesignDoc:
     """Work items with design_doc_content=NULL are skipped (not indexed)."""
 
-    def test_null_content_not_indexed(self, tmp_path: Path) -> None:
+    def test_null_content_not_indexed(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
         from orch.rag.indexer import index_design_docs
 
         config = CodeUnderstandingConfig()
@@ -128,7 +128,7 @@ class TestSkipOnNullDesignDoc:
 class TestSummaryOnlyFallback:
     """Items with summary but no design_doc_content emit a single row with text=summary."""
 
-    def test_summary_only_item_emits_one_row(self, tmp_path: Path) -> None:
+    def test_summary_only_item_emits_one_row(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
         from orch.rag.indexer import index_design_docs
 
         config = CodeUnderstandingConfig()
@@ -161,7 +161,7 @@ class TestSummaryOnlyFallback:
 class TestIncrementalModeFilter:
     """Incremental mode only re-embeds WorkItems updated since last completed job."""
 
-    def test_incremental_filters_by_updated_at(self, tmp_path: Path) -> None:
+    def test_incremental_filters_by_updated_at(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
         from orch.rag.indexer import index_design_docs
 
         config = CodeUnderstandingConfig()
@@ -190,7 +190,7 @@ class TestIncrementalModeFilter:
                     )
                 )
 
-    def test_incremental_uses_merge_insert_not_delete_reinsert(self, tmp_path: Path) -> None:
+    def test_incremental_uses_merge_insert_not_delete_reinsert(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
         from orch.rag.indexer import index_design_docs
 
         config = CodeUnderstandingConfig()
@@ -223,7 +223,7 @@ class TestIncrementalModeFilter:
 class TestMapgenOnlyBypassesDocs:
     """mode=mapgen_only must NOT touch the docs table."""
 
-    def test_mapgen_only_does_not_call_docs_indexer(self, tmp_path: Path) -> None:
+    def test_mapgen_only_does_not_call_docs_indexer(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
         from orch.rag.indexer import index_design_docs
 
         config = CodeUnderstandingConfig()

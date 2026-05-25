@@ -56,7 +56,7 @@ def test_operator_and_daemon_both_override_agent_context(monkeypatch: pytest.Mon
     assert _is_test_context_active() is False
 
 
-def test_write_migration_log_is_noop_under_test_context(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_write_migration_log_is_noop_under_test_context(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: assertion-scanner
     """The smoking gun: _write_migration_log must not touch live DB under test."""
     from orch.db import safe_migrate
 
@@ -77,7 +77,7 @@ def test_write_migration_log_is_noop_under_test_context(monkeypatch: pytest.Monk
     )
 
 
-def test_acquire_migration_lock_is_noop_under_test_context(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_acquire_migration_lock_is_noop_under_test_context(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: assertion-scanner
     """_acquire_migration_lock must not touch live DB under test."""
     from orch.db import safe_migrate
 
@@ -89,7 +89,7 @@ def test_acquire_migration_lock_is_noop_under_test_context(monkeypatch: pytest.M
     safe_migrate._acquire_migration_lock(item="daemon")
 
 
-def test_release_migration_lock_is_noop_under_test_context(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_release_migration_lock_is_noop_under_test_context(monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: assertion-scanner
     """_release_migration_lock must not touch live DB under test."""
     from orch.db import safe_migrate
 

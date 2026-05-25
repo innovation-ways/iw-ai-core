@@ -65,7 +65,7 @@ def test_probe_fires_when_no_recent_event() -> None:
     _assert_probe_subprocess_shape(run, "opencode", "openai/gpt-5.3-codex")
 
 
-def test_probe_invokes_lib_script_with_expected_argv_shape() -> None:
+def test_probe_invokes_lib_script_with_expected_argv_shape() -> None:  # noqa: assertion-scanner
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = None
     with (

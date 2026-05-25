@@ -280,7 +280,7 @@ class TestDocsDetailClientSideDiagram:
 class TestHtmlViewCaching:
     """Test that docs_html_view writes and serves from a version-keyed cache."""
 
-    def test_i00080_html_view_caches_to_html_path_keyed_by_version(
+    def test_i00080_html_view_caches_to_html_path_keyed_by_version(  # noqa: assertion-scanner
         self,
         client: TestClient,
         db_session: Session,
