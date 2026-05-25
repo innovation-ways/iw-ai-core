@@ -139,16 +139,7 @@ EXPECTED_UNRESOLVED: frozenset[str] = frozenset(
 # on `main` post-merge (see the S01 report "Operator follow-up" section).
 # Populated only for *genuine handler bugs* — never test-harness artefacts.
 # ---------------------------------------------------------------------------
-EXPECTED_5XX: dict[str, str] = {
-    "/project/{project_id}/docs/{doc_id}/pdf": (
-        "TODO(file-incident): docs_pdf() in dashboard/routers/docs.py raises an "
-        "unhandled PermissionError (-> HTTP 500) when the optional on-disk PDF "
-        "cache dir under project.repo_root is not writable — the PDF itself was "
-        "already generated. The sibling handler docs_pdf_view() guards the same "
-        "cache write in try/except and degrades gracefully; docs_pdf() must do "
-        "the same. Genuine pre-existing handler bug — operator follow-up."
-    ),
-}
+EXPECTED_5XX: dict[str, str] = {}
 
 
 # ---------------------------------------------------------------------------

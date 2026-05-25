@@ -8,15 +8,14 @@
     "allowed_paths": [
       "dashboard/routers/docs.py",
       "tests/dashboard/test_route_contract_sweep.py",
-      "tests/dashboard/test_docs_pdf_cache_failure.py",
-      "tests/unit/daemon/test_daemon_config_reload.py"
+      "tests/dashboard/test_docs_pdf_cache_failure.py"
     ]
   },
   "steps": [
     {
       "step": "S01",
       "agent": "backend-impl",
-      "description": "Backend: in dashboard/routers/docs.py::docs_pdf, wrap the cache_dir.mkdir(...) + cache_file.write_bytes(...) + svc.update_doc(...) block at lines 320-324 in try/except Exception, mirroring the existing guard at lines 256-266 in docs_pdf_view (same `# noqa: BLE001 \u2014 read-only fs, permission error, etc.` comment, same `import logging` inside except, same `logging.getLogger(__name__).warning('Failed to write pdf_path cache for doc %s/%s', project_id, doc_id)`). The Response return after the block stays exactly as-is \u2014 the PDF bytes are returned unconditionally. Do NOT edit docs_pdf_view, do NOT refactor into a shared helper, do NOT touch test files. Targeted verification: `uv run pytest tests/dashboard/test_route_contract_sweep.py -v --no-cov` \u2014 expect 1 XPASS(strict) on the docs-pdf case (the strict-xfail flip is the RED->GREEN signal; S03 removes the EXPECTED_5XX entry).",
+      "description": "Backend: in dashboard/routers/docs.py::docs_pdf, wrap the cache_dir.mkdir(...) + cache_file.write_bytes(...) + svc.update_doc(...) block at lines 320-324 in try/except Exception, mirroring the existing guard at lines 256-266 in docs_pdf_view (same `# noqa: BLE001 — read-only fs, permission error, etc.` comment, same `import logging` inside except, same `logging.getLogger(__name__).warning('Failed to write pdf_path cache for doc %s/%s', project_id, doc_id)`). The Response return after the block stays exactly as-is — the PDF bytes are returned unconditionally. Do NOT edit docs_pdf_view, do NOT refactor into a shared helper, do NOT touch test files. Targeted verification: `uv run pytest tests/dashboard/test_route_contract_sweep.py -v --no-cov` — expect 1 XPASS(strict) on the docs-pdf case (the strict-xfail flip is the RED->GREEN signal; S03 removes the EXPECTED_5XX entry).",
       "prompt": "prompts/I-00109_S01_Backend_prompt.md"
     },
     {
@@ -28,13 +27,13 @@
     {
       "step": "S03",
       "agent": "tests-impl",
-      "description": "Tests: (a) add tests/dashboard/test_docs_pdf_cache_failure.py::test_docs_pdf_returns_200_when_cache_dir_not_writable \u2014 patches Path.mkdir to raise PermissionError for the docs '.generated' cache dir, patches dashboard.routers.docs.render_pdf_chromium to return deterministic bytes, drives the docs_pdf route via the dashboard `client` fixture, asserts SEMANTIC correctness (status==200, content-type=='application/pdf', body.startswith(b'%PDF'), Content-Disposition has 'attachment', WARNING log records the exact 'Failed to write pdf_path cache for doc' message, AND db_session.refresh(doc); doc.pdf_path is None); (b) remove the EXPECTED_5XX entry for '/project/{project_id}/docs/{doc_id}/pdf' from tests/dashboard/test_route_contract_sweep.py:142 \u2014 preserve the surrounding `EXPECTED_5XX: dict[str, str] = {}` declaration and the explanatory comment. Targeted verification only: `uv run pytest tests/dashboard/test_docs_pdf_cache_failure.py tests/dashboard/test_route_contract_sweep.py -v --no-cov` \u2014 do NOT call make test-unit or make test-integration. Test file MUST live under tests/dashboard/ (the `client` fixture is registered only there per I-00067).",
+      "description": "Tests: (a) add tests/dashboard/test_docs_pdf_cache_failure.py::test_docs_pdf_returns_200_when_cache_dir_not_writable — patches Path.mkdir to raise PermissionError for the docs '.generated' cache dir, patches dashboard.routers.docs.render_pdf_chromium to return deterministic bytes, drives the docs_pdf route via the dashboard `client` fixture, asserts SEMANTIC correctness (status==200, content-type=='application/pdf', body.startswith(b'%PDF'), Content-Disposition has 'attachment', WARNING log records the exact 'Failed to write pdf_path cache for doc' message, AND db_session.refresh(doc); doc.pdf_path is None); (b) remove the EXPECTED_5XX entry for '/project/{project_id}/docs/{doc_id}/pdf' from tests/dashboard/test_route_contract_sweep.py:142 — preserve the surrounding `EXPECTED_5XX: dict[str, str] = {}` declaration and the explanatory comment. Targeted verification only: `uv run pytest tests/dashboard/test_docs_pdf_cache_failure.py tests/dashboard/test_route_contract_sweep.py -v --no-cov` — do NOT call make test-unit or make test-integration. Test file MUST live under tests/dashboard/ (the `client` fixture is registered only there per I-00067).",
       "prompt": "prompts/I-00109_S03_Tests_prompt.md"
     },
     {
       "step": "S04",
       "agent": "code-review-impl",
-      "description": "Per-agent review of S03: every assertion in the new test is SEMANTIC (specific status code, specific content-type, PDF magic bytes prefix, specific warning substring, doc.pdf_path is None) \u2014 not shape-only; the test file lives under tests/dashboard/; the EXPECTED_5XX entry removal is in the same commit as the new test; no runtime source-revert / git stash in the step; no full-suite run; files_changed limited to the two test files (no dashboard/routers/docs.py touch).",
+      "description": "Per-agent review of S03: every assertion in the new test is SEMANTIC (specific status code, specific content-type, PDF magic bytes prefix, specific warning substring, doc.pdf_path is None) — not shape-only; the test file lives under tests/dashboard/; the EXPECTED_5XX entry removal is in the same commit as the new test; no runtime source-revert / git stash in the step; no full-suite run; files_changed limited to the two test files (no dashboard/routers/docs.py touch).",
       "prompt": "prompts/I-00109_S04_CodeReview_prompt.md"
     },
     {
@@ -83,7 +82,7 @@
       "agent": "qv-gate",
       "gate": "integration-tests",
       "command": "make test-integration",
-      "description": "QV: Integration tests \u2014 runs the dashboard route-sweep and the new docs_pdf cache-failure regression test",
+      "description": "QV: Integration tests — runs the dashboard route-sweep and the new docs_pdf cache-failure regression test",
       "timeout": 1800
     },
     {
