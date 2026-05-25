@@ -1,0 +1,61 @@
+{
+  "item_id": "I-00111",
+  "bottom_line": "The production fix was correct (3 LOC), but S04 required 4 fix-cycles due to ambiguous test-file guidance, and three QV gates (S07, S10, S11) each failed once on their first run — all on pre-existing test code outside I-00111's scope. Tightening the design-doc's test import rules and making QV gates skip pre-existing test failures would have cut this item's iteration count substantially.",
+  "coverage_notes": "Full logs read for S01–S09 (all small). S10–S13 (>400 KB each) sampled via tail+grep. S05_run1: 0 bytes (anomaly). S14_run1: empty (current step). DB signal: full (item-status JSON retrieved).",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "S04 CodeReview fix-cycle oscillation on TestClient import location",
+      "recommendation": "Tighten the 'Test-file location' section of the design-doc template with concrete before/after examples for the TestClient import pattern. Add an explicit rule: 'Runtime imports (TestClient) stay at module top; factory functions (create_app) are lazily imported inside fixtures or test functions.'",
+      "evidence": [
+        "ai-dev/logs/I-00111_S04_fix1.log:1 — 'moved TestClient inside if TYPE_CHECKING: block'",
+        "ai-dev/logs/I-00111_S04_fix3.log:1 — 'Moved TestClient from the TYPE_CHECKING guard to a runtime import (top-level, before if TYPE_CHECKING:)' ← contradicts fix2",
+        "ai-dev/logs/I-00111_S04_fix4.log:1 — 'create_app removed from module top, imported lazily inside the test function' ← 3rd different fix"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add concrete before/after examples to the Test-file location section of the design-doc template to resolve S04 fix-cycle oscillation in I-00111 (see ai-dev/work/I-00111/reports/I-00111_self_assess_report.md). Target file: templates/design/Incident_Design_Template.md. Effort: S."
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "QV-gate assertion fix introduced a type error that surfaced in the next gate",
+      "recommendation": "The assertion scanner (scripts/check_assertions.py) should flag comparisons between a variable typed as list[...] and a frozenset literal as a potential type mismatch. The 'fix' prompt for tautological assertions should include a type-check step before the agent commits the change.",
+      "evidence": [
+        "ai-dev/logs/I-00111_S07_fix1.log:5 — 'assertion changed to frozenset({...})' (fix applied)",
+        "ai-dev/logs/I-00111_S10_run1.log:3571 — 'AssertionError: ... got [\"tests/**\", \"**/*.md\"]' (type mismatch in next gate)"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Add type-check step to assertion-scanner fix recommendations to prevent list vs frozenset mismatches (see ai-dev/work/I-00111/reports/I-00111_self_assess_report.md). Target file: scripts/check_assertions.py. Effort: M."
+    },
+    {
+      "severity": "MED",
+      "class": "agent",
+      "target": "iw-ai-core",
+      "title": "Three independent QV-gate first-run failures on pre-existing test code",
+      "recommendation": "Add a pre-flight check in QV-gate agents that skips failures in files not modified by the current item. If only pre-existing tests fail, pass with a warning rather than failing the gate. This requires checking git diff --name-only against the pytest failure report.",
+      "evidence": [
+        "ai-dev/logs/I-00111_S07_run1.log:1 — 'tautology ... make: *** Error 1' (I-00107 tests flagged, outside I-00111 scope)",
+        "ai-dev/logs/I-00111_S10_run1.log:3868 — '1 failed ... make: *** Error 1' (type mismatch from S07 fix, same file)",
+        "ai-dev/logs/I-00111_S11_run1.log:1 — '2 failed ... make: *** Error 1' (overflow tests, pre-existing rot)"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr QV gates should skip pre-existing test failures and pass with warning when failures are in files outside the item's diff (see ai-dev/work/I-00111/reports/I-00111_self_assess_report.md). Target file: skills/iw-qv-gate/SKILL.md. Effort: M."
+    },
+    {
+      "severity": "LOW",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "S05 CodeReview run1 log is empty (0 bytes)",
+      "recommendation": "Add a size-gate in the executor or log aggregator that alerts when a run log is 0 bytes. Investigate whether the first run was silently skipped or its output was lost.",
+      "evidence": [
+        "ai-dev/logs/I-00111_S05_run1.log — 0 bytes",
+        "ai-dev/logs/I-00111_S05_run3.log — 'S05 (Code Review Final) — Complete ✅' (run3 succeeded)"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-incident Add size-gate for 0-byte run logs in executor log capture (see ai-dev/work/I-00111/reports/I-00111_self_assess_report.md). Target file: executor/ (bash scripts). Effort: S."
+    }
+  ]
+}

@@ -2,7 +2,7 @@
   "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
   "id": "I-00111",
   "type": "Issue",
-  "title": "GET /openapi.json returns HTTP 500 \u2014 create_app().openapi() raises Pydantic ForwardRef('Response') error; app-wide OpenAPI schema generation is broken",
+  "title": "GET /openapi.json returns HTTP 500 — create_app().openapi() raises Pydantic ForwardRef('Response') error; app-wide OpenAPI schema generation is broken",
   "browser_verification": false,
   "scope": {
     "allowed_paths": [
@@ -10,16 +10,14 @@
       "dashboard/app.py",
       "orch/**",
       "tests/dashboard/test_schemathesis_contract.py",
-      "tests/dashboard/test_openapi_schema.py",
-      "tests/dashboard/test_keep_alive_slot_overflow.py",
-      "tests/unit/daemon/test_daemon_config_reload.py"
+      "tests/dashboard/test_openapi_schema.py"
     ]
   },
   "steps": [
     {
       "step": "S01",
       "agent": "backend-impl",
-      "description": "Backend: reproduce the Pydantic ForwardRef('Response') error in-process (`uv run python -c 'from dashboard.app import create_app; create_app().openapi()'`), capture the exact traceback (which model / field / route is in the chain), bisect via `git grep -n 'Response' dashboard/routers/ dashboard/app.py orch/` to locate the offending annotation, and apply the SMALLEST possible fix (likely 1-3 LOC): add a missing non-TYPE_CHECKING import, drop a string-quoted return annotation, set `response_class=Response` on a route decorator, or add a `model_rebuild()` after the relevant import. Verify `app.openapi()` returns a valid dict and `client.get('/openapi.json')` returns 200 via TestClient (targeted run of the new test file in S03 is not the deliverable of S01 \u2014 S01 only needs to confirm the schema generator no longer raises). Do NOT refactor adjacent code; do NOT widen scope; if other latent OpenAPI issues surface during the bisect, note them in the report and let the operator file follow-ups.",
+      "description": "Backend: reproduce the Pydantic ForwardRef('Response') error in-process (`uv run python -c 'from dashboard.app import create_app; create_app().openapi()'`), capture the exact traceback (which model / field / route is in the chain), bisect via `git grep -n 'Response' dashboard/routers/ dashboard/app.py orch/` to locate the offending annotation, and apply the SMALLEST possible fix (likely 1-3 LOC): add a missing non-TYPE_CHECKING import, drop a string-quoted return annotation, set `response_class=Response` on a route decorator, or add a `model_rebuild()` after the relevant import. Verify `app.openapi()` returns a valid dict and `client.get('/openapi.json')` returns 200 via TestClient (targeted run of the new test file in S03 is not the deliverable of S01 — S01 only needs to confirm the schema generator no longer raises). Do NOT refactor adjacent code; do NOT widen scope; if other latent OpenAPI issues surface during the bisect, note them in the report and let the operator file follow-ups.",
       "prompt": "prompts/I-00111_S01_Backend_prompt.md",
       "timeout": 1800
     },
@@ -32,13 +30,13 @@
     {
       "step": "S03",
       "agent": "tests-impl",
-      "description": "Tests: (a) CREATE tests/dashboard/test_openapi_schema.py with two regression tests \u2014 test_i_00111_openapi_endpoint_returns_valid_schema (uses the dashboard `client` fixture, asserts status==200, asserts schema has 'openapi' starting with '3.', non-empty 'info.title', and len(paths)>0) and test_i_00111_app_openapi_callable_returns_dict (calls `create_app().openapi()` in-process, asserts dict + non-empty paths). (b) MODIFY tests/dashboard/test_schemathesis_contract.py \u2014 remove the `_json_api_openapi()` closure and the `monkeypatch.setattr(app, 'openapi', _json_api_openapi, raising=False)` line at the former lines 163-173, switch `contract_schema` to `schemathesis.openapi.from_asgi('/openapi.json', contract_app)` against the real app schema, and update the module docstring at lines 21-30 to note that I-00111 fixed the underlying ForwardRef bug and the workaround is no longer needed. (c) Targeted verification only: `uv run pytest tests/dashboard/test_openapi_schema.py -v --no-cov` AND `uv run pytest tests/dashboard/test_schemathesis_contract.py::test_json_api_paths_exist_in_schema -v --no-cov -m contract_fuzz` \u2014 do NOT call make test-integration or make test-unit. Semantic asserts only (specific values, never just shape).",
+      "description": "Tests: (a) CREATE tests/dashboard/test_openapi_schema.py with two regression tests — test_i_00111_openapi_endpoint_returns_valid_schema (uses the dashboard `client` fixture, asserts status==200, asserts schema has 'openapi' starting with '3.', non-empty 'info.title', and len(paths)>0) and test_i_00111_app_openapi_callable_returns_dict (calls `create_app().openapi()` in-process, asserts dict + non-empty paths). (b) MODIFY tests/dashboard/test_schemathesis_contract.py — remove the `_json_api_openapi()` closure and the `monkeypatch.setattr(app, 'openapi', _json_api_openapi, raising=False)` line at the former lines 163-173, switch `contract_schema` to `schemathesis.openapi.from_asgi('/openapi.json', contract_app)` against the real app schema, and update the module docstring at lines 21-30 to note that I-00111 fixed the underlying ForwardRef bug and the workaround is no longer needed. (c) Targeted verification only: `uv run pytest tests/dashboard/test_openapi_schema.py -v --no-cov` AND `uv run pytest tests/dashboard/test_schemathesis_contract.py::test_json_api_paths_exist_in_schema -v --no-cov -m contract_fuzz` — do NOT call make test-integration or make test-unit. Semantic asserts only (specific values, never just shape).",
       "prompt": "prompts/I-00111_S03_Tests_prompt.md"
     },
     {
       "step": "S04",
       "agent": "code-review-impl",
-      "description": "Per-agent review of S03: both regression tests assert SEMANTIC correctness (specific status code 200, specific OpenAPI version prefix '3.', specific 'paths non-empty' contract) \u2014 never just shape (`'paths' in schema` alone is BAD); the workaround removal is complete (the `_json_api_openapi` closure and the monkeypatch line are both gone, not just one); the contract_schema fixture loads via from_asgi against the real app; the module docstring is updated; no full-suite test runs in the step.",
+      "description": "Per-agent review of S03: both regression tests assert SEMANTIC correctness (specific status code 200, specific OpenAPI version prefix '3.', specific 'paths non-empty' contract) — never just shape (`'paths' in schema` alone is BAD); the workaround removal is complete (the `_json_api_openapi` closure and the monkeypatch line are both gone, not just one); the contract_schema fixture loads via from_asgi against the real app; the module docstring is updated; no full-suite test runs in the step.",
       "prompt": "prompts/I-00111_S04_CodeReview_prompt.md"
     },
     {
@@ -87,7 +85,7 @@
       "agent": "qv-gate",
       "gate": "integration-tests",
       "command": "make test-integration",
-      "description": "QV: Integration tests \u2014 runs the new OpenAPI schema regression tests",
+      "description": "QV: Integration tests — runs the new OpenAPI schema regression tests",
       "timeout": 1800
     },
     {
