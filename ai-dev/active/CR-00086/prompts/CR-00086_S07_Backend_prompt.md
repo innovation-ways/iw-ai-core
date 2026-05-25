@@ -50,6 +50,16 @@ Read `CLAUDE.md` and the existing workflows under `.github/workflows/` before st
 
 ### 1. .github/workflows/test-health.yml
 
+**Persistence model (decided at design review)**: this workflow runs on a **self-hosted runner** with network access to the orchestration DB on port 5433. Snapshots are written to the live `test_health_snapshots` table — NOT to an ephemeral GH-Actions service-container Postgres. The pattern in `.github/workflows/test-quality.yml` (service container with hardcoded `iw/iw/iw_ai_core` env vars) is **explicitly rejected** for this workflow because its rows would disappear at runner exit, defeating the trend-over-time purpose.
+
+Runner:
+
+```yaml
+runs-on: [self-hosted, iw-core]   # match the operator's self-hosted runner label
+```
+
+If the label `iw-core` does not exist in the operator's runner pool, ask before guessing — fall back to the default label the operator uses for IW-managed workflows (check existing workflows that already target a self-hosted runner, if any; otherwise raise a blocker so the operator can answer).
+
 Triggers:
 
 ```yaml
@@ -63,14 +73,16 @@ on:
 
 Job steps:
 
-1. `actions/checkout@v4`.
-2. Set up Python (use the version from `pyproject.toml`, e.g. via `astral-sh/setup-uv@v3` matching the existing CI workflow).
+1. `actions/checkout@v4` (pinned to a SHA per `.github/workflows/codeql.yml` style).
+2. Set up Python (use the version from `pyproject.toml`, e.g. via `astral-sh/setup-uv@v3`).
 3. `uv sync --frozen`.
-4. Configure DB credentials via the existing `IW_CORE_*` GitHub secrets — DO NOT inline anything. If the existing CI workflow connects to a managed Postgres, copy the env-var indirection from there; if it spins up a service container, follow the same pattern.
+4. Set the runtime DB env vars from GitHub secrets — `IW_CORE_DB_HOST`, `IW_CORE_DB_PORT`, `IW_CORE_DB_NAME`, `IW_CORE_DB_USER`, `IW_CORE_DB_PASSWORD` — sourced from `${{ secrets.IW_CORE_* }}`. **Do NOT** copy the inline `iw/iw/iw_ai_core` env-block from `test-quality.yml`: that pattern is correct for the ephemeral service-container workflows but is wrong here because it would point the capture at a throwaway DB. **Do NOT** add a `services: postgres:` block to this workflow.
 5. Run `uv run iw test-health-capture --project iw-ai-core` and tee its stdout to `test-health-summary.json`.
-6. Upload `test-health-summary.json` as a workflow artefact via `actions/upload-artifact@v4`.
+6. Upload `test-health-summary.json` as a workflow artefact via `actions/upload-artifact@v4` (audit trail; the snapshots themselves live in the orch DB).
 
 Concurrency: set `concurrency: { group: test-health, cancel-in-progress: false }` so concurrent on-push + cron runs queue rather than cancel.
+
+**Operator prerequisite (call out in the report)**: the workflow will not run successfully until the operator (a) provisions a self-hosted runner with the chosen label, (b) creates the `IW_CORE_*` secrets in the repo settings, and (c) confirms the runner's network can reach the orch DB on port 5433. Document these prereqs in the §10 strategy doc you write below.
 
 ### 2. docs/IW_AI_Core_Testing_Strategy.md §10
 
@@ -79,6 +91,8 @@ Add a new top-level section `## 10. Self-dashboarding`. Cover:
 - The four metrics surfaced (mutation_score, coverage_pct, flaky_test_count, assertion_baseline_size).
 - Where the panel mounts (Tests view and Quality view, under the gates summary).
 - Capture cadence (on push to main + nightly cron + manual `workflow_dispatch`).
+- **Persistence model** (self-hosted runner reaches the live orch DB on port 5433 via the `IW_CORE_*` secrets; ephemeral service-container Postgres is explicitly out — explain why so future maintainers don't "fix" it back).
+- Operator prerequisites (self-hosted runner labelled `iw-core` online; `IW_CORE_*` secrets configured; runner has network access to the orch DB).
 - Idempotency contract (one row per `(project, metric, minute)`).
 - Empty-state behaviour (per-metric placeholder + combined empty state).
 - A link to CR-00086 design + manifest paths.

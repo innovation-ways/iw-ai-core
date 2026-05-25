@@ -55,7 +55,7 @@ Read the project's `CLAUDE.md` for architecture, conventions, and hard rules. Pa
 - A new CLI command `iw test-health-capture --project <slug>` reads the four artefact sources for the named project, writes one snapshot per metric, and prints a JSON summary. Idempotent per `(project_id, metric, ts)` (ts truncated to the minute).
 - The Tests / Quality dashboard view renders a new "Test Health" panel under the existing gates summary, showing each metric's latest value, the delta vs. the previous snapshot, and an inline SVG sparkline of the last 30 snapshots. htmx-fragment driven; reuses Tailwind utility classes already in the Tests view.
 - Each `iw test-health-capture` run appears in the unified Jobs view as job type `test-health-capture`.
-- `.github/workflows/test-health.yml` runs the capture on every successful main-branch push (post-merge) and nightly via cron.
+- `.github/workflows/test-health.yml` runs the capture on every successful main-branch push (post-merge) and nightly via cron. **Persistence model: self-hosted runner with network access to the orch DB on port 5433.** The workflow runs `runs-on: [self-hosted, iw-core]` (or whichever label the operator's self-hosted runner advertises) and uses the existing `IW_CORE_*` env vars to reach the production orchestration Postgres directly. Snapshots are persisted to the live `test_health_snapshots` table and the dashboard reads them on every page load. **Rationale**: the goal is a trend over time, so an ephemeral GH-Actions service-container Postgres (the pattern used in `test-quality.yml`) is rejected — its rows would disappear at runner exit. The self-hosted runner is a hard prerequisite for the workflow to do anything useful.
 
 ## Impact Analysis
 
@@ -92,7 +92,7 @@ Read the project's `CLAUDE.md` for architecture, conventions, and hard rules. Pa
 
 ### Agents and Execution Order
 
-> **Step-granularity rule**: each implementation step targets one cohesive concern. This CR splits into Database / Backend service+CLI / Frontend panel+Jobs / CI+docs+skill+tracker — four implementation steps, then per-step CodeReviews, a CodeReview_Final, the standard 8 QV gates, a qv-browser, and a final SelfAssess. 16 steps total.
+> **Step-granularity rule**: each implementation step targets one cohesive concern. This CR splits into Database / Backend service+CLI / Frontend panel+Jobs / CI+docs+skill+tracker — four implementation steps, plus a mandatory `migration-check` QV gate after S01, two per-step CodeReviews, a CodeReview_Final, seven standard QV gates, a qv-browser, and a final SelfAssess. **17 steps total** (matches the manifest).
 
 | Step | Agent | Scope | Parallel With |
 |------|-------|-------|---------------|
@@ -183,7 +183,7 @@ Then the schema matches `Base.metadata.create_all()` exactly, the round-trip suc
 ```
 Given an iw-ai-core project row exists and the four artefact sources (mutation JSON, coverage XML, flaky log, assertion baseline) are present
 When `uv run iw test-health-capture --project iw-ai-core` is invoked
-Then exactly one snapshot row is inserted per metric (mutation_score, coverage_pct, flaky_test_count, assertion_baseline_size), the printed JSON summary echoes the four (metric, value, ts) tuples, and a job row appears in the unified Jobs view with type=test-health-capture
+Then exactly one snapshot row is inserted per metric (mutation_score, coverage_pct, flaky_test_count, assertion_baseline_size), the printed JSON summary echoes the four (metric, value, ts) tuples, and **exactly one** job row appears in the unified Jobs view with type=test-health-capture (grouped by `(project_id, ts_minute)` — one capture invocation produces ONE job row regardless of how many metrics it wrote)
 ```
 
 ### AC3: Capture is idempotent per minute
@@ -202,20 +202,20 @@ When a user opens /projects/iw-ai-core/tests in the browser
 Then the Test Health panel is visible under the gates summary; each of the four metric cards shows the latest value, a delta vs. the previous snapshot, and an inline SVG sparkline drawn from the last 30 snapshots; no console errors fire on load
 ```
 
-### AC5: Empty-state handling
+### AC5: Empty-state handling (per-metric and combined)
 
 ```
 Given no snapshots exist for a metric (e.g. a freshly-onboarded project)
 When the Test Health panel renders
-Then that metric's card shows a "no data yet" placeholder rather than crashing or rendering NaN
+Then that metric's card shows a "no data yet" placeholder rather than crashing or rendering NaN; AND when ALL four metrics are empty, the panel renders a single combined message ("Test health data will appear after the first capture runs") instead of four per-metric placeholders
 ```
 
-### AC6: CI workflow runs on push and nightly
+### AC6: CI workflow runs on push and nightly against the live orch DB
 
 ```
-Given .github/workflows/test-health.yml is merged
+Given .github/workflows/test-health.yml is merged AND a self-hosted runner labelled `iw-core` (or the project-standard label) is online with network access to the orchestration DB on port 5433
 When a commit lands on main OR the nightly cron fires
-Then the workflow invokes `iw test-health-capture --project iw-ai-core`, snapshots are written, and the workflow exits 0
+Then the workflow invokes `uv run iw test-health-capture --project iw-ai-core` on the self-hosted runner, snapshots are persisted to the live `test_health_snapshots` table, a row appears in the unified Jobs view, and the workflow exits 0
 ```
 
 ## Rollback Plan
