@@ -318,10 +318,17 @@ def docs_pdf(
         )
 
     cache_dir = Path(project.repo_root) / "docs" / ".generated" / project_id
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_file = cache_dir / f"{doc_id}-v{doc.version}.pdf"
-    cache_file.write_bytes(pdf_bytes)
-    svc.update_doc(project_id, doc_id, pdf_path=str(cache_file))
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"{doc_id}-v{doc.version}.pdf"
+        cache_file.write_bytes(pdf_bytes)
+        svc.update_doc(project_id, doc_id, pdf_path=str(cache_file))
+    except Exception:  # noqa: BLE001 — read-only fs, permission error, etc.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Failed to write pdf_path cache for doc %s/%s", project_id, doc_id
+        )
 
     return Response(
         content=pdf_bytes,
