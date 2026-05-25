@@ -242,20 +242,13 @@ test-flake-detect:
 	@uv run python scripts/flake_detect_aggregate.py tests/output/flake-detect-1.log tests/output/flake-detect-2.log tests/output/flake-detect-3.log
 
 # =============================================================================
-# MUTATION TESTING (CR-00059, P2-CR-A) — on-demand, NOT a CI gate yet
+# MUTATION TESTING (CR-00080, P2-CR-A follow-up) — on-demand, NOT a CI gate yet
 # =============================================================================
-# mutmut runs mutmut against orch/daemon/ — the spike target. Each mutant
-# temporarily edits a single line of production code and re-runs the matching
-# daemon tests (`tests/unit/daemon/` + `tests/integration/daemon/`). A mutant
-# is "killed" when some test fails (good — the tests caught the bug); it
-# "survives" when all tests still pass (bad — no test would have caught
-# the regression).
-#
-# Runtime budget for `make mutation-audit` over orch/daemon/ is measured by
-# the CR-00059 spike; expect on the order of tens of minutes. NOT wired into
-# `make quality` / `make check` / any QV gate. Follow-up CR
-# `P2-CR-A-followup-mutation-block` will widen scope and flip to blocking
-# once the spike numbers inform thresholds.
+# mutmut runs mutmut across orch/ (excluding migrations in mutation-audit).
+# Each mutant temporarily edits a single line of production code and re-runs
+# daemon tests (`tests/unit/daemon/` + `tests/integration/daemon/`).
+# The runner passes `--cov-fail-under=0` so pytest coverage gating does not
+# abort mutant execution before assertions are evaluated.
 
 mutation-check: ## Mutation test a single daemon module (usage: make mutation-check MODULE=orch/daemon/auto_merge.py)
 	@if [ -z "$(MODULE)" ]; then \
@@ -279,7 +272,7 @@ mutation-check: ## Mutation test a single daemon module (usage: make mutation-ch
 	echo "(Code is modified temporarily — originals are always restored.)"; \
 	uv run mutmut run \
 		--paths-to-mutate $(MODULE) \
-		--runner "uv run pytest $$TARGETS -x --tb=no -q" \
+		--runner "sh -c 'IW_CORE_DB_PORT=5433 uv run pytest $$TARGETS -x --tb=no -q --cov-fail-under=0'" \
 		--tests-dir tests/ \
 		--simple-output
 	@echo ""
@@ -288,16 +281,16 @@ mutation-check: ## Mutation test a single daemon module (usage: make mutation-ch
 	@echo ""
 	@echo "Use 'make mutation-show ID=N' to inspect surviving mutants."
 
-mutation-audit: ## Mutation test all daemon modules (slow — spike target)
-	@echo "Running mutation audit on orch/daemon/..."
+mutation-audit: ## Mutation test all orch modules (slow — spike target)
+	@echo "Running mutation audit on orch/..."
 	@echo "This may take 30–120 minutes depending on module count and test cost."
-	@for MODULE in $$(find orch/daemon/ -name "*.py" -not -name "__init__.py" -not -path "*/__pycache__/*" | sort); do \
+	@for MODULE in $$(find orch/ -name "*.py" -not -name "__init__.py" -not -path "*/__pycache__/*" -not -path "*/migrations/*" | sort); do \
 		echo ""; \
 		echo "--- Mutating: $$MODULE ---"; \
 		rm -f .mutmut-cache; \
 		uv run mutmut run \
 			--paths-to-mutate "$$MODULE" \
-			--runner "uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q" \
+			--runner "sh -c 'IW_CORE_DB_PORT=5433 uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q --cov-fail-under=0'" \
 			--tests-dir tests/ \
 			--simple-output --no-progress 2>&1 | tail -5; \
 		uv run mutmut results 2>/dev/null; \
