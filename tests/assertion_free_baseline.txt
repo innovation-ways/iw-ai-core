@@ -410,9 +410,11 @@ tests/unit/test_fix_cycle.py::test_build_fix_prompt_escalation_on_last_cycle # t
 tests/unit/test_fix_cycle.py::test_build_fix_prompt_escalation_prefers_honest_escalation # tautology
 tests/unit/test_fix_cycle.py::test_build_fix_prompt_includes_design_doc_block_when_provided # tautology
 tests/unit/test_fix_cycle.py::test_build_fix_prompt_includes_findings # tautology
+tests/unit/test_fix_cycle.py::test_build_fix_prompt_includes_post_edit_format_lint_gate # tautology
 tests/unit/test_fix_cycle.py::test_build_fix_prompt_no_iw_cli_instructions # tautology
 tests/unit/test_fix_cycle.py::test_build_qv_fix_prompt_escalation_prefers_honest_escalation # tautology
 tests/unit/test_fix_cycle.py::test_build_qv_fix_prompt_includes_design_doc_block_when_provided # tautology
+tests/unit/test_fix_cycle.py::test_build_scope_block_lists_implicit_allows_when_item_id_passed # tautology
 tests/unit/test_fix_cycle.py::test_extract_findings_from_high_severity # tautology
 tests/unit/test_fix_cycle.py::test_extract_findings_verdict_fail_no_headings # tautology
 tests/unit/test_fix_cycle.py::test_fixable_step_types_includes_browser_verification # tautology
@@ -425,6 +427,7 @@ tests/unit/test_fix_cycle.py::test_get_browser_findings_newer_daemon_failure_pre
 tests/unit/test_fix_cycle.py::test_get_browser_findings_no_report_available # tautology
 tests/unit/test_fix_cycle.py::test_get_browser_findings_prefers_step_report_file # tautology
 tests/unit/test_fix_cycle.py::test_qv_fix_prompt_escalation_on_last_cycle # tautology
+tests/unit/test_fix_cycle.py::test_qv_fix_prompt_includes_cross_gate_check # tautology
 tests/unit/test_fix_cycle.py::test_qv_fix_prompt_includes_gate_command # tautology
 tests/unit/test_i00049_gate_command.py::test_fast_gates_remain_in_gate_parsers # tautology
 tests/unit/test_i00049_gate_command.py::test_run_gate_command_kills_process_group_on_timeout # tautology
