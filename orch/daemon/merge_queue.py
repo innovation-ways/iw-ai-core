@@ -519,6 +519,7 @@ def _merge_item(
                                 "eligible_files": list(
                                     _auto_resolve_request.get("eligible_files", [])
                                 ),
+                                "deferred_files": list(_classification.deferred_files),
                                 "refuse_files": list(_classification.refuse_files),
                                 "binary_files": list(_classification.binary_files),
                                 "oversized_files": list(_classification.oversized_files),
@@ -547,6 +548,7 @@ def _merge_item(
                             main_sha=_main_sha,
                             branch_name=_branch_name,
                             eligible_files=list(_classification.eligible_files),
+                            deferred_files=list(_classification.deferred_files),
                             config=_config,
                         )
                         # Phase 1: result.success is always False — fall through to merge_failed.

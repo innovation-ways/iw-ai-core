@@ -494,6 +494,8 @@ class TestArgumentParsing:
 # API-key guard
 # ---------------------------------------------------------------------------
 
+_ANTHROPIC_INSTALLED = judge_module.anthropic is not None
+
 
 class TestApiKeyGuard:
     def test_main_exits_2_when_anthropic_api_key_missing(
@@ -510,6 +512,33 @@ class TestApiKeyGuard:
             )
         assert exc_info.value.code == 2
 
+    @pytest.mark.skipif(
+        not _ANTHROPIC_INSTALLED,
+        reason="anthropic package not installed",
+    )
+    def test_main_exits_2_when_anthropic_not_installed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With a key present but anthropic not installed, exits 2."""
+        # Simulate anthropic not installed by patching it to None after import
+        original_anthropic = judge_module.anthropic
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake-key")
+        try:
+            judge_module.anthropic = None  # type: ignore[assignment]
+            with pytest.raises(SystemExit) as exc_info:
+                judge_module.sys.exit(
+                    judge_module.main(
+                        ["--test-file", "tests/unit/test_foo.py", "--test-name", "test_bar"]
+                    )
+                )
+            assert exc_info.value.code == 2, "Missing anthropic package should exit 2"
+        finally:
+            judge_module.anthropic = original_anthropic
+
+    @pytest.mark.skipif(
+        not _ANTHROPIC_INSTALLED,
+        reason="anthropic package not installed",
+    )
     def test_main_exits_1_on_api_error_not_2(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """With a key present, a real API error exits 1, not 2."""
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-fake-key")

@@ -263,6 +263,7 @@ class ClassificationResult:
     oversized_hunks: tuple[str, ...]
     binary_files: tuple[str, ...]
     skipped_reason: str | None
+    deferred_files: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -377,7 +378,14 @@ def classify_conflicts(
     3. Any oversized file (size > max_file_size_bytes) → skipped_reason = "file_too_large"
     4. Any oversized hunk (lines > max_conflict_hunk_lines) → skipped_reason = "hunk_too_large"
     5. len(conflict_files) > max_conflicted_files_per_merge → "too_many_files"
-    6. Any file NOT matching allowlist → skipped_reason = "not_allowlisted"
+    6. Allowlist partition:
+       - eligible_files = files matching allowlist_patterns
+       - deferred_files = files matching NEITHER refuse-list (already returned above)
+         NOR allowlist
+       - If eligible_files is empty, return skipped_reason="not_allowlisted"
+         with the deferred list populated.
+       - Otherwise return skipped_reason=None with both lists populated
+         (the LLM will only be invoked for eligible_files).
     7. Else → eligible_files = all; skipped_reason = None
     """
     logger.info(
@@ -481,14 +489,18 @@ def classify_conflicts(
             skipped_reason="too_many_files",
         )
 
-    # 6. Allowlist check
-    not_allowlisted = [
-        rel_path
-        for rel_path in conflict_files
-        if not any(fnmatch.fnmatchcase(rel_path, pat) for pat in config.allowlist_patterns)
-    ]
-    if not_allowlisted:
-        logger.info("classify_conflicts: not_allowlisted: %s", not_allowlisted)
+    # 6. Allowlist partition
+    eligible_files: list[str] = []
+    deferred_files: list[str] = []
+    for rel_path in conflict_files:
+        if any(fnmatch.fnmatchcase(rel_path, pat) for pat in config.allowlist_patterns):
+            eligible_files.append(rel_path)
+        else:
+            deferred_files.append(rel_path)
+
+    if not eligible_files:
+        # Every file is deferred — preserve today's skip behaviour, now with explicit deferred list
+        logger.info("classify_conflicts: not_allowlisted (all deferred): %s", deferred_files)
         return ClassificationResult(
             eligible_files=(),
             refuse_files=(),
@@ -496,17 +508,30 @@ def classify_conflicts(
             oversized_hunks=(),
             binary_files=(),
             skipped_reason="not_allowlisted",
+            deferred_files=tuple(deferred_files),
         )
 
-    # 7. All pass
-    logger.info("classify_conflicts: all %d files eligible", len(conflict_files))
+    if deferred_files:
+        logger.info(
+            "classify_conflicts: partial allowlist — eligible=%s deferred=%s",
+            eligible_files,
+            deferred_files,
+        )
+
+    # 7. At least one file is eligible (partial OR full allowlist match)
+    logger.info(
+        "classify_conflicts: %d eligible, %d deferred",
+        len(eligible_files),
+        len(deferred_files),
+    )
     return ClassificationResult(
-        eligible_files=tuple(conflict_files),
+        eligible_files=tuple(eligible_files),
         refuse_files=(),
         oversized_files=(),
         oversized_hunks=(),
         binary_files=(),
         skipped_reason=None,
+        deferred_files=tuple(deferred_files),
     )
 
 
@@ -845,12 +870,19 @@ def attempt_resolution(
     branch_name: str,
     eligible_files: list[str],
     config: AutoMergeConfig,
+    deferred_files: list[str] | None = None,
 ) -> AutoMergeResult:
     """Attempt LLM-assisted resolution for the given eligible files.
 
     Phase 0: no LLM call; emits EVENT_AUTO_RESOLUTION_SKIPPED.
     Phase 1: calls LLM; captures proposals in DaemonEvents; NEVER modifies worktree.
     Phase >= 2: raises ValueError (reserved).
+
+    Args:
+        deferred_files: Files excluded from LLM invocation because they fall outside
+            the allowlist (i.e., non-allowlisted conflict files). When non-None and
+            non-empty, these are recorded in event metadata for operator visibility.
+            The LLM is invoked only for eligible_files regardless of this parameter.
     """
     if config.phase >= PHASE_TESTS_ONLY:
         raise ValueError(f"phase {config.phase} reserved for follow-up CR")
@@ -872,7 +904,11 @@ def attempt_resolution(
             item_id,
             "work_item",
             "Auto-merge skipped: phase_0 (dry-run disabled)",
-            {"reason": "phase_0", "eligible_files": eligible_files},
+            {
+                "reason": "phase_0",
+                "eligible_files": eligible_files,
+                "deferred_files": list(deferred_files or []),
+            },
         )
         db.commit()
         logger.info("attempt_resolution: phase_0 skip for item_id=%s", item_id)
@@ -900,7 +936,10 @@ def attempt_resolution(
             item_id,
             "work_item",
             "Auto-merge failed: no runtime option available",
-            {"reason": "runtime_option_missing", "project_id": project_id},
+            {
+                "reason": "runtime_option_missing",
+                "project_id": project_id,
+            },
         )
         db.commit()
         return AutoMergeResult(
@@ -924,6 +963,8 @@ def attempt_resolution(
             "conflict_files": eligible_files,
             "policy_decision": "allowlist",
             "runtime_option_id": runtime_option.id,
+            "allowlisted_files": eligible_files,
+            "deferred_files": list(deferred_files or []),
         },
     )
     db.commit()
@@ -993,6 +1034,7 @@ def attempt_resolution(
                 "total_input_tokens": total_input_tokens,
                 "total_output_tokens": total_output_tokens,
                 "per_file_errors": per_file_errors,
+                "deferred_files": list(deferred_files or []),
             },
         )
     else:
@@ -1015,6 +1057,7 @@ def attempt_resolution(
             "runtime_option_id": runtime_option.id,
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
+            "deferred_files": list(deferred_files or []),
         }
         # Enforce max_event_metadata_bytes
         raw = _json.dumps(metadata)
@@ -1024,13 +1067,24 @@ def attempt_resolution(
                 entry["proposed_content"] = entry["proposed_content"][:200] + "...[truncated]"
             metadata["truncated"] = True
 
+        # Build resolved event message with deferred count
+        if deferred_files:
+            resolved_msg = (
+                f"Auto-merge dry-run: proposed resolutions for {len(proposed_files)}"
+                f" file(s); {len(deferred_files)} file(s) deferred (non-allowlisted)"
+                f" for operator"
+            )
+        else:
+            resolved_msg = (
+                f"Auto-merge dry-run: proposed resolutions for {len(proposed_files)} file(s)"
+            )
         _emit_event(
             db,
             project_id,
             EVENT_AUTO_RESOLVED,
             item_id,
             "work_item",
-            f"Auto-merge dry-run: proposed resolutions for {len(proposed_files)} file(s)",
+            resolved_msg,
             metadata,
         )
 

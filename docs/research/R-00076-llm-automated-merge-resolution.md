@@ -219,7 +219,27 @@ flowchart TD
     D -->|all resolved| E[Run verification gate<br/>lint + type-check + targeted tests]
     E -->|FAIL| G[git rebase --abort<br/>emit merge_auto_resolution_failed<br/>attach diff + reasoning]
     E -->|PASS| H[git rebase --continue<br/>emit merge_auto_resolved<br/>proceed to squash-merge]
-```
+
+### 5.1.1. Partial-allowlist semantics (CR-00088)
+
+Prior to CR-00088, the allowlist check was **all-or-nothing**: if *any* conflicted file fell outside the allowlist patterns, the entire resolution was skipped with `skipped_reason="not_allowlisted"` — no LLM was consulted even if other files in the same conflict *were* allowlisted. CR-00088 changed this to **partition semantics**.
+
+Under the new model, `classify_conflicts()` produces two disjoint sets:
+- `eligible_files`: conflicted files matching `allowlist_patterns` that survive all earlier gates (refuse-list, binary, size, hunk-size).
+- `deferred_files`: conflicted files that fail *only* the allowlist check (survived every earlier gate).
+
+The LLM is invoked for `eligible_files` only. Non-allowlisted files are never passed to the LLM. Both sets are recorded in event metadata:
+
+| Event | New metadata key | Meaning |
+|-------|-----------------|---------|
+| `merge_auto_resolution_attempted` | `allowlisted_files` | Files the LLM will be invoked for (alias for `eligible_files`) |
+| `merge_auto_resolution_attempted` | `deferred_files` | Non-allowlisted files requiring manual resolution |
+| `merge_auto_resolved` | `deferred_files` | Same partition in the success event |
+| `merge_auto_resolution_failed` | `deferred_files` | Partition preserved even when LLM abstains/errors |
+
+Refuse-list precedence is **unchanged**: if any file matches `refuselist_patterns`, the whole resolution still aborts with `skipped_reason="refuse_list"` before the partition logic runs.
+
+Phase 1 (dry-run) still never mutates the worktree. The partition only affects what the LLM is invoked for and what the dashboard renders. The operator still rebases manually; the value is that they receive LLM proposals for the allowlisted subset, narrowing the manual-resolve scope.```
 
 ### 5.2. Decision Tree — When To Attempt LLM Resolution
 
