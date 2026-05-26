@@ -1,0 +1,109 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00115",
+  "title": "Amend-scope modal locks the dashboard UI after dismissal",
+  "type": "Issue",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "dashboard/templates/components/scope_amend_modal.html",
+      "dashboard/static/styles.css",
+      "tests/dashboard/test_scope_amend_modal_i00115.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "frontend-impl",
+      "description": "Frontend: repair scope_amend_modal.html so every dismissal path (submit, X, Cancel, ESC, backdrop click) removes both #scope-amend-modal and #scope-amend-overlay",
+      "prompt": "prompts/I-00115_S01_Frontend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Code review of S01 (Frontend) — verify all dismissal paths fully tear down modal + overlay and no listener leaks",
+      "prompt": "prompts/I-00115_S02_CodeReview_Frontend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Tests: reproduction + regression tests for I-00115 — assert rendered modal HTML wires every dismissal path correctly",
+      "prompt": "prompts/I-00115_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Code review of S03 (Tests) — verify RED evidence, semantic correctness, no shape-only assertions",
+      "prompt": "prompts/I-00115_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Final cross-step review — completeness vs design, regression risk, scope adherence",
+      "prompt": "prompts/I-00115_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — seed scope-blocked fixture, exercise every dismissal path against the isolated worktree stack",
+      "prompt": "prompts/I-00115_S13_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S14",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00115_S14_SelfAssess_prompt.md"
+    }
+  ]
+}
