@@ -1,0 +1,34 @@
+{
+  "item_id": "I-00114",
+  "bottom_line": "Add a schema-version/TODO note to executor/pi_narration_guard.py so future pi JSONL shape changes do not silently misclassify narration exits.",
+  "coverage_notes": "Read all small run/fix logs fully; sampled targeted grep lines from larger S12/S13 logs for failure and narration-test traces. Queried DB daemon_events for entity_id=I-00114 step_crashed (count=0).",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "design",
+      "target": "iw-ai-core",
+      "title": "Narration classifier lacks explicit pi session schema-version note",
+      "recommendation": "Add a short comment/TODO near _extract_last_assistant_blocks/classify_last_assistant documenting the assumed pi JSONL schema and fallback expectations on schema drift.",
+      "evidence": [
+        "executor/pi_narration_guard.py:116 — 'def _extract_last_assistant_blocks(session_path: Path) -> list[dict[str, Any]] | None:'",
+        "executor/pi_narration_guard.py:136 — 'def classify_last_assistant(session_path: Path) -> NarrationVerdict:'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add a schema-version compatibility note/TODO for pi JSONL narration classification in executor/pi_narration_guard.py; context: I-00114 self-assess report."
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Integration gate retries consumed full-suite runtime on deterministic non-narration failure",
+      "recommendation": "Add a fail-fast precheck for CLI-spec documentation parity before running full integration suite in the QV integration gate path.",
+      "evidence": [
+        "ai-dev/logs/I-00114_S13_run1.log:3666 — '= 1 failed, 3251 passed ... in 1205.07s'",
+        "ai-dev/logs/I-00114_S13_run3.log:3667 — '= 1 failed, 3251 passed ... in 1190.89s'",
+        "ai-dev/logs/I-00114_S13_run5.log:3634 — '= 3252 passed ... in 1188.51s'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Add a fail-fast CLI-spec parity precheck before full integration tests to avoid expensive deterministic reruns; context: I-00114 self-assess report."
+    }
+  ]
+}
