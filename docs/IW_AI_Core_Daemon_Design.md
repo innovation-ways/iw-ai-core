@@ -734,6 +734,8 @@ If Phase 2 fails, Phase 3 attempts one `alembic downgrade -1`. If rollback itsel
 | Phase 2 apply failure | `migration_rolled_back` | **No** | Rollback fires; user can investigate |
 | Phase 3 rollback failure | `failed` | **Yes** | Operator intervention required |
 
+**Recovery-testing cross-link (F-00089):** deterministic fault-injection coverage for these daemon failure paths now lives in `tests/integration/daemon_chaos/` (worktree-setup failure, fix-cycle cap exhaustion, agent stall, squash-merge conflict, migration-rebase failure). See `docs/IW_AI_Core_Testing_Strategy.md` §2 **Layer 9 — Daemon chaos** and §5 gate rows (`make daemon-chaos-smoke`, `make daemon-chaos-full`).
+
 ### 4.8. Batch Completion
 
 ```python

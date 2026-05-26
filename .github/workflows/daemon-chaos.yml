@@ -1,0 +1,136 @@
+name: Daemon Chaos
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  daemon-chaos-smoke:
+    name: Daemon chaos smoke
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: iw
+          POSTGRES_PASSWORD: iw
+          POSTGRES_DB: iw_ai_core
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U iw"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      IW_CORE_DB_HOST: localhost
+      IW_CORE_DB_PORT: "5433"
+      IW_CORE_DB_NAME: iw_ai_core
+      IW_CORE_DB_USER: iw
+      IW_CORE_DB_PASSWORD: iw
+      IW_CORE_DASHBOARD_HOST: localhost
+      IW_CORE_DASHBOARD_PORT: "9900"
+      IW_CORE_POLL_INTERVAL: "60"
+      IW_CORE_STALL_THRESHOLD: "300"
+      IW_CORE_PID_FILE: "/tmp/iw-orch-daemon.pid"
+      IW_CORE_ARCHIVE_DIR: "/tmp/iw-archive"
+      IW_CORE_ARCHIVE_TTL: "30"
+      IW_CORE_LOG_LEVEL: "INFO"
+      IW_CORE_LOG_FILE: "/tmp/iw-ai-core.log"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.email "ci@iw-ai-core.local"
+          git config --global user.name "iw-ai-core CI"
+      - run: uv sync --frozen
+      - name: Apply alembic migrations to services postgres
+        run: uv run alembic upgrade head
+      - name: Run daemon-chaos-smoke
+        run: make daemon-chaos-smoke 2>&1 | tee daemon-chaos-smoke.log
+      - name: Upload daemon-chaos-smoke pytest output
+        if: failure()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: daemon-chaos-smoke-log
+          path: daemon-chaos-smoke.log
+      - name: Upload daemon-chaos-smoke Allure artifacts
+        if: failure()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: daemon-chaos-smoke-allure-results
+          path: tests/output/allure-results
+          if-no-files-found: ignore
+
+  daemon-chaos-full:
+    name: Daemon chaos full
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: iw
+          POSTGRES_PASSWORD: iw
+          POSTGRES_DB: iw_ai_core
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U iw"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      IW_CORE_DB_HOST: localhost
+      IW_CORE_DB_PORT: "5433"
+      IW_CORE_DB_NAME: iw_ai_core
+      IW_CORE_DB_USER: iw
+      IW_CORE_DB_PASSWORD: iw
+      IW_CORE_DASHBOARD_HOST: localhost
+      IW_CORE_DASHBOARD_PORT: "9900"
+      IW_CORE_POLL_INTERVAL: "60"
+      IW_CORE_STALL_THRESHOLD: "300"
+      IW_CORE_PID_FILE: "/tmp/iw-orch-daemon.pid"
+      IW_CORE_ARCHIVE_DIR: "/tmp/iw-archive"
+      IW_CORE_ARCHIVE_TTL: "30"
+      IW_CORE_LOG_LEVEL: "INFO"
+      IW_CORE_LOG_FILE: "/tmp/iw-ai-core.log"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.email "ci@iw-ai-core.local"
+          git config --global user.name "iw-ai-core CI"
+      - run: uv sync --frozen
+      - name: Apply alembic migrations to services postgres
+        run: uv run alembic upgrade head
+      - name: Run daemon-chaos-full
+        run: make daemon-chaos-full 2>&1 | tee daemon-chaos-full.log
+      - name: Upload daemon-chaos-full pytest output
+        if: failure()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: daemon-chaos-full-log
+          path: daemon-chaos-full.log
+      - name: Upload daemon-chaos-full Allure artifacts
+        if: failure()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: daemon-chaos-full-allure-results
+          path: tests/output/allure-results
+          if-no-files-found: ignore

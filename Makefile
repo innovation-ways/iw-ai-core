@@ -4,6 +4,7 @@
 
 .PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
           test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
+          daemon-chaos-smoke daemon-chaos-full \
           test-assertions diff-coverage data-layer-check test-cli-contract \
           test-route-sweep test-contract-fuzz \
           test-properties test-properties-deep \
@@ -169,6 +170,14 @@ test-e2e:
 # This is the blocking smoke gate on pull_request / push (see .github/workflows/e2e.yml).
 test-e2e-smoke:
 	uv run pytest tests/e2e/ -m e2e_smoke -v --no-cov
+
+# Daemon chaos smoke suite (F-00089): S02/S03 scenarios.
+daemon-chaos-smoke:
+	uv run pytest tests/integration/daemon_chaos/test_worktree_setup_mid_failure.py tests/integration/daemon_chaos/test_fix_cycle_cap_exhaustion.py -v
+
+# Daemon chaos full suite (F-00089): all chaos scenarios + determinism meta-test.
+daemon-chaos-full:
+	uv run pytest tests/integration/daemon_chaos/ -v
 
 test: test-unit test-integration
 
