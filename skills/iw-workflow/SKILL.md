@@ -135,7 +135,8 @@ QV gates run as shell commands (no LLM):
 {"step": "S13", "agent": "qv-gate", "gate": "typecheck", "command": "make type-check", "description": "QV: Type checking"},
 {"step": "S14", "agent": "qv-gate", "gate": "unit-tests", "command": "make test-unit", "description": "QV: Unit tests"},
 {"step": "S15", "agent": "qv-gate", "gate": "integration-tests", "command": "make test-integration", "description": "QV: Integration tests", "timeout": 1800},
-{"step": "S16", "agent": "qv-gate", "gate": "diff-coverage", "command": "make diff-coverage", "description": "QV: Diff coverage (new/changed lines must be well-covered)", "timeout": 1800}
+{"step": "S16", "agent": "qv-gate", "gate": "diff-coverage", "command": "make diff-coverage", "description": "QV: Diff coverage (new/changed lines must be well-covered)", "timeout": 1800},
+{"step": "S17", "agent": "qv-gate", "gate": "daemon-chaos-smoke", "command": "make daemon-chaos-smoke", "description": "QV: Daemon chaos smoke (S02 + S03 from F-00089)", "timeout": 900}
 ```
 
 The canonical QV gate chain (in order):
@@ -148,8 +149,11 @@ The canonical QV gate chain (in order):
 6. `integration-tests` — `make test-integration` (was `make allure-integration` — a no-op `.PHONY` stub — until 2026-05-14; see TESTS_ENHANCEMENT.md §10)
 7. `diff-coverage` — `make diff-coverage` (CR-00047)
 8. `security-secrets` — `make security-secrets` (gitleaks, CR-00050)
+9. `daemon-chaos-smoke` — `make daemon-chaos-smoke` (deterministic fault-injection smoke: worktree-setup-mid-failure + fix-cycle-cap-exhaustion; F-00089)
 
 The `assertions` gate (added by CR-00046, Phase-1 P1-CR-A) runs `scripts/check_test_assertions.py` against the committed baseline at `tests/assertion_free_baseline.txt` and fails on **new** vacuous tests (no-assert / tautology / mock-only / `pytest.raises(Exception)` without `match=`). The `diff-coverage` gate (added by CR-00047, Phase-1 P1-CR-B) runs `make diff-coverage` — a self-contained run that builds its own combined unit+integration coverage, then `diff-cover --compare-branch=origin/main --fail-under≈90` so new/changed Python lines must be well-covered; it gets a generous (1800s) timeout because it re-runs the unit + integration + dashboard suites. The `security-secrets` gate (added by CR-00050, Phase-1 P1-CR-D) runs `make security-secrets` — a gitleaks scan against the working tree using the project's `.gitleaks.toml` allowlist; it is the blocking secret-scanning gate on every PR.
+
+The `daemon-chaos-smoke` gate (added by F-00089) runs `make daemon-chaos-smoke`, which executes the two highest-signal daemon fault-injection scenarios (S02 worktree-setup-mid-failure and S03 fix-cycle-cap-exhaustion). It provides a fast, repeatable regression check for core daemon recovery behavior on every future workflow.
 
 QV gate failure → item moves to `failed` status (no fix cycles for QV gates).
 

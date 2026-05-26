@@ -1,6 +1,6 @@
 # IW AI Core — Testing Enhancement Plan
 
-> **Status**: living plan — v1.4 (2026-05-24)
+> **Status**: living plan — v1.4 (2026-05-25)
 > **Owner**: sergio
 > **Source research**: [`docs/research/R-00068-ai-core-test-quality-strategy.md`](../../docs/research/R-00068-ai-core-test-quality-strategy.md) (R-00068)
 > **Purpose**: the single place we track *what* we want to improve about IW AI Core's testing, *why*, and *how* — and the running status of each piece. We tackle items one at a time, each delivered either as a CR/Feature or as a direct change, decided at the time.

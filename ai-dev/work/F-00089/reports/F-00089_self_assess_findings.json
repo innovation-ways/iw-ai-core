@@ -1,0 +1,35 @@
+{
+  "item_id": "F-00089",
+  "bottom_line": "Default step-level behavioural pytest runs to PYTEST_ADDOPTS=--no-cov in prompts/skills to avoid repeated false failures from global coverage gating.",
+  "coverage_notes": "Read all S01..S14 and S18 raw logs in full (small files). For larger QV logs: sampled heads/tails and grep-only triage for S15 (429KB), S16 (443KB), S17 (85KB). Cross-checked DB telemetry via `uv run iw item-status F-00089 --json` and active step reports for branch-specific confirmations.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Step-level pytest command conflicts with repository coverage fail-under gate",
+      "recommendation": "Update implementation prompt + testing skill to explicitly permit `PYTEST_ADDOPTS=--no-cov` for per-file RED/GREEN verification when global coverage gates are known to fail targeted runs.",
+      "evidence": [
+        "ai-dev/logs/F-00089_S01_run1.log:23 — 'Required verification command `uv run pytest tests/integration/daemon_chaos/ -v` fails at repository-wide coverage fail-under=50% for narrow subset runs, even when assertions pass.'",
+        "ai-dev/logs/F-00089_S03_run2.log:21 — 'required command runs all 5 tests green, but exits non-zero ... coverage fail-under=50'",
+        "ai-dev/logs/F-00089_S04_run2.log:19 — 'required verification command ... fails after tests pass because repository-wide coverage fail_under=50'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Clarify workflow implementation prompts and iw-ai-core-testing skill to allow PYTEST_ADDOPTS=--no-cov for per-file behavioural RED/GREEN runs when repository-wide coverage fail-under causes false failures; analyzed in F-00089 (ai-dev/work/F-00089/reports/F-00089_self_assess_report.md)."
+    },
+    {
+      "severity": "HIGH",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "CodeReview scope handling caused repeated fail/fix thrash on out-of-scope diffs",
+      "recommendation": "Adjust review/fix-cycle routing to pre-filter or separately classify pre-existing out-of-scope diffs vs item-attributable diffs so review steps fail only on actionable in-scope findings.",
+      "evidence": [
+        "ai-dev/logs/F-00089_S09_run5.log:4 — 'step-fail ... reason \"scope diff vs main not empty ...\"'",
+        "ai-dev/logs/F-00089_S09_fix2.log:39 — 'Please amend allowed paths ... if you want this critical finding resolved in this fix cycle.'",
+        "ai-dev/logs/F-00089_S10_run9.log:8 — 'step-fail ... reason \"... production-scope diff not empty\"'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Improve code-review/fix-cycle scope filtering so pre-existing out-of-scope diffs do not trigger repeated failed review loops for item-local work; analyzed in F-00089 (ai-dev/work/F-00089/reports/F-00089_self_assess_report.md)."
+    }
+  ]
+}
