@@ -118,6 +118,37 @@ a **CRITICAL** finding in your review result contract with:
 If a command is unavailable (e.g., `make` not found), STOP and raise a blocker.
 Do NOT skip this step or mark it as optional.
 
+## Scope Diff — Use Directional, Not Symmetric (MANDATORY)
+
+When the design document declares a scope constraint (e.g., "test-only — no production code change" / Invariant N: `git diff main -- 'orch/**' must be empty"), you MUST verify it with **directional** diffs, not the bare `git diff main`. A long-running Feature can spend hours on `main`-drift alone — `main` advances through unrelated CRs while the branch is being built, and a symmetric `git diff main` will inevitably flag paths where **main is ahead of the branch**, not paths the Feature added.
+
+Diagnosed 2026-05-26 from F-00089's S10, which spent 11 runs / 5 fix cycles failing on this exact pattern.
+
+Canonical scope-diff commands:
+
+```bash
+# 1. What this Feature ADDS vs main (triple-dot = merge-base(main, HEAD)..HEAD).
+#    This is the squash-merge diff. Empty = no production-code addition.
+git diff main...HEAD --name-only -- 'orch/**' 'dashboard/**' 'executor/**' 'orch/db/migrations/**'
+
+# 2. Which committed changes on the branch hit those paths.
+git log --name-only --pretty='%h %s' main..HEAD -- 'orch/**' 'dashboard/**' 'executor/**' 'orch/db/migrations/**'
+
+# 3. Uncommitted working-tree state under the same paths.
+git status -s -- 'orch/**' 'dashboard/**' 'executor/**' 'orch/db/migrations/**'
+```
+
+All three views must be empty to verdict the test-only invariant as PASS.
+
+**Forbidden**: `git diff main -- <paths>` (no dots between `main` and `--`). This is a symmetric two-dot diff that includes everything where the trees differ — it cannot distinguish "Feature added it" from "main moved on without it". If the design doc's Invariant section quotes this form, treat it as **shorthand** for the directional form and run the three commands above. Note the discrepancy in your review notes (INFO finding) so the design doc gets corrected for next time.
+
+If you must mention divergent paths from a symmetric diff, classify them by direction:
+
+- Files in `git log main..HEAD -- <paths>` → introduced by the Feature → potential scope violation.
+- Files in `git log HEAD..main -- <paths>` → introduced by main since the merge-base → ignore for scope, but call out a rebase-staleness HIGH if the gap is large or includes anything migration-related.
+
+If you find unexpected commits on the branch (e.g., a manual operator unblock commit applied directly into the worktree), name them in the finding and recommend they be either: (a) dropped from the branch if their content is now also on main, or (b) split into a separate item.
+
 ## Review Checklist
 
 ### 1. Completeness vs Design Document
