@@ -21,6 +21,7 @@ from orch.cli.doc_commands import (
     doc_update,
     docs_export,
 )
+from orch.cli.event_commands import daemon_event
 from orch.cli.id_commands import current_project, next_id
 from orch.cli.item_commands import (
     approve,
@@ -126,6 +127,7 @@ cli.add_command(batch_status)
 cli.add_command(batch_pause)
 cli.add_command(batch_resume)
 cli.add_command(batch_cancel, name="batch-cancel")
+cli.add_command(daemon_event)
 cli.add_command(migration_lock)
 cli.add_command(search)
 cli.add_command(sync_skills_cmd, name="sync-skills")

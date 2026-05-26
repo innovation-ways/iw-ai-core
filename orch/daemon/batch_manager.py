@@ -1513,6 +1513,8 @@ class BatchManager:
                 prompt_file=str(prompt_file),
                 resolved_model=resolved_model,
                 worktree_path=worktree_path,
+                item_id=step.work_item_id,
+                step_id=step.step_id,
                 agent_args=agent_args,
             )
 
@@ -2085,6 +2087,7 @@ _PI_WORKTREE_PIN_TEXT = (
     "sibling path on disk; it is NOT your project. Ignore it entirely and use "
     "paths relative to your working directory."
 )
+_PI_NARRATION_GUARD_SCRIPT = "executor/pi_narration_guard.py"
 
 
 def _pi_worktree_isolation_args(worktree_path: str) -> str:
@@ -2115,6 +2118,8 @@ def _build_initial_command(
     prompt_file: str,
     resolved_model: str,
     worktree_path: str,
+    item_id: str = "",
+    step_id: str = "",
     agent_args: str = "",
 ) -> str:
     """Build the shell command launched for a step's initial agent run.
@@ -2138,9 +2143,19 @@ def _build_initial_command(
         # `--dangerously-skip-permissions` / `--permission-mode bypassPermissions`
         # flag. See R-00072 §7.
         # CR-00065 follow-up: pin pi to its worktree (see _pi_worktree_isolation_args).
-        return (
+        base_pi_cmd = (
             f'pi -p "$(cat {prompt_file})" --model {resolved_model} '
             f"{_pi_worktree_isolation_args(worktree_path)}"
+        )
+        # I-00114/S03: guard is only usable when both IDs are present.
+        # Keep the legacy bare-pi shape for helper/test call-sites that omit IDs.
+        if not item_id or not step_id:
+            return base_pi_cmd
+        return (
+            f"python {_PI_NARRATION_GUARD_SCRIPT} "
+            f"--item-id {shlex.quote(item_id)} --step-id {shlex.quote(step_id)} "
+            f"--max-reprompts 5 -- "
+            f"{base_pi_cmd}"
         )
     raise ValueError(f"Unknown cli_tool: {cli_tool!r}")
 

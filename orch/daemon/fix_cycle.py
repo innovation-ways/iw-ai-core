@@ -18,6 +18,7 @@ import fnmatch
 import json
 import logging
 import re
+import shlex
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -2319,7 +2320,12 @@ def _build_fix_launch_argv(cli_tool: str, inner_command: str) -> list[str]:
 
 
 def _build_fix_inner_command(
-    cli_tool: str, prompt_path: str, resolved_model: str, worktree_path: str
+    cli_tool: str,
+    prompt_path: str,
+    resolved_model: str,
+    worktree_path: str,
+    item_id: str = "",
+    step_id: str = "",
 ) -> str:
     """Build the inner shell command launched for a fix-cycle agent run.
 
@@ -2340,11 +2346,24 @@ def _build_fix_inner_command(
         # CR-00062: pi.dev print-mode is permission-flag-free (R-00072 §7).
         # CR-00065 follow-up: pin pi to its worktree — same isolation the
         # initial-step launcher applies (see _pi_worktree_isolation_args).
-        from orch.daemon.batch_manager import _pi_worktree_isolation_args  # noqa: PLC0415
+        from orch.daemon.batch_manager import (  # noqa: PLC0415
+            _PI_NARRATION_GUARD_SCRIPT,
+            _pi_worktree_isolation_args,
+        )
 
-        return (
+        base_pi_cmd = (
             f'pi -p "$(cat {prompt_path})" --model {resolved_model} '
             f"{_pi_worktree_isolation_args(worktree_path)}"
+        )
+        # I-00114/S03 parity with batch_manager: keep bare pi command when
+        # callers omit item/step IDs (legacy helper tests), wrap otherwise.
+        if not item_id or not step_id:
+            return base_pi_cmd
+        return (
+            f"python {_PI_NARRATION_GUARD_SCRIPT} "
+            f"--item-id {shlex.quote(item_id)} --step-id {shlex.quote(step_id)} "
+            f"--max-reprompts 5 -- "
+            f"{base_pi_cmd}"
         )
     raise ValueError(f"Unknown cli_tool: {cli_tool!r}")
 
@@ -2407,6 +2426,8 @@ def _launch_fix_agent(
         prompt_path=str(tmp_prompt),
         resolved_model=resolved_model,
         worktree_path=worktree_path,
+        item_id=item_id,
+        step_id=step_id,
     )
 
     # Log file
