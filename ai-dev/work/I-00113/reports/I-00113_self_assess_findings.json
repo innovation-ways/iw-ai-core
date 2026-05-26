@@ -1,0 +1,48 @@
+{
+  "item_id": "I-00113",
+  "bottom_line": "Add stronger QV gate retry/escalation rules so repeated infrastructure-style failures stop looping and switch to diagnosis earlier.",
+  "coverage_notes": "DB telemetry available (db-identity check passed). Read all small logs fully; for larger gate logs (~400-600KB: S11/S12), used grep for failures plus tail sections for terminal summaries and fix-cycle outcomes.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "QV gates oscillated between fail/pass across repeated reruns",
+      "recommendation": "Add explicit retry caps and auto-escalation guidance in gate-fix flow when the same gate repeats with similar failure signatures.",
+      "evidence": [
+        "ai-dev/logs/I-00113_S10_run1.log:5 — 'Failed I-00113 step S10: assertions failed: exit=2'",
+        "ai-dev/logs/I-00113_S10_run4.log:2 — 'Completed I-00113 step S10'",
+        "ai-dev/logs/I-00113_S13_run1.log:25 — 'Failed I-00113 step S13: diff-coverage failed: exit=2'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Add retry-cap and infra-escalation rules to QV gate-fix guidance to prevent repeated fail/pass thrash; analyzed in I-00113 (see ai-dev/work/I-00113/reports/I-00113_self_assess_report.md). Target file: skills/iw-fix-gates/SKILL.md. Effort: M."
+    },
+    {
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "project",
+      "title": "Unit-test collection hard-fails when optional anthropic dependency is absent",
+      "recommendation": "Guard optional-SDK tests consistently (or ensure dependency is present in default test env) so test collection cannot fail early.",
+      "evidence": [
+        "ai-dev/logs/I-00113_S11_run1.log:14 — 'ModuleNotFoundError: No module named \'anthropic\''",
+        "ai-dev/logs/I-00113_S11_run5.log:14 — 'ModuleNotFoundError: No module named \'anthropic\''"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Harden optional-provider test handling so make test-unit does not fail collection when anthropic is missing; analyzed in I-00113 (see ai-dev/work/I-00113/reports/I-00113_self_assess_report.md). Target file: tests/unit/test_llm_judge_script.py. Effort: S."
+    },
+    {
+      "severity": "HIGH",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Integration gate repeatedly failed on test DB connection refusal",
+      "recommendation": "Refactor dashboard test fixtures so middleware and route handlers bind to the same live testcontainer engine/port lifecycle.",
+      "evidence": [
+        "ai-dev/logs/I-00113_S12_run1.log:3380 — 'connection to server at \"127.0.0.1\", port 50444 failed: Connection refused'",
+        "ai-dev/logs/I-00113_S12_run6.log:3380 — 'connection to server at \"127.0.0.1\", port 50444 failed: Connection refused'",
+        "ai-dev/logs/I-00113_S12_run1.log:6273 — '= 6 failed, 3210 passed'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Investigate and fix dashboard integration-test DB binding flake causing repeated Connection refused failures in make test-integration; analyzed in I-00113 (see ai-dev/work/I-00113/reports/I-00113_self_assess_report.md). Target files: tests/dashboard/test_route_contract_sweep.py and related fixtures. Effort: M."
+    }
+  ]
+}

@@ -426,6 +426,9 @@ tests/unit/test_fix_cycle.py::test_get_browser_findings_last_resort_error_messag
 tests/unit/test_fix_cycle.py::test_get_browser_findings_newer_daemon_failure_prepended_from_report_content # tautology
 tests/unit/test_fix_cycle.py::test_get_browser_findings_no_report_available # tautology
 tests/unit/test_fix_cycle.py::test_get_browser_findings_prefers_step_report_file # tautology
+tests/unit/test_fix_cycle.py::test_build_fix_prompt_includes_post_edit_format_lint_gate # tautology
+tests/unit/test_fix_cycle.py::test_build_scope_block_lists_implicit_allows_when_item_id_passed # tautology
+tests/unit/test_fix_cycle.py::test_qv_fix_prompt_includes_cross_gate_check # tautology
 tests/unit/test_fix_cycle.py::test_qv_fix_prompt_escalation_on_last_cycle # tautology
 tests/unit/test_fix_cycle.py::test_qv_fix_prompt_includes_cross_gate_check # tautology
 tests/unit/test_fix_cycle.py::test_qv_fix_prompt_includes_gate_command # tautology

@@ -10,11 +10,7 @@
       "orch/daemon/step_monitor.py",
       "tests/unit/daemon/**",
       "tests/integration/daemon/**",
-      "ai-dev/active/I-00113/**",
-      "tests/unit/test_fix_cycle.py",
-      "tests/unit/test_llm_judge_script.py",
-      "tests/dashboard/test_doc_job_log_endpoints.py",
-      "tests/integration/test_doc_job_log_endpoints.py"
+      "ai-dev/active/I-00113/**"
     ]
   },
   "steps": [
