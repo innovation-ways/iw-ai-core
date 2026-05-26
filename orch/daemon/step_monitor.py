@@ -202,6 +202,118 @@ def _is_pid_alive(pid: int | None) -> bool:
         return True
 
 
+def _has_agent_cmdline(pid: int | None) -> bool:
+    """Return True if pid identifies a live agent process.
+
+    Checks both the /proc/PID/cmdline CWD hint (for agents like opencode that
+    change their working directory to the worktree root) and the /comm filename
+    (for agents that rename via exec -a where the path won't appear in cmdline).
+    Returns False for zombies or processes whose cmdline/comm does not match.
+    """
+    if pid is None:
+        return False
+    try:
+        os.kill(pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+
+    # Check the cmdline CWD hint (line the agent changed into worktree root)
+    try:
+        with open(f"/proc/{pid}/cwd") as f:  # noqa: PTH123, SIM115, WPS515
+            cwd = f.read().strip()
+        if cwd.endswith(("/orch", "/ai-dev")) or "/worktrees/" in cwd:
+            return True
+    except OSError:
+        pass
+
+    # Check /proc/PID/cmdline for agent binary path
+    try:
+        with open(f"/proc/{pid}/cmdline") as f:  # noqa: PTH123, SIM115, WPS515
+            cmdline = f.read()
+        for candidate in ("opencode", "claude", "pi", "claude-code"):
+            if candidate in cmdline:
+                return True
+    except OSError:
+        pass
+
+    # Check /proc/PID/comm for exec -a renamed processes
+    try:
+        with open(f"/proc/{pid}/comm") as f:  # noqa: PTH123, SIM115, WPS515
+            comm = f.read().strip()
+        if comm in ("opencode", "claude", "pi", "claude-code"):
+            return True
+    except OSError:
+        pass
+
+    return False
+
+
+def _probe_for_child(wrapper_pid: int | None) -> bool:
+    """Check whether a live agent child exists for the given wrapper PID.
+
+
+    Three-tier scan:
+      1. Direct-children via /proc/PID/task/TID/children (kernel API)
+      2. Full /proc scan for PPID=wrapper_pid
+      3. Orphan fallback: scan /proc for PPID=1 and check cmdline for agent
+
+    Returns True if any of the above finds a live agent child.
+    """
+    if wrapper_pid is None:
+        return False
+
+    # Tier 1: kernel-supplied children list
+    try:
+        for tid in os.listdir(f"/proc/{wrapper_pid}/task"):  # noqa: PTH102, PTH208, FIPS18
+            children_path = f"/proc/{wrapper_pid}/task/{tid}/children"
+            try:
+                with open(children_path) as f:  # noqa: PTH123, SIM115, WPS515
+                    children_str = f.read().strip()
+                for child_pid_str in children_str.split():
+                    child_pid = int(child_pid_str)
+                    if _has_agent_cmdline(child_pid):
+                        return True
+            except OSError:
+                continue
+    except OSError:
+        pass
+
+    # Tier 2: full /proc scan for PPID = wrapper_pid
+    try:
+        for entry in os.listdir("/proc"):  # noqa: PTH208, FIPS18
+            if not entry.isdigit():
+                continue
+            pid = int(entry)
+            try:
+                stat = open(f"/proc/{pid}/stat").read()  # noqa: PTH123, SIM115, WPS515
+                # Fields: pid (0) cmd (1) state (2) ppid (3) ...
+                parts = stat.split()
+                if len(parts) >= 4 and int(parts[3]) == wrapper_pid and _has_agent_cmdline(pid):
+                    return True
+            except (OSError, ValueError):
+                continue
+    except OSError:
+        pass
+
+    # Tier 3: orphan fallback — PPID=1 scan
+    try:
+        for entry in os.listdir("/proc"):  # noqa: PTH208, FIPS18
+            if not entry.isdigit():
+                continue
+            pid = int(entry)
+            try:
+                stat = open(f"/proc/{pid}/stat").read()  # noqa: PTH123, SIM115, WPS515
+                parts = stat.split()
+                if len(parts) >= 4 and int(parts[3]) == 1 and _has_agent_cmdline(pid):  # noqa: E501
+                    return True
+            except (OSError, ValueError):
+                continue
+    except OSError:
+        pass
+
+    return False
+
+
 def _check_step_health(
     db: Session,
     run: StepRun,
@@ -226,6 +338,19 @@ def _check_step_health(
         _update_token_counts(run)
 
     if not alive:
+        # I-00113: probe child processes before declaring crash.
+        # The wrapper may have exited (its PID is dead) but the real agent child
+        # is still alive and running. The orphan-fallback scan catches cases
+        # where intermediate shell processes have also exited (PPID=1).
+        if _probe_for_child(run.pid):
+            run.pid_alive = True
+            run.last_heartbeat = now
+            # Update session file if this is the first poll where the child was found
+            if run.session_file is None:
+                _maybe_resolve_pi_session_file(db, run, now)
+            if run.session_file is not None:
+                _update_token_counts(run)
+            return
         _handle_crashed(db, run, project_id, now, project_config)
         return
 
