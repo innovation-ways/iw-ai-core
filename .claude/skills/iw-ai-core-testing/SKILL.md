@@ -499,3 +499,28 @@ The judge exists at `scripts/llm_judge_test_review.py` but **is not invoked** in
 **If the hook is DORMANT (current state):** the judge exists but the CodeReview agent is instructed not to invoke it pending re-calibration. Full evidence at `ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt`.
 
 **Re-enable path:** run `make llm-judge-calibrate` once `ANTHROPIC_API_KEY` is available; if the Verdict line reads MET, update §6 of `agents/claude/code-review-impl.md` and `agents/opencode/code-review-impl.md` to the LIVE form.
+
+## 16. Daemon chaos / fault-injection harness (F-00089)
+
+The daemon-chaos harness is a **deterministic fault-injection** layer for daemon poll-loop integration tests. It is not a chaos-monkey system: no random failure, no `kill -9`, no wall-clock flake injection. It gives reproducible failure-mode simulations so recovery paths can be asserted from daemon-mutated DB/event state.
+
+Hook API (source of truth: `tests/integration/daemon_chaos/harness.py` docstring):
+
+- `inject_worktree_setup_failure_after_clone(stage: str = "after_clone") -> None`
+- `inject_fix_cycle_always_fails() -> None`
+- `inject_agent_stall_after_seconds(seconds: int) -> None`
+- `inject_squash_merge_conflict_on_main() -> None`
+- `inject_migration_rebase_conflict_revision() -> None`
+
+Scenario-addition checklist:
+
+- Read the harness module docstring first; treat it as the canonical contract.
+- Reuse an existing hook when possible; add a new hook to `harness.py` only when no existing hook can model the failure.
+- Keep hooks deterministic: no `kill -9`, no `random.*`, no wall-clock-driven race timing.
+- Hooks must be idempotent (arming the same hook twice must not corrupt harness state).
+- Scenario assertions must target daemon-mutated DB rows and/or daemon-event rows, not only "hook fired" flags.
+- If a scenario reveals a genuine daemon bug, mark it `xfail(strict=True)` and file an Incident; do **not** fix daemon production code inside the test CR.
+- Keep the determinism meta-test passing (`tests/integration/daemon_chaos/test_harness_is_deterministic.py`).
+- If the smoke subset changes (currently S02 + S03), update `Makefile` and `.github/workflows/daemon-chaos.yml` together.
+
+Source of truth: `tests/integration/daemon_chaos/harness.py` docstring and the package-level tests under `tests/integration/daemon_chaos/`.

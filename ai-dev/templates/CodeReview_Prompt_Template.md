@@ -134,6 +134,24 @@ both whitelist them.
 Flagging `ai-dev/work/<ID>/` as scope creep was a recurring failure pattern
 (diagnosed 2026-05-25 from CR-00082's 11-run review thrash). Do not repeat it.
 
+### Scope diff — use directional, not symmetric
+
+When you check whether this step added anything outside `scope.allowed_paths`,
+use a **directional** diff. `git diff main -- <paths>` is symmetric — it also
+flags paths where `main` is *ahead* of the branch (CRs that merged while this
+item was running), which is not a scope violation by this step.
+
+```bash
+# What this step + branch ADDS vs main (triple-dot = merge-base(main, HEAD)..HEAD):
+git diff main...HEAD --name-only -- <forbidden-paths>
+git status -s -- <forbidden-paths>          # also check uncommitted working tree
+```
+
+If both are empty for `<forbidden-paths>`, the step is in scope. If the design
+doc's Invariant section quotes `git diff main` (two-dot), treat it as shorthand
+for the directional form and run the commands above. Diagnosed 2026-05-26
+from F-00089 S10's 11-run thrash on this exact mis-reading.
+
 ## Test Verification — Coverage Note
 
 When the design's test verification step is a NARROW pytest target (e.g.

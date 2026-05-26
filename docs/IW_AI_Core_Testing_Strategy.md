@@ -1,6 +1,6 @@
 # IW AI Core — Testing Strategy
 
-**Last updated**: 2026-05-24
+**Last updated**: 2026-05-26
 
 This document is the single reference for *how IW AI Core is tested* — the layers, the infrastructure, the conventions, the quality gates, and the known gaps. It is **descriptive of the current state** plus a pointer to where we're heading.
 
@@ -34,19 +34,20 @@ So our metrics and gates are chosen accordingly:
 
 ## 2. Test layers (current state)
 
-IW AI Core today has **eight test layers**, all pytest-based except the browser layer which drives a real Chromium via `playwright-cli`.
+IW AI Core today has **nine test layers**, all pytest-based except the browser layer which drives a real Chromium via `playwright-cli`.
 
 ```
+Layer 9:  Daemon chaos (pytest)           — Deterministic daemon fault-injection (5 failure modes)
 Layer 8:  Visual regression              — Pixel diffs for rendered HTML docs + PDF exports
 Layer 7:  Cross-project isolation matrix  — Two-project seed proves project-scoped surfaces don't leak
 Layer 6:  Contract tests (pytest)         — No-5xx route sweep + schemathesis OpenAPI fuzz
 Layer 5:  Security tests (pytest)         — Live-DB guard regression, authz negatives,
                                                  SSRF/path-traversal, agent-context env-var
-Layer 4:  Browser tests (playwright-cli) — Real Chromium against a live Uvicorn dashboard
-Layer 3:  Dashboard tests (TestClient)   — FastAPI routes/templates/htmx against testcontainer DB
-Layer 2:  Integration tests (pytest)     — Models, daemon, CLI, RAG, DB behaviour against testcontainer DB
-Layer 1:  Unit tests (pytest)            — Config, state-machine logic, parsers, CLI parsing, pure functions
-Static:   Quality gates (ruff, mypy…)   — Enforced by `make quality` / `make check`
+Layer 4:  Browser tests (playwright-cli)  — Real Chromium against a live Uvicorn dashboard
+Layer 3:  Dashboard tests (TestClient)    — FastAPI routes/templates/htmx against testcontainer DB
+Layer 2:  Integration tests (pytest)      — Models, daemon, CLI, RAG, DB behaviour against testcontainer DB
+Layer 1:  Unit tests (pytest)             — Config, state-machine logic, parsers, CLI parsing, pure functions
+Static:   Quality gates (ruff, mypy…)     — Enforced by `make quality` / `make check`
 ```
 
 ### Test inventory
@@ -172,6 +173,14 @@ Visual regression covers **rendered HTML document views and PDF exports**.
 The layer compares fresh renders with committed baselines (4 PDF + 4 HTML in CR-00082) to catch CSS/template regressions that functional assertions miss.
 
 This layer is **CI-only** (nightly + path-filtered PR/manual runs) and is **not** part of the daemon QV merge gate because of wall-clock cost.
+
+### Layer 9 — Daemon chaos (`tests/integration/daemon_chaos/` — F-00089)
+
+Deterministic fault-injection integration layer for the daemon poll loop, covering the five documented recovery/failure modes: worktree setup failure after clone, fix-cycle cap exhaustion, agent stall recovery, squash-merge conflict, and migration-rebase failure. This layer is **test-only** (no production daemon changes) and exists to verify daemon state/event mutations under controlled failures.
+
+**Execution:** `make daemon-chaos-smoke` (blocking smoke subset: S02 + S03) and `make daemon-chaos-full` (full matrix, nightly/workflow-dispatch).
+
+**Back-reference:** delivered by **F-00089**.
 
 
 ## E2E browser-verification stack
@@ -368,6 +377,8 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Smoke | pytest `-m smoke --strict-markers --no-cov` | 100 % pass | `make smoke` |
 | E2E smoke (F-00088) | pytest `tests/e2e/` `-m e2e_smoke` — `home_navigation` + `queue_to_merge` | 100 % pass; **blocking** on `pull_request` / `push` | `.github/workflows/e2e.yml` `e2e-smoke` job; also `make test-e2e-smoke` |
 | E2E full (F-00088) | pytest `tests/e2e/` `-m e2e` — all 6 journey modules | informational; alerts on regression; `continue-on-error` in CI | `.github/workflows/e2e.yml` `e2e-full` job (nightly cron + workflow_dispatch); also `make test-e2e` |
+| Daemon chaos smoke (F-00089) | pytest `tests/integration/daemon_chaos/` smoke subset (S02 + S03) | 100 % pass; **blocking** on PR + push to `main` | `make daemon-chaos-smoke` |
+| Daemon chaos full (F-00089) | pytest `tests/integration/daemon_chaos/` full matrix (S02..S06) | non-blocking; nightly + `workflow_dispatch` | `make daemon-chaos-full` |
 | Mutation testing | `mutmut>=2.5,<3.0` | DEFERRED by CR-00080 viability guard — spike data too thin (M=0%, K=55); next step: Expand test coverage in the most-mutated modules (see per-module breakdown in evidence file), then re-run this CR. Alternatively, run a longer manual spike (`make mutation-audit` outside the 3600s budget) to gather more data before re-running. | `make mutation-check MODULE=...` / `make mutation-audit` |
 | Property tests (ci profile) | hypothesis | included in `make test-unit` via `tests/unit/properties/` conftest default; `--strict-markers` via `pyproject.toml`; deterministic via `derandomize=True` | `make test-properties` (explicit); also via `make test-unit` |
 | Property tests (deep profile) | hypothesis | NOT in CI; on-demand | `make test-properties-deep` |
@@ -475,8 +486,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Data-layer module (migration round-trip / FTS invariant / revision-skew / DB-identity) | ✅ (CR-00076, 2026-05-21) — `tests/integration/data_layer/` package + `make data-layer-check`; extends, does not replace, the migration round-trip (3.6) |
 | DB-column doc gate (4.5) | ✅ (CR-00085, 2026-05-24) — `make check-column-docs` + baseline `orch/db/column_docs_baseline.txt`; warn-first during burn-in; follow-up CR-00085-followup-column-docs-gate-blocking will flip to blocking |
 | Visual regression for rendered HTML/PDF docs | ✅ (CR-00082, 2026-05-25) |
-| Performance budgets | ❌ (4.2) |
-| Daemon chaos / fault-injection | ❌ (4.3) |
+| Daemon chaos / fault-injection | ✅ (F-00089, 2026-05-26) — `tests/integration/daemon_chaos/` harness + 5 scenario modules (S01–S05); `make daemon-chaos-smoke` (blocking smoke: S02 + S03); `make daemon-chaos-full` (full matrix, nightly/workflow-dispatch); documented in §2 Layer 9 + §5 gate table + TESTS_ENHANCEMENT.md (4.3) |
 | `tests/factories.py` central entity factory | ❌ |
 
 Update this table and the gate table in §5 as roadmap items land.
@@ -579,4 +589,5 @@ Promoting the judge to a **blocking gate** — the tracker entry is explicit ("n
 
 ## Changelog
 
+- **2026-05-26** — **Layer 9 added (F-00089).** Daemon chaos / fault-injection test layer: `tests/integration/daemon_chaos/` harness + 5 scenario modules (S01–S05); `make daemon-chaos-smoke` (blocking smoke: S02 + S03) wired as PR/push gate; `make daemon-chaos-full` (full matrix S02..S06) runs nightly/workflow-dispatch. §2 Layer 9 section + §5 gate table entry + §9 roadmap item 4.3 updated. No production daemon code modified.
 - **2026-05-25** — **§12 added (CR-00084 spike outcome).** LLM-as-judge advisory signal spike: judge script `scripts/llm_judge_test_review.py`, labelled set `tests/llm_judge/labelled_set.jsonl`, `make llm-judge-calibrate` target — all shipped. Calibration DEFERRED (ANTHROPIC_API_KEY unavailable in worktree; evidence at `ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt`). Advisory hook in CodeReview agent specs shipped DORMANT (agents instructed not to invoke the judge pending re-calibration). Item 4.4 status → DEFERRED in tracker; §11 changelog entry added. Forward link from CR-00046's §8 entry.
