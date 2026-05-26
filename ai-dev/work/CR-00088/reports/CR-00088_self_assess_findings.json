@@ -1,0 +1,36 @@
+{
+  "item_id": "CR-00088",
+  "bottom_line": "Add a guard in gate orchestration to avoid re-running already-passed QV gates when no code delta exists.",
+  "coverage_notes": "DB telemetry available (iw db-identity check: UP; item-status read). Read all small logs in full. For larger logs (S10 run4/run5, S11 run3/run8, S12 run1), sampled with grep plus targeted head/tail/line-window reads around anomalies.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Duplicate QV reruns after successful completion",
+      "recommendation": "Short-circuit gate reruns when the prior run passed and no new worktree diff/commit exists since that run.",
+      "evidence": [
+        "ai-dev/logs/CR-00088_S06_run1.log:1-4 — 'uv run python scripts/check_templates.py ... Completed CR-00088 step S06'",
+        "ai-dev/logs/CR-00088_S06_run2.log:1-4 — same sequence repeated",
+        "ai-dev/logs/CR-00088_S08_run1.log:1-3 and ai-dev/logs/CR-00088_S08_run2.log:1-3 — identical format-check rerun",
+        "ai-dev/logs/CR-00088_S09_run1.log:1-3 and ai-dev/logs/CR-00088_S09_run2.log:1-3 — identical typecheck rerun"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Prevent redundant QV gate reruns by skipping already-passed gates when no code delta exists; analyzed in CR-00088 (see ai-dev/work/CR-00088/reports/CR-00088_self_assess_report.md). Target file: orch/daemon/batch_manager.py. Effort: M."
+    },
+    {
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "project",
+      "title": "Unit gate aborted by optional anthropic import at module load",
+      "recommendation": "Keep optional SDK imports guarded and add a boundary test enforcing that unit test modules import without optional providers installed.",
+      "evidence": [
+        "ai-dev/logs/CR-00088_S10_run1.log:14-22 — 'ERROR collecting tests/unit/test_llm_judge_script.py ... ModuleNotFoundError: No module named \'anthropic\''",
+        "ai-dev/logs/CR-00088_S10_run1.log:33-34 — 'make: *** [Makefile:121: test-unit] Error 2 ... unit-tests failed'",
+        "ai-dev/logs/CR-00088_S10_fix1.log:5 — same missing anthropic cause noted in fix-cycle summary"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add regression coverage for optional-provider import safety so unit test collection does not fail when anthropic is absent; analyzed in CR-00088 (see ai-dev/work/CR-00088/reports/CR-00088_self_assess_report.md). Target file: tests/unit/test_llm_judge_script.py. Effort: S."
+    }
+  ]
+}

@@ -1034,3 +1034,251 @@ def test_invariant1_no_llm_call_for_phase0_eligible_files(
     assert len(fake_llm.calls) == 0  # Invariant 1+2
     assert result.success is False
     assert result.phase == PHASE_DISABLED
+
+
+# ---------------------------------------------------------------------------
+# CR-00088: deferred_files threading through event metadata
+# ---------------------------------------------------------------------------
+
+
+def test_cr88_deferred_files_attempted_event(
+    db_session: Session,
+    test_project,
+    fake_llm: FakeLLM,
+    default_runtime_option: AgentRuntimeOption,
+    tmp_path: Path,
+) -> None:
+    """CR-00088 REQ-1: EVENT_AUTO_RESOLUTION_ATTEMPTED metadata includes deferred_files.
+
+    Call attempt_resolution with both eligible_files and deferred_files.
+    Verify the attempted event's metadata contains allowlisted_files=eligible
+    and deferred_files=the-deferred-list exactly.
+    """
+    project_id = test_project.id
+    item_id = "F-99916"
+    make_work_item(db_session, project_id, item_id)
+
+    eligible_files = ["tests/unit/test_allowlisted.py"]
+    deferred_files = ["Makefile", "pyproject.toml"]
+
+    for f in eligible_files + deferred_files:
+        path = tmp_path / f
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<<<<<<< HEAD\nA\n=======\nB\n>>>>>>> branch\n")
+
+    config = _phase1_config(runtime_option_id=default_runtime_option.id)
+
+    attempt_resolution(
+        db=db_session,
+        project_id=project_id,
+        item_id=item_id,
+        item_title="CR-00088 attempted event test",
+        item_description="Verify deferred_files in attempted event metadata.",
+        worktree_path=str(tmp_path),
+        main_sha="abc123de",
+        branch_name="agent/F-99916",
+        eligible_files=eligible_files,
+        deferred_files=deferred_files,
+        config=config,
+    )
+
+    attempted = _events_of_type(db_session, project_id, EVENT_AUTO_RESOLUTION_ATTEMPTED)
+    assert len(attempted) == 1
+    meta = attempted[0].event_metadata
+
+    # allowlisted_files is an alias for eligible_files in the metadata
+    assert meta["allowlisted_files"] == eligible_files
+    assert meta["deferred_files"] == deferred_files
+    # backward-compat key still present
+    assert meta["conflict_files"] == eligible_files
+    assert meta["policy_decision"] == "allowlist"
+
+
+def test_cr88_deferred_files_resolved_event(
+    db_session: Session,
+    test_project,
+    fake_llm: FakeLLM,
+    default_runtime_option: AgentRuntimeOption,
+    tmp_path: Path,
+) -> None:
+    """CR-00088 REQ-2: EVENT_AUTO_RESOLVED metadata includes deferred_files.
+
+    LLM is invoked for eligible_files only. Verify the resolved event's
+    metadata contains deferred_files and resolved_files includes eligible ones.
+    """
+    project_id = test_project.id
+    item_id = "F-99917"
+    make_work_item(db_session, project_id, item_id)
+
+    eligible_files = ["docs/foo.md"]
+    deferred_files = ["Makefile"]
+
+    for f in eligible_files + deferred_files:
+        path = tmp_path / f
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<<<<<<< HEAD\nA\n=======\nB\n>>>>>>> branch\n")
+
+    config = _phase1_config(runtime_option_id=default_runtime_option.id)
+
+    attempt_resolution(
+        db=db_session,
+        project_id=project_id,
+        item_id=item_id,
+        item_title="CR-00088 resolved event test",
+        item_description="Verify deferred_files in resolved event metadata.",
+        worktree_path=str(tmp_path),
+        main_sha="abc123de",
+        branch_name="agent/F-99917",
+        eligible_files=eligible_files,
+        deferred_files=deferred_files,
+        config=config,
+    )
+
+    resolved = _events_of_type(db_session, project_id, EVENT_AUTO_RESOLVED)
+    assert len(resolved) == 1
+    meta = resolved[0].event_metadata
+
+    assert meta["deferred_files"] == deferred_files
+    assert "docs/foo.md" in meta.get("resolved_files", [])
+
+
+def test_cr88_deferred_files_failed_event(
+    db_session: Session,
+    test_project,
+    fake_llm: FakeLLM,
+    default_runtime_option: AgentRuntimeOption,
+    tmp_path: Path,
+) -> None:
+    """CR-00088 REQ-3: EVENT_AUTO_RESOLUTION_FAILED metadata includes deferred_files.
+
+    Stub LLM to abstain for the eligible file; verify the failed event's metadata
+    contains both abstained_files and deferred_files.
+    """
+    project_id = test_project.id
+    item_id = "F-99918"
+    make_work_item(db_session, project_id, item_id)
+
+    eligible_files = ["docs/foo.md"]
+    deferred_files = ["Makefile", "pyproject.toml"]
+
+    for f in eligible_files + deferred_files:
+        path = tmp_path / f
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<<<<<<< HEAD\nA\n=======\nB\n>>>>>>> branch\n")
+
+    fake_llm.abstain_for.add("docs/foo.md")
+
+    config = _phase1_config(runtime_option_id=default_runtime_option.id)
+
+    attempt_resolution(
+        db=db_session,
+        project_id=project_id,
+        item_id=item_id,
+        item_title="CR-00088 failed event test",
+        item_description="Verify deferred_files in failed event metadata when LLM abstains.",
+        worktree_path=str(tmp_path),
+        main_sha="abc123de",
+        branch_name="agent/F-99918",
+        eligible_files=eligible_files,
+        deferred_files=deferred_files,
+        config=config,
+    )
+
+    failed = _events_of_type(db_session, project_id, EVENT_AUTO_RESOLUTION_FAILED)
+    assert len(failed) == 1
+    meta = failed[0].event_metadata
+
+    assert meta["deferred_files"] == deferred_files
+    assert meta["abstained_files"] == eligible_files
+
+
+def test_cr88_deferred_files_default_empty(
+    db_session: Session,
+    test_project,
+    fake_llm: FakeLLM,
+    default_runtime_option: AgentRuntimeOption,
+    tmp_path: Path,
+) -> None:
+    """CR-00088 REQ-4 (backward compat): deferred_files=None defaults to empty list.
+
+    Call attempt_resolution WITHOUT deferred_files (default=None); verify
+    both the attempted and resolved events have deferred_files=[] in metadata.
+    """
+    project_id = test_project.id
+    item_id = "F-99919"
+    make_work_item(db_session, project_id, item_id)
+
+    eligible_files = ["tests/unit/test_backward_compat.py"]
+
+    path = tmp_path / eligible_files[0]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("<<<<<<< HEAD\nA\n=======\nB\n>>>>>>> branch\n")
+
+    config = _phase1_config(runtime_option_id=default_runtime_option.id)
+
+    attempt_resolution(
+        db=db_session,
+        project_id=project_id,
+        item_id=item_id,
+        item_title="CR-00088 backward compat test",
+        item_description="Verify default deferred_files=None becomes [] in metadata.",
+        worktree_path=str(tmp_path),
+        main_sha="abc123de",
+        branch_name="agent/F-99919",
+        eligible_files=eligible_files,
+        config=config,
+    )
+
+    attempted = _events_of_type(db_session, project_id, EVENT_AUTO_RESOLUTION_ATTEMPTED)
+    assert len(attempted) == 1
+    assert attempted[0].event_metadata["deferred_files"] == []
+
+    resolved = _events_of_type(db_session, project_id, EVENT_AUTO_RESOLVED)
+    assert len(resolved) == 1
+    assert resolved[0].event_metadata["deferred_files"] == []
+
+
+def test_cr88_deferred_files_skipped_event(
+    db_session: Session,
+    test_project,
+    fake_llm: FakeLLM,
+    tmp_path: Path,
+) -> None:
+    """CR-00088 REQ-4 (skipped path): EVENT_AUTO_RESOLUTION_SKIPPED includes deferred_files.
+
+    Phase 0 skips LLM but emit_skipped_event should still carry deferred_files
+    when called from merge_queue.py (the only caller that passes it).
+    """
+    project_id = test_project.id
+    item_id = "F-99920"
+    make_work_item(db_session, project_id, item_id)
+
+    eligible_files = ["tests/unit/test_skipped.py"]
+    deferred_files = ["Makefile", "pyproject.toml"]
+
+    path = tmp_path / eligible_files[0]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("<<<<<<< HEAD\nA\n=======\nB\n>>>>>>> branch\n")
+
+    config = _phase0_config()
+
+    attempt_resolution(
+        db=db_session,
+        project_id=project_id,
+        item_id=item_id,
+        item_title="CR-00088 skipped event test",
+        item_description="Verify deferred_files in skipped event metadata.",
+        worktree_path=str(tmp_path),
+        main_sha="abc123de",
+        branch_name="agent/F-99920",
+        eligible_files=eligible_files,
+        deferred_files=deferred_files,
+        config=config,
+    )
+
+    skipped = _events_of_type(db_session, project_id, EVENT_AUTO_RESOLUTION_SKIPPED)
+    assert len(skipped) == 1
+    meta = skipped[0].event_metadata
+
+    assert meta["deferred_files"] == deferred_files
+    assert meta["eligible_files"] == eligible_files

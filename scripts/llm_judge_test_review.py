@@ -34,7 +34,10 @@ import sys
 import textwrap
 from pathlib import Path
 
-import anthropic
+try:
+    import anthropic
+except ImportError:
+    anthropic = None  # type: ignore[assignment, misc]
 
 # Pricing as of 2026-05-25. May drift — the calibration evidence file records
 # the prices used so a future re-calibration can audit the discrepancy.
@@ -581,6 +584,13 @@ def main(argv: list[str] | None = None) -> int:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         print("ERROR: ANTHROPIC_API_KEY is not set", file=sys.stderr)
+        return 2
+
+    if anthropic is None:
+        print(
+            "ERROR: the anthropic package is not installed; pip install anthropic",
+            file=sys.stderr,
+        )
         return 2
 
     if args.calibrate:

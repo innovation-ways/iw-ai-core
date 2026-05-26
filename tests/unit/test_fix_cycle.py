@@ -188,6 +188,8 @@ def test_build_fix_prompt_includes_post_edit_format_lint_gate() -> None:
     before exit so cycle N+1 doesn't re-break the gate cycle N fixed.
     """
     prompt = _build_fix_prompt_content("CR-00002", "S06", 1, "findings", 5)
+    # A regression that drops the section entirely would make the prompt very short.
+    assert len(prompt) > 400
     assert "Post-Edit Gate" in prompt
     assert "make format-check" in prompt
     assert "make lint" in prompt
@@ -204,6 +206,8 @@ def test_build_scope_block_lists_implicit_allows_when_item_id_passed() -> None:
     that drove CR-00082 S04 to 5 fix cycles without convergence.
     """
     block = _build_scope_block(["tests/visual/**", "Makefile"], item_id="CR-00082")
+    # A regression that drops the implicit-block would make the output much shorter.
+    assert len(block) > 200
     assert "tests/visual/**" in block
     assert "ai-dev/active/CR-00082/**" in block
     assert "ai-dev/archive/CR-00082/**" in block
@@ -271,6 +275,8 @@ def test_qv_fix_prompt_includes_cross_gate_check() -> None:
     prompt = _build_qv_fix_prompt_content(
         "CR-00002", "S10", 1, "mypy errors", 5, "mypy orch/ dashboard/"
     )
+    # A regression that drops the constraint section would make the prompt very short.
+    assert len(prompt) > 450
     assert "make format-check" in prompt
     assert "make lint" in prompt
 

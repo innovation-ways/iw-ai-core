@@ -2,7 +2,7 @@
   "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
   "id": "CR-00088",
   "type": "ChangeRequest",
-  "title": "Auto-merge \u2014 partial-allowlist semantics in Phase 1 dry-run",
+  "title": "Auto-merge — partial-allowlist semantics in Phase 1 dry-run",
   "browser_verification": false,
   "scope": {
     "allowed_paths": [
@@ -12,11 +12,7 @@
       "tests/integration/test_auto_merge_phase1.py",
       "tests/integration/test_auto_merge_partial_allowlist.py",
       "docs/research/R-00076-llm-automated-merge-resolution.md",
-      "ai-dev/active/AUTO_MERGE_RESOLUTION.md",
-      "tests/unit/test_fix_cycle.py",
-      "tests/unit/test_llm_judge_script.py",
-      "scripts/llm_judge_test_review.py",
-      "orch/db/live_db_guard.py"
+      "ai-dev/active/AUTO_MERGE_RESOLUTION.md"
     ]
   },
   "steps": [

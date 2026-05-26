@@ -256,7 +256,7 @@ def test_too_many_files(tmp_path: Path) -> None:
 
 
 def test_non_allowlisted_file(tmp_path: Path) -> None:
-    """dashboard/static/foo.js conflict → skipped_reason='not_allowlisted'."""
+    """dashboard/static/foo.js conflict → skipped_reason='not_allowlisted', deferred=foo.js."""
     from orch.daemon.auto_merge import classify_conflicts
 
     js_file = tmp_path / "dashboard" / "static" / "foo.js"
@@ -275,6 +275,7 @@ def test_non_allowlisted_file(tmp_path: Path) -> None:
 
     assert result.skipped_reason == "not_allowlisted"
     assert len(result.eligible_files) == 0
+    assert result.deferred_files == ("dashboard/static/foo.js",)
 
 
 def test_decision_tree_determinism_invariant_6(tmp_path: Path) -> None:
@@ -508,3 +509,111 @@ def test_file_too_large_causes_skip(tmp_path: Path) -> None:
 
     assert result.skipped_reason == "file_too_large"
     assert "docs/huge.md" in result.oversized_files
+
+
+# ---------------------------------------------------------------------------
+# CR-00088: Partial-allowlist partition semantics (S01)
+# ---------------------------------------------------------------------------
+
+
+def test_partial_allowlist_returns_partition(tmp_path: Path) -> None:
+    """
+    Two conflicted files (docs/foo.md, Makefile), allowlist=[**/*.md].
+    Result: eligible=docs/foo.md, deferred=Makefile, skipped_reason=None.
+    """
+    from orch.daemon.auto_merge import classify_conflicts
+
+    md_file = tmp_path / "docs" / "foo.md"
+    _write_conflict_file(md_file)
+    makefile = tmp_path / "Makefile"
+    _write_conflict_file(makefile)
+
+    config = _make_config(
+        allowlist=["**/*.md"],
+        refuselist=[],
+    )
+
+    result = classify_conflicts(
+        worktree_path=tmp_path,
+        conflict_files=["docs/foo.md", "Makefile"],
+        config=config,
+    )
+
+    assert result.eligible_files == ("docs/foo.md",)
+    assert result.deferred_files == ("Makefile",)
+    assert result.skipped_reason is None
+
+
+def test_all_deferred_keeps_skip_reason(tmp_path: Path) -> None:
+    """
+    Both files outside allowlist → eligible=(), deferred=all input, reason='not_allowlisted'.
+    """
+    from orch.daemon.auto_merge import classify_conflicts
+
+    makefile = tmp_path / "Makefile"
+    _write_conflict_file(makefile)
+    pyproject = tmp_path / "pyproject.toml"
+    _write_conflict_file(pyproject)
+
+    config = _make_config(
+        allowlist=["**/*.md"],
+        refuselist=[],
+    )
+
+    result = classify_conflicts(
+        worktree_path=tmp_path,
+        conflict_files=["Makefile", "pyproject.toml"],
+        config=config,
+    )
+
+    assert result.eligible_files == ()
+    assert result.deferred_files == ("Makefile", "pyproject.toml")
+    assert result.skipped_reason == "not_allowlisted"
+
+
+def test_refuselist_wins_over_partial_allowlist(tmp_path: Path) -> None:
+    """
+    Refuse-list short-circuits before partition: all other fields zeroed.
+    """
+    from orch.daemon.auto_merge import classify_conflicts
+
+    md_file = tmp_path / "docs" / "foo.md"
+    _write_conflict_file(md_file)
+    migration_file = tmp_path / "orch" / "db" / "migrations" / "versions" / "abc.py"
+    _write_conflict_file(migration_file)
+    makefile = tmp_path / "Makefile"
+    _write_conflict_file(makefile)
+
+    config = _make_config(
+        allowlist=["**/*.md"],
+        refuselist=["orch/db/migrations/versions/*.py"],
+    )
+
+    result = classify_conflicts(
+        worktree_path=tmp_path,
+        conflict_files=["docs/foo.md", "orch/db/migrations/versions/abc.py", "Makefile"],
+        config=config,
+    )
+
+    assert result.skipped_reason == "refuse_list"
+    assert result.refuse_files == ("orch/db/migrations/versions/abc.py",)
+    assert result.eligible_files == ()
+    assert result.deferred_files == ()
+
+
+def test_deferred_files_default_empty() -> None:
+    """
+    ClassificationResult constructed without deferred_files defaults to ().
+    """
+    from orch.daemon.auto_merge import ClassificationResult
+
+    result = ClassificationResult(
+        eligible_files=("tests/foo.py",),
+        refuse_files=(),
+        oversized_files=(),
+        oversized_hunks=(),
+        binary_files=(),
+        skipped_reason=None,
+    )
+
+    assert result.deferred_files == ()
