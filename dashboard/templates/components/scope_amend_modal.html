@@ -19,7 +19,7 @@
         aria-label="Close modal"
         hx-target="#scope-amend-overlay"
         hx-swap="delete"
-        onclick="document.getElementById('scope-amend-modal').remove(); this.closest('#scope-amend-overlay').remove();">
+        onclick="window.dismissScopeAmendModal();">
         ×
       </button>
     </header>
@@ -38,7 +38,8 @@
 
       {# Checkboxes for each offending path (pre-checked) #}
       <form
-        hx-post="/project/{{ item.project_id }}/api/item/{{ item.id }}/scope/amend-and-restart/{{ step.step_id }}">
+        hx-post="/project/{{ item.project_id }}/api/item/{{ item.id }}/scope/amend-and-restart/{{ step.step_id }}"
+        hx-on::after-request="if (event.detail.successful) { document.getElementById('scope-amend-modal')?.remove(); document.getElementById('scope-amend-overlay')?.remove(); window.cleanupScopeAmendModalListeners?.(); }">
         <p class="text-xs font-medium text-muted-foreground mb-2">Paths to add to scope:</p>
         <div class="space-y-1 mb-4">
           {% for path in violations %}
@@ -57,7 +58,7 @@
           <button
             type="button"
             class="px-3 py-1.5 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
-            onclick="document.getElementById('scope-amend-modal').remove(); document.getElementById('scope-amend-overlay').remove();">
+            onclick="window.dismissScopeAmendModal();">
             Cancel
           </button>
           <button
@@ -70,3 +71,39 @@
     </div>
   </div>
 </div>
+<script>
+  (() => {
+    const modal = document.getElementById("scope-amend-modal");
+    const overlay = document.getElementById("scope-amend-overlay");
+    if (!modal || !overlay) return;
+
+    const cleanupListeners = () => {
+      document.removeEventListener("keydown", onKeyDown);
+      overlay.removeEventListener("click", onOverlayClick);
+    };
+
+    const dismissModal = () => {
+      modal.remove();
+      overlay.remove();
+      cleanupListeners();
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        dismissModal();
+      }
+    };
+
+    const onOverlayClick = (event) => {
+      if (event.target === overlay) {
+        dismissModal();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    overlay.addEventListener("click", onOverlayClick);
+
+    window.dismissScopeAmendModal = dismissModal;
+    window.cleanupScopeAmendModalListeners = cleanupListeners;
+  })();
+</script>
