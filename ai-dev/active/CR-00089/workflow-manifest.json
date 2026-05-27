@@ -1,0 +1,117 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00089",
+  "type": "ChangeRequest",
+  "title": "Fix-Cycle Pipeline Systemic Hardening (I-00113 RCA Follow-up)",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/project_registry.py",
+      "projects.toml",
+      "orch/daemon/fix_cycle.py",
+      "orch/daemon/step_monitor.py",
+      "orch/daemon/batch_manager.py",
+      "tests/unit/daemon/test_always_in_scope.py",
+      "tests/unit/daemon/test_step_monitor_completed_at_guard.py",
+      "tests/unit/daemon/test_cascade_smarter_scope.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "step_type": "implementation",
+      "description": "Add always_in_scope_paths to ProjectConfig; parse from projects.toml; add iw-ai-core entry",
+      "prompt": "prompts/CR-00089_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "backend-impl",
+      "step_type": "implementation",
+      "description": "fix_cycle.py: append always_in_scope_paths to allowed at both scope reconciliation sites",
+      "prompt": "prompts/CR-00089_S02_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "step_type": "implementation",
+      "description": "step_monitor.py: add completed_at guard before _handle_crashed (belt-and-suspenders for RC1)",
+      "prompt": "prompts/CR-00089_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "backend-impl",
+      "step_type": "implementation",
+      "description": "fix_cycle.py: _GATE_RELEVANT_EXTENSIONS, _gate_is_relevant, smarter cascade reset filter",
+      "prompt": "prompts/CR-00089_S04_Backend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "tests-impl",
+      "step_type": "implementation",
+      "description": "Unit tests for all four changes: always_in_scope, completed_at guard, cascade smarter scope",
+      "prompt": "prompts/CR-00089_S05_Tests_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "step_type": "code_review",
+      "description": "Per-agent code review of S01–S05",
+      "prompt": "prompts/CR-00089_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "step_type": "code_review_final",
+      "description": "Final cross-agent review: integration correctness, AC coverage, scope discipline",
+      "prompt": "prompts/CR-00089_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: lint"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: format"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "typecheck",
+      "command": "make typecheck",
+      "description": "QV: typecheck"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: unit-tests"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "step_type": "quality_validation",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: integration-tests"
+    },
+    {
+      "step": "S13",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/CR-00089_S13_SelfAssess_prompt.md"
+    }
+  ]
+}
