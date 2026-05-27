@@ -128,17 +128,22 @@ class TestFireClaude:
     """Tests for fire_claude() subprocess invocation."""
 
     def test_fire_claude_returns_true_on_success(self) -> None:
-        """subprocess.run returns CompletedProcess(returncode=0) → (True, None)."""
+        """fire_claude returns success FireResult → row with status success."""
         from subprocess import CompletedProcess
 
-        from orch.keep_alive_service import fire_claude
+        from orch.keep_alive_service import FireResult, fire_claude
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-            success, error = fire_claude("test message", "claude-sonnet-4-6")
+        with (
+            patch("orch.keep_alive_service.subprocess.run") as mock_run,
+            patch("orch.keep_alive_service.time_mod.perf_counter", side_effect=[0.0, 3.5]),
+        ):
+            mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout="hi!", stderr="")
+            result = fire_claude("test message", "claude-sonnet-4-6")
 
-        assert success is True
-        assert error is None
+        assert isinstance(result, FireResult)
+        assert result.returncode == 0
+        assert result.stdout == "hi!"
+        assert result.is_success is True
 
     def test_fire_claude_passes_model_to_subprocess(self) -> None:
         """The configured model MUST land on the claude CLI as ``--model <model>``.
@@ -151,10 +156,13 @@ class TestFireClaude:
         """
         from subprocess import CompletedProcess
 
-        from orch.keep_alive_service import fire_claude
+        from orch.keep_alive_service import FireResult, fire_claude
 
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with (
+            patch("orch.keep_alive_service.subprocess.run") as mock_run,
+            patch("orch.keep_alive_service.time_mod.perf_counter", side_effect=[0.0, 3.5]),
+        ):
+            mock_run.return_value = CompletedProcess(args=[], returncode=0, stdout="hi!", stderr="")
             fire_claude("hi", "claude-sonnet-4-6")
 
         call_args = mock_run.call_args
@@ -165,33 +173,42 @@ class TestFireClaude:
         )
 
     def test_fire_claude_returns_false_on_nonzero(self) -> None:
-        """returncode=1, stderr="error" → (False, "error")."""
+        """returncode=1, stderr="error" → FireResult with is_success=False."""
         from subprocess import CompletedProcess
 
-        from orch.keep_alive_service import fire_claude
+        from orch.keep_alive_service import FireResult, fire_claude
 
-        with patch("subprocess.run") as mock_run:
+        with (
+            patch("orch.keep_alive_service.subprocess.run") as mock_run,
+            patch("orch.keep_alive_service.time_mod.perf_counter", side_effect=[0.0, 1.0]),
+        ):
             mock_run.return_value = CompletedProcess(
                 args=[], returncode=1, stdout="", stderr="connection failed"
             )
-            success, error = fire_claude("test message", "claude-sonnet-4-6")
+            result = fire_claude("test message", "claude-sonnet-4-6")
 
-        assert success is False
-        assert error == "connection failed"
+        assert isinstance(result, FireResult)
+        assert result.returncode == 1
+        assert result.stderr == "connection failed"
+        assert result.is_success is False
 
     def test_fire_claude_returns_false_on_timeout(self) -> None:
-        """subprocess.run raises TimeoutExpired → (False, <exception str>)."""
+        """subprocess.run raises TimeoutExpired → FireResult with rc=-1."""
         from subprocess import TimeoutExpired
 
-        from orch.keep_alive_service import fire_claude
+        from orch.keep_alive_service import FireResult, fire_claude
 
-        with patch("subprocess.run") as mock_run:
+        with (
+            patch("orch.keep_alive_service.subprocess.run") as mock_run,
+            patch("orch.keep_alive_service.time_mod.perf_counter", side_effect=[0.0, 500.0]),
+        ):
             mock_run.side_effect = TimeoutExpired(cmd=["claude"], timeout=30)
-            success, error = fire_claude("test message", "claude-sonnet-4-6")
+            result = fire_claude("test message", "claude-sonnet-4-6")
 
-        assert success is False
-        assert error is not None
-        assert "timed out" in error
+        assert isinstance(result, FireResult)
+        assert result.returncode == -1
+        assert result.stderr == "subprocess timed out"
+        assert result.is_success is False
 
 
 # ---------------------------------------------------------------------------

@@ -2373,6 +2373,13 @@ class KeepAliveRun(Base):
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # I-00112 — CLI output capture for diagnostic audit of silent no-op fires.
+    # All nullable so existing rows survive the migration with NULL (no backfill).
+    stdout: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stderr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    elapsed_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    returncode: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     slot: Mapped["KeepAliveSlot | None"] = relationship("KeepAliveSlot", back_populates="runs")
 
 

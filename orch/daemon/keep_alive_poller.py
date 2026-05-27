@@ -10,6 +10,8 @@ import logging
 
 from orch.db.session import SessionLocal
 from orch.keep_alive_service import (
+    MIN_SUCCESS_ELAPSED_MS,
+    FireResult,
     fire_claude,
     get_config,
     get_due_slots,
@@ -18,6 +20,10 @@ from orch.keep_alive_service import (
 )
 
 logger = logging.getLogger("orch.keep_alive")
+
+# I-00112 — keep this alias local so call-site docs still point reviewers here
+# while the single source of truth lives in orch.keep_alive_service.
+_MIN_SUCCESS_ELAPSED_MS = MIN_SUCCESS_ELAPSED_MS
 
 
 class KeepAlivePoller:
@@ -64,23 +70,57 @@ class KeepAlivePoller:
                 logger.exception("Unexpected error processing keep-alive slot %s", slot_id)
 
     def _fire_slot(self, slot_id: int, slot_time: str, model: str) -> None:
-        """Fire a single slot: attempt + optional retry, then log result."""
-        message_1 = pick_message()
-        success_1, error_1 = fire_claude(message_1, model)
+        """Fire a single slot: attempt + optional retry, then log result.
 
-        if success_1:
-            self._log_run(slot_id, slot_time, status="success")
+        Uses FireResult.is_success (I-00112 strict contract: rc==0 AND
+        non-empty stdout AND elapsed>=_MIN_SUCCESS_ELAPSED_MS) rather than
+        returncode==0 alone. Retry logic is preserved; the retry also requires
+        is_success to be True, not just rc==0.
+        """
+        message_1 = pick_message()
+        result_1: FireResult = fire_claude(message_1, model)
+
+        if result_1.is_success:
+            self._log_run(
+                slot_id,
+                slot_time,
+                status="success",
+                stdout=result_1.stdout,
+                stderr=result_1.stderr,
+                elapsed_ms=result_1.elapsed_ms,
+                returncode=result_1.returncode,
+            )
             return
 
         # Retry once with a new message
         message_2 = pick_message()
-        success_2, error_2 = fire_claude(message_2, model)
+        result_2: FireResult = fire_claude(message_2, model)
 
-        if success_2:
-            self._log_run(slot_id, slot_time, status="retried_success")
+        if result_2.is_success:
+            self._log_run(
+                slot_id,
+                slot_time,
+                status="retried_success",
+                stdout=result_2.stdout,
+                stderr=result_2.stderr,
+                elapsed_ms=result_2.elapsed_ms,
+                returncode=result_2.returncode,
+            )
         else:
-            combined_error = f"{error_1 or 'unknown'}; retry error: {error_2 or 'unknown'}"
-            self._log_run(slot_id, slot_time, status="retried_failed", error=combined_error)
+            combined_error = (
+                f"rc={result_1.returncode} elapsed={result_1.elapsed_ms}ms; "
+                f"retry rc={result_2.returncode} elapsed={result_2.elapsed_ms}ms"
+            )
+            self._log_run(
+                slot_id,
+                slot_time,
+                status="retried_failed",
+                error=combined_error,
+                stdout=result_1.stdout,
+                stderr=result_1.stderr,
+                elapsed_ms=result_1.elapsed_ms,
+                returncode=result_1.returncode,
+            )
 
     def _log_run(
         self,
@@ -88,8 +128,17 @@ class KeepAlivePoller:
         slot_time: str,
         status: str,
         error: str | None = None,
+        stdout: str | None = None,
+        stderr: str | None = None,
+        elapsed_ms: int | None = None,
+        returncode: int | None = None,
     ) -> None:
-        """Log a run record within a fresh session."""
+        """Log a run record within a fresh session.
+
+        All four diagnostic fields (stdout, stderr, elapsed_ms, returncode)
+        are persisted on every run so the operator can audit post-hoc even for
+        failed attempts. Ref: I-00112.
+        """
         with SessionLocal() as db:
             log_run(
                 db,
@@ -97,12 +146,19 @@ class KeepAlivePoller:
                 slot_time=slot_time,
                 status=status,
                 error=error,
+                stdout=stdout,
+                stderr=stderr,
+                elapsed_ms=elapsed_ms,
+                returncode=returncode,
             )
             db.commit()
         logger.info(
-            "KeepAlive slot=%s time=%s status=%s error=%s",
+            "KeepAlive slot=%s time=%s status=%s error=%s stdout=%r elapsed_ms=%s returncode=%s",
             slot_id,
             slot_time,
             status,
             error,
+            stdout[:80] if stdout else stdout,
+            elapsed_ms,
+            returncode,
         )

@@ -7,6 +7,8 @@
         <th class="px-4 py-2">Fired At</th>
         <th class="px-4 py-2">Slot</th>
         <th class="px-4 py-2">Status</th>
+        <th class="px-4 py-2">Elapsed</th>
+        <th class="px-4 py-2">Output</th>
       </tr>
     </thead>
     <tbody>
@@ -23,6 +25,16 @@
             } %}
             {% set cls, label = badge.get(run.status, ('bg-muted text-muted-foreground', run.status)) %}
             <span class="inline-block px-2 py-0.5 rounded text-xs font-medium {{ cls }}">{{ label }}</span>
+          </td>
+          <td class="px-4 py-2 font-mono text-xs whitespace-nowrap">
+            {% if run.elapsed_ms is not none %}{{ run.elapsed_ms }} ms{% else %}—{% endif %}
+          </td>
+          <td class="px-4 py-2 text-xs">
+            {% if run.stdout %}
+              <span class="font-mono" title="{{ run.stdout|e }}">{{ run.stdout[:80] }}{% if run.stdout|length > 80 %}…{% endif %}</span>
+            {% else %}
+              —
+            {% endif %}
           </td>
         </tr>
       {% endfor %}
