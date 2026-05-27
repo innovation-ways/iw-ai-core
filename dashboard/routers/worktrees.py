@@ -29,7 +29,6 @@ from orch.db.models import (
     WorkflowStep,
     WorkItem,
 )
-from orch.db.session import SessionLocal
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -55,8 +54,9 @@ def _compute_dirty_count() -> tuple[int, float]:
     Opens its own DB session so the cache fill is independent of the request-scoped session.
     Returns (dirty_count, timestamp).
     """
-    session = SessionLocal()
-    try:
+    from orch.db.session import get_session as _gs  # lazy: uses current _engine after guard reset
+
+    with _gs() as session:
         dirty = 0
         projects = session.execute(select(Project).where(Project.enabled.is_(True))).scalars().all()
         for project in projects:
@@ -76,9 +76,7 @@ def _compute_dirty_count() -> tuple[int, float]:
                 if label == "dirty":
                     dirty += 1
 
-        return dirty, datetime.now(UTC).timestamp()
-    finally:
-        session.close()
+    return dirty, datetime.now(UTC).timestamp()
 
 
 # ---------------------------------------------------------------------------

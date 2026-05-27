@@ -34,9 +34,10 @@ So our metrics and gates are chosen accordingly:
 
 ## 2. Test layers (current state)
 
-IW AI Core today has **nine test layers**, all pytest-based except the browser layer which drives a real Chromium via `playwright-cli`.
+IW AI Core today has **ten test layers**, all pytest-based except the browser layer which drives a real Chromium via `playwright-cli`.
 
 ```
+Layer 10: Performance budgets (pytest)    — Wall-clock latency vs committed baselines (CR-00083)
 Layer 9:  Daemon chaos (pytest)           — Deterministic daemon fault-injection (5 failure modes)
 Layer 8:  Visual regression              — Pixel diffs for rendered HTML docs + PDF exports
 Layer 7:  Cross-project isolation matrix  — Two-project seed proves project-scoped surfaces don't leak
@@ -181,6 +182,22 @@ Deterministic fault-injection integration layer for the daemon poll loop, coveri
 **Execution:** `make daemon-chaos-smoke` (blocking smoke subset: S02 + S03) and `make daemon-chaos-full` (full matrix, nightly/workflow-dispatch).
 
 **Back-reference:** delivered by **F-00089**.
+
+### Layer 10 — Performance budgets (`tests/perf/` — CR-00083, 2026-05-24)
+
+Three modules under `tests/perf/` measure wall-clock latency against committed baselines:
+
+- `test_daemon_poll_loop.py` — one `Daemon._poll_cycle()` iteration against a seeded testcontainer DB.
+- `test_rag_query.py` — one `CodeQA.answer_stream` invocation against an in-memory LanceDB fixture with a deterministic stub embedding (no Ollama dependency — opposite stance to `tests/integration/rag/`'s skip hook).
+- `test_dashboard_routes.py` — p50 over ≥10 runs (parametrized) for `/`, `/project/{id}/queue`, `/project/{id}/batches`, `/project/{id}/jobs`, `/project/{id}/code`.
+
+**Budget methodology**: each module declares a module-level constant set to `initial_measurement × 1.5` (50% headroom). Default to `mean`; switch to `min` only when initial σ/μ > 0.3 (record the ratio in the module docstring). The pytest-benchmark `--benchmark-compare-fail=mean:25%` regression threshold is the START value — operators may ratchet it down as baselines stabilise, NEVER silently relax it.
+
+**Baseline-update policy**: baselines live under `tests/perf/baselines/` and are committed. `make test-perf-update-baseline` regenerates them locally; committing the regenerated baselines requires a CR review (no automated baseline updates from CI). This prevents a regression from being silently absorbed into the new baseline.
+
+**Run targets**: `make test-perf-daemon` / `make test-perf-rag` / `make test-perf-routes` for individual modules; `make test-perf` for the umbrella. Excluded from `make test-unit` / `make test-integration` via the `perf` marker + `addopts` filter.
+
+**CI surface**: nightly only via `.github/workflows/perf-budgets.yml` (`schedule` + `workflow_dispatch`); NOT on PR per intake (runner variance makes per-PR perf measurement too noisy). On regression, the workflow appends a follow-up entry to this tracker.
 
 
 ## E2E browser-verification stack
@@ -379,6 +396,7 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | E2E full (F-00088) | pytest `tests/e2e/` `-m e2e` — all 6 journey modules | informational; alerts on regression; `continue-on-error` in CI | `.github/workflows/e2e.yml` `e2e-full` job (nightly cron + workflow_dispatch); also `make test-e2e` |
 | Daemon chaos smoke (F-00089) | pytest `tests/integration/daemon_chaos/` smoke subset (S02 + S03) | 100 % pass; **blocking** on PR + push to `main` | `make daemon-chaos-smoke` |
 | Daemon chaos full (F-00089) | pytest `tests/integration/daemon_chaos/` full matrix (S02..S06) | non-blocking; nightly + `workflow_dispatch` | `make daemon-chaos-full` |
+| `perf-budgets` (nightly, CR-00083) | pytest `tests/perf/` (daemon poll-loop / RAG query / dashboard routes) | regression > 25% mean fails | `.github/workflows/perf-budgets.yml` (cron `17 3 * * *` + `workflow_dispatch`); also `make test-perf` |
 | Mutation testing | `mutmut>=2.5,<3.0` | DEFERRED by CR-00080 viability guard — spike data too thin (M=0%, K=55); next step: Expand test coverage in the most-mutated modules (see per-module breakdown in evidence file), then re-run this CR. Alternatively, run a longer manual spike (`make mutation-audit` outside the 3600s budget) to gather more data before re-running. | `make mutation-check MODULE=...` / `make mutation-audit` |
 | Property tests (ci profile) | hypothesis | included in `make test-unit` via `tests/unit/properties/` conftest default; `--strict-markers` via `pyproject.toml`; deterministic via `derandomize=True` | `make test-properties` (explicit); also via `make test-unit` |
 | Property tests (deep profile) | hypothesis | NOT in CI; on-demand | `make test-properties-deep` |
@@ -487,6 +505,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | DB-column doc gate (4.5) | ✅ (CR-00085, 2026-05-24) — `make check-column-docs` + baseline `orch/db/column_docs_baseline.txt`; warn-first during burn-in; follow-up CR-00085-followup-column-docs-gate-blocking will flip to blocking |
 | Visual regression for rendered HTML/PDF docs | ✅ (CR-00082, 2026-05-25) |
 | Daemon chaos / fault-injection | ✅ (F-00089, 2026-05-26) — `tests/integration/daemon_chaos/` harness + 5 scenario modules (S01–S05); `make daemon-chaos-smoke` (blocking smoke: S02 + S03); `make daemon-chaos-full` (full matrix, nightly/workflow-dispatch); documented in §2 Layer 9 + §5 gate table + TESTS_ENHANCEMENT.md (4.3) |
+| Performance budgets | ✅ DONE — CR-00083 (2026-05-24) |
 | `tests/factories.py` central entity factory | ❌ |
 
 Update this table and the gate table in §5 as roadmap items land.
@@ -589,5 +608,6 @@ Promoting the judge to a **blocking gate** — the tracker entry is explicit ("n
 
 ## Changelog
 
+- **2026-05-24** — **Layer 10 performance budgets shipped (CR-00083).** Phase 4 first item. `tests/perf/` package with 3 modules (daemon poll-loop, RAG query, dashboard routes); committed baselines per module under `tests/perf/baselines/`; 5 Makefile targets (`test-perf-daemon`, `test-perf-rag`, `test-perf-routes`, `test-perf`, `test-perf-update-baseline`); nightly `.github/workflows/perf-budgets.yml` (cron `17 3 * * *` + `workflow_dispatch`, NOT on PR). Regression threshold `mean:25%` — start value, ratchetable. Test-only, no production code change.
 - **2026-05-26** — **Layer 9 added (F-00089).** Daemon chaos / fault-injection test layer: `tests/integration/daemon_chaos/` harness + 5 scenario modules (S01–S05); `make daemon-chaos-smoke` (blocking smoke: S02 + S03) wired as PR/push gate; `make daemon-chaos-full` (full matrix S02..S06) runs nightly/workflow-dispatch. §2 Layer 9 section + §5 gate table entry + §9 roadmap item 4.3 updated. No production daemon code modified.
 - **2026-05-25** — **§12 added (CR-00084 spike outcome).** LLM-as-judge advisory signal spike: judge script `scripts/llm_judge_test_review.py`, labelled set `tests/llm_judge/labelled_set.jsonl`, `make llm-judge-calibrate` target — all shipped. Calibration DEFERRED (ANTHROPIC_API_KEY unavailable in worktree; evidence at `ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt`). Advisory hook in CodeReview agent specs shipped DORMANT (agents instructed not to invoke the judge pending re-calibration). Item 4.4 status → DEFERRED in tracker; §11 changelog entry added. Forward link from CR-00046's §8 entry.

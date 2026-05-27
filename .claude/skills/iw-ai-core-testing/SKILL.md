@@ -126,7 +126,7 @@ undocumented columns so the gate fires only on **NEW** violations. Regenerate
 with:
 
 ```bash
-uv run python scripts/check_db_column_docs.py \\
+uv run python scripts/check_db_column_docs.py \
     --write-baseline orch/db/column_docs_baseline.txt
 ```
 
@@ -303,6 +303,17 @@ Five property-test modules are implemented under `tests/unit/properties/`:
 **The `properties` marker** is auto-applied to every test in `tests/unit/properties/` by `pytest_collection_modifyitems` in `tests/unit/properties/conftest.py` — no per-test decorator needed.
 
 **Profiles:** the `ci` profile (`derandomize=True`, 20 examples, 2000 ms deadline) is the merge gate and runs as part of `make test-unit`. The `dev` profile (200 examples, 5000 ms deadline) is the local default. The `deep` profile (1000 examples, no deadline) is on-demand via `make test-properties-deep`. Select via `$IW_HYPOTHESIS_PROFILE`.
+
+### Performance budgets (CR-00083, Phase 4 item 4.2)
+
+When adding a perf test for a new hot path:
+
+1. **Where**: `tests/perf/test_<area>.py`. The package is marker-isolated (`perf`) and excluded from default unit/integration runs.
+2. **Budget choice**: measure 10 times in a quiet environment, set `BUDGET = initial_mean × 1.5` as a module-level constant. Document the σ/μ ratio in the module docstring. Default to asserting `mean < BUDGET`; switch to `min < BUDGET` only when σ/μ > 0.3 (and explain why in the docstring).
+3. **Assertion strength**: a perf test must assert against the specific BUDGET constant — NOT against `pytest-benchmark`'s `--benchmark-compare-fail` flag alone. The flag is a regression gate; the explicit `assert <stat> < BUDGET` is the absolute upper bound. Forbidden: `assert mean > 0`, `assert min < float('inf')`, `assert ratio >= 0` — these are tautologies the assertion scanner will flag.
+4. **Baselines**: committed under `tests/perf/baselines/` per module. Operator-only regeneration via `make test-perf-update-baseline`; committing a regenerated baseline requires a CR review (no silent re-baselining of regressions).
+5. **External deps**: a perf test must NOT depend on a live external service (Ollama, GH API, etc.) — stub it deterministically. The RAG perf test takes the opposite stance to `tests/integration/rag/`'s skip-when-no-Ollama hook precisely so it ALWAYS runs.
+6. **CI**: nightly only via `.github/workflows/perf-budgets.yml`. Do NOT add perf tests to PR-blocking gates — runner variance makes per-PR signal too noisy.
 
 ---
 
@@ -499,6 +510,8 @@ The judge exists at `scripts/llm_judge_test_review.py` but **is not invoked** in
 **If the hook is DORMANT (current state):** the judge exists but the CodeReview agent is instructed not to invoke it pending re-calibration. Full evidence at `ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt`.
 
 **Re-enable path:** run `make llm-judge-calibrate` once `ANTHROPIC_API_KEY` is available; if the Verdict line reads MET, update §6 of `agents/claude/code-review-impl.md` and `agents/opencode/code-review-impl.md` to the LIVE form.
+
+---
 
 ## 16. Daemon chaos / fault-injection harness (F-00089)
 

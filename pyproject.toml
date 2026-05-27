@@ -107,6 +107,7 @@ dev = [
     # Pinned to the current major (4.x) — schemathesis's loader and check API
     # changed across majors; see tests/dashboard/test_schemathesis_contract.py.
     "schemathesis>=4.19,<5",
+    "pytest-benchmark>=4.0,<5",
 ]
 
 # --- Ruff ---
@@ -119,7 +120,7 @@ exclude = ["skills/", ".claude/", "ai-dev/"]
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN", "PIE", "PT", "RSE", "RET", "SLF", "SIM", "TCH", "ARG", "PTH", "ERA"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "ARG001", "ARG002", "SLF001", "S603", "S607", "TC002", "TC003", "S110", "S108", "DTZ001", "B009", "F401"]  # assert ok; fixture side effects; private access in tests ok; git subprocess in test fixtures; TC002: Session alias kept at runtime for reuse across session/scope pattern; DTZ001: freezegun tests pass naive datetimes to freeze_time (legitimate pattern); B009: getattr on module-private names is intentional in unit tests; F401: underscore-prefixed re-import in conftest helpers
+"tests/**" = ["S101", "ARG001", "ARG002", "SLF001", "S603", "S607", "TC002", "TC003", "S110", "S108", "DTZ001", "B009", "F401", "PT006"]  # assert ok; fixture side effects; private access in tests ok; git subprocess in test fixtures; TC002: Session alias kept at runtime for reuse across session/scope pattern; DTZ001: freezegun tests pass naive datetimes to freeze_time (legitimate pattern); B009: getattr on module-private names is intentional in unit tests; F401: underscore-prefixed re-import in conftest helpers; PT006: mark.parametrize second-arg is list[tuple] which triggers false-positive
 "orch/db/migrations/**" = ["E501", "TC003", "F401", "UP035", "I001"]  # migration files: long column definitions; Sequence used at runtime in upgrade(); boilerplate imports unused in merge migrations
 "dashboard/routers/**" = ["B008", "TC001", "PT028"]  # FastAPI Depends() in default args is canonical; TC001 conflicts with FastAPI runtime model resolution; PT028 misfires on dashboard/routers/tests.py — ruff treats route handlers prefixed `tests_*` as pytest tests
 "dashboard/services/oss_service.py" = ["S603", "S607", "S108"]  # git subprocess; /tmp paths for worktrees
@@ -173,7 +174,7 @@ testpaths = ["tests"]
 # full-suite gating: `make test-unit`, `make test-integration`, `make test-parallel`,
 # `make allure-unit`, `make allure-all`. Ad-hoc `pytest <path>` and the dozens of
 # `--no-cov` overrides in narrow targets work as expected without escaping.
-addopts = "--import-mode=importlib -m 'not browser and not quarantine and not contract_fuzz and not e2e' --strict-markers"
+addopts = "--import-mode=importlib -m 'not browser and not quarantine and not contract_fuzz and not e2e and not perf' --strict-markers"
 markers = [
     "integration: marks tests as integration (require docker/testcontainer)",
     "smoke: fast critical-path tests; <=15 tests, <=5 critical paths, <60s wall-clock; documented in tests/CLAUDE.md; run via `make smoke`",
@@ -185,6 +186,7 @@ markers = [
     "contract_fuzz: schemathesis property-fuzz tests against the OpenAPI schema; excluded from the default pytest selection (never in the blocking suite); run via `make test-contract-fuzz`. See CR-00072.",
     "e2e: Full browser journey tests — require the isolated E2E stack (IW_BROWSER_BASE_URL). Run via make test-e2e; excluded from the default pytest selection and make test-integration.",
     "e2e_smoke: Curated smoke subset of the e2e journey suite — blocking on pull_request and push; run via make test-e2e-smoke.",
+    "perf: performance budget tests — excluded from default unit/integration runs; run via make test-perf*",
 ]
 
 [tool.coverage.run]

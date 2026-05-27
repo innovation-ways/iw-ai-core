@@ -213,7 +213,6 @@ def test_runner_emits_progress_then_done(
     with (
         patch("orch.rag.indexer.LanceDBVectorStore.add", mock_lancedb_add),
         patch.object(MapGenerator, "generate_level1", new_callable=AsyncMock) as mock_mapgen,
-        patch("orch.db.session.SessionLocal", test_session_factory),
     ):
         mock_mapgen.return_value = None
 
@@ -423,7 +422,6 @@ def test_runner_cleans_up_on_ollama_error(
 
     with (
         patch("orch.rag.indexer.LanceDBVectorStore.add", raising_add),
-        patch("orch.db.session.SessionLocal", test_session_factory),
     ):
         asyncio.run(runner.run())
 
