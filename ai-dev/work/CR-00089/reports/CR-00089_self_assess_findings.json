@@ -1,0 +1,52 @@
+{
+  "item_id": "CR-00089",
+  "bottom_line": "Harden QV retry semantics so deterministic failures trigger targeted fix-cycles, while likely flakes auto-retry once before opening a blocker.",
+  "coverage_notes": "DB telemetry available (iw db-identity check: UP). Reviewed all step/fix logs under ai-dev/logs for CR-00089. No log exceeded 1 MB; large S11/S12 logs were analyzed via targeted grep with line anchors and focused reads around failure summaries.",
+  "findings": [
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "QV gates were repeatedly re-executed after already passing",
+      "recommendation": "Deduplicate already-passed QV reruns unless upstream file changes match the gate relevance filter.",
+      "evidence": [
+        "ai-dev/logs/CR-00089_S08_run1.log:4 — 'Completed CR-00089 step S08'",
+        "ai-dev/logs/CR-00089_S08_run7.log:4 — 'Completed CR-00089 step S08'",
+        "ai-dev/logs/CR-00089_S09_run1.log:3 — '935 files already formatted'",
+        "ai-dev/logs/CR-00089_S09_run6.log:3 — '935 files already formatted'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Prevent redundant reruns of already-passed QV gates unless relevant upstream files changed; observed in CR-00089 self-assess report (ai-dev/work/CR-00089/reports/CR-00089_self_assess_report.md)."
+    },
+    {
+      "severity": "HIGH",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Flake-like unit/integration failures triggered full expensive retries",
+      "recommendation": "Add one-shot automatic retry classification for known flaky signatures before escalating to manual fix-cycle.",
+      "evidence": [
+        "ai-dev/logs/CR-00089_S11_run2.log:4008 — '= 1 failed, 3616 passed...'",
+        "ai-dev/logs/CR-00089_S11_run4.log:3930 — '= 3617 passed...'",
+        "ai-dev/logs/CR-00089_S12_run7.log:3904 — '= 2 failed, 3259 passed...'",
+        "ai-dev/logs/CR-00089_S12_run9.log:3813 — '= 3261 passed...'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-cr Add QV flake-aware one-shot auto-retry heuristics for unit/integration gates to reduce false failures; observed in CR-00089 self-assess report (ai-dev/work/CR-00089/reports/CR-00089_self_assess_report.md)."
+    },
+    {
+      "severity": "HIGH",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "Fix-cycle guidance allowed premature out-of-scope blocker on unstable integration mismatch",
+      "recommendation": "Update fix-cycle prompt template to require one confirmatory rerun for migration-head mismatch failures before declaring blocker.",
+      "evidence": [
+        "ai-dev/logs/CR-00089_S12_fix3.log:37 — 'expected Alembic head revision ... actual head ...'",
+        "ai-dev/logs/CR-00089_S12_fix3.log:50 — '### blockers'",
+        "ai-dev/logs/CR-00089_S12_fix4.log:11 — 'No code edits were needed.'",
+        "ai-dev/logs/CR-00089_S12_run9.log:3814 — 'Completed CR-00089 step S12'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Tighten fix-cycle prompt policy to require one confirmatory rerun before declaring migration-head mismatch blockers; observed in CR-00089 self-assess report (ai-dev/work/CR-00089/reports/CR-00089_self_assess_report.md)."
+    }
+  ]
+}

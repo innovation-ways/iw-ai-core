@@ -52,6 +52,39 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# CR-00089: maps gate names to file extensions whose changes should trigger
+# a cascade reset of that gate. Gates not in this dict -> _gate_is_relevant
+# returns True directly (conservative: unknown gate always resets).
+_GATE_RELEVANT_EXTENSIONS: dict[str, frozenset[str]] = {
+    "lint": frozenset({".py", ".js", ".ts", ".css"}),
+    "format": frozenset({".py"}),
+    "typecheck": frozenset({".py"}),
+    "unit-tests": frozenset({".py"}),
+    "integration-tests": frozenset({".py"}),
+    "diff-coverage": frozenset({".py"}),
+    "assertion-check": frozenset({".py", ".txt"}),
+    "migration-check": frozenset({".py"}),
+    "security-sast": frozenset({".py"}),
+}
+# fallback for external callers; _gate_is_relevant returns True directly
+# for unknown gates.
+_DEFAULT_GATE_EXTENSIONS: frozenset[str] = frozenset({".py"})
+
+
+def _gate_is_relevant(gate_name: str | None, changed_files: list[str]) -> bool:
+    """Return True if any changed file has an extension relevant to this gate.
+
+    Conservative: returns True when changed_files is empty (unknown change set)
+    or when the gate name is not in _GATE_RELEVANT_EXTENSIONS (unknown gate).
+    This ensures the cascade never silently skips a reset it should perform.
+    """
+    if not changed_files:
+        return True  # unknown change set — reset conservatively
+    if not gate_name or gate_name not in _GATE_RELEVANT_EXTENSIONS:
+        return True  # unknown gate — reset conservatively
+    relevant = _GATE_RELEVANT_EXTENSIONS[gate_name]
+    return any(Path(f).suffix in relevant for f in changed_files)
+
 
 # ---------------------------------------------------------------------------
 # Scope enforcement helpers (I-00082)
@@ -217,6 +250,7 @@ def run_fix_cycle(
     step_id: str,
     cycle_number: int,
     gate_failure: str,
+    project_config: ProjectConfig | None = None,
 ) -> FixCycleResult:
     """Run a single fix cycle for the given work item step.
 
@@ -235,6 +269,8 @@ def run_fix_cycle(
     7. If no violations: return ``FixCycleResult(FixStatus.completed)``.
     """
     allowed = _load_allowed_paths(worktree_path, item_id)
+    if project_config is not None:
+        allowed = allowed + list(getattr(project_config, "always_in_scope_paths", []))
     scope_block = _build_scope_block(allowed, item_id)
 
     prompt = (
@@ -922,6 +958,7 @@ def _cascade_reset_upstream_qv_gates(
     cycle: FixCycle,  # noqa: ARG001 — kept for hook-point symmetry / future use
     failing_step: WorkflowStep,
     project_id: str,  # noqa: ARG001 — kept for hook-point symmetry / future use
+    changed_files: list[str] | None = None,
 ) -> list[str]:
     """Reset every previously-completed QV gate that runs upstream of
     ``failing_step`` in the same work item, so the daemon re-runs them
@@ -954,6 +991,8 @@ def _cascade_reset_upstream_qv_gates(
 
     reset_ids: list[str] = []
     for gate in upstream_gates:
+        if not _gate_is_relevant(gate.gate, changed_files or []):
+            continue  # skip gates irrelevant to the changed files
         gate.status = StepStatus.pending
         gate.started_at = None
         gate.completed_at = None
@@ -966,6 +1005,7 @@ def _peek_cascade_reset_ids(
     db: Session,
     failing_step: WorkflowStep,
     project_id: str,
+    changed_files: list[str] | None = None,
 ) -> list[str]:
     """Return the step_ids that WOULD be cascade-reset for failing_step,
     without mutating any WorkflowStep objects.
@@ -991,7 +1031,13 @@ def _peek_cascade_reset_ids(
         )
         .all()
     )
-    return [gate.step_id for gate in upstream_gates]
+
+    reset_ids: list[str] = []
+    for gate in upstream_gates:
+        if not _gate_is_relevant(gate.gate, changed_files or []):
+            continue  # skip gates irrelevant to the changed files
+        reset_ids.append(gate.step_id)
+    return reset_ids
 
 
 def _jaccard(a: set[str], b: set[str]) -> float:
@@ -1098,6 +1144,8 @@ def _complete_fix_cycle(
         step_id = step.step_id
         worktree_path = Path(worktree_path_str)
         allowed = _load_allowed_paths(worktree_path, item_id)
+        if project_config is not None:
+            allowed = allowed + list(getattr(project_config, "always_in_scope_paths", []))
         if allowed:
             agent_touched: set[str] = set()
             violations: list[str] = []
@@ -1190,12 +1238,22 @@ def _complete_fix_cycle(
         step.started_at = None
         step.completed_at = None
 
+        worktree_path = (cycle.fix_metadata or {}).get("worktree_path", "")
+        changed_files: list[str] = []
+        if worktree_path:
+            changed_files = _files_changed_by_fix_cycle(cycle, worktree_path)
+
         # B.2 — thrashing detection: probe what the cascade reset-set would be
         # WITHOUT yet mutating any upstream step.  When thrashing is detected,
         # the upstream gates are left in their current state (no cascade reset),
         # Change 2 review-replay is also suppressed, and we emit a dedicated
         # event that tells the operator to intervene.
-        potential_reset_ids = _peek_cascade_reset_ids(db, step, project_id)
+        potential_reset_ids = _peek_cascade_reset_ids(
+            db,
+            step,
+            project_id,
+            changed_files=changed_files or [],
+        )
         thrashing = False
         if potential_reset_ids and project_config is not None:
             thrashing = _detect_thrashing(
@@ -1246,7 +1304,13 @@ def _complete_fix_cycle(
         else:
             # Change 1: cascade-reset upstream QV gates so the daemon re-runs
             # them against the patched code.
-            reset_step_ids = _cascade_reset_upstream_qv_gates(db, cycle, step, project_id)
+            reset_step_ids = _cascade_reset_upstream_qv_gates(
+                db,
+                cycle,
+                step,
+                project_id,
+                changed_files=changed_files or [],
+            )
             if reset_step_ids:
                 _emit_event(
                     db,
@@ -1267,36 +1331,33 @@ def _complete_fix_cycle(
                 )
 
             # Change 2: re-run layer-specific code reviews for files touched by the fix.
-            worktree_path = (cycle.fix_metadata or {}).get("worktree_path", "")
-            if worktree_path:
+            if worktree_path and changed_files:
                 from orch.daemon import review_mapping  # noqa: PLC0415
 
-                changed_files = _files_changed_by_fix_cycle(cycle, worktree_path)
-                if changed_files:
-                    mapping = review_mapping.load_review_mapping(Path(worktree_path))
-                    target_agents = review_mapping.review_agents_for(changed_files, mapping)
-                    review_reset_ids = _reset_review_steps_for_agents(
-                        db, step, target_agents, project_id
+                mapping = review_mapping.load_review_mapping(Path(worktree_path))
+                target_agents = review_mapping.review_agents_for(changed_files, mapping)
+                review_reset_ids = _reset_review_steps_for_agents(
+                    db, step, target_agents, project_id
+                )
+                if review_reset_ids:
+                    _emit_event(
+                        db,
+                        project_id,
+                        "review_replay_after_fix",
+                        step.work_item_id,
+                        "work_item",
+                        (
+                            f"Fix touched {len(changed_files)} file(s) — "
+                            f"re-running reviews: {', '.join(review_reset_ids)}"
+                        ),
+                        {
+                            "cycle_id": cycle.id,
+                            "trigger_step_id": step.step_id,
+                            "changed_files": changed_files,
+                            "reset_step_ids": review_reset_ids,
+                            "reason": "code_changed_by_fix_cycle_in_layer",
+                        },
                     )
-                    if review_reset_ids:
-                        _emit_event(
-                            db,
-                            project_id,
-                            "review_replay_after_fix",
-                            step.work_item_id,
-                            "work_item",
-                            (
-                                f"Fix touched {len(changed_files)} file(s) — "
-                                f"re-running reviews: {', '.join(review_reset_ids)}"
-                            ),
-                            {
-                                "cycle_id": cycle.id,
-                                "trigger_step_id": step.step_id,
-                                "changed_files": changed_files,
-                                "reset_step_ids": review_reset_ids,
-                                "reason": "code_changed_by_fix_cycle_in_layer",
-                            },
-                        )
 
     _emit_event(
         db,
