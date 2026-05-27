@@ -1,0 +1,21 @@
+{
+  "item_id": "I-00115",
+  "bottom_line": "Eliminate the recurring make test-unit ModuleNotFoundError: anthropic gate break by making that dependency reliably available (or test-import-guarded) in the standard project test environment.",
+  "coverage_notes": "DB telemetry was available (iw db-identity check: UP; item-status JSON reviewed). Reviewed all per-step run logs directly except large test-output logs (S11/S12), which were sampled via grep for failure/error patterns. Reviewed S05 fix-cycle logs and final reports for retry context.",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "project",
+      "title": "Repeated S05 gate failure on missing anthropic dependency",
+      "recommendation": "Ensure the test environment always provides anthropic (or guard that test module import so unrelated items are not blocked by optional-provider availability).",
+      "evidence": [
+        "ai-dev/logs/I-00115_S05_run1.log:9 — make test-unit ❌ (ModuleNotFoundError: anthropic in unit test collection)",
+        "ai-dev/logs/I-00115_S05_run3.log:8 — make test-unit ❌ (ModuleNotFoundError: No module named 'anthropic' during collection)",
+        "ai-dev/logs/I-00115_S05_run5.log:13 — make test-unit ❌ failed (ModuleNotFoundError: No module named 'anthropic')"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Stabilize test environment by ensuring anthropic is available (or import-guarded) so S05 make test-unit no longer fails on unrelated items; context: I-00115 self-assess report at ai-dev/active/I-00115/reports/I-00115_self_assess_report.md."
+    }
+  ]
+}
