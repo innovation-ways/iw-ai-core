@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "2be8dc12874f"  # I-00105 add max_output_tokens (current head)
+_HEAD_REVISION = "42be5962ebf7"  # I-00112 keep-alive runs capture CLI output (current head)
 _PREV_REVISION = "891343247f66"  # cr00066 (stamped here; CR-00078+digest pending)
 
 
