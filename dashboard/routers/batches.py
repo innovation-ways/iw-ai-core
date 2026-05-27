@@ -15,6 +15,9 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 
 from dashboard.dependencies import get_db
+from dashboard.routers.project_dashboard import (
+    regression_count_for_merge as _regression_count_for_merge,
+)
 from dashboard.utils.batch_progress import compute_batch_step_progress
 from orch.db.models import (
     AgentRuntimeOption,
@@ -79,6 +82,8 @@ class BatchItemRow:
     runtime_option_model_label: str | None = None
     # F-00081: step-level override dot — True if any step has its own override
     has_step_override: bool = False
+    regression_count: int = 0
+    """F-00090 AC7: count of regressions introduced by this item (prefetched; avoids N+1)."""
 
 
 @dataclass
@@ -420,6 +425,14 @@ def _batch_item_rows(
         ).all()
         fix_cycle_counts = {row.step_id: row.cnt for row in fix_cycle_rows}
 
+    # F-00090 AC7: pre-fetch regression counts in one batched query (avoids N+1)
+    # Only merged items can be regression introducers; skip the query entirely when
+    # this batch has no merged rows to keep bounded-query guarantees on active batches.
+    item_ids_for_badge = [bi.work_item_id for bi in batch_items if bi.status.value == "merged"]
+    regression_counts: dict[str, int] = {}
+    if item_ids_for_badge:
+        regression_counts = _regression_count_for_merge(project_id, item_ids_for_badge, db)
+
     rows = []
     for bi in batch_items:
         wi = work_item_map.get((project_id, bi.work_item_id))
@@ -468,6 +481,7 @@ def _batch_item_rows(
                 runtime_option_cli_label=opt.cli_label if opt else None,
                 runtime_option_model_label=opt.model_label if opt else None,
                 has_step_override=bi.work_item_id in has_step_override_items,
+                regression_count=regression_counts.get(bi.work_item_id, 0),
             )
         )
     return rows

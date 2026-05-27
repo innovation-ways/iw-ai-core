@@ -38,6 +38,7 @@ from orch.cli.merge_queue_commands import merge_queue_group
 from orch.cli.migrations_commands import migrations_group
 from orch.cli.oss_commands import oss
 from orch.cli.project_commands import projects
+from orch.cli.regression_commands import regression_classify
 from orch.cli.search_commands import search
 from orch.cli.skills_commands import (
     init_project_cmd,
@@ -144,5 +145,6 @@ cli.add_command(doc_job_status, name="doc-job-status")
 cli.add_command(docs_export, name="docs-export")
 cli.add_command(db_identity)
 cli.add_command(oss)
+cli.add_command(regression_classify, name="regression-classify")
 cli.add_command(migrations_group, name="migrations")
 cli.add_command(merge_queue_group, name="merge-queue")

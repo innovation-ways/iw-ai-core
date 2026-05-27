@@ -1,0 +1,182 @@
+{# F-00090 AC6: Quality KPIs section — inline SVG trend chart, no JS library.
+
+    Mounts in the per-project home (project_dashboard.py) as well as the
+    dedicated /project/{id}/quality-kpis route (quality_kpis.html).
+
+    Context variables:
+      - kpi_weeks: list[WeekRow] — last 12 ISO weeks
+      - current_week: WeekRow|None — most recent week row
+#}
+
+{# ---------- Current-week KPI cards ---------- #}
+<div id="quality-kpis-section" class="mb-8">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+      Quality KPIs
+    </h2>
+    <a href="/project/{{ current_project.id }}/quality-kpis"
+       class="text-xs text-primary hover:underline">
+      Full trend →
+    </a>
+  </div>
+
+  {% if current_week %}
+    <div class="grid grid-cols-3 gap-4 mb-4">
+      <div class="bg-card border border-border rounded-lg p-3">
+        <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">
+          Merges / Week
+        </p>
+        <p class="text-2xl font-bold text-foreground">{{ current_week.merges }}</p>
+      </div>
+      <div class="bg-card border border-border rounded-lg p-3">
+        <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">
+          Regressions / Week
+        </p>
+        <p class="text-2xl font-bold text-foreground">{{ current_week.regressions }}</p>
+      </div>
+      <div class="bg-card border border-border rounded-lg p-3">
+        <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">
+          Regression Rate
+        </p>
+        {# Rate formatted with %-style format filter per I-00075 #}
+        {% set rate_pct = "%.1f%%"|format(current_week.rate * 100) %}
+        <p class="text-2xl font-bold
+          {% if current_week.rate == 0 %}
+            text-success
+          {% elif current_week.rate >= 0.5 %}
+            text-destructive
+          {% else %}
+            text-warning
+          {% endif %}">
+          {{ rate_pct }}
+        </p>
+      </div>
+    </div>
+  {% else %}
+    {# Empty state: project with zero merges #}
+    <div class="bg-card border border-border rounded-lg p-4 mb-4 text-center">
+      <p class="text-sm text-muted-foreground">
+        No merges yet. Quality KPIs will appear here once items are merged.
+      </p>
+    </div>
+  {% endif %}
+
+  {# ---------- 12-week trend chart (inline SVG, no JS) ---------- #}
+  {% set has_data = kpi_weeks and (kpi_weeks | selectattr('merges', 'ne', 0) | list | length > 0
+                       or kpi_weeks | selectattr('regressions', 'ne', 0) | list | length > 0) %}
+
+  {% if has_data %}
+    {% set max_merges = kpi_weeks | map(attribute='merges') | max %}
+    {% set max_regressions = kpi_weeks | map(attribute='regressions') | max %}
+    {% set max_y = [max_merges, max_regressions, 1] | max %}
+
+    {# SVG chart dimensions #}
+    {% set svg_width = 560 %}
+    {% set svg_height = 200 %}
+    {% set margin_left = 50 %}
+    {% set margin_right = 20 %}
+    {% set margin_top = 20 %}
+    {% set margin_bottom = 40 %}
+    {% set plot_width = svg_width - margin_left - margin_right %}
+    {% set plot_height = svg_height - margin_top - margin_bottom %}
+
+    {# Number of data points #}
+    {% set n_weeks = kpi_weeks | length %}
+    {% set step_x = (plot_width / (n_weeks - 1)) | int if n_weeks > 1 else plot_width | int %}
+
+    <div class="bg-card border border-border rounded-lg p-4">
+      <p class="text-xs text-muted-foreground mb-3">12-Week Trend</p>
+      <svg viewBox="0 0 {{ svg_width }} {{ svg_height }}"
+           class="w-full overflow-visible"
+           xmlns="http://www.w3.org/2000/svg"
+           role="img"
+           aria-label="12-week regression trend chart">
+        {# Grid lines + Y-axis labels #}
+        {% for tick in range(0, max_y + 1) %}
+          {% set tick_y = (margin_top + plot_height - ((tick | float) / (max_y | float) * plot_height)) | int %}
+          <line x1="{{ margin_left }}" y1="{{ tick_y }}"
+                x2="{{ svg_width - margin_right }}" y2="{{ tick_y }}"
+                stroke="#334155" stroke-width="1" stroke-opacity="0.3"
+                stroke-dasharray="4,4"/>
+          <text x="{{ margin_left - 6 }}" y="{{ tick_y + 4 }}"
+                font-size="10" fill="#94a3b8" text-anchor="end"
+                font-family="monospace">{{ tick }}</text>
+        {% endfor %}
+
+        {# X-axis labels (every 2 weeks) #}
+        {% for week in kpi_weeks %}
+          {% if loop.index0 is odd or loop.last %}
+            {% set label_x = (margin_left + loop.index0 * step_x) | int %}
+            <text x="{{ label_x }}" y="{{ svg_height - margin_bottom + 16 }}"
+                  font-size="9" fill="#94a3b8" text-anchor="middle"
+                  font-family="monospace">{{ week.iso_week }}</text>
+          {% endif %}
+        {% endfor %}
+
+        {# Builds polyline point strings #}
+        {% set merge_points = '' %}
+        {% for week in kpi_weeks %}
+          {% set px = (margin_left + (loop.index0 if n_weeks > 1 else 0) * step_x) | int %}
+          {% set py = (margin_top + plot_height - ((week.merges | float) / (max_y | float) * plot_height)) | int %}
+          {% set merge_points = merge_points + ("%d,%d " | format(px, py)) %}
+        {% endfor %}
+
+        {% set reg_points = '' %}
+        {% for week in kpi_weeks %}
+          {% set px = (margin_left + (loop.index0 if n_weeks > 1 else 0) * step_x) | int %}
+          {% set py = (margin_top + plot_height - ((week.regressions | float) / (max_y | float) * plot_height)) | int %}
+          {% set reg_points = reg_points + ("%d,%d " | format(px, py)) %}
+        {% endfor %}
+
+        {# Draw merges line (blue, primary) #}
+        <polyline points="{{ merge_points }}"
+                  fill="none" stroke="#3b82f6" stroke-width="2"
+                  stroke-linejoin="round" stroke-linecap="round"/>
+
+        {# Draw regressions line (amber, warning) #}
+        <polyline points="{{ reg_points }}"
+                  fill="none" stroke="#f59e0b" stroke-width="2"
+                  stroke-linejoin="round" stroke-linecap="round"/>
+
+        {# Data point dots for merges #}
+        {% for week in kpi_weeks %}
+          {% if week.merges > 0 %}
+            {% set dot_x = (margin_left + (loop.index0 if n_weeks > 1 else 0) * step_x) | int %}
+            {% set dot_y = (margin_top + plot_height - ((week.merges | float) / (max_y | float) * plot_height)) | int %}
+            <circle cx="{{ dot_x }}" cy="{{ dot_y }}" r="4" fill="#3b82f6"/>
+          {% endif %}
+        {% endfor %}
+
+        {# Data point dots for regressions #}
+        {% for week in kpi_weeks %}
+          {% if week.regressions > 0 %}
+            {% set dot_x = (margin_left + (loop.index0 if n_weeks > 1 else 0) * step_x) | int %}
+            {% set dot_y = (margin_top + plot_height - ((week.regressions | float) / (max_y | float) * plot_height)) | int %}
+            <circle cx="{{ dot_x }}" cy="{{ dot_y }}" r="3" fill="#f59e0b"/>
+          {% endif %}
+        {% endfor %}
+
+        {# Legend #}
+        <rect x="{{ svg_width - margin_right - 120 }}" y="{{ margin_top }}"
+              width="10" height="10" fill="#3b82f6" rx="2"/>
+        <text x="{{ svg_width - margin_right - 105 }}" y="{{ margin_top + 9 }}"
+              font-size="10" fill="#94a3b8" font-family="sans-serif">Merges</text>
+        <rect x="{{ svg_width - margin_right - 120 }}" y="{{ margin_top + 16 }}"
+              width="10" height="10" fill="#f59e0b" rx="2"/>
+        <text x="{{ svg_width - margin_right - 105 }}" y="{{ margin_top + 25 }}"
+              font-size="10" fill="#94a3b8" font-family="sans-serif">Regressions</text>
+      </svg>
+    </div>
+
+  {% else %}
+    {# Empty chart state — placeholder SVG with note #}
+    <div class="bg-card border border-border rounded-lg p-4">
+      <svg viewBox="0 0 560 200" class="w-full" xmlns="http://www.w3.org/2000/svg">
+        <text x="280" y="95" font-size="14" fill="#94a3b8" text-anchor="middle"
+              font-family="sans-serif">No merge history yet</text>
+        <text x="280" y="115" font-size="11" fill="#64748b" text-anchor="middle"
+              font-family="sans-serif">The trend chart appears once items have merged.</text>
+      </svg>
+    </div>
+  {% endif %}
+</div>

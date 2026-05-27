@@ -26,6 +26,9 @@
 <!-- C.2: Cascade causality timeline (only when cascade events exist) -->
 {% include "fragments/cascade_history.html" %}
 
+{# F-00090: Regression classification form (AC5) — always visible on the item detail overview tab #}
+{% include "fragments/regression_classification_form.html" %}
+
 <!-- Impacted Paths (F-00076 cross-batch conflict gate visibility) -->
 {% set scope_config = item.config.get('scope_extraction') if item.config else None %}
 {% set scope_source = scope_config.get('source') if scope_config else None %}

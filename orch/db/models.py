@@ -352,6 +352,13 @@ class ProjectOssJobStatus(enum.Enum):
     cancelled = "cancelled"
 
 
+# F-00090 — regression classification enum
+class RegressionClassification(enum.Enum):
+    regression = "regression"
+    pre_existing = "pre_existing"
+    unknown = "unknown"
+
+
 # ---------------------------------------------------------------------------
 # Reusable column type shorthands
 # ---------------------------------------------------------------------------
@@ -385,6 +392,9 @@ _oss_tool_run_status_col = SAEnum(OssToolRunStatus, name="osstoolrun_status", cr
 _project_oss_job_kind_col = SAEnum(ProjectOssJobKind, name="project_oss_job_kind", create_type=True)
 _project_oss_job_status_col = SAEnum(
     ProjectOssJobStatus, name="project_oss_job_status", create_type=True
+)
+_regression_classification_col = SAEnum(
+    RegressionClassification, name="regression_classification_enum", create_type=False
 )
 
 
@@ -662,6 +672,46 @@ class WorkItem(Base):
         nullable=True,
         comment="Override pair to use for this item; NULL = inherit. F-00081.",
     )
+    # F-00090 — regression-link fields
+    introduced_by_work_item_id: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "ID of the work item whose merge introduced the regression this Incident "
+            "reports. NULL when not yet classified or when the classification is "
+            "pre-existing/unknown. Indexed for badge-count rollups on Batches/History "
+            "views (F-00090)."
+        ),
+    )
+    introduced_by_commit_sha: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "Optional commit SHA the operator pasted alongside the introducing work item; "
+            "used when the operator knows the exact commit (F-00090)."
+        ),
+    )
+    regression_classification: Mapped[RegressionClassification | None] = mapped_column(
+        _regression_classification_col,
+        nullable=True,
+        comment=(
+            "How this Incident relates to a prior merge: regression / pre_existing / unknown. "
+            "NULL means not yet classified (F-00090)."
+        ),
+    )
+    classified_at: Mapped[datetime | None] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=True,
+        comment="UTC timestamp when the regression classification was last persisted (F-00090).",
+    )
+    classified_by: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "Identity that performed the classification — 'operator:<user>' for UI submissions, "
+            "'heuristic:auto' when the operator accepted the heuristic's top suggestion (F-00090)."
+        ),
+    )
 
     __table_args__ = (
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
@@ -675,6 +725,7 @@ class WorkItem(Base):
             postgresql_using="gin",
         ),
         Index("idx_work_items_created", "project_id", "created_at"),
+        Index("ix_work_items_introduced_by_work_item_id", "introduced_by_work_item_id"),
         {"comment": "Features, Incidents, and Change Requests across all projects"},
     )
 

@@ -14,6 +14,10 @@
       {% endif %}
     </td>
     <td class="px-4 py-3">{{ status_badge(row.status) }}</td>
+    {# F-00090 AC7: regression badge on batch item rows #}
+    <td class="px-4 py-3">
+      {% with count = row.regression_count | default(0) %}{% include "fragments/regression_badge.html" %}{% endwith %}
+    </td>
     {# F-00081: CLI column #}
     <td class="px-4 py-3">
       {% if row.runtime_option_id and row.runtime_option_cli_label %}
@@ -80,7 +84,7 @@
 {% endfor %}
 {% if not items %}
   <tr>
-    <td colspan="8" class="px-4 py-8 text-center text-muted-foreground text-sm">
+    <td colspan="9" class="px-4 py-8 text-center text-muted-foreground text-sm">
       No items in this batch.
     </td>
   </tr>

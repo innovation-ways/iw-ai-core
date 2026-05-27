@@ -1,15 +1,17 @@
 {% if staleness and (staleness.services or staleness.alembic) %}
+  {% set _ua = (request.headers.get('user-agent', '')|lower) %}
+  {% set _headless = _e2e_mode|default(false) or ('headlesschrome' in _ua) or ('playwright' in _ua) %}
   {% if staleness.is_stale %}
     <span class="iw-staleness-dot iw-staleness-dot--red"
           title="Outdated processes — click for details"
-          hx-get="/projects/{{ project.id }}/staleness-dot"
-          hx-trigger="every 15s"
+          {% if not _headless %}hx-get="/projects/{{ project.id }}/staleness-dot"{% endif %}
+          hx-trigger="{% if _headless %}never{% else %}every 15s{% endif %}"
           hx-swap="outerHTML"></span>
   {% else %}
     <span class="iw-staleness-dot iw-staleness-dot--grey"
           title="All services up-to-date"
-          hx-get="/projects/{{ project.id }}/staleness-dot"
-          hx-trigger="every 15s"
+          {% if not _headless %}hx-get="/projects/{{ project.id }}/staleness-dot"{% endif %}
+          hx-trigger="{% if _headless %}never{% else %}every 15s{% endif %}"
           hx-swap="outerHTML"></span>
   {% endif %}
 {% endif %}

@@ -732,9 +732,61 @@ iw search <query> [--project <id>] [--type <type>] [--limit <n>] [--json]
 }
 ```
 
+### 3.8. Regression Classification (F-00090)
+
+#### `iw regression-classify`
+
+Show (or accept) heuristic regression-introducer suggestions for an Incident.
+
+```
+iw regression-classify --incident <id> [--project <id>] [--accept <rank>] [--repo <path>]
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `--incident` | Yes | Incident ID (e.g. `I-00001`) |
+| `--project` | No | Project ID (auto-detected from `.iw-orch.json`) |
+| `--accept` | No | Rank (1-indexed) of the heuristic suggestion to accept and persist |
+| `--repo` | No | Path to the project git repository (default: current working directory) |
+
+**Behavior:**
+1. Validates the incident exists and is merged (`status == 'done'`)
+2. Runs `git show --name-only` against the incident's merge SHA to discover fix files
+3. Runs `git log --oneline` against those files to find prior commits, ranks by frequency + recency
+4. Returns up to 10 candidates; cross-project work items are dropped
+5. With `--accept N`: persists the Nth candidate as the regression classification with `classified_by = 'heuristic:auto'`
+
+**Exit codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success (suggestions printed or classification persisted) |
+| 2 | Validation error (unknown incident, out-of-range accept rank, etc.) |
+| 1 | Unexpected error |
+
+**Output (human):**
+```
+Suggestions for I-00001:
+Rank   SHA          Work Item     Score
+------------------------------------------
+1      a1b2c3d      F-00042       3
+2      e4f5g6h      —             1
+```
+
+**Output (JSON):**
+```json
+{
+  "incident": "I-00001",
+  "candidates": [
+    {"rank": 1, "commit_sha": "a1b2c3d...", "work_item_id": "F-00042", "score": 3},
+    {"rank": 2, "commit_sha": "e4f5g6h...", "work_item_id": null, "score": 1}
+  ]
+}
+```
+
 ---
 
-### 3.8. Daemon Control
+### 3.9. Daemon Control
 
 #### `iw daemon start`
 
@@ -863,6 +915,7 @@ iw
 ├── doc-job-status      Show the full context of a DocGenerationJob (read-only)
 ├── docs-export         Export project docs as ZIP bundles
 ├── search              Full-text search across work items
+├── regression-classify Show or accept heuristic regression-introducer suggestions for an Incident
 ├── worktree-status     Show git health of all active agent worktrees
 ├── sync-skills         Sync platform skills to a project's .claude/skills/ directory
 ├── sync-agents         Sync platform agents and commands to a project

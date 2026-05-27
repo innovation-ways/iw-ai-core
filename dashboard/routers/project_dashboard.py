@@ -21,6 +21,7 @@ from orch.db.models import (
     BatchStatus,
     DaemonEvent,
     Project,
+    RegressionClassification,
     RunStatus,
     StepRun,
     WorkflowStep,
@@ -71,6 +72,138 @@ class GitStatus:
     unpushed: int
     worktrees: int
     error: str | None = None
+
+
+@dataclass
+class WeekRow:
+    """Weekly quality KPI row (AC6)."""
+
+    iso_week: str
+    merges: int
+    regressions: int
+    rate: float  # regressions / merges; 0.0 when merges == 0
+
+
+# ---------------------------------------------------------------------------
+# DB helpers — Quality KPIs (AC6)
+# ---------------------------------------------------------------------------
+
+
+def weekly_metrics(project_id: str, db: Session, weeks: int = 12) -> list[WeekRow]:
+    """Return weekly (merges, regressions, rate) for the last `weeks` ISO weeks.
+
+    merges = count of WorkItem rows with status='completed' whose completed_at week matches.
+    regressions = count of WorkItem rows with regression_classification='regression'
+      AND introduced_by_work_item_id IS NOT NULL whose classified_at falls in the week.
+    rate_guard: when merges == 0, rate is 0.0 (not NaN, not divide-by-zero).
+    """
+    import datetime as dt
+
+    now = datetime.now(UTC)
+    today = now.date()
+    current_year, current_week, _ = today.isocalendar()
+
+    # Build ISO week ranges going back `weeks` weeks from current
+    week_ranges: list[tuple[str, datetime, datetime]] = []
+    for w in range(weeks - 1, -1, -1):
+        target_week = current_week - w
+        target_year = current_year
+        if target_week < 1:
+            target_year -= 1
+            last_day = dt.date(target_year, 12, 28)
+            target_week = last_day.isocalendar()[1]
+        iso_label = f"{target_year}-W{target_week:02d}"
+        jan4 = dt.date(target_year, 1, 4)
+        iso_monday = jan4 - dt.timedelta(days=jan4.weekday())
+        week_start_date = iso_monday + dt.timedelta(weeks=target_week - 1)
+        week_start = dt.datetime.combine(week_start_date, dt.datetime.min.time(), tzinfo=UTC)
+        week_end = week_start + dt.timedelta(days=7)
+        week_ranges.append((iso_label, week_start, week_end))
+
+    # Query merges per week (status == 'completed')
+    merge_rows = db.execute(
+        select(
+            func.date_trunc("week", WorkItem.completed_at).label("week_start"),
+            func.count().label("cnt"),
+        )
+        .where(
+            WorkItem.project_id == project_id,
+            WorkItem.status == WorkItemStatus.completed,
+            WorkItem.completed_at.isnot(None),
+        )
+        .group_by("week_start")
+    ).all()
+
+    # Query regressions per week
+    regression_rows = db.execute(
+        select(
+            func.date_trunc("week", WorkItem.classified_at).label("week_start"),
+            func.count().label("cnt"),
+        )
+        .where(
+            WorkItem.project_id == project_id,
+            WorkItem.regression_classification == RegressionClassification.regression,
+            WorkItem.introduced_by_work_item_id.isnot(None),
+            WorkItem.classified_at.isnot(None),
+        )
+        .group_by("week_start")
+    ).all()
+
+    merge_map: dict[datetime, int] = {}
+    for row in merge_rows:
+        ws = row.week_start
+        if ws is not None:
+            merge_map[ws.replace(tzinfo=UTC)] = row.cnt
+
+    regression_map: dict[datetime, int] = {}
+    for row in regression_rows:
+        ws = row.week_start
+        if ws is not None:
+            regression_map[ws.replace(tzinfo=UTC)] = row.cnt
+
+    results: list[WeekRow] = []
+    for iso_label, week_start, week_end in week_ranges:
+        merges = 0
+        regressions = 0
+        for ws, cnt in merge_map.items():
+            if week_start <= ws < week_end:
+                merges = cnt
+                break
+        for ws, cnt in regression_map.items():
+            if week_start <= ws < week_end:
+                regressions = cnt
+                break
+        rate = round(regressions / merges, 3) if merges > 0 else 0.0
+        results.append(
+            WeekRow(iso_week=iso_label, merges=merges, regressions=regressions, rate=rate)
+        )
+    return results
+
+
+def regression_count_for_merge(
+    project_id: str, merge_item_ids: list[str], db: Session
+) -> dict[str, int]:
+    """Batched regression count per merge item. Avoids N+1 on batch/history row rendering.
+
+    Returns {merge_item_id: count} of Incidents with
+    regression_classification='regression' AND introduced_by_work_item_id == merge_item_id.
+    """
+    if not merge_item_ids:
+        return {}
+
+    rows = db.execute(
+        select(
+            WorkItem.introduced_by_work_item_id,
+            func.count().label("cnt"),
+        )
+        .where(
+            WorkItem.project_id == project_id,
+            WorkItem.introduced_by_work_item_id.in_(merge_item_ids),
+            WorkItem.regression_classification == RegressionClassification.regression,
+        )
+        .group_by(WorkItem.introduced_by_work_item_id)
+    ).all()
+    return {row.introduced_by_work_item_id: row.cnt for row in rows}
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +387,9 @@ def project_dashboard(
     activity = _recent_activity(project_id, db)
     completed_week = _completed_this_week(project_id, db)
     git = _git_status(project.repo_root)
+    # AC6: compute weekly KPIs for the section
+    kpi_weeks = weekly_metrics(project_id, db, weeks=12)
+    current_week = kpi_weeks[-1] if kpi_weeks else None
 
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -268,5 +404,29 @@ def project_dashboard(
             "completed_this_week": completed_week,
             "recent_activity": activity,
             "git_status": git,
+            "kpi_weeks": kpi_weeks,
+            "current_week": current_week,
+        },
+    )
+
+
+@router.get("/quality-kpis", response_class=HTMLResponse)
+def quality_kpis_page(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Dedicated Quality KPIs page — same section as per-project home, full-screen (AC6)."""
+    project = _get_project_or_404(project_id, db)
+    kpi_weeks = weekly_metrics(project_id, db, weeks=12)
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "pages/quality_kpis.html",
+        {
+            "current_project": project,
+            "kpi_weeks": kpi_weeks,
+            "current_week": kpi_weeks[-1] if kpi_weeks else None,
         },
     )

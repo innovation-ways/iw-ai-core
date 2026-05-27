@@ -512,9 +512,74 @@ Update this table and the gate table in §5 as roadmap items land.
 
 ---
 
-## 10. Quick reference
+## 10. Regression-rate KPI (F-00090)
 
-```bash
+The regression-rate KPI is the *second half* of the quality scorecard. A
+throughput metric alone (merges/week) is misleading: high velocity with
+an rising regression rate is worse than steady velocity with a low one.
+
+### How classifications are recorded
+
+Each `WorkItem` of type `Issue` (Incident) in a project may carry five
+regression-link columns (`introduced_by_work_item_id`,
+`regression_classification`, `classified_at`, `classified_by`,
+`introduced_by_commit_sha` — added by F-00090).
+
+- **Operator-curated**: the operator submits a classification via the
+  dashboard htmx form (Incident detail page) or the CLI
+  ``iw regression-classify --accept``. The `classified_by` value records
+  ``operator:<username>``.
+- **Heuristic-seeded**: the operator accepts the heuristic's top suggestion
+  (suggested by `regression_link_service.suggest_introducer()`). The
+  `classified_by` value records ``heuristic:auto``. The heuristic *never*
+  persists a classification without operator action — Invariant 3 of
+  F-00090.
+
+The `regression_classification` ENUM values are:
+
+| Value | Meaning | Contributes to KPI? |
+|-------|---------|----------------------|
+| `regression` | Filed against a prior merge that introduced the bug | **Yes** — increments regressions/week |
+| `pre_existing` | Bug existed before the current project's merges | No — no merge attribution |
+| `unknown` | Classified but source merge undetermined | No |
+| NULL | Not yet classified | No — excluded from all KPI calculations |
+
+### How the KPI is computed
+
+For a given project and week (Monday–Sunday UTC):
+
+```
+merges_this_week   = count(WorkItem.status='completed' AND type IN ('Feature','CR')
+                           AND completed_at in [week_start, week_end])
+regressions_this_week = count(Incident.regression_classification='regression'
+                              AND classified_at in [week_start, week_end])
+regression_rate = regressions_this_week / merges_this_week  (0.0 when merges=0)
+```
+
+The rate-guard rule (Invariant 6): when `merges == 0` in a week, the
+regression rate is `0.0` — never NaN, never a division error.
+
+The KPI is rendered on the per-project home page **and** on the dedicated
+`/project/{id}/quality-kpis` route as: merges/week, regressions/week,
+and the regression rate (b/a), plus a 12-week trend chart (inline SVG,
+no JS library). The chart plots actual weeks only; no padding zeros for
+weeks with no history.
+
+### Backfill script and operator workflow
+
+The operator-run backfill script
+(``scripts/backfill_regression_classification.py``) does **not** auto-classify
+Incidents. It calls `suggest_introducer()` on every NULL-classification
+Incident and emits the top suggestion to stdout for operator review.
+Classifications are confirmed via the dashboard htmx form or the CLI
+``iw regression-classify --accept``. This is Invariant 3 enforced in code.
+
+See F-00090 for the full design, acceptance criteria, and boundary
+behaviour table.
+
+---
+
+## 11. Quick reference
 # Everything before a commit
 make check                 # quality (lint + format-check + typecheck) + test (unit + integration + dashboard)
 
@@ -539,7 +604,7 @@ make security-deps         # pip-audit + bandit
 make security-iac          # trivy config scan
 ```
 
-## 11. Semgrep finding triage (CR-00051)
+## 12. Semgrep finding triage (CR-00051)
 
 `make security-sast` runs Semgrep with three configs (`p/python`, `p/owasp-top-ten`, `p/security-audit`) and **must report zero blocking findings**. When a true rule misfire is unavoidable, the project follows these conventions.
 
@@ -568,7 +633,7 @@ shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-sh
 
 ---
 
-## 12. LLM-as-judge advisory signal (CR-00084 spike)
+## 13. LLM-as-judge advisory signal (CR-00084 spike)
 
 A stronger model (Claude Opus 4.7) scores newly-written tests against an assertion-strength rubric as an advisory signal in the CodeReview step. **Complementary to — not a replacement for — the structural assertion scanner (§8, CR-00046).** The scanner catches patterns (no-assert / tautology / mock-only / broad-raises); the judge evaluates semantic strength.
 
