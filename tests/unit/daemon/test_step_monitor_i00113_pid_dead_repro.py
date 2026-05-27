@@ -86,14 +86,34 @@ def _make_fast_exit_wrapper() -> tuple[int, list[int]]:
         wrapper_pid: PID of the shell wrapper (daemon records this)
         child_pids:  PIDs of the simulated agent children (still alive)
     """
-    # NO start_new_session=True so Popen's pid IS the shell pid (the wrapper).
-    # Child is named "opencode" so _probe_for_child can detect it.
-    fake_agent_cmd = (
-        "exec -a opencode python3 -c "
-        "'import time; [time.sleep(60) for _ in iter(lambda: None, None)]'"
-    )
+    # Three portability traps the previous helper hit (all ship-blockers on
+    # this Ubuntu host, where `make test-unit` failed deterministically):
+    #
+    # 1. /bin/sh is **dash** on Debian/Ubuntu, whose `exec` builtin does not
+    #    accept the `-a` flag (only bash does). Using /bin/sh silently fails
+    #    the rename ("exec: -a: not found", rc=127) — no opencode-named child
+    #    is ever created, the probe finds nothing, the run is marked failed.
+    #    Pin to /bin/bash so `exec -a` works.
+    #
+    # 2. `iter(lambda: None, None)` is an **empty** iterator, not infinite:
+    #    `iter(callable, sentinel)` stops when callable() returns sentinel,
+    #    and `lambda: None` returns the sentinel on the first call. So the
+    #    list comprehension that wrapped it iterated zero times — python3
+    #    exited immediately without ever sleeping, leaving no live "opencode"
+    #    child to probe for. Replace with a plain blocking sleep.
+    #
+    # 3. Plain `exec -a opencode python3 ...` REPLACES the wrapper shell
+    #    in-place (no fork). The PID stays the same, the process is renamed
+    #    to python3/opencode, and the "wrapper" never exits — so the
+    #    "wrapper PID dead + child alive" topology the test depends on never
+    #    materialises. We need a real fork-then-exit, which a backgrounded
+    #    subshell provides: the outer bash spawns a subshell, the subshell
+    #    exec-replaces itself with the renamed python3 (a *separate* PID),
+    #    and the outer bash exits immediately because there is nothing left
+    #    after the `&`. End state: wrapper PID dead, opencode child alive.
+    fake_agent_cmd = "(exec -a opencode python3 -c 'import time; time.sleep(60)') &"
     proc = subprocess.Popen(
-        ["/bin/sh", "-c", fake_agent_cmd],
+        ["/bin/bash", "-c", fake_agent_cmd],
         start_new_session=False,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
