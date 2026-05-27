@@ -233,12 +233,24 @@ def sweep_client(
     - The ``TestClient`` is built with ``raise_server_exceptions=False`` so a
       500 is returned as a response to assert on instead of raising.
     """
+    from sqlalchemy.orm import sessionmaker
+
     import orch.db.session as session_module
 
     monkeypatch.setattr(session_module, "_engine", db_engine, raising=False)
+    # CRITICAL: also reset _session_local to None so that _get_session_local()
+    # (which uses `global _session_local`) re-creates the sessionmaker with
+    # db_engine instead of returning the production sessionmaker captured
+    # during test-collection import. Patching the module attribute alone does
+    # NOT affect the closure-variable read in _get_session_local().
     monkeypatch.setattr(session_module, "_session_local", None, raising=False)
     monkeypatch.delenv("IW_CORE_EXPECTED_INSTANCE_ID", raising=False)
-    test_session_local = session_module._get_session_local()  # bound to db_engine
+    # Build SessionLocal from db_engine directly instead of calling
+    # _get_session_local(), which internally calls safe_create_engine() and
+    # would attempt port 1 (blocked by the live-db guard). This ensures
+    # _compute_dirty_count() inside /nav/worktree-badge reaches the
+    # testcontainer DB.
+    test_session_local = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)  # noqa: N816
 
     from fastapi.testclient import TestClient
 
@@ -256,6 +268,15 @@ def sweep_client(
     monkeypatch.setattr(app_module, "engine", db_engine, raising=False)
     monkeypatch.setattr(app_module, "SessionLocal", test_session_local, raising=False)
     monkeypatch.setattr(deps_module, "SessionLocal", test_session_local, raising=False)
+    # Patch _get_session_local so that any code that calls it directly (e.g.
+    # _compute_dirty_count in dashboard.routers.worktrees) gets the test
+    # sessionmaker regardless of whether _session_local was already set.
+    monkeypatch.setattr(
+        session_module,
+        "_get_session_local",
+        lambda: test_session_local,
+        raising=False,
+    )
 
     substitutions = seed_contract_test_data(db_session, test_project)
     db_session.commit()

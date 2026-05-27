@@ -557,7 +557,25 @@ class TestApiKeyGuard:
         mock_client_instance = MagicMock()
         mock_client_instance.messages = mock_messages
 
-        with patch.object(judge_module.anthropic, "Anthropic", return_value=mock_client_instance):
+        # _get_anthropic_client() returns the class, not an instance.
+        # Wrap the mock instance in a callable class so
+        # `anthropic_cls(api_key=...)` produces the mock_client_instance.
+        mock_client_class_instance = mock_client_instance
+
+        def mock_client_class_factory():
+            class MockAnthropic:
+                def __init__(self, api_key: str) -> None:
+                    pass
+
+                @property
+                def messages(self):
+                    return mock_client_class_instance.messages
+
+            return MockAnthropic
+
+        with patch.object(
+            judge_module, "_get_anthropic_client", return_value=mock_client_class_factory()
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 judge_module.sys.exit(
                     judge_module.main(

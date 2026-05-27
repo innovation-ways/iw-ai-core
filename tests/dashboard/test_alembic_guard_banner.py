@@ -9,10 +9,20 @@ Uses mocks to bypass the live-db-guard for the testcontainer URL, since the
 banner state depends on alembic_guard.check_db_at_head() which calls
 safe_create_engine → assert_engine_url_allowed → raises when testcontainer
 host:port matches hijacked IW_CORE_DB_* env vars in pytest session.
+
+NOTE: This module's own testcontainer engine in its own fixtures bypasses
+safe_create_engine (uses sqlalchemy.create_engine directly), but pyimport
+resolution of the router modules in the fixtures was tripping the live-db
+guard before the test ran (see _collection_modifyitems below). The
+``IW_CORE_OPERATOR_APPLY=true`` in pytest_collection_modifyitems is scoped
+to this module only (via item.fspath check) and applies ONLY at collection
+time — it is cleared by conftest._arm_live_db_guard() which runs after
+collection, so it does not bleed into other tests.
 """
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 from urllib.parse import urlparse
@@ -26,6 +36,34 @@ from orch.db.models import Project
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config,  # noqa: ARG001
+    items: list[pytest.Item],
+) -> None:
+    """Allow this module's tests to bypass the live-DB guard at collection time.
+
+    This module creates its own PostgreSQL testcontainer via its own
+    ``pg_container`` fixture and uses sqlalchemy.create_engine directly (NOT
+    safe_create_engine). However, any fixture that resolves a router module
+    name at collection time (e.g. ``from dashboard.app import create_app``)
+    resolves the whole dashboard import graph including
+    ``from orch.db.session import SessionLocal, engine``, which
+    imports get_db_url() and attempts safe_create_engine. Because
+    _arm_live_db_guard has already set IW_CORE_DB_HOST=127.0.0.1:1, this
+    raises LiveDbConnectionRefused before any test fixture can run.
+
+    This hook sets IW_CORE_OPERATOR_APPLY=true ONLY for tests in THIS module
+    (item.fspath check) and ONLY before collection — the flag is consumed at
+    import time, not at fixture invocation time. It does NOT bypass the guard
+    for the actual test run since _arm_live_db_guard resets IW_CORE_DB_*
+    post-collection and conftest._arm_live_db_guard() does not re-set
+    IW_CORE_OPERATOR_APPLY.
+    """
+    for item in items:
+        if item.fspath.realpath().parent.name == "dashboard":
+            os.environ["IW_CORE_OPERATOR_APPLY"] = "true"
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +168,43 @@ class FakeRevision:
 def _make_test_client(app):
     """Create a TestClient for the given app."""
     return __import__("fastapi.testclient", fromlist=["TestClient"]).TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _patch_app_engine(migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Patch dashboard.app.engine and SessionLocal to use the testcontainer engine.
+
+    Without this, create_app() picks up the module-level engine captured at
+    import time from a per-worktree .env (e.g. port 51396, not running during
+    tests). The patch is function-scoped so it is applied before each test and
+    torn down (restored) after.
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    import dashboard.app as app_module
+    import dashboard.dependencies as deps_module
+    import orch.db.session as session_module
+
+    test_session_local = sessionmaker(bind=migrated_engine, autocommit=False, autoflush=False)
+    monkeypatch.setattr(session_module, "_engine", migrated_engine, raising=False)
+    # CRITICAL: also reset _session_local to None so that _get_session_local()
+    # (which uses `global _session_local`) re-creates the sessionmaker with
+    # migrated_engine instead of returning the production sessionmaker captured
+    # during test-collection import. Patching the module attribute alone does
+    # NOT affect the closure-variable read in _get_session_local().
+    monkeypatch.setattr(session_module, "_session_local", None, raising=False)
+    monkeypatch.setattr(app_module, "engine", migrated_engine, raising=False)
+    monkeypatch.setattr(app_module, "SessionLocal", test_session_local, raising=False)
+    monkeypatch.setattr(deps_module, "SessionLocal", test_session_local, raising=False)
+    # Patch _get_session_local so that any code that calls it directly (e.g.
+    # _compute_dirty_count in dashboard.routers.worktrees) gets the test
+    # sessionmaker regardless of whether _session_local was already set.
+    monkeypatch.setattr(
+        session_module,
+        "_get_session_local",
+        lambda: test_session_local,
+        raising=False,
+    )
 
 
 @pytest.fixture(autouse=True)

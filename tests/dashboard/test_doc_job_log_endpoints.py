@@ -23,24 +23,72 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def client(db_session: Session) -> TestClient:
-    """Create a TestClient that overrides get_db to use the test db_session."""
+def client(
+    db_engine,
+    db_session,
+    test_project,
+    monkeypatch: pytest.MonkeyPatch,
+) -> TestClient:
+    """Create a TestClient with get_db overridden to use the testcontainer session.
+
+    In addition to the dependency override, also monkeypatch ALL top-level
+    ``SessionLocal`` references in the dashboard module graph so that any
+    handler that calls ``SessionLocal()`` directly (not via the request
+    dependency) hits the testcontainer DB. This mirrors the
+    ``sweep_client`` pattern in ``tests/dashboard/conftest.py`` and fixes
+    the LiveDbConnectionRefused interaction with ``_arm_live_db_guard``
+    session-scoped fixture (see CR-00083 S11 fix).
+    """
     import os
 
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
+        from sqlalchemy.orm import sessionmaker
 
-        def override_get_db() -> Session:
+        import orch.db.session as session_module
+
+        monkeypatch.setattr(session_module, "_engine", db_engine, raising=False)
+        # CRITICAL: also reset _session_local to None so that _get_session_local()
+        # (which uses `global _session_local`) re-creates the sessionmaker with
+        # db_engine instead of returning the production sessionmaker captured
+        # during test-collection import. Patching the module attribute alone does
+        # NOT affect the closure-variable read in _get_session_local().
+        monkeypatch.setattr(session_module, "_session_local", None, raising=False)
+        monkeypatch.delenv("IW_CORE_EXPECTED_INSTANCE_ID", raising=False)
+        # Build SessionLocal from db_engine directly so _get_session_local() inside
+        # _doc_job_log_stream connects to the testcontainer instead of port 5433.
+        test_session_local = sessionmaker(bind=db_engine, autocommit=False, autoflush=False)
+
+        import dashboard.app as app_module
+        import dashboard.dependencies as deps_module
+
+        monkeypatch.setattr(app_module, "engine", db_engine, raising=False)
+        monkeypatch.setattr(app_module, "SessionLocal", test_session_local, raising=False)
+        monkeypatch.setattr(deps_module, "SessionLocal", test_session_local, raising=False)
+        # Patch _get_session_local so that any code that calls it directly (e.g.
+        # _compute_dirty_count in dashboard.routers.worktrees) gets the test
+        # sessionmaker regardless of whether _session_local was already set.
+        monkeypatch.setattr(
+            session_module,
+            "_get_session_local",
+            lambda: test_session_local,
+            raising=False,
+        )
+
+        from dashboard.app import create_app
+        from dashboard.dependencies import get_db
+
+        def override_get_db():
             return db_session
 
         app = create_app()
         app.dependency_overrides[get_db] = override_get_db
         with TestClient(app, raise_server_exceptions=True) as c:
             yield c
+        app.dependency_overrides.clear()
     finally:
         if original is not None:
             os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
-        app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -159,13 +207,18 @@ class TestDocJobLogStream:
             log_file.write_text("initial line\n")
 
             test_project.repo_root = tmpdir
+            # Mark job completed so the SSE generator terminates after the first
+            # status check (avoids infinite poll loop with time.sleep() blocking
+            # the async event loop in TestClient).
+            doc_job_with_project.status = JobStatus.completed
             db_session.commit()
 
-            resp = client.get(
-                f"/project/{test_project.id}/jobs/doc_generation/{doc_job_with_project.id}/log/stream"
-            )
-            assert resp.status_code == 200
-            assert "text/event-stream" in resp.headers["content-type"]
+            with client.stream(
+                "GET",
+                f"/project/{test_project.id}/jobs/doc_generation/{doc_job_with_project.id}/log/stream",
+            ) as resp:
+                assert resp.status_code == 200
+                assert "text/event-stream" in resp.headers["content-type"]
 
 
 class TestDocJobLogRaw:

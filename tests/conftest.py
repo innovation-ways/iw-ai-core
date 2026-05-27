@@ -69,6 +69,24 @@ def _arm_live_db_guard() -> None:
     os.environ["IW_CORE_DB_USER"] = "blocked"
     os.environ["IW_CORE_DB_PASSWORD"] = "blocked"  # noqa: S105
 
+    # R0f — reset lazy engine singletons that may have been created during
+    # pytest collection from a per-worktree .env (e.g. IW_CORE_DB_PORT=51396
+    # pointing at a stopped per-worktree DB container). Without this, any
+    # module that captured `SessionLocal` at import time retains the stale
+    # engine and tries to connect to a non-running port, causing Connection
+    # Refused in tests that call those modules (e.g. _compute_dirty_count()
+    # in dashboard/routers/worktrees.py). Resetting here forces a fresh
+    # engine creation with the hijacked port-1 URL on the next call.
+    try:
+        import orch.db.session as _s
+
+        _s._engine = None
+        _s._orch_engine = None
+        _s._session_local = None
+        _s._orch_session_local = None
+    except Exception:
+        pass
+
 
 @pytest.fixture(autouse=True)
 def _clear_chat_router_caches() -> None:
@@ -99,3 +117,60 @@ def _clear_chat_router_caches() -> None:
     _chat_router._config_cache.clear()
     _chat_router._skills_cache.clear()
     _chat_router._providers_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _bypass_live_db_guard_for_unit_tests(request: pytest.FixtureRequest) -> None:
+    """Allow unit tests to import orch.db.session without hitting the live-DB guard.
+
+    Unit tests (``tests/unit/``) that need to verify pool configuration via
+    ``orch.db.session`` would hit the guard because ``_arm_live_db_guard``
+    hi-jacks ``IW_CORE_DB_*`` to 127.0.0.1:1, causing any call to
+    ``safe_create_engine`` to raise ``LiveDbConnectionRefusedError``.
+
+    This fixture patches ``safe_create_engine`` ONLY when the requesting test
+    lives strictly under ``tests/unit/`` — not ``tests/integration/`` or
+    ``tests/dashboard/`` where the real testcontainer must be exercised.
+    The guard's own unit tests (``test_live_db_guard.py``) are also excluded
+    so they test the real guard, not a mock.
+    """
+    from pathlib import Path
+
+    unit_root = Path(__file__).resolve().parent / "unit"
+    test_path = str(request.fspath.realpath())
+
+    # Only patch for tests under tests/unit/, excluding test_live_db_guard.
+    should_patch = (
+        test_path.startswith(f"{unit_root}{os.sep}") and "test_live_db_guard" not in test_path
+    )
+
+    if not should_patch:
+        yield
+        return
+
+    from unittest.mock import MagicMock
+
+    from sqlalchemy.pool import QueuePool
+
+    # Build a mock engine with the pool attributes the unit tests expect.
+    mock_pool = MagicMock(spec=QueuePool)
+    mock_pool.size.return_value = 20
+    mock_pool._max_overflow = 20
+    mock_pool._recycle = 1800
+    mock_pool._timeout = 10
+
+    mock_engine = MagicMock()
+    mock_engine.pool = mock_pool
+
+    import orch.db.live_db_guard as ldg
+    import orch.db.session as session_module
+
+    orig_ldg = ldg.safe_create_engine
+    orig_sess = session_module.safe_create_engine
+    try:
+        ldg.safe_create_engine = lambda _, **__: mock_engine  # type: ignore[assignment]
+        session_module.safe_create_engine = lambda _, **__: mock_engine  # type: ignore[assignment]
+        yield
+    finally:
+        ldg.safe_create_engine = orig_ldg
+        session_module.safe_create_engine = orig_sess

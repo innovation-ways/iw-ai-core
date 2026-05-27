@@ -8,6 +8,8 @@
           test-assertions diff-coverage data-layer-check test-cli-contract \
           test-route-sweep test-contract-fuzz \
           test-properties test-properties-deep \
+          test-perf test-perf-rag test-perf-routes test-perf-daemon \
+          test-perf-update-baseline \
           test-quarantine test-flake-detect \
           mutation-check mutation-audit mutation-results mutation-show \
           db-up db-down db-migrate db-revision \
@@ -127,7 +129,7 @@ test-unit:
 # live Uvicorn server, which the qv-gate environment doesn't provide.
 # Browser-level coverage runs separately via the qv-browser step.
 test-integration:
-	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser $(COV_FLAGS) -v
+	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser $(COV_FLAGS) --timeout=600 -v
 
 # CLI contract layer — per-command contract tests + spec-conformance check.
 # Developer convenience only: the integration-tests gate (make test-integration)
@@ -173,21 +175,21 @@ test-e2e-smoke:
 
 # Daemon chaos smoke suite (F-00089): S02/S03 scenarios.
 daemon-chaos-smoke:
-	uv run pytest tests/integration/daemon_chaos/test_worktree_setup_mid_failure.py tests/integration/daemon_chaos/test_fix_cycle_cap_exhaustion.py -v
+	uv run pytest tests/integration/daemon_chaos/test_worktree_setup_mid_failure.py tests/integration/daemon_chaos/test_fix_cycle_cap_exhaustion.py --timeout=600 -v
 
 # Daemon chaos full suite (F-00089): all chaos scenarios + determinism meta-test.
 daemon-chaos-full:
-	uv run pytest tests/integration/daemon_chaos/ -v
+	uv run pytest tests/integration/daemon_chaos/ --timeout=600 -v
 
 test: test-unit test-integration
 
 # Convenience target — runs ONLY the cross-project isolation matrix (CR-00074).
 # The `integration-tests` gate already runs it as part of `make test-integration`.
 test-isolation:  ## Run the cross-project isolation test matrix (CR-00074)
-	uv run pytest tests/integration/test_cross_project_isolation.py -v --no-cov
+	uv run pytest tests/integration/test_cross_project_isolation.py --timeout=600 -v --no-cov
 
 test-parallel:
-	uv run pytest tests/unit tests/integration tests/dashboard --ignore=tests/dashboard/browser $(COV_FLAGS) -v -n auto --dist=loadfile
+	uv run pytest tests/unit tests/integration tests/dashboard --ignore=tests/dashboard/browser $(COV_FLAGS) -v -n auto --timeout=600 --dist=loadfile
 
 smoke:
 	uv run pytest -m smoke --strict-markers --no-cov -v
@@ -218,7 +220,7 @@ diff-coverage:
 	# I-00084: sync stale origin/main so diff-cover compares against actual local main
 	@git fetch . main:refs/remotes/origin/main 2>/dev/null || true
 	uv run pytest tests/unit/ $(COV_FLAGS) --cov-fail-under=0 -q
-	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser $(COV_FLAGS) --cov-append --cov-fail-under=0 -q -n auto
+	uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser $(COV_FLAGS) --cov-append --cov-fail-under=0 -q --timeout=600 -n auto
 	uv run coverage xml -o tests/output/coverage/coverage-combined.xml
 	uv run diff-cover tests/output/coverage/coverage-combined.xml --compare-branch=origin/main --fail-under=90
 
@@ -239,6 +241,57 @@ test-properties:
 # a release, after a refactor of any of the 5 state-machine targets).
 test-properties-deep:
 	IW_HYPOTHESIS_PROFILE=deep uv run pytest tests/unit/properties/ -v --no-cov
+
+# =============================================================================
+# PERFORMANCE BUDGET TESTS (CR-00083) — on-demand, NOT a CI gate yet
+# =============================================================================
+# Daemon poll-loop perf budget. --benchmark-compare=daemon resolves through
+# pytest-benchmark's Storage class to the baseline file matching the current
+# machine-id subdirectory + name "daemon". Baseline path:
+# tests/perf/baselines/<machine-id>/NNNN_daemon.json (e.g.
+# tests/perf/baselines/Linux-CPython-3.12-64bit/0002_daemon.json).
+# Use `make test-perf-update-baseline` (added in S03) to regenerate baselines;
+# operator-only; requires CR review before any baseline-bump commit.
+test-perf-daemon:  ## Run daemon poll-loop performance budget test
+	uv run pytest tests/perf/test_daemon_poll_loop.py \
+		-v --benchmark-compare=0007_daemon \
+		--benchmark-compare-fail=mean:25% \
+		--benchmark-storage=file://tests/perf/baselines \
+		-m perf --no-cov
+
+test-perf-rag:  ## Run RAG query performance budget test
+	uv run pytest tests/perf/test_rag_query.py \
+		-v --benchmark-compare=0004_rag \
+		--benchmark-compare-fail=mean:25% \
+		--benchmark-storage=file://tests/perf/baselines \
+		-m perf --no-cov
+
+test-perf-routes:  ## Run dashboard routes performance budget tests (5 routes)
+	uv run pytest tests/perf/test_dashboard_routes.py \
+		-v --benchmark-compare=0005_routes \
+		--benchmark-compare-fail=mean:25% \
+		--benchmark-storage=file://tests/perf/baselines \
+		-m perf --no-cov
+
+# Umbrella: all three perf modules. On-demand only — NOT a CI gate.
+test-perf: test-perf-daemon test-perf-rag test-perf-routes
+
+# OPERATOR-ONLY: regenerate committed perf baselines.
+# CR review required before committing updated baseline files (per CR-00083 Notes).
+test-perf-update-baseline:
+	@echo ">>> WARNING: Baseline updated locally — commit requires CR review per CR-00083 Notes section"
+	uv run pytest tests/perf/test_daemon_poll_loop.py \
+		-v --benchmark-save=0007_daemon \
+		--benchmark-storage=file://tests/perf/baselines \
+		-m perf --no-cov
+	uv run pytest tests/perf/test_rag_query.py \
+		-v --benchmark-save=0004_rag \
+		--benchmark-storage=file://tests/perf/baselines \
+		-m perf --no-cov
+	uv run pytest tests/perf/test_dashboard_routes.py \
+		-v --benchmark-save=0005_routes \
+		--benchmark-storage=file://tests/perf/baselines \
+		-m perf --no-cov
 
 # =============================================================================
 # QUARANTINE & FLAKE DETECTION (CR-00061, P2-CR-C) — on-demand, NOT a CI gate
@@ -379,12 +432,12 @@ db-revision:
 # right after Database steps to short-circuit bad migrations before
 # downstream agents inherit them.
 migration-check:
-	uv run pytest tests/integration/test_migrations_round_trip.py -v --no-cov
+	uv run pytest tests/integration/test_migrations_round_trip.py --timeout=600 -v --no-cov
 
 # data-layer-check: migration round-trip (make migration-check) must pass first;
 # then the three data-layer modules (FTS invariant, revision-skew, DB-identity).
 data-layer-check: migration-check
-	uv run pytest tests/integration/data_layer/ -v --no-cov
+	uv run pytest tests/integration/data_layer/ --timeout=600 -v --no-cov
 
 # --- Services ---
 daemon-start:
@@ -413,7 +466,7 @@ allure-integration:
 	@rm -rf $(ALLURE_RESULTS)
 	@mkdir -p $(ALLURE_RESULTS)
 	@echo "[allure-integration] Running integration tests with Allure reporting..."
-	@uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser --no-cov -n auto -v --alluredir=$(ALLURE_RESULTS)
+	@uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser --no-cov -n auto --timeout=600 -v --alluredir=$(ALLURE_RESULTS)
 	@echo "[allure-integration] Run 'make allure-serve' to view report"
 
 allure-all:
@@ -422,7 +475,7 @@ allure-all:
 	@mkdir -p $(ALLURE_RESULTS)
 	@echo "[allure-all] Running all tests with Allure reporting..."
 	@uv run pytest tests/unit/ $(COV_FLAGS) -v --alluredir=$(ALLURE_RESULTS)
-	@uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser $(COV_FLAGS) --cov-append -v --alluredir=$(ALLURE_RESULTS)
+	@uv run pytest tests/integration/ tests/dashboard/ --ignore=tests/dashboard/browser $(COV_FLAGS) --cov-append --timeout=600 -v --alluredir=$(ALLURE_RESULTS)
 	@echo "[allure-all] Run 'make allure-serve' to view report"
 
 allure-report:
@@ -455,7 +508,7 @@ allure-clean:
 # It is NOT a replacement for make security-secrets (gitleaks) or make security-sast
 # (Semgrep/bandit), which run scanner tools that produce advisory output.
 test-security-module:  ## Run asserted security regression tests (distinct from make security-secrets / make security-sast scanners)
-	uv run pytest tests/integration/security/ -v --no-cov
+	uv run pytest tests/integration/security/ --timeout=600 -v --no-cov
 
 # --- Security ---
 SECURITY_DIR := tests/output/security

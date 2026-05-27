@@ -576,3 +576,6 @@ tests/unit/test_test_runner.py::test_quality_run_emits_quality_started_on_begin 
 tests/unit/test_test_runner.py::test_test_run_emits_test_completed_on_success # tautology
 tests/unit/test_test_runner.py::test_test_run_emits_test_failed_on_failure # tautology
 tests/unit/test_test_runner.py::test_test_run_emits_test_started_on_begin # tautology
+tests/unit/test_fix_cycle.py::test_build_fix_prompt_includes_post_edit_format_lint_gate # tautology
+tests/unit/test_fix_cycle.py::test_build_scope_block_lists_implicit_allows_when_item_id_passed # tautology
+tests/unit/test_fix_cycle.py::test_qv_fix_prompt_includes_cross_gate_check # tautology

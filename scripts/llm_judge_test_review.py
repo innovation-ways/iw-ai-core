@@ -6,12 +6,12 @@ assertion-strength rubric. See CR-00084_CR_Design.md §0 for the full context.
 
 Usage:
     # Single-test mode:
-    python scripts/llm_judge_test_review.py \\
-        --test-file tests/unit/test_foo.py \\
+    python scripts/llm_judge_test_review.py \
+        --test-file tests/unit/test_foo.py \
         --test-name test_bar
 
     # Calibration mode (runs judge over a labelled set):
-    python scripts/llm_judge_test_review.py \\
+    python scripts/llm_judge_test_review.py \
         --calibrate tests/llm_judge/labelled_set.jsonl
 
 Exit codes:
@@ -23,16 +23,15 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import io
-
 import json
 import os
 import sys
 import textwrap
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import io
 
 try:
     import anthropic
@@ -108,6 +107,26 @@ no extra text):
 {prod_code}
 ```
 """).strip()
+
+
+# ---------------------------------------------------------------------------
+# Lazy import helper (allows unit tests to run without anthropic installed)
+# ---------------------------------------------------------------------------
+
+_ANTHROPIC_CLIENT: type | None = None
+
+
+def _get_anthropic_client() -> type:
+    """Lazily import and return the Anthropic client class.
+
+    Raises ImportError if the anthropic package is not installed.
+    """
+    global _ANTHROPIC_CLIENT  # noqa: PLW0603
+    if _ANTHROPIC_CLIENT is None:
+        import anthropic
+
+        _ANTHROPIC_CLIENT = anthropic.Anthropic
+    return _ANTHROPIC_CLIENT
 
 
 # ---------------------------------------------------------------------------
@@ -441,7 +460,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 def _run_single_test(args: argparse.Namespace, api_key: str) -> int:
     """Run the judge on a single test. Returns exit code."""
-    client = anthropic.Anthropic(api_key=api_key)
+    anthropic_cls = _get_anthropic_client()
+    client = anthropic_cls(api_key=api_key)
 
     test_code = _load_test_code(args.test_file)
     prod_code = _load_prod_code(args.prod_file, args.test_file)
@@ -495,7 +515,8 @@ def _run_calibration(args: argparse.Namespace, api_key: str) -> int:
     )
     print("---", file=sys.stderr)
 
-    client = anthropic.Anthropic(api_key=api_key)
+    anthropic_cls = _get_anthropic_client()
+    client = anthropic_cls(api_key=api_key)
 
     predictions: list[dict | None] = []
     total_input = 0
