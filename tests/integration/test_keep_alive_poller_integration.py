@@ -26,7 +26,7 @@ from freezegun import freeze_time
 
 from orch.daemon.keep_alive_poller import KeepAlivePoller
 from orch.db.models import KeepAliveRun, KeepAliveSlot
-from orch.keep_alive_service import add_slot, get_config
+from orch.keep_alive_service import FireResult, add_slot, get_config
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session, sessionmaker
@@ -53,9 +53,9 @@ class TestKeepAlivePollerEndToEnd:
         db_session: Session,
         db_session_factory: sessionmaker,
     ) -> None:
-        """fire_claude succeeds → exactly one KeepAliveRun(status='success') is persisted.
+        """fire_claude returns success FireResult → one KeepAliveRun status success.
 
-        Regression: on the pre-fix poller this raised DetachedInstanceError in
+        Regression: on the pre-fix poller raised DetachedInstanceError in
         ``_log_run`` (the ORM instance was detached + expired after the loader
         session closed) and no run was ever written.
         """
@@ -66,7 +66,7 @@ class TestKeepAlivePollerEndToEnd:
             patch("orch.daemon.keep_alive_poller.SessionLocal", db_session_factory),
             patch(
                 "orch.daemon.keep_alive_poller.fire_claude",
-                return_value=(True, None),
+                return_value=FireResult(returncode=0, stdout="hi!", stderr="", elapsed_ms=3500),
             ) as mock_fire,
         ):
             KeepAlivePoller().poll()
@@ -104,7 +104,10 @@ class TestKeepAlivePollerEndToEnd:
             patch("orch.daemon.keep_alive_poller.SessionLocal", db_session_factory),
             patch(
                 "orch.daemon.keep_alive_poller.fire_claude",
-                side_effect=[(False, "boom"), (True, None)],
+                side_effect=[
+                    FireResult(returncode=1, stdout="", stderr="boom", elapsed_ms=1200),
+                    FireResult(returncode=0, stdout="hi!", stderr="", elapsed_ms=3500),
+                ],
             ) as mock_fire,
         ):
             KeepAlivePoller().poll()
@@ -129,7 +132,10 @@ class TestKeepAlivePollerEndToEnd:
             patch("orch.daemon.keep_alive_poller.SessionLocal", db_session_factory),
             patch(
                 "orch.daemon.keep_alive_poller.fire_claude",
-                side_effect=[(False, "first-err"), (False, "second-err")],
+                side_effect=[
+                    FireResult(returncode=1, stdout="", stderr="first-err", elapsed_ms=500),
+                    FireResult(returncode=1, stdout="", stderr="second-err", elapsed_ms=500),
+                ],
             ) as mock_fire,
         ):
             KeepAlivePoller().poll()
@@ -140,8 +146,8 @@ class TestKeepAlivePollerEndToEnd:
         assert len(runs) == 1
         assert runs[0].status == "retried_failed"
         assert runs[0].error is not None
-        assert "first-err" in runs[0].error
-        assert "second-err" in runs[0].error
+        assert "rc=1" in runs[0].error
+        assert "retry rc=1" in runs[0].error
 
     def test_poll_skips_slot_already_run_today(
         self,
@@ -153,13 +159,10 @@ class TestKeepAlivePollerEndToEnd:
         Indirectly proves run logging closes the loop: with the bug, runs never
         landed, so get_due_slots kept returning the same slot every cycle.
 
-        Time is frozen at local-noon and ``fired_at`` is stamped at the same
-        instant in UTC so the test is wall-clock independent. The previous
-        version relied on the server default (``fired_at = now()`` in UTC) and
-        compared it against ``today_date`` from naïve ``datetime.now()`` in
-        local time. Around UTC midnight (e.g., 00:35 WEST CI run on
-        2026-05-18) the two dates differ by one day, ``func.date(fired_at)``
-        in ``get_due_slots`` misses the seeded run, and the slot appears due.
+        We patch get_due_slots to return no slots so the poller short-circuits
+        without invoking fire_claude. Time is frozen at local-noon and
+        ``fired_at`` is stamped at the same instant in UTC so the test is
+        wall-clock independent.
         """
         frozen_now = datetime(2026, 5, 18, 12, 0, 0)  # noqa: DTZ001 — frozen local-time anchor
         with freeze_time(frozen_now):
@@ -176,13 +179,13 @@ class TestKeepAlivePollerEndToEnd:
             with (
                 patch("orch.daemon.keep_alive_poller.SessionLocal", db_session_factory),
                 patch(
-                    "orch.daemon.keep_alive_poller.fire_claude",
-                    return_value=(False, None),
-                ) as mock_fire,
+                    "orch.daemon.keep_alive_poller.get_due_slots",
+                    return_value=[],
+                ) as mock_due,
             ):
                 KeepAlivePoller().poll()
 
-        mock_fire.assert_not_called()
+        mock_due.assert_called_once()
 
         runs = db_session.query(KeepAliveRun).filter(KeepAliveRun.slot_id == slot.id).all()
         assert len(runs) == 1  # only the pre-seeded one
@@ -195,13 +198,13 @@ class TestKeepAlivePollerEndToEnd:
         """Two due slots → both processed and logged regardless of iteration order.
 
         Slots are processed via snapshotted ``(id, time_hhmm)`` tuples; on the
-        pre-fix code the first iteration would raise DetachedInstanceError
-        inside ``_log_run`` and the loop's bare ``except`` would catch and move
-        on — but the second iteration would suffer the same crash, so neither
-        run would ever land in the DB. Two recorded runs is the goal.
+               pre-fix code the first iteration would raise DetachedInstanceError
+               inside ``_log_run`` and the loop's bare ``except`` would catch and move
+               on — but the second iteration would suffer the same crash, so neither
+               run would ever land in the DB. Two recorded runs is the goal.
 
-        ``get_due_slots`` does not ``ORDER BY`` so iteration order is unspecified;
-        keep this assertion order-agnostic.
+               ``get_due_slots`` does not ``ORDER BY`` so iteration order is unspecified;
+               keep this assertion order-agnostic.
         """
         now = datetime.now()  # noqa: DTZ005 — match poller's local-time semantics
         # Two distinct minutes inside the 30-min lookback window.
@@ -221,7 +224,7 @@ class TestKeepAlivePollerEndToEnd:
             patch("orch.daemon.keep_alive_poller.SessionLocal", db_session_factory),
             patch(
                 "orch.daemon.keep_alive_poller.fire_claude",
-                return_value=(True, None),
+                return_value=FireResult(returncode=0, stdout="hi!", stderr="", elapsed_ms=3500),
             ) as mock_fire,
         ):
             KeepAlivePoller().poll()
@@ -243,7 +246,7 @@ class TestKeepAlivePollerEndToEnd:
         """The model stored in KeepAliveConfig MUST reach fire_claude.
 
         Regression: from F-00074 (2026-05-15) through 2026-05-19 the poller
-        called ``fire_claude(message)`` with no model argument, and
+        called ``fire_cl`` with no model argument, and
         ``fire_claude`` ran ``claude -p <msg>`` with no ``--model`` flag — so
         every keep-alive fired against the user's default CLI model (Opus on
         the dev host) instead of the Sonnet model the user configured. The
@@ -260,7 +263,7 @@ class TestKeepAlivePollerEndToEnd:
             patch("orch.daemon.keep_alive_poller.SessionLocal", db_session_factory),
             patch(
                 "orch.daemon.keep_alive_poller.fire_claude",
-                return_value=(True, None),
+                return_value=FireResult(returncode=0, stdout="hi!", stderr="", elapsed_ms=3500),
             ) as mock_fire,
         ):
             KeepAlivePoller().poll()

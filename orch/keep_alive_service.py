@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 import random
 import subprocess
+import time as time_mod
+from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
 from sqlalchemy.orm import Session  # noqa: TC002  same pattern as rest of orch package
@@ -16,6 +18,55 @@ from sqlalchemy.orm import Session  # noqa: TC002  same pattern as rest of orch 
 from orch.db.models import KeepAliveConfig, KeepAliveRun, KeepAliveSlot
 
 logger = logging.getLogger(__name__)
+
+# I-00112: minimum elapsed wall-clock time for a keep-alive fire to count as
+# a real remote round-trip.
+MIN_SUCCESS_ELAPSED_MS = 500
+
+
+# ---------------------------------------------------------------------------
+# FireResult — I-00112: replaces tuple[bool, str | None] returned by fire_claude
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FireResult:
+    """Result of a single fire_claude subprocess invocation.
+
+    Attributes
+    ----------
+    returncode : int
+        Raw exit code from the claude CLI.
+    stdout : str
+        Captured stdout (may be empty string on no-op).
+    stderr : str
+        Captured stderr (usually empty; check when returncode != 0).
+    elapsed_ms : int
+        Wall-clock milliseconds between subprocess spawn and return,
+        measured with time.perf_counter for sub-microsecond precision.
+
+    The ``is_success`` property encodes the Keep-Alive Scheduler's success
+    contract: the API call is considered to have landed only when the CLI
+    exits 0 *and* stdout is non-empty *and* the round-trip took at least
+    500 ms (below that floor is a local short-circuit, not a real call).
+
+    Ref: I-00112
+    """
+
+    returncode: int
+    stdout: str
+    stderr: str
+    elapsed_ms: int
+
+    @property
+    def is_success(self) -> bool:
+        """True only when the CLI confirmed a real API round-trip."""
+        return (
+            self.returncode == 0
+            and self.stdout.strip() != ""
+            and self.elapsed_ms >= MIN_SUCCESS_ELAPSED_MS
+        )
+
 
 # ---------------------------------------------------------------------------
 # Message pool (hardcoded — not configurable via UI)
@@ -192,8 +243,19 @@ def log_run(
     slot_time: str,
     status: str,
     error: str | None = None,
+    stdout: str | None = None,
+    stderr: str | None = None,
+    elapsed_ms: int | None = None,
+    returncode: int | None = None,
 ) -> KeepAliveRun:
-    """Insert a KeepAliveRun row. status must be one of the four defined values."""
+    """Insert a KeepAliveRun row. status must be one of the four defined values.
+
+    ``stdout``, ``stderr``, ``elapsed_ms``, and ``returncode`` are captured on
+    every fire (success or failure) so the operator has post-hoc audit data.
+    They are nullable so the model accepts pre-migration rows with NULL.
+
+    Ref: I-00112
+    """
     if status not in VALID_RUN_STATUSES:
         raise ValueError(f"Invalid status {status!r}; must be one of {VALID_RUN_STATUSES}")
     run = KeepAliveRun(
@@ -201,6 +263,10 @@ def log_run(
         slot_time=slot_time,
         status=status,
         error=error,
+        stdout=stdout,
+        stderr=stderr,
+        elapsed_ms=elapsed_ms,
+        returncode=returncode,
     )
     db.add(run)
     db.flush()
@@ -217,7 +283,7 @@ def get_recent_runs(db: Session, limit: int = 10) -> list[KeepAliveRun]:
 # ---------------------------------------------------------------------------
 
 
-def fire_claude(message: str, model: str, timeout: int = 30) -> tuple[bool, str | None]:
+def fire_claude(message: str, model: str, timeout: int = 30) -> FireResult:
     """Spawn a claude CLI subprocess pinned to ``model``.
 
     Runs: ``claude --model <model> -p <message>`` with ``capture_output=True``,
@@ -227,11 +293,19 @@ def fire_claude(message: str, model: str, timeout: int = 30) -> tuple[bool, str 
     anchor a usage window on a specific model (typically Sonnet), so we must
     never silently fall back to the user's default ``claude`` model.
 
-    Returns (True, None) on returncode==0.
-    Returns (False, stderr_or_exception_str) on failure.
+    Returns a ``FireResult`` dataclass with ``returncode``, ``stdout``,
+    ``stderr``, and ``elapsed_ms`` captured from every invocation.
+    Callers MUST use ``result.is_success`` (which encodes the stricter
+    contract: rc==0 AND non-empty stdout AND elapsed>=500 ms) — NOT
+    ``result.returncode == 0`` — to determine success.
+
     Does NOT retry — retry logic is in the poller.
-    subprocess.TimeoutExpired → treat as failure.
+    subprocess.TimeoutExpired → returncode=-1, elapsed_ms measured up to the
+    timeout boundary.
+
+    Ref: I-00112
     """
+    t0 = time_mod.perf_counter()
     try:
         result = subprocess.run(
             ["claude", "--model", model, "-p", message],
@@ -239,15 +313,37 @@ def fire_claude(message: str, model: str, timeout: int = 30) -> tuple[bool, str 
             text=True,
             timeout=timeout,
         )
-        if result.returncode == 0:
-            return (True, None)
-        return (False, result.stderr or result.stdout or "")
+        elapsed_ms = int(round((time_mod.perf_counter() - t0) * 1000))
+        return FireResult(
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            elapsed_ms=elapsed_ms,
+        )
     except subprocess.TimeoutExpired:
-        return (False, "subprocess timed out")
+        elapsed_ms = int(round((time_mod.perf_counter() - t0) * 1000))
+        return FireResult(
+            returncode=-1,
+            stdout="",
+            stderr="subprocess timed out",
+            elapsed_ms=elapsed_ms,
+        )
     except FileNotFoundError:
-        return (False, "claude binary not found on PATH")
+        elapsed_ms = int(round((time_mod.perf_counter() - t0) * 1000))
+        return FireResult(
+            returncode=-2,
+            stdout="",
+            stderr="claude binary not found on PATH",
+            elapsed_ms=elapsed_ms,
+        )
     except Exception as exc:
-        return (False, str(exc))
+        elapsed_ms = int(round((time_mod.perf_counter() - t0) * 1000))
+        return FireResult(
+            returncode=-9,
+            stdout="",
+            stderr=str(exc),
+            elapsed_ms=elapsed_ms,
+        )
 
 
 # ---------------------------------------------------------------------------
