@@ -1,12 +1,14 @@
+{% set _ua = (request.headers.get('user-agent', '')|lower) %}
+{% set _headless = _e2e_mode|default(false) or ('headlesschrome' in _ua) or ('playwright' in _ua) %}
 {% if dirty > 0 %}
-<span hx-get="/system/nav/worktree-badge"
-      hx-trigger="every 60s"
+<span {% if not _headless %}hx-get="/system/nav/worktree-badge"{% endif %}
+      hx-trigger="{% if _headless %}never{% else %}every 60s{% endif %}"
       hx-swap="outerHTML"
       class="ml-auto w-2 h-2 rounded-full bg-destructive animate-pulse flex-shrink-0"
       title="{{ dirty }} dirty worktree{% if dirty != 1 %}s{% endif %}"></span>
 {% else %}
-<span hx-get="/system/nav/worktree-badge"
-      hx-trigger="every 60s"
+<span {% if not _headless %}hx-get="/system/nav/worktree-badge"{% endif %}
+      hx-trigger="{% if _headless %}never{% else %}every 60s{% endif %}"
       hx-swap="outerHTML"
       class="ml-auto"></span>
 {% endif %}

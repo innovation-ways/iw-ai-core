@@ -95,6 +95,7 @@ KNOWN_UNTESTED_COMMANDS: dict[str, dict[str, str]] = {
     "doc-job-done": {"reason": _DEFERRED},
     "doc-job-status": {"reason": _DEFERRED},
     "docs-export": {"reason": _DEFERRED},
+    "regression-classify": {"reason": _DEFERRED},
     "search": {"reason": _DEFERRED},
     "worktree-status": {"reason": _DEFERRED},
     "sync-skills": {"reason": _DEFERRED},

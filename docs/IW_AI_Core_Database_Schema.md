@@ -132,12 +132,21 @@ COMMENT ON COLUMN work_items.archive_path IS 'Relative path to .tar.zst in archi
 COMMENT ON COLUMN work_items.archive_size_bytes IS 'Compressed archive file size in bytes';
 COMMENT ON COLUMN work_items.archived_at IS 'When the item was archived (Tier 1 + Tier 2 stored, active files deleted)';
 
+-- F-00090: Regression-rate tracking — link Incidents back to the merge that introduced the regression
+CREATE TYPE regression_classification_enum AS ENUM ('regression', 'pre_existing', 'unknown');
+-- introduced_by_work_item_id  TEXT,   -- NULL if unclassified or pre-existing/unknown
+-- introduced_by_commit_sha    TEXT,   -- optional operator-pasted commit SHA
+-- regression_classification    regression_classification_enum, -- NULL = not yet classified
+-- classified_at               TIMESTAMPTZ, -- UTC timestamp of last classification
+-- classified_by               TEXT,   -- 'operator:<user>' or 'heuristic:auto'
+
 -- Indexes
 CREATE INDEX idx_work_items_status ON work_items(project_id, status);
 CREATE INDEX idx_work_items_phase ON work_items(project_id, phase);
 CREATE INDEX idx_work_items_type ON work_items(project_id, type);
 CREATE INDEX idx_work_items_fts ON work_items USING GIN(design_doc_search);
 CREATE INDEX idx_work_items_created ON work_items(project_id, created_at DESC);
+CREATE INDEX ix_work_items_introduced_by_work_item_id ON work_items(introduced_by_work_item_id); -- F-00090
 ```
 
 **Full-text search update trigger:**

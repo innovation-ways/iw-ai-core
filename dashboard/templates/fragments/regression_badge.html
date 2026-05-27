@@ -1,0 +1,14 @@
+{# F-00090 AC7: Regression-risk badge on Batches/History rows (AC7).
+
+    Rendered next to the work item ID in batch item rows and history rows.
+
+    Context:
+      - count: int — number of classified regressions pointing to this work item.
+        When 0, renders nothing (Invariant 1: NULL means unknown).
+#}
+
+{% if count > 0 %}
+<span class="iw-regression-badge" title="{{ count }} regression{% if count > 1 %}s{% endif %} introduced by this merge">
+  {{ count }} regression{% if count > 1 %}s{% endif %}
+</span>
+{% endif %}

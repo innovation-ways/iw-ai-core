@@ -1,0 +1,146 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "F-00090",
+  "type": "Feature",
+  "title": "Regression-rate tracking — correlate filed Incidents back to the merge that introduced the regression; report as a quality KPI alongside throughput in the dashboard",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**",
+      "orch/regression_link_service.py",
+      "orch/cli/**",
+      "dashboard/routers/items.py",
+      "dashboard/routers/batches.py",
+      "dashboard/routers/project_dashboard.py",
+      "dashboard/templates/fragments/**",
+      "dashboard/templates/pages/**",
+      "dashboard/static/styles.css",
+      "scripts/backfill_regression_classification.py",
+      "tests/integration/test_regression_link_service.py",
+      "tests/integration/test_backfill_regression_classification.py",
+      "tests/dashboard/test_regression_classification_form.py",
+      "tests/dashboard/test_quality_kpis_section.py",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "docs/IW_AI_Core_Database_Schema.md",
+      "docs/IW_AI_Core_Dashboard_Design.md",
+      "skills/iw-ai-core-testing/**",
+      ".claude/skills/iw-ai-core-testing/**",
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Add regression-link fields to WorkItem model (introduced_by_work_item_id, introduced_by_commit_sha, regression_classification ENUM, classified_at, classified_by) + Alembic migration + schema doc",
+      "prompt": "prompts/F-00090_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "backend-impl",
+      "description": "orch/regression_link_service.py (classify + suggest_introducer heuristic) + iw regression-classify CLI command + integration tests",
+      "prompt": "prompts/F-00090_S02_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "frontend-impl",
+      "description": "Incident classification form (htmx fragment + routes in dashboard/routers/items.py) + dashboard tests",
+      "prompt": "prompts/F-00090_S03_Frontend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "frontend-impl",
+      "description": "Quality KPIs section + /project/{id}/quality-kpis route + per-merge regression badge on Batches/History rows + dashboard tests",
+      "prompt": "prompts/F-00090_S04_Frontend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "backend-impl",
+      "description": "scripts/backfill_regression_classification.py + tests/integration/test_backfill_regression_classification.py (AC8 coverage) + docs (testing-strategy §10, dashboard-design, schema) + tracker §8 row 4.7 -> DONE v1.4 + iw-ai-core-testing skill cross-reference + iw sync-skills",
+      "prompt": "prompts/F-00090_S05_Backend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "CodeReview: per-agent review of S01..S05 (database + backend + frontend + frontend + backend)",
+      "prompt": "prompts/F-00090_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-final-impl",
+      "description": "CodeReview_Final: cross-step global review — ENUM value consistency across model/migration/service/CLI/form, classified_by format consistency, AC1..AC8 completeness, integration round-trip",
+      "prompt": "prompts/F-00090_S07_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "migration-check",
+      "command": "make migration-check",
+      "description": "QV: Alembic migration round-trip + drift check"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S16",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — classification form, Quality KPIs section, regression badge, empty-state and adjacent-flow no-regressions",
+      "prompt": "prompts/F-00090_S16_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S17",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/F-00090_S17_SelfAssess_prompt.md"
+    }
+  ]
+}

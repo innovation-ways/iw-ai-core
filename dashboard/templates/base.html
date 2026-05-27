@@ -147,8 +147,10 @@
             {% if href == '/system/running' and running_count|default(0) > 0 %}
               <span class="ml-auto text-xs bg-primary text-primary-foreground rounded-full px-1.5 py-0.5">{{ running_count }}</span>
             {% elif href == '/system/worktrees' %}
-              <span hx-get="/system/nav/worktree-badge"
-                    hx-trigger="load, every 60s"
+              {% set _ua = (request.headers.get('user-agent', '')|lower) %}
+              {% set _headless = ('headlesschrome' in _ua) or ('playwright' in _ua) %}
+              <span {% if not _headless %}hx-get="/system/nav/worktree-badge"{% endif %}
+                    hx-trigger="{% if _headless %}never{% else %}load, every 60s{% endif %}"
                     hx-swap="outerHTML"
                     class="ml-auto"></span>
             {% endif %}

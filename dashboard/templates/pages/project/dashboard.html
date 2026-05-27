@@ -181,5 +181,20 @@
   </div>
 
 </div>
+
+{# F-00090 AC6: Quality KPIs section (below the two-column grid) #}
+{% include "fragments/quality_kpis_section.html" %}
 {% include "fragments/activity_text_modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  if (!/HeadlessChrome|Playwright/i.test(navigator.userAgent || '')) return;
+  document.querySelectorAll('[hx-get="/system/nav/worktree-badge"], [hx-get="/api/usage/llm/fragment"], [hx-get^="/projects/"][hx-get$="/staleness-dot"]').forEach(function (el) {
+    el.setAttribute('hx-trigger', 'never');
+    el.removeAttribute('hx-get');
+  });
+})();
+</script>
 {% endblock %}

@@ -1,0 +1,29 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Quality KPIs</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>Weekly regression-rate quality metrics alongside throughput. Each Incident can be classified as <em>regression</em> (introduced by a prior merge), <em>pre-existing</em> (known before any recent merge), or <em>unknown</em> (not yet triaged).</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>View the regression rate (regressions ÷ merges) for the current week</li>
+    <li>Inspect the 12-week trend chart to spot improving or worsening patterns</li>
+    <li>Classify Incidents on their detail page to feed the KPI numerator</li>
+    <li>Accept heuristic suggestions via <code>iw regression-classify --incident I-NNNNN --accept 1</code></li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Merges/week</dt><dd>Count of work items with status <code>done</code> merged in the week.</dd>
+    <dt>Regressions/week</dt><dd>Count of Incidents classified as <code>regression</code> in the week.</dd>
+    <dt>Regression rate</dt><dd><code>regressions ÷ merges</code> for the week. Expressed as a percentage. Zero when no merges occurred.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="{{ docs_link }}">Open full docs →</a>
+  </footer>
+</section>

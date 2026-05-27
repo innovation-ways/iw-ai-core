@@ -134,6 +134,7 @@ select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN
 "tests/unit/test_assertion_scanner.py" = ["ERA001"]  # tests carry commented-example labels for the patterns the scanner detects (ERA001 false-positive)
 "orch/keep_alive_service.py" = ["S603", "S607"]  # claude CLI subprocess with hardcoded greetings; never user input
 "orch/daemon/browser_env.py" = ["S603", "S607"]  # docker logs is read-only; name from compose output
+"orch/regression_link_service.py" = ["S603", "S607"]  # git log is intentional for regression link heuristic
 "orch/doc_service.py" = ["S603", "S607"]  # git log is intentional for staleness detection
 "orch/cancel.py" = ["S603", "S607"]  # git worktree and docker compose are intentional for worktree teardown
 

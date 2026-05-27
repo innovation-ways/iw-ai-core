@@ -283,6 +283,14 @@ def db_engine(
         monkeypatch.setenv("IW_CORE_DB_NAME", parsed.path.lstrip("/"))
         monkeypatch.setenv("IW_CORE_DB_USER", str(parsed.username))
         monkeypatch.setenv("IW_CORE_DB_PASSWORD", str(parsed.password or ""))
+        # Also patch IW_CORE_ORCH_DB_* so subprocess calls to get_orch_db_url()
+        # (which prefers IW_CORE_ORCH_DB_* over IW_CORE_DB_*) also route to the
+        # testcontainer clone rather than the live orch DB (port 5433).
+        monkeypatch.setenv("IW_CORE_ORCH_DB_HOST", str(parsed.hostname))
+        monkeypatch.setenv("IW_CORE_ORCH_DB_PORT", str(parsed.port))
+        monkeypatch.setenv("IW_CORE_ORCH_DB_NAME", parsed.path.lstrip("/"))
+        monkeypatch.setenv("IW_CORE_ORCH_DB_USER", str(parsed.username))
+        monkeypatch.setenv("IW_CORE_ORCH_DB_PASSWORD", str(parsed.password or ""))
         engine = create_engine(sa_url, pool_pre_ping=True)
         try:
             yield engine

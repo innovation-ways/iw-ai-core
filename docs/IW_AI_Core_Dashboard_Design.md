@@ -569,6 +569,63 @@ Checkboxes allow selecting multiple approved items → "Create Batch" button.
 
 Each row clickable → item detail. Filters persist via URL query params. Full-text search integrated.
 
+### 4.7. Quality KPIs (`/project/{id}/quality-kpis`) — F-00090
+
+The Quality KPIs section (also mounted inline on the per-project home
+`/project/{id}/`) provides a regression-rate dimension alongside
+throughput. High velocity with a rising regression rate is worse than
+steady velocity with a low one — this section makes that visible.
+
+```
++==[ Sidebar ]=====+==[ InnoForge — Quality KPIs ]========================+
+|                   |                                                        |
+| InnoForge     ▾  |  Quality KPIs                              [Reload]  |
+| ─────────────── |  ──────────────────────────────────────────────────── |
+| > Dashboard      |                                                        |
+| > Batches        |  This Week        │ Last 4 Weeks                      |
+| > Queue (5)      |  ─────────────────────────────────────────────────── │
+| > History        |                                                        |
+| > Analytics      |  Merges (Features + CR)    │ Regressions filed        |
+| ─────────────── |  8 items               │ 1 item                        |
+| > Quality KPIs ● |  ──────────────────────────────────────────────── │
+|                   |  Regression Rate: 0.13  │ [░░░▓░░░░░░░░] 12-wk trend |
+|                   |  (1 regression per 8 merges)                            |
+|                   |                                                        |
+|                   |  ┌─────────────────────────────────────────────┐    |
+|                   |  │ 12-Week Regression Rate Trend (inline SVG)   │    |
+|                   |  │                                             │    |
+|                   |  │ 0.30 ┤      ┌─┐                              │    |
+|                   |  │      │      │ │  ┌─┐                         │    |
+|                   |  │ 0.15 ┤  ┌─┐ └─┘  │ │ ┌─┐ ┌─┐                 │    |
+|                   |  │ 0.00 ┼──┴─┴───┴───┴─┴─┴─┴─┴─┘                 │    |
+|                   |  │      W1  W2  W3  W4  W5  W6 ... W12           │    |
+|                   |  └─────────────────────────────────────────────┘    |
+|                   |                                                        |
+|                   |  Rate guard: 0.00 when no merges in a week          |
+|                   |  (never NaN or a division error)                     |
++-------------------+--------------------------------------------------------+
+```
+
+**Route**: ``GET /project/{id}/quality-kpis`` — dedicated page. Also embedded
+inline on the per-project home `/project/{id}/` below the active-batches section.
+
+**Computation** (per week, Monday–Sunday UTC):
+
+```
+merges_this_week   = count(WorkItem.type IN ('Feature','ChangeRequest')
+                           AND status='completed'
+                           AND completed_at in [week_start, week_end])
+regressions_this_wk = count(WorkItem.type='Issue'
+                           AND regression_classification='regression'
+                           AND classified_at in [week_start, week_end])
+regression_rate = regressions_this_week / merges_this_week
+                  (0.0 when merges == 0 — rate guard, Invariant 6)
+```
+
+**Trend chart**: inline SVG generated server-side (no JS library dependency).
+Plots actual weeks only; no padding zeros for weeks with no history. X-axis
+labels show week numbers (W1–W12). Y-axis is the rate (0.0–max observed).
+
 ### 4.8. System Status (`/system/status`)
 
 ```
@@ -813,25 +870,27 @@ GET  /project/{id}/analytics                  Analytics (Phase 2)
 ### 9.2. Fragment Routes (return partial HTML for htmx)
 
 ```
-GET  /project/{id}/item/{iid}/tab/overview    Tab content
-GET  /project/{id}/item/{iid}/tab/design-doc  Design doc rendered
-GET  /project/{id}/item/{iid}/tab/reports     Step reports
-GET  /project/{id}/item/{iid}/tab/artifacts   Artifact browser
-GET  /api/search?q=...&project=...            Search results fragment
-GET  /api/confirm/kill-step/{iid}/{step}      Confirmation dialog HTML
+GET  /project/{id}/item/{iid}/tab/overview     Tab content
+GET  /project/{id}/item/{iid}/tab/design-doc   Design doc rendered
+GET  /project/{id}/item/{iid}/tab/reports       Step reports
+GET  /project/{id}/item/{iid}/tab/artifacts     Artifact browser
+GET  /api/search?q=...&project=...              Search results fragment
+GET  /api/confirm/kill-step/{iid}/{step}       Confirmation dialog HTML
 ```
 
 ### 9.3. Action Routes (mutate state, return redirect or fragment)
 
 ```
-POST /project/{id}/api/item/{iid}/kill-step/{n}      Kill a running step
-POST /project/{id}/api/item/{iid}/restart-step/{n}    Restart a failed step
-POST /project/{id}/api/item/{iid}/skip-step/{n}       Skip a failed step
-POST /project/{id}/api/item/{iid}/restart-from/{n}    Restart from step N
-POST /project/{id}/api/batch/{bid}/approve             Approve batch
-POST /project/{id}/api/batch/{bid}/pause               Pause batch
-POST /project/{id}/api/batch/{bid}/resume              Resume batch
-POST /project/{id}/api/batch/{bid}/archive             Archive batch
+POST /project/{id}/api/item/{iid}/kill-step/{n}       Kill a running step
+POST /project/{id}/api/item/{iid}/restart-step/{n}     Restart a failed step
+POST /project/{id}/api/item/{iid}/skip-step/{n}        Skip a failed step
+POST /project/{id}/api/item/{iid}/restart-from/{n}     Restart from step N
+POST /project/{id}/api/batch/{bid}/approve            Approve batch
+POST /project/{id}/api/batch/{bid}/pause              Pause batch
+POST /project/{id}/api/batch/{bid}/resume             Resume batch
+POST /project/{id}/api/batch/{bid}/archive            Archive batch
+POST /project/{id}/item/{iid}/regression-classify     htmx: submit classification form
+GET  /project/{id}/item/{iid}/regression-suggestions  htmx: ranked heuristic suggestions
 ```
 
 ### 9.4. SSE Routes

@@ -176,4 +176,13 @@ if (typeof window.iwChat !== 'undefined') {
   window.iwChat.setContext({type: "{{ item.type }}", id: "{{ item.id }}", title: {{ item.title | tojson }}});
 }
 </script>
+<script>
+(function () {
+  if (!/HeadlessChrome|Playwright/i.test(navigator.userAgent || '')) return;
+  document.querySelectorAll('[hx-get="/system/nav/worktree-badge"], [hx-get="/api/usage/llm/fragment"], [hx-get^="/projects/"][hx-get$="/staleness-dot"]').forEach(function (el) {
+    el.setAttribute('hx-trigger', 'never');
+    el.removeAttribute('hx-get');
+  });
+})();
+</script>
 {% endblock %}

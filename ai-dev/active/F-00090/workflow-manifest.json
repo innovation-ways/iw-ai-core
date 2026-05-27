@@ -2,7 +2,7 @@
   "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
   "id": "F-00090",
   "type": "Feature",
-  "title": "Regression-rate tracking — correlate filed Incidents back to the merge that introduced the regression; report as a quality KPI alongside throughput in the dashboard",
+  "title": "Regression-rate tracking \u2014 correlate filed Incidents back to the merge that introduced the regression; report as a quality KPI alongside throughput in the dashboard",
   "browser_verification": true,
   "scope": {
     "allowed_paths": [
@@ -26,7 +26,11 @@
       "docs/IW_AI_Core_Dashboard_Design.md",
       "skills/iw-ai-core-testing/**",
       ".claude/skills/iw-ai-core-testing/**",
-      "ai-dev/work/TESTS_ENHANCEMENT.md"
+      "ai-dev/work/TESTS_ENHANCEMENT.md",
+      "docs/IW_AI_Core_CLI_Spec.md",
+      "tests/integration/test_cli_spec_conformance.py",
+      "dashboard/templates/_partials/help/quality-kpis.html",
+      "dashboard/templates/base.html"
     ]
   },
   "steps": [
@@ -57,7 +61,7 @@
     {
       "step": "S05",
       "agent": "backend-impl",
-      "description": "scripts/backfill_regression_classification.py + tests/integration/test_backfill_regression_classification.py (AC8 coverage) + docs (testing-strategy §10, dashboard-design, schema) + tracker §8 row 4.7 -> DONE v1.4 + iw-ai-core-testing skill cross-reference + iw sync-skills",
+      "description": "scripts/backfill_regression_classification.py + tests/integration/test_backfill_regression_classification.py (AC8 coverage) + docs (testing-strategy \u00a710, dashboard-design, schema) + tracker \u00a78 row 4.7 -> DONE v1.4 + iw-ai-core-testing skill cross-reference + iw sync-skills",
       "prompt": "prompts/F-00090_S05_Backend_prompt.md"
     },
     {
@@ -69,7 +73,7 @@
     {
       "step": "S07",
       "agent": "code-review-final-impl",
-      "description": "CodeReview_Final: cross-step global review — ENUM value consistency across model/migration/service/CLI/form, classified_by format consistency, AC1..AC8 completeness, integration round-trip",
+      "description": "CodeReview_Final: cross-step global review \u2014 ENUM value consistency across model/migration/service/CLI/form, classified_by format consistency, AC1..AC8 completeness, integration round-trip",
       "prompt": "prompts/F-00090_S07_CodeReview_Final_prompt.md"
     },
     {
@@ -132,7 +136,7 @@
     {
       "step": "S16",
       "agent": "qv-browser",
-      "description": "QV: Browser verification — classification form, Quality KPIs section, regression badge, empty-state and adjacent-flow no-regressions",
+      "description": "QV: Browser verification \u2014 classification form, Quality KPIs section, regression badge, empty-state and adjacent-flow no-regressions",
       "prompt": "prompts/F-00090_S16_BrowserVerification_prompt.md"
     },
     {

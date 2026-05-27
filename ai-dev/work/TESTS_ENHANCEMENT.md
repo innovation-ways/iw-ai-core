@@ -1,6 +1,6 @@
 # IW AI Core — Testing Enhancement Plan
 
-> **Status**: living plan — v1.5 (2026-05-26)
+> **Status**: living plan — v1.6 (2026-05-27)
 > **Owner**: sergio
 > **Source research**: [`docs/research/R-00068-ai-core-test-quality-strategy.md`](../../docs/research/R-00068-ai-core-test-quality-strategy.md) (R-00068)
 > **Purpose**: the single place we track *what* we want to improve about IW AI Core's testing, *why*, and *how* — and the running status of each piece. We tackle items one at a time, each delivered either as a CR/Feature or as a direct change, decided at the time.
@@ -153,7 +153,7 @@ Sequencing rationale: **all of Phase 1 (P1-CR-A … P1-CR-E) has shipped** — s
 | 4.5 | DB-column documentation gate | Keeps `docs/IW_AI_Core_Database_Schema.md` honest (InnoForge has the analogue) | CI check: every SQLAlchemy model column has a description; fail on undocumented columns. | CR | ✅ (CR-00085, 2026-05-24, warn-first burn-in) | CR-00085 |
 | 4.5.followup | Column-docs incremental scrub + flip gate blocking | The CR-00085 baseline freezes today's undocumented columns; this follow-up scrubs them per-module and flips `make check-column-docs` from warn-first to blocking. | Per-module backend-impl CRs (`models.py` first, then `migrations/versions/**`); a final direct-config CR removes the `|| true`. | CR + direct | TODO | CR-00085-followup-column-docs-scrub / CR-00085-followup-column-docs-gate-blocking |
 | 4.6 | Self-dashboarding of test health | The platform runs other projects' tests — it should report its own | Surface mutation score + coverage trend + flaky count in the dashboard's existing Tests/Quality view (it already has a `coverage_service`). Feed into the Jobs/Quality view. | CR | **DRAFT (CR-00086, 17 steps)** — **HARD-depends on CR-00080 merged** (mutation data); soft-deps CR-00047 + CR-00061 already on `main`. `browser_verification: true`. | CR-00086 |
-| 4.7 | Regression-rate tracking | METR-style insight: throughput without a regression metric is misleading | Correlate filed incidents back to the merge that introduced them; report as a quality KPI alongside throughput. | Feature (data + UI) | **DRAFT (F-00090, 17 steps)** — soft-sequenced after CR-00086 for dashboard-layout reuse. `browser_verification: true`. | F-00090 |
+| 4.7 | Regression-rate tracking | METR-style insight: throughput without a regression metric is misleading | Correlate filed incidents back to the merge that introduced them; report as a quality KPI alongside throughput. | Feature (data + UI) | **DONE (F-00090, 2026-05-27)** — operator-curated classification + heuristic suggest_introducer() + dashboard Quality KPIs section + `/project/{id}/quality-kpis` route + regression badge on Batches/History + backfill script + docs + skill cross-ref. `browser_verification: true`. | F-00090 |
 | 4.8 | Tighten mutation gate to blocking | Once we trust the changed-files mutation score, make it block | Flip the Phase-2 non-blocking PR gate to blocking; expand audit cadence. | CR | **OPEN** — CR-00080 attempted wiring but viability guard fired (M=0%, K=55). Next step: Expand test coverage in the most-mutated modules (see per-module breakdown in evidence file), then re-run this CR. Alternatively, run a longer manual spike (`make mutation-audit` outside the 3600s budget) to gather more data before re-running. | CR-00080 |
 
 ---

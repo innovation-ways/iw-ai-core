@@ -305,4 +305,13 @@ document.body.addEventListener('htmx:afterRequest', function (e) {
   };
 })();
 </script>
+<script>
+(function () {
+  if (!/HeadlessChrome|Playwright/i.test(navigator.userAgent || '')) return;
+  document.querySelectorAll('[hx-get="/system/nav/worktree-badge"], [hx-get="/api/usage/llm/fragment"], [hx-get^="/projects/"][hx-get$="/staleness-dot"]').forEach(function (el) {
+    el.setAttribute('hx-trigger', 'never');
+    el.removeAttribute('hx-get');
+  });
+})();
+</script>
 {% endblock %}

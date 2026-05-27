@@ -12,6 +12,9 @@ from sqlalchemy import exists, select
 
 from dashboard.dependencies import get_db
 from dashboard.routers.batches import _get_scope_statuses
+from dashboard.routers.project_dashboard import (
+    regression_count_for_merge as _regression_count_for_merge,
+)
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -123,6 +126,8 @@ class HistoryItem:
     created_at: datetime
     completed_at: datetime | None
     duration_secs: int | None
+    regression_count: int = 0
+    """F-00090 AC7: count of regressions introduced by this merge (prefetched, avoids N+1)."""
 
 
 _HISTORY_PAGE_SIZE = 20
@@ -203,8 +208,16 @@ def _history_items(
     offset = (max(page, 1) - 1) * _HISTORY_PAGE_SIZE
     stmt = base.offset(offset).limit(_HISTORY_PAGE_SIZE)
 
+    items_list = list(db.scalars(stmt))
+    item_ids = [r.id for r in items_list]
+
+    # F-00090 AC7: pre-fetch regression counts in one batched query (avoids N+1)
+    regression_counts: dict[str, int] = {}
+    if item_ids:
+        regression_counts = _regression_count_for_merge(project_id, item_ids, db)
+
     items = []
-    for r in db.scalars(stmt):
+    for r in items_list:
         duration: int | None = None
         if r.completed_at and r.created_at:
             duration = int((r.completed_at - r.created_at).total_seconds())
@@ -217,6 +230,7 @@ def _history_items(
                 created_at=r.created_at,
                 completed_at=r.completed_at,
                 duration_secs=duration,
+                regression_count=regression_counts.get(r.id, 0),
             )
         )
     return items, total

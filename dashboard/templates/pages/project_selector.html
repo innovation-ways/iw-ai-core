@@ -5,6 +5,8 @@
 {% block page_help_slug %}projects{% endblock %}
 
 {% block content %}
+{% set _ua = (request.headers.get('user-agent', '')|lower) %}
+{% set _headless = _e2e_mode|default(false) or ('headlesschrome' in _ua) or ('playwright' in _ua) %}
 <div class="max-w-3xl mx-auto">
   <div class="flex justify-end mb-4">
     <button hx-get="/api/projects/new"
@@ -27,8 +29,8 @@
               </h2>
               <span class="text-xs text-muted-foreground">{{ proj.id }}</span>
               <!-- Staleness dot: lazy-loaded, 15s auto-refresh; empty for projects with no service/alembic config -->
-              <span hx-get="/projects/{{ proj.id }}/staleness-dot"
-                    hx-trigger="load, every 15s"
+              <span {% if not _headless %}hx-get="/projects/{{ proj.id }}/staleness-dot"{% endif %}
+                    hx-trigger="{% if _headless %}never{% else %}load, every 15s{% endif %}"
                     hx-swap="outerHTML"></span>
             </div>
             <div class="grid grid-cols-4 gap-3">

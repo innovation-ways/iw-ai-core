@@ -167,3 +167,62 @@ def project_search(
             "has_more": has_more,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# F-00090: Regression-classification search endpoint (AC5)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/project/{project_id}/work-items/search", response_class=HTMLResponse)
+def work_items_search(
+    project_id: str,
+    request: Request,  # noqa: ARG001  (kept for htmx compatibility; body unused)
+    db: Session = Depends(get_db),
+    q: str = "",
+) -> Any:
+    """htmx endpoint: return &lt;options&gt; for the regression-classification dropdown.
+
+    Returns merged (done) work items for the project, filtered by query string q.
+    When q is empty, returns the 20 most-recently-merged items.
+    Results are plain &lt;option&gt; elements so the datalist in the form is updated.
+    """
+    from sqlalchemy import select as sa_select
+
+    from orch.db.models import Project, WorkItem, WorkItemStatus
+
+    # Validate project exists
+    project = db.scalar(sa_select(Project).where(Project.id == project_id))
+    if project is None:
+        return HTMLResponse("")
+
+    # Build query for merged (completed) work items in this project
+    stmt = (
+        sa_select(WorkItem)
+        .where(WorkItem.project_id == project_id)
+        .where(WorkItem.status == WorkItemStatus.completed)
+        .order_by(WorkItem.updated_at.desc())
+        .limit(20)
+    )
+
+    if q.strip():
+        # Filter by ID prefix or title (case-insensitive)
+        q_pattern = f"%{q.strip()}%"
+        from sqlalchemy import or_
+
+        stmt = stmt.where(
+            or_(
+                WorkItem.id.ilike(q_pattern),
+                WorkItem.title.ilike(q_pattern),
+            )
+        )
+
+    rows = db.scalars(stmt.limit(20)).all()
+
+    # Render <option> elements
+    options_html = ""
+    for item in rows:
+        label = f"{item.id} — {item.title[:50]}"
+        options_html += f'<option value="{item.id}" label="{label}">{label}</option>\n'
+
+    return HTMLResponse(options_html, media_type="text/html")

@@ -30,6 +30,7 @@ from orch.db.models import (
     EvidencePhase,
     FixCycle,
     Project,
+    RegressionClassification,
     RunStatus,
     StepRun,
     StepStatus,
@@ -37,6 +38,7 @@ from orch.db.models import (
     WorkItem,
     WorkItemEvidence,
 )
+from orch.regression_link_service import Candidate  # F-00090: type annotation for _top_suggestion
 
 if TYPE_CHECKING:
     from fastapi.templating import Jinja2Templates
@@ -328,7 +330,7 @@ def _aggregate_step_spans(
             earliest_candidates = [v for v in (existing[0], row.earliest) if v is not None]
             earliest = min(earliest_candidates) if earliest_candidates else None
             # If either side still has an incomplete aggregate (None from the CASE
-            # above), the step is not fully finished — the combined latest is None.
+            # above), the step is not fully finished - the combined latest is None.
             if existing[1] is None or row.latest is None:
                 latest = None
             else:
@@ -815,9 +817,9 @@ def _reverse_log(content: str | None) -> str | None:
 def _setup_log_content(bi: BatchItem) -> str:
     lines = ["=== Worktree Setup ==="]
     if bi.worktree_info and isinstance(bi.worktree_info, dict):
-        lines.append(f"Path:       {bi.worktree_info.get('path', '—')}")
-        lines.append(f"Branch:     {bi.worktree_info.get('branch', '—')}")
-        lines.append(f"Created at: {bi.worktree_info.get('created_at', '—')}")
+        lines.append(f"Path:       {bi.worktree_info.get('path', '-')}")
+        lines.append(f"Branch:     {bi.worktree_info.get('branch', '-')}")
+        lines.append(f"Created at: {bi.worktree_info.get('created_at', '-')}")
     else:
         lines.append("Worktree info not available.")
     if bi.notes:
@@ -861,7 +863,7 @@ def _merge_log_content(bi: BatchItem) -> str:
 
 @dataclass
 class ArtifactFile:
-    """Deprecated — kept for backward compatibility with tests that import it.
+    """Deprecated - kept for backward compatibility with tests that import it.
 
     Use ``ArtifactNode`` and ``_list_artifact_tree`` instead.
     """
@@ -1069,7 +1071,7 @@ def _get_cascade_history(db: Session, project_id: str, item_id: str) -> CascadeH
     """Read cascade-related daemon events and step_runs; return a structured
     summary plus a tree of cascade events suitable for template rendering.
 
-    One query per call — joins daemon_events filtered to the item and builds
+    One query per call - joins daemon_events filtered to the item and builds
     the causality tree in Python. No N+1 queries.
     """
     from sqlalchemy import func
@@ -1214,7 +1216,7 @@ def _get_inherited_runtime_label(
 
     Returns the resolved AgentRuntimeOption's display_name, or None when no
     option can be resolved (empty catalogue). A None value signals the template
-    to fall back to a neutral "— inherit —" label (AC5).
+    to fall back to a neutral "- inherit -" label (AC5).
 
     This function is called once per render (not per step) so the cascade result
     is identical for every per-step dropdown within the same work item.
@@ -1227,7 +1229,7 @@ def _get_inherited_runtime_label(
         cfg = load_projects_toml(load_config().projects_toml)
         project_config = cfg.get(project_id)
     except Exception:
-        # If projects.toml is unreadable, project_config stays None — the resolver
+        # If projects.toml is unreadable, project_config stays None - the resolver
         # falls through to the catalogue default.
         project_config = None
 
@@ -1378,6 +1380,9 @@ def item_tab_overview(
     # CR-00070 S01: compute the label shown in the per-step dropdown empty option
     inherited_runtime_label = _get_inherited_runtime_label(db, project_id, item)
 
+    # F-00090: compute top heuristic suggestion for the classification form
+    top_suggestion = _top_suggestion(project_id, item_id, db)
+
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
@@ -1391,6 +1396,8 @@ def item_tab_overview(
             "runtime_options": runtime_options_list,
             "item_runtime_option_id": item_runtime_option_id,
             "inherited_runtime_label": inherited_runtime_label,
+            # F-00090: pass to the regression classification form
+            "top_suggestion": top_suggestion,
         },
     )
 
@@ -2221,7 +2228,7 @@ def item_session_log(
     """htmx fragment: rendered session log for a specific step run (CR-00065).
 
     Query params:
-        run_number: int | None — if omitted, uses the highest run_number for the step.
+        run_number: int | None - if omitted, uses the highest run_number for the step.
 
     Error handling:
         404 if project, item, or step not found.
@@ -2274,7 +2281,7 @@ def item_session_log(
         try:
             raw_segments = read_session_content(run)
             turns = group_into_turns_newest_first(raw_segments)
-            # Never 500 — return a single error segment so the popup still renders
+            # Never 500 - return a single error segment so the popup still renders
         except Exception:
             error_segment = {
                 "type": "error",
@@ -2296,5 +2303,202 @@ def item_session_log(
             "item_id": item_id,
             "project_id": project_id,
             "error_message": error_message,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# F-00090: Regression classification endpoints (AC5)
+# ---------------------------------------------------------------------------
+
+
+def _top_suggestion(
+    project_id: str,
+    item_id: str,
+    db: Session,
+) -> Candidate | None:
+    """Return the top heuristic suggestion (or None) for an incident.
+
+    Calls suggest_introducer and returns the first candidate, if any.
+    Returns None when suggest_introducer returns [] (no git repo, unmerged,
+    or no file overlap found).
+    """
+    from orch.regression_link_service import suggest_introducer  # noqa: PLC0415
+
+    try:
+        candidates = suggest_introducer(
+            db,
+            project_id=project_id,
+            item_id=item_id,
+        )
+        return candidates[0] if candidates else None
+    except Exception:
+        # Git calls can fail when the repo path is wrong or git is unavailable.
+        # Never surface these as 500 - just return None so the accept button is hidden.
+        return None
+
+
+@router.get("/item/{item_id}/regression-suggestions", response_class=HTMLResponse)
+def item_regression_suggestions(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx endpoint: return the ranked heuristic suggestion list fragment.
+
+    Used by the 'Refresh suggestions' button in the classification form.
+    Swapping: the caller targets #regression-suggestion-list and swaps its innerHTML.
+    """
+    _get_project_or_404(project_id, db)
+    _get_item_or_404(project_id, item_id, db)
+
+    from orch.regression_link_service import suggest_introducer  # noqa: PLC0415
+
+    try:
+        candidates = suggest_introducer(
+            db,
+            project_id=project_id,
+            item_id=item_id,
+        )
+    except Exception:
+        candidates = []
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/regression_suggestion_list.html",
+        {
+            "project_id": project_id,
+            "item_id": item_id,
+            "candidates": candidates,
+        },
+    )
+
+
+_RE_SHA_PATTERN = __import__("re").compile(r"^[0-9a-fA-F]{7,40}$")
+
+
+@router.post("/item/{item_id}/regression-classify")
+async def item_regression_classify(
+    project_id: str,
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx endpoint: classify an Incident against the merge that introduced the regression.
+
+    Reads form fields from the request.
+    Calls regression_link_service.classify(...) and either:
+    - Returns the re-rendered form fragment with an inline error (422 on ValueError)
+    - Returns the updated item row fragment (200 on success)
+
+    The 'accept_top' field causes classified_by to be set to 'heuristic:auto' instead
+    of the default 'operator:{user}' path.
+    """
+    from orch.regression_link_service import classify as _svc_classify
+
+    _get_project_or_404(project_id, db)
+    item = _get_item_or_404(project_id, item_id, db)
+
+    # Parse form fields - request.form() is async but FastAPI awaits it
+    form_data = await request.form()
+    introduced_by_work_item_id = (
+        str(form_data.get("introduced_by_work_item_id", "")).strip() or None
+    )
+    commit_sha = str(form_data.get("commit_sha", "")).strip() or None
+    classification_str = str(form_data.get("classification", "")).strip()
+    accept_top = str(form_data.get("accept_top", "")).strip()
+    clear_flag = str(form_data.get("clear", "")).strip()
+
+    # Validate classification is one of the enum values
+    valid_classifications = {e.value for e in RegressionClassification}
+    if classification_str not in valid_classifications:
+        err = (
+            '<div class="p-3 bg-destructive/10 border border-destructive/30 "'
+            'rounded text-sm text-destructive">'
+            "Please select a classification "
+            "(regression, pre-existing, or unknown)."
+            "</div>"
+        )
+        return HTMLResponse(err, status_code=422, media_type="text/html")
+
+    classification = RegressionClassification(classification_str)
+
+    # Validate commit SHA format
+    if commit_sha and not _RE_SHA_PATTERN.match(commit_sha):
+        templates: Jinja2Templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request,
+            "fragments/regression_classification_form.html",
+            {
+                "project_id": project_id,
+                "item_id": item_id,
+                "item": item,
+                "top_suggestion": _top_suggestion(project_id, item_id, db),
+                "error_message": (
+                    "Commit SHA must be 7-40 hexadecimal characters (e.g. a1b2c3d or "
+                    "a1b2c3d4e5f6...)."
+                ),
+            },
+            status_code=422,
+        )
+
+    # Determine classified_by
+    current_user = request.headers.get("X-User-Name", "unknown")
+    classified_by = "heuristic:auto" if accept_top else f"operator:{current_user}"
+
+    # Handle clear
+    if clear_flag:
+        introduced_by_work_item_id = None
+        commit_sha = None
+        classification = RegressionClassification.unknown
+        classified_by = f"operator:{current_user}"
+
+    # Call service - on ValueError return form with error
+    try:
+        updated_item = _svc_classify(
+            db,
+            project_id=project_id,
+            item_id=item_id,
+            introduced_by_work_item_id=introduced_by_work_item_id,
+            introduced_by_commit_sha=commit_sha,
+            classification=classification,
+            classified_by=classified_by,
+        )
+    except ValueError as exc:
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request,
+            "fragments/regression_classification_form.html",
+            {
+                "project_id": project_id,
+                "item_id": item_id,
+                "item": item,
+                "top_suggestion": _top_suggestion(project_id, item_id, db),
+                "error_message": str(exc),
+            },
+            status_code=422,
+        )
+    except LookupError as exc:
+        return HTMLResponse(
+            '<div class="p-3 bg-destructive/10 border border-destructive/30 '
+            'rounded text-sm text-destructive">' + str(exc) + "</div>",
+            status_code=404,
+            media_type="text/html",
+        )
+
+    # Success: return updated classification form (reflects new values)
+    db.commit()
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/regression_classification_form.html",
+        {
+            "project_id": project_id,
+            "item_id": item_id,
+            "item": updated_item,
+            "top_suggestion": _top_suggestion(project_id, item_id, db),
+            "error_message": None,
         },
     )

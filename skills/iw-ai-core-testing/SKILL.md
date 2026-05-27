@@ -359,6 +359,28 @@ Flag a test for scrutiny / rework if **any** apply:
 
 ---
 
+## 9b. Regression-rate KPI cross-reference (F-00090)
+
+The dashboard's Quality KPIs section (`/project/{id}/quality-kpis`) tracks the
+regression rate per project: regressions/week ÷ merges/week. This is part of the
+broader "quality signals you should look at" picture:
+
+- **Throughput alone is misleading**: high velocity with a rising regression rate
+  is worse than steady velocity with a low one. The regression-rate KPI (F-00090)
+  balances the merges/week metric with a regressions/week dimension.
+- **Classification is operator-curated**: the `regression_link_service.suggest_introducer()`
+  heuristic suggests candidates but never persists — operator confirmation required
+  (Invariant 3). Tests for this behaviour: `tests/integration/test_backfill_regression_classification.py`
+  (operator-run backfill never writes `WorkItem` rows) and
+  `tests/integration/test_regression_link_service.py` (classify + suggest_introducer).
+- **Rate-guard rule**: when `merges == 0` in a week, the regression rate is `0.0`
+  — never NaN. See `docs/IW_AI_Core_Testing_Strategy.md` §10 for the full spec.
+- **When to look at this signal**: when adding new dashboard or CLI behaviour that
+  touches work items, batch history, or quality reporting, verify that regressions
+  filed before the feature's merge are correctly attributed.
+
+---
+
 ## 10. Security test module (CR-00075)
 
 A dedicated security regression package lives at `tests/integration/security/`:

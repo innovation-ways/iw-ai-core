@@ -114,6 +114,9 @@ Do NOT run any of the following -- they will break the isolated stack or duplica
 Every QvBrowser run MUST start with these commands, in this order:
 
 ```bash
+# Clear accumulated console logs from prior fix-cycle browser sessions so that
+# V5's console-error check only inspects logs from THIS run, not stale ones.
+rm -f .playwright-cli/console-*.log
 playwright-cli kill-all
 playwright-cli open "$IW_BROWSER_BASE_URL"
 ```
@@ -159,13 +162,13 @@ to count). Create:
 - `ai-dev/active/F-00090/e2e_fixtures/001_seed_merged_feature.py` — inserts (or upserts) a merged Feature F-Y so the badge has a target.
 - `ai-dev/active/F-00090/e2e_fixtures/002_seed_classified_incident.py` — inserts (or upserts) an Incident I-X with `introduced_by_work_item_id=F-Y`, `regression_classification='regression'`, `classified_by='operator:sergiog'`, `classified_at=now()`.
 
-**After writing a fixture file you MUST re-run the seed inside the `app`
-container before opening the browser.** The worktree directory is already
-mounted at `/workspace` inside the container, so any file you write on the
-host is immediately visible. Run:
+**After writing a fixture file you MUST re-run the seed inside the `e2e-dashboard`
+container before opening the browser.** The worktree `ai-dev/` directory is
+already mounted at `/app/ai-dev` inside the container, so any fixture file you
+write on the host is immediately visible. Run:
 
 ```bash
-docker compose -p "$COMPOSE_PROJECT_NAME" exec app \
+docker compose -p "$COMPOSE_PROJECT_NAME" exec e2e-dashboard \
   uv run python scripts/e2e_seed.py
 ```
 
