@@ -114,6 +114,12 @@ class ProjectConfig:
     # auto_amend_max_paths = None means no count cap.
     auto_amend_allow_patterns: list[str] = field(default_factory=list)
     auto_amend_max_paths: int | None = None
+    # Globally in-scope paths for all items in this project — fix cycles may
+    # touch these files without triggering scope violations regardless of the
+    # item's workflow-manifest allowed_paths. Supports the same glob patterns
+    # as allowed_paths. Empty list means feature disabled. Read from
+    # projects.toml: [projects.<id>.always_in_scope] paths = [...].
+    always_in_scope_paths: list[str] = field(default_factory=list)
 
     @property
     def working_dir(self) -> str:
@@ -294,6 +300,22 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         project_id, iw_config.get("auto_amend_scope")
     )
 
+    # always_in_scope — paths always in scope for fix cycles regardless of manifest
+    raw_always_in_scope = entry.get("always_in_scope", {})
+    if isinstance(raw_always_in_scope, dict):
+        raw_paths = raw_always_in_scope.get("paths", [])
+        if isinstance(raw_paths, list) and all(isinstance(p, str) for p in raw_paths):
+            always_in_scope_paths = raw_paths
+        else:
+            logger.warning(
+                "Project %r has invalid 'always_in_scope.paths' value %r — defaulting to []",
+                project_id,
+                raw_paths,
+            )
+            always_in_scope_paths = []
+    else:
+        always_in_scope_paths = []
+
     return ProjectConfig(
         id=project_id,
         display_name=display_name,
@@ -315,6 +337,7 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
         overlap_allow_patterns=overlap_allow_patterns,
         auto_amend_allow_patterns=auto_amend_allow_patterns,
         auto_amend_max_paths=auto_amend_max_paths,
+        always_in_scope_paths=always_in_scope_paths,
     )
 
 

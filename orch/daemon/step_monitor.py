@@ -338,6 +338,12 @@ def _check_step_health(
         _update_token_counts(run)
 
     if not alive:
+        # Belt-and-suspenders: if iw step-done already finalized this run,
+        # never classify it as crashed. Fast-path this before the expensive
+        # orphan scan.
+        if getattr(run, "completed_at", None) is not None:
+            return
+
         # I-00113: probe child processes before declaring crash.
         # The wrapper may have exited (its PID is dead) but the real agent child
         # is still alive and running. The orphan-fallback scan catches cases
@@ -350,6 +356,8 @@ def _check_step_health(
                 _maybe_resolve_pi_session_file(db, run, now)
             if run.session_file is not None:
                 _update_token_counts(run)
+            return
+        if getattr(run, "completed_at", None) is not None:
             return
         _handle_crashed(db, run, project_id, now, project_config)
         return
