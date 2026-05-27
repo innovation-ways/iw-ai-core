@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from pathlib import Path
@@ -338,7 +339,7 @@ async def _doc_job_log_stream(
     """Async generator that follows the doc-job log file as new lines are written.
 
     - Initial chunk: last 50 lines so a late-joiner sees recent context.
-    - Follows new bytes with a tight ``time.sleep(0.25)`` poll loop.
+    - Follows new bytes with a tight ``asyncio.sleep(0.25)`` poll loop.
     - ``event:ping`` heartbeat every 15 seconds when no new data.
     - ``event:status data:terminal`` and close when job reaches terminal state.
     - Uses fresh SessionLocal() per status check (~every 2 seconds).
@@ -409,7 +410,7 @@ async def _doc_job_log_stream(
             try:
                 new_bytes = os.read(f.fileno(), 4096)
                 if not new_bytes:
-                    time.sleep(_STREAM_POLL_SECONDS)
+                    await asyncio.sleep(_STREAM_POLL_SECONDS)
                     continue
                 last_heartbeat = time.monotonic()
                 decoded = new_bytes.decode("utf-8", errors="replace")
@@ -422,7 +423,7 @@ async def _doc_job_log_stream(
                         )
                     yield f"data: {raw_line}\n\n"
             except OSError:
-                time.sleep(_STREAM_POLL_SECONDS)
+                await asyncio.sleep(_STREAM_POLL_SECONDS)
 
 
 @router.get("/jobs/doc_generation/{job_id}/log/stream")
