@@ -1297,6 +1297,19 @@ class BatchManager:
 
         worktree_path = worktree_info.get("path", "")
 
+        # I-00116: cumulative per-item cap on review-step relaunches.
+        # Check before launching another review step run so the item transitions
+        # to failed before yet another agent is spun up.
+        if step.step_type in (StepType.code_review, StepType.code_review_final):
+            from orch.daemon import fix_cycle as fc  # noqa: PLC0415
+
+            relaunch_count = fc.count_review_relaunches(db, self.project_id, step.work_item_id)
+            if relaunch_count >= fc.get_max_review_relaunches():
+                fc.transition_item_to_failed_for_loop(
+                    db, self.project_id, step.work_item_id, relaunch_count
+                )
+                return
+
         # F-00081: Resolve the runtime (cli_tool, model) option via cascade.
         # _load_item is called to get the work_item for the resolver.
         work_item = (

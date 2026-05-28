@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from orch.db.models import DaemonEvent, RunStatus, StepRun, StepStatus, WorkflowStep
+from orch.db.models import DaemonEvent, RunStatus, StepRun, StepStatus, StepType, WorkflowStep
 from orch.utils.log_capture import capture_log_content
 
 if TYPE_CHECKING:
@@ -248,6 +248,204 @@ def _has_agent_cmdline(pid: int | None) -> bool:
     return False
 
 
+_REVIEW_STEP_TYPES = (StepType.code_review, StepType.code_review_final)
+
+
+def _try_recover_completed_review_step(
+    db: Session,
+    run: StepRun,
+    project_id: str,
+    now: datetime,
+) -> bool:
+    """Return True if the run was successfully recovered from an on-disk report.
+
+    Only applies to ``run.step_type in ('code_review', 'code_review_final')``.
+    Looks for ``ai-dev/active/<work_item_id>/reports/<work_item_id>_<step_id>_*_report.md``
+    with mtime > ``run.started_at``. Parses the JSON contract block. If verdict
+    is recognised, persists the recovery via the same path ``iw step-done`` uses
+    (i.e. mark the step ``completed`` with a per-agent verdict, OR ``needs_fix``
+    when verdict='fail' and ``mandatory_fix_count > 0``). Records a DaemonEvent
+    of type ``step_run_recovered_from_report``. Returns True on success, False
+    if no report is found / the report is malformed / the step type is not a
+    review type (caller falls through to ``_handle_crashed``).
+    """
+    # Resolve the project/worktree root so the glob is anchored at the project.
+    worktree_root = None
+    if run.worktree_path:
+        worktree_root = run.worktree_path
+    if worktree_root is None:
+        return False
+
+    # run.step_id is the integer FK to workflow_steps.id; report files are named
+    # with the string step identifier (e.g. "S02"), so we must look up the step.
+    # step_type lives on WorkflowStep, NOT on StepRun — read it from ws to avoid
+    # AttributeError in production (I-00116 F4 fix).
+    ws = db.get(WorkflowStep, run.step_id)
+    if ws is None:
+        return False
+    step_str = ws.step_id
+    work_item_id = ws.work_item_id
+
+    # Guard: only code_review / code_review_final steps are recovered from reports.
+    if ws.step_type not in _REVIEW_STEP_TYPES:
+        return False
+
+    paths_str = [
+        str(p)
+        for p in Path(worktree_root).glob(
+            f"ai-dev/active/{work_item_id}/reports/{work_item_id}_{step_str}_*_report.md"
+        )
+    ]
+    if not paths_str:
+        logger.warning(
+            "I-00116 run %s (work_item=%s step=%s): no report files matched glob pattern",
+            run.id,
+            work_item_id,
+            step_str,
+        )
+        return False
+
+    # Sort by mtime descending — use the most recent report.
+    try:
+        paths_str.sort(key=lambda p: Path(p).stat().st_mtime, reverse=True)
+    except OSError as exc:
+        logger.warning(
+            "I-00116 run %s (work_item=%s step=%s): OSError sorting report mtimes: %s",
+            run.id,
+            work_item_id,
+            step_str,
+            exc,
+        )
+        return False
+
+    report_path = paths_str[0]
+    started_ts = run.started_at.timestamp() if run.started_at else 0.0
+    try:
+        report_mtime = Path(report_path).stat().st_mtime
+    except OSError as exc:
+        logger.warning(
+            "I-00116 run %s (work_item=%s step=%s): OSError reading mtime of %s: %s",
+            run.id,
+            work_item_id,
+            step_str,
+            report_path,
+            exc,
+        )
+        return False
+    if report_mtime <= started_ts:
+        return False
+
+    # Parse the JSON contract block from the markdown report.
+    try:
+        text = Path(report_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning(
+            "I-00116 run %s (work_item=%s step=%s): OSError reading report %s: %s",
+            run.id,
+            work_item_id,
+            step_str,
+            report_path,
+            exc,
+        )
+        return False
+
+    contract: dict[str, Any] | None = None
+    in_block = False
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```json"):
+            in_block = True
+            contract_text = ""
+            continue
+        if in_block:
+            if stripped == "```" or stripped.startswith("```"):
+                if contract_text:
+                    try:
+                        contract = json.loads(contract_text)
+                    except json.JSONDecodeError as exc:
+                        logger.warning(
+                            "I-00116 run %s (work_item=%s step=%s): "
+                            "JSON parse error in report %s: %s",
+                            run.id,
+                            work_item_id,
+                            step_str,
+                            report_path,
+                            exc,
+                        )
+                        return False
+                break
+            contract_text += line + "\n"
+
+    if contract is None:
+        logger.warning(
+            "I-00116 run %s (work_item=%s step=%s): no JSON block found in report %s",
+            run.id,
+            work_item_id,
+            step_str,
+            report_path,
+        )
+        return False
+
+    verdict = contract.get("verdict")
+    if verdict not in ("pass", "fail"):
+        logger.warning(
+            "I-00116 run %s (work_item=%s step=%s): unrecognised verdict %r in report %s",
+            run.id,
+            work_item_id,
+            step_str,
+            verdict,
+            report_path,
+        )
+        return False
+
+    mandatory_fix_count = contract.get("mandatory_fix_count", 0)
+
+    # Persist the recovery — same state transitions as `iw step-done`.
+    run.status = RunStatus.completed if verdict == "pass" else RunStatus.failed
+    run.error_message = None
+    run.completed_at = now
+    if run.started_at is not None:
+        run.duration_secs = (now - run.started_at).total_seconds()
+
+    # I-00116: also mark the parent step needs_fix when verdict=fail and
+    # mandatory_fix_count > 0 (consistent with how fix_cycle.py interprets
+    # a failed review verdict).
+    parent_status = StepStatus.completed
+    if verdict == "fail" and mandatory_fix_count > 0:
+        parent_status = StepStatus.needs_fix
+
+    _update_parent_step(db, run.step_id, parent_status, now)
+
+    # Emit structured DaemonEvent (event_metadata, NOT metadata — SQLAlchemy).
+    report_mtime_iso = datetime.fromtimestamp(report_mtime, UTC).isoformat()
+    _emit_event(
+        db,
+        project_id,
+        "step_run_recovered_from_report",
+        work_item_id,
+        entity_type="work_item",
+        message=f"Recovered from on-disk report: verdict={verdict}",
+        metadata={
+            "work_item_id": work_item_id,
+            "step_id": step_str,
+            "step_run_id": run.id,
+            "report_path": str(report_path),
+            "report_mtime_iso": report_mtime_iso,
+            "verdict": verdict,
+            "mandatory_fix_count": mandatory_fix_count,
+        },
+    )
+    logger.info(
+        "I-00116 recovered run %s step=%s/%s from report=%s verdict=%s",
+        run.id,
+        work_item_id,
+        step_str,
+        report_path,
+        verdict,
+    )
+    return True
+
+
 def _probe_for_child(wrapper_pid: int | None) -> bool:
     """Check whether a live agent child exists for the given wrapper PID.
 
@@ -358,6 +556,11 @@ def _check_step_health(
                 _update_token_counts(run)
             return
         if getattr(run, "completed_at", None) is not None:
+            return
+        # I-00116: before marking crashed, check whether a well-formed verdict
+        # report exists on disk for code_review steps. This closes the failure
+        # mode where the agent exited cleanly but forgot to call `iw step-done`.
+        if _try_recover_completed_review_step(db, run, project_id, now):
             return
         _handle_crashed(db, run, project_id, now, project_config)
         return
