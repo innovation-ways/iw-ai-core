@@ -50,7 +50,8 @@ def pytest_collection_modifyitems(
     prevents `make test-unit` / `make test-integration` from collecting them.
     """
     for item in items:
-        item.add_marker(pytest.mark.perf)
+        if "/tests/perf/" in str(item.fspath):
+            item.add_marker(pytest.mark.perf)
 
 
 # ---------------------------------------------------------------------------
