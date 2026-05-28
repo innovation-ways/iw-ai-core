@@ -137,7 +137,7 @@ def _git_commit(repo: Path, path: Path, message: str = "commit") -> None:
         env={
             **__import__("os").environ,
             "GIT_AUTHOR_NAME": "test",
-            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_AUTHOR_EMAIL": "test@example.com",
         },
     )  # noqa: S603
 
@@ -158,7 +158,7 @@ class TestMergeHookCreatesJobs:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -208,7 +208,7 @@ class TestMergeHookCreatesJobs:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -247,7 +247,7 @@ class TestMergeHookCreatesJobs:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -285,7 +285,7 @@ class TestMergeHookCreatesJobs:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -333,7 +333,7 @@ class TestGetStaleDocs:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -374,7 +374,7 @@ class TestGetStaleDocs:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -415,7 +415,7 @@ class TestDocsCheckStaleCli:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -461,7 +461,7 @@ class TestDocsCheckStaleCli:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -653,7 +653,7 @@ class TestConfigPanel:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -696,7 +696,7 @@ class TestConfigPanel:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -738,7 +738,7 @@ class TestMergeHookHighVolume:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,
@@ -801,7 +801,7 @@ class TestGetStaleDocsSkipsArchived:
         repo.mkdir()
         subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
         subprocess.run(
-            ["git", "config", "user.email", "test@test.com"],
+            ["git", "config", "user.email", "test@example.com"],
             cwd=repo,
             check=True,
             capture_output=True,

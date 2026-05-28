@@ -36,7 +36,7 @@ def _make_git_repo(path: Path) -> None:
     """Initialise a git repo with one initial commit on main."""
     path.mkdir(parents=True, exist_ok=True)
     _git(["init", "-b", "main"], cwd=path)
-    _git(["config", "user.email", "test@test.com"], cwd=path)
+    _git(["config", "user.email", "test@example.com"], cwd=path)
     _git(["config", "user.name", "Test"], cwd=path)
     (path / "README.md").write_text("# test\n")
     _git(["add", "README.md"], cwd=path)
@@ -67,7 +67,7 @@ def _setup_worktree_with_branch(
     branch = f"agent/{item_id}-work"
     _git(["worktree", "add", "-b", branch, str(worktree), "HEAD"], cwd=project)
 
-    _git(["config", "user.email", "test@test.com"], cwd=worktree)
+    _git(["config", "user.email", "test@example.com"], cwd=worktree)
     _git(["config", "user.name", "Test"], cwd=worktree)
 
     for rel_path, content in branch_files.items():

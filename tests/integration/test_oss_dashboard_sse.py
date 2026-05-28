@@ -253,7 +253,9 @@ def proj_enabled(oss_sse_session: Session, tmp_path: Path) -> Project:
     repo.mkdir()
     (repo / "README.md").write_text("# Test\n")
     subprocess.run(["git", "init"], cwd=repo, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=repo, capture_output=True
+    )
     subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, capture_output=True)
     subprocess.run(["git", "add", "."], cwd=repo, capture_output=True)
     subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True)

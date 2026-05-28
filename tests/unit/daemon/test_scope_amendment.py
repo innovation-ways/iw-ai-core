@@ -250,7 +250,7 @@ class TestRevertPathsInWorktree:
 
         subprocess.run(["git", "init", str(wt)], capture_output=True, check=True)
         subprocess.run(
-            ["git", "-C", str(wt), "config", "user.email", "test@test.com"],
+            ["git", "-C", str(wt), "config", "user.email", "test@example.com"],
             capture_output=True,
             check=True,
         )
@@ -292,7 +292,7 @@ class TestRevertPathsInWorktree:
 
         subprocess.run(["git", "init", str(wt)], capture_output=True, check=True)
         subprocess.run(
-            ["git", "-C", str(wt), "config", "user.email", "test@test.com"],
+            ["git", "-C", str(wt), "config", "user.email", "test@example.com"],
             capture_output=True,
             check=True,
         )
@@ -326,7 +326,7 @@ class TestRevertPathsInWorktree:
 
         subprocess.run(["git", "init", str(wt)], capture_output=True, check=True)
         subprocess.run(
-            ["git", "-C", str(wt), "config", "user.email", "test@test.com"],
+            ["git", "-C", str(wt), "config", "user.email", "test@example.com"],
             capture_output=True,
             check=True,
         )

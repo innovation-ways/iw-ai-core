@@ -570,15 +570,17 @@ def test_invariant3_phase1_never_modifies_worktree(
 
     env = {
         "GIT_AUTHOR_NAME": "Test",
-        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_AUTHOR_EMAIL": "test@example.com",
         "GIT_COMMITTER_NAME": "Test",
-        "GIT_COMMITTER_EMAIL": "test@test.com",
+        "GIT_COMMITTER_EMAIL": "test@example.com",
         "HOME": str(tmp_path),
     }
     subprocess.run(
         ["git", "init", "-b", "main"], cwd=repo, capture_output=True, env=env, check=True
     )
-    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, env=env, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=repo, env=env, check=True
+    )
     subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, env=env, check=True)
 
     test_file = repo / "tests" / "test_invariant3.py"

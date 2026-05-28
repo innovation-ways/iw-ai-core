@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from lib.context import Context
 from lib.registry import register
@@ -68,21 +69,33 @@ def dependency_checks(ctx: Context) -> list[Finding]:
     spdx_path = ctx.iw_dir / "sbom.spdx.json"
     outbound = ctx.config.get("license", "Apache-2.0")
     deny = OUTBOUND_DENY.get(outbound, OUTBOUND_DENY["Apache-2.0"])
+    elections = _load_license_elections(ctx.config)
     if spdx_path.exists():
-        flagged = _scan_sbom_licenses(spdx_path, deny)
+        raw_flagged = _scan_sbom_licenses(spdx_path, deny)
+        flagged, honored = _apply_license_elections(raw_flagged, elections, deny)
         if not flagged:
+            extras: dict[str, Any] = {"outbound_license": outbound}
+            if honored:
+                extras["honored_elections"] = honored
+            summary = f"No copyleft/proprietary deps incompatible with {outbound}"
+            if honored:
+                summary += f" ({len(honored)} license election(s) honored)"
             out.append(
                 Finding(
                     id="OSS-DEP-01",
                     severity=Severity.MUST,
                     status=Status.PASS,
                     domain=DOMAIN,
-                    summary=f"No copyleft/proprietary deps incompatible with {outbound}",
+                    summary=summary,
+                    evidence=extras if honored else {},
                     tool="syft",
                     auto_apply_safe=False,
                 )
             )
         else:
+            extras = {"outbound_license": outbound}
+            if honored:
+                extras["honored_elections"] = honored
             out.append(
                 Finding(
                     id="OSS-DEP-01",
@@ -91,7 +104,9 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                     domain=DOMAIN,
                     summary=f"{len(flagged)} dep(s) license-incompatible with {outbound}",
                     detail="\n".join(f"  - {name} ({lic})" for name, lic in flagged[:20]),
-                    remediation="Replace incompatible deps, or change outbound license.",
+                    remediation="Replace incompatible deps, change outbound license, or "
+                    "document a license election under [dependencies.license_elections] "
+                    "in .iw/oss-publish.toml.",
                     evidence=build_results_evidence(
                         [
                             {
@@ -103,7 +118,7 @@ def dependency_checks(ctx: Context) -> list[Finding]:
                             for name, lic in flagged
                         ],
                         total=len(flagged),
-                        extras={"outbound_license": outbound},
+                        extras=extras,
                     ),
                     auto_apply_safe=False,
                 )
@@ -273,6 +288,57 @@ def _generate_sbom(ctx: Context) -> list[Path]:
         return [p for p in (spdx, cyclonedx) if p.exists()]
     except (subprocess.SubprocessError, FileNotFoundError):
         return []
+
+
+def _load_license_elections(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Read [dependencies.license_elections.<pkg>] entries from oss-publish.toml.
+
+    Each entry should declare {upstream_licenses, elected, rationale}; only
+    `elected` is consulted by the policy filter.
+    """
+    deps_cfg = config.get("dependencies")
+    if not isinstance(deps_cfg, dict):
+        return {}
+    elections = deps_cfg.get("license_elections")
+    if not isinstance(elections, dict):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for name, entry in elections.items():
+        if isinstance(entry, dict) and isinstance(entry.get("elected"), str):
+            out[name] = entry
+    return out
+
+
+def _apply_license_elections(
+    flagged: list[tuple[str, str]],
+    elections: dict[str, dict[str, Any]],
+    deny: set[str],
+) -> tuple[list[tuple[str, str]], list[dict[str, str]]]:
+    """Partition flagged tuples into (still_failing, honored_elections).
+
+    A flagged (pkg, license) is honored only if the user has an election entry
+    for pkg AND the elected license is NOT in the outbound deny set.
+    """
+    remaining: list[tuple[str, str]] = []
+    honored: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for name, lic in flagged:
+        entry = elections.get(name)
+        elected = entry.get("elected") if entry else None
+        if elected and elected not in deny:
+            if name not in seen:
+                honored.append(
+                    {
+                        "name": name,
+                        "flagged_license": lic,
+                        "elected": elected,
+                        "rationale": str(entry.get("rationale", ""))[:240],
+                    }
+                )
+                seen.add(name)
+            continue
+        remaining.append((name, lic))
+    return remaining, honored
 
 
 def _scan_sbom_licenses(spdx_path: Path, deny: set[str]) -> list[tuple[str, str]]:

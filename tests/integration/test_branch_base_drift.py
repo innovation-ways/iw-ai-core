@@ -65,7 +65,7 @@ def _make_fake_repo(tmp_path: Path) -> Path:
         capture_output=True,
     )
     subprocess.run(
-        ["git", "-C", str(repo), "config", "user.email", "test@test.com"],
+        ["git", "-C", str(repo), "config", "user.email", "test@example.com"],
         check=True,
         capture_output=True,
     )

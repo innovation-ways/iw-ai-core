@@ -67,7 +67,7 @@ _FULL_BV_CFG = {
         "redis_base": 6389,
         "pool_size": 100,
     },
-    "e2e_user": "dev@example.local",
+    "e2e_user": "dev@example.com",
     "e2e_password": "Secret123",
     "compose_project_prefix": "innoforge-e2e",
 }
@@ -247,12 +247,12 @@ def test_resolve_browser_env_e2e_creds_fall_back_to_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With no creds in .iw-orch.json, IW_BROWSER_E2E_* are sourced from the env."""
-    monkeypatch.setenv("IW_BROWSER_E2E_USER", "env-user@example.local")
+    monkeypatch.setenv("IW_BROWSER_E2E_USER", "env-user@example.com")
     monkeypatch.setenv("IW_BROWSER_E2E_PASSWORD", "env-secret")
     pc = make_project_config(bv_cfg={"env_up_command": "make up"})
     env = resolve_browser_env(pc, "proj", "F-00001")
     assert env is not None
-    assert env["IW_BROWSER_E2E_USER"] == "env-user@example.local"
+    assert env["IW_BROWSER_E2E_USER"] == "env-user@example.com"
     assert env["IW_BROWSER_E2E_PASSWORD"] == "env-secret"  # noqa: S105
 
 
@@ -260,12 +260,12 @@ def test_resolve_browser_env_config_creds_override_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An explicit .iw-orch.json credential takes precedence over the env var."""
-    monkeypatch.setenv("IW_BROWSER_E2E_USER", "env-user@example.local")
+    monkeypatch.setenv("IW_BROWSER_E2E_USER", "env-user@example.com")
     monkeypatch.setenv("IW_BROWSER_E2E_PASSWORD", "env-secret")
     pc = make_project_config(bv_cfg=_FULL_BV_CFG)
     env = resolve_browser_env(pc, "innoforge", "F-00001")
     assert env is not None
-    assert env["IW_BROWSER_E2E_USER"] == "dev@example.local"
+    assert env["IW_BROWSER_E2E_USER"] == "dev@example.com"
     assert env["IW_BROWSER_E2E_PASSWORD"] == "Secret123"  # noqa: S105
 
 

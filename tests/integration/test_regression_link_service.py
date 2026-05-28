@@ -61,7 +61,7 @@ def _git_repo(tmp_repo: Path) -> Path:
     """Initialise a git repo in tmp_repo with test user identity."""
     subprocess.run(["git", "init"], cwd=tmp_repo, check=True, capture_output=True)
     subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
+        ["git", "config", "user.email", "test@example.com"],
         cwd=tmp_repo,
         check=True,
     )

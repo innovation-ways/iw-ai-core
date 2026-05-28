@@ -41,7 +41,7 @@ def test_i00082_fix_cycle_escalates_on_out_of_scope_edit(
 
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
+        ["git", "config", "user.email", "test@example.com"],
         cwd=tmp_path,
         check=True,
         capture_output=True,
@@ -102,7 +102,7 @@ def _setup_git_worktree(tmp_path: pathlib.Path, files: dict) -> None:
 
     subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
     subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
+        ["git", "config", "user.email", "test@example.com"],
         cwd=tmp_path,
         check=True,
         capture_output=True,

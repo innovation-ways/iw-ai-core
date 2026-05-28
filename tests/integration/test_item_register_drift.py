@@ -153,7 +153,7 @@ def _git_init(base: Path) -> None:
     """Make ``base`` a git repo so approve's ensure_active_files_committed works."""
     for cmd in (
         ["git", "init"],
-        ["git", "config", "user.email", "test@test.com"],
+        ["git", "config", "user.email", "test@example.com"],
         ["git", "config", "user.name", "Test"],
         ["git", "add", "."],
         ["git", "commit", "-m", "initial"],

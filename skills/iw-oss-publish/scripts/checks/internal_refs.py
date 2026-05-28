@@ -62,10 +62,13 @@ def internal_refs(ctx: Context) -> list[Finding]:
         )
         return out
 
+    allowlist = _load_check_allowlist(ctx.config)
+
     # OSS-REF-01: RFC 1918 private IPs
     rfc1918 = _rg_search(
         ctx,
         r"(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})",
+        extra_excludes=allowlist.get("OSS-REF-01"),
     )
     out.append(
         _result_to_finding(
@@ -83,7 +86,7 @@ def internal_refs(ctx: Context) -> list[Finding]:
         pattern = (
             r"\b[a-zA-Z0-9][a-zA-Z0-9-]{0,62}(" + "|".join(re.escape(s) for s in suffixes) + r")\b"
         )
-        hits = _rg_search(ctx, pattern)
+        hits = _rg_search(ctx, pattern, extra_excludes=allowlist.get("OSS-REF-02"))
         out.append(
             _result_to_finding(
                 "OSS-REF-02",
@@ -95,7 +98,11 @@ def internal_refs(ctx: Context) -> list[Finding]:
         )
 
     # OSS-REF-03: absolute user home paths
-    hits = _rg_search(ctx, r"/(?:home|Users)/[A-Za-z][\w.-]+")
+    hits = _rg_search(
+        ctx,
+        r"/(?:home|Users)/[A-Za-z][\w.-]+",
+        extra_excludes=allowlist.get("OSS-REF-03"),
+    )
     out.append(
         _result_to_finding(
             "OSS-REF-03",
@@ -119,6 +126,7 @@ def internal_refs(ctx: Context) -> list[Finding]:
                 "CONTRIBUTING.md",
                 "SUPPORT.md",
                 "TRADEMARK.md",
+                *(allowlist.get("OSS-REF-04") or []),
             ],
         )
         out.append(
@@ -135,7 +143,7 @@ def internal_refs(ctx: Context) -> list[Finding]:
     chat_pattern = (
         r"(?:[a-z0-9-]+\.slack\.com|[a-z0-9-]+\.atlassian\.net/browse/|linear\.app/[a-z0-9-]+)"
     )
-    hits = _rg_search(ctx, chat_pattern)
+    hits = _rg_search(ctx, chat_pattern, extra_excludes=allowlist.get("OSS-REF-05"))
     out.append(
         _result_to_finding(
             "OSS-REF-05",
@@ -146,6 +154,33 @@ def internal_refs(ctx: Context) -> list[Finding]:
         )
     )
 
+    return out
+
+
+def _load_check_allowlist(config: dict[str, Any]) -> dict[str, list[str]]:
+    """Read [internal_refs.allowlist] from oss-publish.toml.
+
+    Expected shape (per check id):
+        [internal_refs.allowlist]
+        "OSS-REF-02" = ["path/to/file.yaml", "**/glob/**"]
+
+    Each value is a list of ripgrep glob patterns added to the per-check
+    excludes. Anything unparseable is ignored silently — the allowlist is
+    additive, never something an invalid entry should block the scan on.
+    """
+    refs_cfg = config.get("internal_refs")
+    if not isinstance(refs_cfg, dict):
+        return {}
+    allow = refs_cfg.get("allowlist")
+    if not isinstance(allow, dict):
+        return {}
+    out: dict[str, list[str]] = {}
+    for check_id, patterns in allow.items():
+        if not isinstance(check_id, str) or not isinstance(patterns, list):
+            continue
+        clean = [p for p in patterns if isinstance(p, str) and p]
+        if clean:
+            out[check_id] = clean
     return out
 
 

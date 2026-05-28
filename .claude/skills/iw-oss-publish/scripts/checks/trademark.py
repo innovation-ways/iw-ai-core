@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from lib.context import Context
@@ -35,9 +36,13 @@ def trademark(ctx: Context) -> list[Finding]:
     )
 
     # OSS-TM-02..05: name-collision HTTP probes
-    out.append(_probe("OSS-TM-02", "PyPI", f"https://pypi.org/pypi/{name}/json", name))
-    out.append(_probe("OSS-TM-03", "npm", f"https://registry.npmjs.org/{name}", name))
-    out.append(_probe("OSS-TM-04", "crates.io", f"https://crates.io/api/v1/crates/{name}", name))
+    # The project name can contain characters that aren't valid in a URL path
+    # segment (spaces, slashes, etc.). urllib.request rejects control characters
+    # outright, so percent-encode before interpolating.
+    name_q = urllib.parse.quote(name, safe="")
+    out.append(_probe("OSS-TM-02", "PyPI", f"https://pypi.org/pypi/{name_q}/json", name))
+    out.append(_probe("OSS-TM-03", "npm", f"https://registry.npmjs.org/{name_q}", name))
+    out.append(_probe("OSS-TM-04", "crates.io", f"https://crates.io/api/v1/crates/{name_q}", name))
     out.append(_probe_github("OSS-TM-05", ctx, name))
 
     # OSS-TM-06: USPTO Trademark Search — manual

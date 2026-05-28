@@ -82,7 +82,7 @@ RUN /usr/local/bin/opencode --selftest
 # agents can `git -C /app status --short` to confirm that fix recipes wrote
 # to the working tree. The host .git/ is excluded by .dockerignore so /app
 # is otherwise not a git work-tree.
-RUN git config --global user.email e2e@iw-ai-core.local \
+RUN git config --global user.email e2e@example.com \
     && git config --global user.name "iw-ai-core e2e" \
     && git init -q -b main \
     && git add -A \

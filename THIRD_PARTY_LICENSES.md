@@ -5,6 +5,44 @@ Generated from SBOM; see `.iw/sbom.spdx.json`.
 
 ---
 
+## License Elections
+
+Some upstream projects offer their code under more than one license. Where that
+happens, this section records which license we elect to receive the work
+under, and why that election is compatible with our Apache-2.0 outbound
+license. The same elections are encoded in
+`.iw/oss-publish.toml` under `[dependencies.license_elections]` so the
+`iw-oss-publish` scanner (`OSS-DEP-01`) treats them as resolved.
+
+### pyphen
+
+- **Upstream licenses (tri-license):** GPL 2.0+ **or** LGPL 2.1+ **or** MPL 1.1
+- **Elected license:** **MPL 1.1**
+- **Upstream evidence:** The Pyphen README states *"Free software: GPL 2.0+ or
+  LGPL 2.1+ or MPL 1.1 for the code"* and the repository ships three license
+  files: `COPYING.GPL`, `COPYING.LGPL`, `COPYING.MPL`
+  (https://github.com/Kozea/Pyphen).
+- **Why MPL-1.1:** MPL 1.1 is a file-level weak copyleft. An Apache-2.0
+  project may incorporate MPL-1.1 code as long as the original MPL-licensed
+  files retain their MPL notices and any modifications to those files are
+  re-released under MPL. We do not modify pyphen — it is consumed unmodified
+  as a transitive dependency.
+- **Why pyphen is here:** pyphen is pulled in transitively by `weasyprint` to
+  implement CSS `hyphens: auto` during PDF rendering (see
+  `dashboard/routers/items.py` for the WeasyPrint diff-PDF endpoint, and
+  `dashboard/utils/markdown.py`). Without pyphen, WeasyPrint still functions;
+  only automatic hyphenation in justified text is lost.
+- **PyPI metadata note:** PyPI exposes only a single SPDX identifier
+  (`GPL-2.0-only`), which is why automated license scanners initially flag
+  pyphen as incompatible with Apache-2.0. The actual upstream grant is
+  broader, as documented above.
+
+The MPL 1.1 license text is available at
+https://www.mozilla.org/en-US/MPL/1.1/ and in the upstream repository at
+https://github.com/Kozea/Pyphen/blob/master/COPYING.MPL.
+
+---
+
 ## MIT
 
 - backports-tarfile@1.2.0

@@ -6,6 +6,7 @@ import subprocess
 
 from lib.context import Context
 from lib.registry import register
+from lib.results import build_results_evidence
 from lib.types import Finding, Severity, Status
 
 DOMAIN = "history"
