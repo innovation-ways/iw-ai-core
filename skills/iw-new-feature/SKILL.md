@@ -318,6 +318,13 @@ Full menu (select only applicable ones):
 {"step": "S{N+9}", "agent": "qv-gate", "gate": "integration-tests", "command": "make allure-integration", "description": "QV: Integration tests", "timeout": 1800}
 ```
 
+> **Migration generation convention (CR-00091)**: database-impl agents MUST call
+> `make migration-pending MSG="describe change"` to generate the migration file.
+> This sets `down_revision = "PENDING"` as a sentinel; `migration_rebase.py` resolves
+> it to the real chain head at merge time, and `make migration-check` resolves it
+> before running the round-trip test. Do NOT call `alembic revision --autogenerate`
+> directly — it bakes in a revision ID that may be stale by merge time.
+
 ### Migration validation (when the feature has a Database step)
 
 If the feature changes database schema (a `Database` agent step writing to `orch/db/migrations/versions/**`), insert a `migration-check` qv-gate step **immediately after the Database step (and after any `CodeReview_Database` step)** so a broken migration is caught before downstream agents inherit the wrong schema.

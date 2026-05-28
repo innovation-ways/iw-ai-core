@@ -599,6 +599,9 @@ def run_pre_merge_rebase(
 
         for revision, _down_revision, _fp in chain:
             expected = expected_down[revision]
+            # "PENDING" is the canonical sentinel for late-bound migrations (CR-00091).
+            # It is never equal to any real revision ID, so it always triggers a rewrite
+            # here. No special-casing needed — the condition handles it correctly.
             if _down_revision == expected:
                 continue
 
