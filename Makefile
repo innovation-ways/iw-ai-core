@@ -435,7 +435,17 @@ db-revision:
 # right after Database steps to short-circuit bad migrations before
 # downstream agents inherit them.
 migration-check:
+	uv run python scripts/resolve_pending_migration.py
 	uv run pytest tests/integration/test_migrations_round_trip.py --timeout=600 -v --no-cov
+
+migration-pending:
+ifndef MSG
+	$(error MSG is required. Usage: make migration-pending MSG="describe the change")
+endif
+	uv run alembic revision --autogenerate -m "$(MSG)"
+	@ls -t orch/db/migrations/versions/*.py | grep -v __pycache__ | head -1 | \
+		xargs uv run python scripts/rewrite_down_revision.py
+	@echo "Migration generated with down_revision = PENDING (resolved at merge time by migration_rebase.py)"
 
 # data-layer-check: migration round-trip (make migration-check) must pass first;
 # then the three data-layer modules (FTS invariant, revision-skew, DB-identity).

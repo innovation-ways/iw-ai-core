@@ -14,7 +14,7 @@ IW AI Core's orchestration engine: ORM models, CLI, daemon, RAG, jobs, doc servi
 | `db/models.py` | All SQLAlchemy 2.0 ORM models + `FTS_FUNCTION_SQL` / `FTS_TRIGGER_SQL` constants |
 | `db/session.py` | `engine`, `SessionLocal`, `get_session()` context manager |
 | `db/identity.py` | DB instance-identity fingerprint (CR-00014) — `verify_instance_identity()`, `get_expected_instance_id()` |
-| `db/migrations/` | Alembic versions — `env.py` imports `Base` from `orch.db.models` |
+| `db/migrations/` | Alembic versions — `env.py` imports `Base` from `orch.db.models`. Migration generation: use `make migration-pending MSG="…"` (not `alembic revision --autogenerate` directly). Sets `down_revision = "PENDING"`; resolved at merge time. See CR-00091. |
 | `cli/` | Click command groups — agent-to-DB bridge |
 | `daemon/` | Polling loop, worktree launch, fix cycles, merge queue, doc-job poller |
 | `rag/` | Code Understanding: indexer, module-gen, symbol-gen, RAG Q&A. See `orch/rag/CLAUDE.md` |

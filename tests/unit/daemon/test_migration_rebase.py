@@ -938,3 +938,51 @@ class TestRebaseResultDataclass:
         assert result.success is True
         assert result.rebased is True
         assert result.rewrites == []
+
+
+def test_pending_sentinel_is_always_rewritten(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    _git(str(repo_root), ["init", "--initial-branch=main"])
+    _git(str(repo_root), ["config", "user.email", "test@example.com"])
+    _git(str(repo_root), ["config", "user.name", "Test User"])
+    _git(str(repo_root), ["remote", "add", "origin", "."])
+
+    versions = repo_root / "orch" / "db" / "migrations" / "versions"
+    versions.mkdir(parents=True, exist_ok=True)
+    migrations_dir = repo_root / "orch" / "db" / "migrations"
+    migrations_dir.mkdir(parents=True, exist_ok=True)
+    _copy_alembic_skeleton(migrations_dir)
+
+    main_migration = versions / "aabbccdd1122_main.py"
+    main_migration.write_text(
+        _make_migration_content("aabbccdd1122", None),
+        encoding="utf-8",
+    )
+    _git(str(repo_root), ["add", "."])
+    _git(str(repo_root), ["commit", "--no-verify", "-m", "add main migration"])
+
+    _git(str(repo_root), ["checkout", "-b", "feature/cr-00091"])
+    pending_migration = versions / "eeff99887766_feature.py"
+    pending_migration.write_text(
+        _make_migration_content("eeff99887766", "PENDING"),
+        encoding="utf-8",
+    )
+    _git(str(repo_root), ["add", str(pending_migration.relative_to(repo_root))])
+    _git(str(repo_root), ["commit", "--no-verify", "-m", "add pending migration"])
+
+    result = run_pre_merge_rebase(
+        batch_id=91,
+        worktree_path=str(repo_root),
+        _repo_root=str(tmp_path),
+    )
+
+    assert result.success is True
+    assert len(result.rewrites) == 1
+    assert result.rewrites[0].old_down_revision == "PENDING"
+    assert result.rewrites[0].new_down_revision == "aabbccdd1122"
+
+    rewritten_content = pending_migration.read_text(encoding="utf-8")
+    assert 'down_revision = "aabbccdd1122"' in rewritten_content
+    assert 'down_revision = "PENDING"' not in rewritten_content

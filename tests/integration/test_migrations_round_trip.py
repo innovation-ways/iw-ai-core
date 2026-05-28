@@ -46,14 +46,20 @@ so leftover state from one phase can't mask the next.
 
 from __future__ import annotations
 
+from hashlib import sha256
+from pathlib import Path
+from shutil import copy2
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from testcontainers.postgres import PostgresContainer
+
+from scripts.resolve_pending_migration import resolve_pending_migration
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
@@ -279,3 +285,63 @@ def test_alembic_downgrade_base_then_upgrade_head(
     with engine.connect() as conn:
         head = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
     assert head, "alembic_version is empty after second upgrade head"
+
+
+def _copy_versions_dir(dst: Path) -> Path:
+    src = Path("orch/db/migrations/versions")
+    dst.mkdir(parents=True, exist_ok=True)
+    for f in src.glob("*.py"):
+        copy2(f, dst / f.name)
+
+    migrations_dst = dst.parent
+    migrations_src = Path("orch/db/migrations")
+    copy2(migrations_src / "env.py", migrations_dst / "env.py")
+    copy2(migrations_src / "script.py.mako", migrations_dst / "script.py.mako")
+    return dst
+
+
+def _find_head_revision(versions_dir: Path) -> str:
+    cfg = Config()
+    cfg.set_main_option("script_location", str(versions_dir.parent))
+    script_dir = ScriptDirectory.from_config(cfg)
+    return script_dir.get_current_head()
+
+
+def test_resolver_produces_valid_chain_against_real_versions_dir(tmp_path: Path) -> None:
+    scratch = _copy_versions_dir(tmp_path / "versions")
+    expected_head = _find_head_revision(scratch)
+    assert expected_head is not None
+
+    synthetic = scratch / "0000000000ff_pending.py"
+    synthetic.write_text(
+        'revision = "0000000000ff"\n'
+        'down_revision = "PENDING"\n\n'
+        "def upgrade() -> None:\n"
+        "    pass\n\n"
+        "def downgrade() -> None:\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+
+    rewrites = resolve_pending_migration(scratch)
+
+    for f in scratch.glob("*.py"):
+        content = f.read_text(encoding="utf-8")
+        assert 'down_revision = "PENDING"' not in content
+
+    assert len(rewrites) == 1
+    assert rewrites[0][0] == "0000000000ff"
+    assert rewrites[0][1] == expected_head
+
+
+def test_ac4_resolver_is_noop_on_clean_versions_dir(tmp_path: Path) -> None:
+    scratch = _copy_versions_dir(tmp_path / "versions")
+
+    before = {p.name: sha256(p.read_bytes()).hexdigest() for p in sorted(scratch.glob("*.py"))}
+
+    rewrites = resolve_pending_migration(scratch)
+
+    after = {p.name: sha256(p.read_bytes()).hexdigest() for p in sorted(scratch.glob("*.py"))}
+
+    assert rewrites == []
+    assert before == after
