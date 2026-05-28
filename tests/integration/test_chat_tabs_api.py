@@ -587,7 +587,7 @@ def test_get_tab_omits_context_pct_when_no_token_data(
     db_session: Session,
     test_project: Project,
 ) -> None:
-    """When no assistant message carries token usage, ``context_pct`` is absent."""
+    """When no assistant message carries token usage, status is unknown_window."""
     create_resp = chat_test_client.post(
         "/api/chat/tabs",
         json={
@@ -614,10 +614,10 @@ def test_get_tab_omits_context_pct_when_no_token_data(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "session" in body
-    assert "context_pct" not in body["session"], (
-        f"context_pct should be absent when no token data; "
-        f"got {body['session'].get('context_pct')!r}"
-    )
+    assert body["session"].get("context_pct") is None
+    assert body["session"].get("context_pct_status") in (None, "unknown_window")
+    assert body["session"].get("used_tokens") is None
+    assert body["session"].get("window_tokens") is None
 
 
 def test_get_tab_omits_context_pct_when_context_window_unknown(
@@ -625,7 +625,7 @@ def test_get_tab_omits_context_pct_when_context_window_unknown(
     db_session: Session,
     test_project: Project,
 ) -> None:
-    """When the model limit is not in the providers payload, ``context_pct`` is absent."""
+    """When model limit is unknown, status is unknown_window and pct is null."""
     create_resp = chat_test_client.post(
         "/api/chat/tabs",
         json={
@@ -638,9 +638,10 @@ def test_get_tab_omits_context_pct_when_context_window_unknown(
     tab = create_resp.json()["tab"]
     tab_id = tab["id"]
 
-    # Override get_messages to return a message with tokens.
+    # Override session/messages payloads.
     actual_client = getattr(chat_test_client.app.state, "opencode_client", None)
     assert actual_client is not None
+    actual_client.get_session = AsyncMock(return_value={"id": "oc-sess-new", "status": "idle"})
     actual_client.get_messages = AsyncMock(
         return_value=[
             {"role": "user", "content": "Hello"},
@@ -668,10 +669,10 @@ def test_get_tab_omits_context_pct_when_context_window_unknown(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "session" in body
-    assert "context_pct" not in body["session"], (
-        f"context_pct should be absent when limit unknown; "
-        f"got {body['session'].get('context_pct')!r}"
-    )
+    assert body["session"].get("context_pct") is None
+    assert body["session"].get("context_pct_status") in (None, "unknown_window")
+    assert body["session"].get("used_tokens") in (None, 3000)
+    assert body["session"].get("window_tokens") is None
 
 
 # ---------------------------------------------------------------------------

@@ -396,14 +396,13 @@ class TestRuntimeUnavailable:
         body = resp.json()
         assert "tabs" in body
 
-    def test_get_session_runtime_none_returns_503(
+    def test_get_session_runtime_none_returns_unknown_runtime_payload(
         self, db_session: Session, test_project: Project
     ) -> None:
-        """GET /api/chat/tabs/{tab_id}: 404 fires before 503 (tab lookup happens first).
+        """GET /api/chat/tabs/{tab_id} returns unknown_runtime payload when runtime is unavailable.
 
-        The production get_tab handler does the DB lookup BEFORE the health check,
-        so a missing tab returns 404 regardless of runtime health. To test the
-        503 path, we must create a real tab first.
+        Missing tabs still return 404 (lookup first), but existing tabs should now
+        return 200 with a shaped session payload (S06 contract).
         """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
@@ -422,7 +421,12 @@ class TestRuntimeUnavailable:
             app.dependency_overrides[get_db] = lambda: db_session
             tc = TestClient(app, raise_server_exceptions=False)
             resp = tc.get(f"/api/chat/tabs/{tab_id}")
-            assert resp.status_code == 503
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["session"]["context_pct_status"] == "unknown_runtime"
+            assert body["session"]["context_pct"] is None
+            assert body["session"]["used_tokens"] is None
+            assert body["session"]["window_tokens"] is None
         finally:
             app.dependency_overrides.clear()
             if original is not None:

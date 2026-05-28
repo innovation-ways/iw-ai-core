@@ -5,9 +5,7 @@ the pending migration will ALTER. Verifies both the pre-fix (hangs forever) and
 post-fix (SelfBlockerError / lock_timeout / success) behaviors.
 
 The testcontainer is stamped at 891343247f66 (cr00066_add_context_tokens_columns),
-leaving two migrations pending:
-- 3a3dfec7bfbd (CR-00078) — adds batch_overlap_ignore table
-- aeb0e4106b55 (I-00102) — adds manifest_digest column to work_items.
+leaving later migrations pending up to current head.
 
 This migration does NOT ALTER TABLE batch_items, so the AccessShareLock on
 batch_items held by the test's outer session does NOT conflict with the pending
@@ -36,7 +34,7 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "42be5962ebf7"  # I-00112 keep-alive runs capture CLI output (current head)
+_HEAD_REVISION = "76250ecb2593"  # F-00091 backfill pi context window tokens (current head)
 _PREV_REVISION = "891343247f66"  # cr00066 (stamped here; CR-00078+digest pending)
 
 

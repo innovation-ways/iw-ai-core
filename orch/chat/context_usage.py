@@ -5,9 +5,35 @@ No I/O, no DB, no HTTP — fully unit-testable without mocks or testcontainers.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from dataclasses import dataclass
+from math import isfinite
+from typing import Any, Literal, TypedDict
 
 DEFAULT_SAFETY_BUFFER_TOKENS = 20_000
+
+
+@dataclass(frozen=True)
+class ContextUsage:
+    status: Literal["known", "unknown_window", "unknown_runtime"]
+    pct: float | None
+    used_tokens: int | None
+    window_tokens: int | None
+    reason: str | None
+
+
+def _assert_context_usage_invariant(result: ContextUsage) -> None:
+    known_by_fields = (
+        result.pct is not None
+        and isfinite(result.pct)
+        and result.used_tokens is not None
+        and result.window_tokens is not None
+    )
+    assert (result.status == "known") == known_by_fields  # noqa: S101
+
+
+def _finalize_context_usage(result: ContextUsage) -> ContextUsage:
+    _assert_context_usage_invariant(result)
+    return result
 
 
 class _TokensShape(TypedDict, total=False):
@@ -320,6 +346,141 @@ def lookup_context_window(
         return None
 
     return None
+
+
+def resolve_context_usage_opencode(
+    *,
+    client_healthy: bool,
+    providers: dict[str, Any],
+    tab_model: str | None,
+    messages: list[Any],
+) -> ContextUsage:
+    if not client_healthy:
+        return _finalize_context_usage(
+            ContextUsage(
+                status="unknown_runtime",
+                pct=None,
+                used_tokens=None,
+                window_tokens=None,
+                reason="OpenCode runtime unavailable",
+            )
+        )
+
+    resolved = resolve_model_from_tab(tab_model, messages)
+    if resolved is None:
+        model_label = tab_model if isinstance(tab_model, str) and tab_model else "unknown"
+        return _finalize_context_usage(
+            ContextUsage(
+                status="unknown_window",
+                pct=None,
+                used_tokens=None,
+                window_tokens=None,
+                reason=f"Context window unknown for opencode/{model_label}",
+            )
+        )
+
+    provider_id, model_id = resolved
+    context_window = lookup_context_window(providers, provider_id, model_id)
+    if context_window is None:
+        return _finalize_context_usage(
+            ContextUsage(
+                status="unknown_window",
+                pct=None,
+                used_tokens=None,
+                window_tokens=None,
+                reason=f"Context window unknown for opencode/{provider_id}/{model_id}",
+            )
+        )
+
+    pct = compute_context_pct(messages, context_window)
+    if pct is None:
+        return _finalize_context_usage(
+            ContextUsage(
+                status="unknown_window",
+                pct=None,
+                used_tokens=None,
+                window_tokens=None,
+                reason=f"Context window unknown for opencode/{provider_id}/{model_id}",
+            )
+        )
+
+    used_tokens = int(round((context_window * pct) / 100.0))
+    return _finalize_context_usage(
+        ContextUsage(
+            status="known",
+            pct=pct,
+            used_tokens=used_tokens,
+            window_tokens=context_window,
+            reason=None,
+        )
+    )
+
+
+def resolve_context_usage_pi(
+    *,
+    pi_healthy: bool,
+    agent_runtime_option: Any | None,
+    tab_model: str | None,
+    messages: list[Any],
+) -> ContextUsage:
+    if not pi_healthy:
+        return _finalize_context_usage(
+            ContextUsage(
+                status="unknown_runtime",
+                pct=None,
+                used_tokens=None,
+                window_tokens=None,
+                reason="Pi runtime unavailable",
+            )
+        )
+
+    model_label = tab_model if isinstance(tab_model, str) and tab_model else "pi/unknown"
+    context_window = (
+        int(agent_runtime_option.context_window_tokens)
+        if agent_runtime_option is not None
+        and getattr(agent_runtime_option, "context_window_tokens", None) is not None
+        else None
+    )
+    if context_window is None:
+        return _finalize_context_usage(
+            ContextUsage(
+                status="unknown_window",
+                pct=None,
+                used_tokens=None,
+                window_tokens=None,
+                reason=(
+                    f"Context window unknown for {model_label} — "
+                    "set context_window_tokens in agent_runtime_options"
+                ),
+            )
+        )
+
+    normalized_msgs = normalize_pi_messages(messages if isinstance(messages, list) else [])
+    pct = compute_context_pct(normalized_msgs, context_window)
+    if pct is None:
+        return _finalize_context_usage(
+            ContextUsage(
+                status="unknown_window",
+                pct=None,
+                used_tokens=None,
+                window_tokens=None,
+                reason=(
+                    f"Context window unknown for {model_label} — "
+                    "set context_window_tokens in agent_runtime_options"
+                ),
+            )
+        )
+
+    used_tokens = int(round((context_window * pct) / 100.0))
+    return _finalize_context_usage(
+        ContextUsage(
+            status="known",
+            pct=pct,
+            used_tokens=used_tokens,
+            window_tokens=context_window,
+            reason=None,
+        )
+    )
 
 
 def resolve_model_from_tab(
