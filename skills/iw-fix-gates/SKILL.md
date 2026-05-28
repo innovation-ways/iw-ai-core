@@ -76,6 +76,21 @@ created, no worktree is spawned, no commit is made. The operator reviews
    individual categories. Iterating per-category gives per-failure attribution
    — bundles would double-run the same code and merge failures together.
 
+   **Coverage check (mandatory):** After loading categories, verify that the
+   non-bundle test categories together cover the same test directories as the
+   bundle. Compare the paths in the bundle command (e.g. `pytest tests/`) against
+   the union of paths in the non-bundle categories. If any subdirectory (e.g.
+   `tests/orch/`, `tests/dashboard/`) is only covered by the bundle, **flag it
+   to the operator** and ask them to add a dedicated category for that directory
+   in the project's DB config before proceeding. Do NOT silently skip that
+   directory — that is the same failure mode this skill exists to prevent.
+
+   For `iw-ai-core`, the expected non-bundle test categories are:
+   `unit` (`tests/unit/`), `integration` (`tests/integration/`),
+   `dashboard` (`tests/dashboard/`), and `orch` (`tests/orch/`).
+   Any missing category must be added to `Project.config.test_config.categories`
+   before gathering.
+
 5. **Check for a resumable previous run.** A 529-class API error, a manual
    `Esc`-interrupt, or a connectivity blip can kill the agent mid-gather —
    but the subprocesses already launched usually finish, and their logs
@@ -140,10 +155,10 @@ not stop on a failing category — keep going to capture the full landscape.
 3. Within each group (parallel or sequential), launch fastest first so
    short-running failures surface early in the gather.
 
-For `iw-ai-core` today this means `unit` + `integration` may run
-concurrently; for projects like `innoforge` with an `e2e` category that
-declares `e2e_stack: true`, `e2e` runs after the parallel-safe group
-completes.
+For `iw-ai-core` today this means `unit` + `integration` + `dashboard` +
+`orch` may run concurrently (none declare `e2e_stack` or `cleanup_command`);
+for projects like `innoforge` with an `e2e` category that declares
+`e2e_stack: true`, `e2e` runs after the parallel-safe group completes.
 
 ### Operator-visible progress (NON-OPTIONAL)
 
@@ -160,7 +175,7 @@ agent. Therefore:
    ```
    When launching a parallel group, announce the group up front:
    ```
-   ▶ Running test/unit + test/integration in parallel…
+   ▶ Running test/unit + test/integration + test/dashboard + test/orch in parallel…
    ```
 2. **Stream output live; do NOT silently redirect to a file.** Use `tee`
    (see the launch incantation below) so the gate command's stdout/stderr

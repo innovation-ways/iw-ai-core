@@ -3,7 +3,7 @@
 # ============================================================
 
 .PHONY: install lint lint-fix lint-js lint-templates format format-check typecheck type-check quality \
-          test-unit test-integration test-dashboard test-browser test test-parallel smoke check \
+          test-unit test-integration test-orch test-dashboard test-browser test test-parallel smoke check \
           daemon-chaos-smoke daemon-chaos-full \
           test-assertions diff-coverage data-layer-check test-cli-contract \
           test-route-sweep test-contract-fuzz \
@@ -181,7 +181,10 @@ daemon-chaos-smoke:
 daemon-chaos-full:
 	uv run pytest tests/integration/daemon_chaos/ --timeout=600 -v
 
-test: test-unit test-integration
+test-orch:
+	uv run pytest tests/orch/ -v --no-cov
+
+test: test-unit test-integration test-orch
 
 # Convenience target — runs ONLY the cross-project isolation matrix (CR-00074).
 # The `integration-tests` gate already runs it as part of `make test-integration`.

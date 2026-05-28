@@ -62,8 +62,14 @@ def client(
 
         app.dependency_overrides.clear()
     finally:
-        os.environ.pop("IW_CORE_TEST_CONTEXT", None)
-        os.environ.pop("IW_CORE_OPERATOR_APPLY", None)
+        if _original_test is not None:
+            os.environ["IW_CORE_TEST_CONTEXT"] = _original_test
+        else:
+            os.environ.pop("IW_CORE_TEST_CONTEXT", None)
+        if _original_operator is not None:
+            os.environ["IW_CORE_OPERATOR_APPLY"] = _original_operator
+        else:
+            os.environ.pop("IW_CORE_OPERATOR_APPLY", None)
         if original_expected is not None:
             os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original_expected
 

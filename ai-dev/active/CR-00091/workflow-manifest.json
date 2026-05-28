@@ -1,0 +1,110 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00091",
+  "type": "ChangeRequest",
+  "title": "Alembic PENDING Sentinel — make migration late-binding explicit",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "scripts/rewrite_down_revision.py",
+      "scripts/resolve_pending_migration.py",
+      "Makefile",
+      "tests/unit/test_rewrite_down_revision.py",
+      "tests/unit/daemon/test_migration_rebase.py",
+      "tests/unit/test_resolve_pending_migration.py",
+      "tests/integration/test_migrations_round_trip.py",
+      "orch/daemon/migration_rebase.py",
+      "CLAUDE.md",
+      "orch/CLAUDE.md",
+      "ai-dev/templates/Implementation_Prompt_Template.md",
+      "skills/iw-new-cr/SKILL.md",
+      "skills/iw-new-feature/SKILL.md",
+      "skills/iw-new-incident/SKILL.md",
+      ".claude/skills/iw-new-cr/SKILL.md",
+      ".claude/skills/iw-new-feature/SKILL.md",
+      ".claude/skills/iw-new-incident/SKILL.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Create scripts/rewrite_down_revision.py (rewrites a migration file's down_revision to the PENDING sentinel) and add the migration-pending Makefile target (wraps alembic revision --autogenerate + calls the script). TDD: write tests/unit/test_rewrite_down_revision.py first (6 cases: hex rewrite, None rewrite, type-annotated form, idempotency, no-down_revision error, missing-file error). Run targeted tests only.",
+      "prompt": "prompts/CR-00091_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "backend-impl",
+      "description": "Create scripts/resolve_pending_migration.py (scans versions dir, computes real chain head, rewrites PENDING in-place; writes 'None' UNQUOTED for chain-root case, quoted hex otherwise). Update make migration-check to call resolver before pytest. Add documentation comment to orch/daemon/migration_rebase.py Step 8 (no logic change). TDD: extend tests/unit/daemon/test_migration_rebase.py with PENDING sentinel test; new tests/unit/test_resolve_pending_migration.py (4 cases, test 3 asserts unquoted None); extend tests/integration/test_migrations_round_trip.py with two new tests — resolver produces valid chain, AC4 no-op-on-clean-versions guard. Run targeted tests only.",
+      "prompt": "prompts/CR-00091_S02_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "code-review-impl",
+      "description": "Review S01 (rewrite script, migration-pending target, unit tests) and S02 (resolver script, Makefile update, migration_rebase.py comment, test extensions). Pre-review lint+format gate. Check: idempotency of rewrite script, stdlib-only imports, head-computation excludes PENDING files, AC4 regression guard, tdd_red_evidence plausibility in both step reports.",
+      "prompt": "prompts/CR-00091_S03_CodeReview_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "backend-impl",
+      "description": "Documentation only — no production code. Add PENDING convention rule to CLAUDE.md and orch/CLAUDE.md. Insert PENDING convention blockquote into migration sections of skills/iw-new-cr/SKILL.md, skills/iw-new-feature/SKILL.md, skills/iw-new-incident/SKILL.md. Add migration-pending note to ai-dev/templates/Implementation_Prompt_Template.md. Run iw sync-skills and commit both master and mirror copies.",
+      "prompt": "prompts/CR-00091_S04_Backend_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-step review. Verify all 6 ACs: migration-pending target, migration-check resolver, migration_rebase.py PENDING path, no regression on real migrations, idempotency, documentation coverage. Run targeted pytest across all new/modified test files. Verify .claude/skills/ mirrors match skills/ master copies. Flag any S03 CRITICAL/HIGH findings still open.",
+      "prompt": "prompts/CR-00091_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "migration-check",
+      "command": "make migration-check",
+      "description": "QV: Alembic migration round-trip + drift check (now with PENDING pre-resolver)"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting (ruff + node template check + Jinja2 % format check)"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Format check (ruff format --check)"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking (mypy)"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests (includes new rewrite and resolver unit tests)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests (includes migration round-trip with PENDING resolver)",
+      "timeout": 900
+    },
+    {
+      "step": "S12",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment via iw-item-analyze skill. Focus: resolver head-computation correctness, skills mirror consistency, AC4 regression check (migration-check clean for existing chains), tdd_red_evidence quality in S01 and S02.",
+      "prompt": "prompts/CR-00091_S12_SelfAssess_prompt.md"
+    }
+  ]
+}
