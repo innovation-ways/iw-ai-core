@@ -445,25 +445,78 @@
   cursor: not-allowed !important;
 }
 
-/* ── Context % indicator (CR-00067) ── */
+/* ── Context % indicator (F-00091) ── */
 .chat-assistant-context-pct {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.7rem;
   color: var(--muted-foreground);
   white-space: nowrap;
-  vertical-align: middle;
-  padding-right: 0.25rem;
+}
+
+.chat-assistant-context-pct__bar {
+  display: inline-block;
+  width: 60px;
+  height: 5px;
+  background: var(--muted);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.chat-assistant-context-pct__fill {
+  display: block;
+  height: 100%;
+  background: #16a34a;
+  transition: width 250ms ease;
 }
 
 .chat-assistant-context-pct.is-warn {
-  color: #92400e;
+  color: #d97706;
+}
+
+.chat-assistant-context-pct.is-warn .chat-assistant-context-pct__fill {
+  background: #d97706;
 }
 
 .chat-assistant-context-pct.is-crit {
   color: var(--destructive);
 }
 
+.chat-assistant-context-pct.is-crit .chat-assistant-context-pct__fill {
+  background: var(--destructive);
+}
+
+.chat-assistant-context-pct--unknown .chat-assistant-context-pct__fill {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--muted) 0 4px,
+    var(--border) 4px 8px
+  );
+  width: 100% !important;
+  opacity: 0.5;
+}
+
+.chat-assistant-context-pct--unknown .chat-assistant-context-pct__label {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
 @media (prefers-color-scheme: dark) {
-  .chat-assistant-context-pct.is-warn {
-    color: #fcd34d;
+  .chat-assistant-context-pct.is-warn .chat-assistant-context-pct__fill {
+    background: #fbbf24;
   }
+}
+
+/* ── Header project selector (F-00091) ── */
+#chat-assistant-project-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 190px;
+}
+
+#chat-assistant-project-select:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }

@@ -115,18 +115,16 @@ def test_load_tab_history_throws_on_non_ok() -> None:
     )
 
 
-def test_bootstrap_tabs_uses_last_active_at_fallback() -> None:
-    """`_bootstrapTabs` must select the most recently active tab when sessionStorage is cleared.
+def test_bootstrap_tabs_falls_back_to_first_server_sorted_tab() -> None:
+    """`_bootstrapTabs` must use `_tabs[0]` when there is no valid stored tab id.
 
-    Before the fix: `_activateTab(target ? target.id : _tabs[0].id)` always fell
-    back to index 0 when the stored tab ID was stale or absent. After the fix the
-    fallback must compare `last_active_at` timestamps across tabs and pick the highest.
+    Tabs are already returned by the server in `last_active_at DESC` order, so the
+    client fallback should remain `_tabs[0]`.
     """
     js = CHAT_JS.read_text(encoding="utf-8")
     body = _extract_function_body(js, "_bootstrapTabs")
     assert body is not None, "_bootstrapTabs function not found in chat.js"
-    assert body.count("last_active_at") >= 1, (
-        "_bootstrapTabs must compare `last_active_at` timestamps to pick the "
-        "most recently active tab when sessionStorage is cleared, "
-        "instead of blindly falling back to _tabs[0]"
+    assert (
+        "_activateTab(target ? target.id : _tabs[0].id)" in body
+        or "_activateTab(target2 ? target2.id : _tabs[0].id)" in body
     )

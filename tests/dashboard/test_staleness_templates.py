@@ -30,10 +30,12 @@ def _template_dir() -> str:
 
 
 def _env() -> Environment:
-    return Environment(
+    env = Environment(
         loader=FileSystemLoader(_template_dir()),
         autoescape=select_autoescape(enabled_extensions=()),
     )
+    env.globals["request"] = type("Req", (), {"headers": {"user-agent": "pytest"}})()
+    return env
 
 
 # ---------------------------------------------------------------------------

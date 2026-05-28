@@ -40,28 +40,22 @@ def _css_rule_body(css: str, selector: str) -> str | None:
 
 
 class TestComposerDom:
-    """The <span id="chat-assistant-context-pct"> element must exist, start hidden,
-    and sit before #chat-assistant-clear in DOM order."""
+    """The context % container must exist and sit before #chat-assistant-clear."""
 
     def test_context_pct_element_exists(self):
         soup = BeautifulSoup(COMPOSER_HTML.read_text(encoding="utf-8"), "html.parser")
         el = soup.find(id="chat-assistant-context-pct")
         assert el is not None, "composer.html must contain #chat-assistant-context-pct"
-        assert el.name == "span", f"#chat-assistant-context-pct must be a <span>, got <{el.name}>"
+        assert el.name == "div", f"#chat-assistant-context-pct must be a <div>, got <{el.name}>"
 
-    def test_context_pct_starts_hidden(self):
+    def test_context_pct_starts_visible_unknown(self):
         soup = BeautifulSoup(COMPOSER_HTML.read_text(encoding="utf-8"), "html.parser")
         el = soup.find(id="chat-assistant-context-pct")
         assert el is not None, "chat-assistant-context-pct element not found"
-        assert "hidden" in el.get("class", []), (
-            "chat-assistant-context-pct must start with the 'hidden' class "
-            "(no data until first fetch resolves)"
-        )
-        # It carries no static text — the percentage is filled in by JS once
-        # the first context-usage fetch resolves.
-        assert el.get_text(strip=True) == "", (
-            "chat-assistant-context-pct must start empty; its text is JS-populated"
-        )
+        classes = el.get("class", [])
+        assert "chat-assistant-context-pct" in classes
+        assert "chat-assistant-context-pct--unknown" in classes
+        assert "hidden" not in classes
 
     def test_context_pct_before_clear_button(self):
         """Both elements must be siblings in the same flex row; context_pct must
@@ -104,9 +98,7 @@ class TestContextPctCss:
             "chat.css must define a .chat-assistant-context-pct.is-warn rule "
             "for the 70-89% amber/warning band"
         )
-        assert body.count("color") >= 1, (
-            "the .is-warn rule must set a colour for the amber/warning band"
-        )
+        assert "color" in body, "the .is-warn rule must define warning-band color styling"
 
     def test_crit_class_exists(self):
         body = _css_rule_body(
@@ -116,9 +108,7 @@ class TestContextPctCss:
             "chat.css must define a .chat-assistant-context-pct.is-crit rule "
             "for the >=90% destructive band"
         )
-        assert body.count("color") >= 1, (
-            "the .is-crit rule must set a colour for the >=90% destructive band"
-        )
+        assert "color" in body, "the .is-crit rule must define critical-band color styling"
 
 
 class TestContextPctJsHelpers:
@@ -137,11 +127,10 @@ class TestContextPctJsHelpers:
             "chat.js must define function _refreshContextPct(tabId) exactly once"
         )
 
-    def test_refresh_context_pct_hides_on_falsy_tab_id(self):
+    def test_refresh_context_pct_handles_falsy_tab_id_without_nan_contract(self):
         js = CHAT_JS.read_text(encoding="utf-8")
-        assert "_applyContextPct(NaN)" in js or "NaN" in js, (
-            "_refreshContextPct(null / falsy) must call _applyContextPct(NaN) to hide the element"
-        )
+        assert "function _refreshContextPct(tabId)" in js
+        assert "if (!tabId)" in js
 
     def test_activate_tab_calls_refresh_context_pct(self):
         js = CHAT_JS.read_text(encoding="utf-8")

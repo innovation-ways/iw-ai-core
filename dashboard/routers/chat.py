@@ -62,13 +62,14 @@ import json
 import logging
 import os
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from dashboard.dependencies import get_db
 from orch.chat import bootstrap_default_tab, context_usage
@@ -531,6 +532,24 @@ async def create_tab(
     )
 
 
+@router.get("/projects")
+async def list_projects(
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Return enabled assistant projects for the F-00091 project selector dropdown.
+
+    This endpoint decouples assistant project scope from page URL by exposing a
+    stable JSON list of enabled projects that the panel can render and persist
+    client-side.
+    """
+    rows = db.execute(
+        select(Project.id, Project.display_name)
+        .where(Project.enabled.is_(True))
+        .order_by(func.lower(Project.display_name).asc())
+    ).all()
+    return {"projects": [{"id": row.id, "display_name": row.display_name} for row in rows]}
+
+
 @router.get("/tabs/recent-closed")
 async def list_recent_closed_tabs(
     project_id: str,
@@ -754,18 +773,14 @@ async def get_tab(
 
     if tab.runtime == "pi":
         pi_runtime = getattr(request.app.state, "pi_runtime", None)
-        if pi_runtime is None:
-            return JSONResponse(status_code=503, content={"error": "Pi runtime unavailable"})
-        try:
-            pi_healthy = await pi_runtime.health()
-        except Exception:
-            pi_healthy = False
-        if not pi_healthy:
-            return JSONResponse(
-                status_code=503,
-                content={"error": "Pi runtime unavailable: pi binary not found"},
-            )
-        if sid:
+        pi_healthy = False
+        if pi_runtime is not None:
+            try:
+                pi_healthy = await pi_runtime.health()
+            except Exception:
+                pi_healthy = False
+
+        if pi_runtime is not None and pi_healthy and sid:
             try:
                 session = await pi_runtime.get_session(sid)
                 messages = await pi_runtime.get_messages(sid)
@@ -773,54 +788,74 @@ async def get_tab(
                 logger.warning(
                     "get_tab: failed to fetch Pi session/messages for sid=%s: %s", sid, exc
                 )
-        # Inject context_pct (additive, non-fatal)
-        if isinstance(session, dict):
-            with contextlib.suppress(Exception):
-                # Resolve Pi model from tab.model: "pi/<model>" → cli_tool="pi", model="<model>"
-                model_part: str | None = None
-                model_str = tab.model
-                if isinstance(model_str, str) and "/" in model_str:
-                    _, _, model_part = model_str.partition("/")
-                if model_part:
-                    # Look up context_window_tokens from agent_runtime_options (indexed lookup)
-                    row = db.execute(
-                        select(AgentRuntimeOption).where(
-                            AgentRuntimeOption.cli_tool == "pi",
-                            AgentRuntimeOption.model == model_part,
-                        )
-                    ).scalar_one_or_none()
-                    if row is not None and row.context_window_tokens is not None:
-                        # Normalize Pi token shape → OpenCode shape, then compute percentage
-                        normalized_msgs = context_usage.normalize_pi_messages(messages)
-                        pct = context_usage.compute_context_pct(
-                            normalized_msgs, row.context_window_tokens
-                        )
-                        if pct is not None:
-                            session["context_pct"] = pct
+
+        session = dict(session) if isinstance(session, Mapping) else {}
+        usage = None
+        with contextlib.suppress(Exception):
+            model_part: str | None = None
+            model_str = tab.model
+            if isinstance(model_str, str) and "/" in model_str:
+                _, _, model_part = model_str.partition("/")
+            row = None
+            if model_part:
+                row = db.execute(
+                    select(AgentRuntimeOption).where(
+                        AgentRuntimeOption.cli_tool == "pi",
+                        AgentRuntimeOption.model == model_part,
+                    )
+                ).scalar_one_or_none()
+            usage = context_usage.resolve_context_usage_pi(
+                pi_healthy=pi_healthy,
+                agent_runtime_option=row,
+                tab_model=tab.model,
+                messages=messages,
+            )
+        if usage is None:
+            usage = context_usage.ContextUsage(
+                status="unknown_runtime",
+                pct=None,
+                used_tokens=None,
+                window_tokens=None,
+                reason="unexpected error",
+            )
+        session["context_pct"] = usage.pct
+        session["context_pct_status"] = usage.status
+        session["used_tokens"] = usage.used_tokens
+        session["window_tokens"] = usage.window_tokens
+        session["context_pct_reason"] = usage.reason
         return {"tab": _tab_to_dict(tab), "session": session, "messages": messages}
 
     # OpenCode path
-    if not healthy or client is None:
-        return _503_unavailable()
-
-    if sid:
+    if healthy and client is not None and sid:
         try:
             session = await client.get_session(sid)
             messages = await client.get_messages(sid)
         except Exception as exc:
             logger.warning("get_tab: failed to fetch session/messages for sid=%s: %s", sid, exc)
 
-    # Inject context_pct into the session dict (additive, never an error)
-    if isinstance(session, dict):
-        with contextlib.suppress(Exception):
-            providers = await _get_providers_cached(client)
-            pid, mid = context_usage.resolve_model_from_tab(tab.model, messages) or (None, None)
-            if pid and mid:
-                context_window = context_usage.lookup_context_window(providers, pid, mid)
-                if context_window is not None:
-                    pct = context_usage.compute_context_pct(messages, context_window)
-                    if pct is not None:
-                        session["context_pct"] = pct
+    session = dict(session) if isinstance(session, Mapping) else {}
+    usage = None
+    with contextlib.suppress(Exception):
+        providers = await _get_providers_cached(client) if healthy and client is not None else {}
+        usage = context_usage.resolve_context_usage_opencode(
+            client_healthy=healthy and client is not None,
+            providers=providers,
+            tab_model=tab.model,
+            messages=messages,
+        )
+    if usage is None:
+        usage = context_usage.ContextUsage(
+            status="unknown_runtime",
+            pct=None,
+            used_tokens=None,
+            window_tokens=None,
+            reason="unexpected error",
+        )
+    session["context_pct"] = usage.pct
+    session["context_pct_status"] = usage.status
+    session["used_tokens"] = usage.used_tokens
+    session["window_tokens"] = usage.window_tokens
+    session["context_pct_reason"] = usage.reason
 
     return {"tab": _tab_to_dict(tab), "session": session, "messages": messages}
 

@@ -29,10 +29,16 @@
       </svg>
     </button>
     <div class="flex items-center gap-2">
-      <span id="chat-assistant-context-pct"
-            class="chat-assistant-context-pct hidden"
-            aria-label="Context window used"
-            title="Context window used"></span>
+      <div id="chat-assistant-context-pct"
+           class="chat-assistant-context-pct chat-assistant-context-pct--unknown"
+           role="status"
+           aria-label="Context window usage"
+           title="Context window usage">
+        <span class="chat-assistant-context-pct__bar" aria-hidden="true">
+          <span class="chat-assistant-context-pct__fill" style="width: 0%;"></span>
+        </span>
+        <span class="chat-assistant-context-pct__label">—%</span>
+      </div>
       <button id="chat-assistant-clear"
               type="button"
               disabled

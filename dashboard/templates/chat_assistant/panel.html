@@ -1,5 +1,6 @@
 <style>
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-title,
+  #chat-assistant-panel[data-collapsed="true"] #chat-assistant-project-select,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-tray-toggle,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-history-toggle,
   #chat-assistant-panel[data-collapsed="true"] #chat-assistant-tab-strip-wrap,
@@ -25,8 +26,14 @@
   <!-- Expanded header -->
   <header id="chat-assistant-header"
           class="flex items-center gap-1 px-2 py-2 border-b border-border flex-shrink-0">
-    <span id="chat-assistant-title"
-          class="text-sm font-medium truncate flex-1">AI Assistant</span>
+    <div class="flex items-center gap-2 flex-1 min-w-0">
+      <span id="chat-assistant-title" class="sr-only">AI Assistant</span>
+      <select id="chat-assistant-project-select"
+              class="text-xs bg-input border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              aria-label="Assistant project selector">
+        <option value="">Loading…</option>
+      </select>
+    </div>
 
     <button id="chat-assistant-tray-toggle"
             class="tap inline-flex items-center justify-center p-1 rounded hover:bg-muted"

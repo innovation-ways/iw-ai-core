@@ -5,19 +5,6 @@
 (function () {
   'use strict';
 
-  // ── Per-page browser-tab identity (for sessionStorage namespace only) ────────
-  // This is the *browser* tab id, not the chat-tab id. Used to scope
-  // sessionStorage keys so two browser tabs don't clobber each other.
-  var _browserTabId = sessionStorage.getItem('iw-chat-browser-tab-id');
-  if (!_browserTabId) {
-    try {
-      _browserTabId = crypto.randomUUID();
-    } catch (_e) {
-      _browserTabId = Date.now().toString(36) + Math.random().toString(36).slice(2);
-    }
-    sessionStorage.setItem('iw-chat-browser-tab-id', _browserTabId);
-  }
-
   // ── Chat-tab state ───────────────────────────────────────────────────────────
   // _tabs: Array of tab objects from the API { id, title, model, runtime, status, ... }
   // _activeTabId: string | null
@@ -84,10 +71,125 @@
     return m ? m[1] : null;
   }
 
-  function _currentProjectId() {
-    // /project/{id}, /project/{id}/, /project/{id}/... -> id; everything else -> null
+  var _assistantProjects = [];
+  var _assistantProjectIdMemory = null;
+
+  function _assistantProjectId() {
+    try {
+      var value = localStorage.getItem('iw-chat-assistant-project');
+      if (value) return value;
+    } catch (_e) {
+      return _assistantProjectIdMemory;
+    }
+    return _assistantProjectIdMemory;
+  }
+
+  function _setAssistantProjectId(projectId) {
+    _assistantProjectIdMemory = projectId || null;
+    try {
+      if (projectId) {
+        localStorage.setItem('iw-chat-assistant-project', projectId);
+      } else {
+        localStorage.removeItem('iw-chat-assistant-project');
+      }
+    } catch (_e) {
+      // ignore localStorage failures (private mode/quota)
+    }
+    var sel = document.getElementById('chat-assistant-project-select');
+    if (sel) sel.value = projectId || '';
+  }
+
+  function _activeTabKey(projectId) {
+    return 'iw-chat-active-tab:' + projectId;
+  }
+
+  function _setComposerEnabled(enabled) {
+    var input = document.getElementById('chat-assistant-input');
+    var sendBtn = document.getElementById('chat-assistant-send');
+    var cta = document.getElementById('chat-assistant-no-tabs-cta');
+    if (input) input.disabled = !enabled;
+    if (sendBtn) sendBtn.disabled = !enabled;
+    if (cta) cta.style.display = enabled ? '' : 'none';
+  }
+
+  function _populateAssistantProjectSelect(projects) {
+    var sel = document.getElementById('chat-assistant-project-select');
+    if (!sel) return;
+    sel.innerHTML = '';
+    if (!projects.length) {
+      var emptyOpt = document.createElement('option');
+      emptyOpt.value = '';
+      emptyOpt.textContent = 'No projects available';
+      sel.appendChild(emptyOpt);
+      sel.disabled = true;
+      _setComposerEnabled(false);
+      return;
+    }
+    sel.disabled = false;
+    projects.forEach(function (project) {
+      var opt = document.createElement('option');
+      opt.value = project.id;
+      opt.textContent = project.display_name;
+      sel.appendChild(opt);
+    });
+    _setComposerEnabled(true);
+    var current = _assistantProjectId();
+    if (current && projects.some(function (p) { return p.id === current; })) {
+      sel.value = current;
+    } else {
+      sel.value = projects[0].id;
+    }
+  }
+
+  function _loadAssistantProjects() {
+    return fetch('/api/chat/projects')
+      .then(function (r) {
+        if (!r.ok) throw new Error('projects fetch failed: ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        _assistantProjects = (data && data.projects) || [];
+        _populateAssistantProjectSelect(_assistantProjects);
+        return _assistantProjects;
+      })
+      .catch(function (err) {
+        _assistantProjects = [];
+        _populateAssistantProjectSelect([]);
+        _appendSystemMessage('Could not load projects: ' + err.message, 'error');
+        return _assistantProjects;
+      });
+  }
+
+  function _seedAssistantProjectId() {
+    var projects = _assistantProjects || [];
+    if (!projects.length) {
+      _setAssistantProjectId(null);
+      return;
+    }
+
+    var current = _assistantProjectId();
+    if (current && projects.some(function (p) { return p.id === current; })) {
+      return;
+    }
+
     var m = /^\/project\/([^\/]+)(?:\/|$)/.exec(window.location.pathname);
-    return m ? m[1] : null;
+    var seededId = m ? m[1] : null;
+    if (seededId && projects.some(function (p) { return p.id === seededId; })) {
+      _setAssistantProjectId(seededId);
+      return;
+    }
+
+    _setAssistantProjectId(projects[0].id);
+  }
+
+  function _initializeAssistantProjectState() {
+    return _loadAssistantProjects()
+      .then(function () {
+        _seedAssistantProjectId();
+      })
+      .then(function () {
+        _bootstrapTabs();
+      });
   }
 
   // ── Panel DOM helpers ───────────────────────────────────────────────────────
@@ -109,7 +211,7 @@
     }
     _setCookie('iw-chat-assistant-open', open ? '1' : '0', '/');
     if (open) {
-      _bootstrapTabs();
+      _initializeAssistantProjectState();
     }
   }
 
@@ -158,10 +260,12 @@
 
   // ── Tab bootstrap / fetch ───────────────────────────────────────────────────
   function _bootstrapTabs() {
-    var projectId = _currentProjectId();
+    var projectId = _assistantProjectId();
     if (!projectId) {
-      // No per-project context; render empty state
+      _tabs = [];
+      _activeTabId = null;
       _renderEmptyNoTabs();
+      _setComposerEnabled(false);
       return;
     }
     _fetchTabs(projectId, function (tabs) {
@@ -172,15 +276,19 @@
             _tabs = tabs2;
             _renderTabStrip();
             if (_tabs.length) {
-              var lastActive2 = sessionStorage.getItem('iw-chat-active-tab-' + _browserTabId);
+              var lastActive2 = null;
+              try {
+                lastActive2 = localStorage.getItem(_activeTabKey(_assistantProjectId()));
+              } catch (_e) {
+                lastActive2 = null;
+              }
               var target2 = lastActive2 && _tabs.find(function (t) { return t.id === lastActive2; });
-              if (!target2 && _tabs.length > 1) {
-                target2 = _tabs.reduce(function (best, t) {
-                  if (!best) return t;
-                  var bestTs = best.last_active_at ? new Date(best.last_active_at).getTime() : 0;
-                  var tTs = t.last_active_at ? new Date(t.last_active_at).getTime() : 0;
-                  return tTs > bestTs ? t : best;
-                }, null);
+              if (!target2 && lastActive2) {
+                try {
+                  localStorage.removeItem(_activeTabKey(_assistantProjectId()));
+                } catch (_e2) {
+                  // ignore localStorage failures
+                }
               }
               _activateTab(target2 ? target2.id : _tabs[0].id);
             } else {
@@ -192,17 +300,19 @@
       }
       _tabs = tabs;
       _renderTabStrip();
-      // Restore last active tab from sessionStorage
-      var lastActive = sessionStorage.getItem('iw-chat-active-tab-' + _browserTabId);
+      var lastActive = null;
+      try {
+        lastActive = localStorage.getItem(_activeTabKey(_assistantProjectId()));
+      } catch (_e) {
+        lastActive = null;
+      }
       var target = lastActive && _tabs.find(function (t) { return t.id === lastActive; });
-      if (!target && _tabs.length > 1) {
-        // sessionStorage cleared — restore the most recently active tab
-        target = _tabs.reduce(function (best, t) {
-          if (!best) return t;
-          var bestTs = best.last_active_at ? new Date(best.last_active_at).getTime() : 0;
-          var tTs = t.last_active_at ? new Date(t.last_active_at).getTime() : 0;
-          return tTs > bestTs ? t : best;
-        }, null);
+      if (!target && lastActive) {
+        try {
+          localStorage.removeItem(_activeTabKey(_assistantProjectId()));
+        } catch (_e2) {
+          // ignore localStorage failures
+        }
       }
       _activateTab(target ? target.id : _tabs[0].id);
     });
@@ -243,7 +353,11 @@
     // tabs don't paint into the visible message area.
 
     _activeTabId = tabId;
-    sessionStorage.setItem('iw-chat-active-tab-' + _browserTabId, tabId);
+    try {
+      localStorage.setItem(_activeTabKey(_assistantProjectId()), tabId);
+    } catch (_e) {
+      // ignore localStorage failures (private mode/quota)
+    }
 
     // Update tab strip highlighting
     _updateTabStripActiveState();
@@ -1021,7 +1135,7 @@
   function _duplicateTab(tabId) {
     var tab = _tabs.find(function (t) { return t.id === tabId; });
     if (!tab) return;
-    var projectId = _currentProjectId() || tab.project_id;
+    var projectId = _assistantProjectId() || tab.project_id;
     _createTab(projectId, tab.runtime || 'opencode', tab.model || '', (tab.title || 'Chat') + ' (copy)');
   }
 
@@ -1072,26 +1186,22 @@
 
   // ── Instant tab creation (Notepad++-style, no modal) ────────────────────────
   function _instantCreateTab() {
-    var projectId = _currentProjectId();
+    var projectId = _assistantProjectId();
     if (!projectId) {
       _appendSystemMessage('Navigate to a project page first to create a chat tab.', 'error');
       return;
     }
     var activeTab = _activeTabId ? _tabs.find(function (t) { return t.id === _activeTabId; }) : null;
-    // Runtime and model MUST come from a single consistent source. With an
-    // active tab, clone its runtime+model pair. With no active tab, use the
-    // project's configured default runtime and send NO model — the backend
-    // resolves that runtime's own default model. Pairing a hardcoded runtime
-    // with a model left over from a different runtime is what produced the
-    // "model 'pi/...' not available for runtime 'opencode'" 400.
-    var runtime, model;
+    // Keep runtime continuity from the active tab, but let the backend
+    // resolve the model default for that runtime. This avoids 400s when the
+    // active tab's stored model is no longer valid for current allowlists.
+    var runtime;
     if (activeTab) {
       runtime = activeTab.runtime || _defaultRuntime || 'opencode';
-      model = activeTab.model || '';
     } else {
       runtime = _defaultRuntime || 'opencode';
-      model = '';
     }
+    var model = '';
     // Auto-increment title: "Chat 1", "Chat 2", ...
     var n = _tabs.length + 1;
     var title = 'Chat ' + n;
@@ -1137,7 +1247,7 @@
   }
 
   function _fetchModelsForSettings(runtime, currentModel) {
-    var projectId = _currentProjectId();
+    var projectId = _assistantProjectId();
     var params = {};
     if (projectId) params.project_id = projectId;
     params.runtime = runtime;
@@ -1192,7 +1302,7 @@
       // Runtime change: close current tab and open a new one with the new runtime.
       // The old conversation is lost (new session for new runtime).
       _closeSettingsPanel();
-      var projectId = _currentProjectId() || tab.project_id;
+      var projectId = _assistantProjectId() || tab.project_id;
       _closeTab(tabId);
       _createTab(projectId, newRuntime, newModel, newTitle);
       return;
@@ -1249,7 +1359,7 @@
     // Pre-fill project
     var projInput = document.getElementById('chat-assistant-create-tab-project');
     if (projInput) {
-      projInput.value = _currentProjectId() || '';
+      projInput.value = _assistantProjectId() || '';
     }
 
     // Reset runtime dropdown to the project's configured default runtime.
@@ -1335,7 +1445,7 @@
   }
 
   function _fetchModelsForModal(runtime) {
-    var projectId = _currentProjectId();
+    var projectId = _assistantProjectId();
     var selectedRuntime = runtime || 'opencode';
     var params = {};
     if (projectId) params.project_id = projectId;
@@ -1441,7 +1551,7 @@
   }
 
   function _loadRecentClosedTabs() {
-    var projectId = _currentProjectId();
+    var projectId = _assistantProjectId();
     if (!projectId) return;
     var list = document.getElementById('chat-assistant-closed-tabs-list');
     if (list) list.innerHTML = '<p class="text-xs text-muted-foreground italic">Loading&#x2026;</p>';
@@ -1859,39 +1969,86 @@
   }
 
   // ── Context % polling ───────────────────────────────────────────────────────
-  function _applyContextPct(pct) {
+  function _formatTokenCount(n) {
+    if (typeof n !== 'number' || !isFinite(n)) return '0';
+    if (n >= 1000000) {
+      var m = n / 1000000;
+      return (m >= 10 ? Math.round(m) : Math.round(m * 10) / 10) + 'M';
+    }
+    if (n >= 1000) {
+      var k = n / 1000;
+      return (k >= 10 ? Math.round(k) : Math.round(k * 10) / 10) + 'k';
+    }
+    return String(Math.round(n));
+  }
+
+  function _applyContextPct(payload) {
     var el = document.getElementById('chat-assistant-context-pct');
     if (!el) return;
+    var fill = el.querySelector('.chat-assistant-context-pct__fill');
+    var label = el.querySelector('.chat-assistant-context-pct__label');
+    if (!fill || !label) return;
+
+    var data = payload || {};
+    var status = data.status;
+    var pct = data.pct;
     el.classList.remove('is-warn', 'is-crit');
-    if (typeof pct === 'number' && isFinite(pct)) {
+
+    if (status === 'known' && typeof pct === 'number' && isFinite(pct)) {
+      var bounded = Math.min(100, Math.max(0, pct));
       var rounded = Math.round(pct);
-      el.textContent = rounded + '%';
-      el.title = 'Context window used: ' + rounded + '%';
-      el.setAttribute('aria-label', 'Context window used: ' + rounded + '%');
-      el.classList.remove('hidden');
+      fill.style.width = bounded + '%';
+      label.textContent = rounded + '%';
+      el.classList.remove('chat-assistant-context-pct--unknown');
       if (rounded >= 90) {
         el.classList.add('is-crit');
       } else if (rounded >= 70) {
         el.classList.add('is-warn');
       }
-    } else {
-      el.textContent = '';
-      el.classList.add('hidden');
+      var used = _formatTokenCount(data.used_tokens);
+      var windowTokens = _formatTokenCount(data.window_tokens);
+      var tip = used + ' / ' + windowTokens + ' tokens (' + rounded + '%)';
+      el.title = tip;
+      el.setAttribute('aria-label', 'Context window usage: ' + tip);
+      return;
     }
+
+    var reason = data.reason || (status === 'unknown_window'
+      ? 'Context window size is not configured for this model'
+      : 'Could not contact runtime');
+    el.classList.add('chat-assistant-context-pct--unknown');
+    fill.style.width = '100%';
+    label.textContent = '—%';
+    el.title = reason;
+    el.setAttribute('aria-label', 'Context window usage unknown: ' + reason);
   }
 
   function _refreshContextPct(tabId) {
+    var el = document.getElementById('chat-assistant-context-pct');
+    if (el) {
+      el.style.display = tabId ? 'inline-flex' : 'none';
+    }
     if (!tabId) {
-      _applyContextPct(NaN); // hide + clear
       return;
     }
     fetch('/api/chat/tabs/' + encodeURIComponent(tabId))
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
       .then(function (data) {
         var session = data && data.session;
-        _applyContextPct(session && session.context_pct);
+        _applyContextPct({
+          status: session && session.context_pct_status,
+          pct: session && session.context_pct,
+          used_tokens: session && session.used_tokens,
+          window_tokens: session && session.window_tokens,
+          reason: session && session.context_pct_reason
+        });
       })
-      .catch(function () { /* ignore */ });
+      .catch(function () {
+        _applyContextPct({ status: 'unknown_runtime', reason: 'Could not contact runtime' });
+      });
   }
 
   function _startContextPoll() {
@@ -1911,7 +2068,7 @@
 
   // ── Model selector ──────────────────────────────────────────────────────────
   function _refreshModels() {
-    var projectId = _currentProjectId();
+    var projectId = _assistantProjectId();
     _lastProjectId = projectId;
     // Determine the active tab's runtime so the per-tab model dropdown shows
     // only models that are valid for that runtime (Pi tab → Pi models only;
@@ -1940,7 +2097,7 @@
     if (_modelRefreshTimer) clearInterval(_modelRefreshTimer);
     _modelRefreshTimer = setInterval(function () {
       if (!_isOpen()) return;
-      var projectId = _currentProjectId();
+      var projectId = _assistantProjectId();
       if (projectId !== _lastProjectId) {
         _defaultRuntime = 'opencode';
         _projectDirectory = '';
@@ -2297,10 +2454,27 @@
       }
     });
 
+    // Project selector
+    var projectSelect = document.getElementById('chat-assistant-project-select');
+    if (projectSelect) {
+      projectSelect.addEventListener('change', function () {
+        var previousProjectTabs = _tabs.slice();
+        var newId = projectSelect.value || null;
+        _setAssistantProjectId(newId);
+        previousProjectTabs.forEach(function (tab) {
+          _teardownStream(tab.id);
+        });
+        _tabs = [];
+        _activeTabId = null;
+        _bootstrapTabs();
+      });
+    }
+
     // Initial state
     if (_isOpen()) {
-      _bootstrapTabs();
-      _refreshModels();
+      _initializeAssistantProjectState().then(function () {
+        _refreshModels();
+      });
     }
 
     _scheduleModelRefresh();

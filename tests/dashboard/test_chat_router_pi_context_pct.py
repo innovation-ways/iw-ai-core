@@ -2,8 +2,8 @@
 
 AC1: Pi tab with token-bearing messages + `agent_runtime_options.context_window_tokens`
      → `session.context_pct` is a numeric float in range [0, 100].
-AC2: Pi tab with no token usage in messages → `context_pct` is absent.
-AC3: Pi tab with `context_window_tokens = NULL` → `context_pct` is absent.
+AC2: Pi tab with no token usage in messages → `context_pct_status=unknown_window` and no pct.
+AC3: Pi tab with `context_window_tokens = NULL` → `context_pct_status=unknown_window` and no pct.
 AC4: OpenCode tabs are byte-for-byte unchanged.
 
 TDD cycle: RED recorded below (tests fail before implementation).
@@ -251,12 +251,12 @@ def test_pi_tab_injects_context_pct_when_token_data_and_context_window_present(
 # ---------------------------------------------------------------------------
 
 
-def test_pi_tab_omits_context_pct_when_no_token_usage(
+def test_pi_tab_marks_unknown_window_when_no_token_usage(
     pi_context_pct_app: tuple[TestClient, Any, Any, Session],
     db_session: Session,
     test_project: Project,
 ) -> None:
-    """AC2: Pi tab with no token data → context_pct is absent (indicator stays hidden)."""
+    """AC2: Pi tab with no token data → unknown_window state is returned."""
     tc, pi_runtime, oc_client, _ = pi_context_pct_app
 
     # Seed with a large context window so any accidental computation would produce a value.
@@ -278,9 +278,8 @@ def test_pi_tab_omits_context_pct_when_no_token_usage(
     body = resp.json()
 
     assert "session" in body
-    assert "context_pct" not in body["session"], (
-        f"context_pct absent when no token usage; got {body['session'].get('context_pct')!r}"
-    )
+    assert body["session"].get("context_pct") is None
+    assert body["session"].get("context_pct_status") == "unknown_window"
 
 
 # ---------------------------------------------------------------------------
@@ -288,12 +287,12 @@ def test_pi_tab_omits_context_pct_when_no_token_usage(
 # ---------------------------------------------------------------------------
 
 
-def test_pi_tab_omits_context_pct_when_context_window_tokens_null(
+def test_pi_tab_marks_unknown_window_when_context_window_tokens_null(
     pi_context_pct_app: tuple[TestClient, Any, Any, Session],
     db_session: Session,
     test_project: Project,
 ) -> None:
-    """AC3: Pi model row has context_window_tokens=NULL → context_pct is absent."""
+    """AC3: Pi model row has context_window_tokens=NULL → unknown_window state."""
     tc, pi_runtime, oc_client, _ = pi_context_pct_app
 
     # Seed with NULL context_window_tokens.
@@ -319,10 +318,8 @@ def test_pi_tab_omits_context_pct_when_context_window_tokens_null(
     body = resp.json()
 
     assert "session" in body
-    assert "context_pct" not in body["session"], (
-        f"context_pct should be absent when context_window_tokens is NULL; "
-        f"got {body['session'].get('context_pct')!r}"
-    )
+    assert body["session"].get("context_pct") is None
+    assert body["session"].get("context_pct_status") == "unknown_window"
 
 
 # ---------------------------------------------------------------------------
