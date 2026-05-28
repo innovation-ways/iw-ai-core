@@ -58,7 +58,10 @@ jobs:
     name: E2E Smoke
     # Only runs on pull_request and push — never on schedule or workflow_dispatch alone.
     # The schedule/ workflow_dispatch triggers are on the e2e-full job only.
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    # E2E_CI_ENABLED must be set as a repository variable to opt in; silently skips
+    # (not fails) when the variable is absent or false, so unconfigured environments
+    # are not blocked by a missing E2E stack.
+    if: (github.event_name == 'pull_request' || github.event_name == 'push') && vars.E2E_CI_ENABLED == 'true'
     runs-on: ubuntu-latest
     env:
       # These must be set from workflow inputs / repository variables / secrets.
