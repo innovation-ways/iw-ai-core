@@ -119,7 +119,7 @@ def test_i00115_modal_submit_form_wires_cleanup_hook(
     form_match = re.search(r'<form\b[^>]*hx-post="[^"]*scope/amend-and-restart[^"]*"[^>]*>', html)
     assert form_match, "expected amend-and-restart form open tag"
     form_open_tag = form_match.group(0)
-    assert "scope-amend-modal" in form_open_tag
+    assert form_open_tag.count("scope-amend-modal") == 1
     assert "scope-amend-overlay" in form_open_tag
 
 
@@ -159,5 +159,5 @@ def test_i00115_cancel_button_still_works(
     cancel_button_match = re.search(r"<button[^>]*>\s*Cancel\s*</button>", html)
     assert cancel_button_match, "expected cancel button"
     assert 'onclick="window.dismissScopeAmendModal();"' in cancel_button_match.group(0)
-    assert "modal.remove();" in html
+    assert html.count("modal.remove();") == 1
     assert "overlay.remove();" in html
