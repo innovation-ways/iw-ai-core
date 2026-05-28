@@ -2,7 +2,7 @@
   "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
   "id": "CR-00090",
   "type": "ChangeRequest",
-  "title": "Fix E2E Polling Suppression \u2014 Replace UA Sniffing with IW_CORE_E2E_MODE Env Var",
+  "title": "Fix E2E Polling Suppression — Replace UA Sniffing with IW_CORE_E2E_MODE Env Var",
   "browser_verification": true,
   "scope": {
     "allowed_paths": [
@@ -13,9 +13,7 @@
       "dashboard/templates/pages/project_selector.html",
       "ai-dev/iw-config/worktree-compose.template.yml",
       "tests/unit/test_config.py",
-      "tests/dashboard/test_e2e_mode.py",
-      "tests/integration/daemon/test_phase2_apply_no_self_deadlock.py",
-      "dashboard/routers/staleness.py"
+      "tests/dashboard/test_e2e_mode.py"
     ]
   },
   "steps": [
@@ -44,7 +42,7 @@
       "step": "S04",
       "agent": "code-review-impl",
       "step_type": "code_review",
-      "description": "Per-agent code review of S01\u2013S03",
+      "description": "Per-agent code review of S01–S03",
       "prompt": "prompts/CR-00090_S04_CodeReview_prompt.md"
     },
     {
@@ -114,7 +112,7 @@
       "step": "S13",
       "agent": "qv-browser",
       "step_type": "browser_verification",
-      "description": "QV: Browser verification \u2014 verify polling suppressed in E2E container and no regressions in production-like mode",
+      "description": "QV: Browser verification — verify polling suppressed in E2E container and no regressions in production-like mode",
       "prompt": "prompts/CR-00090_S13_BrowserVerification_prompt.md"
     },
     {

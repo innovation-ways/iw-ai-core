@@ -41,6 +41,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from orch.config import get_e2e_mode
 from orch.staleness.service import compute_project_staleness
 
 logger = logging.getLogger(__name__)
@@ -50,11 +51,18 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Module-level templates reference (patched in tests to avoid rendering
 # real Jinja2 templates that S04 hasn't created yet).
-# ---------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 _HERE = Path(__file__).resolve().parent.parent
 _TEMPLATES_DIR = _HERE / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+# Inject _e2e_mode so staleness_dot.html polling is suppressed in E2E
+# containers (CR-00090 AC1/AC5).  app.py sets this on its own templates
+# instance; staleness.templates is a separate module-level instance created
+# at import time and needs the same treatment so staleness_dot.html
+# renders correctly in the E2E container.
+templates.env.globals["_e2e_mode"] = get_e2e_mode()
 
 # ---------------------------------------------------------------------------
 # 5-second per-service soft-lock.

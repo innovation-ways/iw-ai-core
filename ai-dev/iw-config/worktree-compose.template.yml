@@ -81,6 +81,7 @@ services:
       IW_CORE_DB_NAME: iw_orch
       IW_CORE_DB_USER: iw_orch
       IW_CORE_DB_PASSWORD: iw_orch
+      IW_CORE_E2E_MODE: "true"
     ports:
       - "9900"
     depends_on:

@@ -465,6 +465,10 @@ def create_app() -> FastAPI:
         _git_hash = "0"
     templates.env.globals["static_v"] = _git_hash
 
+    from orch.config import get_e2e_mode
+
+    templates.env.globals["_e2e_mode"] = get_e2e_mode()
+
     app.state.templates = templates
 
     # Health check endpoint (used by browser_verification steps and monitoring)

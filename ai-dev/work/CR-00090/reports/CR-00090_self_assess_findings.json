@@ -1,0 +1,36 @@
+{
+  "item_id": "CR-00090",
+  "bottom_line": "CR-00090's implementation is correct and all 6 ACs are satisfied, but the item exposed two pre-existing test fixture gaps (staleness-dot templates missing _e2e_mode global; dead migration revision in test) that cost one fix cycle each — both should be fixed proactively via conftest.py fixture and dynamic revision lookup.",
+  "coverage_notes": "Read S01–S05, S10, S12-fix, S13-fix, S13 browser logs in full (~1–8 KB each). Sampled tail of S12_run4.log (845 KB) and S12_run1.log (824 KB) with grep for FAILED/passed. DB telemetry: full via `iw item-status CR-00090 --json`. S13_run1 empty log noted (browser env down). S12_run1 also showed 11 failures before fix.",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "project",
+      "title": "Pre-existing staleness-dot tests need _e2e_mode global in test fixture",
+      "recommendation": "Add a session-scoped pytest fixture to tests/conftest.py that injects _e2e_mode = False into staleness_mod.templates.env.globals at test session start, mirroring how test_e2e_mode.py patches it for E2E-mode tests. All staleness-dot template tests use the module-level Jinja2Templates instance from staleness.py; without this patch they fail with UndefinedError.",
+      "evidence": [
+        "ai-dev/active/CR-00090/fix-cycles/CR-00090_S12_FIX_cycle1_prompt.md:27 — 'FAILED tests/dashboard/test_staleness_templates.py::TestStalenessDotUpToDate::test_renders_grey_dot_when_up_to_date'",
+        "ai-dev/active/CR-00090/fix-cycles/CR-00090_S12_FIX_cycle1_prompt.md:28 — 'FAILED tests/dashboard/test_staleness_templates.py::TestStalenessDotUpToDate::test_grey_dot_has_hx_get' (9 staleness-dot tests failed in S12 run1)",
+        ".worktrees/CR-00090/ai-dev/logs/CR-00090_S12_fix1.log:3 — 'dashboard/routers/staleness.py creates a separate module-level Jinja2Templates instance at import time'",
+        ".worktrees/CR-00090/ai-dev/logs/CR-00090_S13_fix1.log:7 — 'Staleness router module-level templates instance correctly patched alongside app.templates' (same issue surfaced in S13)"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add a session-scoped pytest fixture to tests/conftest.py that injects _e2e_mode = False into staleness_mod.templates.env.globals at test session start. Without this, any CR that injects a new Jinja global (like CR-00090 did with _e2e_mode) breaks the 9 pre-existing staleness-dot template tests in test_staleness_templates.py. Analyzed in CR-00090 S14 (see ai-dev/work/CR-00090/reports/CR-00090_self_assess_report.md). Target: tests/conftest.py. Effort: S (~15 lines)."
+    },
+    {
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "project",
+      "title": "test_phase2_apply_no_self_deadlock.py hardcodes a migration revision that drifts from actual head",
+      "recommendation": "Replace the hardcoded _HEAD_REVISION constant in test_phase2_apply_no_self_deadlock.py with a dynamic query that reads the actual Alembic head from the test DB at runtime, using: result = session.execute(text('SELECT version_num FROM alembic_version')); return result.scalar_one().",
+      "evidence": [
+        "ai-dev/active/CR-00090/fix-cycles/CR-00090_S12_FIX_cycle1_prompt.md:35 — 'FAILED tests/integration/daemon/test_phase2_apply_no_self_deadlock.py::test_i_00063_apply_succeeds_when_no_blocking_lock'",
+        "ai-dev/active/CR-00090/fix-cycles/CR-00090_S12_FIX_cycle1_prompt.md:36 — 'FAILED tests/integration/daemon/test_phase2_apply_no_self_deadlock.py::test_i_00063_apply_does_not_self_deadlock_when_caller_holds_share_lock'",
+        ".worktrees/CR-00090/ai-dev/logs/CR-00090_S12_fix1.log:9 — '_HEAD_REVISION updated from d43ea9e75e8f to f_00090_regression_link_fields' (manually bumped as one-off fix)"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Replace the hardcoded _HEAD_REVISION constant in tests/integration/daemon/test_phase2_apply_no_self_deadlock.py with a dynamic query that reads the actual Alembic head from the test DB at runtime. This test hardcodes a specific migration revision; every new migration after F-00090 drifts the test again. Analyzed in CR-00090 S14 (see ai-dev/work/CR-00090/reports/CR-00090_self_assess_report.md). Target: tests/integration/daemon/test_phase2_apply_no_self_deadlock.py. Effort: S (~10 lines)."
+    }
+  ]
+}
