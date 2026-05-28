@@ -878,6 +878,51 @@ iw projects list [--json]
 
 ---
 
+### 3.10. Test Health
+
+#### `iw test-health-capture`
+
+Capture test-health snapshots for a project.
+
+```
+iw test-health-capture --project <slug>
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--project`, `-p` | **Required.** Project slug (e.g. `iw-ai-core`) |
+
+**Behavior:**
+1. Looks up the project in the registry by slug
+2. Reads four artefact sources from the project's repo root:
+   - `tests/output/mutation-*.json` — mutation score
+   - `coverage.xml` — coverage percentage (via `orch/coverage_service.py`)
+   - `tests/output/flake-detect-*.log` — flaky-test count
+   - `tests/assertion_free_baseline.txt` — assertion-baseline line count
+3. Writes one row per metric to `test_health_snapshots` (idempotent per minute)
+4. Creates one `test-health-capture` job row in the unified Jobs view
+5. Prints a JSON summary to stdout
+
+**Output (JSON):**
+```json
+{
+  "project": "iw-ai-core",
+  "captured": [
+    {"metric": "mutation_score", "value": 85.3, "ts": "2026-05-28T10:00:00Z", "source_shape": "cr00080"},
+    {"metric": "coverage_pct", "value": 72.1, "ts": "2026-05-28T10:00:00Z", "source_shape": "cobertura"}
+  ],
+  "skipped": [
+    {"metric": "flaky_test_count", "reason": "source not found or not parseable"}
+  ]
+}
+```
+
+**Exit codes:** `0` = success (including no-op captures), `1` = DB error, `2` = project not found.
+
+---
+
 ## 4. Command Summary
 
 This tree is the **canonical command list**. It is kept in sync with the actual
@@ -947,8 +992,9 @@ iw
 │   ├── start           Start the orchestration daemon
 │   ├── stop            Stop the running daemon gracefully
 │   └── status          Show daemon health and operational statistics
-└── projects            Manage registered projects
-    └── list            List all registered projects
+├── projects            Manage registered projects
+│   └── list            List all registered projects
+└── test-health-capture Capture test-health snapshots (mutation score, coverage, flaky tests, assertion baseline)
 ```
 
 ---

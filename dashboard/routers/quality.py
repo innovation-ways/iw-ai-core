@@ -19,7 +19,9 @@ from dashboard.routers._run_helpers import (
     get_project_or_404,
     group_cards,
 )
+from dashboard.routers._test_health_helpers import build_test_health_cards
 from orch.db.models import Project, TestRun, TestRunStatus
+from orch.test_health_service import latest
 from orch.test_runner import kill_test_run, launch_quality_fix_run, launch_test_run
 
 if TYPE_CHECKING:
@@ -80,6 +82,31 @@ def quality_page(
         request,
         "pages/project/quality.html",
         context,
+    )
+
+
+@router.get(
+    "/test-health", response_class=HTMLResponse, operation_id="test_health_fragment_quality"
+)
+def test_health_fragment(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: Test Health panel (shared with tests router)."""
+    project = get_project_or_404(project_id, db)
+    templates: Jinja2Templates = request.app.state.templates
+
+    latest_snapshots = latest(db, project_id)
+    metrics_data = build_test_health_cards(project, latest_snapshots, db)
+
+    return templates.TemplateResponse(
+        request,
+        "fragments/test_health_panel.html",
+        {
+            "current_project": project,
+            "metrics_data": metrics_data,
+        },
     )
 
 

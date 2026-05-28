@@ -2837,3 +2837,70 @@ class ChatTab(Base):
         ),
         {"comment": "Multi-tab AI Assistant chat tabs (F-00086)"},
     )
+
+
+class TestHealthSnapshot(Base):
+    """Time-series snapshots of test-health metrics for a project.
+
+    One row per (project_id, metric, ts) — stores numeric values from
+    the four headline test-health signals: mutation_score, coverage_pct,
+    flaky_test_count, and assertion_baseline_size. The ``meta`` JSONB
+    column carries per-run context (commit SHA, run ID, raw counts) so the
+    dashboard can display a tooltip without a second query.
+
+    CR-00086.
+    """
+
+    __tablename__ = "test_health_snapshots"
+    __table_args__ = (
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
+        Index(
+            "ix_test_health_snapshots_project_metric_ts",
+            "project_id",
+            "metric",
+            text("ts DESC"),
+        ),
+        {"comment": "Time-series test-health metric snapshots (CR-00086)"},
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+        comment="Auto-incrementing primary key",
+    )
+    project_id: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="FK to projects.id; cascades on project deletion",
+    )
+    ts: Mapped[datetime] = mapped_column(
+        _TIMESTAMPTZ,
+        nullable=False,
+        server_default=func.now(),
+        comment="UTC timestamp of this snapshot (truncated to minute for idempotency)",
+    )
+    metric: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment=(
+            "Metric name: 'mutation_score', 'coverage_pct', "
+            "'flaky_test_count', or 'assertion_baseline_size'"
+        ),
+    )
+    value: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        comment="Numeric value of the metric at snapshot time",
+    )
+    meta: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'"),
+        comment=(
+            "Run metadata: commit_sha, run_id, source_path, raw_counts, etc. "
+            "Empty object when no additional context is available."
+        ),
+    )
+
+    project: Mapped["Project"] = relationship("Project")

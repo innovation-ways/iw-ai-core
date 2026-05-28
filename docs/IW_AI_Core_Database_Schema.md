@@ -894,3 +894,49 @@ New boolean column indicating a finding can be auto-applied to the working tree 
 | Column | Type | Nullable | Default |
 |--------|------|----------|---------|
 | `auto_apply_safe` | BOOLEAN | NOT NULL | false |
+
+---
+
+## 11. CR-00086: Test Health Snapshots — Self-dashboarding (2026-05-24)
+
+Stores one row per `(project_id, metric, ts_minute)` for the four test-health
+metrics surfaced on the dashboard's Test Health panel (Tests and Quality pages).
+One `iw test-health-capture` invocation writes up to four rows (one per metric)
+plus one entry in the Jobs view (grouped by minute).
+
+```sql
+CREATE TABLE test_health_snapshots (
+    id              BIGSERIAL PRIMARY KEY,
+    project_id      BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    ts              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    metric          TEXT NOT NULL,   -- one of: mutation_score, coverage_pct, flaky_test_count, assertion_baseline_size
+    value           DOUBLE PRECISION NOT NULL,
+    meta            JSONB NOT NULL DEFAULT '{}'  -- commit SHA, source path, raw counts
+);
+
+-- Unique constraint enforces idempotency: one row per (project, metric, minute).
+-- Upsert on conflict: DO NOTHING so retries in the same minute are no-ops.
+CREATE UNIQUE INDEX ix_test_health_snapshots_project_metric_ts
+    ON test_health_snapshots(project_id, metric, date_trunc('minute', ts)::TIMESTAMPTZ DESC);
+```
+
+**Indexes:**
+- `ix_test_health_snapshots_project_metric_ts` — `(project_id, metric, ts DESC)` for
+  latest-snapshot and trend queries. Unique constraint enforces idempotency.
+
+**Idempotency:** `ts` is truncated to the minute server-side before the upsert; the
+unique index on `date_trunc('minute', ts)` ensures re-running `iw test-health-capture`
+within the same minute with identical source values touches no new rows.
+
+**Downgrade:**
+```sql
+DROP INDEX ix_test_health_snapshots_project_metric_ts;
+DROP TABLE test_health_snapshots;
+```
+
+**Cross-reference:** CR-00086 §10 Self-dashboarding (docs/IW_AI_Core_Testing_Strategy.md),
+Service: `orch/test_health_service.py`, CLI: `orch/cli/test_health_commands.py`,
+Model: `orch/db/models.py` → `TestHealthSnapshot`,
+Migration: `orch/db/migrations/versions/add_test_health_snapshots_table.py`,
+Panel: `dashboard/templates/fragments/test_health_panel.html`,
+CI: `.github/workflows/test-health.yml` (self-hosted runner, push + nightly cron + workflow_dispatch).

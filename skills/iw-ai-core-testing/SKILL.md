@@ -559,3 +559,39 @@ Scenario-addition checklist:
 - If the smoke subset changes (currently S02 + S03), update `Makefile` and `.github/workflows/daemon-chaos.yml` together.
 
 Source of truth: `tests/integration/daemon_chaos/harness.py` docstring and the package-level tests under `tests/integration/daemon_chaos/`.
+
+---
+
+## 17. Test Health Self-Dashboarding (CR-00086)
+
+Live metric values for the four test-health signals are surfaced on the
+dashboard's **Test Health panel** — mounted on the Tests page and the Quality
+page for the iw-ai-core project. The panel reads from the `test_health_snapshots`
+table, populated by `iw test-health-capture` on every push to `main` and nightly.
+
+| Metric | Source artefact |
+|--------|-----------------|
+| `mutation_score` | `make mutation-results` JSON (CR-00059/CR-00080) |
+| `coverage_pct` | `coverage.xml` via `orch/coverage_service.py` (CR-00047) |
+| `flaky_test_count` | `scripts/flake_detect_aggregate.py` output (CR-00061) |
+| `assertion_baseline_size` | Line count of `tests/assertion_free_baseline.txt` (CR-00046) |
+
+**Persistence model**: snapshots are written to the live orchestration DB on port
+5433 via a self-hosted runner (`[self-hosted, iw-core]`) — **not** to an ephemeral
+GH-Actions service-container Postgres. This is intentional: the trend-over-time
+purpose requires rows that survive across runs. A service-container workflow would
+produce rows that disappear at runner exit.
+
+**Operator prerequisites** (before the CI workflow will succeed):
+1. A self-hosted runner labelled `iw-core` must be provisioned and online.
+2. `IW_CORE_DB_HOST / PORT / NAME / USER / PASSWORD` GitHub secrets must be
+   configured, pointing at the live orchestration DB on port 5433.
+3. The runner's network must reach `IW_CORE_DB_HOST:5433`.
+
+**Idempotency**: one row per `(project_id, metric, ts_minute)` — re-running
+`iw test-health-capture` within the same minute with identical source values is
+a no-op. The panel renders per-metric "no data yet" placeholders when a metric
+has no snapshots, and a combined empty state when all four are empty.
+
+See CR-00086 for the full design (`ai-dev/active/CR-00086/CR-00086_CR_Design.md`),
+`docs/IW_AI_Core_Testing_Strategy.md` §10, and `.github/workflows/test-health.yml`.

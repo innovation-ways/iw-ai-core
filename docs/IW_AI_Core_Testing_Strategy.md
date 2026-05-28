@@ -507,12 +507,122 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Daemon chaos / fault-injection | ✅ (F-00089, 2026-05-26) — `tests/integration/daemon_chaos/` harness + 5 scenario modules (S01–S05); `make daemon-chaos-smoke` (blocking smoke: S02 + S03); `make daemon-chaos-full` (full matrix, nightly/workflow-dispatch); documented in §2 Layer 9 + §5 gate table + TESTS_ENHANCEMENT.md (4.3) |
 | Performance budgets | ✅ DONE — CR-00083 (2026-05-24) |
 | `tests/factories.py` central entity factory | ❌ |
+| **Self-dashboarding of test health (4.6)** | ✅ (CR-00086, 2026-05-28) — `test_health_snapshots` table + `iw test-health-capture` CLI + Test Health panel (Tests + Quality views) + `.github/workflows/test-health.yml` (self-hosted runner, push + nightly cron + workflow_dispatch) + this §10 + Database Schema DDL; see §10 below |
 
 Update this table and the gate table in §5 as roadmap items land.
 
 ---
 
-## 10. Regression-rate KPI (F-00090)
+## 10. Self-dashboarding (CR-00086)
+
+The platform runs other projects' test/quality gates and surfaces the results in
+its Tests/Quality view — but it has not surfaced its own test-health signals.
+CR-00086 closes that loop by dogfooding the platform.
+
+### Metrics surfaced
+
+| Metric | Source artefact | Notes |
+|--------|-----------------|-------|
+| `mutation_score` | `make mutation-results` JSON output (CR-00059/CR-00080) | CR-00080 widened scope to `orch/` |
+| `coverage_pct` | `coverage.xml` via `orch/coverage_service.py` (CR-00047) | |
+| `flaky_test_count` | `scripts/flake_detect_aggregate.py` output (CR-00061) | Parses `tests/output/flake-detect-*.log` |
+| `assertion_baseline_size` | Line count of `tests/assertion_free_baseline.txt` (CR-00046) | Baseline size as a proxy for assertion quality debt |
+
+Each capture writes one row to `test_health_snapshots` per metric, grouped by
+`(project_id, metric, ts_minute)` — one capture invocation produces **one row per
+metric** (4 rows total) plus **one entry in the Jobs view** (grouped by minute).
+
+### Panel mount points
+
+The Test Health panel (`dashboard/templates/fragments/test_health_panel.html`) is
+mounted via `<div hx-get="…/test-health" hx-trigger="load">` on:
+
+- `dashboard/templates/pages/project/tests.html` — the Tests page
+- `dashboard/templates/pages/project/quality.html` — the Quality page
+
+Both pages render under the existing gates summary. Each metric card shows:
+
+- Latest value (with delta vs. the previous snapshot — up/down/neutral arrow)
+- Inline server-rendered SVG sparkline (up to 30 snapshots, no JS library)
+- Per-metric "no data yet" placeholder when the metric has no snapshots
+- Combined empty state ("Test health data will appear after the first capture runs")
+  when ALL four metrics lack snapshots
+
+### Capture cadence
+
+Three trigger paths:
+
+1. **On push to `main`** — every successful merge to `main` runs the workflow on
+   the self-hosted runner after CI gates pass.
+2. **Nightly cron** (`0 3 * * *` UTC) — 03:00 UTC every day.
+3. **Manual (`workflow_dispatch`)** — for operator debugging.
+
+The command is:
+
+```bash
+uv run iw test-health-capture --project iw-ai-core
+```
+
+### Persistence model
+
+> ⚠️ The self-hosted runner is a hard prerequisite.
+
+The workflow runs on a **self-hosted runner** labelled `iw-core` with network
+access to the orchestration DB on port 5433. Snapshots are persisted to the
+live `test_health_snapshots` table — **not** to an ephemeral GH-Actions
+service-container Postgres.
+
+**Why not a service-container workflow?** The goal is a **trend over time**.
+A GH-Actions service-container Postgres (`services: postgres:` in the workflow
+YAML) is provisioned fresh for every run and torn down at runner exit — any rows
+written to it disappear immediately. That would defeat the entire purpose of
+the panel (no history → no sparkline → no trend). The `test-quality.yml` workflow
+uses an ephemeral service container because it runs unit/integration tests that
+need a throwaway DB. The test-health workflow uses the **live orch DB** because
+it needs rows to survive across runs.
+
+The `IW_CORE_*` GitHub secrets (`IW_CORE_DB_HOST`, `IW_CORE_DB_PORT`,
+`IW_CORE_DB_NAME`, `IW_CORE_DB_USER`, `IW_CORE_DB_PASSWORD`) point at the live
+orchestration DB on port 5433. No credentials are inlined in the workflow file.
+
+### Operator prerequisites
+
+Before this workflow will succeed, the operator must:
+
+1. **Provision a self-hosted runner** labelled `iw-core` (or the project's
+   standard label for IW-managed workflows) and keep it online.
+2. **Create the `IW_CORE_*` GitHub secrets** in the repo settings:
+   `IW_CORE_DB_HOST`, `IW_CORE_DB_PORT`, `IW_CORE_DB_NAME`,
+   `IW_CORE_DB_USER`, `IW_CORE_DB_PASSWORD` — pointing at the live
+   orchestration DB on port 5433.
+3. **Verify network access**: the runner must be able to reach
+   `IW_CORE_DB_HOST:5433`.
+
+Without all three, the workflow fails at the `iw test-health-capture` step.
+
+### Idempotency contract
+
+One row per `(project_id, metric, ts_minute)` — `ts` is truncated to the minute
+in the upsert logic (`date_trunc('minute', ts)`). Re-running within the same
+minute with the same source values prints `"noop"` for unchanged metrics and
+leaves existing rows intact. The command is safe to run at any frequency.
+
+### Link to design
+
+- CR-00086 design: `ai-dev/active/CR-00086/CR-00086_CR_Design.md`
+- CR-00086 manifest: `ai-dev/active/CR-00086/workflow-manifest.json`
+- Service: `orch/test_health_service.py`
+- CLI command: `orch/cli/test_health_commands.py`
+- Database model: `orch/db/models.py` → `TestHealthSnapshot`
+- Migration: `orch/db/migrations/versions/add_test_health_snapshots_table.py`
+- Panel fragment: `dashboard/templates/fragments/test_health_panel.html`
+- Jobs aggregator: `orch/jobs/aggregator.py`
+
+*last updated: 2026-05-28*
+
+---
+
+## 11. Regression-rate KPI (F-00090)
 
 The regression-rate KPI is the *second half* of the quality scorecard. A
 throughput metric alone (merges/week) is misleading: high velocity with
@@ -579,7 +689,7 @@ behaviour table.
 
 ---
 
-## 11. Quick reference
+## 12. Quick reference
 # Everything before a commit
 make check                 # quality (lint + format-check + typecheck) + test (unit + integration + dashboard)
 
@@ -604,7 +714,7 @@ make security-deps         # pip-audit + bandit
 make security-iac          # trivy config scan
 ```
 
-## 12. Semgrep finding triage (CR-00051)
+## 13. Semgrep finding triage (CR-00051)
 
 `make security-sast` runs Semgrep with three configs (`p/python`, `p/owasp-top-ten`, `p/security-audit`) and **must report zero blocking findings**. When a true rule misfire is unavoidable, the project follows these conventions.
 
@@ -633,7 +743,7 @@ shell=True,  # nosec B602  # nosemgrep: python.lang.security.audit.subprocess-sh
 
 ---
 
-## 13. LLM-as-judge advisory signal (CR-00084 spike)
+## 14. LLM-as-judge advisory signal (CR-00084 spike)
 
 A stronger model (Claude Opus 4.7) scores newly-written tests against an assertion-strength rubric as an advisory signal in the CodeReview step. **Complementary to — not a replacement for — the structural assertion scanner (§8, CR-00046).** The scanner catches patterns (no-assert / tautology / mock-only / broad-raises); the judge evaluates semantic strength.
 
@@ -673,6 +783,7 @@ Promoting the judge to a **blocking gate** — the tracker entry is explicit ("n
 
 ## Changelog
 
+- **2026-05-28** — **§10 Self-dashboarding added (CR-00086).** New `.github/workflows/test-health.yml`: self-hosted runner (`runs-on: [self-hosted, iw-core]`), push + nightly cron + workflow_dispatch, `IW_CORE_*` secrets pointing at live orch DB on port 5433 (no ephemeral service-container Postgres), runs `uv run iw test-health-capture --project iw-ai-core`, uploads `test-health-summary.json` artefact. Persistence model: self-hosted runner is a hard prerequisite — rows must survive across runs for trend-over-time. Operator prerequisites documented in §10. §9 row 4.6 flipped ✅, §10 new section, Database Schema DDL appended, TESTS_ENHANCEMENT.md §8 row 4.6 → DONE + v1.4 header bump. Skill cross-reference added to `skills/iw-ai-core-testing/SKILL.md` §17. Test-only doc changes — no production code edited.
 - **2026-05-24** — **Layer 10 performance budgets shipped (CR-00083).** Phase 4 first item. `tests/perf/` package with 3 modules (daemon poll-loop, RAG query, dashboard routes); committed baselines per module under `tests/perf/baselines/`; 5 Makefile targets (`test-perf-daemon`, `test-perf-rag`, `test-perf-routes`, `test-perf`, `test-perf-update-baseline`); nightly `.github/workflows/perf-budgets.yml` (cron `17 3 * * *` + `workflow_dispatch`, NOT on PR). Regression threshold `mean:25%` — start value, ratchetable. Test-only, no production code change.
 - **2026-05-26** — **Layer 9 added (F-00089).** Daemon chaos / fault-injection test layer: `tests/integration/daemon_chaos/` harness + 5 scenario modules (S01–S05); `make daemon-chaos-smoke` (blocking smoke: S02 + S03) wired as PR/push gate; `make daemon-chaos-full` (full matrix S02..S06) runs nightly/workflow-dispatch. §2 Layer 9 section + §5 gate table entry + §9 roadmap item 4.3 updated. No production daemon code modified.
 - **2026-05-25** — **§12 added (CR-00084 spike outcome).** LLM-as-judge advisory signal spike: judge script `scripts/llm_judge_test_review.py`, labelled set `tests/llm_judge/labelled_set.jsonl`, `make llm-judge-calibrate` target — all shipped. Calibration DEFERRED (ANTHROPIC_API_KEY unavailable in worktree; evidence at `ai-dev/active/CR-00084/evidences/pre/cr-00084-judge-calibration.txt`). Advisory hook in CodeReview agent specs shipped DORMANT (agents instructed not to invoke the judge pending re-calibration). Item 4.4 status → DEFERRED in tracker; §11 changelog entry added. Forward link from CR-00046's §8 entry.

@@ -1,0 +1,147 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "CR-00086",
+  "type": "ChangeRequest",
+  "title": "Self-dashboarding of test health — surface mutation score, coverage trend, flaky-test count, and assertion-baseline size in the dashboard's existing Tests / Quality view",
+  "browser_verification": true,
+  "scope": {
+    "allowed_paths": [
+      "orch/test_health_service.py",
+      "orch/cli/**",
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**",
+      "orch/jobs/aggregator.py",
+      "dashboard/routers/tests.py",
+      "dashboard/routers/quality.py",
+      "dashboard/templates/fragments/test_health_panel.html",
+      "dashboard/templates/pages/**",
+      ".github/workflows/test-health.yml",
+      "tests/integration/test_test_health_service.py",
+      "tests/dashboard/test_test_health_panel.py",
+      "tests/unit/test_test_health_service.py",
+      "tests/unit/test_test_health_sparkline.py",
+      "tests/integration/test_jobs_aggregator_test_health.py",
+      "tests/integration/data_layer/**",
+      "docs/IW_AI_Core_Testing_Strategy.md",
+      "docs/IW_AI_Core_Database_Schema.md",
+      "skills/iw-ai-core-testing/**",
+      ".claude/skills/iw-ai-core-testing/**",
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "Create Alembic migration `add_test_health_snapshots_table` under orch/db/migrations/versions/ and add the matching `TestHealthSnapshot` SQLAlchemy model in orch/db/models.py. Columns: id BIGSERIAL PK; project_id BIGINT FK -> projects(id) ON DELETE CASCADE; ts TIMESTAMPTZ NOT NULL DEFAULT now(); metric TEXT NOT NULL; value DOUBLE PRECISION NOT NULL; meta JSONB NOT NULL DEFAULT '{}'::jsonb. Add an index `ix_test_health_snapshots_project_metric_ts` on (project_id, metric, ts DESC) for latest+trend lookups. The model MUST include `doc=` strings on every column (project testing-skill rule). Implement `downgrade()` to drop the index and the table. Include a unit test that round-trips a snapshot row through `tests/integration/data_layer/test_migration_round_trip.py` (extend the existing parametrised file if it exists; otherwise add the new shape). Do NOT apply the migration against the live DB on port 5433 — `make migration-check` (S02) runs it in a testcontainer.",
+      "prompt": "prompts/CR-00086_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "qv-gate",
+      "gate": "migration-check",
+      "command": "make migration-check",
+      "description": "QV: Alembic migration round-trip + drift check. Spins a fresh testcontainer, runs upgrade from base, asserts the schema matches Base.metadata.create_all(), and round-trips through downgrade -> upgrade. Catches model<->migration drift before downstream agents inherit a wrong schema (mandatory gate after any orch/db/migrations/versions/** change, per CR-00021 + iw-new-cr skill rules)."
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Create orch/test_health_service.py exposing: (a) `read_sources(project_id) -> dict[str, tuple[float, dict]]` that reads the latest mutation JSON output from `make mutation-results` (parse the JSON shape produced by CR-00080's widened pipeline; fall back to CR-00059's legacy shape — pin both behind a small adapter), the latest coverage.xml via `orch/coverage_service.py` (reuse, do NOT re-implement), the flaky-test count from CR-00061's `scripts/flake_detect_aggregate.py` output (`tests/output/flake-detect-*.log`), and the line count of `tests/assertion_free_baseline.txt`; missing source returns None and is logged at WARNING — never raises; (b) `capture_snapshot(session, project_id, metric, value, meta) -> TestHealthSnapshot` that upserts on `(project_id, metric, ts truncated to the minute)` so retries inside the same minute do not duplicate; (c) `latest(session, project_id) -> dict[str, TestHealthSnapshot]` and `trend(session, project_id, metric, limit=30) -> list[TestHealthSnapshot]` for the dashboard. Add a new CLI command `iw test-health-capture --project <slug>` under orch/cli/ (new module `test_health_commands.py` wired into the Typer app) that loads the project row, calls read_sources, writes one snapshot per metric, and prints a JSON summary `{captured: [...], skipped: [...]}`. Idempotent: re-running within the same minute prints `noop` for unchanged metrics. TDD: write `tests/integration/test_test_health_service.py` (testcontainer Postgres + the new migration; round-trip + latest + trend + idempotency) and `tests/unit/test_test_health_service.py` (canned fixture artefacts for each source) FIRST, capture the RED run snippet in the report's `tdd_red_evidence` field. Targeted test verification only: `uv run pytest tests/integration/test_test_health_service.py tests/unit/test_test_health_service.py -v` — do NOT run `make test-integration` (that's S13).",
+      "prompt": "prompts/CR-00086_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S01 (migration + model) and S03 (service + CLI). Pre-review lint+format gate on changed files. Verify: (1) S01 migration has both upgrade() and downgrade(); index on (project_id, metric, ts DESC); FK ON DELETE CASCADE; all model columns carry `doc=` strings. (2) S03 service handles missing source artefacts gracefully (returns None, logs WARNING) — load each source-handler with a deliberately broken path fixture and check that no exception escapes. (3) Mutation-JSON parser handles BOTH the CR-00080 new shape and the CR-00059 legacy shape (adapter pattern). (4) Idempotency: `tests/integration/test_test_health_service.py::test_idempotent_within_minute` exists and asserts the row count after two captures within the same minute is exactly one. (5) `tdd_red_evidence` is populated with a real AssertionError snippet from the RED run (NOT an ImportError or collection error). (6) Scope: only files under allowed_paths touched. Use the testing-skill mutation-test heuristic on the new assertions: would each test fail if the production line it covers regressed?",
+      "prompt": "prompts/CR-00086_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "frontend-impl",
+      "description": "Create dashboard/templates/fragments/test_health_panel.html: four metric cards (mutation_score, coverage_pct, flaky_test_count, assertion_baseline_size) each showing latest value, delta vs previous snapshot, and an inline server-side-rendered SVG sparkline of up to 30 snapshots. NO JS chart library — the SVG path string is built in the Jinja template (or a small helper in the router) from the snapshot list. Empty state per card: render a `no data yet` placeholder text when the metric has no snapshots — do NOT render an empty `<svg>` or NaN. Add GET `/projects/{slug}/test-health` htmx fragment endpoint in dashboard/routers/tests.py AND dashboard/routers/quality.py (share the partial render helper to avoid duplication). Mount the panel via one `<div hx-get='.../test-health' hx-trigger='load'>` include in the Tests and Quality page templates under dashboard/templates/pages/ (edit only those two pages — do NOT touch unrelated pages). Add a `test-health-capture` job type to orch/jobs/aggregator.py so each capture appears in the unified Jobs view (follow the existing pattern used for code-index and doc-generation jobs). Tests FIRST (RED): `tests/dashboard/test_test_health_panel.py` (asserts GET /test-health returns 200 with the four metric labels and four <svg> tags when snapshots exist; empty-state placeholder text when none); `tests/unit/test_test_health_sparkline.py` (given an ascending list of values, the SVG path's `L` commands have strictly increasing y-screen coords — i.e. decreasing y when the chart Y axis is inverted; given an empty list, the empty-state SVG is returned); `tests/integration/test_jobs_aggregator_test_health.py` (after capture_snapshot, the aggregator union returns one row with job_type='test-health-capture'). Capture RED run snippet in `tdd_red_evidence`. Targeted run only.",
+      "prompt": "prompts/CR-00086_S05_Frontend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "code-review-impl",
+      "description": "Review S05 (panel + router endpoints + jobs aggregator). Pre-review lint+format gate. Verify: (1) The panel template references only ids/classes that exist in the rendered HTML (V0 sanity — qv-browser will re-check, but catch obvious dangling hx-target / aria-controls / for refs here). (2) The empty-state placeholder is rendered when a metric has no snapshots — open the test and confirm it asserts the placeholder text, not a hollow <svg>. (3) The two router endpoints (tests.py + quality.py) share a single partial-render helper — no copy-paste of the fragment-prep code. (4) The Jobs aggregator addition follows the existing union pattern (look at how code-index jobs are added); a `select(...).union_all(...)` is preferred over a Python-side concat. (5) No new console errors expected — the panel is server-rendered SVG + plain htmx (no JS). (6) CSS classes used are existing Tailwind utilities already in the Tests view; no new global CSS unless `make css` is broken (see project rule). (7) Scope honoured. (8) TDD RED-evidence is plausible and behaviour-pinning.",
+      "prompt": "prompts/CR-00086_S06_CodeReview_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "backend-impl",
+      "description": "Create .github/workflows/test-health.yml: triggers on `push` to `main` (after the existing CI gates pass) AND a nightly `schedule` (cron `0 3 * * *` UTC). Job steps: checkout, uv sync, run `uv run iw test-health-capture --project iw-ai-core`, upload the printed JSON summary as a workflow artefact. Use the existing `IW_CORE_*` secrets pattern from other workflows (DO NOT inline credentials). Update docs/IW_AI_Core_Testing_Strategy.md by adding a new §10 `Self-dashboarding` section: describes the four metrics, the panel mount points, the capture cadence (on push + nightly), the idempotency contract, the empty-state behaviour, and the link to CR-00086. Update docs/IW_AI_Core_Database_Schema.md: append a DDL block for `test_health_snapshots` (columns + index + FK) in the same style as other tables. Update ai-dev/work/TESTS_ENHANCEMENT.md: §8 row 4.6 status TODO -> DONE (link CR-00086, date 2026-05-24); bump the header version to v1.4 with a one-line release note. Update skills/iw-ai-core-testing/SKILL.md: add a short paragraph under the metrics section pointing readers at the new Test Health dashboard panel for live values. Then run `uv run iw sync-skills` so the mirror at .claude/skills/iw-ai-core-testing/SKILL.md updates (commit BOTH copies — operator note from feedback_skills_sync memory). Do NOT add new production code in this step — docs + workflow + tracker + skill ONLY.",
+      "prompt": "prompts/CR-00086_S07_Backend_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-step review of AC1-AC6. AC1: `make migration-check` is green (S02 result). AC2: capture command writes one snapshot per metric AND a job row appears in the Jobs view (verify by reading S03+S05 reports and re-running `uv run pytest tests/integration/test_test_health_service.py::test_capture_writes_four_snapshots tests/integration/test_jobs_aggregator_test_health.py -v`). AC3: idempotency-within-minute test is present and passes. AC4: panel test asserts four metric labels + four <svg> tags. AC5: empty-state placeholder test is present and passes. AC6: `.github/workflows/test-health.yml` exists, has both `push` and `schedule` triggers, invokes `iw test-health-capture --project iw-ai-core`. Cross-cutting checks: (i) the four parser adapters in test_health_service.py degrade gracefully when sources are missing (one log line per missing source, no exception); (ii) the panel renders correctly when ALL metrics are empty (combined empty state); (iii) docs §10 and Database_Schema.md DDL match the actual model+migration column names; (iv) tracker §8 row 4.6 -> DONE with CR-00086 reference; (v) skill master + .claude mirror are in sync. Run `make test` (unit + integration) — any failure is CRITICAL. Distrust 'no production code change needed' for the Jobs aggregator: the union may shadow an existing rowtype if column ordering drifts; re-trace.",
+      "prompt": "prompts/CR-00086_S08_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting (ruff + node template check + Jinja2 % format check)"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Format check (ruff format --check)"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking (mypy)"
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests (must pass with the new migration and service)",
+      "timeout": 900
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage on the changed files",
+      "timeout": 1800
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scanning (gitleaks). The new workflow uses GitHub secrets via env-var indirection only; no inlined credentials expected."
+    },
+    {
+      "step": "S16",
+      "agent": "qv-browser",
+      "description": "QV: Browser verification — Test Health panel renders on Tests and Quality pages, the four metric cards display, sparklines paint inline, empty-state placeholder appears when a metric has no snapshots, no console errors, no regressions on adjacent gate summary tiles.",
+      "prompt": "prompts/CR-00086_S16_BrowserVerification_prompt.md"
+    },
+    {
+      "step": "S17",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill. Look for: (a) did any QV gate burn a fix cycle (lint/format drift from the new fragment template? mypy on the new service? type stubs missing for the JSON adapter?); (b) did S05's empty-state handling miss a metric (the design called out four — verify all four covered); (c) did the mutation-JSON adapter regress when CR-00080's shape was applied; (d) did the CI workflow exercise the on-push trigger before merge or only the cron path; (e) compare against CR-00024's pattern (similar shape: schema -> daemon emission -> SSE -> dashboard rendering) for any lessons not carried over.",
+      "prompt": "prompts/CR-00086_S17_SelfAssess_prompt.md"
+    }
+  ]
+}

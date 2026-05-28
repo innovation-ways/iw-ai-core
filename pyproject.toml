@@ -128,6 +128,7 @@ select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN
 "dashboard/services/oss_service.py" = ["S603", "S607", "S108"]  # git subprocess; /tmp paths for worktrees
 "scripts/backfill_functional_doc.py" = ["S603", "S607"]  # opencode subprocess; agent script
 "scripts/e2e_health_check.py" = ["T201", "S310"]  # CLI script; print output; http URL fetch
+"orch/test_health_service.py" = ["S110", "S603", "S607"]  # try/except/pass for optional pyproject.toml fail_under; trusted repo scripts only
 "orch/test_runner.py" = ["S602", "S603", "S607"]  # shell=True and npx are intentional for running user-configured test commands
 "scripts/arch_check.py" = ["S112", "SIM102", "T201"]  # architecture checker script: prints to stdout; try-except-continue for file parsing; nested if for AST node type dispatch
 "scripts/check_test_assertions.py" = ["T201"]  # CLI script: prints violations + JSON to stdout
