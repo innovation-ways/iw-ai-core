@@ -117,6 +117,12 @@ paths = [
   '''(?i)(?:^|/)SECURITY\.md$''',
   '''(?i)(?:^|/)SUPPORT\.md$''',
   '''(?i)(?:^|/)TRADEMARK\.md$''',
+  # why: pyproject.toml — [tool.iw.oss-publish] holds the committed OSS policy,
+  # which legitimately stores `company_contact_email = "info@innovation-ways.com"`
+  # and `internal_fqdn_suffixes = [".internal", ".corp", ".local", …]` as
+  # configured values. These match iw-internal-email and iw-internal-fqdn but
+  # are policy declarations, not credential leaks.
+  '''(?i)(?:^|/)pyproject\.toml$''',
   # why: orch/daemon/browser_env.py — example .iw-orch.json config embedded in a
   # docstring with e2e_user: dev@example.local (fixture string, not a real credential)
   '''(?i)(?:^|/)orch/daemon/browser_env\.py''',

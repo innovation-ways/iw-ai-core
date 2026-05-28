@@ -85,11 +85,23 @@ Reject and abort if the target path is not a git repository (`git rev-parse --gi
 
 ## Step 2: Load Project Configuration
 
-Read project-level config in order of precedence:
+Read project-level config in order of precedence (highest first):
 
-1. `{target}/.iw/oss-publish.toml` if present
-2. `[tool.iw.oss-publish]` section of `{target}/pyproject.toml` if present
+1. `{target}/.iw/oss-publish.toml` if present — **operator-side state only**:
+   trademark search dates, history-rewrite strategy, export-control
+   attestation flag, local tool overrides. This file is gitignored.
+2. `[tool.iw.oss-publish]` section of `{target}/pyproject.toml` if present —
+   **project-wide policy**: identity (`project_name`, `company_*`), license
+   election entries (`[tool.iw.oss-publish.dependencies.license_elections]`),
+   per-check internal-refs allowlists
+   (`[tool.iw.oss-publish.internal_refs.allowlist]`). Committed to git so a
+   fresh clone's scan sees the same policy decisions.
 3. Fall back to IW defaults (from `references/tools.md` "Defaults" table)
+
+**When generating or proposing config**, put policy that must travel with
+the repo in `pyproject.toml`; put operator state (dates, attestation flags,
+local paths) in `.iw/oss-publish.toml`. The two files merge via deep-merge
+(dicts recurse, lists replace, scalars overwrite).
 
 Required config keys (with defaults):
 

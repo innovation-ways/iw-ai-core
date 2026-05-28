@@ -277,3 +277,98 @@ paths_to_mutate = "orch/"
 # (which mutmut invokes verbatim and DOES accept multiple paths).
 tests_dir = "tests/"
 runner = "sh -c 'IW_CORE_DB_PORT=5433 uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q --cov-fail-under=0'"
+
+# OSS publish scan — project-wide policy. The iw-oss-publish skill loads in
+# precedence order: DEFAULTS < [tool.iw.oss-publish] (this section, committed
+# to git) < .iw/oss-publish.toml (operator-side state, gitignored). Keep
+# anything that's a project-wide compliance decision (license elections,
+# self-referential allowlists, project identity) HERE so it travels with the
+# repo. Keep operator state (trademark search dates, history-rewrite choice,
+# export-control attestation flags) in .iw/oss-publish.toml.
+[tool.iw.oss-publish]
+project_name           = "IW AI Core Platform"
+project_description    = "Standalone multi-project AI orchestration platform"
+license                = "Apache-2.0"
+company_legal_name     = "Innovation Ways - Unipessoal LDA"
+company_brand          = "Innovation Ways"
+company_github_org     = "innovation-ways"
+company_contact_email  = "info@innovation-ways.com"
+homepage               = "https://innovation-ways.com"
+contributor_agreement  = "DCO"
+coc_version            = "v3"
+sbom_formats           = ["spdx", "cyclonedx"]
+internal_email_domains = ["innovation-ways.com"]
+internal_fqdn_suffixes = [".internal", ".corp", ".local", ".lan", ".intranet"]
+
+# Per-check path globs added to OSS-REF-* excludes. Each entry MUST have a
+# justification comment above it. Strings here are matched the same way as
+# the default EXCLUDES list (ripgrep -g patterns), relative to repo root.
+[tool.iw.oss-publish.internal_refs.allowlist]
+# `dashboard/services/oss_check_catalog.yaml` is the rule catalog that the
+# dashboard reads to describe each OSS-REF check to humans. The check
+# necessarily quotes the very strings it scans for ("we look for 10.0.0.0/8",
+# ".local hostnames", etc.) — a textbook self-referential false positive.
+# `pyproject.toml` is this very file — it stores the allowlist policy
+# itself, which embeds (a) a comment-quoted RFC 1918 example for context
+# and (b) the configured `internal_fqdn_suffixes` list (`.local`, `.internal`,
+# etc.); both surface as self-referential matches under OSS-REF-01/02.
+"OSS-REF-01" = ["dashboard/services/oss_check_catalog.yaml", "pyproject.toml"]
+"OSS-REF-02" = [
+    "dashboard/services/oss_check_catalog.yaml",
+    "pyproject.toml",
+    # `host.docker.internal` is Docker's built-in DNS sentinel that resolves
+    # to the host machine from inside containers. It is canonical Docker
+    # syntax and cannot be renamed.
+    # https://docs.docker.com/desktop/networking/#i-want-to-connect-from-a-container-to-a-service-on-the-host
+    "ai-dev/iw-config/worktree-compose.template.yml",
+]
+# OSS-REF-03 (absolute /home/<user>/… paths):
+# - projects.toml is the daemon's developer-local project registry. The
+#   `repo_root` values MUST be absolute paths on the operator's machine —
+#   this is how the daemon knows where each managed project lives. Anyone
+#   forking iw-ai-core edits these to point at their own workspaces.
+# - The other entries are documentation placeholders (HTML input placeholder,
+#   Python docstring examples) — illustrative, not real paths.
+"OSS-REF-03" = [
+    "projects.toml",
+    "orch/daemon/project_registry.py",
+    "orch/daemon/step_monitor.py",
+    "dashboard/templates/fragments/new_project_modal.html",
+]
+# OSS-REF-04 (employee @innovation-ways.com email addresses):
+# All matches in these files are the group aliases `info@` and `security@`
+# that the iw-oss-publish skill writes as DEFAULTS into newly generated
+# SECURITY.md / CODE_OF_CONDUCT.md / CONTRIBUTING.md for downstream projects.
+# They aren't individual employee emails. The check's intent is to catch
+# personal addresses leaking through; the skill defaults are explicitly
+# group inboxes. pyproject.toml is included because the project's group
+# `company_contact_email` value is declared here.
+"OSS-REF-04" = [
+    "orch/oss/**",
+    "dashboard/services/oss_check_catalog.yaml",
+    "pyproject.toml",
+]
+# OSS-REF-05 (internal chat/tracker URLs): only hit is the catalog quoting
+# an Atlassian URL as a counter-example ("instead of `https://acme.atlassian.
+# net/browse/PROJ-123`"). Same self-reference pattern as OSS-REF-01/-02.
+"OSS-REF-05" = ["dashboard/services/oss_check_catalog.yaml"]
+
+# Per-package license elections for upstream projects offered under multiple
+# licenses. The scanner honours the elected license when it's compatible with
+# the outbound license, suppressing OSS-DEP-01 false positives without
+# weakening the check for genuinely incompatible deps.
+[tool.iw.oss-publish.dependencies.license_elections.pyphen]
+# Upstream Pyphen is tri-licensed (https://github.com/Kozea/Pyphen#license):
+# its README states "Free software: GPL 2.0+ or LGPL 2.1+ or MPL 1.1 for the
+# code" and the repository ships COPYING.GPL, COPYING.LGPL, and COPYING.MPL.
+# PyPI metadata exposes only the GPL-2.0-only SPDX id, which is what
+# OSS-DEP-01 sees. We elect MPL-1.1, which is compatible with Apache-2.0
+# (Apache projects may embed MPL components as long as the MPL files retain
+# their notices). Pyphen is pulled in transitively by weasyprint to support
+# CSS `hyphens: auto` during PDF rendering (dashboard/routers/items.py — diff
+# PDFs).
+upstream_licenses = ["GPL-2.0-or-later", "LGPL-2.1-or-later", "MPL-1.1"]
+elected           = "MPL-1.1"
+rationale         = "Tri-license upstream; MPL-1.1 is Apache-2.0 compatible. See THIRD_PARTY_LICENSES.md."
+upstream_url      = "https://github.com/Kozea/Pyphen#license"
+documented_in     = "THIRD_PARTY_LICENSES.md"
