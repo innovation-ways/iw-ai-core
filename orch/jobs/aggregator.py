@@ -55,7 +55,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from orch.db.models import (
     Batch,
@@ -70,6 +70,7 @@ from orch.db.models import (
     ProjectOssJob,
     ProjectOssJobKind,
     ProjectOssJobStatus,
+    TestHealthSnapshot,
 )
 
 if TYPE_CHECKING:
@@ -87,6 +88,8 @@ class JobType(StrEnum):
     batch_execution = "batch_execution"
     research = "research"
     oss_scan = "oss_scan"
+
+    test_health_capture = "test-health-capture"
 
 
 @dataclass(frozen=True)
@@ -190,6 +193,9 @@ class JobsAggregator:
 
         if types is None or JobType.oss_scan in types:
             raw_rows.extend(self._fetch_oss_scan(project_id, date_from, date_to))
+
+        if types is None or JobType.test_health_capture in types:
+            raw_rows.extend(self._fetch_test_health_capture(project_id, date_from, date_to))
 
         for row, _ in raw_rows:
             if statuses and row.status not in statuses:
@@ -761,3 +767,87 @@ class JobsAggregator:
             return None
         row, _ = self._build_oss_job_row(job)
         return row
+
+    # -----------------------------------------------------------------------
+    # Test-health-capture jobs
+    # -----------------------------------------------------------------------
+
+    def _fetch_test_health_capture(
+        self,
+        project_id: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> list[tuple[JobRow, dict[str, object]]]:
+        """Return one JobRow per unique capture minute for the project.
+
+        Group by (project_id, ts_minute) so one capture invocation (up to 4
+        metric rows at the same ts) produces exactly one job row.
+        """
+        from datetime import timedelta
+
+        # Truncate timestamps to the minute for grouping.
+        # Use a subquery so ts_minute is a stable column reference in GROUP BY.
+        truncated = (
+            select(
+                TestHealthSnapshot.project_id,
+                (func.date_trunc("minute", TestHealthSnapshot.ts)).label("ts_minute"),
+                TestHealthSnapshot.ts.label("original_ts"),
+            )
+            .where(TestHealthSnapshot.project_id == project_id)
+            .subquery()
+        )
+
+        stmt = (
+            select(
+                truncated.c.project_id,
+                truncated.c.ts_minute,
+                func.count(truncated.c.original_ts).label("metric_count"),
+                func.min(truncated.c.original_ts).label("earliest_ts"),
+            )
+            .group_by(truncated.c.project_id, truncated.c.ts_minute)
+            .order_by(func.max(truncated.c.ts_minute).desc())
+        )
+
+        rows = self._session.execute(stmt).fetchall()
+
+        results = []
+        for row in rows:
+            ts_minute: datetime = row.ts_minute
+            started_at = ts_minute
+            finished_at = ts_minute + timedelta(minutes=1)
+
+            raw: dict[str, object] = {
+                "project_id": row.project_id,
+                "ts_minute": ts_minute.isoformat(),
+                "metric_count": row.metric_count,
+                "earliest_ts": (row.earliest_ts.isoformat() if row.earliest_ts else None),
+            }
+
+            results.append(
+                (
+                    JobRow(
+                        job_type=JobType.test_health_capture,
+                        job_id=(f"thc-{row.project_id}-{ts_minute.strftime('%Y%m%dT%H%M')}"),
+                        project_id=row.project_id,
+                        title="Test health capture",
+                        status="completed",
+                        started_at=started_at,
+                        finished_at=finished_at,
+                        triggered_by=None,
+                        raw=raw,
+                    ),
+                    raw,
+                )
+            )
+
+        # Filter by date range (capture ts_minute field)
+        if date_from:
+            results = [
+                r for r in results if r[0].started_at is not None and r[0].started_at >= date_from
+            ]
+        if date_to:
+            results = [
+                r for r in results if r[0].started_at is not None and r[0].started_at <= date_to
+            ]
+
+        return results

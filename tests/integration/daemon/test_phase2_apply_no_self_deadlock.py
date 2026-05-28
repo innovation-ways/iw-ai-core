@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "76250ecb2593"  # F-00091 backfill pi context window tokens (current head)
-_PREV_REVISION = "891343247f66"  # cr00066 (stamped here; CR-00078+digest pending)
+_HEAD_REVISION = "ea7f8a0d065f"  # CR-00086 add test_health_snapshots table (current head)
+_PREV_REVISION = "76250ecb2593"  # F-00091 backfill pi context window tokens (CR-00086 pending)
 
 
 # ---------------------------------------------------------------------------
@@ -77,12 +77,13 @@ def db_engine_at_prev_revision(db_url: str) -> Engine:
     alembic_cfg.set_main_option("script_location", "orch/db/migrations")
     alembic_cfg.set_main_option("sqlalchemy.url", db_url)
 
-    # Upgrade to PREV_REVISION — applies all migrations through 6d78323d0954.
+    # Upgrade to PREV_REVISION — applies all migrations through 76250ecb2593 (F-00091).
     # The fresh testcontainer has no alembic_version row, so this establishes
-    # the schema at 6d78323d0954 with three migrations (chat_tabs, cr00065,
-    # pi-flip) pending — all of which ALTER step_runs / chat_tabs (NOT batch_items),
-    # so the AccessShareLock on batch_items held by the test's outer session does
-    # NOT conflict with the pending migrations. The apply() call therefore succeeds.
+    # the schema at 76250ecb2593 with one migration (ea7f8a0d065f — CR-00086
+    # add_test_health_snapshots) pending — which CREATE TABLEs test_health_snapshots
+    # (NOT batch_items), so the AccessShareLock on batch_items held by the test's
+    # outer session does NOT conflict with the pending migration. The apply() call
+    # therefore succeeds.
     command.upgrade(alembic_cfg, _PREV_REVISION)
 
     yield engine
@@ -165,8 +166,8 @@ def test_i_00063_apply_does_not_self_deadlock_when_caller_holds_share_lock(
                 "lock_timeout did not fire — fix did not land or was bypassed."
             )
 
-    # Assert: apply() returned within 45s — it should succeed because none
-    # of the pending migrations (3a3dfec7bfbd CREATE TABLE, aeb0e4106b55 ADD COLUMN)
+    # Assert: apply() returned within 45s — it should succeed because the
+    # pending migration (ea7f8a0d065f CREATE TABLE test_health_snapshots) does not
     # touch batch_items.
     assert apply_result is not None
     assert apply_result.success is True or (

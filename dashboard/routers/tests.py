@@ -21,7 +21,9 @@ from dashboard.routers._run_helpers import (
     get_project_or_404,
     group_cards,
 )
+from dashboard.routers._test_health_helpers import build_test_health_cards
 from orch.db.models import Project, TestRun, TestRunStatus
+from orch.test_health_service import latest
 from orch.test_runner import kill_test_run, launch_test_run
 
 if TYPE_CHECKING:
@@ -207,6 +209,29 @@ def tests_fragment_results_for_run(
             "summary": summary,
             "recent_runs": _get_completed_runs(project_id, db, limit=20),
             "selected_run_id": run_id,
+        },
+    )
+
+
+@router.get("/test-health", response_class=HTMLResponse, operation_id="test_health_fragment_tests")
+def test_health_fragment(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: Test Health panel with metric cards + SVG sparklines."""
+    project = get_project_or_404(project_id, db)
+    templates: Jinja2Templates = request.app.state.templates
+
+    latest_snapshots = latest(db, project_id)
+    metrics_data = build_test_health_cards(project, latest_snapshots, db)
+
+    return templates.TemplateResponse(
+        request,
+        "fragments/test_health_panel.html",
+        {
+            "current_project": project,
+            "metrics_data": metrics_data,
         },
     )
 

@@ -37,6 +37,14 @@
     </details>
   </div>
 {% else %}
+    <!-- Test Health panel — loaded asynchronously via htmx -->
+    <div id="test-health-panel"
+         hx-get="/project/{{ current_project.id }}/test-health"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <!-- loading placeholder: no content until htmx fetch completes -->
+    </div>
+
   <!-- Tab navigation -->
   <div class="flex border-b border-border mb-4 overflow-x-auto">
     <a href="?tab=launch"

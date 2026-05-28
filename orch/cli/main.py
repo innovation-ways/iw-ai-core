@@ -55,6 +55,7 @@ from orch.cli.step_commands import (
     step_skip,
     step_start,
 )
+from orch.cli.test_health_commands import test_health_capture
 from orch.cli.worktree_commands import worktree_status
 
 
@@ -148,3 +149,4 @@ cli.add_command(oss)
 cli.add_command(regression_classify, name="regression-classify")
 cli.add_command(migrations_group, name="migrations")
 cli.add_command(merge_queue_group, name="merge-queue")
+cli.add_command(test_health_capture, name="test-health-capture")

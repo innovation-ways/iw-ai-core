@@ -1,0 +1,10 @@
+{# Jinja2 macro for rendering an SVG sparkline from (ts_iso, value) tuples. #}
+{# Called from test_health_panel.html with sparkline_data=list of (ts_iso, value). #}
+
+{% macro render_sparkline(sparkline_data) %}
+{# The template receives sparkline_data as a list of tuples. #}
+{# We build SVG path commands here rather than calling Python — #}
+{# the actual Python helper (dashboard/routers/_test_health_helpers.py) #}
+{# is used by the router to pre-compute all cards before template render. #}
+{# The template just renders the pre-built SVG string from the card. #}
+{% endmacro %}

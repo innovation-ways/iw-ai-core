@@ -130,6 +130,7 @@ KNOWN_UNTESTED_COMMANDS: dict[str, dict[str, str]] = {
     "daemon status": {"reason": _DEFERRED},
     "projects": {"reason": _DEFERRED},
     "projects list": {"reason": _DEFERRED},
+    "test-health-capture": {"reason": _DEFERRED},
 }
 
 
