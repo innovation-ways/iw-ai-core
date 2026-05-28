@@ -1,0 +1,27 @@
+[
+  {
+    "id": "SA-CR-00093-001",
+    "severity": "low",
+    "type": "process-gap",
+    "title": "S01 report does not explicitly restate operator daemon reload handoff",
+    "evidence": [
+      "ai-dev/active/CR-00093/reports/CR-00093_S01_Backend_report.md"
+    ],
+    "impact": "Post-merge operator action may be less visible in step-level handoff.",
+    "recommendation": "Include explicit 'post-merge operator action: ./ai-core.sh daemon reload' line in S01 report notes for config-registry CRs.",
+    "blocking": false
+  },
+  {
+    "id": "SA-CR-00093-002",
+    "severity": "low",
+    "type": "process-gap",
+    "title": "S01 report body omits explicit tdd_red_evidence field/value",
+    "evidence": [
+      "ai-dev/active/CR-00093/reports/CR-00093_S01_Backend_report.md",
+      "ai-dev/active/CR-00093/prompts/CR-00093_S01_Backend_prompt.md"
+    ],
+    "impact": "Reduced auditability against required contract wording for config-only TDD RED evidence.",
+    "recommendation": "Add explicit `tdd_red_evidence: \"n/a — config-only registry edit; no new behavioural tests\"` to S01 report template output.",
+    "blocking": false
+  }
+]
