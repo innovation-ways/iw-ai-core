@@ -109,13 +109,14 @@ paths = [
   '''(?i)(?:^|/)Dockerfile\.e2e$''',
   '''(?i)(?:^|/)Dockerfile$''',
   '''(?i)(?:^|/)\.github/workflows/''',
-  # why: public docs — README, CODE_OF_CONDUCT, CONTRIBUTING, SECURITY, SUPPORT all
-  # publish info@innovation-ways.com as a public contact address
+  # why: public docs — README, CODE_OF_CONDUCT, CONTRIBUTING, SECURITY, SUPPORT,
+  # TRADEMARK all publish info@innovation-ways.com as a public contact address
   '''(?i)(?:^|/)README\.md$''',
   '''(?i)(?:^|/)CODE_OF_CONDUCT\.md$''',
   '''(?i)(?:^|/)CONTRIBUTING\.md$''',
   '''(?i)(?:^|/)SECURITY\.md$''',
   '''(?i)(?:^|/)SUPPORT\.md$''',
+  '''(?i)(?:^|/)TRADEMARK\.md$''',
   # why: orch/daemon/browser_env.py — example .iw-orch.json config embedded in a
   # docstring with e2e_user: dev@example.local (fixture string, not a real credential)
   '''(?i)(?:^|/)orch/daemon/browser_env\.py''',

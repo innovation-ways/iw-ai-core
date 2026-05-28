@@ -65,10 +65,22 @@ def release(ctx: Context) -> list[Finding]:
             )
         )
 
-    # OSS-REL-03: release-please workflow present
+    # OSS-REL-03: release-please workflow present.
+    # Accept the un-pinned `@v4` form OR the SHA-pinned form with `# v4` (or
+    # `# v4.x.y`) on the same line — SHA-pinning is mandated by OSS-CI-02,
+    # so requiring the bare `@v4` would put the two checks in direct conflict.
+    import re as _re_rel
+
     rp = ctx.path(".github/workflows/release-please.yml")
     rp_text = rp.read_text(encoding="utf-8", errors="replace") if rp.exists() else ""
-    has_v4 = "googleapis/release-please-action@v4" in rp_text
+    _v4_unpinned = "googleapis/release-please-action@v4" in rp_text
+    _v4_sha_pinned = bool(
+        _re_rel.search(
+            r"googleapis/release-please-action@[0-9a-f]{7,40}\s*#\s*v4(?:\.\d+)*\b",
+            rp_text,
+        )
+    )
+    has_v4 = _v4_unpinned or _v4_sha_pinned
     if rp.exists() and has_v4:
         out.append(
             Finding(

@@ -25,7 +25,7 @@ def _make_git_repo(path: Path) -> None:
     """Initialise a bare git repo with one commit so branches work."""
     subprocess.run(["git", "init", "-b", "main", str(path)], check=True, capture_output=True)
     subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
+        ["git", "config", "user.email", "test@example.com"],
         check=True,
         capture_output=True,
         cwd=str(path),

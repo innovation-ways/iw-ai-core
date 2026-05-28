@@ -6,6 +6,7 @@ import subprocess
 
 from lib.context import Context
 from lib.registry import register
+from lib.results import build_results_evidence, parse_rg_lines
 from lib.types import Finding, Severity, Status
 
 DOMAIN = "export"
@@ -65,6 +66,32 @@ def export_control(ctx: Context) -> list[Finding]:
         )
         return out
 
+    # Crypto imports only appear in first-party source code. Exclude config,
+    # docs, vendored deps, and the OSS rule catalogue (which describes the
+    # very import strings the check scans for, generating self-referential
+    # false positives). Users can extend per-project via
+    # [export_control.allowlist] in .iw/oss-publish.toml.
+    default_excludes = [
+        "**/*.md",
+        "**/*.yaml",
+        "**/*.yml",
+        "**/*.toml",
+        "**/*.json",
+        "**/*.lock",
+        "**/vendor/**",
+        "**/node_modules/**",
+        "**/.venv/**",
+        "**/venv/**",
+        ".iw/**",
+        ".claude/**",
+        "skills/iw-oss-publish/**",
+    ]
+    extra = ctx.config.get("export_control", {}).get("allowlist") or []
+    extra_excludes = [p for p in extra if isinstance(p, str) and p]
+    exclude_flags: list[str] = []
+    for e in default_excludes + extra_excludes:
+        exclude_flags += ["-g", "!" + e]
+
     hits: list[str] = []
     for p in patterns:
         try:
@@ -76,6 +103,7 @@ def export_control(ctx: Context) -> list[Finding]:
                     "--line-number",
                     "--color=never",
                     "-P",
+                    *exclude_flags,
                     p,
                     str(ctx.target),
                 ],

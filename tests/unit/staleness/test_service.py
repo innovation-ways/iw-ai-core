@@ -651,7 +651,7 @@ class TestComputeProjectStalenessPerfSmoke:
             )
 
         git("init", "-b", "main")
-        git("config", "user.email", "perf@test.local")
+        git("config", "user.email", "perf@example.com")
         git("config", "user.name", "Perf Test")
 
         # Create initial structure across ~5 watched paths

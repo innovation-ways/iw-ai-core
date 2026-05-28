@@ -128,7 +128,7 @@ def _init_git_repo(wt: Path, filename: str, content: str) -> Path:
     """Initialize a real git repo in wt, commit a file, return the file path."""
     subprocess.run(["git", "init", str(wt)], capture_output=True, check=True)
     subprocess.run(
-        ["git", "-C", str(wt), "config", "user.email", "test@test.com"],
+        ["git", "-C", str(wt), "config", "user.email", "test@example.com"],
         capture_output=True,
         check=True,
     )
@@ -656,7 +656,7 @@ class TestAutoAmendFixCycle:
 
         subprocess.run(["git", "init", str(parent_root)], capture_output=True, check=True)
         subprocess.run(
-            ["git", "-C", str(parent_root), "config", "user.email", "test@test.com"],
+            ["git", "-C", str(parent_root), "config", "user.email", "test@example.com"],
             capture_output=True,
             check=True,
         )
@@ -691,7 +691,7 @@ class TestAutoAmendFixCycle:
 
         # Configure git user in the worktree
         subprocess.run(
-            ["git", "-C", str(wt), "config", "user.email", "test@test.com"],
+            ["git", "-C", str(wt), "config", "user.email", "test@example.com"],
             capture_output=True,
             check=True,
         )

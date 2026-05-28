@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 def _make_git_repo(path: Path) -> None:
     subprocess.run(["git", "init", "-b", "main", str(path)], check=True, capture_output=True)
     subprocess.run(
-        ["git", "-C", str(path), "config", "user.email", "test@test.com"],
+        ["git", "-C", str(path), "config", "user.email", "test@example.com"],
         check=True,
         capture_output=True,
     )

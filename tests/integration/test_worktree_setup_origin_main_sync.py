@@ -42,7 +42,7 @@ def _make_repo_with_stale_origin_main(tmp_path: Path) -> tuple[Path, str, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git_check("init", "-b", "main", cwd=repo)
-    _git_check("config", "user.email", "test@test.com", cwd=repo)
+    _git_check("config", "user.email", "test@example.com", cwd=repo)
     _git_check("config", "user.name", "Test User", cwd=repo)
 
     # Initial commit — this becomes the stale origin/main SHA

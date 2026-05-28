@@ -420,7 +420,7 @@ def test_get_stale_docs(db_session: Session, tmp_path: Path) -> None:
     repo.mkdir()
     subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)  # noqa: S603,S607
     subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
+        ["git", "config", "user.email", "test@example.com"],
         cwd=repo,
         check=True,
         capture_output=True,
@@ -444,7 +444,7 @@ def test_get_stale_docs(db_session: Session, tmp_path: Path) -> None:
         env={
             **__import__("os").environ,
             "GIT_AUTHOR_NAME": "test",
-            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_AUTHOR_EMAIL": "test@example.com",
         },
     )
 
@@ -462,7 +462,7 @@ def test_get_stale_docs(db_session: Session, tmp_path: Path) -> None:
         env={
             **__import__("os").environ,
             "GIT_AUTHOR_NAME": "test",
-            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_AUTHOR_EMAIL": "test@example.com",
         },
     )
     subprocess.run(
@@ -484,7 +484,7 @@ def test_get_stale_docs(db_session: Session, tmp_path: Path) -> None:
         env={
             **__import__("os").environ,
             "GIT_AUTHOR_NAME": "test",
-            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_AUTHOR_EMAIL": "test@example.com",
         },
     )
 
@@ -502,7 +502,7 @@ def test_get_stale_docs(db_session: Session, tmp_path: Path) -> None:
         env={
             **__import__("os").environ,
             "GIT_AUTHOR_NAME": "test",
-            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_AUTHOR_EMAIL": "test@example.com",
         },
     )  # noqa: S603
 

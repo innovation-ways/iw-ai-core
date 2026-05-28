@@ -59,7 +59,7 @@ def _init_git_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     _run_git("init", cwd=repo)
-    _run_git("config", "user.email", "test@test.com", cwd=repo)
+    _run_git("config", "user.email", "test@example.com", cwd=repo)
     _run_git("config", "user.name", "Test User", cwd=repo)
     # Create initial commit
     (repo / "README.md").write_text("initial readme")
