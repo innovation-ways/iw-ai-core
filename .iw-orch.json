@@ -60,6 +60,134 @@
         "description": "Complete test suite (unit + integration)",
         "group": "suites",
         "bundle": true
+      },
+      "smoke": {
+        "label": "Smoke (≤15 tests, <60 s SLA)",
+        "command": "make smoke",
+        "description": "Curated critical-path smoke suite. 5 paths: daemon worktree start, dashboard main pages, iw next-id, item queue, /healthz. CR-00052.",
+        "group": "backend"
+      },
+      "properties": {
+        "label": "Property Tests (Hypothesis, ci profile)",
+        "command": "make test-properties",
+        "description": "Hypothesis state-machine + @given properties on work-item / batch / fix-cycle / doc-diff / id-allocation. ci profile (20 examples, ~1.5 s). CR-00060.",
+        "group": "backend"
+      },
+      "properties-deep": {
+        "label": "Property Tests (Hypothesis, deep profile)",
+        "command": "make test-properties-deep",
+        "description": "Hypothesis deep profile — more examples, longer deadlines. ~minutes. CR-00060.",
+        "group": "backend"
+      },
+      "quarantine": {
+        "label": "Quarantine / Flaky (with reruns)",
+        "command": "make test-quarantine",
+        "description": "Run tests marked @pytest.mark.quarantine with rerunfailures. Informational — does NOT block. CR-00061.",
+        "group": "backend"
+      },
+      "flake-detect": {
+        "label": "Flake Detection (3-run aggregator)",
+        "command": "make test-flake-detect",
+        "description": "Run the full suite 3× and aggregate flakes. ~3× wall-clock of test-integration. CR-00061.",
+        "group": "backend"
+      },
+      "cli-contract": {
+        "label": "iw CLI Contract",
+        "command": "make test-cli-contract",
+        "description": "Per-command exit-code / stdout / DB-effect tests for the 6 priority iw commands + bidirectional spec-conformance check. CR-00073.",
+        "group": "backend"
+      },
+      "isolation": {
+        "label": "Cross-Project Isolation Matrix",
+        "command": "make test-isolation",
+        "description": "Dual-project matrix proving no leakage across routes / iw commands / per-worktree DB boundary. CR-00074.",
+        "group": "backend"
+      },
+      "security-module": {
+        "label": "Security Test Module",
+        "command": "make test-security-module",
+        "description": "Live-DB write guard + authz negative paths + doc-render SSRF / path-traversal + agent-context env handling. CR-00075.",
+        "group": "backend"
+      },
+      "data-layer": {
+        "label": "Data Layer (FTS + migration round-trip + DB-identity)",
+        "command": "make data-layer-check",
+        "description": "FTS-trigger invariants + migration revision-skew regression (pins I-00075/76) + DB-identity. CR-00076.",
+        "group": "backend"
+      },
+      "route-sweep": {
+        "label": "Dashboard Route Sweep (no-5xx)",
+        "command": "make test-route-sweep",
+        "description": "Every dashboard GET/HEAD route asserted < 500 against a seeded TestClient. CR-00072.",
+        "group": "backend"
+      },
+      "contract-fuzz": {
+        "label": "Schemathesis JSON API Fuzz",
+        "command": "make test-contract-fuzz",
+        "description": "schemathesis property-fuzz of JSON endpoints against OpenAPI schema. Nightly-class — non-blocking. CR-00072.",
+        "group": "backend"
+      },
+      "test-assertions": {
+        "label": "Assertion Scanner",
+        "command": "make test-assertions",
+        "description": "AST scanner for no-assert / tautology / mock-only / broad pytest.raises. Frozen baseline at tests/assertion_free_baseline.txt. CR-00046.",
+        "group": "quality"
+      },
+      "e2e-smoke": {
+        "label": "E2E Browser Smoke (2 journeys, blocking)",
+        "command": "make test-e2e-smoke",
+        "description": "Subset of the E2E browser-journey matrix — home-navigation + queue-to-merge. Blocking on PR. F-00088.",
+        "group": "e2e",
+        "e2e_stack": true
+      },
+      "e2e": {
+        "label": "E2E Browser Full (6 journeys)",
+        "command": "make test-e2e",
+        "description": "Full 6-journey browser-journey matrix — home, queue→merge, code-QA SSE, docs export, jobs filters, htmx fragments. ~minutes. F-00088.",
+        "group": "e2e",
+        "e2e_stack": true
+      },
+      "perf": {
+        "label": "Performance Budgets (all)",
+        "command": "make test-perf",
+        "description": "pytest-benchmark assertions on daemon poll-loop, RAG query, dashboard routes. Regression alerts at +25% vs baselines. CR-00083.",
+        "group": "perf"
+      },
+      "perf-daemon": {
+        "label": "Performance — Daemon Poll Loop",
+        "command": "make test-perf-daemon",
+        "description": "One Daemon._poll_cycle() iteration vs seeded testcontainer DB. CR-00083.",
+        "group": "perf"
+      },
+      "perf-rag": {
+        "label": "Performance — RAG Query",
+        "command": "make test-perf-rag",
+        "description": "One CodeQA.answer_stream call vs in-memory LanceDB + stub embedding. CR-00083.",
+        "group": "perf"
+      },
+      "perf-routes": {
+        "label": "Performance — Dashboard Routes",
+        "command": "make test-perf-routes",
+        "description": "p50 latency across home + queue + batches + jobs + code routes. CR-00083.",
+        "group": "perf"
+      },
+      "daemon-chaos-smoke": {
+        "label": "Daemon Chaos Smoke (2 scenarios)",
+        "command": "make daemon-chaos-smoke",
+        "description": "Deterministic chaos: worktree-setup-mid-fail + fix-cycle-cap. PR-blocking. F-00089.",
+        "group": "chaos"
+      },
+      "daemon-chaos-full": {
+        "label": "Daemon Chaos Full (~minutes, 5-scenario matrix)",
+        "command": "make daemon-chaos-full",
+        "description": "Full chaos matrix: worktree-setup-mid-fail, fix-cycle-cap, agent-stall, squash-merge-conflict, migration-rebase-fail. ~minutes. Nightly-class. F-00089.",
+        "group": "chaos"
+      },
+      "visual-regression": {
+        "label": "Visual Regression (HTML + PDF baselines)",
+        "command": "make visual-regression",
+        "description": "pixelmatch vs committed baselines — 4 PDFs + 4 HTML pages. Nightly + path-filtered PR. CR-00082.",
+        "group": "visual"
       }
     }
   },
@@ -90,6 +218,60 @@
         "command": "make quality",
         "group": "suites",
         "bundle": true
+      },
+      "check-column-docs": {
+        "label": "DB Column Doc Scanner",
+        "command": "make check-column-docs",
+        "description": "Walks Base.registry.mappers and flags Column declarations lacking doc=. Becomes blocking after CR-00092 baseline scrub. CR-00085.",
+        "group": "docs"
+      },
+      "security-secrets": {
+        "label": "Secret Scan (gitleaks)",
+        "command": "make security-secrets",
+        "description": "gitleaks against working tree + history. Blocking. CR-00050.",
+        "group": "security"
+      },
+      "security-sast": {
+        "label": "SAST (Semgrep)",
+        "command": "make security-sast",
+        "description": "Semgrep with p/python + p/owasp-top-ten + p/security-audit rulesets. Blocking. CR-00050 + CR-00051.",
+        "group": "security"
+      },
+      "security-deps": {
+        "label": "Dependency Audit (bandit + pip-audit)",
+        "command": "make security-deps",
+        "description": "bandit (Python-specific SAST) + pip-audit (CVE lookup against PyPI advisory DB).",
+        "group": "security"
+      },
+      "diff-coverage": {
+        "label": "Diff Coverage (≥90% on PR-changed lines)",
+        "command": "make diff-coverage",
+        "description": "diff-cover vs origin/main. Builds combined unit+integration coverage internally. Blocking on PR. CR-00047.",
+        "group": "coverage"
+      },
+      "mutation-check": {
+        "label": "Mutation Check (changed files)",
+        "command": "make mutation-check",
+        "description": "mutmut on changed-files only, cache-warmed from main. On-demand today (CR-00080 viability guard fired M=0%, K=55).",
+        "group": "coverage"
+      },
+      "mutation-audit": {
+        "label": "Mutation Audit (~1h, full orch/)",
+        "command": "make mutation-audit",
+        "description": "Full mutmut audit over all of orch/. ~1h wall-clock. Intended for nightly CI; ad-hoc launch only when investigating mutation score. CR-00059 + CR-00080.",
+        "group": "coverage"
+      },
+      "dead-code": {
+        "label": "Dead Code (vulture)",
+        "command": "make dead-code",
+        "description": "vulture with min_confidence=70 over orch + dashboard + executor + scripts. Warn-only today. CR-00048.",
+        "group": "hygiene"
+      },
+      "dep-check": {
+        "label": "Dependency Hygiene (deptry)",
+        "command": "make dep-check",
+        "description": "deptry — unused, missing, transitive, misplaced deps. Warn-only today. CR-00048.",
+        "group": "hygiene"
       }
     }
   },
