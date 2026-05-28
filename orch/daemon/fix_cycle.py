@@ -17,6 +17,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import logging
+import os
 import re
 import shlex
 import subprocess
@@ -383,6 +384,19 @@ _DEFAULT_QV_GATE_BUDGETS: dict[str, int] = {
     "unit-tests": 5,
     "integration-tests": 7,
 }
+
+
+# I-00116: cumulative cap; see docs/IW_AI_Core_Daemon_Design.md
+def get_max_review_relaunches() -> int:
+    """Read the review-relaunch cap from env on each call (avoids module-level capture).
+
+    Reads ``IW_CORE_MAX_REVIEW_RELAUNCHES_PER_ITEM`` on every invocation so that
+    test monkeypatches take effect without ``importlib.reload()``, and so that a
+    running daemon can pick up the value without a restart (the env var is expected
+    to be set before the process starts; reloading is not supported in production).
+    Default: 15.
+    """
+    return int(os.getenv("IW_CORE_MAX_REVIEW_RELAUNCHES_PER_ITEM", "15"))
 
 
 # ---------------------------------------------------------------------------
@@ -1414,6 +1428,101 @@ def _fail_fix_cycle(
         cycle.cycle_number,
         cycle.step_id,
         reason,
+    )
+
+
+# ---------------------------------------------------------------------------
+# I-00116: cumulative review-relaunch cap
+# ---------------------------------------------------------------------------
+
+
+def count_review_relaunches(db: Session, project_id: str, work_item_id: str) -> int:
+    """Count cumulative StepRun rows for review-type steps of this work item.
+
+    The count reflects every time a code_review or code_review_final step was
+    launched for this work item, including the current in-flight run.  Counting
+    from the DB (not in-memory) ensures the counter survives daemon restarts.
+    """
+    return db.execute(
+        select(func.count(StepRun.id))
+        .join(WorkflowStep, StepRun.step_id == WorkflowStep.id)
+        .where(
+            WorkflowStep.project_id == project_id,
+            WorkflowStep.work_item_id == work_item_id,
+            WorkflowStep.step_type.in_([StepType.code_review, StepType.code_review_final]),
+        )
+    ).scalar_one()
+
+
+def transition_item_to_failed_for_loop(
+    db: Session,
+    project_id: str,
+    work_item_id: str,
+    relaunch_count: int,
+) -> None:
+    """Transition a work item to failed when the review-relaunch cap is exceeded.
+
+    Idempotent: if the item is already ``failed`` this is a no-op.
+    Emits a ``review_relaunch_cap_exceeded`` DaemonEvent with diagnostic payload.
+    """
+    work_item = db.query(WorkItem).filter_by(project_id=project_id, id=work_item_id).first()
+    if work_item is None:
+        return
+    if work_item.status == WorkItemStatus.failed:
+        return  # Already failed — idempotent
+
+    work_item.status = WorkItemStatus.failed
+
+    # Capture the last 20 review runs for diagnostics
+    last_20 = (
+        db.execute(
+            select(StepRun)
+            .join(WorkflowStep, StepRun.step_id == WorkflowStep.id)
+            .where(
+                WorkflowStep.project_id == project_id,
+                WorkflowStep.work_item_id == work_item_id,
+                WorkflowStep.step_type.in_([StepType.code_review, StepType.code_review_final]),
+            )
+            .order_by(StepRun.started_at.desc())
+            .limit(20)
+        )
+        .scalars()
+        .all()
+    )
+    review_runs = [
+        {
+            "step_id": sr.step_id,
+            "started_at": sr.started_at.isoformat() if sr.started_at else None,
+            "status": sr.status.name,
+        }
+        for sr in last_20
+    ]
+
+    cap = get_max_review_relaunches()
+    _emit_event(
+        db,
+        project_id,
+        "review_relaunch_cap_exceeded",
+        work_item_id,
+        "work_item",
+        (
+            f"I-00116 review relaunch cap exceeded for {work_item_id}: "
+            f"{relaunch_count}/{cap} review step runs. "
+            "Work item transitioned to failed."
+        ),
+        {
+            "work_item_id": work_item_id,
+            "cap": cap,
+            "actual_count": relaunch_count,
+            "review_step_runs": review_runs,
+        },
+    )
+
+    logger.error(
+        "orch.daemon.fix_cycle: I-00116 review relaunch cap exceeded for %s: %d/%d",
+        work_item_id,
+        relaunch_count,
+        cap,
     )
 
 

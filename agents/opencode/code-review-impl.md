@@ -42,7 +42,19 @@ You will receive:
 - Read the implementation report to understand what was done
 
 ### 2. Examine All Changed Files
-- Use `git diff` to identify every file changed
+
+**Files you review**: read the work item's `ai-dev/active/<ITEM>/workflow-manifest.json`. The
+`scope.allowed_paths` array is the authoritative list of files this work item is permitted to
+touch. For your per-step review, restrict your diff inspection to files matching the step-specific
+subset (declared in the step's prompt under "Scope (`allowed_paths`)") AND only consider lines
+added/modified since the previous committed boundary for that step.
+
+**Do NOT** use un-scoped `git diff HEAD` or `git status` to derive what to review — un-committed
+work from later steps in the same worktree will appear in those outputs and you will mis-attribute
+it. The merge-time enforcement in `executor/worktree_commit.sh` Step 2.25 rejects any file outside
+`allowed_paths`, so anything you see outside that scope is either (a) someone else's step's work
+(ignore it), or (b) a scope violation by the step you're reviewing (CRITICAL finding).
+
 - Read each changed file completely
 - Cross-reference changes against the design document requirements
 

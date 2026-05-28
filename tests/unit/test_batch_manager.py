@@ -410,7 +410,7 @@ class TestCommandBuilding:
         step = MagicMock(spec=WorkflowStep)
         step.work_item_id = "F-00002"
         step.step_id = "S02"
-        step.step_type = StepType.code_review
+        step.step_type = StepType.implementation
         step.id = 2
         step.started_at = None
         step.agent_runtime_option_id = None

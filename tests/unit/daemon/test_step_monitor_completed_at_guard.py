@@ -41,6 +41,7 @@ def test_check_step_health_calls_crash_when_not_completed(monkeypatch) -> None:
         pid_alive=True,
         completed_at=None,
         session_file=None,
+        worktree_path=None,
     )
     crashed_calls: list[str] = []
 
@@ -69,6 +70,7 @@ def test_completed_at_none_still_calls_handle_crashed(monkeypatch) -> None:
         pid_alive=True,
         completed_at=None,
         session_file=None,
+        worktree_path=None,
     )
     crashed_calls: list[str] = []
 

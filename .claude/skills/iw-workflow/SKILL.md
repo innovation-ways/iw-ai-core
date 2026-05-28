@@ -124,6 +124,10 @@ When a code review step fails:
 
 **Browser-verification fix cycles can hit a wall the fix-cycle agent cannot climb.** If a `qv-browser` step reports a `code_defect` whose root cause is a file *outside* the item's `scope.allowed_paths` — e.g. a latent crash in a shared template that the item's new fixture data is the first to exercise (see I-00075: `step_pipeline.html` was broken since CR-00039 but only 500-ed once a fixture seeded workflow steps with non-NULL durations) — the fix-cycle agent will burn every cycle and never fix it, because (a) it can't edit the file and (b) the design doc usually says "no production code change needed". When a `qv-browser` failure repeats the same out-of-scope `file:line` across ≥2 fix cycles: stop the loop. File a follow-up incident scoped to that file, and either widen the current item's `scope.allowed_paths` (if the fix is small and clearly in-bounds) or block the current item on the follow-up — don't let it grind to `failed` after 5 wasted cycles.
 
+### Diff scoping for per-step code review (I-00116)
+
+When a code-review agent is re-launched mid-workflow it shares the same worktree with un-committed changes from later steps. To prevent mis-attributing those changes to the step being reviewed, the reviewer **must restrict its diff to `scope.allowed_paths`** from `ai-dev/active/<ITEM>/workflow-manifest.json` — the same scope `executor/worktree_commit.sh` Step 2.25 enforces at merge time. Do NOT use unbounded `git diff HEAD`; files and lines outside the step's `allowed_paths` are either later steps' work (ignore) or scope violations (CRITICAL finding).
+
 ## QV Gate Steps
 
 QV gates run as shell commands (no LLM):
