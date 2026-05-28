@@ -46,7 +46,7 @@ You are implementing **wave 3 of 4**. Wave 3 owns the ten OSS / chat / runtime c
 | `AgentRuntimeOption` (line 56) | 11 |
 | **Total** | **123** |
 
-Wave 4 (S04) handles the remaining 21 small classes AND removes the baseline file AND flips the gate. DO NOT do those in this step.
+Wave 4 (S04) handles the remaining 22 small classes AND removes the baseline file AND flips the gate. DO NOT do those in this step.
 
 ## Requirements
 

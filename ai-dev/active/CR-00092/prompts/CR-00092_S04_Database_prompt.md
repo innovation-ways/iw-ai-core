@@ -37,9 +37,9 @@ This step adds NO migration. Do NOT run alembic. Do NOT touch `orch/db/migration
 
 You are implementing **wave 4 of 4** — the closing wave. This step does FIVE distinct things in this order:
 
-1. **Wave 4 scrub** (~134 columns across 21 remaining classes).
+1. **Wave 4 scrub** (~134 columns across 22 remaining classes).
 2. **Baseline regeneration + deletion** (confirm scanner sees zero violations against `/dev/null`, then `git rm orch/db/column_docs_baseline.txt`).
-3. **Gate flip** in `Makefile` and `.github/workflows/test-quality.yml` (remove `|| true` from both surfaces).
+3. **Gate flip** in `Makefile` and `.github/workflows/test-quality.yml` (remove `|| true` from both surfaces) AND update the `check-column-docs:` target recipe to drop the now-deleted `--baseline orch/db/column_docs_baseline.txt` argument (otherwise the scanner crashes with `FileNotFoundError`).
 4. **Strategy doc + tracker updates** (`docs/IW_AI_Core_Testing_Strategy.md` §5, `ai-dev/work/TESTS_ENHANCEMENT.md` §8 row 4.5.followup, §11 changelog).
 5. **AC8 deliberate-break demonstration** (temporarily remove one `doc=`, confirm `make check-column-docs` exits non-zero, restore — record in your report).
 
@@ -53,9 +53,9 @@ Confirm S01/S02/S03 each reported `completion_status: complete`. Confirm cumulat
 
 Re-read the design's **Acceptance Criteria** (AC1–AC8) and **Notes** (the description-sourcing rule + the gate-surface trade-off).
 
-### 2. Wave 4 scrub — all 21 remaining classes
+### 2. Wave 4 scrub — all 22 remaining classes
 
-Add a `doc="..."` argument to every undocumented `Column(...)` declaration in these 21 classes (~134 columns total). Sourcing rule: schema doc first, inferred second. Same edit-shape rules as S01–S03.
+Add a `doc="..."` argument to every undocumented `Column(...)` declaration in these 22 classes (~134 columns total). Sourcing rule: schema doc first, inferred second. Same edit-shape rules as S01–S03.
 
 | Class | Entries | Notes |
 |-------|---------|-------|
@@ -125,11 +125,27 @@ quality: lint format typecheck test-assertions dead-code dep-check
 
 Also update the comment block above the `check-column-docs:` target (around line 102–107) to reflect that the gate is now blocking — remove the "Warn-first during burn-in; a follow-up CR flips it blocking" sentence, replace with "Blocking — every Column declaration must carry doc=" or similar.
 
+**CRITICAL — you MUST also update the `check-column-docs:` target recipe.** Step 3 deletes `orch/db/column_docs_baseline.txt`, but the target's current recipe hardcodes that path:
+
+```make
+check-column-docs:
+	uv run python scripts/check_db_column_docs.py --baseline orch/db/column_docs_baseline.txt
+```
+
+The scanner raises `FileNotFoundError` (uncaught → non-zero exit) when `--baseline` points at a missing file. If you leave the recipe as-is, `make check-column-docs` — and therefore `make quality` (AC5) — will crash with a traceback on every run, NOT pass. Drop the `--baseline` argument so the scanner runs in pure-audit mode (no allowlist; every column must carry `doc=`):
+
+```make
+check-column-docs:
+	uv run python scripts/check_db_column_docs.py
+```
+
+After this edit, confirm `make check-column-docs` exits 0 cleanly (no `FileNotFoundError` traceback) on the fully-scrubbed tree.
+
 **Edit `.github/workflows/test-quality.yml`** — find the line `- run: make check-column-docs || true` (around line 32) and change to `- run: make check-column-docs`. Also update the burn-in comment above it.
 
 ### 5. Update strategy doc and tracker
 
-**`docs/IW_AI_Core_Testing_Strategy.md` §5 (gate table)** — find the row for `check-column-docs` and flip its status column from warn-first / burn-in to blocking. If the row mentions "follow-up CR will flip blocking", replace that note with "Blocking since CR-00092 (2026-05-28)".
+**`docs/IW_AI_Core_Testing_Strategy.md` §5 (gate table)** — find the row for `check-column-docs` and flip its status column from warn-first / burn-in to blocking. If the row mentions "follow-up CR will flip blocking", replace that note with "Blocking since CR-00092 (2026-05-28)". Also scan the rest of the doc for any OTHER row referencing the column-docs gate's warn-first / burn-in status (notably the §9 "already shipped" roadmap table, which currently says "warn-first during burn-in; follow-up CR-00085-followup-column-docs-gate-blocking will flip to blocking") and flip those to blocking + CR-00092 as well — no stale "will flip to blocking" note should survive.
 
 **`ai-dev/work/TESTS_ENHANCEMENT.md` §8 row 4.5.followup** — change the Status column from TODO to:
 
@@ -142,7 +158,7 @@ and update the Link column to `CR-00092`.
 **`ai-dev/work/TESTS_ENHANCEMENT.md` §11 (changelog)** — add a new entry at the TOP of the changelog (above the existing 2026-05-28 entries):
 
 ```markdown
-- **2026-05-28** — **CR-00092 shipped (Phase-4 item 4.5.followup — column-docs baseline scrub + gate flip).** 450 columns across 40 model classes in `orch/db/models.py` gained one-line `doc="..."` arguments sourced from `docs/IW_AI_Core_Database_Schema.md` where present and inferred from column name/type/usage otherwise; `orch/db/column_docs_baseline.txt` deleted (`git ls-files` returns nothing for that path). `make check-column-docs` flipped from warn-first (`|| true`) to blocking in both `make quality` (Makefile) and `.github/workflows/test-quality.yml`'s `lint-typecheck` job. Strategy doc §5 row + tracker §8 row 4.5.followup updated. Wave breakdown: S01 = 103 (WorkItem/StepRun/ProjectDoc/BatchItem), S02 = 90 (WorkflowStep/DocGenerationJob/CodeIndexJob/TestRun/Batch), S03 = 123 (10 OSS/chat/runtime classes), S04 = 134 (21 remainder classes) + baseline removal + gate flip + docs/tracker. Test-only / metadata-only change — no schema change, no migration, no runtime behaviour change. **Known trade-off (per operator choice)**: gate stays folded into `make quality`, NOT promoted to a canonical daemon QV gate; enforcement happens at the GH `test-quality.yml` workflow on push/PR. AC8 deliberate-break-then-revert demonstrated in S04 report.
+- **2026-05-28** — **CR-00092 shipped (Phase-4 item 4.5.followup — column-docs baseline scrub + gate flip).** 450 columns across 41 model classes in `orch/db/models.py` gained one-line `doc="..."` arguments sourced from `docs/IW_AI_Core_Database_Schema.md` where present and inferred from column name/type/usage otherwise; `orch/db/column_docs_baseline.txt` deleted (`git ls-files` returns nothing for that path). `make check-column-docs` flipped from warn-first (`|| true`) to blocking in both `make quality` (Makefile) and `.github/workflows/test-quality.yml`'s `lint-typecheck` job. Strategy doc §5 row + tracker §8 row 4.5.followup updated. Wave breakdown: S01 = 103 (WorkItem/StepRun/ProjectDoc/BatchItem), S02 = 90 (WorkflowStep/DocGenerationJob/CodeIndexJob/TestRun/Batch), S03 = 123 (10 OSS/chat/runtime classes), S04 = 134 (22 remainder classes) + baseline removal + gate flip + docs/tracker. Test-only / metadata-only change — no schema change, no migration, no runtime behaviour change. **Known trade-off (per operator choice)**: gate stays folded into `make quality`, NOT promoted to a canonical daemon QV gate; enforcement happens at the GH `test-quality.yml` workflow on push/PR. AC8 deliberate-break-then-revert demonstrated in S04 report.
 ```
 
 Also bump the header `> **Status**: living plan — v1.8 (2026-05-28)` to `> **Status**: living plan — v1.9 (2026-05-28)` and update the "Current status" paragraph to mention that the column-docs follow-up is done.
@@ -237,6 +253,6 @@ All tests must pass.
   "gate_flipped_in_gh_workflow": true,
   "ac8_demonstrated": true,
   "blockers": [],
-  "notes": "Wave 4 of 4 complete. All 450 columns documented across 40 classes. orch/db/column_docs_baseline.txt deleted. make quality + GH workflow flipped from warn-first to blocking. Strategy doc §5 + tracker §8/§11 updated. AC8 demonstrated: removing doc= from <CLASS>.<column> made `make check-column-docs` exit <N>; restoring made it exit 0."
+  "notes": "Wave 4 of 4 complete. All 450 columns documented across 41 classes. orch/db/column_docs_baseline.txt deleted. make quality + GH workflow flipped from warn-first to blocking. Strategy doc §5 + tracker §8/§11 updated. AC8 demonstrated: removing doc= from <CLASS>.<column> made `make check-column-docs` exit <N>; restoring made it exit 0."
 }
 ```

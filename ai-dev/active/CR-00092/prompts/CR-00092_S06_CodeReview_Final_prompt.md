@@ -99,8 +99,9 @@ git diff -- orch/db/models.py    # must be empty
 
 ```bash
 grep -n "check-column-docs" .github/workflows/test-quality.yml
+grep -n "check-column-docs" Makefile
 ```
-Expected: matching line does NOT contain `|| true`.
+Expected: matching lines do NOT contain `|| true`. Additionally, the Makefile `check-column-docs:` target recipe must NOT pass `--baseline orch/db/column_docs_baseline.txt` (the file is deleted; a stale `--baseline` path makes the scanner raise `FileNotFoundError` → gate fails for the wrong reason). The recipe must run `uv run python scripts/check_db_column_docs.py` with no `--baseline`. Stale `--baseline` reference → CRITICAL (this would also surface as AC5 `make quality` exiting non-zero).
 
 ### AC5: `make quality` exits 0 on the unchanged tree
 

@@ -41,7 +41,7 @@ You are implementing **wave 2 of 4**. Wave 2 owns the five mid-size domain class
 | `Batch` (line 1173) | 16 |
 | **Total** | **90** |
 
-Waves 3–4 (S03–S04) handle the remaining 31 classes. S04 also removes the baseline file and flips the gate — DO NOT do those in this step.
+Waves 3–4 (S03–S04) handle the remaining 32 classes. S04 also removes the baseline file and flips the gate — DO NOT do those in this step.
 
 ## Requirements
 

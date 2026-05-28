@@ -18,7 +18,7 @@ This CR adds NO migration. `doc=` on a SQLAlchemy Column is ORM-side metadata on
 
 ## Description
 
-Add a one-line `doc="..."` argument to every `Column(...)` declaration in `orch/db/models.py` that the CR-00085 scanner currently allows through `orch/db/column_docs_baseline.txt` (450 entries across 40 model classes); after the scrub is complete, regenerate the baseline (confirm empty) and delete the baseline file outright; flip the `check-column-docs` gate from warn-first (`|| true`) to blocking in `make quality` and in `.github/workflows/test-quality.yml`.
+Add a one-line `doc="..."` argument to every `Column(...)` declaration in `orch/db/models.py` that the CR-00085 scanner currently allows through `orch/db/column_docs_baseline.txt` (450 entries across 41 model classes); after the scrub is complete, regenerate the baseline (confirm empty) and delete the baseline file outright; flip the `check-column-docs` gate from warn-first (`|| true`) to blocking in `make quality` and in `.github/workflows/test-quality.yml`.
 
 ## Project Context
 
@@ -38,7 +38,7 @@ CR-00085 (merged 2026-05-24) shipped `scripts/check_db_column_docs.py`, which wa
 
 Both surfaces are warn-only: a new undocumented column added today does NOT block the merge — it surfaces as a non-failing warning in the gate output. As a result, undocumented columns can (and do) accumulate.
 
-The baseline currently contains **450 entries** across 40 model classes in `orch/db/models.py`. Top-heaviest classes: `WorkItem` (33), `StepRun` (28), `ProjectDoc` (21), `BatchItem` (21), `WorkflowStep` (20). No entries live in `orch/db/migrations/versions/**` (the scanner only walks live SQLAlchemy mappers; migration-file `Column()` calls are not introspected — out of scope here).
+The baseline currently contains **450 entries** across 41 model classes in `orch/db/models.py`. Top-heaviest classes: `WorkItem` (33), `StepRun` (28), `ProjectDoc` (21), `BatchItem` (21), `WorkflowStep` (20). No entries live in `orch/db/migrations/versions/**` (the scanner only walks live SQLAlchemy mappers; migration-file `Column()` calls are not introspected — out of scope here).
 
 ## Desired Behavior
 
@@ -47,6 +47,7 @@ After this CR ships:
 - Every `Column(...)` declaration in `orch/db/models.py` carries a `doc="..."` argument with a one-line description (sourced from `docs/IW_AI_Core_Database_Schema.md` where available; inferred from column name/type/usage otherwise).
 - `orch/db/column_docs_baseline.txt` is deleted from the tree.
 - `scripts/check_db_column_docs.py --baseline /dev/null` exits 0 on `main`.
+- The `check-column-docs` Makefile target no longer passes `--baseline orch/db/column_docs_baseline.txt` (that file is deleted); it runs the scanner in pure-audit mode so `make check-column-docs` exits 0 cleanly on a fully-documented tree.
 - `make quality` and `.github/workflows/test-quality.yml` invoke `make check-column-docs` without `|| true` — any future `Column(...)` added without a `doc=` argument blocks the gate.
 - `docs/IW_AI_Core_Testing_Strategy.md` §5 records the gate as blocking; `ai-dev/work/TESTS_ENHANCEMENT.md` §8 row 4.5.followup is marked DONE with this CR's ID.
 
@@ -58,9 +59,10 @@ A future incremental follow-up CR may upgrade `check-column-docs` to a 9th canon
 
 | Component | Current State | Changed To |
 |-----------|---------------|------------|
-| `orch/db/models.py` (40 model classes, ~2906 lines) | 0 columns with `doc=` | 450 columns gain `doc="..."` |
+| `orch/db/models.py` (41 model classes, ~2906 lines) | 0 columns with `doc=` | 450 columns gain `doc="..."` |
 | `orch/db/column_docs_baseline.txt` | 450-entry cleanup backlog (file exists) | Deleted |
 | `Makefile` `quality` target | `@$(MAKE) check-column-docs \|\| true` | `@$(MAKE) check-column-docs` (no `\|\| true`) |
+| `Makefile` `check-column-docs` target recipe | `check_db_column_docs.py --baseline orch/db/column_docs_baseline.txt` | `check_db_column_docs.py` (no `--baseline`; the baseline file is deleted, so the recipe must run in pure-audit mode — leaving the old `--baseline` path would crash the scanner with `FileNotFoundError`) |
 | `.github/workflows/test-quality.yml` `lint-typecheck` job | `- run: make check-column-docs \|\| true` | `- run: make check-column-docs` |
 | `docs/IW_AI_Core_Testing_Strategy.md` §5 (gate table) | Gate row marked warn-first / burn-in | Gate row marked blocking |
 | `ai-dev/work/TESTS_ENHANCEMENT.md` §8 row 4.5.followup | TODO | DONE — CR-00092 (2026-05-28) |
@@ -84,7 +86,7 @@ A future incremental follow-up CR may upgrade `check-column-docs` to a 9th canon
 | S01 | database-impl | Wave 1 — heavyweights: `WorkItem` (33) + `StepRun` (28) + `ProjectDoc` (21) + `BatchItem` (21) = 103 columns | — |
 | S02 | database-impl | Wave 2 — mid-size domain: `WorkflowStep` (20) + `DocGenerationJob` (19) + `CodeIndexJob` (18) + `TestRun` (17) + `Batch` (16) = 90 columns | — |
 | S03 | database-impl | Wave 3 — OSS / chat / runtime: `OssFinding` (15) + `DocIndexJob` (15) + `ProjectOssJob` (13) + `PendingMigrationLog` (13) + `FixCycle` (12) + `OssScan` (11) + `ChatTab` (11) + `ChatSummarizationJob` (11) + `ChatConversation` (11) + `AgentRuntimeOption` (11) = 123 columns | — |
-| S04 | database-impl | Wave 4 — remainder: all 21 small classes (`WorkItemEvidence`, `KeepAliveRun`, `Project`, `OssToolRun`, `OssFindingDetail`, `DaemonEvent`, `BatchOverlapIgnore`, `ProjectDocVersion`, `ChatMessage`, `TestHealthSnapshot`, `QvBaseline`, `MergeAutoVerdict`, `MigrationLock`, `KeepAliveSlot`, `IdAllocation`, `DocSectionGuide`, `AutoMergeProjectConfig`, `KeepAliveConfig`, `IwCoreInstance`, `DocTypeGuide`, `DocInstanceGuide`, `IdSequence`) = 134 columns + delete `orch/db/column_docs_baseline.txt` + flip Makefile `\|\| true` + flip GH workflow `\|\| true` + update strategy doc §5 + update tracker §8 row + add tracker §11 changelog entry | — |
+| S04 | database-impl | Wave 4 — remainder: all 22 small classes (`WorkItemEvidence`, `KeepAliveRun`, `Project`, `OssToolRun`, `OssFindingDetail`, `DaemonEvent`, `BatchOverlapIgnore`, `ProjectDocVersion`, `ChatMessage`, `TestHealthSnapshot`, `QvBaseline`, `MergeAutoVerdict`, `MigrationLock`, `KeepAliveSlot`, `IdAllocation`, `DocSectionGuide`, `AutoMergeProjectConfig`, `KeepAliveConfig`, `IwCoreInstance`, `DocTypeGuide`, `DocInstanceGuide`, `IdSequence`) = 134 columns + delete `orch/db/column_docs_baseline.txt` + flip Makefile `\|\| true` + flip GH workflow `\|\| true` + update strategy doc §5 + update tracker §8 row + add tracker §11 changelog entry | — |
 | S05 | code-review-impl | Per-agent review of S01–S04 | — |
 | S06 | code-review-final-impl | Global cross-step review covering all ACs | — |
 | S07..S14 | QV Gates | lint, assertions, format, typecheck, unit-tests, integration-tests, diff-coverage, security-secrets | — |
@@ -122,7 +124,7 @@ All files for this work item live under `ai-dev/active/CR-00092/`:
 | `prompts/CR-00092_S01_Database_prompt.md` | Prompt | S01 wave 1 scrub instructions (4 heavyweight classes) |
 | `prompts/CR-00092_S02_Database_prompt.md` | Prompt | S02 wave 2 scrub instructions (5 mid-size classes) |
 | `prompts/CR-00092_S03_Database_prompt.md` | Prompt | S03 wave 3 scrub instructions (10 OSS/chat/runtime classes) |
-| `prompts/CR-00092_S04_Database_prompt.md` | Prompt | S04 wave 4 scrub instructions (21 remainder classes) + baseline removal + gate flip + docs/tracker updates |
+| `prompts/CR-00092_S04_Database_prompt.md` | Prompt | S04 wave 4 scrub instructions (22 remainder classes) + baseline removal + gate flip + docs/tracker updates |
 | `prompts/CR-00092_S05_CodeReview_prompt.md` | Prompt | Per-agent review |
 | `prompts/CR-00092_S06_CodeReview_Final_prompt.md` | Prompt | Global cross-step review |
 | `prompts/CR-00092_S15_SelfAssess_prompt.md` | Prompt | Self-assessment |

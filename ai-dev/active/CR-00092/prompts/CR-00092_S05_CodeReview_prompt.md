@@ -109,6 +109,8 @@ grep -n "check-column-docs" .github/workflows/test-quality.yml
 
 Either match still contains `|| true` → CRITICAL.
 
+Also inspect the `check-column-docs:` target recipe in the Makefile: it must NOT still pass `--baseline orch/db/column_docs_baseline.txt` (that file was deleted in S04 — a stale `--baseline` path makes the scanner crash with `FileNotFoundError` and the gate fails for the wrong reason). The recipe should run `uv run python scripts/check_db_column_docs.py` with no `--baseline` (pure-audit mode). Stale `--baseline` reference → CRITICAL.
+
 ### 5. `make quality` exits 0 (AC5)
 
 ```bash
