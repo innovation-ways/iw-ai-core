@@ -4,7 +4,7 @@ from pathlib import Path
 
 def test_bar_markup_present() -> None:
     composer = Path("dashboard/templates/chat_assistant/composer.html").read_text(encoding="utf-8")
-    assert 'id="chat-assistant-context-pct"' in composer
+    assert composer.count('id="chat-assistant-context-pct"') == 1
     assert 'role="status"' in composer
     assert 'aria-label="Context window usage"' in composer
     assert "chat-assistant-context-pct__bar" in composer

@@ -98,7 +98,7 @@ class TestContextPctCss:
             "chat.css must define a .chat-assistant-context-pct.is-warn rule "
             "for the 70-89% amber/warning band"
         )
-        assert "color" in body, "the .is-warn rule must define warning-band color styling"
+        assert body.count("color") >= 1, "the .is-warn rule must define warning-band color styling"
 
     def test_crit_class_exists(self):
         body = _css_rule_body(
@@ -108,7 +108,7 @@ class TestContextPctCss:
             "chat.css must define a .chat-assistant-context-pct.is-crit rule "
             "for the >=90% destructive band"
         )
-        assert "color" in body, "the .is-crit rule must define critical-band color styling"
+        assert body.count("color") >= 1, "the .is-crit rule must define critical-band color styling"
 
 
 class TestContextPctJsHelpers:
@@ -129,7 +129,7 @@ class TestContextPctJsHelpers:
 
     def test_refresh_context_pct_handles_falsy_tab_id_without_nan_contract(self):
         js = CHAT_JS.read_text(encoding="utf-8")
-        assert "function _refreshContextPct(tabId)" in js
+        assert js.count("function _refreshContextPct(tabId)") == 1
         assert "if (!tabId)" in js
 
     def test_activate_tab_calls_refresh_context_pct(self):

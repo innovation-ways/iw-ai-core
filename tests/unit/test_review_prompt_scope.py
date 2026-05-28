@@ -168,8 +168,8 @@ def test_code_review_final_prompt_also_references_allowed_paths() -> None:
         path = _AGENTS_DIR / filename
         text = path.read_text(encoding="utf-8")
 
-        # Both prompt types must use allowed_paths
-        assert "allowed_paths" in text, (
+        # Both prompt types must use allowed_paths (multiple times — once in docs, once in logic)
+        assert text.count("allowed_paths") >= 2, (
             f"Prompt file {filename} must reference 'allowed_paths' "
             f"for ALL review step types (code_review AND code_review_final)."
         )

@@ -251,7 +251,7 @@ def auto_merge_event_detail(
                     )
                     # difflib.HtmlDiff escapes line content via HTML entities,
                     # so the produced table is safe to mark as Markup.
-                    diff_html: Markup | None = Markup(raw_diff_html)  # noqa: S704
+                    diff_html: Markup | None = Markup(raw_diff_html)  # noqa: S704  # nosec B704
                 else:
                     diff_html = None
                 diffs.append(

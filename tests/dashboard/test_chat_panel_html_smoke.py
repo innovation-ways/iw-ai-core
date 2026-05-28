@@ -37,7 +37,7 @@ def test_home_html_and_chat_js_smoke_contract(client: TestClient) -> None:
 
 def test_chat_js_contains_boundary_behavior_guards(client: TestClient) -> None:
     js = client.get("/static/chat_assistant/chat.js").text
-    assert "No projects available" in js
+    assert js.count("No projects available") == 1
     assert "ignore localStorage failures (private mode/quota)" in js
     assert "localStorage.removeItem('iw-chat-assistant-project')" in js
     assert "_setAssistantProjectId(projects[0].id)" in js
