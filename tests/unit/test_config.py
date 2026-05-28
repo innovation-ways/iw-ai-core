@@ -160,3 +160,46 @@ def test_port_values_are_integers(monkeypatch: pytest.MonkeyPatch) -> None:
     assert isinstance(config.poll_interval, int)
     assert isinstance(config.stall_threshold, int)
     assert isinstance(config.archive_ttl, int)
+
+
+# ---------------------------------------------------------------------------
+# Tests: get_e2e_mode() — CR-00090
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "env_value,expected",
+    [
+        ("true", True),
+        ("1", True),
+        ("TRUE", True),
+        ("True", True),
+        ("", False),
+        ("false", False),
+        ("0", False),
+        ("anything", False),
+    ],
+)
+def test_get_e2e_mode_truthy_values(
+    monkeypatch: pytest.MonkeyPatch, env_value: str, expected: bool
+) -> None:
+    """get_e2e_mode() must return True for 'true'/'1' (case-insensitive) and False otherwise."""
+    import orch.config as cfg
+
+    _set_all(monkeypatch)
+    if env_value == "":
+        monkeypatch.delenv("IW_CORE_E2E_MODE", raising=False)
+    else:
+        monkeypatch.setenv("IW_CORE_E2E_MODE", env_value)
+
+    assert cfg.get_e2e_mode() == expected
+
+
+def test_get_e2e_mode_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """get_e2e_mode() must return False when IW_CORE_E2E_MODE is absent."""
+    import orch.config as cfg
+
+    _set_all(monkeypatch)
+    monkeypatch.delenv("IW_CORE_E2E_MODE", raising=False)
+
+    assert cfg.get_e2e_mode() is False

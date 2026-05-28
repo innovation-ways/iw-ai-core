@@ -26,6 +26,7 @@ __all__ = (
     "DEFAULT_INDEX_PATH",
     "DaemonConfig",
     "get_db_url",
+    "get_e2e_mode",
     "get_orch_db_url",
     "get_db_pool_size",
     "get_db_max_overflow",
@@ -115,6 +116,15 @@ def get_migration_lock_timeout_secs() -> int:
     or other lock contention occurs. Set to 0 to disable (not recommended).
     """
     return int(os.environ.get("IW_CORE_MIGRATION_LOCK_TIMEOUT_SECS", "30"))
+
+
+def get_e2e_mode() -> bool:
+    """Return True when IW_CORE_E2E_MODE is set to a truthy value ('1' or 'true', case-insensitive).
+
+    Used by the dashboard to suppress HTMX polling in E2E verification containers.
+    Reads the env var at call time (not import time) so tests can monkeypatch it.
+    """
+    return os.environ.get("IW_CORE_E2E_MODE", "").lower() in ("1", "true")
 
 
 @dataclass(frozen=True)

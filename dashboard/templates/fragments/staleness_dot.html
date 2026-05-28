@@ -1,6 +1,5 @@
 {% if staleness and (staleness.services or staleness.alembic) %}
-  {% set _ua = (request.headers.get('user-agent', '')|lower) %}
-  {% set _headless = _e2e_mode|default(false) or ('headlesschrome' in _ua) or ('playwright' in _ua) %}
+  {% set _headless = _e2e_mode %}
   {% if staleness.is_stale %}
     <span class="iw-staleness-dot iw-staleness-dot--red"
           title="Outdated processes — click for details"

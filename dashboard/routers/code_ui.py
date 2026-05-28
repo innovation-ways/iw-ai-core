@@ -75,8 +75,17 @@ def _format_duration(job: CodeIndexJob) -> str | None:
 
 
 def _preprocess_mermaid(text: str) -> str:
+    def _replacer(m: re.Match[str]) -> str:
+        body = m.group(1)
+        # Strip YAML front matter (---...---) — ELK layout has no client-side loader.
+        if body.startswith("---\n"):
+            end = body.find("\n---", 4)
+            if end != -1:
+                body = body[end + 5 :].lstrip()
+        return f'<pre data-lang="mermaid"><code>{body}</code></pre>'
+
     pattern = re.compile(r"```mermaid\s*(.*?)\s*```", re.DOTALL)
-    return pattern.sub(r'<pre data-lang="mermaid"><code>\1</code></pre>', text)
+    return pattern.sub(_replacer, text)
 
 
 def _render_architecture_html(arch_doc: Any) -> str | None:

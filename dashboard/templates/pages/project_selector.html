@@ -5,8 +5,7 @@
 {% block page_help_slug %}projects{% endblock %}
 
 {% block content %}
-{% set _ua = (request.headers.get('user-agent', '')|lower) %}
-{% set _headless = _e2e_mode|default(false) or ('headlesschrome' in _ua) or ('playwright' in _ua) %}
+{% set _headless = _e2e_mode %}
 <div class="max-w-3xl mx-auto">
   <div class="flex justify-end mb-4">
     <button hx-get="/api/projects/new"

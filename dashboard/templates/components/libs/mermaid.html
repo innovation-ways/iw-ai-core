@@ -38,6 +38,10 @@
         } catch (e) {
           preEl.setAttribute('data-processed', 'true');
           preEl.textContent = 'Mermaid error: ' + (e && e.message ? e.message : String(e));
+        } finally {
+          // Mermaid leaves a hidden render container in <body> on error — remove it.
+          var orphan = document.getElementById(id);
+          if (orphan) { orphan.remove(); }
         }
       }
     };
