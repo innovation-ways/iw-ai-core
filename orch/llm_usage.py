@@ -273,6 +273,39 @@ def _minimax_usage() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+# Status discriminators for _codex_usage() return dict.
+_CODEX_STATUS_OK = "ok"
+_CODEX_STATUS_EXPIRED = "expired"
+_CODEX_STATUS_UNAUTHENTICATED = "unauthenticated"
+_CODEX_STATUS_ERROR = "error"
+
+
+def _oauth_is_expired(entry: dict[str, Any]) -> bool:
+    """Return True when the stored token expiry epoch-ms is at/before now.
+
+    Returns False when `expires` is missing, None, zero, or not a number — let
+    the remote call decide rather than treating unknown as expired.
+    """
+    raw = entry.get("expires")
+    # 0 or 0.0 (epoch-0) is the OAuth-unset sentinel; treat it as "unknown" so the
+    # remote call decides rather than hard-coding it as permanently expired.
+    if raw is None or raw == 0 or not isinstance(raw, (int, float)):
+        return False
+    return bool(raw <= datetime.now(UTC).timestamp() * 1000)
+
+
+def _codex_zero(status: str) -> dict[str, Any]:
+    """Return the zeroed Codex usage dict tagged with `status`."""
+    return {
+        "block_pct": 0,
+        "week_pct": 0,
+        "block_reset": None,
+        "week_reset": None,
+        "plan_type": None,
+        "status": status,
+    }
+
+
 _CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 _CODEX_ZERO: dict[str, Any] = {
     "block_pct": 0,
@@ -340,6 +373,8 @@ def _codex_usage_remote(access: str, account_id: str) -> dict[str, Any]:
         }
     The double-Option in the Rust contract surfaces here as missing keys or
     explicit ``null`` values; both are handled defensively.
+
+    Returns a dict that always includes ``status: _CODEX_STATUS_OK``.
     """
     resp = httpx.get(
         _CODEX_USAGE_URL,
@@ -364,32 +399,48 @@ def _codex_usage_remote(access: str, account_id: str) -> dict[str, Any]:
         "block_reset": _format_remaining_from_ts(_codex_window_reset_ts(primary)),
         "week_reset": _format_resets_at(_codex_window_reset_ts(secondary)),
         "plan_type": payload.get("plan_type"),
+        "status": _CODEX_STATUS_OK,
     }
 
 
 def _codex_usage() -> dict[str, Any]:
     """Return Codex 5h + weekly usage; never raises.
 
-    Returns zeroed dict (``block_pct=0, week_pct=0, *_reset=None``) when:
-      - opencode auth.json is missing or has no OAuth entry for openai
-      - access token is rejected (401), endpoint moved (404),
-        upstream is unreachable, or the JSON body fails to parse.
-    Failures are logged at WARNING (auth absent — expected when the user
-    has not run ``opencode auth login`` for openai) or ERROR (any other
-    transport / decode failure).
+    Returns a dict always containing a ``status`` key:
+      - ``ok``:            usage fetched successfully from the endpoint
+      - ``expired``:       stored ``expires`` epoch-ms is at/before now, OR endpoint
+                           returns HTTP 401 (token_expired)
+      - ``unauthenticated``: auth.json missing or no valid openai OAuth entry
+      - ``error``:         any other transport/decode/schema failure
+
+    When status ``!= "ok"``, block_pct/week_pct are 0 and *_reset are None.
     """
     entry = _load_openai_oauth()
     if entry is None:
         logger.warning(
             "Codex OAuth credentials not found in opencode auth.json; usage chips will show 0%%",
         )
-        return dict(_CODEX_ZERO)
+        return _codex_zero(_CODEX_STATUS_UNAUTHENTICATED)
+
+    if _oauth_is_expired(entry):
+        logger.warning(
+            "Codex OAuth token is expired (expires <= now); skipping network call",
+        )
+        return _codex_zero(_CODEX_STATUS_EXPIRED)
 
     try:
         return _codex_usage_remote(entry["access"], entry["accountId"])
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 401:
+            logger.warning(
+                "Codex token rejected (HTTP 401 token_expired); skipping usage fetch",
+            )
+            return _codex_zero(_CODEX_STATUS_EXPIRED)
+        logger.exception("Codex usage fetch failed")
+        return _codex_zero(_CODEX_STATUS_ERROR)
     except Exception:
         logger.exception("Codex usage fetch failed")
-        return dict(_CODEX_ZERO)
+        return _codex_zero(_CODEX_STATUS_ERROR)
 
 
 # ---------------------------------------------------------------------------
@@ -420,7 +471,7 @@ def get_llm_usage() -> dict[str, Any]:
         codex = _codex_usage()
     except Exception:
         logger.exception("Codex usage fetch failed")
-        codex = dict(_CODEX_ZERO)
+        codex = _codex_zero(_CODEX_STATUS_ERROR)
 
     result: dict[str, Any] = {"claude": claude, "minimax": minimax, "codex": codex}
     with _cache_lock:

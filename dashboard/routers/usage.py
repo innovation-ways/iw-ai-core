@@ -11,6 +11,14 @@ from orch.llm_usage import get_llm_usage
 
 router = APIRouter(prefix="/api/usage", tags=["usage"])
 
+# Maps Codex usage status to the warning text shown in the footer chip.
+# When status == "ok" no warning is shown (normal bars are rendered).
+_CODEX_WARNING_MAP: dict[str, str] = {
+    "expired": "token expired — re-authenticate",
+    "unauthenticated": "not configured — run opencode auth login",
+    "error": "usage unavailable",
+}
+
 
 def _bar_color(pct: int) -> str:
     if pct >= 90:
@@ -33,7 +41,10 @@ def llm_usage_fragment(request: Request) -> Any:
         "block_reset": None,
         "week_reset": None,
         "plan_type": None,
+        "status": "error",  # stale cache → surface a warning rather than silent 0%
     }
+    codex_status = codex.get("status") or "ok"
+    codex_warning = _CODEX_WARNING_MAP.get(codex_status)
     return request.app.state.templates.TemplateResponse(
         request,
         "fragments/llm_usage_footer.html",
@@ -56,5 +67,7 @@ def llm_usage_fragment(request: Request) -> Any:
             "codex_5h_color": _bar_color(codex["block_pct"]),
             "codex_7d_color": _bar_color(codex["week_pct"]),
             "codex_plan_type": codex.get("plan_type"),
+            "codex_warning": codex_warning,
+            "codex_status": codex_status,
         },
     )
