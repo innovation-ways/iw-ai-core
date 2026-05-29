@@ -18,9 +18,9 @@ subtract(current, baseline) -> Fingerprint
   Unparseable entries always surface (fail-safe).
   Ordering from `current` is preserved (Invariant 4).
 
-GATE_PARSERS maps gate name → parser callable.
-"format" (ruff format --check) is intentionally absent — its output shape
-is incompatible and would route all findings to `unparseable`, breaking AC1.
+GATE_PARSERS maps gate name → precise parser callable.
+parser_for_gate() returns a precise parser when known, otherwise a conservative
+line-based fallback so every gate gets baseline subtraction coverage.
 """
 
 from __future__ import annotations
@@ -39,7 +39,10 @@ __all__ = [
     "parse_ruff",
     "parse_pytest",
     "parse_mypy",
+    "parse_assertion_scanner",
+    "parse_generic_lines",
     "GATE_PARSERS",
+    "parser_for_gate",
     "fingerprint_to_jsonable",
     "fingerprint_from_jsonable",
     "subtract",
@@ -259,12 +262,83 @@ def parse_mypy(raw_output: str) -> Fingerprint:
     return Fingerprint(failures=_sort_failures(failures), unparseable=tuple(unparseable))
 
 
+_ASSERTION_SCANNER_RE = re.compile(
+    r"^(?P<file>.+?):(?P<line>\d+):\s+"
+    r"(?P<category>[^:]+):\s+"
+    r"(?P<test_name>[^:]+):\s+"
+    r"(?P<message>.+)$"
+)
+
+
+def parse_assertion_scanner(raw_output: str) -> Fingerprint:
+    """Parse `check_test_assertions.py` human output into a Fingerprint.
+
+    Expected format per violation:
+    ``<file>:<line>: <category>: <test_name>: <message>``
+
+    Key: ``<file>::<test_name>`` (stable identity), intentionally excluding the
+    message text because wording can change without changing the underlying
+    failure.
+    """
+    failures: list[FailureEntry] = []
+    unparseable: list[str] = []
+    seen: set[tuple[str, str]] = set()
+
+    for raw in raw_output.strip().splitlines():
+        stripped = raw.strip()
+        if not stripped or _UNPARSEABLE_RE.match(raw):
+            continue
+        match = _ASSERTION_SCANNER_RE.match(stripped)
+        if not match:
+            unparseable.append(raw)
+            continue
+        file = match.group("file")
+        test_name = match.group("test_name")
+        key = (file, test_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        failures.append(_make_key("assertion", f"{file}::{test_name}"))
+
+    return Fingerprint(failures=_sort_failures(failures), unparseable=tuple(unparseable))
+
+
+def parse_generic_lines(raw_output: str) -> Fingerprint:
+    """Fallback parser for gates without a dedicated parser.
+
+    Each non-empty stripped line becomes ``FailureEntry(kind="line", key=<line>)``.
+    This is conservative but can falsely suppress a new failure if its output line
+    is byte-identical to a baselined line.
+    """
+    failures: list[FailureEntry] = []
+    seen: set[str] = set()
+
+    for raw in raw_output.splitlines():
+        normalized = raw.strip()
+        if not normalized or _UNPARSEABLE_RE.match(raw):
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        failures.append(_make_key("line", normalized))
+
+    return Fingerprint(failures=_sort_failures(failures), unparseable=())
+
+
 GATE_PARSERS: Mapping[str, Callable[[str], Fingerprint]] = {
     "lint": parse_ruff,
     "typecheck": parse_mypy,
     "unit-tests": parse_pytest,
     "frontend-tests": parse_pytest,
+    "assertions": parse_assertion_scanner,
 }
+
+
+def parser_for_gate(gate_name: str) -> Callable[[str], Fingerprint]:
+    """Return parser for any gate (precise parser if known, generic fallback otherwise)."""
+    if gate_name == "integration-tests":
+        return parse_pytest
+    return GATE_PARSERS.get(gate_name, parse_generic_lines)
 
 
 def fingerprint_to_jsonable(fp: Fingerprint) -> dict[str, object]:

@@ -24,9 +24,12 @@ from orch.daemon.qv_baseline import (
     Fingerprint,
     fingerprint_from_jsonable,
     fingerprint_to_jsonable,
+    parse_assertion_scanner,
+    parse_generic_lines,
     parse_mypy,
     parse_pytest,
     parse_ruff,
+    parser_for_gate,
     subtract,
 )
 
@@ -89,6 +92,11 @@ dashboard/app.py:10: error: Unused 'x' import [unused-import]
 MYPY_SAME_FAILURE_DIFFERENT_LINE = """\
 dashboard/app.py:10: error: Unused 'x' import [unused-import]
 dashboard/app.py:200: error: Unused 'x' import [unused-import]
+"""
+
+ASSERTIONS_SAMPLE = """\
+tests/unit/test_a.py:18: tautology: test_a: every assert is always true
+tests/unit/test_b.py:9: tautology: test_b: condition is constant
 """
 
 # ---------------------------------------------------------------------------
@@ -224,6 +232,53 @@ class TestMypyParser:
         assert fingerprint_to_jsonable(fp_a) == fingerprint_to_jsonable(fp_b)
 
 
+class TestAssertionScannerParser:
+    def test_happy_path(self) -> None:
+        fp = parse_assertion_scanner(ASSERTIONS_SAMPLE)
+        assert [f.key for f in fp.failures] == [
+            "tests/unit/test_a.py::test_a",
+            "tests/unit/test_b.py::test_b",
+        ]
+        assert fp.unparseable == ()
+
+    def test_duplicate_identity_collapses(self) -> None:
+        fp = parse_assertion_scanner(
+            "\n".join(
+                [
+                    "tests/unit/test_a.py:18: tautology: test_a: message one",
+                    "tests/unit/test_a.py:42: tautology: test_a: message two",
+                ]
+            )
+        )
+        assert [f.key for f in fp.failures] == ["tests/unit/test_a.py::test_a"]
+
+    def test_unparseable_and_blank_lines(self) -> None:
+        fp = parse_assertion_scanner(
+            "\n".join(
+                [
+                    "",
+                    "   ",
+                    "# comment",
+                    "not assertion scanner output",
+                    "tests/unit/test_b.py:9: tautology: test_b: condition is constant",
+                ]
+            )
+        )
+        assert [f.key for f in fp.failures] == ["tests/unit/test_b.py::test_b"]
+        assert fp.unparseable == ("not assertion scanner output",)
+
+
+class TestGenericLineParser:
+    def test_normalizes_and_deduplicates_lines(self) -> None:
+        fp = parse_generic_lines("  a line  \na line\nother\n")
+        assert [f.key for f in fp.failures] == ["a line", "other"]
+        assert fp.unparseable == ()
+
+    def test_skips_blank_and_comment_lines(self) -> None:
+        fp = parse_generic_lines("\n# comment\n   \nreal\n")
+        assert [f.key for f in fp.failures] == ["real"]
+
+
 # ---------------------------------------------------------------------------
 # TestSubtract
 # ---------------------------------------------------------------------------
@@ -319,11 +374,21 @@ class TestGateParsers:
     def test_unit_tests_maps_to_parse_pytest(self) -> None:
         assert GATE_PARSERS["unit-tests"] is parse_pytest
 
-    def test_integration_tests_is_not_in_gate_parsers(self) -> None:
-        assert "integration-tests" not in GATE_PARSERS
+    def test_integration_tests_maps_to_parse_pytest(self) -> None:
+        assert parser_for_gate("integration-tests") is parse_pytest
 
     def test_frontend_tests_maps_to_parse_pytest(self) -> None:
         assert GATE_PARSERS["frontend-tests"] is parse_pytest
 
+    def test_assertions_maps_to_parse_assertion_scanner(self) -> None:
+        assert GATE_PARSERS["assertions"] is parse_assertion_scanner
+
     def test_format_is_absent(self) -> None:
         assert "format" not in GATE_PARSERS
+
+    def test_parser_for_known_gate_never_falls_back(self) -> None:
+        assert parser_for_gate("assertions") is parse_assertion_scanner
+        assert parser_for_gate("integration-tests") is parse_pytest
+
+    def test_parser_for_unknown_gate_uses_generic_fallback(self) -> None:
+        assert parser_for_gate("format") is parse_generic_lines

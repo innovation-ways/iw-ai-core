@@ -1657,15 +1657,13 @@ def _get_qv_findings(
         return _qv_findings_legacy(db, step, worktree_path)
 
     from orch.daemon.qv_baseline import (  # noqa: PLC0415
-        GATE_PARSERS,
         fingerprint_from_jsonable,
         fingerprint_to_jsonable,
+        parser_for_gate,
         subtract,
     )
 
-    parser = GATE_PARSERS.get(gate_name)
-    if parser is None:
-        return _qv_findings_legacy(db, step, worktree_path)
+    parser = parser_for_gate(gate_name)
 
     current_base_sha = _resolve_worktree_base_sha(worktree_path)
     if not current_base_sha:
