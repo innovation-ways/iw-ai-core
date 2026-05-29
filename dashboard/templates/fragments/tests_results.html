@@ -1,6 +1,6 @@
 {% from "components/status_badge.html" import status_badge %}
 
-{% if summary %}
+{% if selected_run %}
   <!-- Run selector -->
   {% if recent_runs %}
   <div class="mb-4 flex items-center gap-3">
@@ -18,6 +18,7 @@
   </div>
   {% endif %}
 
+{% if summary %}
   <!-- Summary cards -->
   <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
     <!-- Total -->
@@ -81,10 +82,21 @@
   </div>
   {% endif %}
 
-  <!-- Open full report button -->
-  {% if summary.run_id %}
+{% else %}
+  <!-- Run completed but Allure produced no parseable summary statistics
+       (only a subset of categories emit widgets/statistic.json). The full
+       per-run HTML report is still available below. -->
+  <div class="bg-card border border-border rounded-lg p-4 mb-6 text-sm text-muted-foreground">
+    Detailed pass/fail statistics aren't available for this run, but its full
+    Allure report is still viewable below.
+  </div>
+{% endif %}
+
+  <!-- Open full report (always follows the SELECTED run, not the latest
+       summarised run); only shown when the HTML report exists on disk. -->
   <div class="flex items-center gap-3">
-    <a href="/project/{{ current_project.id }}/tests/report/{{ summary.run_id }}/index.html"
+    {% if report_available %}
+    <a href="/project/{{ current_project.id }}/tests/report/{{ selected_run.id }}/index.html"
        target="_blank"
        class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium
               hover:opacity-90 transition-opacity inline-flex items-center gap-2">
@@ -93,14 +105,19 @@
       </svg>
       Open Full Allure Report
     </a>
+    {% else %}
+    <span class="px-4 py-2 bg-muted text-muted-foreground rounded-md text-sm font-medium
+                 inline-flex items-center gap-2 cursor-not-allowed" title="No Allure HTML report on disk for this run">
+      Report unavailable
+    </span>
+    {% endif %}
     <span class="text-xs text-muted-foreground">
-      Run #{{ summary.run_id }} &middot; {{ summary.category }}
-      {% if summary.started_at %}
-        &middot; {{ summary.started_at | localdt('%b %d %H:%M') }}
+      Run #{{ selected_run.id }} &middot; {{ selected_run.category }}
+      {% if selected_run.started_at %}
+        &middot; {{ selected_run.started_at | localdt('%b %d %H:%M') }}
       {% endif %}
     </span>
   </div>
-  {% endif %}
 
 {% else %}
   <div class="bg-card border border-border rounded-lg p-8 text-center">

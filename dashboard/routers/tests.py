@@ -89,6 +89,7 @@ def tests_page(
     request: Request,
     db: Session = Depends(get_db),
     tab: str = "launch",
+    run: int | None = None,
 ) -> Any:
     project = get_project_or_404(project_id, db)
     test_config = _get_test_config(project)
@@ -111,8 +112,7 @@ def tests_page(
     elif active_tab == "runs":
         context["runs"] = build_run_rows(project_id, db, run_type="test")
     elif active_tab == "results":
-        context["summary"] = _get_latest_summary(project_id, db)
-        context["recent_runs"] = _get_completed_runs(project_id, db, limit=20)
+        context.update(_build_results_context(project_id, run, db))
 
     return templates.TemplateResponse(
         request,
@@ -170,17 +170,14 @@ def tests_fragment_results(
     project_id: str,
     request: Request,
     db: Session = Depends(get_db),
+    run: int | None = None,
 ) -> Any:
     project = get_project_or_404(project_id, db)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "fragments/tests_results.html",
-        {
-            "current_project": project,
-            "summary": _get_latest_summary(project_id, db),
-            "recent_runs": _get_completed_runs(project_id, db, limit=20),
-        },
+        {"current_project": project, **_build_results_context(project_id, run, db)},
     )
 
 
@@ -196,20 +193,11 @@ def tests_fragment_results_for_run(
     if run is None:
         raise HTTPException(status_code=404, detail="Test run not found")
 
-    summary = None
-    if run.summary:
-        summary = AllureSummary.from_json(run.summary, run)
-
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
         request,
         "fragments/tests_results.html",
-        {
-            "current_project": project,
-            "summary": summary,
-            "recent_runs": _get_completed_runs(project_id, db, limit=20),
-            "selected_run_id": run_id,
-        },
+        {"current_project": project, **_build_results_context(project_id, run_id, db)},
     )
 
 
@@ -446,22 +434,76 @@ def _find_running_e2e_stack_test(
 # ---------------------------------------------------------------------------
 
 
-def _get_latest_summary(project_id: str, db: Session) -> AllureSummary | None:
-    """Get the Allure summary from the most recent completed run."""
-    run = db.scalar(
+def _build_results_context(project_id: str, run_id: int | None, db: Session) -> dict[str, Any]:
+    """Build the template context for the Results tab.
+
+    Resolves the *selected* run (by ``run_id`` if given, else the most recent
+    completed run) and renders the view around that run — its Allure report
+    link and (when available) its parsed summary stats. Parsed summary stats
+    are absent for most categories, but every completed run still has its own
+    ``allure_report_dir``; the report link must therefore follow the selected
+    run, NOT the latest run that happens to carry parsed stats (the I-?? bug:
+    the report and summary were pinned to the newest summarised run regardless
+    of the dropdown selection).
+    """
+    selected_run = _resolve_results_run(project_id, run_id, db)
+    summary = (
+        AllureSummary.from_json(selected_run.summary, selected_run)
+        if selected_run is not None and selected_run.summary
+        else None
+    )
+    context: dict[str, Any] = {
+        "selected_run": selected_run,
+        "summary": summary,
+        "report_available": _report_available(selected_run),
+        "recent_runs": _get_completed_runs(project_id, db, limit=20),
+    }
+    if selected_run is not None:
+        context["selected_run_id"] = selected_run.id
+    return context
+
+
+def _report_available(run: TestRun | None) -> bool:
+    """True when the run's Allure HTML report actually exists on disk.
+
+    ``allure_report_dir`` is recorded for nearly every run, but the generated
+    HTML is not always persisted (e.g. allure-generate failed, or the report
+    was pruned). Gating the "Open Full Allure Report" link on the real
+    ``index.html`` avoids linking to a 404 — matching what ``serve_allure_report``
+    will actually serve.
+    """
+    if run is None or not run.allure_report_dir:
+        return False
+    return (Path(run.allure_report_dir) / "index.html").is_file()
+
+
+def _resolve_results_run(project_id: str, run_id: int | None, db: Session) -> TestRun | None:
+    """Return the run to display on the Results tab.
+
+    When ``run_id`` names a real test run for this project, that run is used
+    (whether or not it carries parsed summary stats). Otherwise fall back to
+    the most recent completed run so the dropdown defaults to the newest entry.
+    """
+    if run_id is not None:
+        run = db.scalar(
+            select(TestRun).where(
+                TestRun.id == run_id,
+                TestRun.project_id == project_id,
+                TestRun.run_type == "test",
+            )
+        )
+        if run is not None:
+            return run
+    return db.scalar(
         select(TestRun)
         .where(
             TestRun.project_id == project_id,
             TestRun.run_type == "test",
             TestRun.status.in_([TestRunStatus.passed, TestRunStatus.failed]),
-            TestRun.summary.isnot(None),
         )
         .order_by(TestRun.created_at.desc())
         .limit(1)
     )
-    if run is None or run.summary is None:
-        return None
-    return AllureSummary.from_json(run.summary, run)
 
 
 def _get_completed_runs(project_id: str, db: Session, *, limit: int = 20) -> list[TestRun]:
