@@ -1,6 +1,0 @@
-{
-  "item_id": "I-00120",
-  "bottom_line": "No actionable patterns detected. Workflow ran cleanly across all steps; two fix cycles were legitimate corrections (wrong test assertion in S06; mypy Any-return in S10) that both converged in a single pass.",
-  "coverage_notes": "Read S01–S07, S08–S09, S10 (run1, fix1, run3), S11–S15 (tail -100), S16 (run1, browser_env_up) logs in full. S13–S15 logs are large (452KB, 165KB, 838KB) — read tails only; no errors found. DB telemetry via `iw item-status --json` confirmed step sequence. S17 log read in full.",
-  "findings": []
-}
