@@ -98,15 +98,12 @@ dep-check:
 		--extend-exclude "skills/.*" || true
 
 quality: lint format typecheck test-assertions dead-code dep-check
-	@$(MAKE) check-column-docs || true
+	@$(MAKE) check-column-docs
 
-# DB-column doc scanner gate (CR-00085, Phase-4 4.5) — flag SQLAlchemy
-# Column declarations missing a `doc=` description. See
-# scripts/check_db_column_docs.py and orch/db/column_docs_baseline.txt.
-# Warn-first during burn-in; a follow-up CR flips it blocking once the
-# baseline is small enough.
+# DB-column doc scanner gate (CR-00085, Phase-4 4.5) — Blocking.
+# Every SQLAlchemy Column declaration must carry a `doc=` description.
 check-column-docs:
-	uv run python scripts/check_db_column_docs.py --baseline orch/db/column_docs_baseline.txt
+	uv run python scripts/check_db_column_docs.py
 
 # --- Tests ---
 # Coverage flags live on the FULL-SUITE targets (here + test-parallel + allure-unit/all).

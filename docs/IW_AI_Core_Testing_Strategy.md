@@ -375,7 +375,7 @@ Run by `make quality` (lint + format-check + typecheck) and `make check` (`quali
 | Architecture | `scripts/arch_check.py` (layer-boundary import rules) | 0 violations | `make arch-check` |
 | Dead-code detection | `vulture` | warnings (warn-only in Phase-1) | `make dead-code` |
 | Dependency hygiene | `deptry` | warnings (warn-only in Phase-1) | `make dep-check` |
-| DB-column doc gate (CR-00085, P4-4.5) | `scripts/check_db_column_docs.py` against `orch/db/column_docs_baseline.txt` | warnings during burn-in (warn-first); flips to blocking in `CR-00085-followup-column-docs-gate-blocking` | `make check-column-docs` (informational in `make quality`; `lint-typecheck` GH job runs it with `\|\| true`) |
+| DB-column doc gate (CR-00085, P4-4.5) | `scripts/check_db_column_docs.py` (no baseline) | blocking since CR-00092 (2026-05-28) | `make check-column-docs` (blocking in `make quality` and GH `lint-typecheck` job) |
 | Security — deps & SAST (basic) | `pip-audit` (`-l --strict`) + `bandit` (`-r orch dashboard executor -ll`) | advisory (currently `|| true`) | `make security-deps` (alias `make security-sast`) |
 | Security — IaC | `trivy config` HIGH/CRITICAL | exit 1 on findings | `make security-iac` |
 | Security — Secret scan (gitleaks) | `gitleaks detect --no-git --config .gitleaks.toml` | 0 findings; blocking | `make security-secrets` (8th daemon QV gate); pre-commit hook; GH `secrets-scan` job |
@@ -502,7 +502,7 @@ The full phased plan, with per-item rationale, approach, delivery vehicle, and s
 | Cross-project isolation matrix | ✅ DONE 2026-05-21 (CR-00074) — `tests/integration/test_cross_project_isolation.py`; `second_project` fixture + `tests/fixtures/dual_project_seed.py`; parametrized over dashboard routes / `iw` commands / global aggregation / per-worktree-DB boundary; `KNOWN_LEAK` allowlist (empty); `make test-isolation`; documented in §2 Layer 7 + §5 gate table + skill + TESTS_ENHANCEMENT.md (3.4) |
 | Security test module (live-DB-guard net, authz negatives, doc-render SSRF) | ✅ DONE 2026-05-21 (CR-00075) — `tests/integration/security/` package; `test_live_db_write_guard`, `test_authz_negative_paths`, `test_doc_render_ssrf_path_traversal`, `test_agent_context_env_handling`; genuine vulns → xfail + Incident; `make test-security-module`; documented in §2 Layer 5 + §5 gate table + skill + TESTS_ENHANCEMENT.md (3.5) |
 | Data-layer module (migration round-trip / FTS invariant / revision-skew / DB-identity) | ✅ (CR-00076, 2026-05-21) — `tests/integration/data_layer/` package + `make data-layer-check`; extends, does not replace, the migration round-trip (3.6) |
-| DB-column doc gate (4.5) | ✅ (CR-00085, 2026-05-24) — `make check-column-docs` + baseline `orch/db/column_docs_baseline.txt`; warn-first during burn-in; follow-up CR-00085-followup-column-docs-gate-blocking will flip to blocking |
+| DB-column doc gate (4.5) | ✅ (CR-00085, 2026-05-24; CR-00092, 2026-05-28) — baseline removed; `make check-column-docs` now blocking in `make quality` + GH `test-quality.yml` |
 | Visual regression for rendered HTML/PDF docs | ✅ (CR-00082, 2026-05-25) |
 | Daemon chaos / fault-injection | ✅ (F-00089, 2026-05-26) — `tests/integration/daemon_chaos/` harness + 5 scenario modules (S01–S05); `make daemon-chaos-smoke` (blocking smoke: S02 + S03); `make daemon-chaos-full` (full matrix, nightly/workflow-dispatch); documented in §2 Layer 9 + §5 gate table + TESTS_ENHANCEMENT.md (4.3) |
 | Performance budgets | ✅ DONE — CR-00083 (2026-05-24) |

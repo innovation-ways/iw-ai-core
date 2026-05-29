@@ -89,6 +89,14 @@ class TestSparkline:
         assert svg is not None
         assert "<path" in svg
         assert "M " in svg
+        # Divide-by-zero guard: identical values must produce finite, equal
+        # y-coordinates (a flat line), not NaN/inf from a zero range.
+        import re
+
+        coords = re.findall(r"[ML]\s+([\d.]+),([\d.]+)", svg)
+        assert len(coords) == 3, f"expected 3 plotted points for 3 inputs, got: {coords}"
+        ys = [float(y) for _, y in coords]
+        assert len(set(ys)) == 1, f"identical inputs must render a flat line; ys={ys}"
 
     def test_sparkline_two_points(self) -> None:
         """Two points: M x0,y0 L x1,y1."""

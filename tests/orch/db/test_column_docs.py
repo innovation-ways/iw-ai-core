@@ -24,21 +24,25 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-def test_scanner_finds_undocumented_columns_against_empty_baseline():
-    """RED: scanner with empty baseline must find real undocumented columns.
+def test_all_model_columns_are_documented():
+    """CR-00092: every Column in orch/db/models.py now carries a doc=.
 
-    This is the TDD RED: before writing the scanner, this test module
-    cannot even be imported (no such module).  Once the scanner is implemented,
-    it finds real undocumented columns in orch/db/models.py and passes.
+    The column-docs scrub (CR-00092) added a ``doc=`` description to every
+    Column declaration, so scanning with an EMPTY baseline must yield zero
+    violations. This is the blocking invariant the gate now enforces; if a
+    future Column lands without a doc=, this test (and ``make check-column-docs``)
+    fails naming the offending column.
+
+    (The scanner's ability to *detect* an undocumented column is covered by
+    test_scanner_flags_new_undocumented_column_on_synthetic_mapper below, which
+    no longer depends on orch.db.models carrying any undocumented columns.)
     """
     from scripts.check_db_column_docs import scan
 
-    violations = scan(baseline=[])  # empty allowlist
-    assert len(violations) > 0, "expected real undocumented columns on orch/db/models.py"
-    # Strengthen: specific columns we know are undocumented today should appear.
-    fqns = {v.fqn for v in violations}
-    assert "orch.db.models.WorkItem.id" in fqns or any("WorkItem" in f for f in fqns), (
-        f"WorkItem columns should be undocumented today; got sample: {sorted(fqns)[:5]}"
+    violations = scan(baseline=[])  # empty allowlist — no columns may be undocumented
+    assert violations == [], (
+        "every Column in orch/db/models.py must carry doc=; "
+        f"undocumented: {sorted(v.fqn for v in violations)}"
     )
 
 
@@ -47,15 +51,16 @@ def test_scanner_finds_undocumented_columns_against_empty_baseline():
 # ---------------------------------------------------------------------------
 
 
-def test_scanner_returns_zero_new_violations_against_committed_baseline():
-    """GREEN: committed baseline must admit all today's undocumented columns."""
-    from scripts.check_db_column_docs import scan
+def test_column_docs_baseline_is_removed():
+    """CR-00092: the burn-in baseline file is deleted now that the scrub is complete.
 
+    The scanner runs against ``--baseline /dev/null`` (no allowlist) in the gate;
+    the committed baseline allow-list is gone. This test guards against the file
+    being reintroduced, which would silently re-open the warn-first escape hatch.
+    """
     baseline_path = Path("orch/db/column_docs_baseline.txt")
-    assert baseline_path.exists(), f"baseline not found at {baseline_path}"
-    new_violations = scan(baseline=baseline_path)
-    assert new_violations == [], (
-        f"unexpected NEW undocumented columns: {[v.fqn for v in new_violations]}"
+    assert not baseline_path.exists(), (
+        f"baseline file must be deleted after the CR-00092 scrub; found {baseline_path}"
     )
 
 
