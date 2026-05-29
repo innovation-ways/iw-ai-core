@@ -165,6 +165,21 @@ For each step in the manifest with a `prompt` field:
       in a `tests-impl` step. **FAIL** on any `make test-integration`
       reference inside the verification section of any implementation
       prompt.
+- [ ] **Verification Placement Rule (canonical — `skills/iw-workflow/SKILL.md`)**:
+      an implementation step (`database-impl`, `backend-impl`, `api-impl`,
+      `frontend-impl`, `pipeline-impl`, `template-impl`) MUST NOT carry a
+      full-suite / aggregate-gate **completion gate or acceptance criterion**.
+      **FAIL** the review if an implementation prompt (or the design's Acceptance
+      Criteria mapped to an implementation step) requires any of: "`make quality`
+      exits 0", "`make check` passes", "all quality gates green", or "demonstrate
+      that gate X blocks/passes" as a condition for that step to report
+      `complete`. Such verification belongs to a dedicated `tests-impl` step
+      (writes the test) and/or the `qv-gate` steps (run the suites/gates). When a
+      change's *deliverable is a gate* (flip-to-blocking, prove-it-fails-on-regression),
+      require a separate `tests-impl`/`qv-gate` step for the demonstration rather
+      than a clause inside the implementation step. (Rationale: CR-00092 / I-00117 —
+      an implementation step gated on `make quality` dead-ended when the gate was
+      red for out-of-scope reasons, and implementation steps get no fix cycle.)
 
 ## Step 5: Cross-Reference Consistency
 

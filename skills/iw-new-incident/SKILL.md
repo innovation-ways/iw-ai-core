@@ -254,6 +254,8 @@ Most incidents need only **1-2 implementation agents**. Don't over-scope.
 
 Follow the **canonical step-granularity rule** in `skills/iw-workflow/SKILL.md`: each implementation step targets **one cohesive concern** (roughly one module or one closely-related file group); multi-concern work is split across multiple steps. Many small steps are preferred over one large step — a single step bundling unrelated work is the primary failure mode.
 
+Also follow the **canonical Verification Placement Rule** in `skills/iw-workflow/SKILL.md`: never make a full test suite or aggregate quality gate (`make quality`, `make check`, `make test-*`) a completion gate or acceptance criterion of an **implementation** (fix) step. The reproduction/regression tests belong to the mandatory `tests-impl` step; full-suite/aggregate-gate verification belongs to the `qv-gate` steps. Map each Acceptance Criterion that asserts "gate/suite passes" to the `tests-impl`/`qv-gate` steps, never to a `*-impl` fix step. (See CR-00092 / I-00117.)
+
 Apply this checklist to every step you propose in the manifest:
 
 - Does this step touch more than one unrelated area / module? → **split it**.

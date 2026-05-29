@@ -159,6 +159,16 @@ downstream (`unit-tests`, `integration-tests`, `frontend-tests`); duplicating
 them here burns this step's budget and is a common cause of step timeouts
 (see I-00073/S03 post-mortem, 2026-05-08).
 
+> **Verification Placement Rule (canonical — `skills/iw-workflow/SKILL.md`)**: a
+> full suite or aggregate gate passing is **never** a completion gate for this
+> implementation step. If your assigned task text contains an acceptance criterion
+> like "`make quality`/`make check` exits 0", "all quality gates are green", or
+> "demonstrate that gate X blocks/passes", treat that as a **design defect**: that
+> verification belongs to a dedicated `tests-impl` or `qv-gate` step, not here.
+> Implement your code/config change, run only your targeted tests, and raise a
+> blocker noting the mis-placed verification rather than chasing a full-gate-green
+> state you may not be able to reach in scope (see CR-00092 / I-00117).
+
 Scope rules:
 
 1. **Tests step (`tests-impl`)** — run only the test file(s) **you wrote or
