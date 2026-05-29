@@ -1117,7 +1117,13 @@ class TestNoSqliteRegressions:
 
 
 def _write_opencode_auth_oauth(tmp_path: Path, *, access: str, account_id: str) -> Path:
-    """Write a realistic opencode auth.json with an openai OAuth entry."""
+    """Write a realistic opencode auth.json with an openai OAuth entry.
+
+    Uses a fixed future expiry (year 2200 epoch-ms) so that tests targeting
+    network / HTTP error paths are not short-circuited by the proactive expiry
+    check in _codex_usage(). Tests that specifically exercise proactive expiry
+    (I-00120) set their own expires value inline.
+    """
     auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
     auth_file.parent.mkdir(parents=True, exist_ok=True)
     auth_file.write_text(
@@ -1128,7 +1134,8 @@ def _write_opencode_auth_oauth(tmp_path: Path, *, access: str, account_id: str) 
                     "type": "oauth",
                     "access": access,
                     "refresh": "refresh-tok",
-                    "expires": 1_779_689_299_438,
+                    # Far future — equivalent to "never expires during test"
+                    "expires": 4_867_344_000_000,  # ~Wed 2124-01-01
                     "accountId": account_id,
                 },
             }
@@ -1494,6 +1501,7 @@ class TestCodexUsage:
             "block_reset": None,
             "week_reset": None,
             "plan_type": None,
+            "status": "unauthenticated",
         }
         assert "Codex OAuth credentials not found" in caplog.text
 
@@ -1514,30 +1522,38 @@ class TestCodexUsage:
             assert result["week_pct"] == 33
             assert result["plan_type"] == "plus"
 
-    def test_handles_http_error(
+    def test_handles_http_error_401_logs_warning(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """401 / 404 from /wham/usage → zeroed dict, logged once."""
+        """HTTP 401 from /wham/usage → zeroed dict with status=expired, WARNING log (not ERROR)."""
         import httpx
 
         _write_opencode_auth_oauth(tmp_path, access="tok-abc", account_id="acct-1")
 
+        class Fake401Response:
+            status_code = 401
+
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
-            raise httpx.HTTPStatusError("401", request=MagicMock(), response=MagicMock())
+            raise httpx.HTTPStatusError(
+                "token_expired",
+                request=MagicMock(),
+                response=Fake401Response(),
+            )
 
         with monkeypatch.context() as m:
             m.setattr("pathlib.Path.home", lambda: tmp_path)
             m.setattr("httpx.get", fake_get)
             from orch import llm_usage
 
-            with caplog.at_level(logging.ERROR):
+            with caplog.at_level(logging.WARNING):
                 result = llm_usage._codex_usage()
             assert result["block_pct"] == 0
             assert result["week_pct"] == 0
-            assert "Codex usage fetch failed" in caplog.text
+            assert result["status"] == "expired"
+            assert "token" in caplog.text.lower() or "expired" in caplog.text.lower()
 
     def test_handles_connect_timeout(
         self,
@@ -1665,3 +1681,430 @@ class TestGetLlmUsageCodexIntegration:
         # Codex zeroed by the outer fallback
         assert result["codex"]["block_pct"] == 0
         assert result["codex"]["week_pct"] == 0
+
+
+class TestOAuthIsExpired:
+    """Tests for _oauth_is_expired() boundary table."""
+
+    def test_expired_in_past(self) -> None:
+        """expires epoch-ms in the past → True."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        past = int(datetime.now(UTC).timestamp() * 1000) - 1
+        assert llm_usage._oauth_is_expired({"expires": past}) is True
+
+    def test_expired_exactly_now(self) -> None:
+        """expires epoch-ms exactly at now → True (at-or-before rule)."""
+        import time
+
+        from orch import llm_usage
+
+        now_ms = int(time.time() * 1000)
+        assert llm_usage._oauth_is_expired({"expires": now_ms}) is True
+
+    def test_not_expired_in_future(self) -> None:
+        """expires epoch-ms in the future → False."""
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        future = int(datetime.now(UTC).timestamp() * 1000) + 3_600_000
+        assert llm_usage._oauth_is_expired({"expires": future}) is False
+
+    def test_missing_expires_returns_false(self) -> None:
+        """No 'expires' key → False (treat unknown as valid)."""
+        from orch import llm_usage
+
+        assert llm_usage._oauth_is_expired({}) is False
+        assert llm_usage._oauth_is_expired({"access": "tok"}) is False
+
+    def test_epoch_0_returns_false_not_expired(self) -> None:
+        """expires=0.0 (epoch-ms: Jan 1970) is treated as 'unknown' — False.
+
+
+        The 0-sentinel means 'unset / never configured' rather than 'definitively
+        expired in 1970'. The remote call decides whether to proceed.
+        """
+        from orch import llm_usage
+
+        assert llm_usage._oauth_is_expired({"expires": 0.0}) is False
+
+    def test_non_string_non_numeric_expires_returns_false(self) -> None:
+        """String or None expires values → False (treat malformed as valid)."""
+        from orch import llm_usage
+
+        assert llm_usage._oauth_is_expired({"expires": "2025-01-01"}) is False
+        assert llm_usage._oauth_is_expired({"expires": None}) is False
+
+
+class TestCodexUsageNeverRaises:
+    """_codex_usage() must never raise — all paths return the zeroed dict."""
+
+    def test_no_raise_when_oauth_none(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """_codex_usage() does not raise when _load_openai_oauth() returns None."""
+        import logging
+
+        from orch import llm_usage
+
+        monkeypatch.setattr("orch.llm_usage._load_openai_oauth", lambda: None)
+        with caplog.at_level(logging.WARNING):
+            result = llm_usage._codex_usage()
+        assert isinstance(result, dict)
+        assert "status" in result
+
+    def test_no_raise_when_token_proactively_expired(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """_codex_usage() does not raise when token is proactively expired."""
+        import logging
+
+        from orch import llm_usage
+
+        # expires=1 → far in the past → proactive expiry
+        monkeypatch.setattr(
+            "orch.llm_usage._load_openai_oauth",
+            lambda: {"access": "tok", "accountId": "a", "expires": 1},
+        )
+        with caplog.at_level(logging.WARNING):
+            result = llm_usage._codex_usage()
+        assert isinstance(result, dict)
+        assert "status" in result
+
+    def test_no_raise_on_network_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """_codex_usage() does not raise on a generic network exception."""
+        import logging
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        future_exp = int(datetime.now(UTC).timestamp() * 1000) + 3_600_000
+        auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+        auth_file.parent.mkdir(parents=True, exist_ok=True)
+        auth_file.write_text(
+            json.dumps(
+                {
+                    "openai": {
+                        "type": "oauth",
+                        "access": "tok",
+                        "refresh": "refresh",
+                        "expires": future_exp,
+                        "accountId": "a",
+                    }
+                }
+            )
+        )
+
+        import httpx
+
+        def boom(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            raise httpx.ConnectTimeout("connection refused")
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.get", boom)
+            with caplog.at_level(logging.ERROR):
+                result = llm_usage._codex_usage()
+        assert isinstance(result, dict)
+        assert "status" in result
+
+    def test_no_raise_on_json_decode_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """_codex_usage() does not raise when response body is not JSON."""
+        import json
+        import logging
+        from datetime import UTC, datetime
+
+        from orch import llm_usage
+
+        future_exp = int(datetime.now(UTC).timestamp() * 1000) + 3_600_000
+        auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+        auth_file.parent.mkdir(parents=True, exist_ok=True)
+        auth_file.write_text(
+            json.dumps(
+                {
+                    "openai": {
+                        "type": "oauth",
+                        "access": "tok",
+                        "refresh": "refresh",
+                        "expires": future_exp,
+                        "accountId": "a",
+                    }
+                }
+            )
+        )
+
+        def gibberish(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            resp = MagicMock()
+            resp.json.side_effect = json.JSONDecodeError("invalid", "", 0)
+            return resp
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.get", gibberish)
+            with caplog.at_level(logging.ERROR):
+                result = llm_usage._codex_usage()
+        assert isinstance(result, dict)
+        assert "status" in result
+
+
+def test_codex_usage_expired_token_reports_expired_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    """FAILS before the fix (no 'status' key); PASSES after.
+
+    A 401 token_expired from the endpoint must surface status == 'expired',
+    not an undifferentiated zeroed dict.  This variant directly monkeypatches
+    _load_openai_oauth so it runs without touching the filesystem.
+    """
+    from orch import llm_usage
+
+    monkeypatch.setattr(
+        llm_usage,
+        "_load_openai_oauth",
+        lambda: {"access": "tok", "accountId": "acct", "expires": 1},
+    )
+    result = llm_usage._codex_usage()
+    assert result.get("status") == "expired", (
+        f"expected status='expired', got status={result.get('status')!r}"
+    )
+    assert result["block_pct"] == 0
+
+
+class TestCodexStatusDiscriminator:
+    """Tests for I-00120: Codex usage status discriminator.
+
+    _codex_usage() must return a dict with a "status" key distinguishing:
+      ok / expired / unauthenticated / error
+    """
+
+    def test_expired_token_proactive_yields_expired_status(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A token with expires <= now is detected proactively (no network call)."""
+        from datetime import UTC, datetime
+
+        auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+        auth_file.parent.mkdir(parents=True, exist_ok=True)
+        auth_file.write_text(
+            json.dumps(
+                {
+                    "openai": {
+                        "type": "oauth",
+                        "access": "eyJtoken.expired",
+                        "refresh": "refresh",
+                        "expires": 1,  # epoch-ms: far in the past → expired
+                        "accountId": "acct-1",
+                    }
+                }
+            )
+        )
+
+        # No httpx call should happen — tracking to assert after
+        no_network_calls: list[str] = []
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            no_network_calls.append(url)
+            return _fake_response(_codex_usage_payload())
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.get", fake_get)
+            from orch import llm_usage
+
+            with caplog.at_level(logging.WARNING):
+                result = llm_usage._codex_usage()
+
+        assert result.get("status") == "expired", (
+            f"expected status='expired', got status={result.get('status')!r}. Full dict: {result}"
+        )
+        # Proactive check short-circuits before making any network call
+        assert len(no_network_calls) == 0, (
+            f"expected 0 network calls (proactive expiry), got {len(no_network_calls)}"
+        )
+        assert "token" in caplog.text.lower() or "expired" in caplog.text.lower()
+
+    def test_401_response_yields_expired_status(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """HTTP 401 from /wham/usage → status='expired', not 'error'."""
+        import httpx
+
+        _write_opencode_auth_oauth(tmp_path, access="tok-abc", account_id="acct-1")
+
+        class Fake401Response:
+            status_code = 401
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            raise httpx.HTTPStatusError(
+                "token_expired",
+                request=MagicMock(),
+                response=Fake401Response(),
+            )
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.get", fake_get)
+            from orch import llm_usage
+
+            with caplog.at_level(logging.WARNING):
+                result = llm_usage._codex_usage()
+
+        assert result.get("status") == "expired", (
+            f"expected 'expired', got {result.get('status')!r}"
+        )
+
+    def test_unauthenticated_yields_unauthenticated_status(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """No auth.json / no openai entry → status='unauthenticated'."""
+        # Ensure no opencode auth file exists by pointing home at empty tmp_path
+        empty_tmp = Path("/tmp/nonexistent-home-00120")
+        empty_tmp.mkdir(exist_ok=True)
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: empty_tmp)
+            from orch import llm_usage
+
+            with caplog.at_level(logging.WARNING):
+                result = llm_usage._codex_usage()
+
+        assert result.get("status") == "unauthenticated", (
+            f"expected status='unauthenticated', got {result.get('status')!r}"
+        )
+
+    def test_non_401_http_error_yields_error_status(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """HTTP 500 from upstream → status='error', not 'expired'."""
+        from datetime import UTC, datetime
+
+        import httpx
+
+        # Use a future expiry so proactive check passes, letting the 500 bubble up
+        future_exp = int(datetime.now(UTC).timestamp() * 1000) + 3_600_000
+        auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+        auth_file.parent.mkdir(parents=True, exist_ok=True)
+        auth_file.write_text(
+            json.dumps(
+                {
+                    "openai": {
+                        "type": "oauth",
+                        "access": "tok-abc",
+                        "refresh": "refresh",
+                        "expires": future_exp,
+                        "accountId": "acct-1",
+                    }
+                }
+            )
+        )
+
+        class Fake500Response:
+            status_code = 500
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            raise httpx.HTTPStatusError(
+                "server error",
+                request=MagicMock(),
+                response=Fake500Response(),
+            )
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.get", fake_get)
+            from orch import llm_usage
+
+            with caplog.at_level(logging.ERROR):
+                result = llm_usage._codex_usage()
+
+        assert result.get("status") == "error", f"expected 'error', got {result.get('status')!r}"
+
+    def test_ok_response_yields_ok_status(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Successful usage response → status='ok'."""
+        _write_opencode_auth_oauth(tmp_path, access="tok-abc", account_id="acct-1")
+        from datetime import UTC, datetime
+
+        future_exp = int(datetime.now(UTC).timestamp() * 1000) + 3600_000
+
+        auth_file = tmp_path / ".local" / "share" / "opencode" / "auth.json"
+        auth_file.write_text(
+            json.dumps(
+                {
+                    "openai": {
+                        "type": "oauth",
+                        "access": "tok-abc",
+                        "refresh": "refresh",
+                        "expires": future_exp,
+                        "accountId": "acct-1",
+                    }
+                }
+            )
+        )
+
+        def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            return _fake_response(_codex_usage_payload(primary_pct=30, secondary_pct=10))
+
+        with monkeypatch.context() as m:
+            m.setattr("pathlib.Path.home", lambda: tmp_path)
+            m.setattr("httpx.get", fake_get)
+            from orch import llm_usage
+
+            result = llm_usage._codex_usage()
+
+        assert result.get("status") == "ok", f"expected 'ok', got {result.get('status')!r}"
+        assert result["block_pct"] == 30
+        assert result["week_pct"] == 10
+
+    def test_outer_fallback_in_get_llm_usage_yields_error_status(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """When _codex_usage() raises, get_llm_usage outer fallback returns status='error'."""
+
+        def boom() -> dict[str, Any]:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("orch.llm_usage._codex_usage", boom)
+        monkeypatch.setattr("orch.llm_usage._load_minimax_key", lambda: None)
+
+        import importlib
+
+        import orch.llm_usage as llm_usage_mod
+
+        importlib.reload(llm_usage_mod)
+        monkeypatch.setattr("orch.llm_usage._codex_usage", boom)
+        monkeypatch.setattr("orch.llm_usage._load_minimax_key", lambda: None)
+
+        result = llm_usage_mod.get_llm_usage()
+        assert result["codex"].get("status") == "error", (
+            f"expected 'error', got {result['codex'].get('status')!r}"
+        )
