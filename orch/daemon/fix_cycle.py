@@ -519,6 +519,44 @@ def handle_spec_mismatch_escalation(
     )
 
 
+def handle_recovery_exhausted_escalation(
+    db: Session,
+    step: WorkflowStep,
+    project_id: str,
+    failure_reason: str | None,
+) -> None:
+    """Record escalation when a failed step has no remaining auto-recovery path.
+
+    Called by batch_manager when the step is failed, non-fixable/non-retryable,
+    or retries are exhausted. Emits a DaemonEvent and keeps the WorkflowStep in
+    ``failed`` for human review. No FixCycle is created.
+    """
+    _emit_event(
+        db,
+        project_id,
+        "step_recovery_exhausted",
+        step.work_item_id,
+        "work_item",
+        (
+            f"Step {step.step_id} failed and has no remaining auto-recovery path "
+            "(no fix cycle and no retry attempts left). Human review required."
+        ),
+        {
+            "step_id": step.step_id,
+            "step_type": step.step_type.value if step.step_type else None,
+            "failure_reason": failure_reason or "",
+        },
+    )
+
+    logger.warning(
+        "[%s] Step recovery exhausted for %s/%s: %s",
+        project_id,
+        step.work_item_id,
+        step.step_id,
+        failure_reason or "(no reason)",
+    )
+
+
 def _latest_failure_reason(db: Session, step: WorkflowStep) -> str | None:
     """Return the error_message of the latest failed StepRun, or None."""
     latest = (
