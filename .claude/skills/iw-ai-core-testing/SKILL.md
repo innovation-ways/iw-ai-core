@@ -1,6 +1,6 @@
 ---
 name: iw-ai-core-testing
-version: "1.0.0"
+version: "1.0.1"
 description: IW AI Core testing standards, patterns, and quality rules for writing, reviewing, and designing tests. Covers assertion strength, the live-DB write guard and testcontainer rules, cross-project isolation, state-machine/property-test guidance, TDD with RED evidence, and the test red-flag checklist. Use when writing tests, adding test coverage, reviewing tests, strengthening tests, or designing a test plan for IW AI Core.
 allowed-tools: Read, Grep, Glob
 ---
@@ -324,6 +324,7 @@ When adding a perf test for a new hot path:
 1. **RED** — write a failing test that defines the expected behaviour. *Run it; confirm it fails for the right reason.* Record the failing-test output in your execution report.
 2. **GREEN** — write the minimal implementation to make it pass.
 3. **REFACTOR** — clean up while keeping every test green.
+4. **VERIFY ASSERTION STRENGTH** — run `make test-assertions` against the files you just wrote and fix any violations before calling step-done. A tautology caught here is cheaper to fix than one that blocks the QV assertions gate (S09) and spawns a separate fix item.
 
 The test is written before the implementation — not after, not alongside. A test added *after* the code tends to confirm "what the code does" rather than "what it should do". (Recording RED evidence is being formalised — roadmap item 0.4.)
 

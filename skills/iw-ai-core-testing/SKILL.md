@@ -1,6 +1,6 @@
 ---
 name: iw-ai-core-testing
-version: "1.0.0"
+version: "1.0.1"
 description: IW AI Core testing standards, patterns, and quality rules for writing, reviewing, and designing tests. Covers assertion strength, the live-DB write guard and testcontainer rules, cross-project isolation, state-machine/property-test guidance, TDD with RED evidence, and the test red-flag checklist. Use when writing tests, adding test coverage, reviewing tests, strengthening tests, or designing a test plan for IW AI Core.
 allowed-tools: Read, Grep, Glob
 ---
