@@ -1,0 +1,36 @@
+{
+  "item_id": "I-00117",
+  "bottom_line": "Make QV gates scope-aware so unrelated/out-of-scope failures do not consume all fix cycles.",
+  "coverage_notes": "DB telemetry available (iw db-identity check: UP). All item logs in ai-dev/logs for I-00117 were under 1 MB; logs were read directly (no tail/head sampling required). Prompt and manifest were also reviewed.",
+  "findings": [
+    {
+      "severity": "HIGH",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "QV assertion gate deadlocked on out-of-scope failures",
+      "recommendation": "Add pre-check logic in QV/fix-cycle flow to detect out-of-scope failing files and escalate/amend scope instead of retrying the same gate.",
+      "evidence": [
+        "ai-dev/logs/I-00117_S09_run1.log:1 — 'tests/unit/test_llm_usage.py:1745: tautology...'",
+        "ai-dev/logs/I-00117_S09_run12.log:6 — 'Failed I-00117 step S09: assertions failed: exit=2'",
+        "ai-dev/logs/I-00117_S09_fix5.log:106 — 'fails, but only due to out-of-scope file'"
+      ],
+      "effort": "M",
+      "paste_prompt": "/iw-new-incident Add scope-aware QV retry handling so out-of-scope failing files trigger escalation/scope amendment instead of repeated fix cycles; analyzed in I-00117 (see ai-dev/work/I-00117/reports/I-00117_self_assess_report.md)."
+    },
+    {
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "Duplicate successful reruns after step already completed",
+      "recommendation": "Enforce idempotency guard before launching a run (skip if step already terminal/completed) and log dedupe reason.",
+      "evidence": [
+        "ai-dev/logs/I-00117_S07_run1.log:3 — 'Completed I-00117 step S07'",
+        "ai-dev/logs/I-00117_S07_run2.log:3 — 'Completed I-00117 step S07'",
+        "ai-dev/logs/I-00117_S08_run1.log:3 — 'Completed I-00117 step S08'",
+        "ai-dev/logs/I-00117_S08_run2.log:3 — 'Completed I-00117 step S08'"
+      ],
+      "effort": "S",
+      "paste_prompt": "/iw-new-cr Add daemon idempotency guard to prevent duplicate reruns after a step is already completed; analyzed in I-00117 (see ai-dev/work/I-00117/reports/I-00117_self_assess_report.md)."
+    }
+  ]
+}

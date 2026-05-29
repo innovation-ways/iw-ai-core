@@ -1,0 +1,111 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00117",
+  "type": "Issue",
+  "title": "Daemon silently dead-ends a non-fixable, non-retryable failed step",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/fix_cycle.py",
+      "orch/daemon/batch_manager.py",
+      "tests/integration/test_recovery_exhausted_escalation.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Add handle_recovery_exhausted_escalation() to fix_cycle.py and call it from the silent else branch in batch_manager.py: emit a step_recovery_exhausted DaemonEvent and transition work_item + batch_item to failed.",
+      "prompt": "prompts/I-00117_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01: silent branch removed, escalation event emitted, statuses transitioned, SPEC_MISMATCH path preserved, scope clean.",
+      "prompt": "prompts/I-00117_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Integration reproduction + regression tests: exhausted impl step escalates visibly (event + failed statuses); SPEC_MISMATCH still routes to its own handler.",
+      "prompt": "prompts/I-00117_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 test coverage: semantic assertions, repro targets the bug, SPEC_MISMATCH mutual-exclusion, testcontainer rules.",
+      "prompt": "prompts/I-00117_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-step review: AC1-AC3 mechanically, no remaining silent failure path, scope discipline.",
+      "prompt": "prompts/I-00117_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scanning (gitleaks)"
+    },
+    {
+      "step": "S14",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00117_S14_SelfAssess_prompt.md"
+    }
+  ]
+}

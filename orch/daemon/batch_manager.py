@@ -621,12 +621,21 @@ class BatchManager:
                 fix_cycle.retry_step(db, has_failed, self.project_id)
             else:
                 # Step is not fixable and not retryable, or retries exhausted
-                logger.warning(
-                    "[%s] Step %s/%s failed and cannot be auto-recovered — needs human review",
+                fix_cycle.handle_recovery_exhausted_escalation(
+                    db,
+                    has_failed,
                     self.project_id,
-                    batch_item.work_item_id,
-                    has_failed.step_id,
+                    failure_reason,
                 )
+                batch_item.status = BatchItemStatus.failed
+                work_item = (
+                    db.query(WorkItem)
+                    .filter_by(project_id=self.project_id, id=batch_item.work_item_id)
+                    .first()
+                )
+                if work_item is not None:
+                    work_item.status = WorkItemStatus.failed
+                db.commit()
             return
 
         # No active or failed steps → advance to next step (or complete item)
