@@ -1,0 +1,113 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "I-00118",
+  "type": "Issue",
+  "title": "Pre-existing red QV gate poisons in-flight items (baseline subtraction covers only 4 gates)",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/daemon/qv_baseline.py",
+      "orch/daemon/fix_cycle.py",
+      "orch/daemon/batch_manager.py",
+      "tests/unit/orch/daemon/test_qv_baseline.py",
+      "tests/integration/daemon/test_baseline_qv_pipeline.py"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "backend-impl",
+      "description": "Add parse_assertion_scanner + a generic line-keyed fallback parser to qv_baseline.py and a parser_for_gate resolver (never None); wire _compute_qv_baselines and _get_qv_findings to use it so all gates get baseline subtraction.",
+      "prompt": "prompts/I-00118_S01_Backend_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "code-review-impl",
+      "description": "Per-agent review of S01: assertions covered, generic fallback default, existing gates unchanged, no remaining unknown-gate skip, scope clean.",
+      "prompt": "prompts/I-00118_S02_CodeReview_Backend_prompt.md"
+    },
+    {
+      "step": "S03",
+      "agent": "tests-impl",
+      "description": "Parser unit tests (assertion scanner + generic fallback + resolver) and integration test: base-red gate suppressed, new failure surfaces.",
+      "prompt": "prompts/I-00118_S03_Tests_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S03 coverage: repro targets bug, semantic assertions, resolver-never-None invariant, testcontainer rules.",
+      "prompt": "prompts/I-00118_S04_CodeReview_Tests_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "code-review-final-impl",
+      "description": "Global cross-step review: AC1-AC4 mechanically, no remaining unknown-gate no-baseline path, scope discipline.",
+      "prompt": "prompts/I-00118_S05_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S07",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S08",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S09",
+      "agent": "qv-gate",
+      "gate": "assertions",
+      "command": "make test-assertions",
+      "description": "QV: Assertion scanner (forbid new vacuous tests)"
+    },
+    {
+      "step": "S10",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S11",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make test-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S12",
+      "agent": "qv-gate",
+      "gate": "diff-coverage",
+      "command": "make diff-coverage",
+      "description": "QV: Diff coverage",
+      "timeout": 1800
+    },
+    {
+      "step": "S13",
+      "agent": "qv-gate",
+      "gate": "security-secrets",
+      "command": "make security-secrets",
+      "description": "QV: Secret scanning (gitleaks)"
+    },
+    {
+      "step": "S14",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/I-00118_S14_SelfAssess_prompt.md"
+    }
+  ]
+}

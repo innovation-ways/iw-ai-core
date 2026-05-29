@@ -1070,8 +1070,8 @@ class BatchManager:
             return
 
         from orch.daemon.qv_baseline import (  # noqa: PLC0415
-            GATE_PARSERS,
             fingerprint_to_jsonable,
+            parser_for_gate,
         )
 
         for step in steps:
@@ -1095,15 +1095,7 @@ class BatchManager:
                     continue
                 command = str(manifest_command)
 
-            parser = GATE_PARSERS.get(gate)
-            if parser is None:
-                logger.warning(
-                    "[F-00061] Unknown gate '%s' for step %s/%s — skipping baseline",
-                    gate,
-                    item_id,
-                    step.step_id,
-                )
-                continue
+            parser = parser_for_gate(gate)
 
             try:
                 output = self._run_gate_command(command, worktree_path, gate)

@@ -314,6 +314,128 @@ class TestAC2:
         assert "test_flaky" not in findings
 
 
+class TestAssertionsGateBaseline:
+    def test_pre_existing_assertions_failure_is_suppressed(
+        self,
+        db_session: Session,
+        test_project: Project,
+        fake_worktree: tuple[Path, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        worktree, item_id = fake_worktree
+        step_id = f"{item_id}-S12"
+
+        _, step = _create_item_and_step(
+            db_session,
+            test_project.id,
+            item_id,
+            step_id,
+            "assertions",
+            step_number=12,
+        )
+        write_manifest(
+            worktree,
+            item_id,
+            [
+                {
+                    "step": step_id,
+                    "gate": "assertions",
+                    "command": "make test-assertions",
+                }
+            ],
+        )
+
+        baseline_fp: dict[str, Any] = {
+            "failures": [{"kind": "assertion", "key": "tests/x_test.py::test_foo"}],
+            "unparseable": [],
+        }
+        db_session.add(
+            QvBaseline(
+                step_id=step.id,
+                gate_name="assertions",
+                base_sha="abc123",
+                fingerprint=baseline_fp,
+            )
+        )
+
+        _insert_step_run(
+            db_session,
+            step,
+            log_content="tests/x_test.py:18: tautology: test_foo: every assert is tautological",
+        )
+        db_session.commit()
+
+        monkeypatch.setenv("IW_CORE_BASELINE_QV", "true")
+        with patch("orch.daemon.fix_cycle._resolve_worktree_base_sha", return_value="abc123"):
+            findings = _get_qv_findings(
+                db_session, step, str(worktree), MagicMock(baseline_qv_enabled=True)
+            )
+
+        assert findings == ""
+
+    def test_new_assertions_failure_surfaces(
+        self,
+        db_session: Session,
+        test_project: Project,
+        fake_worktree: tuple[Path, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        worktree, item_id = fake_worktree
+        step_id = f"{item_id}-S12"
+
+        _, step = _create_item_and_step(
+            db_session,
+            test_project.id,
+            item_id,
+            step_id,
+            "assertions",
+            step_number=12,
+        )
+        write_manifest(
+            worktree,
+            item_id,
+            [
+                {
+                    "step": step_id,
+                    "gate": "assertions",
+                    "command": "make test-assertions",
+                }
+            ],
+        )
+
+        baseline_fp: dict[str, Any] = {
+            "failures": [{"kind": "assertion", "key": "tests/x_test.py::test_foo"}],
+            "unparseable": [],
+        }
+        db_session.add(
+            QvBaseline(
+                step_id=step.id,
+                gate_name="assertions",
+                base_sha="abc123",
+                fingerprint=baseline_fp,
+            )
+        )
+
+        _insert_step_run(
+            db_session,
+            step,
+            log_content=(
+                "tests/x_test.py:18: tautology: test_foo: every assert is tautological\n"
+                "tests/y_test.py:9: tautology: test_bar: every assert is tautological"
+            ),
+        )
+        db_session.commit()
+
+        monkeypatch.setenv("IW_CORE_BASELINE_QV", "true")
+        with patch("orch.daemon.fix_cycle._resolve_worktree_base_sha", return_value="abc123"):
+            findings = _get_qv_findings(
+                db_session, step, str(worktree), MagicMock(baseline_qv_enabled=True)
+            )
+
+        assert "test_bar" in findings
+        assert "test_foo" not in findings
+
+
 # ---------------------------------------------------------------------------
 # AC3: Baselines created at setup
 # ---------------------------------------------------------------------------
@@ -411,17 +533,8 @@ class TestAC3:
                 bm._compute_qv_baselines(db_session, batch_item, {"path": str(worktree)})
 
         rows = db_session.query(QvBaseline).all()
-        # I-00049 removed `integration-tests` from GATE_PARSERS because running
-        # `make test-integration` (which spawns testcontainers) as a daemon
-        # baseline reproduced the synchronous-pipe deadlock that froze the
-        # daemon. Steps with that gate are now logged as "Unknown gate … —
-        # skipping baseline" and contribute no QvBaseline row, so we expect
-        # only the lint and unit-tests baselines (2 of the 3 manifest steps).
         rows_by_gate = {r.gate_name: r for r in rows}
-        assert set(rows_by_gate) == {"lint", "unit-tests"}, (
-            f"Expected lint and unit-tests baselines only "
-            f"(integration-tests is excluded by design); got {sorted(rows_by_gate)}"
-        )
+        assert set(rows_by_gate) == {"lint", "unit-tests", "integration-tests"}
         base_shas = {r.base_sha for r in rows}
         assert len(base_shas) == 1
         assert "abc123" in base_shas
