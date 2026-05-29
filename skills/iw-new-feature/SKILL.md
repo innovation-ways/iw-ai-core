@@ -194,6 +194,8 @@ Use parallelism where possible (e.g., Backend + Frontend after Database complete
 
 Follow the **canonical step-granularity rule** in `skills/iw-workflow/SKILL.md`: each implementation step targets **one cohesive concern** (roughly one module or one closely-related file group); multi-concern work is split across multiple steps. Many small steps are preferred over one large step — a single step bundling unrelated work is the primary failure mode.
 
+Also follow the **canonical Verification Placement Rule** in `skills/iw-workflow/SKILL.md`: never make a full test suite or aggregate quality gate (`make quality`, `make check`, `make test-*`) a completion gate or acceptance criterion of an **implementation** step. Test execution belongs to a dedicated `tests-impl` step; full-suite/aggregate-gate verification belongs to the `qv-gate` steps. When the feature's deliverable *is* a gate or a verification behavior, the demonstration is its **own** `tests-impl`/`qv-gate` step — not a clause inside the implementation step. Map each Acceptance Criterion that asserts "gate/suite passes" to a `tests-impl`/`qv-gate` step, never to a `*-impl` implementation step. (See CR-00092 / I-00117.)
+
 Apply this checklist to every step you propose in the manifest:
 
 - Does this step touch more than one unrelated area / module? → **split it**.

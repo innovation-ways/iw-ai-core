@@ -71,6 +71,44 @@ An implementation step MUST target **one cohesive concern** — roughly one modu
 
 > **Why this matters**: CR-00076 S01 accumulated tool output across ~6 unrelated deliverables (3 test modules, a Makefile target, 3 documentation/skill/plan updates, quality gates) in one agent session — exceeding the runtime context budget and failing. The fix is to split work into single-concern steps so per-step agent context stays bounded. Small steps can run in parallel; one monolith cannot.
 
+## Verification Placement Rule (Canonical)
+
+**Test execution and quality-gate verification belong to dedicated steps, never to
+an implementation step.** An implementation step (`database-impl`, `backend-impl`,
+`api-impl`, `frontend-impl`, `pipeline-impl`, `template-impl`) writes code/config
+and may run **only the targeted tests for the code path it changed** (TDD RED/GREEN
+feedback). It MUST NOT be made responsible for the success of a full suite or an
+aggregate gate. Concretely, an implementation step's prompt/acceptance criteria
+MUST NOT include any of:
+
+- "`make quality`" / "`make check`" / "`make test-unit`" / "`make test-integration`"
+  (or any full-suite / aggregate-gate command) **as a completion gate or acceptance
+  criterion**;
+- "the full test suite passes", "all quality gates are green", or "demonstrate that
+  gate X blocks/passes" as a condition the implementation agent must satisfy to
+  report `complete`.
+
+All such verification is owned by the **dedicated steps that already exist**:
+- a `tests-impl` step writes reproduction/regression/behavior tests (and runs only
+  its own new test file);
+- the `qv-gate` steps run the full suites and aggregate gates (`lint`, `assertions`,
+  `format`, `typecheck`, `unit-tests`, `integration-tests`, `diff-coverage`,
+  `security-secrets`, …) — these are fixable, so failures route to recovery;
+- when a change's *deliverable is itself a gate* (e.g. flipping a gate to blocking,
+  or proving a gate now fails on a regression), that demonstration is a separate
+  `tests-impl` (or `qv-gate`) step — NOT a clause inside the implementation step.
+
+> **Why this matters**: CR-00092's S04 (a `database-impl` step) carried an
+> acceptance criterion "`make quality` exits 0" plus a deliberate-break-then-revert
+> gate demonstration. When `make quality` was red for reasons outside the step's
+> editable scope (a pre-existing `main` failure + a test the step was forbidden to
+> touch), the implementation agent had no legal move: it could not make the gate
+> green without editing out-of-scope files, and could not complete the step without
+> a green gate. It correctly bailed — but implementation steps get no fix cycle, so
+> the item dead-ended (see I-00117). Keeping full-gate verification out of
+> implementation steps removes the impossible-state trap and lets the fixable
+> `qv-gate` / `tests-impl` steps own (and recover) verification.
+
 ## Agent Mapping
 
 **CRITICAL**: The `"agent"` field in steps MUST use the slug from this table:
