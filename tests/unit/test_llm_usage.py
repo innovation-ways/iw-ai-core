@@ -1755,8 +1755,11 @@ class TestCodexUsageNeverRaises:
         monkeypatch.setattr("orch.llm_usage._load_openai_oauth", lambda: None)
         with caplog.at_level(logging.WARNING):
             result = llm_usage._codex_usage()
-        assert isinstance(result, dict)
-        assert "status" in result
+        assert result["status"] == "unauthenticated"
+        assert result["block_pct"] == 0
+        assert result["week_pct"] == 0
+        assert result["block_reset"] is None
+        assert result["week_reset"] is None
 
     def test_no_raise_when_token_proactively_expired(
         self,
@@ -1775,8 +1778,11 @@ class TestCodexUsageNeverRaises:
         )
         with caplog.at_level(logging.WARNING):
             result = llm_usage._codex_usage()
-        assert isinstance(result, dict)
-        assert "status" in result
+        assert result["status"] == "expired"
+        assert result["block_pct"] == 0
+        assert result["week_pct"] == 0
+        assert result["block_reset"] is None
+        assert result["week_reset"] is None
 
     def test_no_raise_on_network_error(
         self,
@@ -1817,8 +1823,11 @@ class TestCodexUsageNeverRaises:
             m.setattr("httpx.get", boom)
             with caplog.at_level(logging.ERROR):
                 result = llm_usage._codex_usage()
-        assert isinstance(result, dict)
-        assert "status" in result
+        assert result["status"] == "error"
+        assert result["block_pct"] == 0
+        assert result["week_pct"] == 0
+        assert result["block_reset"] is None
+        assert result["week_reset"] is None
 
     def test_no_raise_on_json_decode_error(
         self,
@@ -1860,8 +1869,11 @@ class TestCodexUsageNeverRaises:
             m.setattr("httpx.get", gibberish)
             with caplog.at_level(logging.ERROR):
                 result = llm_usage._codex_usage()
-        assert isinstance(result, dict)
-        assert "status" in result
+        assert result["status"] == "error"
+        assert result["block_pct"] == 0
+        assert result["week_pct"] == 0
+        assert result["block_reset"] is None
+        assert result["week_reset"] is None
 
 
 def test_codex_usage_expired_token_reports_expired_status(monkeypatch: pytest.MonkeyPatch) -> None:
