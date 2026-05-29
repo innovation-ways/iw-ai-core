@@ -44,6 +44,12 @@ class TestJobsAggregatorTestHealth:
 
         job_types = [row.job_type for row in result.rows]
         assert "test-health-capture" in job_types, f"Expected 'test-health-capture' in {job_types}"
+        # AC2 behaviour: the four metrics seeded at the same timestamp collapse
+        # into exactly ONE capture row for that minute — not one row per metric.
+        capture_rows = [r for r in result.rows if r.job_type == "test-health-capture"]
+        assert len(capture_rows) == 1, (
+            f"four metrics in one minute must yield ONE capture row, got {len(capture_rows)}"
+        )
 
     def test_multiple_captures_one_job_row_per_minute(self, db_session, test_project) -> None:
         """Two captures in the same minute produce ONE job row, not four."""

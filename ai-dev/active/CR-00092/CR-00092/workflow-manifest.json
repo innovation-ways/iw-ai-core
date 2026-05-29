@@ -5,17 +5,13 @@
   "title": "Column-docs baseline scrub — add doc= to every Column in orch/db/models.py, delete the baseline file, and flip check-column-docs from warn-first to blocking",
   "browser_verification": false,
   "scope": {
-    "_scope_amendment": "2026-05-29 (operator): added three test files. tests/orch/db/test_column_docs.py is in-scope because the CR-00092 scrub + baseline deletion invalidated its pre-scrub assertions (it asserted undocumented columns exist and the baseline file is present); the test was rewritten to assert the new post-scrub invariant. tests/integration/test_jobs_aggregator_test_health.py and tests/unit/test_test_health_sparkline.py were strengthened to clear a PRE-EXISTING `make test-assertions` (S08) failure on main that was blocking the QV gate — unrelated to column docs; tracked separately.",
     "allowed_paths": [
       "orch/db/models.py",
       "orch/db/column_docs_baseline.txt",
       "Makefile",
       ".github/workflows/test-quality.yml",
       "docs/IW_AI_Core_Testing_Strategy.md",
-      "ai-dev/work/TESTS_ENHANCEMENT.md",
-      "tests/orch/db/test_column_docs.py",
-      "tests/integration/test_jobs_aggregator_test_health.py",
-      "tests/unit/test_test_health_sparkline.py"
+      "ai-dev/work/TESTS_ENHANCEMENT.md"
     ]
   },
   "steps": [

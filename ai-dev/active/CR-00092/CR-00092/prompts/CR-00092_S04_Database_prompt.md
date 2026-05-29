@@ -6,29 +6,6 @@
 
 ---
 
-## ⚠️ OPERATOR NOTE (2026-05-29) — RE-RUN AFTER UNBLOCK
-
-Your two previous attempts correctly bailed: `make quality` was failing for reasons
-outside the original S04 scope. The operator has now resolved both blockers:
-
-- `tests/orch/db/test_column_docs.py` was rewritten for the post-scrub world (it
-  previously asserted undocumented columns exist + the baseline file is present —
-  both false after this CR). It now asserts `scan(baseline=[]) == []` and that the
-  baseline file is removed.
-- Two pre-existing `make test-assertions` tautology failures on main
-  (`tests/integration/test_jobs_aggregator_test_health.py`,
-  `tests/unit/test_test_health_sparkline.py`) were strengthened so S08 passes.
-
-These three test files are now in `scope.allowed_paths`. **`make quality` exits 0 in
-this worktree** (operator-verified). The scrub, baseline deletion, Makefile + GH
-workflow flip, and doc/tracker updates from your prior runs are already present in the
-working tree — verify them, do NOT redo destructively. Your remaining job: confirm
-`make quality` passes, perform the MANDATORY AC8 deliberate-break-then-revert
-demonstration, and write the report. If `make quality` still fails, report the exact
-failing gate — do not silently re-bail.
-
----
-
 ## ⛔ Docker is off-limits
 
 You MUST NOT execute ANY docker commands that change container/volume/network state. Testcontainers from pytest fixtures and read-only introspection are the only exceptions. Full policy: docs/IW_AI_Core_Agent_Constraints.md

@@ -6,28 +6,6 @@
 
 ---
 
-## ⚠️ OPERATOR SCOPE AMENDMENT (2026-05-29) — READ FIRST
-
-The original design declared "exactly six Impacted Paths" and flagged ANY `tests/**`
-change as CRITICAL scope creep. That was a design defect: the scrub + baseline
-deletion necessarily invalidates the tests that guarded the *pre-scrub* world.
-The operator has amended `scope.allowed_paths` in `workflow-manifest.json` to add
-**three test files**, which are now IN-SCOPE and MUST NOT be flagged as scope creep:
-
-1. `tests/orch/db/test_column_docs.py` — its two old assertions (undocumented
-   columns exist; baseline file present) became false after this CR. Rewritten to
-   assert the new invariant: `scan(baseline=[]) == []` and the baseline file is gone.
-2. `tests/integration/test_jobs_aggregator_test_health.py` — assertion strengthened
-   to clear a PRE-EXISTING `make test-assertions` (S08) failure on main, unrelated to
-   column docs but blocking the QV gate.
-3. `tests/unit/test_test_health_sparkline.py` — same: pre-existing tautology violation
-   strengthened so S08 can pass.
-
-Treat these three files as expected. Everything else in the original scope rules
-below still applies (no migrations, no schema doc, no other `tests/**`).
-
----
-
 ## ⛔ Docker is off-limits
 
 You MUST NOT execute ANY docker commands that change container/volume/network state. Testcontainers from pytest fixtures and read-only introspection are the only exceptions. Full policy: docs/IW_AI_Core_Agent_Constraints.md

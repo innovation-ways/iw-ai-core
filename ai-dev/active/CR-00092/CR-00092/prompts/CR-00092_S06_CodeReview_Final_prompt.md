@@ -6,27 +6,6 @@
 
 ---
 
-## ⚠️ OPERATOR SCOPE AMENDMENT (2026-05-29) — READ FIRST
-
-The original AC7 "directional scope diff = exactly the six Impacted Paths" was a
-design defect: the scrub + baseline deletion necessarily invalidates the tests that
-guarded the *pre-scrub* world. The operator amended `scope.allowed_paths` in
-`workflow-manifest.json` to add **three test files** that are now IN-SCOPE and MUST
-NOT be flagged as scope creep under AC7:
-
-1. `tests/orch/db/test_column_docs.py` — rewritten to assert the post-scrub invariant
-   (`scan(baseline=[]) == []`; baseline file removed) instead of the old pre-scrub
-   assertions (undocumented columns exist; baseline present).
-2. `tests/integration/test_jobs_aggregator_test_health.py` and
-3. `tests/unit/test_test_health_sparkline.py` — assertions strengthened to clear a
-   PRE-EXISTING `make test-assertions` failure on main (tautology violations) that was
-   blocking the QV gate (S08); unrelated to column docs, folded in to unblock.
-
-For AC7, treat the expected diff as the six Impacted Paths **plus these three test
-files**. All other scope rules below still apply (no migrations, no schema doc).
-
----
-
 ## ⛔ Docker is off-limits
 
 You MUST NOT execute ANY docker commands that change container/volume/network state. Testcontainers from pytest fixtures and read-only introspection are the only exceptions. Full policy: docs/IW_AI_Core_Agent_Constraints.md

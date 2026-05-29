@@ -27,9 +27,8 @@ jobs:
       # Flipping to hard gates is a follow-up after the noise is triaged.
       - run: make dead-code || true
       - run: make dep-check || true
-      # DB-column doc gate (CR-00085, Phase-4 4.5) — warn-only during burn-in.
-      # Flipping to blocking is a follow-up after the baseline shrinks.
-      - run: make check-column-docs || true
+      # DB-column doc gate (CR-00085, Phase-4 4.5) — blocking.
+      - run: make check-column-docs
 
   unit:
     name: Unit tests + coverage
