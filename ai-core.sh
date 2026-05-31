@@ -60,6 +60,8 @@ DB_PORT="${IW_CORE_DB_PORT:-5433}"
 DB_NAME="${IW_CORE_DB_NAME:-iw_orch}"
 DB_USER="${IW_CORE_DB_USER:-iw_orch}"
 DB_PASSWORD="${IW_CORE_DB_PASSWORD:-iw_orch_dev}"
+DB_DATA_DIR="${IW_CORE_DB_DATA_DIR:-}"
+PROD_DB_CONTAINER_NAME="iw-orch-pg"
 DASHBOARD_PORT="${IW_CORE_DASHBOARD_PORT:-9900}"
 DAEMON_PID_FILE="${IW_CORE_PID_FILE:-.daemon.pid}"
 DAEMON_LOG_FILE="${IW_CORE_LOG_FILE:-./logs/daemon.log}"
@@ -212,11 +214,42 @@ cmd_db() {
         print_ok "Database already accepting connections (${DB_HOST}:${DB_PORT}/${DB_NAME})"
         return 0
       fi
+      if [[ -n "${IW_CORE_EXPECTED_INSTANCE_ID:-}" ]]; then
+        print_err "Production DB appears DOWN at ${DB_HOST}:${DB_PORT} (instance identity is pinned)." >&2
+        print_err "Refusing to bootstrap an empty compose database over the production port." >&2
+        print_err "Bring the real cluster back with: ./ai-core.sh db start-prod" >&2
+        print_err "See docs/IW_AI_Core_DB_Setup.md for recovery details." >&2
+        return 1
+      fi
       print_info "Starting database container..."
       COMPOSE_PROJECT_NAME=iw-ai-core docker compose -f docker-compose.bootstrap.yml up -d db
       print_info "Waiting for PostgreSQL..."
       wait_for_db 20 || return 1
       print_ok "Database ready (${DB_HOST}:${DB_PORT}/${DB_NAME})"
+      ;;
+    start-prod)
+      if [[ -z "$DB_DATA_DIR" ]]; then
+        print_err "IW_CORE_DB_DATA_DIR is not set." >&2
+        print_err "Set IW_CORE_DB_DATA_DIR in .env to the production bind-mount data directory, then rerun: ./ai-core.sh db start-prod" >&2
+        return 1
+      fi
+
+      if docker ps -a --format "{{.Names}}" 2>/dev/null | grep -Fxq "$PROD_DB_CONTAINER_NAME"; then
+        print_info "Starting existing production DB container: $PROD_DB_CONTAINER_NAME"
+        docker start "$PROD_DB_CONTAINER_NAME" >/dev/null || return 1
+      else
+        print_info "Creating production DB container: $PROD_DB_CONTAINER_NAME"
+        docker run -d \
+          --name "$PROD_DB_CONTAINER_NAME" \
+          --restart=always \
+          -p "${DB_PORT}:5432" \
+          -v "${DB_DATA_DIR}:/var/lib/postgresql/data" \
+          postgres:15-alpine >/dev/null || return 1
+      fi
+
+      print_info "Waiting for PostgreSQL..."
+      wait_for_db 20 || return 1
+      print_ok "Production database ready (${DB_HOST}:${DB_PORT}/${DB_NAME})"
       ;;
     stop)
       print_info "Stopping database container..."
@@ -261,7 +294,7 @@ cmd_db() {
       PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME"
       ;;
     *)
-      echo "  Usage: $0 db {start|stop|restart|status|migrate|revision <msg>|logs|shell}"
+      echo "  Usage: $0 db {start|start-prod|stop|restart|status|migrate|revision <msg>|logs|shell}"
       ;;
   esac
 }
@@ -908,7 +941,7 @@ ${BOLD}COMPOUND${NC}
   install                           uv sync + db start + migrate  (first-time setup)
 
 ${BOLD}DATABASE${NC}
-  db start|stop|restart|status
+  db start|start-prod|stop|restart|status
   db migrate                        alembic upgrade head
   db revision <msg>                 alembic revision --autogenerate
   db logs                           Tail DB container logs

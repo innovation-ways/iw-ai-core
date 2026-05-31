@@ -38,6 +38,10 @@ All credentials come from `.env` — nothing is hardcoded. Copy `.env.example`
 to `.env` and set `IW_CORE_DB_NAME`, `IW_CORE_DB_USER`, and
 `IW_CORE_DB_PASSWORD` before starting.
 
+Set `IW_CORE_DB_DATA_DIR` to your production bind-mount path (for example
+`/opt/postgres/data`) so `./ai-core.sh db start-prod` can recreate/start the
+production container without hardcoded host paths.
+
 ### Run command
 
 ```bash
@@ -98,6 +102,24 @@ Preferred (uses `./ai-core.sh` which sets `COMPOSE_PROJECT_NAME`):
 ./ai-core.sh db start
 ```
 
+### Guarded behavior when production identity is pinned
+
+If `.env` sets `IW_CORE_EXPECTED_INSTANCE_ID` and the DB is down,
+`./ai-core.sh db start` now **refuses** to run bootstrap compose. This prevents
+an empty `iw-ai-core_pgdata` database from taking over production port 5433
+while the real bind-mount cluster is offline.
+
+Use the production recovery command instead:
+
+```bash
+./ai-core.sh db start-prod
+```
+
+`start-prod` requires `IW_CORE_DB_DATA_DIR` in `.env`. It starts (or creates)
+a stable raw Docker container (`iw-orch-pg`) with `--restart=always`, binds
+`${IW_CORE_DB_PORT}:5432`, mounts `${IW_CORE_DB_DATA_DIR}` to
+`/var/lib/postgresql/data`, and waits for readiness.
+
 ---
 
 ## Why this split exists
@@ -128,6 +150,7 @@ port 5433 because the `db` service has been moved to
 |---|---|
 | Check if DB is running | `./ai-core.sh db status` |
 | Start the DB (bootstrap path) | `./ai-core.sh db start` |
+| Start/recover the production bind-mount DB | `./ai-core.sh db start-prod` |
 | Stop the DB | `./ai-core.sh db stop` |
 | Restart the DB | `./ai-core.sh db restart` |
 | Tail DB container logs | `./ai-core.sh db logs` |
@@ -136,8 +159,7 @@ port 5433 because the `db` service has been moved to
 | Generate a migration | `./ai-core.sh db revision "message"` |
 | Verify DB identity | `uv run iw db-identity check` |
 
-All `./ai-core.sh db` subcommands route through the bootstrap compose file
-with the correct project name and are safe to run from any directory
-(including worktrees). The raw `docker run` production path does not use
-compose — refer to the run command in the Production path section above
-if you need to recreate the container.
+`./ai-core.sh db start`/`stop`/`logs` route through the bootstrap compose file
+with the correct project name and are safe for dev/bootstrap usage from any
+worktree. The production recovery path is `./ai-core.sh db start-prod`, which
+uses raw `docker run`/`docker start` against `IW_CORE_DB_DATA_DIR`.
