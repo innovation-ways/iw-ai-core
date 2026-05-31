@@ -1,0 +1,170 @@
+{
+  "_note": "This file is a design-time snapshot and may be out of date. For current step state, run: iw item-status <ID> --json. The DB is the authoritative source of truth (CR-00023).",
+  "id": "F-00092",
+  "type": "Feature",
+  "title": "Tier-1 scheduled + on-demand logical backups for the orchestration DB",
+  "browser_verification": false,
+  "scope": {
+    "allowed_paths": [
+      "orch/db/models.py",
+      "orch/db/migrations/versions/**",
+      "orch/config.py",
+      "orch/backup/**",
+      "orch/daemon/backup_poller.py",
+      "orch/daemon/main.py",
+      "orch/jobs/aggregator.py",
+      "orch/cli/backup_commands.py",
+      "orch/cli/__init__.py",
+      "dashboard/routers/jobs_ui.py",
+      "dashboard/templates/**",
+      "dashboard/static/styles.css",
+      "ai-core.sh",
+      ".env.example",
+      "README.md",
+      "CLAUDE.md",
+      "docs/IW_AI_Core_DB_Setup.md",
+      "docs/IW_AI_Core_DB_Backup_Restore.md",
+      "tests/unit/**",
+      "tests/integration/**",
+      "tests/dashboard/**"
+    ]
+  },
+  "steps": [
+    {
+      "step": "S01",
+      "agent": "database-impl",
+      "description": "DbBackupJob model + Alembic migration (make migration-pending)",
+      "prompt": "prompts/F-00092_S01_Database_prompt.md"
+    },
+    {
+      "step": "S02",
+      "agent": "qv-gate",
+      "gate": "migration-check",
+      "command": "make migration-check",
+      "description": "QV: Alembic migration round-trip + drift check"
+    },
+    {
+      "step": "S03",
+      "agent": "backend-impl",
+      "description": "Backup config (IW_CORE_BACKUP_*) + backup engine (pg_dump -Fc + pg_dumpall --globals-only + pg_restore --list integrity + manifest)",
+      "prompt": "prompts/F-00092_S03_Backend_prompt.md"
+    },
+    {
+      "step": "S04",
+      "agent": "code-review-impl",
+      "description": "Review S01 + S03 (model/migration + config/engine)",
+      "prompt": "prompts/F-00092_S04_CodeReview_prompt.md"
+    },
+    {
+      "step": "S05",
+      "agent": "backend-impl",
+      "description": "Retention/prune (manual-exempt) + guided restore helper (safe non-prod target, globals-first, identity check)",
+      "prompt": "prompts/F-00092_S05_Backend_prompt.md"
+    },
+    {
+      "step": "S06",
+      "agent": "pipeline-impl",
+      "description": "Daemon backup scheduler/poller (daily + missed-window catch-up) + daemon/main.py wiring",
+      "prompt": "prompts/F-00092_S06_Pipeline_prompt.md"
+    },
+    {
+      "step": "S07",
+      "agent": "code-review-impl",
+      "description": "Review S05 + S06 (retention/restore + daemon poller)",
+      "prompt": "prompts/F-00092_S07_CodeReview_prompt.md"
+    },
+    {
+      "step": "S08",
+      "agent": "frontend-impl",
+      "description": "Surface backup jobs in unified Jobs view (aggregator + jobs_ui + template)",
+      "prompt": "prompts/F-00092_S08_Frontend_prompt.md"
+    },
+    {
+      "step": "S09",
+      "agent": "backend-impl",
+      "description": "CLI iw db-backup {create,list,prune,restore} + ./ai-core.sh db backup wrappers",
+      "prompt": "prompts/F-00092_S09_Backend_prompt.md"
+    },
+    {
+      "step": "S10",
+      "agent": "backend-impl",
+      "description": "Docs: README, CLAUDE (config + same-disk warning + agents-must-not-touch rule), DB-Setup, new restore guide",
+      "prompt": "prompts/F-00092_S10_Backend_prompt.md"
+    },
+    {
+      "step": "S11",
+      "agent": "tests-impl",
+      "description": "Unit + integration (dump/restore round-trip) + dashboard render tests",
+      "prompt": "prompts/F-00092_S11_Tests_prompt.md"
+    },
+    {
+      "step": "S12",
+      "agent": "code-review-impl",
+      "description": "Review S08-S11 (Jobs UI, CLI, docs, tests)",
+      "prompt": "prompts/F-00092_S12_CodeReview_prompt.md"
+    },
+    {
+      "step": "S13",
+      "agent": "code-review-final-impl",
+      "description": "Global review of all F-00092 work",
+      "prompt": "prompts/F-00092_S13_CodeReview_Final_prompt.md"
+    },
+    {
+      "step": "S14",
+      "agent": "qv-gate",
+      "gate": "lint",
+      "command": "make lint",
+      "description": "QV: Linting"
+    },
+    {
+      "step": "S15",
+      "agent": "qv-gate",
+      "gate": "format",
+      "command": "make format-check",
+      "description": "QV: Formatting"
+    },
+    {
+      "step": "S16",
+      "agent": "qv-gate",
+      "gate": "typecheck",
+      "command": "make type-check",
+      "description": "QV: Type checking"
+    },
+    {
+      "step": "S17",
+      "agent": "qv-gate",
+      "gate": "arch-check",
+      "command": "make arch-check",
+      "description": "QV: Architecture"
+    },
+    {
+      "step": "S18",
+      "agent": "qv-gate",
+      "gate": "security-sast",
+      "command": "make security-sast",
+      "description": "QV: Security SAST"
+    },
+    {
+      "step": "S19",
+      "agent": "qv-gate",
+      "gate": "unit-tests",
+      "command": "make test-unit",
+      "description": "QV: Unit tests"
+    },
+    {
+      "step": "S20",
+      "agent": "qv-gate",
+      "gate": "integration-tests",
+      "command": "make allure-integration",
+      "description": "QV: Integration tests",
+      "timeout": 1800
+    },
+    {
+      "step": "S21",
+      "agent": "self-assess-impl",
+      "step_type": "self_assess",
+      "description": "Self-assessment of the just-completed item via the iw-item-analyze skill",
+      "prompt": "prompts/F-00092_S21_SelfAssess_prompt.md"
+    }
+  ]
+}
