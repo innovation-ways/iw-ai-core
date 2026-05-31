@@ -34,6 +34,47 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 _DEFAULT_TEST_TIMEOUT_SECS = 3600  # 1 hour
 
 
+def _build_run_command(
+    command: str,
+    execution_dir: str,
+    allure_results: str | None,
+) -> str:
+    """Build the shell command that emits Allure results for this run.
+
+    Three shapes handled:
+    1. ``pytest --alluredir=<x>``  → rewrite the flag inline to the run-scoped dir
+       (no PYTEST_ADDOPTS injection, to avoid a doubled --alluredir).
+    2. ``make <target>``           → export PYTEST_ADDOPTS for pytest inside the
+       target so it emits Allure results.  Append-safe when $PYTEST_ADDOPTS
+       is already set in the environment (the injected value references the
+       existing variable so existing addopts are preserved).
+    3. Everything else             → returned unchanged.
+
+    Returns the (possibly rewritten) command string, ready for
+    ``subprocess.Popen(command, shell=True)``.
+    """
+    if not allure_results:
+        return command
+
+    results_rel = Path(allure_results).relative_to(execution_dir)
+
+    if "--alluredir" in command:
+        # pytest-direct: rewrite inline (no PYTEST_ADDOPTS to avoid doubling)
+        return re.sub(r"--alluredir[=\s]\S+", f"--alluredir={results_rel}", command)
+
+    if "make " in command:
+        # make target: export both ALLURE_RESULTS (for Makefiles that read it)
+        # and PYTEST_ADDOPTS (for pytest inside the target).
+        # Append-safe: reference $PYTEST_ADDOPTS so existing addopts are preserved.
+        return (
+            f"ALLURE_RESULTS={results_rel} "
+            f"PYTEST_ADDOPTS='--alluredir={results_rel} $PYTEST_ADDOPTS' "
+            f"{command}"
+        )
+
+    return command
+
+
 def launch_test_run(run_id: int) -> None:
     """Execute a test run in a background thread.
 
@@ -68,7 +109,8 @@ def launch_test_run(run_id: int) -> None:
         # Results use a unique run-scoped name; the report uses a category subdir.
         allure_results, allure_report = _resolve_allure_dirs(run, db, execution_dir, run_id)
         run.allure_results_dir = allure_results
-        run.allure_report_dir = allure_report
+        # Dangling-pointer guard: only persist allure_report_dir after report generation
+        # succeeds (set below in the post-execution block).
 
         # Run cleanup_command before the main command (e.g., tear down a stale E2E
         # docker stack left by a previous run that crashed or was killed).
@@ -77,19 +119,8 @@ def launch_test_run(run_id: int) -> None:
         if cleanup_cmd:
             _run_cleanup_command(cleanup_cmd, execution_dir)
 
-        # Redirect Allure output to the run-specific directory so concurrent runs
-        # don't share state. Two shapes handled:
-        #   - pytest --alluredir=<x>  → rewrite the flag inline
-        #   - make <target>           → prefix ALLURE_RESULTS for Makefiles that read it
-        # Without this, the shared default dir is used and the post-run check at
-        # `Path(allure_results).is_dir()` silently fails, leaving run.summary NULL.
-        command = run.command
-        if allure_results:
-            results_rel = Path(allure_results).relative_to(execution_dir)
-            if "--alluredir" in command:
-                command = re.sub(r"--alluredir[=\s]\S+", f"--alluredir={results_rel}", command)
-            elif "make " in command:
-                command = f"ALLURE_RESULTS={results_rel} {command}"
+        # Rewrite the command so pytest emits Allure results into the run-scoped dir.
+        command = _build_run_command(run.command, execution_dir, allure_results)
 
         # Update status to running
         run.status = TestRunStatus.running
@@ -177,12 +208,19 @@ def launch_test_run(run_id: int) -> None:
         # Generate allure report if results directory exists (skipped for quality runs).
         # After generating the HTML report the raw results dir is deleted — it can be large
         # (thousands of JSON files) and everything needed is in the HTML report.
+        # Secondary fix (AC2): persist run.allure_report_dir only when the report was
+        # actually generated — no dangling pointer for runs that produced no results.
+        run.allure_report_dir = None  # Reset: will be set only on success
         if run.run_type != "quality" and allure_results and Path(allure_results).is_dir():
-            _generate_allure_report(allure_results, allure_report, execution_dir)
-            shutil.rmtree(allure_results, ignore_errors=True)
-            summary = parse_allure_summary(allure_report)
-            if summary:
-                run.summary = summary
+            if _generate_allure_report(allure_results, allure_report, execution_dir):
+                run.allure_report_dir = allure_report  # Set only after generation succeeds
+                shutil.rmtree(allure_results, ignore_errors=True)
+                summary = parse_allure_summary(allure_report)
+                if summary:
+                    run.summary = summary
+            else:
+                # Report generation failed — leave allure_report_dir NULL
+                pass
 
         # Set final status
         if exit_code == 0:

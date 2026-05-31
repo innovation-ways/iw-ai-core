@@ -1,0 +1,86 @@
+{
+  "item_id": "I-00121",
+  "bottom_line": "Implementation was correct; the real cost was Docker/testcontainer port exhaustion causing non-deterministic QV gate failures. Fix the test-assertions tool to honour noqa suppression comments, and disable Ryuk in test-unit/test-integration to prevent Docker port exhaustion.",
+  "coverage_notes": "All step logs read in full (all < 1 MB except S10 run logs at 454-808 KB which were read completely). DB telemetry confirmed step durations and completion order. S01 report (ai-dev/active/I-00121/reports/I-00121_S01_Backend_report.md) used for TDD RED evidence confirmation.",
+  "findings": [
+    {
+      "id": "I-00121-F1",
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "test-assertions QV gate fires on suppressed-pattern tests at first run",
+      "recommendation": "Change scripts/check_test_assertions.py to honour noqa PT018 suppression comments in source before emitting failures, OR add a project-level config that marks test_test_runner_allure_env.py as a known-ok file for PT018.",
+      "evidence": [
+        "ai-dev/logs/I-00121_S09_run1.log:1 — 'tests/unit/test_test_runner_allure_env.py:24: tautology: every assert matches a tautological form' (5 tests flagged, all with # noqa: PT018 in source)",
+        "scripts/check_test_assertions.py:45 — tool flags PT018 before reading noqa suppression"
+      ],
+      "effort": "M",
+      "frequency": "systemic",
+      "paste_prompt": "/iw-new-cr Fix test-assertions QV gate to honour noqa PT018 suppression comments in source — analyzed in I-00121 (see ai-dev/active/I-00121/reports/I-00121_self_assess_report.md). Target: scripts/check_test_assertions.py. Effort: M."
+    },
+    {
+      "id": "I-00121-F2",
+      "severity": "HIGH",
+      "class": "environment",
+      "target": "iw-ai-core",
+      "title": "S10 make test-unit non-deterministically flaky due to Docker port exhaustion",
+      "recommendation": "Add TESTCONTAINERS_RYUK_DISABLED=true to the Makefile's test-unit environment. Document in docs/IW_AI_Core_Testing_Strategy.md that this variable should be set host-wide or in .env. Ryuk cleanup container consumes ports needed by concurrent testcontainers.",
+      "evidence": [
+        "ai-dev/logs/I-00121_S10_run4.log:1 — 'docker.errors.APIError: 500 Server Error ... failed to bind host port 0.0.0.0:44273/tcp: address already in use'",
+        "ai-dev/logs/I-00121_S10_run6.log:1 — 'failed to bind host port 0.0.0.0:44433/tcp: address already in use'",
+        "ai-dev/logs/I-00121_S10_run10.log:1 — '63 errors' (worst case, all docker port exhaustion)",
+        "ai-dev/logs/I-00121_S10_run13.log:1 — 'testcontainers-ryuk: failed to bind host port 0.0.0.0:46402/tcp'"
+      ],
+      "effort": "S",
+      "frequency": "recurring",
+      "paste_prompt": "/iw-new-cr Add TESTCONTAINERS_RYUK_DISABLED=true to Makefile test-unit/test-integration targets to fix Docker port exhaustion flakiness — analyzed in I-00121 (see ai-dev/active/I-00121/reports/I-00121_self_assess_report.md). Target: Makefile. Effort: S."
+    },
+    {
+      "id": "I-00121-F3",
+      "severity": "MED",
+      "class": "environment",
+      "target": "iw-ai-core",
+      "title": "S11 make test-integration same Docker port exhaustion as S10",
+      "recommendation": "Same as F2 — disable Ryuk in test-integration environment. Fixes both S10 and S11 simultaneously.",
+      "evidence": [
+        "ai-dev/logs/I-00121_S11_run1.log:1 — 'psycopg.OperationalError: connection failed: FATAL: database iwcore_template_tdzhjoecyeibvnnm does not exist' (testcontainer never started)",
+        "ai-dev/logs/I-00121_S11_run1.log:48 — '48 ERRORs' from testcontainers fixtures failing to start (same port-exhaustion root cause)"
+      ],
+      "effort": "S",
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-cr Add TESTCONTAINERS_RYUK_DISABLED=true to Makefile test-integration target — analyzed in I-00121 (see ai-dev/active/I-00121/reports/I-00121_self_assess_report.md). Target: Makefile. Effort: S."
+    },
+    {
+      "id": "I-00121-F4",
+      "severity": "MED",
+      "class": "platform",
+      "target": "iw-ai-core",
+      "title": "S06-S08 QV gates each ran 6 times despite passing on run 1",
+      "recommendation": "Investigate why QV gates that pass on run 1 are re-triggered 5 more times. Likely race condition in step completion tracking — check orch/daemon/ worktree_executor.py or step-tracking logic for commit visibility issue.",
+      "evidence": [
+        "ai-dev/logs/I-00121_S06_run1.log — 'All checks passed!' (run 1 passed)",
+        "ai-dev/logs/I-00121_S06_run2.log through run6.log — all 5 subsequent runs also passed but were still recorded (runs 2-6 identical to run 1)",
+        "Same pattern for S07 and S08"
+      ],
+      "effort": "M",
+      "frequency": "systemic",
+      "paste_prompt": "/iw-new-cr Investigate QV gate re-trigger loop — S06/S07/S08 passed run1 but ran 5 more times each — analyzed in I-00121 (see ai-dev/active/I-00121/reports/I-00121_self_assess_report.md). Target: orch/daemon/. Effort: M."
+    },
+    {
+      "id": "I-00121-F5",
+      "severity": "LOW",
+      "class": "prompt",
+      "target": "iw-ai-core",
+      "title": "S03 wrote test files that required multiple S02 review cycles to stabilise",
+      "recommendation": "Add a checklist item to the Tests step prompt requiring the agent to confirm no git stash is left in the worktree before declaring the step complete.",
+      "evidence": [
+        "ai-dev/logs/I-00121_S02_run1.log:1 — S02 run 1 flagged git stash concern (stale pre-commit implementation)",
+        "ai-dev/logs/I-00121_S02_run2.log:1 — S02 run 2 was a re-run with no code change",
+        "ai-dev/logs/I-00121_S02_run5.log — 5 total runs to reach stable PASS"
+      ],
+      "effort": "S",
+      "frequency": "one-off",
+      "paste_prompt": "/iw-new-cr Add git stash check to Tests step prompt template — analyzed in I-00121 (see ai-dev/active/I-00121/reports/I-00121_self_assess_report.md). Target: ai-dev/templates/Issue_Test_Template.md. Effort: S."
+    }
+  ]
+}
