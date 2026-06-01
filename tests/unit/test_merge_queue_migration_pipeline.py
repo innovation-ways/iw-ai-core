@@ -207,10 +207,20 @@ class TestMergeItemStringBatchIdInvokesPipeline:
                 "orch.daemon.merge_queue.run_post_merge_apply",
                 return_value=apply_result,
             ) as mock_apply,
+            # I-00126: also patch resolve_branch_for_project so the test's fake
+            # project repo does not trigger the default-branch guard.
+            patch(
+                "orch.daemon.merge_queue.resolve_branch_for_project",
+            ) as mock_resolve,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_subproc,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
             patch("orch.daemon.merge_queue.worktree_compose.down"),
         ):
+            mock_resolve.return_value = MagicMock(
+                current_branch="main",
+                default_branch="main",
+                is_on_default=True,
+            )
             mock_subproc.return_value = MagicMock(returncode=0, stdout="squash ok", stderr="")
             _merge_item(db, batch_item, "test-proj", project_config)
 
@@ -304,10 +314,16 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
                 "orch.daemon.merge_queue.run_post_merge_apply",
                 return_value=_make_successful_apply_result(),
             ),
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_subproc,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
             patch("orch.daemon.merge_queue.worktree_compose.down"),
         ):
+            mock_resolve.return_value = MagicMock(
+                current_branch="main",
+                default_branch="main",
+                is_on_default=True,
+            )
             mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             from orch.daemon.merge_queue import _merge_item
 
@@ -329,10 +345,16 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
                 "orch.daemon.merge_queue.run_post_merge_apply",
                 return_value=_make_successful_apply_result(),
             ),
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_subproc,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
             patch("orch.daemon.merge_queue.worktree_compose.down"),
         ):
+            mock_resolve.return_value = MagicMock(
+                current_branch="main",
+                default_branch="main",
+                is_on_default=True,
+            )
             mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             from orch.daemon.merge_queue import _merge_item
 
@@ -354,10 +376,16 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
                 return_value=_make_successful_dry_run_result(),
             ),
             patch("orch.daemon.merge_queue.run_post_merge_apply") as mock_apply,
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_subproc,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
             patch("orch.daemon.merge_queue.worktree_compose.down"),
         ):
+            mock_resolve.return_value = MagicMock(
+                current_branch="main",
+                default_branch="main",
+                is_on_default=True,
+            )
             mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             from orch.daemon.merge_queue import _merge_item
 
@@ -385,10 +413,16 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
                 "orch.daemon.merge_queue.run_post_merge_apply",
                 return_value=_make_successful_apply_result(),
             ),
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_subproc,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
             patch("orch.daemon.merge_queue.worktree_compose.down"),
         ):
+            mock_resolve.return_value = MagicMock(
+                current_branch="main",
+                default_branch="main",
+                is_on_default=True,
+            )
             mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             from orch.daemon.merge_queue import _merge_item
 
@@ -473,10 +507,16 @@ class TestMergeItemRollbackGuard:
             patch(
                 "orch.daemon.merge_queue.run_rollback", return_value=_make_rollback_result()
             ) as mock_rollback,
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_subproc,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
             patch("orch.daemon.merge_queue.worktree_compose.down"),
         ):
+            mock_resolve.return_value = MagicMock(
+                current_branch="main",
+                default_branch="main",
+                is_on_default=True,
+            )
             mock_subproc.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             _merge_item(db, item, "test-proj", _make_project_config())
 

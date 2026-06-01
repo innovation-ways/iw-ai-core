@@ -12,10 +12,16 @@ from unittest.mock import MagicMock, patch
 from orch.daemon.merge_queue import _merge_item, process_merge_queue
 from orch.daemon.project_registry import ProjectConfig
 from orch.db.models import BatchItem, BatchItemStatus, WorkItem, WorkItemStatus
+from orch.utils.branch_resolver import BranchInfo
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+def _make_branch_info_on_default() -> BranchInfo:
+    """Return a BranchInfo indicating HEAD is on the default branch."""
+    return BranchInfo(current_branch="main", default_branch="main", is_on_default=True)
 
 
 def make_project_config() -> ProjectConfig:
@@ -167,7 +173,11 @@ class TestMergeItem:
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
-        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+        with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+        ):
+            mock_branch.return_value = _make_branch_info_on_default()
             mock_run.return_value = MagicMock(returncode=0, stdout="squash ok", stderr="")
             with patch("orch.daemon.merge_queue._cleanup_worktree"):
                 _merge_item(db, item, "test-proj", make_project_config())
@@ -181,7 +191,11 @@ class TestMergeItem:
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
-        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+        with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+        ):
+            mock_branch.return_value = _make_branch_info_on_default()
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict on main.py")
             _merge_item(db, item, "test-proj", make_project_config())
 
@@ -193,10 +207,14 @@ class TestMergeItem:
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
-        with patch(
-            "orch.daemon.merge_queue.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="bash", timeout=120),
+        with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
+            patch(
+                "orch.daemon.merge_queue.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="bash", timeout=120),
+            ),
         ):
+            mock_branch.return_value = _make_branch_info_on_default()
             _merge_item(db, item, "test-proj", make_project_config())
 
         assert item.status == BatchItemStatus.merge_failed
@@ -223,9 +241,11 @@ class TestMergeItem:
             return MagicMock(returncode=0, stdout="ok", stderr="")
 
         with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
             patch("orch.daemon.merge_queue.subprocess.run", side_effect=capture_status),
             patch("orch.daemon.merge_queue._cleanup_worktree"),
         ):
+            mock_branch.return_value = _make_branch_info_on_default()
             _merge_item(db, item, "test-proj", make_project_config())
 
         assert status_at_call[0] == BatchItemStatus.merging
@@ -237,9 +257,11 @@ class TestMergeItem:
         long_output = "x" * 10000
 
         with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
         ):
+            mock_branch.return_value = _make_branch_info_on_default()
             mock_run.return_value = MagicMock(returncode=0, stdout=long_output, stderr="")
             _merge_item(db, item, "test-proj", make_project_config())
 
@@ -367,7 +389,11 @@ class TestMergeItemC4WorkItemRevert:
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         item.project_id = "test-proj"
 
-        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+        with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+        ):
+            mock_branch.return_value = _make_branch_info_on_default()
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict")
             _merge_item(db, item, "test-proj", make_project_config())
 
@@ -383,10 +409,14 @@ class TestMergeItemC4WorkItemRevert:
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         item.project_id = "test-proj"
 
-        with patch(
-            "orch.daemon.merge_queue.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="bash", timeout=120),
+        with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
+            patch(
+                "orch.daemon.merge_queue.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="bash", timeout=120),
+            ),
         ):
+            mock_branch.return_value = _make_branch_info_on_default()
             _merge_item(db, item, "test-proj", make_project_config())
 
         assert item.status == BatchItemStatus.merge_failed
@@ -402,7 +432,11 @@ class TestMergeItemC4WorkItemRevert:
         item.project_id = "test-proj"
         original_completed_at = wi.completed_at
 
-        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+        with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+        ):
+            mock_branch.return_value = _make_branch_info_on_default()
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict")
             _merge_item(db, item, "test-proj", make_project_config())
 
@@ -418,7 +452,11 @@ class TestMergeItemC4WorkItemRevert:
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         item.project_id = "test-proj"
 
-        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+        with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+        ):
+            mock_branch.return_value = _make_branch_info_on_default()
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict")
             _merge_item(db, item, "test-proj", make_project_config())
 
@@ -503,9 +541,11 @@ class TestMergeItemC4WorkItemRevert:
         item.project_id = "test-proj"
 
         with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
         ):
+            mock_branch.return_value = _make_branch_info_on_default()
             mock_run.return_value = MagicMock(returncode=0, stdout="squash ok", stderr="")
             _merge_item(db, item, "test-proj", make_project_config())
 
@@ -527,9 +567,11 @@ class TestMergeInfoM2:
         long_output = "y" * 10000
 
         with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
         ):
+            mock_branch.return_value = _make_branch_info_on_default()
             mock_run.return_value = MagicMock(returncode=0, stdout=long_output, stderr="")
             _merge_item(db, item, "test-proj", make_project_config())
 
@@ -543,9 +585,11 @@ class TestMergeInfoM2:
         short_output = "z" * 500
 
         with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
         ):
+            mock_branch.return_value = _make_branch_info_on_default()
             mock_run.return_value = MagicMock(returncode=0, stdout=short_output, stderr="")
             _merge_item(db, item, "test-proj", make_project_config())
 
@@ -559,9 +603,11 @@ class TestMergeInfoM2:
         exact_output = "a" * 8000
 
         with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_branch,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
         ):
+            mock_branch.return_value = _make_branch_info_on_default()
             mock_run.return_value = MagicMock(returncode=0, stdout=exact_output, stderr="")
             _merge_item(db, item, "test-proj", make_project_config())
 

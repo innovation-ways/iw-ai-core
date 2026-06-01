@@ -107,6 +107,11 @@ def _run_commit(
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "GIT_CONFIG_NOSYSTEM": "1",
         "HOME": str(project),
+        # I-00126: bypass the script's default-branch guard so unit tests can
+        # exercise the other merge logic (stash/restore, commit message, etc.)
+        # without being blocked by the guard when the script is invoked from a
+        # worktree directory (where git rev-parse --abbrev-ref HEAD ≠ default).
+        "IW_CORE_TESTING": "1",
     }
     if extra_env:
         env.update(extra_env)

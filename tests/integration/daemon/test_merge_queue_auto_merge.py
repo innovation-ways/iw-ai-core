@@ -187,6 +187,19 @@ def _phase1_config(runtime_option_id: int | None = None) -> AutoMergeConfig:
 class TestAutoSkipMarkerPath:
     """Tests for the AUTO_RESOLVE_SKIPPED=<json> branch (lines 473-477)."""
 
+    @pytest.fixture(autouse=True)
+    def _mock_branch_resolver(self):
+        """Return is_on_default=True so I-00126 guard never fires in tests."""
+        from orch.utils.branch_resolver import BranchInfo
+
+        with patch(
+            "orch.daemon.merge_queue.resolve_branch_for_project",
+            return_value=BranchInfo(
+                current_branch="main", default_branch="main", is_on_default=True
+            ),
+        ):
+            yield
+
     def test_auto_skip_marker_fires_skipped_event(
         self,
         db_session: Session,
@@ -270,6 +283,19 @@ class TestAutoSkipMarkerPath:
 
 class TestAutoResolveConfigPath:
     """Tests for config loading inside the AUTO_RESOLVE_REQUESTED branch."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_branch_resolver(self):
+        """Return is_on_default=True so I-00126 guard never fires in tests."""
+        from orch.utils.branch_resolver import BranchInfo
+
+        with patch(
+            "orch.daemon.merge_queue.resolve_branch_for_project",
+            return_value=BranchInfo(
+                current_branch="main", default_branch="main", is_on_default=True
+            ),
+        ):
+            yield
 
     def test_config_parse_error_fires_config_invalid_event(
         self,
@@ -390,6 +416,19 @@ class TestAutoResolveConfigPath:
 
 class TestAutoResolveClassificationSkip:
     """Classification returns skipped_reason → emit_skipped_event (lines 498-513)."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_branch_resolver(self):
+        """Return is_on_default=True so I-00126 guard never fires in tests."""
+        from orch.utils.branch_resolver import BranchInfo
+
+        with patch(
+            "orch.daemon.merge_queue.resolve_branch_for_project",
+            return_value=BranchInfo(
+                current_branch="main", default_branch="main", is_on_default=True
+            ),
+        ):
+            yield
 
     def test_classification_skipped_fires_skipped_event(
         self,
@@ -525,6 +564,19 @@ class TestAutoResolveClassificationSkip:
 
 class TestAutoResolveAttemptResolutionPath:
     """classify_conflicts returns eligible_files → attempt_resolution called (lines 514-537)."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_branch_resolver(self):
+        """Return is_on_default=True so I-00126 guard never fires in tests."""
+        from orch.utils.branch_resolver import BranchInfo
+
+        with patch(
+            "orch.daemon.merge_queue.resolve_branch_for_project",
+            return_value=BranchInfo(
+                current_branch="main", default_branch="main", is_on_default=True
+            ),
+        ):
+            yield
 
     def test_attempt_resolution_called_with_work_item_context(
         self,
@@ -708,6 +760,19 @@ class TestAutoResolveAttemptResolutionPath:
 
 class TestAutoResolveExceptionPath:
     """Exception inside the AUTO_RESOLVE_REQUESTED try block (lines 539-547)."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_branch_resolver(self):
+        """Return is_on_default=True so I-00126 guard never fires in tests."""
+        from orch.utils.branch_resolver import BranchInfo
+
+        with patch(
+            "orch.daemon.merge_queue.resolve_branch_for_project",
+            return_value=BranchInfo(
+                current_branch="main", default_branch="main", is_on_default=True
+            ),
+        ):
+            yield
 
     def test_exception_in_attempt_resolution_emits_failed_event(
         self,

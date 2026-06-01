@@ -35,6 +35,7 @@ from orch.daemon.migration_pipeline import (
 )
 from orch.daemon.migration_rebase import run_pre_merge_rebase
 from orch.db.models import BatchItem, BatchItemStatus, DaemonEvent, WorkItem, WorkItemStatus
+from orch.utils.branch_resolver import resolve_branch_for_project
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -265,22 +266,91 @@ def _merge_item(
 
     result: subprocess.CompletedProcess[str] | None = None
     conflict_files: list[str] = []  # defined before try so except block can reference
+
+    # I-00126: resolve the project's default branch before merging.
+    # Guard: refuse to merge if the repo's HEAD is not on that branch (exit 3).
+    # This prevents silent wrong-branch merges (I-00126 root cause A).
+    branch_info = resolve_branch_for_project(project_config.working_dir)
+    if not branch_info.is_on_default:
+        batch_item.status = BatchItemStatus.merge_failed
+        batch_item.notes = (
+            f"Repo HEAD is on '{branch_info.current_branch}', not the default branch "
+            f"'{branch_info.default_branch}' — merge refused. Switch to the default branch "
+            f"before merging."
+        )
+        db.commit()
+        _emit_event(
+            db,
+            project_id,
+            "merge_refused_wrong_branch",
+            item_id,
+            "work_item",
+            batch_item.notes,
+            {
+                "item_id": item_id,
+                "expected_branch": branch_info.default_branch,
+                "actual_branch": branch_info.current_branch,
+            },
+        )
+        logger.error(
+            "[%s] Merge refused for %s: HEAD is on '%s', not '%s'",
+            project_id,
+            item_id,
+            branch_info.current_branch,
+            branch_info.default_branch,
+        )
+        return
+
     try:
         cmd = [
             "bash",
             str(_EXECUTOR_DIR / "worktree_commit.sh"),
             item_id,
             project_config.working_dir,
+            branch_info.default_branch,
         ]  # noqa: S607
-        # Pass scope-gate toggle via env. Default off — projects opt in via
-        # .iw-orch.json {"scope_gate_enabled": true}. See ProjectConfig.
+        # Pass scope-gate toggle and default branch via env. Default off —
+        # projects opt in via .iw-orch.json {"scope_gate_enabled": true}.
+        # See ProjectConfig.
         merge_env = {
             **os.environ,
             "IW_SCOPE_GATE_ENABLED": "true" if project_config.scope_gate_enabled else "false",
+            "IW_DEFAULT_BRANCH": branch_info.default_branch,
         }
         result = subprocess.run(  # noqa: S603
             cmd, capture_output=True, text=True, timeout=120, env=merge_env
         )
+        # I-00126 guard: exit code 3 means worktree_commit.sh refused because
+        # the repo was on the wrong branch (race between branch check above and
+        # script execution). Surface clearly without marking merged.
+        if result.returncode == 3:
+            batch_item.status = BatchItemStatus.merge_failed
+            batch_item.notes = (
+                f"Merge refused: repo HEAD is not on the default branch "
+                f"'{branch_info.default_branch}'."
+            )
+            db.commit()
+            _emit_event(
+                db,
+                project_id,
+                "merge_refused_wrong_branch",
+                item_id,
+                "work_item",
+                batch_item.notes,
+                {
+                    "item_id": item_id,
+                    "expected_branch": branch_info.default_branch,
+                    "actual_branch": branch_info.current_branch,
+                    "script_stderr": result.stderr[:500],
+                },
+            )
+            logger.error(
+                "[%s] worktree_commit.sh refused %s: exit 3 (wrong branch)",
+                project_id,
+                item_id,
+            )
+            return
+
         if result.returncode != 0:
             raise MergeError(result.stderr.strip() or f"exit code {result.returncode}")
 

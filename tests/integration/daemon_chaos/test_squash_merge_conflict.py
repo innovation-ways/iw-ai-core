@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from orch.daemon.merge_queue import _merge_item
 from orch.db.models import (
     Batch,
     BatchItem,
@@ -18,8 +20,6 @@ from orch.db.models import (
 
 
 def _git(repo: Path, *args: str) -> str:
-    import subprocess
-
     result = subprocess.run(
         ["git", *args],
         cwd=repo,
@@ -92,7 +92,6 @@ def _build_conflicting_repo(tmp_path: Path, item_id: str):
 
 
 def _run_conflict_merge(db_session, tmp_path: Path, chaos_daemon):
-    from orch.daemon.merge_queue import _merge_item
     from orch.daemon.project_registry import ProjectConfig
 
     item_id = "I-MERGE-CONFLICT"
@@ -113,6 +112,11 @@ def _run_conflict_merge(db_session, tmp_path: Path, chaos_daemon):
     chaos_daemon.inject_squash_merge_conflict_on_main()
     chaos_daemon.advance_one_cycle()
 
+    # I-00126: this chaos test deliberately runs the REAL worktree_commit.sh
+    # against an on-`main` temp repo with a genuine conflict, so the script's
+    # conflict detection + auto-resolve markers are exercised end-to-end. The
+    # repo HEAD is on `main`, so the new wrong-branch merge guard passes
+    # naturally — no resolver mock needed.
     with (
         patch(
             "orch.daemon.merge_queue.run_pre_merge_rebase",
@@ -170,6 +174,7 @@ def test_item_status_after_merge_conflict(db_session, test_project, tmp_path, ch
     wi = db_session.get(WorkItem, ("test-proj", ctx["item_id"]))
 
     assert wi is not None
+    # C4: WorkItem.status reverts to failed when merge fails
     assert wi.status == WorkItemStatus.failed
 
     try:

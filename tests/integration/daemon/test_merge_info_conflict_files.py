@@ -53,6 +53,19 @@ def _make_mock_result(
 class TestMergeInfoConflictFiles:
     """Tests for BatchItem.merge_info["conflict_files"]."""
 
+    @pytest.fixture(autouse=True)
+    def _mock_branch_resolver(self):
+        """Return is_on_default=True so I-00126 guard never fires in tests."""
+        from orch.utils.branch_resolver import BranchInfo
+
+        with patch(
+            "orch.daemon.merge_queue.resolve_branch_for_project",
+            return_value=BranchInfo(
+                current_branch="main", default_branch="main", is_on_default=True
+            ),
+        ):
+            yield
+
     @pytest.fixture
     def project_id(self) -> str:
         return "test-proj-merge-conflict"

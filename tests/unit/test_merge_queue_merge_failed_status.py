@@ -55,6 +55,15 @@ def _batch_item(
     return bi
 
 
+def _branch_info_mock() -> MagicMock:
+    """A mock BranchInfo that passes the I-00126 default-branch guard."""
+    m = MagicMock()
+    m.current_branch = "main"
+    m.default_branch = "main"
+    m.is_on_default = True
+    return m
+
+
 # ---------------------------------------------------------------------------
 # AC1: MergeError → merge_failed (not failed)
 # ---------------------------------------------------------------------------
@@ -66,7 +75,11 @@ class TestMergeErrorWritesMergeFailed:
         db = MagicMock()
         item = _batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
-        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+        with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+        ):
+            mock_resolve.return_value = _branch_info_mock()
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="scope gate failed")
             _merge_item(db, item, "test-proj", _project_config())
 
@@ -79,10 +92,14 @@ class TestMergeErrorWritesMergeFailed:
         db = MagicMock()
         item = _batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
-        with patch(
-            "orch.daemon.merge_queue.subprocess.run",
-            side_effect=subprocess.TimeoutExpired(cmd="bash", timeout=120),
+        with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
+            patch(
+                "orch.daemon.merge_queue.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(cmd="bash", timeout=120),
+            ),
         ):
+            mock_resolve.return_value = _branch_info_mock()
             _merge_item(db, item, "test-proj", _project_config())
 
         assert item.status == BatchItemStatus.merge_failed
@@ -106,7 +123,11 @@ class TestMergeErrorWritesMergeFailed:
 
         db.query.side_effect = fake_query
 
-        with patch("orch.daemon.merge_queue.subprocess.run") as mock_run:
+        with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
+            patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
+        ):
+            mock_resolve.return_value = _branch_info_mock()
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="conflict")
             _merge_item(db, item, "test-proj", _project_config())
 
@@ -137,9 +158,11 @@ class TestMergeErrorWritesMergeFailed:
             )
 
         with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
             patch("orch.daemon.merge_queue._emit_event", side_effect=capture_emit),
         ):
+            mock_resolve.return_value = _branch_info_mock()
             mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="merge conflict")
             _merge_item(db, item, "test-proj", _project_config())
 

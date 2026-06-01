@@ -449,7 +449,16 @@ class TestMergeQueueIntegration:
                 result.stderr = ""
             return result
 
+        from orch.utils.branch_resolver import BranchInfo
+
+        def fake_branch_info(*args, **kwargs):
+            return BranchInfo(current_branch="main", default_branch="main", is_on_default=True)
+
         with (
+            patch(
+                "orch.daemon.merge_queue.resolve_branch_for_project",
+                side_effect=fake_branch_info,
+            ),
             patch("orch.daemon.merge_queue.subprocess.run", side_effect=fake_commit_script),
             patch("orch.daemon.merge_queue._cleanup_worktree"),
             patch("orch.daemon.merge_queue.run_pre_merge_dry_run") as mock_dry,

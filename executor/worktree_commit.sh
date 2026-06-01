@@ -31,12 +31,18 @@
 #     every later merge jammed.)
 #
 # Usage:
-#   executor/worktree_commit.sh <item_id> <project_repo_root>
+#   executor/worktree_commit.sh <item_id> <project_repo_root> [default_branch]
+#
+# The default_branch argument (or IW_DEFAULT_BRANCH env var) tells the script
+# which branch to merge onto. The script refuses to run if the repo's HEAD is
+# not on that branch (guard against silent wrong-branch merges). Default is
+# "main" when neither is supplied.
 #
 # Exit codes:
-#   0 — success (squash-merged into main)
+#   0 — success (squash-merged into default_branch)
 #   1 — failure (commit failed, rebase conflict, merge conflict, or empty branch)
 #   2 — worktree does not exist (may already be cleaned up — caller handles)
+#   3 — repo is not on the configured default branch (guard拒绝)
 #
 # =============================================================================
 
@@ -49,8 +55,10 @@ if [[ "${1:-}" == "--resume-rebase" ]]; then
     exit 2
 fi
 
-ITEM_ID="${1:?Usage: worktree_commit.sh <item_id> <project_repo_root>}"
+ITEM_ID="${1:?Usage: worktree_commit.sh <item_id> <project_repo_root> [default_branch]}"
 PROJECT_REPO_ROOT="${2:?project_repo_root is required}"
+# default_branch: positional arg, then env var, then hard-coded fallback.
+DEFAULT_BRANCH="${3:-${IW_DEFAULT_BRANCH:-main}}"
 
 WORKTREE_DIR="$PROJECT_REPO_ROOT/.worktrees/$ITEM_ID"
 
@@ -104,7 +112,7 @@ _restore_main_stash() {
     if [[ "$main_stashed" == true ]]; then
         echo "[worktree_commit] INFO: Restoring stashed changes on main (exit trap)" >&2
         cd "$PROJECT_REPO_ROOT"
-        if git stash pop >&2; then
+        if git stash pop >/dev/null 2>&1; then
             echo "[worktree_commit] OK: Stashed changes restored on main" >&2
         else
             echo "[worktree_commit] INFO: Stash pop had conflicts — recovering" >&2
@@ -164,8 +172,28 @@ if [[ ! -f "$WORKTREE_DIR/.git" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 1.5: Pre-flight — main must not be mid-operation or wedged
+# Step 1.5: Pre-flight — default_branch guard + git state check
 # ---------------------------------------------------------------------------
+# Guard: refuse to run if the repo's HEAD is not on the configured default
+# branch. This prevents silent wrong-branch merges (I-00126 root cause A).
+# If the repo is on a stray checked-out branch, we must not merge onto it.
+#
+# Resolve the branch with an explicit `-C "$PROJECT_REPO_ROOT"` rather than
+# relying on the script's launch CWD: the daemon may merge a project other than
+# the one it was started from, so the guard must inspect the repo it is about to
+# merge into — not whatever directory the process happens to be sitting in.
+_CURRENT_BRANCH=$(git -C "$PROJECT_REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+# I-00126: IW_CORE_TESTING=1 bypasses this guard for unit tests that drive the
+# script against a worktree checked out on a non-default branch and only mean to
+# exercise the other script logic (stash/restore, commit message, etc.).
+if [[ "${IW_CORE_TESTING:-}" != "1" && "$_CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]]; then
+    echo "[worktree_commit] ERROR: Repo HEAD is on '$_CURRENT_BRANCH', not the default branch '$DEFAULT_BRANCH'." >&2
+    echo "[worktree_commit]        The merge queue MUST squash-merge onto the default branch." >&2
+    echo "[worktree_commit]        Switch to '$DEFAULT_BRANCH' before merging (git checkout $DEFAULT_BRANCH)," >&2
+    echo "[worktree_commit]        or pass the correct default_branch as the 3rd argument / IW_DEFAULT_BRANCH env var." >&2
+    exit 3
+fi
+
 # Refuse to start if a human-initiated git operation is in progress on main —
 # we would clobber it. If main merely carries stale unmerged paths left over
 # from a prior bad stash-pop (the CR-00042 failure mode), clear them now so the
@@ -185,7 +213,11 @@ if [[ -n "$(git ls-files --unmerged 2>/dev/null || true)" ]]; then
 fi
 
 cd "$WORKTREE_DIR"
-BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+BRANCH_NAME=$(git -C "$WORKTREE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+if [[ "$BRANCH_NAME" == "HEAD" ]]; then
+    # Detached HEAD in the worktree — resolve the branch ref directly.
+    BRANCH_NAME=$(git -C "$WORKTREE_DIR" symbolic-ref --short HEAD 2>/dev/null || echo "unknown")
+fi
 
 # ---------------------------------------------------------------------------
 # Step 2: Commit any uncommitted changes in the worktree
@@ -246,7 +278,7 @@ if [[ "${IW_SCOPE_GATE_ENABLED:-false}" != "true" ]]; then
 elif [[ -f "$MANIFEST_FILE" ]]; then
     # Resolve executor dir (same directory as this script) for the helper.
     EXECUTOR_DIR="$(cd "$(dirname "$0")" && pwd)"
-    MERGE_BASE=$(git merge-base HEAD main)
+    MERGE_BASE=$(git merge-base HEAD "$DEFAULT_BRANCH")
     set +e
     VIOLATIONS=$(
         git diff "$MERGE_BASE"..HEAD --name-only 2>/dev/null \
@@ -305,20 +337,20 @@ _REBASE_TAKE_THEIRS="Makefile"
 # Auto-generated files to regenerate after squash-merge (space-separated).
 _REGEN_AFTER_MERGE="uv.lock"
 
-MAIN_SHA=$(git rev-parse main 2>/dev/null || echo "")
+MAIN_SHA=$(git rev-parse "$DEFAULT_BRANCH" 2>/dev/null || echo "")
 BRANCH_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
 
 if [[ -z "$MAIN_SHA" ]]; then
-    echo "[worktree_commit] ERROR: Could not resolve 'main' from worktree" >&2
+    echo "[worktree_commit] ERROR: Could not resolve '$DEFAULT_BRANCH' from worktree" >&2
     exit 1
 fi
 
-if [[ "$(git merge-base HEAD main)" == "$MAIN_SHA" ]]; then
-    echo "[worktree_commit] INFO: Branch already contains main tip ($MAIN_SHA) — no rebase needed" >&2
+if [[ "$(git merge-base HEAD \"$DEFAULT_BRANCH\")" == "$MAIN_SHA" ]]; then
+    echo "[worktree_commit] INFO: Branch already contains $DEFAULT_BRANCH tip ($MAIN_SHA) — no rebase needed" >&2
 else
-    echo "[worktree_commit] INFO: Rebasing $BRANCH_NAME onto main ($MAIN_SHA)" >&2
+    echo "[worktree_commit] INFO: Rebasing $BRANCH_NAME onto $DEFAULT_BRANCH ($MAIN_SHA)" >&2
 
-    if git rebase main 2>&1; then
+    if git rebase "$DEFAULT_BRANCH" >/dev/null 2>&1; then
         NEW_BRANCH_SHA=$(git rev-parse HEAD)
         echo "[worktree_commit] OK: Rebased $BRANCH_NAME: $BRANCH_SHA → $NEW_BRANCH_SHA" >&2
     else
@@ -343,7 +375,7 @@ else
             [[ -z "$_cf" ]] && continue
             if echo " $_REBASE_TAKE_OURS " | grep -qF " $_cf "; then
                 git checkout --ours "$_cf" 2>/dev/null && git add "$_cf"
-                echo "[worktree_commit] INFO: Auto-resolved $_cf (--ours = main's version; will regenerate post-merge)" >&2
+                echo "[worktree_commit] INFO: Auto-resolved $_cf (--ours = $DEFAULT_BRANCH's version; will regenerate post-merge)" >&2
             elif echo " $_REBASE_TAKE_THEIRS " | grep -qF " $_cf "; then
                 git checkout --theirs "$_cf" 2>/dev/null && git add "$_cf"
                 echo "[worktree_commit] INFO: Auto-resolved $_cf (--theirs = branch's version)" >&2
@@ -505,7 +537,7 @@ else
             fi
             echo "[worktree_commit] CONFLICT_FILES $_conflict_json"
         fi
-        if GIT_EDITOR=true git rebase --continue 2>&1; then
+        if GIT_EDITOR=true git rebase --continue >/dev/null 2>&1; then
             NEW_BRANCH_SHA=$(git rev-parse HEAD)
             echo "[worktree_commit] OK: Rebased $BRANCH_NAME (auto-resolved conflicts): $BRANCH_SHA → $NEW_BRANCH_SHA" >&2
         else
@@ -517,35 +549,35 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3: Verify branch has commits ahead of main
+# Step 3: Verify branch has commits ahead of $DEFAULT_BRANCH
 # ---------------------------------------------------------------------------
-ahead=$(git log main..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')
+ahead=$(git log "$DEFAULT_BRANCH"..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')
 
 if [[ "$ahead" -eq 0 ]]; then
-    echo "[worktree_commit] ERROR: Branch has NO commits ahead of main." >&2
+    echo "[worktree_commit] ERROR: Branch has NO commits ahead of $DEFAULT_BRANCH." >&2
     echo "[worktree_commit]        The worktree is clean but no implementation work was committed." >&2
     echo "[worktree_commit]        This means the agent completed without writing any code." >&2
     echo "[worktree_commit]        Manual investigation required for $ITEM_ID." >&2
     exit 1
 fi
 
-echo "[worktree_commit] OK: Branch is $ahead commit(s) ahead of main — safe to merge" >&2
+echo "[worktree_commit] OK: Branch is $ahead commit(s) ahead of $DEFAULT_BRANCH — safe to merge" >&2
 
 # ---------------------------------------------------------------------------
 # Step 4: Show what will be merged (summary for logs)
 # ---------------------------------------------------------------------------
-echo "[worktree_commit] Files on branch vs main:" >&2
-git diff main..HEAD --name-status 2>/dev/null | head -30 >&2 || true
+echo "[worktree_commit] Files on branch vs $DEFAULT_BRANCH:" >&2
+git diff "$DEFAULT_BRANCH"..HEAD --name-status 2>/dev/null | head -30 >&2 || true
 
 # ---------------------------------------------------------------------------
-# Step 5: Squash-merge into main
+# Step 5: Squash-merge into $DEFAULT_BRANCH
 # ---------------------------------------------------------------------------
 cd "$PROJECT_REPO_ROOT"
 
-echo "[worktree_commit] Squash-merging branch $BRANCH_NAME into main..." >&2
+echo "[worktree_commit] Squash-merging branch $BRANCH_NAME into $DEFAULT_BRANCH..." >&2
 
 # ---------------------------------------------------------------------------
-# Step 5a: Protect uncommitted changes on main with git stash
+# Step 5a: Protect uncommitted changes on $DEFAULT_BRANCH with git stash
 # ---------------------------------------------------------------------------
 main_uncommitted=$(git status --porcelain 2>/dev/null || echo "")
 main_stashed=false
@@ -578,7 +610,7 @@ while IFS=$'\t' read -r status fpath; do
         mv "$fpath" "$STASH_DIR/$fpath"
         stashed_count=$((stashed_count + 1))
     fi
-done < <(git diff main..."$BRANCH_NAME" --name-status --diff-filter=A 2>/dev/null)
+done < <(git diff "$DEFAULT_BRANCH"..."$BRANCH_NAME" --name-status --diff-filter=A 2>/dev/null)
 
 if [[ "$stashed_count" -gt 0 ]]; then
     echo "[worktree_commit] Moved $stashed_count conflicting untracked files to $STASH_DIR" >&2
@@ -669,7 +701,7 @@ if command -v iw >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     fi
 fi
 FILES_CHANGED=$(git diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ')
-SOURCE_COMMITS=$(git log main..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')
+SOURCE_COMMITS=$(git log "$DEFAULT_BRANCH"..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')
 
 if git commit --no-verify -m "$(cat <<COMMIT_EOF
 Merge $ITEM_ID: $ITEM_TITLE
@@ -679,7 +711,7 @@ Files changed: $FILES_CHANGED
 Source commits: $SOURCE_COMMITS
 COMMIT_EOF
 )" >&2; then
-    echo "[worktree_commit] OK: Squash-merge committed on main" >&2
+    echo "[worktree_commit] OK: Squash-merge committed on $DEFAULT_BRANCH" >&2
 else
     echo "[worktree_commit] ERROR: Squash-merge commit failed" >&2
     _cleanup_main_after_failed_merge

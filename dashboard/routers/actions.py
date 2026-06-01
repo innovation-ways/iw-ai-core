@@ -1696,6 +1696,7 @@ def confirm_batch_dialog(
     action: str,
     batch_id: str,
     request: Request,
+    db: Session = Depends(get_db),
 ) -> Any:
     templates: Jinja2Templates = request.app.state.templates
 
@@ -1723,13 +1724,29 @@ def confirm_batch_dialog(
         else "fragments/confirm_action.html"
     )
 
-    extra_context = {
+    extra_context: dict[str, Any] = {
         "title": f"{title.rstrip('?')} {batch_id}?",
         "description": description,
         "confirm_url": action_url,
         "confirm_label": confirm_label,
         "danger": danger,
     }
+
+    # I-00126: branch-aware warning for batch-approve (gates on current branch != default branch)
+    if action == "approve":
+        from orch.utils.branch_resolver import resolve_branch_for_project
+
+        project_rec = db.scalar(select(Project).where(Project.id == project_id))
+        if project_rec is not None:
+            branch_info = resolve_branch_for_project(project_rec.repo_root)
+            if not branch_info.is_on_default:
+                dbg = branch_info.default_branch
+                extra_context["description"] = (
+                    f'<span class="text-destructive font-semibold">'
+                    f"local branch is not <code>{dbg}</code>, do you want to proceed?"
+                    f"</span><br><br>Otherwise, the batch will be approved normally."
+                )
+                extra_context["warning"] = f"local branch is not <code>{dbg}</code>"
 
     if action == "cancel":
         extra_context["default_reason"] = "cancelled by operator"

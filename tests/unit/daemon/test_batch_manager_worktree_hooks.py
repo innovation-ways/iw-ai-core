@@ -223,6 +223,7 @@ class TestTerminalTransitionComposeDown:
         project_cfg.working_dir = str(tmp_path)
 
         with (
+            patch("orch.daemon.merge_queue.resolve_branch_for_project") as mock_resolve_branch,
             patch("orch.daemon.merge_queue.subprocess.run") as mock_run,
             patch("orch.daemon.merge_queue.worktree_compose.down") as mock_down,
             patch("orch.daemon.merge_queue._cleanup_worktree"),
@@ -231,6 +232,13 @@ class TestTerminalTransitionComposeDown:
             patch("orch.daemon.merge_queue.run_post_merge_apply") as mock_apply,
             patch("orch.daemon.merge_queue.run_rollback") as mock_rollback,
         ):
+            # I-00126: resolve_branch_for_project reads the real repo — patch it so
+            # the test's tmp_path is not treated as a git repo with a stray branch.
+            mock_resolve_branch.return_value = MagicMock(
+                current_branch="main",
+                default_branch="main",
+                is_on_default=True,
+            )
             mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             mock_rebase.return_value = MagicMock(success=True)
             mock_dry_run.return_value = MagicMock(success=True)

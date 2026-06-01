@@ -293,6 +293,27 @@ class TestMergeFailureDoesNotCascade:
 class TestMergeQueueMergeFailedWritesCorrectStatus:
     """AC1 in integration: merge queue writes merge_failed (not failed)."""
 
+    @pytest.fixture(autouse=True)
+    def _mock_branch_resolver(self):
+        """Return is_on_default=True so the I-00126 wrong-branch guard never fires.
+
+        This test uses a fake repo_root (``/repos/test``) and mocks
+        ``subprocess.run``; the real branch resolver would resolve HEAD to
+        ``unknown`` and the guard would refuse the merge *before* the
+        merge-error path under test is exercised. Mocking the resolver is the
+        design-prescribed approach (I-00126 design doc: "monkeypatch the
+        branch-resolver").
+        """
+        from orch.utils.branch_resolver import BranchInfo
+
+        with patch(
+            "orch.daemon.merge_queue.resolve_branch_for_project",
+            return_value=BranchInfo(
+                current_branch="main", default_branch="main", is_on_default=True
+            ),
+        ):
+            yield
+
     def test_merge_queue_process_writes_merge_failed_on_merge_error(
         self,
         db_session: Session,
