@@ -188,8 +188,20 @@ def pg_container() -> Generator[PostgresContainer, None, None]:
 
     The container runs on a random Docker-assigned port — never touches
     the platform database on the port defined in .env.
+
+    ``timeout=120`` is passed to the Docker Engine API client to set the Unix
+    socket read timeout. Without this, the default (~60 s) can fire during
+    image pulls on slow connections, surfacing as a ``ReadTimeoutError`` on
+    the initial ``/v1.54/containers/create`` call and cascading into 200+
+    spurious ``ERROR`` results across the integration suite.
+
+    Note: the timeout is passed via ``docker_client_kw`` (not directly to the
+    container run call) so it configures ``docker.from_env(timeout=120)`` — the
+    socket-level read timeout on the API client, not a container run argument.
+    Passing ``timeout`` directly to the container ``run()`` call would raise an
+    ``UnexpectedKWargs`` error because ``timeout`` is not a valid ``run()`` kwarg.
     """
-    with PostgresContainer("postgres:15-alpine") as pg:
+    with PostgresContainer("postgres:15-alpine", docker_client_kw={"timeout": 120}) as pg:
         yield pg
 
 

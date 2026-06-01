@@ -10,6 +10,7 @@ from orch.cli.item_commands import (
     agent_to_label,
     agent_to_step_type,
     validate_approve_transition,
+    validate_item_retry_transition,
     validate_unapprove_transition,
 )
 from orch.cli.utils import (
@@ -19,7 +20,14 @@ from orch.cli.utils import (
     format_id,
     validate_id_prefix,
 )
-from orch.db.models import DocType, StepType, WorkItemStatus, WorkItemType
+from orch.db.models import (
+    BatchItemStatus,
+    BatchStatus,
+    DocType,
+    StepType,
+    WorkItemStatus,
+    WorkItemType,
+)
 
 # ---------------------------------------------------------------------------
 # find_project_root
@@ -342,3 +350,141 @@ def test_validate_unapprove_transition_research_check_fires_before_status_check(
     msg = validate_unapprove_transition(WorkItemStatus.draft, None, WorkItemType.Research)
     assert msg is not None
     assert "Cannot unapprove research items" in msg
+
+
+# ---------------------------------------------------------------------------
+# validate_item_retry_transition
+# ---------------------------------------------------------------------------
+
+
+class TestValidateItemRetryTransitions:
+    """Tests for item-retry transition validation (pure, no DB)."""
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            WorkItemStatus.draft,
+            WorkItemStatus.approved,
+            WorkItemStatus.paused,
+        ],
+    )
+    def test_rejects_healthy_item(self, status: WorkItemStatus) -> None:
+        """Healthy items must not be disrupted by retry."""
+        error, is_noop = validate_item_retry_transition(
+            status,
+            BatchItemStatus.pending,
+            BatchStatus.executing,
+        )
+        assert error is not None, f"Expected rejection for {status.value}"
+        assert "not stuck" in error.lower()
+        assert is_noop is False
+
+    def test_idempotent_in_progress_healthy_state(self) -> None:
+        """in_progress + pending + executing is already recovered (idempotent)."""
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.in_progress,
+            BatchItemStatus.pending,
+            BatchStatus.executing,
+        )
+        assert error is None
+        assert is_noop is True
+
+    def test_idempotent_in_progress_completed_with_errors(self) -> None:
+        """Idempotent: in_progress + completed_with_errors is already partially recovered."""
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.in_progress,
+            BatchItemStatus.failed,
+            BatchStatus.completed_with_errors,
+        )
+        assert error is None
+        assert is_noop is True
+
+    @pytest.mark.parametrize(
+        "batch_item_status",
+        [
+            BatchItemStatus.failed,
+            BatchItemStatus.setup_failed,
+            BatchItemStatus.stalled,
+            BatchItemStatus.migration_rebase_failed,
+            BatchItemStatus.merge_failed,
+        ],
+    )
+    def test_accepts_terminal_batch_item_status(self, batch_item_status: BatchItemStatus) -> None:
+        """Terminal batch_item statuses make the item eligible for retry."""
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.failed,
+            batch_item_status,
+            BatchStatus.executing,
+        )
+        assert error is None
+        assert is_noop is False
+
+    def test_accepts_completed_with_errors_batch(self) -> None:
+        """completed_with_errors batch makes the item eligible for retry."""
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.failed,
+            BatchItemStatus.pending,  # batch_item may already be pending in some paths
+            BatchStatus.completed_with_errors,
+        )
+        assert error is None
+        assert is_noop is False
+
+    @pytest.mark.parametrize(
+        "work_item_status",
+        [
+            WorkItemStatus.failed,
+            WorkItemStatus.completed,
+            WorkItemStatus.cancelled,
+        ],
+    )
+    def test_accepts_terminal_work_item_without_batch(
+        self, work_item_status: WorkItemStatus
+    ) -> None:
+        """Terminal work_item without batch membership is still eligible."""
+        error, is_noop = validate_item_retry_transition(
+            work_item_status,
+            None,  # no batch_item
+            None,  # no batch
+        )
+        assert error is None
+        assert is_noop is False
+
+    def test_accepts_terminal_work_item_with_completed_batch(self) -> None:
+        """Terminal work_item with completed batch is eligible."""
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.failed,
+            BatchItemStatus.pending,
+            BatchStatus.completed,  # not completed_with_errors, but item is terminal
+        )
+        # The batch_item is pending so it's eligible (work_item=failed is terminal)
+        assert error is None
+
+    @pytest.mark.parametrize(
+        "batch_item_status",
+        [
+            # pending is covered by idempotency tests (in_progress case) and
+            # approved/paused rejection tests (healthy case)
+            BatchItemStatus.setting_up,
+            BatchItemStatus.executing,
+            BatchItemStatus.completed,
+            BatchItemStatus.awaiting_merge_approval,
+            BatchItemStatus.merging,
+            BatchItemStatus.merged,
+            BatchItemStatus.skipped,
+            BatchItemStatus.migration_invalid,
+            BatchItemStatus.migration_rolled_back,
+        ],
+    )
+    def test_rejects_non_terminal_batch_item_status(
+        self, batch_item_status: BatchItemStatus
+    ) -> None:
+        """Non-terminal batch_item statuses with healthy work_item are not eligible."""
+        # Use approved work_item to avoid idempotency/terminal-work-item cases
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.approved,
+            batch_item_status,
+            BatchStatus.executing,
+        )
+        # approved is "not stuck" — should reject regardless of batch_item state
+        assert error is not None
+        assert "not stuck" in error.lower()

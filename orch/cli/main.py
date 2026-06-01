@@ -29,6 +29,7 @@ from orch.cli.item_commands import (
     archive,
     item_cancel,
     item_report,
+    item_retry,
     item_status,
     register,
     unapprove,
@@ -114,6 +115,7 @@ cli.add_command(approve_merge_cmd, name="approve-merge")
 cli.add_command(unapprove)
 cli.add_command(archive)
 cli.add_command(item_cancel, name="item-cancel")
+cli.add_command(item_retry)
 cli.add_command(item_status)
 cli.add_command(item_report)
 cli.add_command(step_start)

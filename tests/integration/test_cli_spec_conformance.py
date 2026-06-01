@@ -62,7 +62,14 @@ PRIORITY_COMMANDS: frozenset[str] = frozenset(
 # "direction" — "spec_only" (documented but absent from the CLI) or "cli_only"
 # (registered in the CLI but undocumented). CR-00073 fixed §4 of the spec doc
 # directly rather than allowlisting, so this is empty: any drift now fails.
-KNOWN_SPEC_DRIFT: dict[str, dict[str, str]] = {}
+KNOWN_SPEC_DRIFT: dict[str, dict[str, str]] = {
+    # I-00124: item-retry added by S01, §4 of the CLI spec not yet updated.
+    # Remove this entry once the spec doc is updated.
+    "item-retry": {
+        "reason": "I-00124 S01 — new command, spec doc §4 update pending",
+        "direction": "cli_only",
+    },
+}
 
 # Commands that do not yet have a dedicated contract test. Keyed by command
 # name; each entry carries a one-line "reason". Pre-seeded with every command

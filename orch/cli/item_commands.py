@@ -23,6 +23,7 @@ from orch.daemon.execution_report import (
 from orch.db.models import (
     Batch,
     BatchItem,
+    BatchItemStatus,
     BatchStatus,
     DaemonEvent,
     EvidencePhase,
@@ -129,6 +130,27 @@ _BATCH_ITEM_CLI_COLUMNS = (
 # Pure validation helpers (used by unit tests without DB)
 # ---------------------------------------------------------------------------
 
+#: Terminal batch-item statuses that make an item eligible for retry.
+_RETRY_ELIGIBLE_BATCH_ITEM_STATUSES: frozenset[BatchItemStatus] = frozenset(
+    {
+        BatchItemStatus.failed,
+        BatchItemStatus.setup_failed,
+        BatchItemStatus.stalled,
+        BatchItemStatus.migration_rebase_failed,
+        BatchItemStatus.merge_failed,
+    }
+)
+
+#: Work-item statuses that are not stuck and must not be disrupted by retry.
+_NOT_STUCK_WORK_ITEM_STATUSES: frozenset[WorkItemStatus] = frozenset(
+    {
+        WorkItemStatus.draft,
+        WorkItemStatus.approved,
+        WorkItemStatus.in_progress,
+        WorkItemStatus.paused,
+    }
+)
+
 
 def validate_approve_transition(
     current_status: WorkItemStatus, item_type: WorkItemType | None = None
@@ -157,6 +179,76 @@ def validate_unapprove_transition(
     if active_batch_id:
         return f"Cannot unapprove: item is in batch {active_batch_id}"
     return None
+
+
+def validate_item_retry_transition(
+    work_item_status: WorkItemStatus,
+    batch_item_status: BatchItemStatus | None,
+    batch_status: BatchStatus | None,
+) -> tuple[str | None, bool]:
+    """Return (error_message, is_idempotent_noop) for an item-retry validation.
+
+    An item is eligible for retry when:
+    - Its batch_item is in a terminal/failed sub-state (failed, setup_failed,
+      stalled, migration_rebase_failed, merge_failed), OR
+    - Its batch is completed_with_errors (even if work_item is in_progress).
+
+    An item is NOT stuck (refuse) when:
+    - work_item is draft (never approved — approve first)
+    - work_item is already approved or paused and the batch/batch_item are
+      healthy (healthy items must not be disrupted).
+
+    An item is idempotent-noop when:
+    - work_item is in_progress AND batch is executing AND batch_item is pending
+      (healthy recovery state — already re-driven), OR
+    - work_item is in_progress AND batch is completed_with_errors
+      (inconsistent state — already partially recovered but still dead-ended).
+
+    Returns
+    -------
+    tuple[str | None, bool]
+        (error_message, is_idempotent_noop).
+        - (None, False)  → item is eligible, apply retry
+        - (None, True)   → already retried, no-op (idempotent)
+        - (str, _)       → invalid, exit with error message
+    """
+    # Idempotency check: already re-driven.
+    # Case 1: healthy recovery (in_progress + executing + pending batch_item)
+    if (
+        work_item_status == WorkItemStatus.in_progress
+        and batch_status == BatchStatus.executing
+        and batch_item_status == BatchItemStatus.pending
+    ):
+        return None, True
+
+    # Case 2: in_progress + completed_with_errors (partially recovered but batch
+    # still dead-ended — running retry again is a no-op)
+    if (
+        work_item_status == WorkItemStatus.in_progress
+        and batch_status == BatchStatus.completed_with_errors
+    ):
+        return None, True
+
+    # Dead-end guards: always eligible regardless of work_item status.
+    # completed_with_errors batch is dead-ended even if work_item looks healthy.
+    if batch_status == BatchStatus.completed_with_errors:
+        return None, False
+
+    # batch_item in a terminal/failed sub-state is always eligible.
+    if batch_item_status in _RETRY_ELIGIBLE_BATCH_ITEM_STATUSES:
+        return None, False
+
+    # Healthy / non-stuck: refuse to disrupt good work.
+    if work_item_status in _NOT_STUCK_WORK_ITEM_STATUSES:
+        return (
+            f"Item is not stuck: status is '{work_item_status.value}' "
+            f"(draft/approved/in_progress/paused)",
+            False,
+        )
+
+    # Terminal work_item but no obvious dead-end signal — still eligible
+    # (e.g. work_item=failed with no batch membership; orphan case)
+    return None, False
 
 
 # ---------------------------------------------------------------------------
@@ -1296,3 +1388,203 @@ def approve_merge_cmd(ctx: click.Context, item_id: str, project_id_opt: str | No
         click.echo(json.dumps({"item_id": item_id, "status": "completed"}))
     else:
         click.echo(f"Approved merge for {item_id}")
+
+
+# ---------------------------------------------------------------------------
+# item-retry — re-drive a dead-ended work item after root cause is fixed
+# ---------------------------------------------------------------------------
+
+
+@click.command("item-retry")
+@click.argument("item_id")
+@click.pass_context
+def item_retry(ctx: click.Context, item_id: str) -> None:
+    """Re-drive a dead-ended work item after the root cause is fixed.
+
+    Resets the item, its batch_item, and (if needed) its batch to runnable
+    states so the daemon resumes execution from the first non-completed step.
+
+    Preconditions (validated; command refuses with a clear error if not met):
+    - The item must be genuinely stuck (batch_item in failed/setup_failed/stalled/
+      migration_rebase_failed/merge_failed, OR batch is completed_with_errors).
+    - The item must NOT be healthy (draft/approved/in_progress/paused) — those
+      are not stuck and must not be disrupted.
+
+    Recovery actions (all in one transaction):
+    1. Reset the first non-completed workflow_step (and all subsequent steps)
+       to pending, leaving completed steps untouched.
+    2. Set work_item.status to in_progress (so the daemon picks it up).
+    3. If the owning batch is completed_with_errors, move it back to executing.
+    4. Set batch_item.status to pending (re-engageable).
+    5. Emit a DaemonEvent recording the retry.
+
+    Idempotent: re-running on an already-recovered item is a no-op success.
+    """
+    project_id = resolve_project(ctx)
+    get_session = ctx.obj["get_session"]
+
+    try:
+        with get_session() as session:
+            # Load the work item
+            item = session.execute(
+                select(WorkItem)
+                .options(load_only(*_WORK_ITEM_CLI_COLUMNS))
+                .where(WorkItem.project_id == project_id, WorkItem.id == item_id)
+            ).scalar_one_or_none()
+            if item is None:
+                output_error(ctx, f"Work item {item_id} not found in project {project_id}", 1)
+
+            # Load the most recent batch_item for this item
+            batch_item_row = session.execute(
+                select(BatchItem)
+                .where(
+                    BatchItem.project_id == project_id,
+                    BatchItem.work_item_id == item_id,
+                )
+                .order_by(BatchItem.id.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+
+            batch_item_status: BatchItemStatus | None = (
+                batch_item_row.status if batch_item_row else None
+            )
+
+            # Load the owning batch (if any)
+            batch_row = None
+            batch_status: BatchStatus | None = None
+            if batch_item_row and batch_item_row.batch_id:
+                batch_row = session.execute(
+                    select(Batch).where(
+                        Batch.project_id == project_id, Batch.id == batch_item_row.batch_id
+                    )
+                ).scalar_one_or_none()
+                batch_status = batch_row.status if batch_row else None
+
+            # Validate the transition
+            error, is_idempotent_noop = validate_item_retry_transition(
+                item.status, batch_item_status, batch_status
+            )
+            if error:
+                output_error(ctx, error, 1)
+
+            if is_idempotent_noop:
+                # Already recovered — idempotent success
+                if ctx.obj.get("json"):
+                    click.echo(
+                        json.dumps(
+                            {
+                                "project_id": project_id,
+                                "id": item_id,
+                                "status": item.status.value,
+                                "retry": False,
+                                "message": "Already recovered — no changes made",
+                            }
+                        )
+                    )
+                else:
+                    click.echo(
+                        f"{item_id} is already recovered (batch_item=pending, batch=executing, "
+                        f"work_item=in_progress) — no changes made"
+                    )
+                return
+
+            # Capture prior states for audit
+            prior_work_item_status = item.status
+            prior_batch_item_status = batch_item_status
+            prior_batch_status = batch_status
+
+            # --- Recovery actions (all in one transaction) ---
+
+            # 1. Reset the first non-completed workflow_step (and all subsequent)
+            #    to pending, leaving completed steps untouched.
+            steps = (
+                session.execute(
+                    select(WorkflowStep)
+                    .options(load_only(*_WORKFLOW_STEP_CLI_COLUMNS))
+                    .where(
+                        WorkflowStep.project_id == project_id,
+                        WorkflowStep.work_item_id == item_id,
+                    )
+                    .order_by(WorkflowStep.step_number)
+                )
+                .scalars()
+                .all()
+            )
+
+            reset_step_ids: list[str] = []
+            for step in steps:
+                if step.status != StepStatus.completed:
+                    step.status = StepStatus.pending
+                    step.started_at = None
+                    step.completed_at = None
+                    reset_step_ids.append(step.step_id)
+
+            # 2. Set work_item.status to in_progress (so the daemon picks it up).
+            #    Handles failed, completed, and cancelled states.
+            item.status = WorkItemStatus.in_progress
+            item.completed_at = None
+
+            # 3. If the owning batch is completed_with_errors, move it to executing.
+            if batch_row and batch_status == BatchStatus.completed_with_errors:
+                batch_row.status = BatchStatus.executing
+
+            # 4. Set batch_item.status to pending (re-engageable).
+            if batch_item_row:
+                batch_item_row.status = BatchItemStatus.pending
+
+            # 5. Emit a DaemonEvent for audit.
+            session.add(
+                DaemonEvent(
+                    project_id=project_id,
+                    event_type="item_retry",
+                    entity_id=item_id,
+                    entity_type="work_item",
+                    message=(
+                        f"Item {item_id} re-driven by operator after recovery. "
+                        f"Prior work_item={prior_work_item_status.value}, "
+                        f"batch_item="
+                        f"{prior_batch_item_status.value if prior_batch_item_status else 'N/A'}, "
+                        f"batch={prior_batch_status.value if prior_batch_status else 'N/A'}. "
+                        f"Reset steps: {reset_step_ids}"
+                    ),
+                    event_metadata={
+                        "prior_work_item_status": prior_work_item_status.value,
+                        "prior_batch_item_status": (
+                            prior_batch_item_status.value if prior_batch_item_status else None
+                        ),
+                        "prior_batch_status": (
+                            prior_batch_status.value if prior_batch_status else None
+                        ),
+                        "new_work_item_status": item.status.value,
+                        "new_batch_item_status": (
+                            batch_item_row.status.value if batch_item_row else None
+                        ),
+                        "new_batch_status": (batch_row.status.value if batch_row else None),
+                        "reset_step_ids": reset_step_ids,
+                        "operator_initiated": True,
+                    },
+                )
+            )
+
+    except Exception as exc:
+        output_error(ctx, f"Database error: {exc}", 1)
+
+    if ctx.obj.get("json"):
+        click.echo(
+            json.dumps(
+                {
+                    "project_id": project_id,
+                    "id": item_id,
+                    "status": "in_progress",
+                    "retry": True,
+                    "message": "Item re-driven — daemon will resume from first non-completed step",
+                }
+            )
+        )
+    else:
+        step_plural = "s" if len(reset_step_ids) != 1 else ""
+        click.echo(
+            f"Retried {item_id}: {len(reset_step_ids)} step{step_plural} reset to pending "
+            f"({', '.join(reset_step_ids)}), batch_item → pending, batch → executing, "
+            f"work_item → in_progress"
+        )
