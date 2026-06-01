@@ -140,7 +140,8 @@ class TestAgentRuntimeOptionsTable:
         so the table holds the F-00081 + GPT-5.3 Codex + Pi rows after
         migration. Migration ``0f11be8f2147`` then flipped the catalogue
         default from the OpenCode + MiniMax 2.7 row to the
-        Pi + MiniMax 2.7 row.
+        Pi + MiniMax 2.7 row. Migration ``b4c8opus48rt`` added Claude Code
+        + Opus 4.8 at sort_order 55.
         """
         rows = db_session.execute(
             text("""
@@ -149,7 +150,7 @@ class TestAgentRuntimeOptionsTable:
                 ORDER BY sort_order
             """)
         ).fetchall()
-        assert len(rows) == 8, f"Expected 8 rows, got {len(rows)}"
+        assert len(rows) == 9, f"Expected 9 rows, got {len(rows)}"
         assert rows[0] == ("opencode", "minimax/MiniMax-M2.7", False, 10)
         assert rows[1] == ("opencode", "openai/gpt-5.3-codex", False, 15)
         assert rows[2] == ("opencode", "claude-sonnet-4-6", False, 20)
@@ -158,6 +159,7 @@ class TestAgentRuntimeOptionsTable:
         assert rows[5] == ("opencode", "claude-opus-4-7", False, 30)
         assert rows[6] == ("claude", "claude-sonnet-4-6", False, 40)
         assert rows[7] == ("claude", "claude-opus-4-7", False, 50)
+        assert rows[8] == ("claude", "claude-opus-4-8", False, 55)
 
     def test_unique_constraint_on_cli_tool_model(
         self, db_session, seed_agent_runtime_options
@@ -195,8 +197,9 @@ class TestAgentRuntimeOptionsTable:
     def test_can_disable_non_default_row(self, db_session, seed_agent_runtime_options) -> None:
         """Non-default rows can be disabled.
 
-        Seven non-default rows: 5 F-00081 seeds (minus the MiniMax 2.7
-        default) + 1 OpenCode GPT-5.3 Codex + 2 Pi rows (CR-00062).
+        Eight non-default rows: 5 F-00081 seeds (minus the MiniMax 2.7
+        default) + 1 OpenCode GPT-5.3 Codex + 2 Pi rows (CR-00062)
+        + 1 Claude Code + Opus 4.8 (b4c8opus48rt).
         """
         result = db_session.execute(
             text("""
@@ -207,7 +210,7 @@ class TestAgentRuntimeOptionsTable:
             """)
         ).fetchall()
         db_session.commit()
-        assert len(result) == 7  # 7 non-default rows
+        assert len(result) == 8  # 8 non-default rows
 
 
 class TestAgentRuntimeOptionFKColumns:

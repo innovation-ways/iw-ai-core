@@ -61,7 +61,7 @@ DB_NAME="${IW_CORE_DB_NAME:-iw_orch}"
 DB_USER="${IW_CORE_DB_USER:-iw_orch}"
 DB_PASSWORD="${IW_CORE_DB_PASSWORD:-iw_orch_dev}"
 DB_DATA_DIR="${IW_CORE_DB_DATA_DIR:-}"
-PROD_DB_CONTAINER_NAME="iw-orch-pg"
+PROD_DB_CONTAINER_NAME="${IW_CORE_ORCH_DB_CONTAINER:-postgres}"
 DASHBOARD_PORT="${IW_CORE_DASHBOARD_PORT:-9900}"
 DAEMON_PID_FILE="${IW_CORE_PID_FILE:-.daemon.pid}"
 DAEMON_LOG_FILE="${IW_CORE_LOG_FILE:-./logs/daemon.log}"
@@ -222,7 +222,7 @@ cmd_db() {
         return 1
       fi
       print_info "Starting database container..."
-      COMPOSE_PROJECT_NAME=iw-ai-core docker compose -f docker-compose.bootstrap.yml up -d db
+      COMPOSE_PROJECT_NAME=iw-ai-core IW_CORE_BOOTSTRAP_DB_PORT="$DB_PORT" docker compose -f docker-compose.bootstrap.yml up -d db
       print_info "Waiting for PostgreSQL..."
       wait_for_db 20 || return 1
       print_ok "Database ready (${DB_HOST}:${DB_PORT}/${DB_NAME})"

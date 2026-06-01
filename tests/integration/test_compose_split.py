@@ -59,6 +59,7 @@ def test_root_compose_has_no_db_service():
 @pytest.mark.integration
 def test_bootstrap_compose_has_db_service():
     """Bootstrap compose file must have a `db` service with correct settings."""
+    env = {**os.environ, "IW_CORE_BOOTSTRAP_DB_PORT": os.environ.get("IW_CORE_DB_PORT", "5433")}
     result = subprocess.run(
         [
             "docker",
@@ -72,6 +73,7 @@ def test_bootstrap_compose_has_db_service():
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,
+        env=env,
     )
     assert result.returncode == 0, f"bootstrap config failed: {result.stderr}"
     config = json.loads(result.stdout)
@@ -93,6 +95,7 @@ def test_bootstrap_volume_name_stable_across_cwd(tmp_path: Path):
     shutil.copy(bootstrap_src, tmp_path / "docker-compose.bootstrap.yml")
 
     def get_volume_name(cwd: Path) -> str:
+        env = {**os.environ, "IW_CORE_BOOTSTRAP_DB_PORT": os.environ.get("IW_CORE_DB_PORT", "5433")}
         result = subprocess.run(
             [
                 "docker",
@@ -106,6 +109,7 @@ def test_bootstrap_volume_name_stable_across_cwd(tmp_path: Path):
             capture_output=True,
             text=True,
             cwd=cwd,
+            env=env,
         )
         assert result.returncode == 0, f"config failed from {cwd}: {result.stderr}"
         config = json.loads(result.stdout)

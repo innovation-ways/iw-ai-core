@@ -6,7 +6,7 @@ your context.
 
 | Path | When to use | Data location |
 |---|---|---|
-| **Production** (raw `docker run`, bind mount) | Any machine where the DB must persist across container replacements | Host bind mount `/opt/postgres/data` |
+| **Production** (raw `docker run`, bind mount) | Any machine where the DB must persist across container replacements | Host bind mount `/opt/postgres/data/pgdata` |
 | **Bootstrap** (compose, named volume) | First-time dev machine with no pre-existing container | Docker volume `iw-ai-core_pgdata` |
 
 **Never run `docker compose up` from a worktree against the orchestration DB.**
@@ -25,8 +25,8 @@ replacements — the container itself is ephemeral but the data is persistent.
 Ensure the data directory exists on the host with appropriate ownership:
 
 ```bash
-sudo mkdir -p /opt/postgres/data
-sudo chown 999:999 /opt/postgres/data   # postgres UID in the container
+sudo mkdir -p /opt/postgres/data/pgdata
+sudo chown 999:999 /opt/postgres/data/pgdata   # postgres UID in the container
 ```
 
 (Replace the UID if running as a different user; 999 is the `postgres` user
@@ -39,17 +39,17 @@ to `.env` and set `IW_CORE_DB_NAME`, `IW_CORE_DB_USER`, and
 `IW_CORE_DB_PASSWORD` before starting.
 
 Set `IW_CORE_DB_DATA_DIR` to your production bind-mount path (for example
-`/opt/postgres/data`) so `./ai-core.sh db start-prod` can recreate/start the
-production container without hardcoded host paths.
+`/opt/postgres/data/pgdata`) so `./ai-core.sh db start-prod` can recreate/start
+the production container without hardcoded host paths.
 
 ### Run command
 
 ```bash
 docker run -d \
   --name postgres \
-  --restart unless-stopped \
+  --restart=always \
   -p 5433:5432 \
-  -v /opt/postgres/data:/var/lib/postgresql/data \
+  -v /opt/postgres/data/pgdata:/var/lib/postgresql/data \
   -e POSTGRES_DB="$IW_CORE_DB_NAME" \
   -e POSTGRES_USER="$IW_CORE_DB_USER" \
   -e POSTGRES_PASSWORD="$IW_CORE_DB_PASSWORD" \
@@ -93,6 +93,11 @@ This creates a named volume `iw-ai-core_pgdata` (not a bind mount). The
 volume is managed entirely by Docker; destroying the container does NOT
 destroy the volume, but re-running from a clean state is expected.
 
+`docker-compose.bootstrap.yml` intentionally requires an explicit
+`IW_CORE_BOOTSTRAP_DB_PORT` to publish a host port. `./ai-core.sh db start`
+sets this automatically to `IW_CORE_DB_PORT`; a bare `docker compose ... up -d db`
+without the opt-in will fail rather than silently claiming 5433.
+
 Note the `-f` flag is mandatory. `docker compose up` without it does nothing —
 the root `docker-compose.yml` is an intentional stub.
 
@@ -116,7 +121,8 @@ Use the production recovery command instead:
 ```
 
 `start-prod` requires `IW_CORE_DB_DATA_DIR` in `.env`. It starts (or creates)
-a stable raw Docker container (`iw-orch-pg`) with `--restart=always`, binds
+a stable raw Docker container named `postgres` by default (override with
+`IW_CORE_ORCH_DB_CONTAINER`) with `--restart=always`, binds
 `${IW_CORE_DB_PORT}:5432`, mounts `${IW_CORE_DB_DATA_DIR}` to
 `/var/lib/postgresql/data`, and waits for readiness.
 
@@ -130,7 +136,7 @@ the `db` service directly) was invoked from a git worktree at
 name unless overridden, so the invocation created a volume
 `f-00058_pgdata` (empty, fresh schema) and a container `iw-ai-core-db`
 that took over port 5433. The real orchestration DB — a raw `docker run`
-container named `postgres` with a host bind mount at `/opt/postgres/data`
+container named `postgres` with a host bind mount at `/opt/postgres/data/pgdata`
 — had been SIGKILLed minutes earlier by an unrelated process. Nothing
 detected the swap because the impostor DB had the correct schema and
 credentials. 94 work items, 35 batches, 631 step runs, and 66 project

@@ -141,6 +141,7 @@ class TestContextTokensMigration:
                     FROM agent_runtime_options
                     WHERE model NOT IN (
                         'claude-opus-4-7',
+                        'claude-opus-4-8',
                         'claude-sonnet-4-6',
                         'claude-haiku-4-5-20251001',
                         'minimax/MiniMax-M2.7'

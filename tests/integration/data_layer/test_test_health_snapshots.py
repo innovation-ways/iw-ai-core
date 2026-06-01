@@ -192,7 +192,7 @@ def test_health_snapshots_downgrade_then_upgrade(
     pg_container: PostgresContainer,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """downgrade -1 must drop the table; re-upgrade must recreate it cleanly."""
+    """downgrade past ea7f8a0d065f must drop the table; re-upgrade must recreate it cleanly."""
     engine = _fresh_db(pg_container, "ths_down_up")
     _set_env(monkeypatch, engine)
     cfg = _alembic_cfg(engine)

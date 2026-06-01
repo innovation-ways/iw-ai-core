@@ -24,7 +24,7 @@ services:
     image: postgres:15-alpine
     container_name: iw-ai-core-db
     ports:
-      - "${IW_CORE_DB_PORT:-5433}:5432"
+      - "${IW_CORE_BOOTSTRAP_DB_PORT:?Set IW_CORE_BOOTSTRAP_DB_PORT explicitly (use ./ai-core.sh db start for safe defaults)}:5432"
     environment:
       POSTGRES_DB: ${IW_CORE_DB_NAME:-iw_orch}
       POSTGRES_USER: ${IW_CORE_DB_USER:-iw_orch}
