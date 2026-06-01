@@ -69,6 +69,26 @@ KNOWN_SPEC_DRIFT: dict[str, dict[str, str]] = {
         "reason": "I-00124 S01 — new command, spec doc §4 update pending",
         "direction": "cli_only",
     },
+    "db-backup": {
+        "reason": "F-00092 — new command group, spec doc §4 update pending",
+        "direction": "cli_only",
+    },
+    "db-backup create": {
+        "reason": "F-00092 — new command group, spec doc §4 update pending",
+        "direction": "cli_only",
+    },
+    "db-backup list": {
+        "reason": "F-00092 — new command group, spec doc §4 update pending",
+        "direction": "cli_only",
+    },
+    "db-backup prune": {
+        "reason": "F-00092 — new command group, spec doc §4 update pending",
+        "direction": "cli_only",
+    },
+    "db-backup restore": {
+        "reason": "F-00092 — new command group, spec doc §4 update pending",
+        "direction": "cli_only",
+    },
 }
 
 # Commands that do not yet have a dedicated contract test. Keyed by command

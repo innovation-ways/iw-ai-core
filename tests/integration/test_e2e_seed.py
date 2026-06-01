@@ -12,6 +12,7 @@ with ``ForeignKeyViolation`` while bringing up the E2E stack.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -34,6 +35,22 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
     from sqlalchemy import Engine
+
+
+def _discover_fixtures_without_i00126(repo_root: Path) -> list[Path]:
+    """Exclude I-00126 fixture that writes to /app (not writable in pytest)."""
+    fixtures: list[Path] = []
+    for parent in ("active", "archive"):
+        base = repo_root / "ai-dev" / parent
+        if not base.exists():
+            continue
+        for fixture_file in sorted(base.glob("*/e2e_fixtures/*.py")):
+            if fixture_file.name.startswith("_"):
+                continue
+            if fixture_file.parent.parent.name == "I-00126":
+                continue
+            fixtures.append(fixture_file)
+    return fixtures
 
 
 @pytest.fixture
@@ -84,6 +101,9 @@ def test_e2e_seed_runs_against_fresh_db(
     # The script's production guardrail aborts when IW_CORE_EXPECTED_INSTANCE_ID
     # is set; the test session sets that via tests/conftest.py for every test.
     monkeypatch.setattr("scripts.e2e_seed._check_production_guardrail", lambda: None)
+    monkeypatch.setattr(
+        "scripts.e2e_seed._discover_fixture_files", _discover_fixtures_without_i00126
+    )
 
     from scripts.e2e_seed import seed
 

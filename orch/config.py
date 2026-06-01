@@ -156,6 +156,12 @@ class DaemonConfig:
     log_level: str
     log_file: str
 
+    # DB backup
+    backup_enabled: bool = True
+    backup_dir: str = "/opt/postgres/data/backups"
+    backup_retention_days: int = 30
+    backup_time: str = "03:00"
+
     # Code Understanding
     index_path: str = DEFAULT_INDEX_PATH
 
@@ -233,6 +239,10 @@ def load_config() -> DaemonConfig:
         pid_file=_require("IW_CORE_PID_FILE"),
         archive_dir=_require("IW_CORE_ARCHIVE_DIR"),
         archive_ttl=int(_require("IW_CORE_ARCHIVE_TTL")),
+        backup_enabled=_parse_truthy(os.environ.get("IW_CORE_BACKUP_ENABLED", "true")),
+        backup_dir=os.environ.get("IW_CORE_BACKUP_DIR", "/opt/postgres/data/backups"),
+        backup_retention_days=int(os.environ.get("IW_CORE_BACKUP_RETENTION_DAYS", "30")),
+        backup_time=os.environ.get("IW_CORE_BACKUP_TIME", "03:00"),
         log_level=_require("IW_CORE_LOG_LEVEL"),
         log_file=_require("IW_CORE_LOG_FILE"),
         index_path=str(Path(os.environ.get("IW_CORE_INDEX_PATH", DEFAULT_INDEX_PATH)).expanduser()),

@@ -144,6 +144,42 @@ port 5433 because the `db` service has been moved to
 
 ---
 
+## Backups
+
+The orchestration DB has a first-class logical backup subsystem (F-00092). It
+takes daily scheduled `pg_dump`/`pg_dumpall --globals-only` backups via the
+daemon (with missed-window catch-up) and supports on-demand backups through the
+CLI, prunes scheduled backups past a configurable retention, and ships a guided
+restore helper.
+
+```bash
+./ai-core.sh db backup [--label X]        # on-demand backup now (works daemon-down)
+./ai-core.sh db backup-list               # list recorded backups
+./ai-core.sh db backup-prune              # apply retention now (manual-exempt)
+./ai-core.sh db backup-restore --from <set>   # guided restore into a safe non-prod target
+```
+
+Configured in `.env`: `IW_CORE_BACKUP_ENABLED` (default `true`),
+`IW_CORE_BACKUP_DIR` (default `/opt/postgres/data/backups`),
+`IW_CORE_BACKUP_RETENTION_DAYS` (default `30`), `IW_CORE_BACKUP_TIME` (default
+`03:00`).
+
+> ⚠️ The default `IW_CORE_BACKUP_DIR` is on the **same disk** as the data
+> (`/opt/postgres/data`). This protects against operator mistakes, bad
+> migrations, and the **container-displacement incidents** that shaped this
+> setup (see *Why this split exists* above) — but **not** against disk failure
+> or `rm -rf` of the data directory. The path is configurable so backups can be
+> repointed off-host.
+
+The restore path ties in with the production recovery flow described above:
+restoring in-place over prod brings the cluster back up on 5433 via
+`./ai-core.sh db start-prod` against `IW_CORE_DB_DATA_DIR`. For the full backup
+set layout, the safe-restore and in-place-prod-swap procedures, identity-pin
+handling, RTO, the credential-handling rules for the globals file, and
+client/server version compatibility, see the dedicated runbook:
+
+- [`docs/IW_AI_Core_DB_Backup_Restore.md`](IW_AI_Core_DB_Backup_Restore.md)
+
 ## Quick reference — common commands
 
 | I want to... | Command |
@@ -158,6 +194,9 @@ port 5433 because the `db` service has been moved to
 | Run Alembic migrations | `./ai-core.sh db migrate` |
 | Generate a migration | `./ai-core.sh db revision "message"` |
 | Verify DB identity | `uv run iw db-identity check` |
+| Take an on-demand backup | `./ai-core.sh db backup --label X` |
+| List / prune backups | `./ai-core.sh db backup-list` · `./ai-core.sh db backup-prune` |
+| Restore a backup set | `./ai-core.sh db backup-restore --from <set>` |
 
 `./ai-core.sh db start`/`stop`/`logs` route through the bootstrap compose file
 with the correct project name and are safe for dev/bootstrap usage from any

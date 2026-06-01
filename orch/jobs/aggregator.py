@@ -39,6 +39,15 @@ Job sources and status normalisation
   - ``DocStatus.published`` → ``completed``
   - ``DocStatus.archived`` → ``completed``
 
+:db_backup: ``db_backup_jobs.status`` is a :class:`DbBackupStatus` enum.
+  Orchestration-wide (no ``project_id`` column) — surfaced in every project's
+  Jobs view. Normalised values:
+
+  - ``DbBackupStatus.queued`` → ``queued``
+  - ``DbBackupStatus.running`` → ``running``
+  - ``DbBackupStatus.success`` → ``completed``
+  - ``DbBackupStatus.failed`` → ``failed``
+
 Title normalisation
 -------------------
 
@@ -47,6 +56,7 @@ Title normalisation
   ``"Doc generation (orphan)"`` when doc is deleted
 :batch_execution: ``"Batch " + id``
 :research: ``ProjectDoc.title``
+:db_backup: ``"DB backup — " + backup_type`` (``+ " (" + label + ")"`` when labelled)
 """
 
 from __future__ import annotations
@@ -61,6 +71,8 @@ from orch.db.models import (
     Batch,
     BatchStatus,
     CodeIndexJob,
+    DbBackupJob,
+    DbBackupStatus,
     DocGenerationJob,
     DocIndexJob,
     DocStatus,
@@ -88,6 +100,7 @@ class JobType(StrEnum):
     batch_execution = "batch_execution"
     research = "research"
     oss_scan = "oss_scan"
+    db_backup = "db_backup"
 
     test_health_capture = "test-health-capture"
 
@@ -156,6 +169,16 @@ def _normalise_oss_job_status(status: ProjectOssJobStatus) -> str:
     return mapping.get(status, status.value)
 
 
+def _normalise_db_backup_status(status: DbBackupStatus) -> str:
+    mapping = {
+        DbBackupStatus.queued: "queued",
+        DbBackupStatus.running: "running",
+        DbBackupStatus.success: "completed",
+        DbBackupStatus.failed: "failed",
+    }
+    return mapping.get(status, status.name)
+
+
 class JobsAggregator:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -196,6 +219,9 @@ class JobsAggregator:
 
         if types is None or JobType.test_health_capture in types:
             raw_rows.extend(self._fetch_test_health_capture(project_id, date_from, date_to))
+
+        if types is None or JobType.db_backup in types:
+            raw_rows.extend(self._fetch_db_backup(project_id, date_from, date_to))
 
         for row, _ in raw_rows:
             if statuses and row.status not in statuses:
@@ -239,6 +265,8 @@ class JobsAggregator:
             return self._get_research(project_id, job_id)
         if job_type == JobType.oss_scan:
             return self._get_oss_scan(project_id, job_id)
+        if job_type == JobType.db_backup:
+            return self._get_db_backup(project_id, job_id)
         return None
 
     def _fetch_code_mapping(
@@ -851,3 +879,72 @@ class JobsAggregator:
             ]
 
         return results
+
+    # -----------------------------------------------------------------------
+    # DB backup jobs
+    # -----------------------------------------------------------------------
+
+    def _build_db_backup_row(
+        self, job: DbBackupJob, project_id: str
+    ) -> tuple[JobRow, dict[str, object]]:
+        """Map a :class:`DbBackupJob` to the unified job shape.
+
+        ``db_backup_jobs`` is orchestration-wide and has no ``project_id`` column,
+        so backups are surfaced in every project's Jobs view. ``project_id`` is
+        passed through from the query so the row's links stay project-scoped.
+        """
+        backup_type = job.backup_type.value
+        title = f"DB backup — {backup_type}"
+        if job.label:
+            title = f"{title} ({job.label})"
+        raw: dict[str, object] = {
+            "id": job.id,
+            "project_id": project_id,
+            "backup_type": backup_type,
+            "label": job.label,
+            "status": job.status.value,
+            "path": job.path,
+            "bytes": job.bytes,
+            "alembic_revision": job.alembic_revision,
+            "instance_id": job.instance_id,
+            "row_counts": job.row_counts,
+            "error": job.error,
+            "created_at": job.created_at,
+            "started_at": job.started_at,
+            "finished_at": job.finished_at,
+        }
+        return (
+            JobRow(
+                job_type=JobType.db_backup,
+                job_id=job.id,
+                project_id=project_id,
+                title=title,
+                status=_normalise_db_backup_status(job.status),
+                started_at=job.started_at,
+                finished_at=job.finished_at,
+                triggered_by=backup_type,
+                raw=raw,
+            ),
+            raw,
+        )
+
+    def _fetch_db_backup(
+        self,
+        project_id: str,
+        date_from: datetime | None,
+        date_to: datetime | None,
+    ) -> list[tuple[JobRow, dict[str, object]]]:
+        stmt = select(DbBackupJob)
+        if date_from:
+            stmt = stmt.where(DbBackupJob.created_at >= date_from)
+        if date_to:
+            stmt = stmt.where(DbBackupJob.created_at <= date_to)
+        jobs = self._session.scalars(stmt).all()
+        return [self._build_db_backup_row(job, project_id) for job in jobs]
+
+    def _get_db_backup(self, project_id: str, job_id: str) -> JobRow | None:
+        job = self._session.get(DbBackupJob, job_id)
+        if job is None:
+            return None
+        row, _ = self._build_db_backup_row(job, project_id)
+        return row

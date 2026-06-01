@@ -10,6 +10,7 @@ If this passes, the browser step's empty-state failure mode is resolved.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -18,6 +19,23 @@ from sqlalchemy import select
 
 from orch.daemon.execution_report import assemble_execution_report
 from orch.db.models import FixCycle, StepRun, WorkflowStep
+
+
+def _discover_fixtures_without_i00126(repo_root: Path) -> list[Path]:
+    """Exclude I-00126 fixture that writes to /app (not writable in pytest)."""
+    fixtures: list[Path] = []
+    for parent in ("active", "archive"):
+        base = repo_root / "ai-dev" / parent
+        if not base.exists():
+            continue
+        for fixture_file in sorted(base.glob("*/e2e_fixtures/*.py")):
+            if fixture_file.name.startswith("_"):
+                continue
+            if fixture_file.parent.parent.name == "I-00126":
+                continue
+            fixtures.append(fixture_file)
+    return fixtures
+
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -43,6 +61,7 @@ def seeded_db(db_session: Session) -> Session:
         with (
             patch.object(seed_module, "get_session", _fake_get_session),
             patch.object(seed_module, "_check_production_guardrail", lambda: None),
+            patch.object(seed_module, "_discover_fixture_files", _discover_fixtures_without_i00126),
         ):
             seed_module.seed()
     finally:
@@ -134,6 +153,7 @@ def test_seed_is_idempotent(db_session: Session) -> None:
         with (
             patch.object(seed_module, "get_session", _fake_get_session),
             patch.object(seed_module, "_check_production_guardrail", lambda: None),
+            patch.object(seed_module, "_discover_fixture_files", _discover_fixtures_without_i00126),
         ):
             seed_module.seed()
             first_step_count = db_session.scalar(

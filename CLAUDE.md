@@ -59,6 +59,7 @@ The **`iw` CLI** is the agent-to-DB bridge — agents call `iw step-done` to rec
 - **NEVER** use `agent-browser` for browser automation — use `playwright-cli` exclusively
 - **NEVER** run `npx playwright install` or modify `.playwright/cli.config.json`
 - **NEVER** run `docker compose up` (with or without `-d db`) against the orchestration DB from any directory — the default compose file is empty and the bootstrap file requires an explicit `-f` flag. Use `./ai-core.sh db start` instead. See `docs/IW_AI_Core_DB_Setup.md`.
+- **NEVER** read, write, move, or delete anything under the backup directory (`IW_CORE_BACKUP_DIR`, default `/opt/postgres/data/backups`). Backup sets contain a `globals.sql` file with **role password hashes** (written `0600` inside a `0700` set directory); agents MUST NOT touch backup sets, copy them, or paste their contents into logs/reports/issues. Backups are created and pruned only by the daemon poller and the `iw db-backup` CLI. See `docs/IW_AI_Core_DB_Backup_Restore.md`.
 - **MUST** append plain CSS rules directly to `dashboard/static/styles.css` when `make css` reports "Nothing to be done" or the Tailwind CLI fails (e.g., missing `postcss-selector-parser`) — plain CSS is served as-is, so no Tailwind recompile is required. Temporary mitigation until the Tailwind toolchain is repaired in worktrees (see I-00067).
 - **MUST** invoke the `/iw-research` skill whenever the user asks for "a research", "online research", "deep research", "investigate X", "research X", or any equivalent phrasing — even when the agent believes it could answer inline. The user's expectation is that a research artifact is **filed in the IW AI Core database** so they can review it on the dashboard. **NEVER** silently perform inline web research as a substitute for `/iw-research`. The only acceptable exception is `/iw-research-quick`, and it may only be used when the user **explicitly** writes "quick research" / `/iw-research-quick` or asks a single trivial fact lookup that they have explicitly said should not be filed. When in doubt, default to `/iw-research`.
 
@@ -77,6 +78,14 @@ The default for this project is `/iw-research`. Do not downgrade to `/iw-researc
 
 All config in `.env` (gitignored). **NEVER** hardcode ports, URLs, or credentials.
 Key vars: `IW_CORE_DB_HOST`, `IW_CORE_DB_PORT` (5433), `IW_CORE_DB_NAME`, `IW_CORE_DB_USER`, `IW_CORE_DB_PASSWORD`, `IW_CORE_DASHBOARD_PORT` (9900), `IW_CORE_POLL_INTERVAL`, `IW_CORE_STALL_THRESHOLD`, `IW_CORE_EXPECTED_INSTANCE_ID` (DB identity pin — see `orch/db/identity.py`).
+
+**Database backups (F-00092)** — the daemon takes daily logical backups and operators can take on-demand ones via `iw db-backup` / `./ai-core.sh db backup`. Config vars:
+- `IW_CORE_BACKUP_ENABLED` (default `true`) — disables the *scheduled* backup poller when false; `iw db-backup create` still works as a manual override.
+- `IW_CORE_BACKUP_DIR` (default `/opt/postgres/data/backups`) — where backup sets are written.
+- `IW_CORE_BACKUP_RETENTION_DAYS` (default `30`) — scheduled backups strictly older than this are pruned; manual/labeled backups are never pruned.
+- `IW_CORE_BACKUP_TIME` (default `03:00`) — daily scheduled-backup time (HH:MM); the poller does missed-window catch-up after daemon downtime.
+
+> ⚠️ **Same-disk limitation.** The default `IW_CORE_BACKUP_DIR=/opt/postgres/data/backups` is a *sibling* of `pgdata/` on the **same disk** as the data. It guards against the actual recurring failures — operator mistakes, bad migrations, and container displacement (the 2026-04-22 / 2026-05-29 / 2026-05-31 displacement incidents; `/opt/postgres/data` is a host bind mount, so `docker volume rm` / `compose down -v` cannot touch it) — but it does **NOT** protect against disk failure or `rm -rf /opt/postgres/data`. The path is configurable precisely so it can be repointed off-host (Tier-2 / I-00122 context). See [`docs/IW_AI_Core_DB_Backup_Restore.md`](docs/IW_AI_Core_DB_Backup_Restore.md).
 
 Managed projects live in `projects.toml`; the daemon's `project_registry.py` syncs it to the DB on SIGHUP (`./ai-core.sh daemon reload`).
 

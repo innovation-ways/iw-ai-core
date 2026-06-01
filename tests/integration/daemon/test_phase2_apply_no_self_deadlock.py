@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
 
 # Revision constants
-_HEAD_REVISION = "ea7f8a0d065f"  # CR-00086 add test_health_snapshots table (current head)
+_HEAD_REVISION = "3448ea03937d"  # F-00092 add db_backup_jobs (current head)
 _PREV_REVISION = "76250ecb2593"  # F-00091 backfill pi context window tokens (CR-00086 pending)
 
 

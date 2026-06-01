@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from orch.daemon.auto_merge import AutoMergeConfig
 from orch.daemon.auto_merge_health import maybe_run_probe
+from orch.daemon.backup_poller import BackupPoller
 from orch.daemon.batch_manager import BatchManager
 from orch.daemon.chat_summarization_poller import poll_chat_summarization_jobs
 from orch.daemon.doc_index_poller import DocIndexPoller, recover_orphaned_doc_index_jobs
@@ -231,6 +232,7 @@ class Daemon:
         self.managers: dict[str, BatchManager] = {}
         self.doc_job_poller: DocJobPoller | None = None
         self.doc_index_poller: DocIndexPoller | None = None
+        self.backup_poller: BackupPoller | None = None
         self._keep_alive_poller: KeepAlivePoller | None = None
         self._last_keep_alive_poll_count: int = 0
         # Shared Ollama LLM for chat summarization — instantiated once, reused
@@ -357,6 +359,7 @@ class Daemon:
 
         self.doc_job_poller = DocJobPoller(self._session_factory, self.config)
         self.doc_index_poller = DocIndexPoller(self._session_factory, self.config)
+        self.backup_poller = BackupPoller(self._session_factory, self.config)
         self._keep_alive_poller = KeepAlivePoller()
 
         with self._session_factory() as db:
@@ -602,7 +605,15 @@ class Daemon:
         except Exception:
             logger.exception("chat_summarization poll failed")
 
-        # Phase 6: Emit poll heartbeat so daemon status can report activity
+        # Phase 6: Scheduled DB backup polling (daily window + catch-up)
+        backup_poller = getattr(self, "backup_poller", None)
+        if backup_poller is not None:
+            try:
+                backup_poller.poll()
+            except Exception:
+                logger.exception("Error in backup poller — continuing")
+
+        # Phase 7: Emit poll heartbeat so daemon status can report activity
         try:
             with self._session_factory() as db:
                 emit_event(
@@ -614,12 +625,12 @@ class Daemon:
         except Exception:
             logger.exception("Failed to emit daemon_poll event")
 
-        # Phase 6: Periodic container reaper (every 5 poll cycles)
+        # Phase 8: Periodic container reaper (every 5 poll cycles)
         if self._poll_count - self._last_reap_poll_count >= 5:
             self._last_reap_poll_count = self._poll_count
             self._reap_orphan_containers()
 
-        # Phase 7: Keep-alive scheduler (every 6 poll cycles ≈ 60 s)
+        # Phase 9: Keep-alive scheduler (every 6 poll cycles ≈ 60 s)
         if self._poll_count - self._last_keep_alive_poll_count >= 6:
             self._last_keep_alive_poll_count = self._poll_count
             if self._keep_alive_poller is not None:

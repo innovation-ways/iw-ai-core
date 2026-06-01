@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import click
 
+from orch.cli.backup_commands import db_backup
 from orch.cli.batch_commands import (
     batch_approve,
     batch_cancel,
@@ -147,6 +148,7 @@ cli.add_command(doc_job_done, name="doc-job-done")
 cli.add_command(doc_job_status, name="doc-job-status")
 cli.add_command(docs_export, name="docs-export")
 cli.add_command(db_identity)
+cli.add_command(db_backup)
 cli.add_command(oss)
 cli.add_command(regression_classify, name="regression-classify")
 cli.add_command(migrations_group, name="migrations")

@@ -198,7 +198,9 @@ def test_health_snapshots_downgrade_then_upgrade(
     cfg = _alembic_cfg(engine)
 
     command.upgrade(cfg, "head")
-    command.downgrade(cfg, "-1")
+    # Downgrade specifically below CR-00086's migration so this test remains
+    # stable when newer unrelated migrations are added after it.
+    command.downgrade(cfg, "a3f1c9e2b7d4")
 
     with engine.connect() as conn:
         leftovers = conn.execute(

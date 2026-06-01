@@ -39,6 +39,38 @@ cd IW AI Core Platform
 IW AI Core Platform --help
 ```
 
+## Database backups
+
+The orchestration database has a built-in logical backup subsystem. The daemon
+takes a **daily scheduled** backup (with missed-window catch-up after downtime),
+and operators can take **on-demand** backups at any time — even with the daemon
+stopped. Each backup set is a `pg_dump -Fc` archive of `iw_orch`, a
+`pg_dumpall --globals-only` SQL file (roles + passwords), and a JSON manifest,
+verified with a `pg_restore --list` integrity check.
+
+```bash
+uv run iw db-backup create --label pre-migration   # on-demand backup now
+uv run iw db-backup list                            # list recorded backups
+uv run iw db-backup prune                           # apply retention now
+uv run iw db-backup restore --from <set>            # guided restore (safe non-prod target)
+
+# equivalent ./ai-core.sh wrappers
+./ai-core.sh db backup --label pre-migration
+./ai-core.sh db backup-list
+./ai-core.sh db backup-prune
+./ai-core.sh db backup-restore --from <set>
+```
+
+Behavior is configured in `.env`: `IW_CORE_BACKUP_ENABLED` (default `true`),
+`IW_CORE_BACKUP_DIR` (default `/opt/postgres/data/backups`),
+`IW_CORE_BACKUP_RETENTION_DAYS` (default `30`), and `IW_CORE_BACKUP_TIME`
+(daily, default `03:00`). Scheduled backups older than the retention window are
+pruned automatically; manual/labeled backups are kept indefinitely.
+
+See the [restore runbook](docs/IW_AI_Core_DB_Backup_Restore.md) for how to
+restore a backup set, the same-disk storage limitation, and how to move backups
+off-host.
+
 ## Documentation
 
 <!-- TODO: Link to full docs if hosted; otherwise link to key docs/ files. -->

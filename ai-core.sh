@@ -293,8 +293,20 @@ cmd_db() {
       print_info "Opening psql (${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME})..."
       PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME"
       ;;
+    backup)
+      uv run iw db-backup create "$@"
+      ;;
+    backup-list)
+      uv run iw db-backup list "$@"
+      ;;
+    backup-prune)
+      uv run iw db-backup prune "$@"
+      ;;
+    backup-restore)
+      uv run iw db-backup restore "$@"
+      ;;
     *)
-      echo "  Usage: $0 db {start|start-prod|stop|restart|status|migrate|revision <msg>|logs|shell}"
+      echo "  Usage: $0 db {start|start-prod|stop|restart|status|migrate|revision <msg>|logs|shell|backup|backup-list|backup-prune|backup-restore}"
       ;;
   esac
 }
@@ -946,6 +958,10 @@ ${BOLD}DATABASE${NC}
   db revision <msg>                 alembic revision --autogenerate
   db logs                           Tail DB container logs
   db shell                          Open psql session
+  db backup [--label X]             Create an on-demand (manual) backup now
+  db backup-list                    List recorded backups
+  db backup-prune                   Apply retention now (manual-exempt)
+  db backup-restore --from <set>    Guided restore into a safe non-prod target
 
 ${BOLD}DAEMON${NC}
   daemon start|stop|restart|status
