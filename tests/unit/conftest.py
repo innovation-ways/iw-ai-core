@@ -10,9 +10,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-# Re-export testcontainer-backed fixtures for tests that need them.
-from tests.integration.conftest import db_engine, pg_container, test_project
-
 
 @pytest.fixture
 def db_session() -> MagicMock:
@@ -20,4 +17,4 @@ def db_session() -> MagicMock:
     return MagicMock()
 
 
-__all__ = ["db_engine", "db_session", "pg_container", "test_project"]
+__all__ = ["db_session"]

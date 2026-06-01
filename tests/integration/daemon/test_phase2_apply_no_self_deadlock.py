@@ -43,21 +43,26 @@ _PREV_REVISION = "76250ecb2593"  # F-00091 backfill pi context window tokens (CR
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def pg_container() -> PostgresContainer:
-    """Function-scoped PostgreSQL container."""
+    """Module-scoped PostgreSQL container shared by all tests in this file.
+
+    Reduces Docker container churn from 4 function-scoped containers to 1
+    per module when running in parallel (32 workers), preventing teardown
+    timeouts from Docker daemon overload.
+    """
     with PostgresContainer("postgres:15-alpine") as pg:
         yield pg
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def db_url(pg_container: PostgresContainer) -> str:
     return pg_container.get_connection_url().replace(
         "postgresql+psycopg2://", "postgresql+psycopg://"
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def db_engine_at_prev_revision(db_url: str) -> Engine:
     """Engine with schema at PREV_REVISION — manifest_digest migration pending.
 
@@ -90,7 +95,7 @@ def db_engine_at_prev_revision(db_url: str) -> Engine:
     engine.dispose()
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def db_session_factory(db_engine_at_prev_revision: Engine) -> sessionmaker:
     return sessionmaker(bind=db_engine_at_prev_revision, autocommit=False, autoflush=False)
 

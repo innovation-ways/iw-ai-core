@@ -48,21 +48,26 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def pg_container() -> PostgresContainer:
-    """Function-scoped container so each test starts with a clean DB."""
+    """Module-scoped container shared by all tests in this file.
+
+    Reduces Docker container churn from ~12 function-scoped containers to 1
+    per module when running in parallel (32 workers), preventing teardown
+    timeouts from Docker daemon overload.
+    """
     with PostgresContainer("postgres:15-alpine") as pg:
         yield pg
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def db_url(pg_container: PostgresContainer) -> str:
     return pg_container.get_connection_url().replace(
         "postgresql+psycopg2://", "postgresql+psycopg://"
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def db_engine_at_head(db_url: str) -> Engine:
     """Engine with full schema applied via alembic upgrade head.
 
@@ -80,7 +85,7 @@ def db_engine_at_head(db_url: str) -> Engine:
     engine.dispose()
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def db_session_factory(db_engine_at_head: Engine) -> sessionmaker:
     return sessionmaker(bind=db_engine_at_head, autocommit=False, autoflush=False)
 
