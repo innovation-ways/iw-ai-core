@@ -78,9 +78,12 @@
                 {% endfor %}
               </select>
             {% else %}
-              {% set opt_cli = runtime_options | selectattr('id', 'equalto', step.runtime_option_id) | map(attribute='cli_label') | first %}
-              {% if opt_cli %}
-                <span class="text-xs font-medium text-foreground">{{ opt_cli }}</span>
+              {# Resolve the read-only label from ALL runtime options (enabled or
+                 not) so a completed step still shows the runtime it ran on once
+                 the option is disabled — e.g. a retired model like Opus 4.7. #}
+              {% set ro_opt = (runtime_option_labels | default({})).get(step.runtime_option_id) %}
+              {% if ro_opt %}
+                <span class="text-xs font-medium text-foreground">{{ ro_opt.cli_label }}</span>
               {% else %}
                 <span class="text-xs text-muted-foreground">(default)</span>
               {% endif %}
@@ -91,8 +94,8 @@
             {% if step.is_synthetic %}
               <span class="text-xs text-muted-foreground">—</span>
             {% else %}
-              {% set opt_model = runtime_options | selectattr('id', 'equalto', step.runtime_option_id) | map(attribute='model_label') | first %}
-              <span class="text-xs text-muted-foreground">{{ opt_model if opt_model else '—' }}</span>
+              {% set ro_opt = (runtime_option_labels | default({})).get(step.runtime_option_id) %}
+              <span class="text-xs text-muted-foreground">{{ ro_opt.model_label if ro_opt else '—' }}</span>
             {% endif %}
           </td>
           <td class="px-4 py-2">

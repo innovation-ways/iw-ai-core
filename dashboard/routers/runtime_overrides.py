@@ -186,6 +186,7 @@ def _render_steps_fragment(request: Request, db: Session, project_id: str, item_
             "steps": steps,
             "step_run_counts": step_run_counts,
             "runtime_options": runtime_options_list,
+            "runtime_option_labels": items_router._all_runtime_option_labels(db),  # noqa: SLF001
             "inherited_runtime_label": inherited_runtime_label,
         },
     )

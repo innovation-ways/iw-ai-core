@@ -432,3 +432,54 @@ class TestPromptColumnRendering:
         # The '—' dash is the fallback when has_prompt is False
         cell_text = prompt_cell.get_text(strip=True)
         assert cell_text == "—", f"Expected '—' but got: {cell_text!r}"
+
+
+class TestDisabledRuntimeOptionLabel:
+    """Regression (Opus 4.7 retirement): a completed step that ran on a now-disabled
+    runtime option must still show its cli/model label, not blank, because the
+    read-only label resolves from ALL runtime options (enabled or not)."""
+
+    def test_completed_step_shows_model_label_for_disabled_option(
+        self, client: TestClient, db_session: Session
+    ):
+        from sqlalchemy import select
+
+        from orch.db.models import AgentRuntimeOption
+
+        # The seeded Opus 4.7 catalogue row, in its retired (disabled) state. It is
+        # disabled — NOT deleted — so completed steps keep resolving against it.
+        opt = db_session.scalars(
+            select(AgentRuntimeOption).where(
+                AgentRuntimeOption.cli_tool == "claude",
+                AgentRuntimeOption.model == "claude-opus-4-7",
+            )
+        ).first()
+        assert opt is not None, "Opus 4.7 catalogue row must exist (disabled, not deleted)"
+        opt.enabled = False
+
+        seed = _make_project_with_steps(
+            db_session, project_id="proj-retired-opt", item_id="CR-00200"
+        )
+        # Link the completed step to the disabled option (as if it ran on Opus 4.7).
+        seed["step"].agent_runtime_option_id = opt.id
+        db_session.commit()
+
+        response = client.get(f"/project/{seed['project'].id}/item/{seed['item'].id}")
+        assert response.status_code == 200, response.text
+
+        soup = BeautifulSoup(response.text, "html.parser")
+        table = soup.find("table")
+        assert table is not None
+
+        s04_row = next((r for r in table.find_all("tr") if "S04" in r.get_text()), None)
+        assert s04_row is not None
+
+        header_names = [th.get_text(strip=True) for th in table.find_all("th")]
+        model_col_index = header_names.index("Model")
+        model_cell_text = s04_row.find_all("td")[model_col_index].get_text(strip=True)
+
+        # Would render "—" (blank) if the label resolved from the enabled-only list.
+        assert model_cell_text == "Opus 4.7", (
+            f"Disabled option's label should still show on the completed step; "
+            f"got {model_cell_text!r}"
+        )

@@ -1237,6 +1237,26 @@ def _get_inherited_runtime_label(
     return resolved.display_name if resolved is not None else None
 
 
+def _all_runtime_option_labels(db: Session) -> dict[int, dict[str, str]]:
+    """Map every AgentRuntimeOption id → its labels, regardless of ``enabled``.
+
+    The per-step dropdown only offers *enabled* options, but a completed step
+    may reference an option that has since been disabled (e.g. a retired model
+    like Opus 4.7). The read-only cli/model labels in the steps table resolve
+    against this all-rows map so historical steps keep showing the runtime they
+    actually ran on, instead of going blank once the option is disabled.
+    """
+    rows = db.scalars(select(AgentRuntimeOption)).all()
+    return {
+        r.id: {
+            "cli_label": r.cli_label,
+            "model_label": r.model_label,
+            "display_name": r.display_name,
+        }
+        for r in rows
+    }
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -1302,6 +1322,7 @@ def item_detail(
             "batch_status": batch_status,
             "setup_error": setup_error,
             "runtime_options": runtime_options_list,
+            "runtime_option_labels": _all_runtime_option_labels(db),
             "item_runtime_option_id": item_runtime_option_id,
             "inherited_runtime_label": inherited_runtime_label,
         },
@@ -1394,6 +1415,7 @@ def item_tab_overview(
             "cascade_history": cascade_history,
             "step_run_counts": step_run_counts,
             "runtime_options": runtime_options_list,
+            "runtime_option_labels": _all_runtime_option_labels(db),
             "item_runtime_option_id": item_runtime_option_id,
             "inherited_runtime_label": inherited_runtime_label,
             # F-00090: pass to the regression classification form
