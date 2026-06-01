@@ -9,9 +9,11 @@ import pytest
 
 from orch.db.identity import (
     ENV_VAR,
+    BoundIdentityStatus,
     IdentityStatus,
     InstanceMismatchError,
     InstanceRowMissingError,
+    check_bound_identity,
     check_identity,
     get_expected_instance_id,
     get_live_instance_id,
@@ -127,6 +129,46 @@ class TestCheckIdentity:
         assert status.mode == "missing"
         assert status.expected is None
         assert status.actual is None
+
+
+class TestCheckBoundIdentity:
+    def test_match(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        bound = uuid.uuid4()
+        mock_row = MagicMock()
+        mock_row.instance_id = bound
+        db_session.get.return_value = mock_row
+        monkeypatch.setenv(ENV_VAR, str(bound))
+
+        status = check_bound_identity(db_session, bound)
+
+        assert isinstance(status, BoundIdentityStatus)
+        assert status.mode == "match"
+        assert status.actual == bound
+
+    def test_changed(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        bound = uuid.uuid4()
+        live = uuid.uuid4()
+        mock_row = MagicMock()
+        mock_row.instance_id = live
+        db_session.get.return_value = mock_row
+        monkeypatch.setenv(ENV_VAR, str(bound))
+
+        status = check_bound_identity(db_session, bound)
+
+        assert status.mode == "changed"
+        assert status.bound == bound
+        assert status.actual == live
+
+    def test_missing_while_pinned(
+        self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bound = uuid.uuid4()
+        db_session.get.return_value = None
+        monkeypatch.setenv(ENV_VAR, str(bound))
+
+        status = check_bound_identity(db_session, bound)
+
+        assert status.mode == "missing_while_pinned"
 
 
 class TestVerifyInstanceIdentity:

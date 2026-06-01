@@ -39,6 +39,14 @@ class IdentityStatus:
     message: str
 
 
+@dataclass(frozen=True)
+class BoundIdentityStatus:
+    bound: uuid.UUID | None
+    actual: uuid.UUID | None
+    mode: Literal["match", "changed", "missing_while_pinned"]
+    message: str
+
+
 def get_live_instance_id(session: Session) -> uuid.UUID | None:
     """Return the instance_id from iw_core_instance, or None if the row is missing."""
     from orch.db.models import IwCoreInstance
@@ -121,3 +129,36 @@ def verify_instance_identity(session: Session) -> IdentityStatus:
         raise InstanceRowMissingError(status.message)
 
     return status
+
+
+def check_bound_identity(
+    session: Session, bound_instance_id: uuid.UUID | None
+) -> BoundIdentityStatus:
+    """Check whether the current live DB still matches the daemon-bound identity."""
+    status = check_identity(session)
+
+    if status.mode == "missing" and status.expected is not None:
+        return BoundIdentityStatus(
+            bound=bound_instance_id,
+            actual=status.actual,
+            mode="missing_while_pinned",
+            message=(
+                "iw_core_instance row is now missing while "
+                "IW_CORE_EXPECTED_INSTANCE_ID remains pinned."
+            ),
+        )
+
+    if status.actual != bound_instance_id:
+        return BoundIdentityStatus(
+            bound=bound_instance_id,
+            actual=status.actual,
+            mode="changed",
+            message="Live DB identity diverged from daemon startup binding.",
+        )
+
+    return BoundIdentityStatus(
+        bound=bound_instance_id,
+        actual=status.actual,
+        mode="match",
+        message="Live DB identity matches daemon startup binding.",
+    )

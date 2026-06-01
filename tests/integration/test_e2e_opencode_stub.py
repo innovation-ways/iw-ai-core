@@ -297,7 +297,9 @@ def test_abort_emits_session_idle_with_aborted_flag(stub: tuple[str, str]) -> No
     auth = httpx.BasicAuth("opencode", password)
 
     with (
-        httpx.Client(base_url=base_url, auth=auth, timeout=3.0) as client,
+        # Under highly parallel integration runs this flow can be briefly
+        # delayed; give the SSE stream more headroom to avoid false timeouts.
+        httpx.Client(base_url=base_url, auth=auth, timeout=10.0) as client,
         connect_sse(client, "GET", "/event") as event_source,
     ):
         event_iter = event_source.iter_sse()

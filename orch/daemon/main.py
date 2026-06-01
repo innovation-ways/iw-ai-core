@@ -44,7 +44,7 @@ from orch.db.alembic_guard import (
     check_db_at_head,
     remediation_message,
 )
-from orch.db.identity import verify_instance_identity
+from orch.db.identity import check_bound_identity, get_live_instance_id, verify_instance_identity
 from orch.db.models import (
     TERMINAL_BATCH_ITEM_STATUSES,
     BatchItem,
@@ -58,6 +58,7 @@ from orch.db.session import safe_create_engine
 from orch.rag.config import TIER_DEFAULTS, IndexTier
 
 if TYPE_CHECKING:
+    import uuid
     from collections.abc import Callable, Generator
     from contextlib import AbstractContextManager
 
@@ -200,6 +201,10 @@ class DaemonAlreadyRunning(RuntimeError):  # noqa: N818
     """Raised when a live daemon PID is found at startup."""
 
 
+class OrchDbIdentityChanged(RuntimeError):  # noqa: N818
+    """Raised when orch DB identity no longer matches daemon startup binding."""
+
+
 class Daemon:
     """The IW AI Core orchestration daemon.
 
@@ -219,6 +224,8 @@ class Daemon:
         self._last_poll_at: datetime | None = None
         self._last_reap_poll_count = 0
         self._identity_bootstrap_logged = False
+        self._bound_instance_id: uuid.UUID | None = None
+        self._identity_binding_established = False
 
         # Injected session factory (tests pass a mock; production uses DB URL)
         if session_factory is not None:
@@ -249,7 +256,11 @@ class Daemon:
 
         while self._running:
             try:
+                self._verify_bound_identity_or_halt()
                 self._poll_cycle()
+            except OrchDbIdentityChanged:
+                self._running = False
+                raise
             except Exception:
                 logger.exception("Unhandled error in poll cycle — continuing")
                 try:
@@ -294,6 +305,8 @@ class Daemon:
         # Verify DB instance identity
         with self._session_factory() as db:
             status = verify_instance_identity(db)
+            self._bound_instance_id = get_live_instance_id(db)
+            self._identity_binding_established = True
         if status.mode == "match":
             short = str(status.actual)[:8] if status.actual else "?"
             logger.info("Database identity verified (%s)", short)
@@ -534,6 +547,47 @@ class Daemon:
                         )
         except Exception:
             logger.exception("Worktree re-attach failed — continuing")
+
+    def _verify_bound_identity_or_halt(self) -> None:
+        """Verify the daemon is still connected to the DB identity from startup."""
+        if not self._identity_binding_established:
+            return
+
+        with self._session_factory() as db:
+            bound_status = check_bound_identity(db, self._bound_instance_id)
+
+        if bound_status.mode == "match":
+            return
+
+        details = {
+            "bound_instance_id": str(bound_status.bound)
+            if bound_status.bound is not None
+            else None,
+            "live_instance_id": str(bound_status.actual)
+            if bound_status.actual is not None
+            else None,
+            "mode": bound_status.mode,
+        }
+        logger.critical(
+            "CRITICAL: orch DB identity changed mid-run; bound=%s live=%s mode=%s",
+            details["bound_instance_id"],
+            details["live_instance_id"],
+            details["mode"],
+        )
+
+        try:
+            with self._session_factory() as db:
+                emit_event(
+                    db,
+                    project_id=None,
+                    event_type="db_identity_changed",
+                    message=bound_status.message,
+                    metadata=details,
+                )
+        except Exception:
+            logger.exception("Failed to emit db_identity_changed event")
+
+        raise OrchDbIdentityChanged(bound_status.message)
 
     # ------------------------------------------------------------------
     # Main poll cycle
