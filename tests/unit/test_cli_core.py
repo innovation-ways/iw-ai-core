@@ -487,4 +487,4 @@ class TestValidateItemRetryTransitions:
         )
         # approved is "not stuck" — should reject regardless of batch_item state
         assert error is not None
-        assert "not stuck" in error.lower()
+        assert error.lower().find("not stuck") != -1, f"Expected 'not stuck' in error: {error!r}"

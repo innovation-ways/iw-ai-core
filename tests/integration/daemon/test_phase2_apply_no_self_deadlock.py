@@ -189,6 +189,7 @@ def test_i_00063_assert_no_self_blockers_clean_when_no_blocker(
         pool_pre_ping=True,
     )
     try:
-        _assert_no_self_blockers(apply_engine)
+        result = _assert_no_self_blockers(apply_engine)
+        assert result is None  # returns None on success; raises SelfBlockerError on failure
     finally:
         apply_engine.dispose()

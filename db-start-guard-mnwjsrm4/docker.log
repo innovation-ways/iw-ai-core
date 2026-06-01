@@ -1,0 +1,1 @@
+compose -f docker-compose.bootstrap.yml up -d db

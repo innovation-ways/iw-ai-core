@@ -46,7 +46,8 @@ def test_assert_no_self_blockers_happy_path(db_engine: Engine) -> None:
         pool_pre_ping=True,
     )
     try:
-        _assert_no_self_blockers(apply_engine)
+        result = _assert_no_self_blockers(apply_engine)
+        assert result is None  # returns None on success; raises SelfBlockerError on failure
     finally:
         apply_engine.dispose()
 
