@@ -461,3 +461,143 @@ class TestCascadeThrashingDetectorWiring:
         # 4. FixCycle was marked completed.
         db_session.refresh(cycle)
         assert cycle.status == FixStatus.completed
+
+    def test_thrashing_marks_trigger_step_failed_not_pending(
+        self,
+        db_session: Session,
+        test_project: Project,
+        dead_pid: int,
+    ) -> None:
+        """I-00124 regression: thrashing must leave the trigger step FAILED, not pending.
+
+        Before this fix, _complete_fix_cycle reset the trigger step to ``pending``
+        unconditionally (before the thrashing check), so "halting recovery" was a
+        lie — the daemon re-drove the step every poll, spawning a fresh fix cycle
+        each time and churning DB connections for hours (I-00124: 5+ cycles over
+        ~10h, feeding host ephemeral-port exhaustion).
+
+        After the fix, a detected thrash leaves the step ``failed`` (terminal) so
+        the daemon stops re-driving it and batch_manager can escalate the item via
+        handle_recovery_exhausted_escalation. If deleting the
+        ``step.status = StepStatus.failed`` line regressed the code, this test
+        would catch a ``pending`` (or ``needs_fix``) status and fail.
+        """
+        project_config = _make_project_config(
+            cascade_thrashing_threshold=3,
+            cascade_thrashing_jaccard_min=0.5,
+            fix_cycle_max=10,
+        )
+
+        _make_work_item(db_session, item_id="I-00124-TERMINAL")
+        _make_step(
+            db_session,
+            "S01",
+            StepType.quality_validation,
+            StepStatus.completed,
+            step_number=1,
+            item_id="I-00124-TERMINAL",
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+        )
+        s02 = _make_step(
+            db_session,
+            "S02",
+            StepType.browser_verification,
+            StepStatus.needs_fix,
+            step_number=2,
+            item_id="I-00124-TERMINAL",
+        )
+
+        # Two prior overlapping cascades → the current call is the 3rd (trips detector).
+        _emit_cascade_event(db_session, "test-proj", "I-00124-TERMINAL", "S02", ["S01"])
+        _emit_cascade_event(db_session, "test-proj", "I-00124-TERMINAL", "S02", ["S01"])
+        cycle = _make_fix_cycle(db_session, s02, dead_pid, cycle_number=1)
+        db_session.flush()
+
+        with patch("orch.daemon.fix_cycle._is_pid_alive", return_value=False):
+            fix_cycle.check_active_fix_cycles(
+                db_session,
+                project_id="test-proj",
+                project_config=project_config,
+                config=_daemon_config(),
+            )
+        db_session.flush()
+
+        # The trigger step is terminal FAILED — not pending/needs_fix.
+        db_session.refresh(s02)
+        assert s02.status == StepStatus.failed, (
+            f"thrashing must leave the trigger step failed (terminal), got {s02.status}; "
+            "a pending/needs_fix status means the daemon would re-drive it forever"
+        )
+        # The thrashing event was recorded (drives the durable halt below).
+        assert (
+            db_session.query(DaemonEvent)
+            .filter(
+                DaemonEvent.entity_id == "I-00124-TERMINAL",
+                DaemonEvent.event_type == "cascade_thrashing_detected",
+            )
+            .count()
+            == 1
+        )
+        # cycle completed (the cycle itself is not "failed" — the step is).
+        db_session.refresh(cycle)
+        assert cycle.status == FixStatus.completed
+
+    def test_should_attempt_fix_refuses_after_thrashing_declared(
+        self,
+        db_session: Session,
+        test_project: Project,
+    ) -> None:
+        """I-00124 regression: the thrashing halt is durable across polls.
+
+        Once a ``cascade_thrashing_detected`` event exists for a step, the next
+        daemon poll must NOT start another fix cycle — otherwise the loop the fix
+        is meant to break would resume. ``should_attempt_fix`` consults
+        ``_thrashing_halt_declared`` and returns False, so batch_manager routes the
+        failed step to terminal escalation instead.
+        """
+        project_config = _make_project_config(fix_cycle_max=10)
+        _make_work_item(db_session, item_id="I-00124-HALT")
+        s02 = _make_step(
+            db_session,
+            "S02",
+            StepType.browser_verification,
+            StepStatus.failed,
+            step_number=2,
+            item_id="I-00124-HALT",
+        )
+        db_session.flush()
+
+        # Before the halt is declared, a fix may be attempted (budget not exhausted).
+        assert fix_cycle.should_attempt_fix(db_session, s02, project_config) is True
+
+        # Declare the thrashing halt for this step.
+        event = DaemonEvent(
+            project_id="test-proj",
+            event_type="cascade_thrashing_detected",
+            entity_id="I-00124-HALT",
+            entity_type="work_item",
+            message="Thrashing detected for S02",
+            event_metadata={"trigger_step_id": "S02", "cascade_count": 3},
+        )
+        db_session.add(event)
+        db_session.flush()
+
+        # Now further fix cycles are refused.
+        assert fix_cycle.should_attempt_fix(db_session, s02, project_config) is False, (
+            "should_attempt_fix must refuse further cycles once thrashing is declared"
+        )
+
+        # A DIFFERENT step on the same item is unaffected (event is per trigger step).
+        s03 = _make_step(
+            db_session,
+            "S03",
+            StepType.browser_verification,
+            StepStatus.failed,
+            step_number=3,
+            item_id="I-00124-HALT",
+        )
+        db_session.flush()
+        assert fix_cycle.should_attempt_fix(db_session, s03, project_config) is True, (
+            "the halt must be scoped to the thrashing trigger step, not the whole item"
+        )

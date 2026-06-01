@@ -573,6 +573,27 @@ def _latest_failure_reason(db: Session, step: WorkflowStep) -> str | None:
     return latest.error_message
 
 
+def _thrashing_halt_declared(db: Session, step: WorkflowStep) -> bool:
+    """Return True if cascade thrashing was already declared for ``step``.
+
+    Once :func:`_complete_fix_cycle` detects thrashing it emits a
+    ``cascade_thrashing_detected`` event and leaves the step failed. This guard
+    makes that halt durable across daemon polls: ``should_attempt_fix`` consults
+    it so the step escalates to terminal failure instead of being re-driven into
+    another fix cycle (I-00124).
+    """
+    events = (
+        db.query(DaemonEvent)
+        .filter(
+            DaemonEvent.entity_id == step.work_item_id,
+            DaemonEvent.entity_type == "work_item",
+            DaemonEvent.event_type == "cascade_thrashing_detected",
+        )
+        .all()
+    )
+    return any((e.event_metadata or {}).get("trigger_step_id") == step.step_id for e in events)
+
+
 def should_attempt_fix(
     db: Session,
     step: WorkflowStep,
@@ -608,6 +629,18 @@ def should_attempt_fix(
     # SPEC_MISMATCH: the verification asks for something the design doc
     # excludes.  No fix agent can resolve this — escalate to human review.
     if is_spec_mismatch_failure(_latest_failure_reason(db, step)):
+        return False
+
+    # Cascade thrashing already declared for this step (see _complete_fix_cycle):
+    # recovery is permanently halted. Refuse further cycles so batch_manager
+    # routes the failed step to handle_recovery_exhausted_escalation instead of
+    # re-driving it forever (I-00124).
+    if _thrashing_halt_declared(db, step):
+        logger.warning(
+            "Cascade thrashing halt in effect for %s/%s — no further fix cycles",
+            step.work_item_id,
+            step.step_id,
+        )
         return False
 
     max_cycles = _max_cycles_for(step.step_type, project_config, step=step)
@@ -1286,10 +1319,6 @@ def _complete_fix_cycle(
     cycle.completed_at = now
 
     if step is not None and step.status == StepStatus.needs_fix:
-        step.status = StepStatus.pending
-        step.started_at = None
-        step.completed_at = None
-
         worktree_path = (cycle.fix_metadata or {}).get("worktree_path", "")
         changed_files: list[str] = []
         if worktree_path:
@@ -1318,6 +1347,21 @@ def _complete_fix_cycle(
             )
 
         if thrashing:
+            # Recovery genuinely halts here. Leave the trigger step FAILED
+            # (terminal) — NOT pending — so the daemon stops re-driving it.
+            # The old code reset the step to pending *before* this check, so
+            # "halting recovery" was a lie: the step re-ran on the next poll,
+            # each run spawning a fresh fix cycle that re-cascaded the upstream
+            # gates and churned DB connections until the per-step / aggregate
+            # cap finally tripped (I-00124: 5+ cycles over ~10h, feeding host
+            # ephemeral-port exhaustion). With the step failed and the
+            # cascade_thrashing_detected event on record, should_attempt_fix()
+            # refuses further cycles and batch_manager escalates the item via
+            # handle_recovery_exhausted_escalation. Upstream gate results are
+            # preserved (no cascade reset).
+            step.status = StepStatus.failed
+            step.completed_at = now
+
             # Count how many past cascades the same trigger has fired.
             past_cascade_count = (
                 db.query(DaemonEvent)
@@ -1347,69 +1391,73 @@ def _complete_fix_cycle(
                 },
             )
             logger.warning(
-                "[%s] Cascade thrashing detected for %s/%s after %d cascades — halting recovery",
+                "[%s] Cascade thrashing detected for %s/%s after %d cascades — "
+                "step marked failed, recovery halted",
                 project_id,
                 step.work_item_id,
                 step.step_id,
                 past_cascade_count + 1,
             )
-        else:
-            # Change 1: cascade-reset upstream QV gates so the daemon re-runs
-            # them against the patched code.
-            reset_step_ids = _cascade_reset_upstream_qv_gates(
+            return
+        # Not thrashing → re-drive the step against the patched code.
+        step.status = StepStatus.pending
+        step.started_at = None
+        step.completed_at = None
+
+        # Change 1: cascade-reset upstream QV gates so the daemon re-runs
+        # them against the patched code.
+        reset_step_ids = _cascade_reset_upstream_qv_gates(
+            db,
+            cycle,
+            step,
+            project_id,
+            changed_files=changed_files or [],
+        )
+        if reset_step_ids:
+            _emit_event(
                 db,
-                cycle,
-                step,
                 project_id,
-                changed_files=changed_files or [],
+                "cascaded_replay_after_fix",
+                step.work_item_id,
+                "work_item",
+                (
+                    f"Fix cycle {cycle.cycle_number} on {step.step_id} → "
+                    f"re-running upstream QV gates: {', '.join(reset_step_ids)}"
+                ),
+                {
+                    "cycle_id": cycle.id,
+                    "trigger_step_id": step.step_id,
+                    "reset_step_ids": reset_step_ids,
+                    "reason": "code_changed_by_fix_cycle",
+                },
             )
-            if reset_step_ids:
+
+        # Change 2: re-run layer-specific code reviews for files touched by the fix.
+        if worktree_path and changed_files:
+            from orch.daemon import review_mapping  # noqa: PLC0415
+
+            mapping = review_mapping.load_review_mapping(Path(worktree_path))
+            target_agents = review_mapping.review_agents_for(changed_files, mapping)
+            review_reset_ids = _reset_review_steps_for_agents(db, step, target_agents, project_id)
+            if review_reset_ids:
                 _emit_event(
                     db,
                     project_id,
-                    "cascaded_replay_after_fix",
+                    "review_replay_after_fix",
                     step.work_item_id,
                     "work_item",
                     (
-                        f"Fix cycle {cycle.cycle_number} on {step.step_id} → "
-                        f"re-running upstream QV gates: {', '.join(reset_step_ids)}"
+                        f"Fix touched {len(changed_files)} file(s) — "
+                        f"re-running reviews: {', '.join(review_reset_ids)}"
                     ),
                     {
                         "cycle_id": cycle.id,
                         "trigger_step_id": step.step_id,
-                        "reset_step_ids": reset_step_ids,
-                        "reason": "code_changed_by_fix_cycle",
+                        "changed_files": changed_files,
+                        "reset_step_ids": review_reset_ids,
+                        "reason": "code_changed_by_fix_cycle_in_layer",
                     },
                 )
-
-            # Change 2: re-run layer-specific code reviews for files touched by the fix.
-            if worktree_path and changed_files:
-                from orch.daemon import review_mapping  # noqa: PLC0415
-
-                mapping = review_mapping.load_review_mapping(Path(worktree_path))
-                target_agents = review_mapping.review_agents_for(changed_files, mapping)
-                review_reset_ids = _reset_review_steps_for_agents(
-                    db, step, target_agents, project_id
-                )
-                if review_reset_ids:
-                    _emit_event(
-                        db,
-                        project_id,
-                        "review_replay_after_fix",
-                        step.work_item_id,
-                        "work_item",
-                        (
-                            f"Fix touched {len(changed_files)} file(s) — "
-                            f"re-running reviews: {', '.join(review_reset_ids)}"
-                        ),
-                        {
-                            "cycle_id": cycle.id,
-                            "trigger_step_id": step.step_id,
-                            "changed_files": changed_files,
-                            "reset_step_ids": review_reset_ids,
-                            "reason": "code_changed_by_fix_cycle_in_layer",
-                        },
-                    )
 
     _emit_event(
         db,
