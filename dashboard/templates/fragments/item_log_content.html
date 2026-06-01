@@ -8,7 +8,7 @@
 {% endif %}
 {% if is_running %}
   <div hx-get="/project/{{ project_id }}/item/{{ item_id }}/log-content/{{ step_db_id }}/{{ run_number }}"
-       hx-trigger="every 5s"
+       hx-trigger="every 5s[document.visibilityState=='visible'], visibilitychange[document.visibilityState=='visible'] from:document"
        hx-target="#log-{{ step_db_id }}-{{ run_number }}"
        hx-swap="innerHTML">
   </div>

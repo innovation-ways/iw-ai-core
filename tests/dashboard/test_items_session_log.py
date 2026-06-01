@@ -200,7 +200,12 @@ class TestSessionLogEndpoint:
         assert "<html" not in response.text.lower()
         assert "<!doctype" not in response.text.lower()
         # is_live = True (running status)
-        assert "every 3s" in response.text, "htmx polling must be present for running step"
+        # I-00123 AC3: live polling is throttled to 5s and gated on tab visibility
+        # to curb DB connection churn (was an un-gated "every 3s").
+        assert "every 5s" in response.text, "htmx polling must be present for running step"
+        assert "document.visibilityState=='visible'" in response.text, (
+            "polling must be gated on tab visibility (I-00123 AC3)"
+        )
 
     def test_session_log_endpoint_claude_run_200(self, client: TestClient, db_session: Session):
         """GET returns 200 with rendered fragment for claude run with log_content."""

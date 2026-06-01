@@ -52,6 +52,7 @@ from orch.db.models import (
     StepStatus,
     WorkflowStep,
 )
+from orch.db.session import get_session as get_shared_session
 from orch.db.session import safe_create_engine
 from orch.rag.config import TIER_DEFAULTS, IndexTier
 
@@ -76,7 +77,19 @@ _last_mismatch_event_time: float = 0.0
 
 def create_session_factory(db_url: str) -> SessionFactory:
     """Create a session factory bound to the given DB URL."""
-    engine = safe_create_engine(db_url, pool_pre_ping=True)
+    from orch.config import get_db_max_overflow, get_db_pool_size, get_db_url
+
+    if db_url == get_db_url():
+        return get_shared_session
+
+    engine = safe_create_engine(
+        db_url,
+        pool_pre_ping=True,
+        pool_size=get_db_pool_size(),
+        max_overflow=get_db_max_overflow(),
+        pool_recycle=1800,
+        pool_timeout=10,
+    )
     session_cls = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
     @contextmanager
