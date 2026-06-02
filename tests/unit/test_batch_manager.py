@@ -798,8 +798,10 @@ class TestBlockingTerminalStatuses:
     def test_failed_is_blocking(self):
         assert BatchItemStatus.failed in _BLOCKING_TERMINAL_STATUSES
 
-    def test_setup_failed_is_blocking(self):
-        assert BatchItemStatus.setup_failed in _BLOCKING_TERMINAL_STATUSES
+    def test_setup_failed_is_not_blocking(self):
+        # CR-00096: infrastructure failure — worktree never started; retryable;
+        # downstream groups must NOT cascade-fail.
+        assert BatchItemStatus.setup_failed not in _BLOCKING_TERMINAL_STATUSES
 
     def test_migration_invalid_not_blocking(self):
         # CR-00028: operator-recoverable merge failure — excluded from cascade
@@ -848,9 +850,9 @@ class TestExecutionGroupDependencyCheck:
     @pytest.mark.parametrize(
         "blocking_status",
         [
-            BatchItemStatus.setup_failed,
             # CR-00028: migration_invalid, migration_rebase_failed, merge_failed are
             # operator-recoverable — excluded from cascade
+            # CR-00096: setup_failed excluded — infrastructure failure, not impl failure
             BatchItemStatus.migration_rolled_back,
             BatchItemStatus.stalled,
             BatchItemStatus.skipped,
@@ -891,8 +893,10 @@ class TestExecutionGroupDependencyCheck:
         assert item_b.status != BatchItemStatus.failed
         assert "F-00002" in launched
 
-    def test_setup_failed_cascades_to_groups_1_and_2(self, tmp_path):
-        """setup_failed in group 0 blocks BOTH group 1 and group 2."""
+    def test_setup_failed_does_not_cascade_to_downstream_groups(self, tmp_path):
+        """CR-00096: setup_failed is an infrastructure failure — downstream groups must
+        NOT cascade-fail. Group 1 is launched; group 2 stays pending (not its turn yet).
+        """
         item_a = make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.setup_failed)
         item_b = make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending)
         item_c = make_batch_item("F-00003", execution_group=2, status=BatchItemStatus.pending)
@@ -905,9 +909,8 @@ class TestExecutionGroupDependencyCheck:
 
         manager._process_batch(db, batch)
 
-        assert item_b.status == BatchItemStatus.failed
-        assert item_c.status == BatchItemStatus.failed
-        manager._launch_item.assert_not_called()
+        assert item_b.status != BatchItemStatus.failed
+        assert item_c.status != BatchItemStatus.failed
 
 
 # ---------------------------------------------------------------------------

@@ -55,13 +55,13 @@ class TestBlockingTerminalMembership:
             )
 
     def test_blocking_terminal_includes_legacy_failed(self) -> None:
-        """failed, setup_failed, stalled, skipped, migration_rolled_back ARE blocking.
+        """failed, stalled, skipped, migration_rolled_back ARE blocking.
 
-        These represent hard failures — dependents in later groups MUST cascade-fail.
+        These represent hard implementation failures — dependents in later groups MUST cascade-fail.
+        Note: setup_failed is excluded (CR-00096) — see test_setup_failed_excluded_from_blocking.
         """
         blocking = {
             BatchItemStatus.failed,
-            BatchItemStatus.setup_failed,
             BatchItemStatus.stalled,
             BatchItemStatus.skipped,
             BatchItemStatus.migration_rolled_back,
@@ -71,6 +71,18 @@ class TestBlockingTerminalMembership:
                 f"{status.value} MUST be in _BLOCKING_TERMINAL_STATUSES "
                 f"(hard failure, cascade must fire)"
             )
+
+    def test_setup_failed_excluded_from_blocking(self) -> None:
+        """CR-00096: setup_failed is an infrastructure failure, NOT a cascade trigger.
+
+        The worktree never started — no implementation output was produced; downstream
+        items have no code dependency on it. The item can be retried after the environment
+        is corrected (iw item-retry).
+        """
+        assert BatchItemStatus.setup_failed not in _BLOCKING_TERMINAL_STATUSES, (
+            "setup_failed must NOT be in _BLOCKING_TERMINAL_STATUSES (CR-00096: "
+            "infrastructure failure, non-cascading)"
+        )
 
     def test_merged_not_blocking(self) -> None:
         """merged is success — never blocking (baseline invariant)."""
