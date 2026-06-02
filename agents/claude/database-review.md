@@ -68,6 +68,10 @@ You will receive:
 - No sensitive data stored in plain text
 - Proper access control at the query level
 
+### Code Documentation Check
+
+- **Code documentation**: every module, class, and public function/method must have a Google-style docstring (see CLAUDE.md — Code Comments). Flag missing or bare docstrings as MEDIUM.
+
 ## Severity Levels
 
 - **CRITICAL**: Data loss risk, migration that cannot be reversed, SQL injection, broken constraints

@@ -113,6 +113,10 @@ Defect: handler treats `form.get("<name>") is None` as "use default" — but bro
 Fix: treat absent as `False` (unless a hidden `<name>_present` sentinel field is also submitted), and add a test that POSTs the form WITHOUT the field in the body.
 ```
 
+### Code Documentation Check
+
+- **Code documentation**: every module, class, and public function/method must have a Google-style docstring (see CLAUDE.md — Code Comments). Flag missing or bare docstrings as MEDIUM.
+
 ## Severity Levels
 
 - **CRITICAL**: Auth bypass, data exposure, injection vulnerability, broken endpoint

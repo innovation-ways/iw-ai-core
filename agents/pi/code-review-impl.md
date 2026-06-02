@@ -77,7 +77,7 @@ For each issue found, record:
 
 - **CRITICAL**: Must fix before proceeding (security, data loss, broken tests)
 - **HIGH**: Must fix (architecture violations, missing error handling, CLAUDE.md rule violations)
-- **MEDIUM**: Should fix (code quality, naming, missing docs)
+- **MEDIUM**: Should fix (code quality, naming, missing docs). Missing or incomplete Google-style docstrings (module, class, public function/method) are a MEDIUM finding — see CLAUDE.md Code Comments.
 - **LOW/SUGGESTION**: Nice to have
 
 ## Output

@@ -97,6 +97,10 @@ This check is mandatory and not skippable. If a reference uses a Jinja expressio
 - CSRF protection on forms where applicable
 - External resources loaded securely
 
+### Code Documentation Check
+
+- **Code documentation**: every module, class, and public function/method must have a Google-style docstring (see CLAUDE.md — Code Comments). Flag missing or bare docstrings as MEDIUM.
+
 ## Severity Levels
 
 - **CRITICAL**: XSS vulnerability, broken page rendering, data exposure in markup, dangling DOM-id reference (htmx target/include/swap-oob, aria-controls/labelledby/describedby, label `for`, in-page `href` anchor)

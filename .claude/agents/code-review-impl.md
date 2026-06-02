@@ -37,7 +37,20 @@ You will receive:
 - Read the implementation report to understand what was delivered
 
 ### 2. Enumerate All Changed Files
-- Use `git diff` to identify every file changed by the implementation
+
+**Files you review**: read the work item's `ai-dev/active/<ITEM>/workflow-manifest.json`. The
+`scope.allowed_paths` array is the authoritative list of files this work item is permitted to
+touch. For your per-step review, restrict your diff inspection to files matching the step-specific
+subset (declared in the step's prompt under "Scope (`allowed_paths`)") AND only consider lines
+added/modified since the previous committed boundary for that step.
+
+
+**Do NOT** use un-scoped `git diff HEAD` or `git status` to derive what to review — un-committed
+work from later steps in the same worktree will appear in those outputs and you will mis-attribute
+it. The merge-time enforcement in `executor/worktree_commit.sh` Step 2.25 rejects any file outside
+`allowed_paths`, so anything you see outside that scope is either (a) someone else's step's work
+(ignore it), or (b) a scope violation by the step you're reviewing (CRITICAL finding).
+
 - Cross-reference with the files listed in the implementation report
 - Flag any files changed but not mentioned in the report
 
@@ -75,7 +88,7 @@ To re-enable, file a small follow-up CR that re-runs `make llm-judge-calibrate` 
 
 - **CRITICAL**: Must fix before proceeding (security, data loss, broken tests)
 - **HIGH**: Must fix (architecture violations, missing error handling, CLAUDE.md rule violations)
-- **MEDIUM**: Should fix (code quality, naming, missing docs)
+- **MEDIUM**: Should fix (code quality, naming, missing docs). Missing or incomplete Google-style docstrings (module, class, public function/method) are a MEDIUM finding — see CLAUDE.md Code Comments.
 - **LOW/SUGGESTION**: Nice to have
 
 ## Output

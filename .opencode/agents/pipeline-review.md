@@ -68,6 +68,10 @@ You will receive:
 - Proper authentication for external service calls
 - Input validation on job payloads
 
+### Code Documentation Check
+
+- **Code documentation**: every module, class, and public function/method must have a Google-style docstring (see CLAUDE.md — Code Comments). Flag missing or bare docstrings as MEDIUM.
+
 ## Severity Levels
 
 - **CRITICAL**: Data loss on failure, non-idempotent operations without protection, infinite retry loops

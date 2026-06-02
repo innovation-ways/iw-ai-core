@@ -98,6 +98,10 @@ Fix: add tests/unit/test_<module>.py::test_<func>_returns_<new_value>_when_<pred
 
 Past defect this rule catches: CR-00036's `_merge_status` got a new `awaiting_approval` branch, but the only coverage was through `tests/dashboard/test_item_overview_awaiting_merge.py` (template rendering). The function was actually returning `"pending"` instead of `"awaiting_approval"` for `worktree_info={}` because of a preceding guard, and the template tests passed because their fixtures set `worktree_info` to a non-empty value. The bug surfaced in S17 BrowserVerification.
 
+### Code Documentation Check
+
+- **Code documentation**: every module, class, and public function/method must have a Google-style docstring (see CLAUDE.md — Code Comments). Flag missing or bare docstrings as MEDIUM.
+
 ## Severity Levels
 
 - **CRITICAL**: Tests that pass but don't actually verify anything, tests hitting live services

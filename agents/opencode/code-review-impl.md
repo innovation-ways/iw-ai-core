@@ -67,6 +67,7 @@ For each changed file, evaluate:
 - **Performance**: N+1 queries, unbounded operations, missing indexes
 - **Test coverage**: Tests exist and cover critical paths
 - **Error handling**: Failures caught, logged, surfaced appropriately
+- **Code documentation**: Every module, class, and public function/method must have a Google-style docstring (see CLAUDE.md — Code Comments); flag missing or bare docstrings as MEDIUM
 
 ### 4. Run Quality Checks
 - Run the project's test suite to verify all tests pass

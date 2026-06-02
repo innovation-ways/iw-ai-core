@@ -62,6 +62,10 @@ You will receive:
 - Tests cover: normal rendering, empty data, edge cases
 - Run the test suite to verify all tests pass
 
+### Code Documentation Check
+
+- **Code documentation**: every module, class, and public function/method must have a Google-style docstring (see CLAUDE.md — Code Comments). Flag missing or bare docstrings as MEDIUM.
+
 ## Severity Levels
 
 - **CRITICAL**: XSS vulnerability, template injection, data exposure

@@ -70,7 +70,7 @@ Follow CLAUDE.md exactly. Do not invent conventions.
 - Prefer existing patterns over introducing new ones
 - Keep changes minimal and focused on the prompt scope
 - Write clear, self-documenting code
-- Add comments only where the "why" is non-obvious
+- Follow the project's Google-style docstring standard (see CLAUDE.md — Code Comments): module docstrings, class docstrings, public method/function docstrings with Args/Returns/Raises sections, and inline `#` comments for non-obvious logic
 - Follow the project's error handling conventions
 
 ## Output Format

@@ -50,6 +50,7 @@ For every changed file, check:
 - **Performance**: N+1 queries, unbounded loops, missing indexes, unnecessary allocations
 - **Type safety**: Proper type annotations, no `Any` abuse, mypy compliance
 - **Code quality**: Naming, duplication, single responsibility, function length
+- **Code documentation**: every module, class, and public function/method must have a Google-style docstring (see CLAUDE.md — Code Comments). Flag missing or bare docstrings as MEDIUM.
 
 ### 4. Verify TDD Compliance
 - Tests MUST exist for all new functionality
@@ -140,7 +141,7 @@ Past defect this rule catches: CR-00036 added `if bi.status == awaiting_merge_ap
 
 - **CRITICAL**: Must fix before proceeding. Security vulnerabilities, data loss risks, broken tests, crashes.
 - **HIGH**: Must fix. Architecture violations, missing error handling, CLAUDE.md rule violations.
-- **MEDIUM**: Should fix. Code quality issues, naming inconsistencies, missing documentation.
+- **MEDIUM**: Should fix. Code quality issues, naming inconsistencies, missing documentation. Missing or incomplete Google-style docstrings (module, class, public function/method) are a MEDIUM finding — see CLAUDE.md Code Comments.
 - **LOW/SUGGESTION**: Nice to have. Style preferences, minor optimizations.
 
 ## Output Format

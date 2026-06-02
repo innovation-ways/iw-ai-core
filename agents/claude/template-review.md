@@ -68,6 +68,10 @@ You will receive:
 - No sensitive data included in generated output
 - File write operations validate target paths
 
+### Code Documentation Check
+
+- **Code documentation**: every module, class, and public function/method must have a Google-style docstring (see CLAUDE.md — Code Comments). Flag missing or bare docstrings as MEDIUM.
+
 ## Severity Levels
 
 - **CRITICAL**: Template injection, sensitive data exposure, broken output

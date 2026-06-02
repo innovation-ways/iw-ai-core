@@ -72,6 +72,8 @@ Follow CLAUDE.md exactly. Do not invent conventions.
 - Group related tests logically
 - Keep test code readable and self-documenting
 
+- Follow the project's Google-style docstring standard (see CLAUDE.md — Code Comments): module docstrings, class docstrings, public method/function docstrings with Args/Returns/Raises sections, and inline `#` comments for non-obvious logic
+
 ## Output Format
 
 At the end of your work, provide a summary covering:

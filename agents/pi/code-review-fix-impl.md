@@ -47,7 +47,7 @@ For each CRITICAL and HIGH finding:
 - Add tests if the finding was about missing test coverage
 
 ### 4. Handle MEDIUM Findings
-- Fix MEDIUM findings if they are straightforward and low-risk
+- Fix MEDIUM findings if they are straightforward and low-risk; always fix missing Google-style docstrings (see CLAUDE.md — Code Comments) — they are straightforward to add and directly improve maintainability
 - Skip MEDIUM findings that require significant refactoring
 - Document which MEDIUM findings were skipped and why
 

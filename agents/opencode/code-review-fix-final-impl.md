@@ -41,6 +41,7 @@ You will receive:
    - Ensure interface contracts are consistent after fixes
    - Maintain data flow integrity across boundaries
    - Follow project conventions for all layers
+   - When fixing MEDIUM docstring findings, write Google-style docstrings (see CLAUDE.md — Code Comments)
 4. **Run the full test suite** — all tests must pass after fixes.
 5. **Report completion** — list all fixes applied with affected layers.
 

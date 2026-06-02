@@ -41,6 +41,7 @@ You will receive:
    - Address the specific issue described
    - Follow the suggested fix when provided
    - Maintain consistency with existing code patterns
+   - When fixing MEDIUM docstring findings, write Google-style docstrings (see CLAUDE.md — Code Comments)
    - Do not introduce new issues while fixing
 4. **Run the full test suite** — all tests must pass after fixes.
 5. **Report completion** — list all fixes applied.

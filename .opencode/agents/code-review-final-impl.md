@@ -51,6 +51,7 @@ You will receive:
 - **Consistency**: Shared patterns applied uniformly across agents
 - **Performance**: End-to-end performance considerations (DB query + API serialization + frontend rendering)
 - **Security**: End-to-end security (input validation + storage + output escaping)
+- **Code documentation**: All public modules, classes, and functions have Google-style docstrings (see CLAUDE.md — Code Comments); missing docstrings are a MEDIUM finding
 
 ### 4. Run Full Test Suite
 - Run all tests (unit + integration) to verify everything works together

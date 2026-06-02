@@ -44,7 +44,7 @@ For each CRITICAL and HIGH finding:
 - Verify shared patterns are applied uniformly
 
 ### 4. Handle MEDIUM Findings
-- Fix straightforward MEDIUM findings
+- Fix straightforward MEDIUM findings; always fix missing Google-style docstrings (see CLAUDE.md — Code Comments)
 - Document skipped MEDIUM findings with justification
 
 ### 5. Verify Fixes

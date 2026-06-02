@@ -66,6 +66,7 @@ You will receive:
 ### 7. Overall Quality
 - No TODO/FIXME/HACK markers left in production code
 - No debug prints or commented-out code
+- All public modules, classes, and functions have Google-style docstrings (see CLAUDE.md — Code Comments); missing docstrings are a MEDIUM finding
 - All imports used, no unused dependencies added
 - Run the full test suite to verify everything works together
 

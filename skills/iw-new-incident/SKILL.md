@@ -256,6 +256,8 @@ Follow the **canonical step-granularity rule** in `skills/iw-workflow/SKILL.md`:
 
 Also follow the **canonical Verification Placement Rule** in `skills/iw-workflow/SKILL.md`: never make a full test suite or aggregate quality gate (`make quality`, `make check`, `make test-*`) a completion gate or acceptance criterion of an **implementation** (fix) step. The reproduction/regression tests belong to the mandatory `tests-impl` step; full-suite/aggregate-gate verification belongs to the `qv-gate` steps. Map each Acceptance Criterion that asserts "gate/suite passes" to the `tests-impl`/`qv-gate` steps, never to a `*-impl` fix step. (See CR-00092 / I-00117.)
 
+Also enforce the **code documentation standard** in CLAUDE.md (Code Comments section): every `*-impl` prompt that creates or modifies Python modules MUST instruct the agent to write Google-style docstrings on all new modules, classes, and public functions/methods. Do not generate implementation prompts that omit this requirement.
+
 Apply this checklist to every step you propose in the manifest:
 
 - Does this step touch more than one unrelated area / module? → **split it**.

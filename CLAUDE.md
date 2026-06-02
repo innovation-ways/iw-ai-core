@@ -64,6 +64,63 @@ The **`iw` CLI** is the agent-to-DB bridge — agents call `iw step-done` to rec
 - **MUST** append plain CSS rules directly to `dashboard/static/styles.css` when `make css` reports "Nothing to be done" or the Tailwind CLI fails (e.g., missing `postcss-selector-parser`) — plain CSS is served as-is, so no Tailwind recompile is required. Temporary mitigation until the Tailwind toolchain is repaired in worktrees (see I-00067).
 - **MUST** invoke the `/iw-research` skill whenever the user asks for "a research", "online research", "deep research", "investigate X", "research X", or any equivalent phrasing — even when the agent believes it could answer inline. The user's expectation is that a research artifact is **filed in the IW AI Core database** so they can review it on the dashboard. **NEVER** silently perform inline web research as a substitute for `/iw-research`. The only acceptable exception is `/iw-research-quick`, and it may only be used when the user **explicitly** writes "quick research" / `/iw-research-quick` or asks a single trivial fact lookup that they have explicitly said should not be filed. When in doubt, default to `/iw-research`.
 
+## Code Comments
+
+All Python code **MUST** use **Google-style docstrings**. Missing or incomplete docstrings are a MEDIUM-severity code review finding (HIGH for any public-facing API surface). Generated code that omits docstrings is a quality failure caught at review time.
+
+### Required Coverage
+
+| Element | Required |
+|---------|----------|
+| Module | One-line summary + description of what the module provides |
+| Class | One-line summary; `Attributes:` section for significant public state |
+| Public function / method | One-line summary + `Args:`, `Returns:`, `Raises:` as applicable |
+| Private function / method (`_name`) | Docstring when logic is non-trivial; otherwise skip |
+| Inline `#` comment | Non-obvious *why*, hidden constraints, subtle invariants, external workarounds |
+
+### Google-Style Format
+
+```python
+"""Module summary line.
+
+Longer description of what the module provides and its main responsibilities.
+"""
+
+
+class MyService:
+    """Manages the lifecycle of background workers.
+
+    Attributes:
+        max_workers: Maximum number of concurrent workers allowed.
+        timeout_secs: Per-worker idle timeout in seconds.
+    """
+
+    def process_batch(self, items: list[Item], dry_run: bool = False) -> BatchResult:
+        """Process a batch of items, optionally without writing to the DB.
+
+        Iterates items in dependency order and applies the registered handler
+        for each item type. Failed items are recorded but do not abort the batch.
+
+        Args:
+            items: Items to process — dependency sort applied internally.
+            dry_run: When True, handlers run but DB writes are skipped.
+
+        Returns:
+            BatchResult with counts for succeeded, failed, and skipped items.
+
+        Raises:
+            ValueError: If items contains duplicate IDs.
+        """
+```
+
+### Rules
+
+- **NEVER** write `# This function does X` — the function name already says that.
+- **NEVER** use multi-paragraph inline comment blocks — one short line max.
+- **DO** include `Args:`, `Returns:`, and `Raises:` for any function with parameters, a non-`None` return, or documented exceptions. Omit sections that don't apply.
+- **DO NOT** repeat type-hint information in `Args:` — types live in the signature.
+- Docstrings go immediately after the `def`/`class` line, not before it.
+
 ## Research Requests
 
 Two skills exist; pick correctly:
