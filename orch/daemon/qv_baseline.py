@@ -46,7 +46,47 @@ __all__ = [
     "fingerprint_to_jsonable",
     "fingerprint_from_jsonable",
     "subtract",
+    "is_pre_existing_only",
+    "_SuppressedFindings",
 ]
+
+
+class _SuppressedFindings(str):
+    """Empty findings that specifically signal: all gate failures are pre-existing.
+
+    A ``str`` subclass whose value is always ``""`` so every existing emptiness
+    check (``if not findings``, ``findings == ""``) behaves identically and
+    nothing else needs to change. Carries metadata needed to emit the event and
+    transition the step without re-resolving anything.
+
+    Instance-level metadata is stored in class-level ``_meta[id(self)]`` since
+    ``str`` has no ``__dict__``. ``gate_name``, ``suppressed_keys``, and
+    ``suppressed_count`` are class variables resolved from that dict so mypy
+    sees them as proper attributes.
+    """
+
+    _meta: dict[int, dict[str, object]] = {}
+
+    def __new__(cls, gate_name: str, suppressed_keys: tuple[str, ...]) -> _SuppressedFindings:
+        obj = super().__new__(cls, "")
+        cls._meta[id(obj)] = {
+            "gate_name": gate_name,
+            "suppressed_keys": suppressed_keys,
+            "suppressed_count": len(suppressed_keys),
+        }
+        return obj
+
+    @property
+    def gate_name(self) -> str:
+        return self._meta[id(self)]["gate_name"]  # type: ignore[return-value]
+
+    @property
+    def suppressed_keys(self) -> tuple[str, ...]:
+        return self._meta[id(self)]["suppressed_keys"]  # type: ignore[return-value]
+
+    @property
+    def suppressed_count(self) -> int:
+        return self._meta[id(self)]["suppressed_count"]  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
@@ -373,3 +413,25 @@ def subtract(current: Fingerprint, baseline: Fingerprint) -> Fingerprint:
     baseline_keys = frozenset((f.kind, f.key) for f in baseline.failures)
     kept = tuple(f for f in current.failures if (f.kind, f.key) not in baseline_keys)
     return Fingerprint(failures=kept, unparseable=current.unparseable)
+
+
+def is_pre_existing_only(current: Fingerprint, baseline: Fingerprint) -> bool:
+    """True iff every current failure (incl. unparseable) is already in baseline.
+
+    Reuses ``subtract`` so the comparison is keyed on ``(kind, key)`` and is
+    correct for every gate parser (not just pytest). ``subtract`` never matches
+    ``unparseable`` entries against the baseline, so any unparseable line forces
+    a ``False`` (fail-safe: if we cannot parse it, we cannot suppress it).
+
+    Returns
+    -------
+    True
+        when ``current`` has no failures at all, or every parseable failure in
+        ``current`` is present in ``baseline`` and ``current`` has no unparseable
+        entries.
+    False
+        as soon as one current failure (parseable or unparseable) is absent from
+        ``baseline``.
+    """
+    delta = subtract(current, baseline)
+    return not delta.failures and not delta.unparseable

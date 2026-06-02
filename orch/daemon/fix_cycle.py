@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from orch.config import DaemonConfig
     from orch.daemon.project_registry import ProjectConfig
     from orch.daemon.qv_baseline import Fingerprint
+    from orch.daemon.qv_baseline import _SuppressedFindings as _SuppressedFindingsType
 
 logger = logging.getLogger(__name__)
 
@@ -185,10 +186,7 @@ def _build_scope_block(allowed: list[str], item_id: str | None = None) -> str:
     fix cycle re-flagged ``ai-dev/work/CR-00082/`` as a CRITICAL finding.)
     """
     if not allowed:
-        return (
-            "## Scope (allowed_paths from workflow-manifest.json)\n\n"
-            "(none declared — scope enforcement disabled for this item)\n\n"
-        )
+        return ""
     path_lines = "\n".join(f"  {p}" for p in allowed)
     implicit_block = ""
     if item_id is not None:
@@ -811,6 +809,22 @@ def attempt_fix_cycle(
     try:
         # Get the review findings from the latest failed StepRun
         findings = _get_review_findings(db, step, worktree_path, config)
+
+        # CR-00097 S02: Detect pre-existing-only suppression and bail out without
+        # creating a FixCycle — transition step failed → skipped and emit the event.
+        # _SuppressedFindings is a str subclass (always "") so all existing emptiness
+        # checks still pass; nothing else needs to change.
+        from orch.daemon.qv_baseline import _SuppressedFindings  # noqa: PLC0415
+
+        if isinstance(findings, _SuppressedFindings):
+            n = _suppress_pre_existing_gate(db, step, project_id, findings)
+            logger.info(
+                "[CR-00097] All %d failure(s) for %s/%s are pre-existing — marking gate skipped",
+                n,
+                step.work_item_id,
+                step.step_id,
+            )
+            return
 
         # Grab the latest StepRun's --reason so the fix prompt can call out
         # mis-classified ENV_DATA_MISSING / ENVIRONMENT failures.
@@ -1743,8 +1757,10 @@ def _get_qv_findings(
         return _qv_findings_legacy(db, step, worktree_path)
 
     from orch.daemon.qv_baseline import (  # noqa: PLC0415
+        _SuppressedFindings,
         fingerprint_from_jsonable,
         fingerprint_to_jsonable,
+        is_pre_existing_only,
         parser_for_gate,
         subtract,
     )
@@ -1821,14 +1837,15 @@ def _get_qv_findings(
     current_fp = parser(current_output)
     delta = subtract(current_fp, baseline_fp)
 
-    if not delta.failures and not delta.unparseable:
+    if is_pre_existing_only(current_fp, baseline_fp):
         logger.info(
             "[F-00061] Suppressed %d pre-existing failures for %s/%s",
             len(baseline_fp.failures),
             step.work_item_id,
             step.step_id,
         )
-        return ""
+        suppressed_keys = tuple(f.key for f in current_fp.failures)
+        return _SuppressedFindings(gate_name, suppressed_keys)
 
     return _format_qv_findings_from_delta(delta, latest_run)
 
@@ -2084,12 +2101,14 @@ def _extract_mandatory_findings(content: str) -> str:
 _MAX_DESIGN_QUOTE_CHARS = 8000
 
 
-def _find_design_doc(worktree_path: str, item_id: str) -> Path | None:
+def _find_design_doc(worktree_path: str | None, item_id: str) -> Path | None:
     """Locate the design doc for a work item under the worktree.
 
     Convention: ``ai-dev/active/<item_id>/<item_id>_*_Design.md`` (Issue,
     Feature, or Change-Request). Returns the first match or None.
     """
+    if not worktree_path:
+        return None
     base = Path(worktree_path) / "ai-dev" / "active" / item_id
     if not base.is_dir():
         return None
@@ -2110,20 +2129,41 @@ def _extract_step_section(design_text: str, step_id: str) -> str | None:
     if not design_text or not step_id:
         return None
     # Heading shapes, first hit wins. Multiline + DOTALL + IGNORECASE.
-    candidates = (
-        rf"(?ims)^(\#{{1,6}}\s+detailed\s+fix\s+specification\s+for\s+{step_id}\b[^\n]*\n.*?)"
-        rf"(?=^\#{{1,6}}\s+|\Z)",
-        rf"(?ims)^(\#{{1,6}}\s+{step_id}\b[^\n]*\n.*?)(?=^\#{{1,6}}\s+|\Z)",
-        rf"(?ims)^(\#{{1,6}}\s+step\s+{step_id}\b[^\n]*\n.*?)(?=^\#{{1,6}}\s+|\Z)",
-    )
+    # Use string concatenation (not rf-string) to avoid f-string brace interpolation:
+    # rf'#{1,6}' in an f-string produces '#(1, 6)' (comma-formatted int).
+    # The .*? non-greedy skip allows matching heading content (e.g. "Step: ")
+    # between the hashes and the step_id (e.g., "## Step: qa-verify").
+    heading_pattern = "#{1,6}"
+    candidates = [
+        "(?ims)^("
+        + heading_pattern
+        + r"\s+detailed\s+fix\s+specification\s+for\s+{step_id}"
+        + r"\b[^\n]*\n.*?)(?=^"
+        + heading_pattern
+        + r"\s+|\Z)",
+        "(?ims)^("
+        + heading_pattern
+        + r"\s+.*?{step_id}"
+        + r"\b[^\n]*\n.*?)(?=^"
+        + heading_pattern
+        + r"\s+|\Z)",
+        "(?ims)^("
+        + heading_pattern
+        + r"\s+step\s+.*?{step_id}"
+        + r"\b[^\n]*\n.*?)(?=^"
+        + heading_pattern
+        + r"\s+|\Z)",
+    ]
     for pattern in candidates:
-        match = re.search(pattern, design_text)
+        # Substitute step_id using replace to avoid .format() collision with {1,6}
+        concrete = pattern.replace("{step_id}", step_id)
+        match = re.search(concrete, design_text)
         if match:
             return match.group(1).strip()
-    return None
+    return None  # no step-specific heading found
 
 
-def _build_design_doc_block(worktree_path: str, item_id: str, step_id: str) -> str:
+def _build_design_doc_block(worktree_path: str | None, item_id: str = "", step_id: str = "") -> str:
     """Return a markdown section pointing the fix agent at the design doc.
 
     Always names the doc by absolute path so the agent can `Read` it. When a
@@ -2474,6 +2514,7 @@ def _build_fix_prompt_content(
     cycle_number: int,
     findings: str,
     max_cycles: int,
+    prior_failure_reason: str | None = None,
     *,
     design_doc_block: str = "",
     scope_block: str = "",
@@ -2489,6 +2530,10 @@ def _build_fix_prompt_content(
             "can act on the evidence."
         )
 
+    prior_reason_block = ""
+    if prior_failure_reason:
+        prior_reason_block = f"\n\n## Prior Failure Reason\n\n{prior_failure_reason}\n"
+
     design_section = f"{design_doc_block}\n" if design_doc_block else ""
 
     return (
@@ -2496,6 +2541,7 @@ def _build_fix_prompt_content(
         f"The code review for step {step_id} of work item {item_id} found issues "
         f"that must be fixed.\n\n"
         f"{scope_block}"
+        f"{prior_reason_block}"
         f"{design_section}"
         f"## Diagnostic Hypothesis — Findings to Address\n\n"
         f"The findings below are **one hypothesis** generated by a reviewer agent. "
@@ -2911,6 +2957,44 @@ def _emit_event(
         event_metadata=metadata or {},
     )
     db.add(event)
+
+
+def _suppress_pre_existing_gate(
+    db: Session,
+    step: WorkflowStep,
+    project_id: str,
+    findings: _SuppressedFindingsType,
+) -> int:
+    """Mark a QV gate step as skipped (pre-existing failures only).
+
+    Emits a ``qv_pre_existing_suppressed`` daemon event and transitions the step
+    ``failed → skipped`` without creating a FixCycle. ``_SuppressedFindings``
+    carries the metadata needed to emit the event without re-resolving anything:
+    gate_name, suppressed_count, suppressed_keys (capped at 20).
+    """
+    event_meta: dict[str, Any] = {
+        "step_id": step.step_id,
+        "gate_name": findings.gate_name,
+        "suppressed_count": findings.suppressed_count,
+        "suppressed_keys": list(findings.suppressed_keys[:20]),
+    }
+    _emit_event(
+        db,
+        project_id,
+        "qv_pre_existing_suppressed",
+        step.work_item_id,
+        "work_item",
+        (
+            f"Gate {findings.gate_name} for step {step.step_id} has only pre-existing "
+            f"failures ({findings.suppressed_count} total) — suppressed and skipped."
+        ),
+        event_meta,
+    )
+
+    step.status = StepStatus.skipped
+    step.completed_at = datetime.now(UTC)
+    db.commit()
+    return findings.suppressed_count
 
 
 def _try_auto_amend_after_escalation(

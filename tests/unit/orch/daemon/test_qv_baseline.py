@@ -24,6 +24,7 @@ from orch.daemon.qv_baseline import (
     Fingerprint,
     fingerprint_from_jsonable,
     fingerprint_to_jsonable,
+    is_pre_existing_only,
     parse_assertion_scanner,
     parse_generic_lines,
     parse_mypy,
@@ -392,3 +393,86 @@ class TestGateParsers:
 
     def test_parser_for_unknown_gate_uses_generic_fallback(self) -> None:
         assert parser_for_gate("format") is parse_generic_lines
+
+
+# ---------------------------------------------------------------------------
+# TestIsPreExistingOnly
+# ---------------------------------------------------------------------------
+
+
+class TestIsPreExistingOnly:
+    def test_clean_current_true(self) -> None:
+        """A current run with no failures at all should return True (baseline may be non-empty)."""
+        baseline = Fingerprint(
+            failures=(
+                FailureEntry(kind="test", key="tests/integration/test_a.py::test_one"),
+                FailureEntry(kind="test", key="tests/integration/test_b.py::test_two"),
+            )
+        )
+        current = Fingerprint(failures=())
+        assert is_pre_existing_only(current, baseline) is True
+
+    def test_subset_true(self) -> None:
+        """Every current failure is in baseline (subset) → True."""
+        baseline_failures = (
+            FailureEntry(kind="lint", key="dashboard/app.py::E501"),
+            FailureEntry(kind="lint", key="dashboard/b.py::F401"),
+            FailureEntry(kind="test", key="tests/integration/test_x.py::test_foo"),
+        )
+        baseline = Fingerprint(failures=baseline_failures)
+        # current has only failures that exist in baseline
+        current_failures = (FailureEntry(kind="lint", key="dashboard/app.py::E501"),)
+        current = Fingerprint(failures=current_failures)
+        assert is_pre_existing_only(current, baseline) is True
+
+    def test_equal_true(self) -> None:
+        """Identical fingerprints (current == baseline) → True."""
+        f1 = FailureEntry(kind="lint", key="a::X")
+        f2 = FailureEntry(kind="test", key="b::Y")
+        fp = Fingerprint(failures=(f1, f2))
+        assert is_pre_existing_only(fp, fp) is True
+
+    def test_unparseable_false(self) -> None:
+        """Current has an unparseable entry (baseline does not) → False (fail-safe)."""
+        baseline = Fingerprint(failures=(FailureEntry(kind="lint", key="dashboard/app.py::E501"),))
+        # unparseable entry in current forces False — cannot suppress what we cannot parse
+        current = Fingerprint(
+            failures=(FailureEntry(kind="lint", key="dashboard/app.py::E501"),),
+            unparseable=("SOME UNKNOWN ERROR FORMAT",),
+        )
+        assert is_pre_existing_only(current, baseline) is False
+
+    def test_is_pre_existing_only_unparseable_with_known_failure_false(self) -> None:
+        """current = one parseable failure in baseline PLUS one unparseable entry → False.
+
+        The unparseable entry is NEVER suppressed (fail-safe). Even though the
+        parseable failure is fully covered by baseline, the unparseable entry
+        alone suffices to return False so the gate blocks merge.
+        """
+        baseline = Fingerprint(
+            failures=(FailureEntry(kind="test", key="tests/foo.py::test_bar"),),
+            unparseable=(),
+        )
+        current = Fingerprint(
+            failures=(FailureEntry(kind="test", key="tests/foo.py::test_bar"),),
+            unparseable=("unparseable error line here",),
+        )
+        assert is_pre_existing_only(current, baseline) is False
+
+    def test_is_pre_existing_only_empty_both_true(self) -> None:
+        """Both current and baseline have no failures and no unparseable → True."""
+        baseline = Fingerprint(failures=(), unparseable=())
+        current = Fingerprint(failures=(), unparseable=())
+        assert is_pre_existing_only(current, baseline) is True
+
+    def test_new_failure_false(self) -> None:
+        """Current has a failure not in baseline → False (must not suppress)."""
+        baseline = Fingerprint(failures=(FailureEntry(kind="lint", key="dashboard/app.py::E501"),))
+        # new failure not in baseline
+        current = Fingerprint(
+            failures=(
+                FailureEntry(kind="lint", key="dashboard/app.py::E501"),
+                FailureEntry(kind="lint", key="orch/daemon/x.py::F401"),  # new
+            )
+        )
+        assert is_pre_existing_only(current, baseline) is False

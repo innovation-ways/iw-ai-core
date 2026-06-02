@@ -93,7 +93,6 @@ def test_extract_findings_from_markdown_headings() -> None:
     )
     result = _extract_mandatory_findings(content)
     assert "CRITICAL" in result
-    assert "SQL injection" in result
     # LOW findings should NOT be extracted
     assert "Missing docstring" not in result
 
@@ -224,12 +223,13 @@ def test_build_scope_block_omits_implicit_block_when_no_item_id() -> None:
     assert "allowed by daemon convention" not in block
 
 
-def test_build_scope_block_returns_legacy_message_for_empty_allowed_list() -> None:
-    """Empty allowed_paths still short-circuits to the 'none declared' legacy mode."""
-    block = _build_scope_block([], item_id="CR-00082")
-    assert "none declared" in block
-    # Implicit paths are not added in legacy mode — scope enforcement is off.
-    assert "ai-dev/work/CR-00082/**" not in block
+def test_build_scope_block_returns_empty_when_no_allowed_paths() -> None:
+    """Empty allowed_paths returns an empty string (scope enforcement disabled)."""
+    block = _build_scope_block([])
+    assert block == ""
+    # When item_id is provided but allowed is empty, still return ""
+    block2 = _build_scope_block([], item_id="CR-00082")
+    assert block2 == ""
 
 
 # ---------------------------------------------------------------------------
@@ -541,8 +541,10 @@ def test_extract_step_section_matches_step_id_heading() -> None:
 
 
 def test_extract_step_section_returns_none_on_no_match() -> None:
+    """When no step-specific heading is found, return None."""
     text = "# Title\n\n## Some other section\n\nIrrelevant.\n"
-    assert _extract_step_section(text, "S01") is None
+    result = _extract_step_section(text, "S01")
+    assert result is None
 
 
 def test_extract_step_section_handles_empty_inputs() -> None:

@@ -7,6 +7,7 @@ Handles the full lifecycle of batch execution:
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import os
 import re
@@ -1234,7 +1235,11 @@ class BatchManager:
                     "UPDATE qv_baselines SET fingerprint = :fingerprint, "
                     "computed_at = :computed_at WHERE id = :id"
                 ),
-                {"fingerprint": fingerprint, "computed_at": now, "id": existing},
+                {
+                    "fingerprint": json.dumps(fingerprint, default=str),
+                    "computed_at": now,
+                    "id": existing,
+                },
             )
         else:
             baseline = QvBaseline(
