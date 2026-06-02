@@ -113,6 +113,28 @@ class MyService:
         """
 ```
 
+### Test File Rules
+
+Test files follow the same standard with one difference: `test_*` functions only need a **one-line scenario description** — no `Args:`, `Returns:`, or `Raises:` sections. The purpose is to describe the *scenario* being verified, not re-state the assertion.
+
+| Element | Required |
+|---------|----------|
+| Test module | One-line summary describing what behaviors the file covers |
+| Test class (`TestFoo`) | One-line summary describing the group of scenarios |
+| `test_*` function | **One-line only** — describe the scenario, not the mechanics: `"Verifies that step advancement is blocked when the migration lock is held."` |
+| Fixture / helper (non-`test_`) | Full docstring with `Args:`/`Returns:` as applicable |
+
+```python
+"""Tests for the batch manager's state-machine transitions."""
+
+
+class TestBatchLifecycle:
+    """Covers approved → running → complete/failed paths."""
+
+    def test_batch_moves_to_running_when_approved(self, db_session):
+        """Verifies that an approved batch transitions to running on the next daemon poll."""
+```
+
 ### Rules
 
 - **NEVER** write `# This function does X` — the function name already says that.

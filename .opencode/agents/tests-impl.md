@@ -78,7 +78,7 @@ Follow CLAUDE.md exactly. Do not invent conventions.
 - Group related tests logically
 - Keep test code readable and self-documenting
 
-- Follow the project's Google-style docstring standard (see CLAUDE.md — Code Comments): module docstrings, class docstrings, public method/function docstrings with Args/Returns/Raises sections, and inline `#` comments for non-obvious logic
+- Follow the project's Google-style docstring standard (see CLAUDE.md — Code Comments): module docstrings, test class docstrings, one-line scenario descriptions on every `test_*` function (no Args/Returns/Raises — describe the scenario being verified, not the mechanics), and full docstrings with Args/Returns on fixture and helper functions
 
 ## Output Format
 

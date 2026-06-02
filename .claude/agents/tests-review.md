@@ -98,7 +98,7 @@ Past defect this rule catches: CR-00036's `_merge_status` got a new `awaiting_ap
 
 ### Code Documentation Check
 
-- **Code documentation**: every module, class, and public function/method must have a Google-style docstring (see CLAUDE.md — Code Comments). Flag missing or bare docstrings as MEDIUM.
+- **Code documentation**: every test module and test class must have a module/class docstring; every `test_*` function must have a one-line scenario description; fixture and helper functions require full Google-style docstrings (see CLAUDE.md — Code Comments — Test File Rules). Flag missing docstrings as MEDIUM.
 
 ## Severity Levels
 
