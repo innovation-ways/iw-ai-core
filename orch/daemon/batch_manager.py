@@ -63,12 +63,17 @@ _DEFAULT_SETTING_UP_THRESHOLD_SECS = 600
 # H1: terminal statuses that block downstream execution groups (merged is success, not a failure)
 # CR-00028: merge_failed, migration_invalid, and migration_rebase_failed are excluded because
 # they are operator-recoverable — the operator can retry via restart-merge or abandon via
-# abandon-merge. All other terminal statuses (e.g. failed, setup_failed, stalled) still cascade.
+# abandon-merge.
+# CR-00096: setup_failed is excluded because it is an infrastructure failure (worktree setup,
+# DB migration mismatch, port conflict) — not an implementation failure. The worktree never
+# started so no implementation output was produced; downstream items cannot have a code
+# dependency on it. The item can be retried after the environment is corrected (iw item-retry).
 _BLOCKING_TERMINAL_STATUSES = TERMINAL_BATCH_ITEM_STATUSES - {
     BatchItemStatus.merged,
     BatchItemStatus.merge_failed,
     BatchItemStatus.migration_invalid,
     BatchItemStatus.migration_rebase_failed,
+    BatchItemStatus.setup_failed,
 }
 
 
@@ -406,11 +411,13 @@ class BatchManager:
             self._check_batch_completion(db, batch, items)
             return
 
-        # Block the current group from launching if any earlier group has a terminal-failure item.
-        # Any blocking terminal status (failed, setup_failed, stalled, skipped,
-        # migration_invalid, migration_rolled_back, migration_rebase_failed) in a prior
-        # group means successor items cannot safely proceed. 'merged' is the success
-        # terminal state and therefore does NOT block.
+        # Block the current group from launching if any earlier group has an
+        # implementation-failure item.
+        # Blocking statuses: failed, stalled, skipped, migration_rolled_back.
+        # Non-blocking: merged (success), setup_failed (infrastructure failure — CR-00096:
+        # worktree never started, no impl output; retryable via iw item-retry),
+        # merge_failed / migration_invalid / migration_rebase_failed (operator-recoverable,
+        # CR-00028).
         failed_in_prior_group = any(
             i.status in _BLOCKING_TERMINAL_STATUSES and i.execution_group < current_group
             for i in items
@@ -435,7 +442,8 @@ class BatchManager:
                 f"block execution_group {current_group}+",
             )
             logger.warning(
-                "[%s] Batch %s: dependency failure blocks group %d — marking pending items failed",
+                "[%s] Batch %s: implementation dependency failure in group %d"
+                " — marking pending items failed",
                 self.project_id,
                 batch.id,
                 current_group,
