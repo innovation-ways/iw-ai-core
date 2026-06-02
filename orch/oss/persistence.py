@@ -24,6 +24,20 @@ def persist_findings(
     scan: OssScan,
     findings_json: dict[str, Any],
 ) -> None:
+    """Persist scan findings and tool run records from a findings JSON payload.
+
+    Iterates the ``findings`` list in the payload, creates one OssFinding row
+    per entry, and flushes OssFindingDetail rows for any per-row ``results``
+    sub-list. Also records each entry in ``tools_available`` as an OssToolRun
+    row. Commits the session on completion.
+
+    Args:
+        session: Active SQLAlchemy session used for all inserts.
+        scan: Parent OssScan row; its id is used as the foreign key for all
+            new findings and tool-run rows.
+        findings_json: Parsed contents of the skill's oss-publish-findings.json,
+            expected to contain ``findings`` and ``tools_available`` keys.
+    """
     findings = findings_json.get("findings", [])
     for f in findings:
         severity_raw = f.get("severity", "INFO")
@@ -103,6 +117,21 @@ def persist_findings(
 
 
 def compute_pill_color(summary: dict[str, Any]) -> str:
+    """Derive the dashboard pill colour from a scan summary dict.
+
+    Returns ``"red"`` when any MUST-severity finding failed or requires human
+    review, ``"yellow"`` when only SHOULD-severity findings are unresolved,
+    and ``"green"`` when all findings are resolved.
+
+    Args:
+        summary: Aggregated counts dict produced by the skill scanner,
+            expected to contain keys such as ``must_fail``,
+            ``must_human_required``, ``should_fail``, and
+            ``should_human_required``.
+
+    Returns:
+        One of ``"red"``, ``"yellow"``, or ``"green"``.
+    """
     must_fail = summary.get("must_fail", 0)
     must_human_required = summary.get("must_human_required", 0)
     if must_fail > 0 or must_human_required > 0:
@@ -117,6 +146,19 @@ def compute_pill_color(summary: dict[str, Any]) -> str:
 
 
 def compute_summary_counts(findings: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate per-severity and per-status counts from a list of finding dicts.
+
+    Produces a flat dict with keys of the form ``"<severity_lower>_<status>"``
+    plus a ``"total"`` key summing all counts.
+
+    Args:
+        findings: List of raw finding dicts, each expected to have ``severity``
+            and ``status`` string fields.
+
+    Returns:
+        Dict mapping ``"<severity>_<status>"`` composite keys to integer counts,
+        plus ``"total"`` for the overall sum.
+    """
     counts: dict[str, dict[str, int]] = {}
     for f in findings:
         severity = f.get("severity", "INFO")

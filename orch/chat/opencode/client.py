@@ -73,6 +73,7 @@ class OpencodeClient:
         return self._base_url
 
     async def aclose(self) -> None:
+        """Close the underlying httpx.AsyncClient and release connections."""
         await self._client.aclose()
 
     # ------------------------------------------------------------------
@@ -86,6 +87,19 @@ class OpencodeClient:
         agent: str | None = None,
         directory: str | None = None,
     ) -> str:
+        """Create a new OpenCode session and return its id.
+
+        Args:
+            model: Initial model in ``"<providerId>/<modelId>"`` form.
+            agent: Agent configuration name to use for the session.
+            directory: Working directory for the session.
+
+        Returns:
+            The session id string assigned by OpenCode.
+
+        Raises:
+            RuntimeError: If the response does not contain a valid id.
+        """
         body: dict[str, Any] = {}
         if model is not None:
             body["model"] = model
@@ -102,6 +116,14 @@ class OpencodeClient:
         return sid
 
     async def list_sessions(self) -> list[dict[str, Any]]:
+        """Return all existing OpenCode sessions.
+
+        Returns:
+            List of session metadata dicts as returned by GET /session.
+
+        Raises:
+            RuntimeError: If the response is not a list.
+        """
         resp = await self._client.get("/session")
         resp.raise_for_status()
         data = resp.json()
@@ -112,12 +134,31 @@ class OpencodeClient:
         return data
 
     async def get_session(self, sid: str) -> dict[str, Any]:
+        """Return the metadata blob for a single session.
+
+        Args:
+            sid: The OpenCode session id to fetch.
+
+        Returns:
+            Session metadata dict from GET /session/{sid}.
+        """
         resp = await self._client.get(f"/session/{sid}")
         resp.raise_for_status()
         data: dict[str, Any] = resp.json()
         return data
 
     async def get_messages(self, sid: str) -> list[dict[str, Any]]:
+        """Return the full message history for a session.
+
+        Args:
+            sid: The OpenCode session id.
+
+        Returns:
+            List of message dicts from GET /session/{sid}/messages.
+
+        Raises:
+            RuntimeError: If the response is not a list.
+        """
         resp = await self._client.get(f"/session/{sid}/messages")
         resp.raise_for_status()
         data = resp.json()
@@ -159,6 +200,11 @@ class OpencodeClient:
         resp.raise_for_status()
 
     async def abort(self, sid: str) -> None:
+        """Cancel any in-flight completion for a session.
+
+        Args:
+            sid: The OpenCode session id to abort.
+        """
         resp = await self._client.post(f"/session/{sid}/abort")
         resp.raise_for_status()
 
@@ -170,11 +216,24 @@ class OpencodeClient:
         *,
         remember: bool = False,
     ) -> None:
+        """Reply to a pending permission request on a session.
+
+        Args:
+            sid: The OpenCode session id.
+            rid: The permission request id to reply to.
+            response: The reply value (e.g. "approve" or "deny").
+            remember: When True, OpenCode stores the decision for future similar requests.
+        """
         body = {"response": response, "remember": remember}
         resp = await self._client.post(f"/session/{sid}/permissions/{rid}", json=body)
         resp.raise_for_status()
 
     async def get_config(self) -> dict[str, Any]:
+        """Return the runtime's static configuration blob.
+
+        Returns:
+            Config dict from GET /config (models, defaults, and other settings).
+        """
         resp = await self._client.get("/config")
         resp.raise_for_status()
         data: dict[str, Any] = resp.json()

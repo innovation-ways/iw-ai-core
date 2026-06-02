@@ -1,3 +1,5 @@
+"""Loader for the per-check editorial copy catalog used in the OSS compliance dashboard."""
+
 from __future__ import annotations
 
 import os
@@ -12,6 +14,16 @@ CATALOG_PATH = Path(__file__).parent / "oss_check_catalog.yaml"
 
 
 class CheckCopy(BaseModel):
+    """Editorial copy for a single OSS compliance check, loaded from ``oss_check_catalog.yaml``.
+
+    Attributes:
+        what_it_checks: One-sentence description of what the check inspects.
+        how_it_tests: Brief explanation of the detection mechanism used.
+        risk_if_failing: Business or security risk if the check is not resolved.
+        how_to_fix: Actionable remediation guidance shown in the dashboard tooltip.
+        references: Optional list of URLs to external standards or documentation.
+    """
+
     what_it_checks: Annotated[str, Field(min_length=1)]
     how_it_tests: Annotated[str, Field(min_length=1)]
     risk_if_failing: Annotated[str, Field(min_length=1)]
@@ -20,6 +32,14 @@ class CheckCopy(BaseModel):
 
 
 def _load_catalog_uncached() -> dict[str, CheckCopy]:
+    """Parse ``oss_check_catalog.yaml`` and return a mapping of check_id to CheckCopy.
+
+    Returns:
+        Mapping from check identifier string to its validated CheckCopy model.
+
+    Raises:
+        ValueError: If the YAML root is not a mapping.
+    """
     raw = yaml.safe_load(CATALOG_PATH.read_text())
     if not isinstance(raw, dict):
         raise ValueError(f"Catalog YAML must be a mapping, got {type(raw).__name__}")

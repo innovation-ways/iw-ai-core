@@ -92,6 +92,19 @@ def get_runtime_options(
 
 
 def _get_item_or_404(db: Session, project_id: str, item_id: str) -> WorkItem:
+    """Fetch a work item by (project_id, item_id) or raise HTTP 404.
+
+    Args:
+        db: Active database session.
+        project_id: The owning project identifier.
+        item_id: The work item identifier.
+
+    Returns:
+        The matching WorkItem ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the item does not exist.
+    """
     item = db.scalar(
         select(WorkItem).where(
             WorkItem.project_id == project_id,
@@ -104,6 +117,20 @@ def _get_item_or_404(db: Session, project_id: str, item_id: str) -> WorkItem:
 
 
 def _get_step_or_404(db: Session, project_id: str, item_id: str, step_id: str) -> WorkflowStep:
+    """Fetch a workflow step by (project_id, item_id, step_id) or raise HTTP 404.
+
+    Args:
+        db: Active database session.
+        project_id: The owning project identifier.
+        item_id: The work item identifier.
+        step_id: The step identifier (e.g. 'S01').
+
+    Returns:
+        The matching WorkflowStep ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the step does not exist.
+    """
     step = db.scalar(
         select(WorkflowStep).where(
             WorkflowStep.project_id == project_id,

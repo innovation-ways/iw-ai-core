@@ -134,7 +134,11 @@ class OpencodeRuntime(ChatRuntime):
             self._watchdog = asyncio.create_task(self._watch_for_crash(), name="opencode-watchdog")
 
     async def stop(self) -> None:
-        """Send SIGTERM, wait up to `stop_grace_seconds`, then SIGKILL."""
+        """Gracefully terminate the subprocess and close all HTTP clients.
+
+        Sends SIGTERM, waits up to stop_grace_seconds, then SIGKILL if the
+        process has not exited. Also cancels the watchdog task.
+        """
         self._stopping = True
         self._healthy = False
         if self._watchdog is not None:
@@ -159,12 +163,14 @@ class OpencodeRuntime(ChatRuntime):
             return False
 
     async def _close_client(self) -> None:
+        """Close the health-probe httpx.AsyncClient if open."""
         if self._client is not None:
             with contextlib.suppress(BaseException):
                 await self._client.aclose()
             self._client = None
 
     async def _close_chat_client(self) -> None:
+        """Close the ChatRuntime OpencodeClient if open."""
         if self._chat_client is not None:
             with contextlib.suppress(BaseException):
                 await self._chat_client.aclose()
@@ -329,6 +335,7 @@ class OpencodeRuntime(ChatRuntime):
             ) from exc
 
     def _build_child_env(self) -> dict[str, str]:
+        """Return a copy of os.environ with OPENCODE_SERVER_PASSWORD injected."""
         import os  # local import: keep top-level imports minimal
 
         env = dict(os.environ)

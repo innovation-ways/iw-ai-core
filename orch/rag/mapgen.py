@@ -68,8 +68,13 @@ _GROUNDING_TEMPLATE = PromptTemplate(
 
 
 class MapGenerator:
-    """Tuple items are (section_key, human_question, retrieval_query_text).
+    """Generates a Level 1 architecture map document from a project's LanceDB code index.
 
+    Queries the indexed codebase with a fixed set of architectural questions,
+    assembles the answers into a structured markdown document, and stores the
+    result as a ProjectDoc with doc_type=architecture.
+
+    Tuple items in QUESTIONS are (section_key, human_question, retrieval_query_text).
     retrieval_query_text is a keyword/topical phrase used for vector search; it
     deliberately avoids the verbatim interrogative form of the question so the
     embedding does not collide with the QUESTIONS list inside this very module.
@@ -144,6 +149,26 @@ class MapGenerator:
         cancel_check: Callable[[], bool] | None = None,
         db_session_factory: Any | None = None,
     ) -> ProjectDoc:
+        """Generate or update the Level 1 architecture map and architecture diagram for the project.
+
+        Iterates over QUESTIONS, retrieves relevant code chunks from LanceDB for each,
+        calls the LLM to produce grounded answers, assembles the markdown document,
+        generates a Mermaid architecture diagram, and upserts both as ProjectDocs.
+
+        Args:
+            project_id: Project whose LanceDB index is queried.
+            config: LLM model, embedding model, and Ollama connection settings.
+            cancel_check: Optional callable returning True when the caller requests
+                early cancellation; checked before each LLM call.
+            db_session_factory: Optional session factory; defaults to SessionLocal.
+
+        Returns:
+            The upserted architecture-map ProjectDoc (detached from its session).
+
+        Raises:
+            asyncio.CancelledError: If cancel_check returns True during execution.
+            ValueError: If the project does not exist in the database.
+        """
         store_path = str(Path(config.index_path) / project_id / "vectors")
         table_name = f"code_{project_id.replace('-', '_')}"
 
@@ -274,6 +299,15 @@ class MapGenerator:
 
     @staticmethod
     def _build_context_str(nodes: Any) -> str:
+        """Format retrieved LanceDB nodes into a single code-context string for the LLM prompt.
+
+        Args:
+            nodes: Sequence of llama-index NodeWithScore objects from a retriever.
+
+        Returns:
+            A string with each node's text preceded by its file path and language tag,
+            separated by horizontal rule delimiters.
+        """
         parts: list[str] = []
         for n in nodes:
             text = getattr(n.node, "get_content", lambda: "")()
@@ -288,6 +322,17 @@ class MapGenerator:
     def _build_mermaid(
         self, components_answer: str, config: CodeUnderstandingConfig
     ) -> tuple[str, str]:
+        """Generate a Mermaid architecture diagram DSL from the components answer text.
+
+        Args:
+            components_answer: The LLM-generated components description text.
+            config: LLM model and Ollama connection settings for the generation call.
+
+        Returns:
+            Tuple of (mermaid_dsl, purpose_text) where mermaid_dsl is the ready-to-render
+            Mermaid graph block with ELK frontmatter and classDef definitions injected,
+            and purpose_text is a one-to-two sentence description of the diagram.
+        """
         llm = Ollama(
             model=config.resolved_llm_model(),
             base_url=config.ollama_url,
@@ -353,6 +398,16 @@ class MapGenerator:
         mermaid: str,  # noqa: ARG002
         purpose: str,  # noqa: ARG002
     ) -> str:
+        """Assemble the final architecture-map markdown from per-section LLM answers.
+
+        Args:
+            answers: Dict mapping section keys to LLM-generated answer text.
+            mermaid: Unused — diagram is stored separately as a ProjectDoc.
+            purpose: Unused — diagram purpose is embedded in the diagram doc.
+
+        Returns:
+            Markdown string with H1 title and one H2 section per QUESTIONS entry.
+        """
         lines = ["# Architecture Map", ""]
         for key, _question, _retrieval in self.QUESTIONS:
             value = answers.get(key, "").strip()

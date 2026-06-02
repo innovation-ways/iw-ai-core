@@ -60,12 +60,29 @@ class Violation:
     message: str
 
     def as_baseline_line(self) -> str:
+        """Format the violation as a single baseline-file entry.
+
+        Returns:
+            A string of the form ``path::test_name # category``.
+        """
         return f"{self.path}::{self.test_name} # {self.category}"
 
     def as_human_line(self) -> str:
+        """Format the violation as a human-readable output line.
+
+        Returns:
+            A colon-delimited string including path, line, category, test name,
+            and message.
+        """
         return f"{self.path}:{self.line}: {self.category}: {self.test_name}: {self.message}"
 
     def as_dict(self) -> dict[str, object]:
+        """Serialise the violation to a JSON-safe dict.
+
+        Returns:
+            Dict with keys ``path``, ``line``, ``category``, ``test_name``,
+            and ``message``.
+        """
         return {
             "path": self.path,
             "line": self.line,
@@ -123,7 +140,20 @@ def _name_looks_like_mock(name: str | None) -> bool:
 
 
 def _is_tautological_assert(node: ast.Assert) -> bool:
-    """True if this `assert` matches one of the tautological forms."""
+    """Return True when the assert matches a known tautological form.
+
+    Tautological forms include: ``assert True``, ``assert <bare Name>``,
+    ``assert isinstance(x, T)``, ``assert x is not None``,
+    ``assert len(x) > 0`` / ``>= 1`` / ``!= 0``, ``assert x == x``,
+    and ``assert <expr> in <expr>``.
+
+    Args:
+        node: AST Assert node to classify.
+
+    Returns:
+        True when every branch of the assert would pass trivially regardless
+        of production correctness.
+    """
     test = node.test
 
     # assert True
@@ -241,7 +271,15 @@ def _broad_raises_violations(
 
 
 def _has_noqa_suppression(source_lines: list[str], lineno: int) -> bool:
-    """Check whether the function `def` line carries a `noqa` for assertion-scanner."""
+    """Return True when the function's ``def`` line carries an assertion-scanner noqa comment.
+
+    Args:
+        source_lines: All lines of the source file (1-indexed via list offset).
+        lineno: 1-based line number of the ``def`` statement.
+
+    Returns:
+        True when ``# noqa`` and ``assertion-scanner`` both appear on the line.
+    """
     if lineno < 1 or lineno > len(source_lines):
         return False
     line = source_lines[lineno - 1]
@@ -407,6 +445,15 @@ def _write_baseline(path: Path, violations: list[Violation]) -> None:
 
 
 def _iter_test_files(root: Path) -> list[Path]:
+    """Discover test files under ``root``, skipping conftest.py and non-test files.
+
+    Args:
+        root: A file or directory to search. A single file is returned as-is
+              when it matches the ``test_*.py`` naming convention.
+
+    Returns:
+        Sorted list of test file paths found under ``root``.
+    """
     if root.is_file():
         if root.name.startswith("test_") and root.suffix == ".py" and root.name != "conftest.py":
             return [root]
@@ -423,6 +470,11 @@ def _iter_test_files(root: Path) -> list[Path]:
 
 
 def _resolve_repo_root() -> Path:
+    """Return the repository root derived from this script's location.
+
+    Returns:
+        Absolute path two levels above this script (i.e. the project root).
+    """
     # Scanner lives at <repo>/scripts/check_test_assertions.py.
     return Path(__file__).resolve().parent.parent
 
@@ -433,6 +485,11 @@ def _resolve_repo_root() -> Path:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build and return the CLI argument parser for check_test_assertions.
+
+    Returns:
+        Configured ArgumentParser with all supported flags.
+    """
     parser = argparse.ArgumentParser(
         prog="check_test_assertions",
         description=(
@@ -473,6 +530,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the assertion scanner over the requested paths and report violations.
+
+    Args:
+        argv: Argument list; defaults to ``sys.argv[1:]`` when None.
+
+    Returns:
+        0 when no new violations exist (after baseline), 1 otherwise.
+    """
     parser = _build_parser()
     args = parser.parse_args(argv)
 

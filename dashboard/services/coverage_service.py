@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PackageRow:
+    """Aggregated coverage metrics for a top-level Python package.
+
+    Attributes:
+        name: Package directory name (first path component in coverage report).
+        line_pct: Average line coverage percentage across all files in the package.
+        branch_pct: Average branch coverage percentage, or None if not measured.
+        missing_lines: Total uncovered lines summed across all files.
+        badge: Color category — ``"green"``, ``"amber"``, or ``"red"``.
+    """
+
     name: str
     line_pct: float
     branch_pct: float | None
@@ -23,6 +33,16 @@ class PackageRow:
 
 @dataclass(frozen=True)
 class FileRow:
+    """Coverage metrics for a single source file.
+
+    Attributes:
+        path: File path relative to the coverage root (e.g. ``orch/config.py``).
+        line_pct: Line coverage percentage for this file.
+        branch_pct: Branch coverage percentage, or None if not measured.
+        missing_lines: Number of uncovered lines in this file.
+        badge: Color category — ``"green"``, ``"amber"``, or ``"red"``.
+    """
+
     path: str
     line_pct: float
     branch_pct: float | None
@@ -32,6 +52,21 @@ class FileRow:
 
 @dataclass(frozen=True)
 class CoverageView:
+    """View-model returned by ``load_coverage`` for dashboard rendering.
+
+    Attributes:
+        available: False when the coverage JSON file does not exist or could not be parsed.
+        error: Human-readable parse error when ``available`` is False and a parse failed.
+        overall_line_pct: Project-wide line coverage percentage, or None when unavailable.
+        overall_branch_pct: Project-wide branch coverage percentage, or None when not measured.
+        threshold: ``fail_under`` value read from ``pyproject.toml``; 0 if not configured.
+        gap_pct: ``overall_line_pct - threshold``; negative means below threshold.
+        mtime_iso: ISO-8601 UTC timestamp of the coverage JSON file's last modification.
+        test_count: Total number of covered statements (from ``num_statements_covered``).
+        packages: Aggregated per-package rows, sorted by name.
+        files_by_package: Mapping from package name to its sorted list of file rows.
+    """
+
     available: bool
     error: str | None
     overall_line_pct: float | None
@@ -45,6 +80,16 @@ class CoverageView:
 
 
 def _badge(line_pct: float, threshold: int) -> str:
+    """Return a color badge string based on how far line_pct is from the threshold.
+
+    Args:
+        line_pct: Measured line coverage percentage for a file or package.
+        threshold: Project-level ``fail_under`` value to compare against.
+
+    Returns:
+        ``"green"`` when at or above threshold, ``"amber"`` within 10 points
+        below, or ``"red"`` when more than 10 points below.
+    """
     if line_pct >= threshold:
         return "green"
     if line_pct >= threshold - 10:
@@ -53,6 +98,15 @@ def _badge(line_pct: float, threshold: int) -> str:
 
 
 def _read_fail_under(pyproject_path: Path) -> int:
+    """Read ``[tool.coverage.report] fail_under`` from pyproject.toml.
+
+    Args:
+        pyproject_path: Path to the project's pyproject.toml file.
+
+    Returns:
+        The configured threshold as an integer, or 0 if the file is missing,
+        unparseable, or the key is absent.
+    """
     import tomllib
 
     try:
@@ -71,6 +125,17 @@ def load_coverage(
     coverage_json_path: Path = Path("tests/output/coverage/coverage.json"),
     pyproject_path: Path = Path("pyproject.toml"),
 ) -> CoverageView:
+    """Parse the pytest-cov JSON report and build a CoverageView for the dashboard.
+
+    Args:
+        coverage_json_path: Path to the ``coverage.json`` file produced by pytest-cov.
+        pyproject_path: Path to ``pyproject.toml`` for reading the ``fail_under`` threshold.
+
+    Returns:
+        CoverageView with ``available=False`` when the file does not exist or
+        cannot be parsed; otherwise a fully populated view-model with package-level
+        and file-level breakdowns.
+    """
     threshold = _read_fail_under(pyproject_path)
 
     if not coverage_json_path.exists():

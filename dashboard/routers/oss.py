@@ -43,6 +43,16 @@ router = APIRouter(prefix="/project/{project_id}")
 def _running_job_of_kind(
     db: Session, project_id: str, kind: ProjectOssJobKind
 ) -> ProjectOssJob | None:
+    """Return the currently queued or running OSS job of a given kind, or None.
+
+    Args:
+        db: Active database session.
+        project_id: The project to check.
+        kind: The job kind to look for.
+
+    Returns:
+        The active ProjectOssJob row, or None if no such job is running.
+    """
     return db.scalar(
         select(ProjectOssJob).where(
             ProjectOssJob.project_id == project_id,
@@ -75,6 +85,16 @@ def oss_page(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the OSS compliance page with scan findings grouped by domain.
+
+    Args:
+        project_id: The project whose OSS compliance state is rendered.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML OSS page with domain tiles, finding counts, and accepted risks.
+    """
     project = get_project_or_404(project_id, db)
     templates: Jinja2Templates = request.app.state.templates
 
@@ -206,6 +226,16 @@ def oss_status_frame(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the OSS scan status frame fragment for htmx polling.
+
+    Args:
+        project_id: The project whose OSS status is rendered.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the latest scan summary and any running job indicator.
+    """
     project = get_project_or_404(project_id, db)
     templates: Jinja2Templates = request.app.state.templates
 
@@ -241,6 +271,16 @@ def oss_tools(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the OSS tool installation status modal fragment.
+
+    Args:
+        project_id: The project context (validated but not used in tool probe).
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment listing tool installation status and an install button.
+    """
     get_project_or_404(project_id, db)
     templates: Jinja2Templates = request.app.state.templates
 
@@ -265,6 +305,15 @@ def oss_install(
     project_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Enqueue an OSS tool installation job and start it in a background thread.
+
+    Args:
+        project_id: The project for which tools are installed.
+        db: Active database session.
+
+    Returns:
+        JSON response with job_id and stream_url; HX-Trigger shows a toast.
+    """
     get_project_or_404(project_id, db)
 
     existing = _running_job_of_kind(db, project_id, ProjectOssJobKind.install)
@@ -304,6 +353,15 @@ def oss_enable(
     project_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Enable OSS compliance for a project and write the initial project config.
+
+    Args:
+        project_id: The project to enable OSS compliance for.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger to show a success toast and reload.
+    """
     project = get_project_or_404(project_id, db)
 
     write_project_config(project, force=True)  # type: ignore[arg-type]
@@ -328,6 +386,15 @@ def oss_disable(
     project_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Disable OSS compliance for a project.
+
+    Args:
+        project_id: The project to disable OSS compliance for.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger to show an info toast and reload.
+    """
     project = get_project_or_404(project_id, db)
 
     project.oss_enabled = False
@@ -350,6 +417,15 @@ def oss_scan(
     project_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Enqueue an OSS scan job and start it in a background thread.
+
+    Args:
+        project_id: The project to scan.
+        db: Active database session.
+
+    Returns:
+        JSON response with job_id and stream_url, or 409 if a scan is already running.
+    """
     get_project_or_404(project_id, db)
 
     existing = _running_job_of_kind(db, project_id, ProjectOssJobKind.scan)
@@ -387,6 +463,17 @@ async def oss_stream(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """SSE stream of OSS job progress events.
+
+    Args:
+        project_id: The project that owns the job.
+        job_id: Public job ID.
+        request: The current FastAPI request (used for disconnect detection).
+        db: Active database session.
+
+    Returns:
+        SSE StreamingResponse with job progress events until completion.
+    """
     get_project_or_404(project_id, db)
 
     job = db.scalar(

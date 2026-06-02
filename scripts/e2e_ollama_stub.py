@@ -197,6 +197,7 @@ def _rank_candidates(
 
 
 def _now() -> str:
+    """Return the current UTC time as an ISO-8601 string ending in ``Z``."""
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
@@ -254,6 +255,14 @@ flowchart LR
 
 
 def _build_mermaid_block(question: str) -> str:
+    """Return a Mermaid fenced code block appropriate for the diagram type in the question.
+
+    Args:
+        question: The user's question text; keyword-matched to pick the template.
+
+    Returns:
+        A newline-padded Mermaid code block string for injection into the reply.
+    """
     q = question.lower()
     if "class" in q and "diagram" in q:
         template = _MERMAID_TEMPLATES["class_diagram"]
@@ -357,6 +366,12 @@ async def _stream_chat(model: str, reply: str) -> AsyncGenerator[bytes, None]:
 
 
 async def _stream_generate(model: str, reply: str) -> AsyncGenerator[bytes, None]:
+    """Emit Ollama-style /api/generate NDJSON lines, one token per space-delimited word.
+
+    Args:
+        model: Model identifier to include in each response line.
+        reply: Full reply text to stream word-by-word.
+    """
     tokens = reply.split(" ")
     for i, tok in enumerate(tokens):
         piece = tok if i == 0 else " " + tok
@@ -380,11 +395,13 @@ async def _stream_generate(model: str, reply: str) -> AsyncGenerator[bytes, None
 
 @app.get("/", response_class=PlainTextResponse)
 async def root() -> str:
+    """Return the Ollama health probe string expected by llama_index."""
     return "Ollama is running"
 
 
 @app.get("/api/tags")
 async def tags() -> dict[str, Any]:
+    """Return the model list endpoint so llama_index can discover the stub model."""
     return {"models": [{"name": "stub:latest", "model": "stub:latest", "size": 0}]}
 
 
@@ -445,6 +462,7 @@ async def show(req: Request) -> dict[str, Any]:
 
 @app.post("/api/chat")
 async def chat(req: Request) -> StreamingResponse:
+    """Handle Ollama /api/chat and stream a deterministic NDJSON reply."""
     body = await req.json()
     messages = body.get("messages", [])
     model = body.get("model", "stub:latest")
@@ -463,6 +481,7 @@ async def chat(req: Request) -> StreamingResponse:
 
 @app.post("/api/generate")
 async def generate(req: Request) -> StreamingResponse:
+    """Handle Ollama /api/generate and stream a deterministic NDJSON reply."""
     body = await req.json()
     model = body.get("model", "stub:latest")
     prompt = body.get("prompt", "")
@@ -477,6 +496,7 @@ async def generate(req: Request) -> StreamingResponse:
 
 
 def main() -> None:
+    """Parse arguments and start the Ollama stub server with uvicorn."""
     parser = argparse.ArgumentParser(description="E2E Ollama stub server")
     parser.add_argument("--host", default="0.0.0.0")  # noqa: S104
     parser.add_argument("--port", type=int, default=11434)

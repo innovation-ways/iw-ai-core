@@ -1,3 +1,5 @@
+"""Fix recipes for license compliance checks (OSS-LIC-*)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,6 +35,13 @@ def _render_jinja2(template_path: Path, context: dict[str, Any]) -> str:
 
 
 class LicenseFileRecipe:
+    """Fix recipe that creates a LICENSE file when one is missing.
+
+    Addresses OSS-LIC-01: absence of a license file. Reads the license type
+    from .iw/oss-publish.toml and uses the corresponding template from the
+    iw-oss-publish skill; falls back to an inline Apache-2.0 stub.
+    """
+
     check_id = "OSS-LIC-01"
     auto_apply_safe = True
 
@@ -95,6 +104,14 @@ register(LicenseFileRecipe())
 
 
 class CopyrightYearRecipe:
+    """Fix recipe that updates the copyright year in the LICENSE file.
+
+    Addresses OSS-LIC-05: LICENSE file contains a copyright year that is more
+    than one year behind the current year. Extends the first year range found
+    in the file (e.g. 2023 becomes 2023-2026) and appends a new copyright line
+    when no year is found.
+    """
+
     check_id = "OSS-LIC-05"
     auto_apply_safe = True
 
@@ -175,6 +192,13 @@ register(CopyrightYearRecipe())
 
 
 class NoticeFileRecipe:
+    """Fix recipe that creates a NOTICE file for Apache-2.0 licensed projects.
+
+    Addresses OSS-LIC-06: Apache-2.0 requires a NOTICE file for attribution.
+    Uses the iw-oss-publish Jinja2 template when available; falls back to an
+    inline stub listing the company copyright.
+    """
+
     check_id = "OSS-LIC-06"
     auto_apply_safe = True
 

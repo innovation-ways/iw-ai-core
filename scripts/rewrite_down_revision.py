@@ -1,3 +1,13 @@
+"""Rewrite the ``down_revision`` in a migration file to the ``"PENDING"`` sentinel.
+
+Operator utility used when a committed migration's ``down_revision`` needs to
+be reset to ``"PENDING"`` so ``migration_rebase.py`` can resolve it cleanly at
+the next merge. See CR-00091 for the full PENDING workflow.
+
+Usage:
+    python scripts/rewrite_down_revision.py <migration_path>
+"""
+
 from __future__ import annotations
 
 import re
@@ -11,6 +21,11 @@ PATTERN = re.compile(
 
 
 def main() -> int:
+    """Rewrite the ``down_revision`` assignment in the given migration file to ``"PENDING"``.
+
+    Returns:
+        0 on success, 1 on any error (missing file, no down_revision line found).
+    """
     if len(sys.argv) != 2:
         sys.stderr.write("Usage: python scripts/rewrite_down_revision.py <migration_path>\n")
         return 1

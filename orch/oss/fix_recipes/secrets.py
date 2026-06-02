@@ -1,3 +1,5 @@
+"""Fix recipes for secret scanning compliance checks (OSS-SEC-*)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,6 +23,13 @@ def _render_jinja2(template_path: Path, context: dict[str, Any]) -> str:
 
 
 class GitleaksConfigRecipe:
+    """Fix recipe that creates a .gitleaks.toml configuration file.
+
+    Addresses OSS-SEC-04: absence of a gitleaks rule set for secret scanning.
+    Uses the iw-oss-publish Jinja2 template when available; falls back to an
+    inline stub covering AWS keys, generic API keys, and private key headers.
+    """
+
     check_id = "OSS-SEC-04"
     auto_apply_safe = True
 
@@ -88,6 +97,14 @@ register(GitleaksConfigRecipe())
 
 
 class DetectSecretsBaselineRecipe:
+    """Fix recipe that creates an empty detect-secrets baseline file.
+
+    Addresses OSS-SEC-05: absence of a .secrets.baseline file used by the
+    detect-secrets tool to track and suppress known false positives. The
+    generated baseline is empty; operators should run ``detect-secrets audit``
+    to populate it.
+    """
+
     check_id = "OSS-SEC-05"
     auto_apply_safe = True
 

@@ -214,6 +214,17 @@ def _git_worktrees(repo_root: str) -> list[dict[str, str]]:
 
 @dataclass
 class FileEntry:
+    """A single changed-file row in the worktree file detail panel.
+
+    Attributes:
+        filepath: Repo-relative path as reported by git.
+        xy: Raw XY status code from git status --porcelain=v1 (e.g. ' M', '??').
+        category: 'modified' or 'untracked'.
+        display_dir: Directory portion of the path with trailing slash, or ''.
+        display_name: Filename only (last path component).
+        badge: Single-character status badge — M, D, A, R, or ?.
+    """
+
     filepath: str  # relative path as reported by git
     xy: str  # raw XY status code (e.g. " M", "??", "D ")
     category: str  # "modified" | "untracked"
@@ -272,7 +283,15 @@ def _parse_git_files(path: str) -> list[FileEntry]:
 
 
 def _validate_path(path: str, db: Session) -> bool:
-    """Return True if path is a known project root or active agent worktree."""
+    """Return True if path is a known enabled project root or active agent worktree.
+
+    Args:
+        path: Absolute filesystem path to validate.
+        db: Active database session.
+
+    Returns:
+        True when path matches an enabled project root or an active BatchItem worktree.
+    """
     project_roots = set(
         db.execute(select(Project.repo_root).where(Project.enabled.is_(True))).scalars().all()
     )
@@ -295,6 +314,32 @@ def _validate_path(path: str, db: Session) -> bool:
 
 @dataclass
 class WorktreeRow:
+    """A single row in the worktree health table.
+
+    Attributes:
+        project_id: Owning project identifier.
+        item_id: Work item identifier or '(main)' for the main checkout.
+        batch_id: Batch identifier or '—'.
+        branch: Checked-out git branch name.
+        batch_status: BatchItem status value or 'main'/'orphaned'/'container-orphan'.
+        path: Absolute filesystem path to the worktree.
+        git_label: Git status — one of clean|dirty|untracked|no_path|error|timeout|orphaned.
+        modified: Count of modified (tracked) files.
+        untracked: Count of untracked files.
+        ahead: Commits HEAD is ahead of main; -1 on error.
+        is_orphan: True when no matching BatchItem exists.
+        checked_at: Timestamp when git status was queried.
+        container_status: Docker compose container state for this worktree.
+        db_port: Per-worktree DB port, or None.
+        app_port: Per-worktree app port, or None.
+        classification: Reaper classification — active|stale|orphan|malformed|n/a.
+        batch_item_pk: BatchItem database PK (used for teardown).
+        last_heartbeat_age_secs: Seconds since last heartbeat for the running step.
+        pid_alive: Whether the daemon confirmed the agent PID is alive.
+        warned_50pct_at: When the 50% timeout warning was emitted, or None.
+        impacted_paths: Paths the in-flight item declared as impacted.
+    """
+
     project_id: str
     item_id: str
     batch_id: str
@@ -312,12 +357,9 @@ class WorktreeRow:
     app_port: int | None = None
     classification: Literal["active", "stale", "orphan", "malformed", "n/a"] = "n/a"
     batch_item_pk: int | None = None  # DB PK for teardown
-    # CR-00024: per-worktree heartbeat surfacing — populated when there is a
-    # running StepRun for the work item; otherwise None and rendered as "—".
     last_heartbeat_age_secs: int | None = None
     pid_alive: bool | None = None
     warned_50pct_at: datetime | None = None
-    # F-00076: in-flight item's impacted_paths, joined from BatchItem → WorkItem.
     impacted_paths: list[str] | None = None
 
 
@@ -568,7 +610,15 @@ def nav_worktree_badge(request: Request, _db: Session = Depends(get_db)) -> Any:
 
 @router.get("/worktrees", response_class=HTMLResponse)
 def worktrees_page(request: Request, db: Session = Depends(get_db)) -> Any:
-    """Full worktree health page."""
+    """Render the full worktree health page.
+
+    Args:
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML worktrees page with all active and orphaned worktree rows.
+    """
     templates: Jinja2Templates = request.app.state.templates
     worktrees = _collect_worktrees(db)
     return templates.TemplateResponse(
@@ -583,7 +633,15 @@ def worktrees_page(request: Request, db: Session = Depends(get_db)) -> Any:
 
 @router.get("/worktrees/table", response_class=HTMLResponse)
 def worktrees_table(request: Request, db: Session = Depends(get_db)) -> Any:
-    """htmx fragment — auto-refresh every 30 s."""
+    """Return the worktree table fragment for htmx auto-refresh every 30 s.
+
+    Args:
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the worktree table rows.
+    """
     templates: Jinja2Templates = request.app.state.templates
     worktrees = _collect_worktrees(db)
     return templates.TemplateResponse(
@@ -595,7 +653,16 @@ def worktrees_table(request: Request, db: Session = Depends(get_db)) -> Any:
 
 @router.get("/worktrees/files", response_class=HTMLResponse)
 def worktrees_files(request: Request, path: str, db: Session = Depends(get_db)) -> Any:
-    """Return the file-detail panel for a specific worktree path."""
+    """Return the file-detail panel for a specific worktree path.
+
+    Args:
+        request: The current FastAPI request.
+        path: Absolute filesystem path to the worktree.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with modified and untracked file lists for the worktree.
+    """
     if not _validate_path(path, db):
         raise HTTPException(status_code=400, detail="Unknown worktree path")
     templates: Jinja2Templates = request.app.state.templates
@@ -623,7 +690,21 @@ async def worktrees_commit(
     files: list[str] = Form(default=[]),
     db: Session = Depends(get_db),
 ) -> Any:
-    """Stage selected files and create a git commit."""
+    """Stage selected files and create a git commit in the specified worktree.
+
+    Performs one automatic retry when pre-commit hooks modify staged files.
+    Unstages files if the commit fails to avoid leaving the index in a partial state.
+
+    Args:
+        request: The current FastAPI request.
+        path: Absolute filesystem path to the worktree.
+        message: Commit message text.
+        files: List of repo-relative file paths to stage and commit.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with success info or an error message on failure.
+    """
     templates: Jinja2Templates = request.app.state.templates
 
     def _render_files(error: str) -> Any:
@@ -727,7 +808,15 @@ async def worktrees_commit(
 
 @router.post("/worktrees/prune", response_class=HTMLResponse)
 def worktrees_prune(request: Request, db: Session = Depends(get_db)) -> Any:
-    """Run `git worktree prune` on all enabled projects and refresh the table."""
+    """Run git worktree prune on all enabled projects and return the refreshed table.
+
+    Args:
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the updated worktree table; includes prune error messages if any.
+    """
     projects = db.scalars(select(Project).where(Project.enabled.is_(True))).all()
     errors: list[str] = []
     for project in projects:
@@ -813,7 +902,16 @@ def worktree_teardown(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
-    """Force teardown of a worktree's compose stack and return refreshed table."""
+    """Force teardown of a worktree's compose stack and return the refreshed table.
+
+    Args:
+        batch_item_id: BatchItem database PK whose compose stack is torn down.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the updated worktree table after teardown.
+    """
     bi = db.get(BatchItem, int(batch_item_id))
     if bi is None:
         raise HTTPException(status_code=404, detail="Batch item not found")
@@ -859,7 +957,19 @@ def worktree_orphan_teardown(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
-    """Tear down an orphan container (no matching BatchItem) by container_id."""
+    """Tear down an orphan container (no matching BatchItem) by container ID.
+
+    Inspects the container's labels to find the batch_item ID, then calls
+    worktree_compose.down() before returning the refreshed worktree table.
+
+    Args:
+        container_id: Docker container ID of the orphan to tear down.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the updated worktree table after teardown.
+    """
     import json as json_mod
 
     try:

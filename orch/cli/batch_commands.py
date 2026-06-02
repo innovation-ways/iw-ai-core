@@ -103,18 +103,42 @@ def build_execution_groups(item_deps: dict[str, list[str]]) -> dict[str, int]:
 
 
 def validate_batch_approve_transition(current_status: BatchStatus) -> str | None:
+    """Return an error message if batch-approve is invalid, or None if OK.
+
+    Args:
+        current_status: Current status of the batch being approved.
+
+    Returns:
+        Error string when the transition is not allowed, None when it is valid.
+    """
     if current_status != BatchStatus.planning:
         return f"Cannot approve batch: current status is '{current_status.value}'"
     return None
 
 
 def validate_batch_pause_transition(current_status: BatchStatus) -> str | None:
+    """Return an error message if batch-pause is invalid, or None if OK.
+
+    Args:
+        current_status: Current status of the batch being paused.
+
+    Returns:
+        Error string when the transition is not allowed, None when it is valid.
+    """
     if current_status != BatchStatus.executing:
         return f"Cannot pause batch: current status is '{current_status.value}'"
     return None
 
 
 def validate_batch_resume_transition(current_status: BatchStatus) -> str | None:
+    """Return an error message if batch-resume is invalid, or None if OK.
+
+    Args:
+        current_status: Current status of the batch being resumed.
+
+    Returns:
+        Error string when the transition is not allowed, None when it is valid.
+    """
     if current_status != BatchStatus.paused:
         return f"Cannot resume batch: current status is '{current_status.value}'"
     return None

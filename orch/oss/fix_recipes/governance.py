@@ -1,3 +1,5 @@
+"""Fix recipes for project environment and governance compliance checks (OSS-ENV-*)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,6 +23,13 @@ def _render_jinja2(template_path: Path, context: dict[str, Any]) -> str:
 
 
 class OwDirConfigRecipe:
+    """Fix recipe that creates the .iw/oss-publish.toml configuration file.
+
+    Addresses OSS-ENV-03: absence of the IW OSS publish configuration required
+    for subsequent compliance scans. Uses the iw-oss-publish Jinja2 template
+    when available, otherwise falls back to inline defaults.
+    """
+
     check_id = "OSS-ENV-03"
     auto_apply_safe = True
 

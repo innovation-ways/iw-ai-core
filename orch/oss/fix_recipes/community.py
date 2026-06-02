@@ -1,3 +1,5 @@
+"""Fix recipes for community health file compliance checks (OSS-CH-*)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,6 +35,13 @@ def _render_jinja2(template_path: Path, context: dict[str, Any]) -> str:
 
 
 class ReadmeRecipe:
+    """Fix recipe that creates a README.md when one is missing.
+
+    Addresses OSS-CH-01: absence of a repository README. Uses the
+    iw-oss-publish Jinja2 template when available, otherwise generates a
+    minimal placeholder.
+    """
+
     check_id = "OSS-CH-01"
     auto_apply_safe = True
 
@@ -106,6 +115,13 @@ register(ReadmeRecipe())
 
 
 class SecurityMdRecipe:
+    """Fix recipe that creates a SECURITY.md vulnerability disclosure policy.
+
+    Addresses OSS-CH-02: absence of a documented security reporting process.
+    Checks SECURITY.md, .github/SECURITY.md, and docs/SECURITY.md before
+    writing to avoid duplicating an existing policy.
+    """
+
     check_id = "OSS-CH-02"
     auto_apply_safe = True
 
@@ -177,6 +193,13 @@ register(SecurityMdRecipe())
 
 
 class CodeOfConductRecipe:
+    """Fix recipe that creates a Contributor Covenant Code of Conduct.
+
+    Addresses OSS-CH-03: absence of a code of conduct document. Skips
+    creation when CODE_OF_CONDUCT.md already exists in the root, .github/,
+    or docs/ directory.
+    """
+
     check_id = "OSS-CH-03"
     auto_apply_safe = True
 
@@ -258,6 +281,13 @@ register(CodeOfConductRecipe())
 
 
 class ContributingRecipe:
+    """Fix recipe that creates a CONTRIBUTING.md guide for contributors.
+
+    Addresses OSS-CH-06: absence of documented contribution guidelines. Skips
+    creation when CONTRIBUTING.md already exists in the root, .github/, or
+    docs/ directory.
+    """
+
     check_id = "OSS-CH-06"
     auto_apply_safe = True
 
@@ -342,6 +372,13 @@ register(ContributingRecipe())
 
 
 class CodeownersRecipe:
+    """Fix recipe that creates a .github/CODEOWNERS file.
+
+    Addresses OSS-CH-08: absence of defined code ownership assignments. Skips
+    creation when CODEOWNERS already exists in the root, .github/, or docs/
+    directory.
+    """
+
     check_id = "OSS-CH-08"
     auto_apply_safe = True
 
@@ -390,6 +427,12 @@ register(CodeownersRecipe())
 
 
 class PrTemplateRecipe:
+    """Fix recipe that creates a GitHub pull request description template.
+
+    Addresses OSS-CH-09: absence of a standardised PR template to guide
+    contributor submissions.
+    """
+
     check_id = "OSS-CH-09"
     auto_apply_safe = True
 
@@ -448,6 +491,12 @@ register(PrTemplateRecipe())
 
 
 class IssueTemplateRecipe:
+    """Fix recipe that creates GitHub issue templates for bug reports and features.
+
+    Addresses OSS-CH-10: absence of structured issue templates that guide
+    contributors to provide the right information when filing issues.
+    """
+
     check_id = "OSS-CH-10"
     auto_apply_safe = True
 
@@ -520,6 +569,13 @@ register(IssueTemplateRecipe())
 
 
 class SupportRecipe:
+    """Fix recipe that creates a SUPPORT.md file describing how to get help.
+
+    Addresses OSS-CH-11: absence of documented support channels. Skips
+    creation when SUPPORT.md already exists in the root, .github/, or docs/
+    directory.
+    """
+
     check_id = "OSS-CH-11"
     auto_apply_safe = True
 
@@ -589,6 +645,13 @@ register(SupportRecipe())
 
 
 class DcoSignoffRecipe:
+    """Fix recipe that appends a DCO sign-off section to an existing CONTRIBUTING.md.
+
+    Addresses OSS-CH-07: absence of a Developer Certificate of Origin sign-off
+    requirement. Only modifies the file when DCO language is not already present;
+    does nothing when CONTRIBUTING.md does not exist.
+    """
+
     check_id = "OSS-CH-07"
     auto_apply_safe = True
 

@@ -515,7 +515,17 @@ def _parse_auto_amend_scope(project_id: str, raw: object) -> tuple[list[str], in
 
 
 def _parse_ai_assistant_block(project_id: str, raw: object) -> dict[str, Any] | None:
-    """Validate and normalize the optional ai_assistant config block."""
+    """Validate and normalize the optional ``ai_assistant`` config block from projects.toml.
+
+    Args:
+        project_id: Project identifier used in warning messages.
+        raw: The raw value at ``[projects.<id>.ai_assistant]`` in projects.toml.
+
+    Returns:
+        A normalized dict with ``models`` (and optionally ``default_model``
+        and ``default_runtime``) on success, or None when the block is absent
+        or invalid.
+    """
     if raw is None:
         return None
 

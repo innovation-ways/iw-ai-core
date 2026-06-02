@@ -54,6 +54,12 @@ log = logging.getLogger("backfill_regression_classification")
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser for the regression backfill script.
+
+    Returns:
+        Configured ArgumentParser with ``--project``, ``--repo``, and
+        ``--dry-run`` arguments.
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Run the regression heuristic against every unclassified Incident "
@@ -165,6 +171,11 @@ def run(
 
 
 def main() -> int:
+    """Parse arguments, run the regression backfill, and print a summary.
+
+    Returns:
+        0 on success (including dry-run), 1 on unexpected error.
+    """
     parser = _build_parser()
     args = parser.parse_args()
 

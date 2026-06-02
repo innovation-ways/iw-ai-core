@@ -39,6 +39,14 @@ _EXCLUDED_BASENAMES = frozenset(["__init__.py", "test_lint_scripts.py"])
 
 
 def check_file(path: Path) -> list[tuple[int, str]]:
+    """Scan a single file for ``downgrade("-1")`` violations.
+
+    Args:
+        path: Python source file to scan.
+
+    Returns:
+        List of ``(line_number, stripped_line)`` tuples for each violation found.
+    """
     findings: list[tuple[int, str]] = []
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if _BAD_DOWNGRADE_RE.search(line):
@@ -47,6 +55,14 @@ def check_file(path: Path) -> list[tuple[int, str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Scan test files for ``downgrade("-1")`` violations and report them.
+
+    Args:
+        argv: Argument list; defaults to ``sys.argv[1:]`` when None.
+
+    Returns:
+        0 when no violations are found, 1 otherwise.
+    """
     parser = argparse.ArgumentParser(
         description="Scan test files for downgrade('-1') violations.",
     )

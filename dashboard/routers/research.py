@@ -24,6 +24,16 @@ _SORT_KEYS: dict[str, Any] = {
 
 
 def _sort_docs(docs: list[ProjectDoc], sort: str, sort_dir: str) -> list[ProjectDoc]:
+    """Sort a list of ProjectDoc using the registered sort key.
+
+    Args:
+        docs: Documents to sort.
+        sort: Key name from _SORT_KEYS ('doc_id', 'title', etc.).
+        sort_dir: 'asc' or 'desc'.
+
+    Returns:
+        New list sorted according to the specified key and direction.
+    """
     key = _SORT_KEYS.get(sort, _SORT_KEYS["doc_id"])
     return sorted(docs, key=key, reverse=(sort_dir == "desc"))
 
@@ -36,6 +46,18 @@ router = APIRouter(prefix="/project/{project_id}")
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a project by ID or raise HTTP 404.
+
+    Args:
+        project_id: The project identifier to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the project does not exist.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
@@ -50,6 +72,18 @@ def research_library(
     sort: str = "doc_id",
     sort_dir: str = "desc",
 ) -> Any:
+    """Render the research document library page for a project.
+
+    Args:
+        project_id: The project whose research documents are listed.
+        request: The current FastAPI request.
+        db: Active database session.
+        sort: Sort key — one of doc_id, title, editorial_category, status, created_at.
+        sort_dir: Sort direction — 'asc' or 'desc'.
+
+    Returns:
+        Full HTML research library page with sortable document table.
+    """
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
     raw_docs = svc.list_docs(project_id, doc_type=DocType.research)
@@ -83,6 +117,17 @@ def research_detail(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the research document detail page.
+
+    Args:
+        project_id: The project that owns the document.
+        doc_id: The document identifier.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML research detail page with rendered markdown and version history.
+    """
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
@@ -165,6 +210,21 @@ def research_search(
     sort: str = "doc_id",
     sort_dir: str = "asc",
 ) -> Any:
+    """Return a filtered, sorted research search results fragment.
+
+    Args:
+        project_id: The project to search within.
+        request: The current FastAPI request.
+        db: Active database session.
+        q: Optional full-text search query.
+        status: Optional doc status filter.
+        category: Optional editorial category filter.
+        sort: Sort key — one of doc_id, title, editorial_category, status, created_at.
+        sort_dir: Sort direction — 'asc' or 'desc'.
+
+    Returns:
+        HTML fragment with matching research document rows.
+    """
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
 

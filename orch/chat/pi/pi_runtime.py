@@ -117,6 +117,15 @@ class PiRuntime(ChatRuntime):
         return session_id
 
     async def get_session(self, session_id: str) -> dict[str, Any]:
+        """Return stored metadata for a Pi session.
+
+        Args:
+            session_id: The session UUID assigned by create_session.
+
+        Returns:
+            Dict with ``id`` and ``pi_session_path`` (may be None if subprocess
+            has not been spawned yet).
+        """
         meta = self._client_tab_meta.get(session_id, {})
         return {
             "id": session_id,
@@ -176,6 +185,11 @@ class PiRuntime(ChatRuntime):
         self._touch_activity(session_id)
 
     async def abort(self, session_id: str) -> None:
+        """Send an abort command to the Pi subprocess for a session.
+
+        Args:
+            session_id: The session whose in-flight work should be cancelled.
+        """
         client = self._clients.get(session_id)
         if client is not None:
             await client.send_command({"type": "abort"})
@@ -201,6 +215,12 @@ class PiRuntime(ChatRuntime):
         self._touch_activity(session_id)
 
     async def set_model(self, session_id: str, model: str) -> None:
+        """Pin the active model for a session's Pi subprocess.
+
+        Args:
+            session_id: The session to update.
+            model: Model identifier to pin (forwarded to the subprocess).
+        """
         client = self._clients.get(session_id)
         if client is not None:
             await client.send_command({"type": "set_model", "model": model})

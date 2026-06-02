@@ -100,6 +100,14 @@ class RebaseChainError(RuntimeError):
 
 @dataclass(frozen=True)
 class Rewrite:
+    """A single down_revision rewrite performed during the pre-merge rebase.
+
+    Attributes:
+        revision: The Alembic revision ID whose down_revision was rewritten.
+        old_down_revision: The stale down_revision value before rewriting.
+        new_down_revision: The correct down_revision value after rewriting.
+    """
+
     revision: str
     old_down_revision: str
     new_down_revision: str
@@ -107,6 +115,18 @@ class Rewrite:
 
 @dataclass(frozen=True)
 class RebaseResult:
+    """Result of :func:`run_pre_merge_rebase`.
+
+    Attributes:
+        success: True when the rebase and all rewrites succeeded.
+        rebased: True when a ``git rebase main`` was actually executed.
+        rewrites: List of down_revision rewrites performed.
+        worktree_base_sha: SHA of the merge-base between HEAD and origin/main.
+        current_main_sha: Current HEAD SHA of origin/main.
+        message: Short human-readable summary.
+        error_message: Detailed diagnostic on failure, or None on success.
+    """
+
     success: bool
     rebased: bool
     rewrites: list[Rewrite]

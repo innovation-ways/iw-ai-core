@@ -33,6 +33,18 @@ def _apply_filters(
     item: str | None,
     age: str | None,
 ) -> list[ContainerStack]:
+    """Filter a list of container stacks by the provided criteria.
+
+    Args:
+        stacks: Full list of detected container stacks.
+        project: Optional list of project IDs to include.
+        classification: Optional list of classification labels to include.
+        item: Optional substring to match against item_id (case-insensitive).
+        age: Optional age bucket key from _AGE_BUCKETS.
+
+    Returns:
+        Filtered list of ContainerStack entries.
+    """
     result = stacks
     if project:
         result = [s for s in result if s.project_id in project]
@@ -56,6 +68,19 @@ def containers_page(
     item: str | None = Query(default=None),
     age: str | None = Query(default=None),
 ) -> Any:
+    """Render the full containers health page with optional filter controls.
+
+    Args:
+        request: The current FastAPI request.
+        db: Active database session.
+        project: Project ID filter(s).
+        classification: Classification label filter(s) (active/stale/orphan/malformed).
+        item: Partial item ID filter.
+        age: Age bucket filter key.
+
+    Returns:
+        Full HTML page with the filtered container stack table.
+    """
     templates: Jinja2Templates = request.app.state.templates
     all_stacks = scan_stacks(db)
     stacks = _apply_filters(all_stacks, project, classification, item, age)

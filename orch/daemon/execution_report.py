@@ -145,6 +145,16 @@ class ExecutionReportData:
 def _gantt_class_for_run(
     run: StepRunSegment, max_run_number: int
 ) -> Literal["completed", "failed", "retry", "in_progress", "skipped"]:
+    """Return the Gantt CSS class for a step run segment.
+
+    Args:
+        run: The step run segment to classify.
+        max_run_number: The highest run number among all runs for this step,
+            used to distinguish retried attempts from the final attempt.
+
+    Returns:
+        One of ``completed``, ``failed``, ``retry``, ``in_progress``, or ``skipped``.
+    """
     if run.run_number < max_run_number:
         return "retry"
     if run.status == RunStatus.completed:
@@ -157,6 +167,16 @@ def _gantt_class_for_run(
 
 
 def _final_status_for_step(step: WorkflowStep, runs: list[StepRun]) -> StepStatus:
+    """Derive the final StepStatus from the latest StepRun's outcome.
+
+    Args:
+        step: The parent WorkflowStep (used as fallback when no runs exist).
+        runs: All StepRun rows for this step.
+
+    Returns:
+        The effective step status derived from the latest run, or the step's
+        own status when no runs are recorded.
+    """
     if not runs:
         return step.status
     latest = max(runs, key=lambda r: r.run_number)
@@ -589,6 +609,7 @@ def _human_duration(secs: float) -> str:
 
 
 def _iso_or_dash(dt: datetime | None) -> str:
+    """Format a datetime as ISO string, or return ``—`` when None."""
     if dt is None:
         return "—"
     return dt.isoformat()

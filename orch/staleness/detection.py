@@ -46,7 +46,11 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _iter_proc_pids() -> list[int]:
-    """Return a list of integer PIDs from PROC_ROOT directories."""
+    """Return a list of integer PIDs from PROC_ROOT directories.
+
+    Returns:
+        All numeric directory names under PROC_ROOT that parse as integers.
+    """
     pids: list[int] = []
     try:
         for entry in PROC_ROOT.iterdir():
@@ -58,7 +62,15 @@ def _iter_proc_pids() -> list[int]:
 
 
 def _read_cmdline(pid: int) -> str:
-    """Read /proc/<pid>/cmdline and return as a space-joined string."""
+    """Read /proc/<pid>/cmdline and return as a space-joined string.
+
+    Args:
+        pid: Process ID to inspect.
+
+    Returns:
+        Command-line string with null bytes replaced by spaces, or empty string
+        when the file cannot be read.
+    """
     try:
         raw = (PROC_ROOT / str(pid) / "cmdline").read_bytes()
         return raw.replace(b"\x00", b" ").decode(errors="replace").strip()
@@ -188,7 +200,15 @@ def read_container_start_time(container_id: str) -> datetime:
 
 
 def _parse_docker_timestamp(raw: str) -> datetime:
-    """Parse a Docker ISO 8601 timestamp with optional nanoseconds."""
+    """Parse a Docker ISO 8601 timestamp with optional nanoseconds.
+
+    Args:
+        raw: Raw timestamp string from ``docker inspect`` (e.g.
+            ``"2024-01-15T10:30:00.123456789Z"``).
+
+    Returns:
+        UTC-aware datetime with sub-microsecond precision truncated.
+    """
     # Normalise nanoseconds to microseconds (Python datetime supports up to 6 digits)
     raw = raw.rstrip("Z").rstrip("z")
     if "." in raw:
@@ -266,7 +286,15 @@ _SS_PID_RE = re.compile(r"pid=(\d+)")
 
 
 def _parse_ss_pids(output: str, port: int) -> list[int]:
-    """Extract PIDs from ``ss -ltnp`` output for a given port."""
+    """Extract PIDs from ``ss -ltnp`` output for a given port.
+
+    Args:
+        output: Full stdout from ``ss -ltnp``.
+        port: TCP port to filter on.
+
+    Returns:
+        Unique list of PIDs listening on the given port, in discovery order.
+    """
     pids: list[int] = []
     port_str = f":{port}"
     for line in output.splitlines():

@@ -28,6 +28,19 @@ _MAX_RESULTS = 50
 
 @dataclass
 class SearchResult:
+    """A single FTS search result row.
+
+    Attributes:
+        project_id: Owning project identifier.
+        project_name: Human-readable project display name.
+        id: Work item identifier.
+        type: Work item type string.
+        title: Work item title.
+        summary: Short summary text, or None.
+        status: Current work item status string.
+        snippet: Short excerpt for search result display; falls back to summary.
+    """
+
     project_id: str
     project_name: str
     id: str

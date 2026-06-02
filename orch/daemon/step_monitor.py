@@ -519,7 +519,19 @@ def _check_step_health(
     config: DaemonConfig,
     project_config: ProjectConfig | None = None,
 ) -> None:
-    """Evaluate health of a single running StepRun and act on it."""
+    """Evaluate health of a single running StepRun and handle any abnormal state.
+
+    Performs the following checks in order: PID liveness, child-process probe
+    (for wrapper-shell exit), on-disk report recovery (code_review steps),
+    timeout, 50%-timeout soft-warn, and stall/hard-stall detection.
+
+    Args:
+        db: Active database session — caller commits after all runs are checked.
+        run: The StepRun in ``running`` status to evaluate.
+        project_id: Project identifier for DaemonEvent routing.
+        config: Daemon configuration providing the stall threshold.
+        project_config: Optional project configuration for browser-env teardown.
+    """
     now = datetime.now(UTC)
     alive = _is_pid_alive(run.pid)
     run.pid_alive = alive

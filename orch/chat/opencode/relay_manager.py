@@ -89,12 +89,14 @@ class SessionRelay:
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
+        """Spawn the upstream pump task if not already running."""
         if self._pump_task is not None and not self._pump_task.done():
             return
         self._stopped = False
         self._pump_task = asyncio.create_task(self._pump(), name=f"relay-pump-{self._sid}")
 
     async def stop(self) -> None:
+        """Cancel the pump task and send the sentinel to all waiting subscribers."""
         self._stopped = True
         task = self._pump_task
         if task is not None and not task.done():
@@ -108,9 +110,11 @@ class SessionRelay:
                 q.put_nowait(None)
 
     def is_running(self) -> bool:
+        """Return True iff the upstream pump task is alive."""
         return self._pump_task is not None and not self._pump_task.done()
 
     def subscriber_count(self) -> int:
+        """Return the number of currently-active browser subscribers."""
         return len(self._subscribers)
 
     # ------------------------------------------------------------------
@@ -171,6 +175,7 @@ class SessionRelay:
         queue: asyncio.Queue[dict[str, Any] | None],
         replay: list[dict[str, Any]],
     ) -> AsyncIterator[dict[str, Any]]:
+        """Yield replay events first, then live events from the subscriber queue."""
         try:
             for ev in replay:
                 yield ev
@@ -255,6 +260,7 @@ class SessionRelay:
                 backoff = min(_RECONNECT_BACKOFF_MAX, backoff * 2)
 
     def _broadcast(self, ev: dict[str, Any]) -> None:
+        """Put an event into every subscriber queue, dropping on overflow."""
         for q in list(self._subscribers):
             try:
                 q.put_nowait(ev)
@@ -318,12 +324,18 @@ class RelayManager:
             return relay
 
     async def drop_relay(self, tab_id: str) -> None:
+        """Stop and remove the relay for a specific tab.
+
+        Args:
+            tab_id: The tab id whose relay should be torn down.
+        """
         async with self._lock:
             relay = self._relays.pop(tab_id, None)
         if relay is not None:
             await relay.stop()
 
     async def shutdown(self) -> None:
+        """Stop all managed relays. Called on dashboard lifespan shutdown."""
         async with self._lock:
             relays = list(self._relays.values())
             self._relays.clear()

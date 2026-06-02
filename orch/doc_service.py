@@ -44,6 +44,7 @@ JobOutcome = Literal["completed", "failed_timeout", "failed_process_exited", "fa
 
 
 def _slugify(title: str) -> str:
+    """Convert a title string to a URL-safe slug."""
     slug = title.lower().strip()
     slug = slug.replace(" ", "-")
     result = []
@@ -60,7 +61,9 @@ def _slugify(title: str) -> str:
 
 
 def _path_matches_pattern(source_pattern: str, changed_paths: list[str]) -> bool:
-
+    """Return True if any path in changed_paths matches source_pattern using fnmatch or segment
+    comparison.
+    """
     for cp in changed_paths:
         if fnmatch.fnmatch(cp, source_pattern):
             return True
@@ -80,10 +83,17 @@ def _path_matches_pattern(source_pattern: str, changed_paths: list[str]) -> bool
 
 
 def _content_hash(content: str) -> str:
+    """Return the SHA-256 hex digest of the given content string."""
     return hashlib.sha256(content.encode()).hexdigest()
 
 
 class DocService:
+    """CRUD service for ProjectDoc, version snapshots, and doc generation jobs.
+
+    Attributes:
+        _session: SQLAlchemy session used for all DB operations.
+    """
+
     __slots__ = ("_session",)
 
     def __init__(self, session: Session) -> None:
@@ -105,6 +115,32 @@ class DocService:
         generated_by: str | None = None,
         trigger_reason: str | None = None,
     ) -> ProjectDoc:
+        """Create a new ProjectDoc row, optionally seeding it with initial content.
+
+        When content is provided an initial ProjectDocVersion snapshot is also
+        created (version 1).
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier within the project.
+            title: Human-readable document title.
+            doc_type: Classification of the document.
+            tier: Documentation tier.
+            editorial_category: Editorial category for linting rules.
+            status: Initial status (defaults to planned).
+            slug: URL-safe slug; auto-derived from title when None.
+            audience: Target audience tags.
+            source_paths: Source file globs that trigger staleness checks.
+            content: Initial markdown content.
+            generated_by: Identifier of the generator (skill, agent, etc.).
+            trigger_reason: Human-readable reason for the initial creation.
+
+        Returns:
+            The newly created ProjectDoc row.
+
+        Raises:
+            ValueError: When the project does not exist.
+        """
         project = self._session.get(Project, project_id)
         if project is None:
             raise ValueError(f"Project '{project_id}' not found")
@@ -165,6 +201,34 @@ class DocService:
         pdf_path: str | None = None,
         trigger_reason: str | None = None,
     ) -> ProjectDoc:
+        """Update an existing ProjectDoc row with any supplied fields.
+
+        When content changes (by hash), a new ProjectDocVersion snapshot is
+        created and the version counter is incremented.  html_path and pdf_path
+        are cleared on content change so stale exports are not served.
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier.
+            title: New title, or None to leave unchanged.
+            doc_type: New doc type, or None to leave unchanged.
+            status: New status, or None to leave unchanged.
+            tier: New tier, or None to leave unchanged.
+            editorial_category: New editorial category, or None.
+            audience: New audience list, or None.
+            source_paths: New source path globs, or None.
+            content: New markdown content, or None.
+            generated_by: Generator identifier, or None.
+            html_path: Path to an exported HTML file, or None.
+            pdf_path: Path to an exported PDF file, or None.
+            trigger_reason: Reason for this update (stored on the version).
+
+        Returns:
+            The updated ProjectDoc row.
+
+        Raises:
+            KeyError: When the document does not exist.
+        """
         id_ = f"{project_id}:{doc_id}"
         doc = self._session.get(ProjectDoc, id_)
         if doc is None:
@@ -221,12 +285,32 @@ class DocService:
         doc_id: str,
         **kwargs: Any,
     ) -> tuple[ProjectDoc, bool]:
+        """Create or update a document.
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier.
+            **kwargs: Fields forwarded to create_doc (on insert) or update_doc
+                (on update).
+
+        Returns:
+            Tuple of (ProjectDoc, created) where created is True on insert.
+        """
         existing = self.get_doc(project_id, doc_id)
         if existing is not None:
             return self.update_doc(project_id, doc_id, **kwargs), False
         return self.create_doc(project_id, doc_id, **kwargs), True
 
     def get_doc(self, project_id: str, doc_id: str) -> ProjectDoc | None:
+        """Return the ProjectDoc for the given (project_id, doc_id), or None.
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier.
+
+        Returns:
+            ProjectDoc row, or None when not found.
+        """
         id_ = f"{project_id}:{doc_id}"
         return self._session.get(ProjectDoc, id_)
 
@@ -239,6 +323,19 @@ class DocService:
         limit: int = 50,
         offset: int = 0,
     ) -> list[ProjectDoc]:
+        """List documents for a project with optional FTS search and pagination.
+
+        Args:
+            project_id: Project identifier.
+            doc_type: Filter by doc type, or None for all.
+            status: Filter by status, or None for all.
+            search: Full-text search query (plainto_tsquery), or None.
+            limit: Maximum rows to return.
+            offset: Number of rows to skip for pagination.
+
+        Returns:
+            List of matching ProjectDoc rows.
+        """
         query = select(ProjectDoc).where(ProjectDoc.project_id == project_id)
         if doc_type is not None:
             query = query.where(ProjectDoc.doc_type == doc_type)
@@ -260,6 +357,15 @@ class DocService:
         return list(result.scalars().all())
 
     def list_doc_versions(self, project_id: str, doc_id: str) -> list[ProjectDocVersion]:
+        """Return all version snapshots for a document, newest first.
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier.
+
+        Returns:
+            List of ProjectDocVersion rows ordered by version descending.
+        """
         id_ = f"{project_id}:{doc_id}"
         result = self._session.execute(
             select(ProjectDocVersion)
@@ -274,6 +380,19 @@ class DocService:
         repo_root: str,
         threshold_hours: int = 24,  # noqa: ARG002
     ) -> list[tuple[ProjectDoc, str, datetime]]:
+        """Return docs whose source files have been modified since the last generation.
+
+        Uses ``git log -1 --format=%ct -- <path>`` to determine source file
+        modification times.
+
+        Args:
+            project_id: Project identifier.
+            repo_root: Absolute path to the project git repository.
+            threshold_hours: Currently unused; reserved for future threshold logic.
+
+        Returns:
+            List of (doc, triggering_path, source_mtime) tuples for stale docs.
+        """
         docs = (
             self._session.query(ProjectDoc)
             .filter(
@@ -313,6 +432,15 @@ class DocService:
         project_id: str,
         changed_paths: list[str],
     ) -> list[ProjectDoc]:
+        """Return docs whose source_paths match any of the changed file paths.
+
+        Args:
+            project_id: Project identifier.
+            changed_paths: Paths that changed (e.g. from a git diff).
+
+        Returns:
+            List of matching non-archived ProjectDoc rows.
+        """
         docs = (
             self._session.query(ProjectDoc)
             .filter(
@@ -337,6 +465,20 @@ class DocService:
         editorial_category: EditorialCategory,
         forbidden_phrases: list[str] | None = None,
     ) -> list[dict[str, Any]]:
+        """Run editorial lint rules against markdown content.
+
+        Checks frontmatter validity, forbidden phrases, and required sections
+        per the editorial_category.
+
+        Args:
+            content: Full markdown content to lint.
+            editorial_category: Determines which required-section rules apply.
+            forbidden_phrases: Extra forbidden phrases; defaults to a standard
+                marketing-language list when None.
+
+        Returns:
+            List of warning dicts, each with keys "rule", "message", "section".
+        """
         warnings: list[dict[str, Any]] = []
         if forbidden_phrases is None:
             forbidden_phrases = [
@@ -449,6 +591,15 @@ class DocService:
         return warnings
 
     def delete_doc(self, project_id: str, doc_id: str) -> bool:
+        """Delete a document and its cascade-deleted children.
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier.
+
+        Returns:
+            True if the document existed and was deleted, False if not found.
+        """
         id_ = f"{project_id}:{doc_id}"
         doc = self._session.get(ProjectDoc, id_)
         if doc is None:
@@ -464,6 +615,23 @@ class DocService:
         requested_by: str = "user",  # noqa: ARG002
         trigger_reason: str | None = None,
     ) -> DocGenerationJob:
+        """Enqueue a new doc generation job for the given document.
+
+        Snapshots the current section guides at creation time so the agent
+        receives a stable guide even if guides are edited while it runs.
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier.
+            requested_by: Unused; reserved for future attribution.
+            trigger_reason: Human-readable reason for the regeneration request.
+
+        Returns:
+            The newly created DocGenerationJob row in queued status.
+
+        Raises:
+            KeyError: When the document does not exist.
+        """
         doc = self.get_doc(project_id, doc_id)
         if doc is None:
             raise KeyError(f"Document '{project_id}:{doc_id}' not found")
@@ -492,6 +660,19 @@ class DocService:
         pid: int | None = None,
         skill_used: str | None = None,
     ) -> DocGenerationJob:
+        """Transition a job from queued to running.
+
+        Args:
+            job_id: DocGenerationJob primary key.
+            pid: Agent process PID, or None.
+            skill_used: Name of the skill the agent invoked.
+
+        Returns:
+            The updated DocGenerationJob row.
+
+        Raises:
+            ValueError: When the job is not found or is not in queued status.
+        """
         job = self._session.get(DocGenerationJob, job_id)
         if job is None:
             raise ValueError(f"Job '{job_id}' not found")
@@ -511,6 +692,20 @@ class DocService:
         *,
         worktree_path: str | Path | None = None,
     ) -> DocGenerationJob:
+        """Mark a job completed or failed; runs lint checks and assembles the execution report.
+
+        Args:
+            job_id: DocGenerationJob primary key.
+            error: Error message when the job failed, or None for success.
+            worktree_path: Path to the worktree where the agent ran; used to
+                locate the log file. Falls back to the project's repo_root.
+
+        Returns:
+            The updated DocGenerationJob row.
+
+        Raises:
+            ValueError: When the job is not found.
+        """
         job = self._session.get(DocGenerationJob, job_id)
         if job is None:
             raise ValueError(f"Job '{job_id}' not found")
@@ -597,6 +792,14 @@ class DocService:
         return job
 
     def get_running_jobs_count(self, project_id: str) -> int:
+        """Return the number of currently running doc generation jobs.
+
+        Args:
+            project_id: Project identifier.
+
+        Returns:
+            Count of running DocGenerationJob rows for the project.
+        """
         return (
             self._session.query(DocGenerationJob)
             .filter(
@@ -607,6 +810,15 @@ class DocService:
         )
 
     def get_queued_jobs(self, project_id: str, limit: int = 10) -> list[DocGenerationJob]:
+        """Return queued doc generation jobs ordered by requested_at ascending.
+
+        Args:
+            project_id: Project identifier.
+            limit: Maximum number of rows to return.
+
+        Returns:
+            List of DocGenerationJob rows in queued status.
+        """
         return (
             self._session.query(DocGenerationJob)
             .filter(
@@ -619,6 +831,15 @@ class DocService:
         )
 
     def get_stalled_jobs(self, timeout_minutes: int = 10) -> list[DocGenerationJob]:
+        """Return running jobs that have exceeded the stall timeout.
+
+        Args:
+            timeout_minutes: Jobs running longer than this many minutes are
+                considered stalled.
+
+        Returns:
+            List of stalled DocGenerationJob rows across all projects.
+        """
         now = datetime.now(UTC)
         threshold = now - timedelta(minutes=timeout_minutes)
         return (
@@ -632,6 +853,14 @@ class DocService:
         )
 
     def get_doc_job(self, job_id: str) -> DocGenerationJob | None:
+        """Return a DocGenerationJob by primary key, or None when not found.
+
+        Args:
+            job_id: DocGenerationJob primary key (UUID string).
+
+        Returns:
+            DocGenerationJob row, or None.
+        """
         return self._session.get(DocGenerationJob, job_id)
 
     def diff_versions(
@@ -641,6 +870,21 @@ class DocService:
         version_old: int,
         version_new: int,
     ) -> list[str]:
+        """Return a unified diff between two version snapshots of a document.
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier.
+            version_old: Older version number.
+            version_new: Newer version number (must be greater than version_old).
+
+        Returns:
+            List of unified diff lines (same format as difflib.unified_diff).
+
+        Raises:
+            KeyError: When either version snapshot does not exist.
+            ValueError: When version_old >= version_new.
+        """
         id_ = f"{project_id}:{doc_id}"
         result_old = self._session.execute(
             select(ProjectDocVersion)
@@ -677,6 +921,7 @@ class DocService:
         )
 
     def _is_ssrf_blocked(self, url: str) -> bool:
+        """Return True when the URL points to a private/loopback/link-local address."""
         try:
             parsed = re.match(r"https?://([^/:]+)", url)
             if not parsed:
@@ -720,6 +965,20 @@ class DocService:
         repo_root: str,
         max_links: int = 20,
     ) -> list[dict[str, str]]:
+        """Check all markdown links in the document for broken/blocked targets.
+
+        External URLs are HEAD-requested (with SSRF blocking). Internal links
+        are resolved against repo_root. Results are persisted to doc.broken_links.
+
+        Args:
+            doc: Document whose content to scan.
+            repo_root: Absolute path to the project repository for resolving
+                relative links.
+            max_links: Maximum number of links to check.
+
+        Returns:
+            List of broken link dicts with keys "url", "type", "status".
+        """
         pattern = re.compile(r"!?\[([^\]]*)\]\(([^)]+)\)")
         links = [(m.group(1), m.group(2)) for m in pattern.finditer(doc.content or "")]
 
@@ -767,6 +1026,17 @@ class DocService:
         render_html_fn: Callable[[str, ProjectDoc], str],
         render_pdf_fn: Callable[[str], bytes | None],
     ) -> bytes:
+        """Build a ZIP bundle containing markdown, HTML, and optional PDF for each doc.
+
+        Args:
+            _project_id: Unused; reserved for future filtering.
+            doc_ids: Composite doc IDs (``project_id:doc_id``) to include.
+            render_html_fn: Callable that converts markdown + doc metadata to HTML.
+            render_pdf_fn: Callable that converts HTML to PDF bytes, or returns None.
+
+        Returns:
+            ZIP archive bytes suitable for sending as a download response.
+        """
         buf = io.BytesIO()
 
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -827,6 +1097,19 @@ class DocService:
         project_id: str | None = None,
         limit: int = 50,
     ) -> list[tuple[ProjectDoc, str]]:
+        """Full-text search across all projects with ts_headline snippets.
+
+        Args:
+            search: Full-text search query (plainto_tsquery).
+            doc_type: Filter by doc type, or None for all.
+            status: Filter by status, or None (excludes archived by default).
+            tier: Filter by tier, or None for all.
+            project_id: Restrict to one project, or None for all.
+            limit: Maximum rows to return.
+
+        Returns:
+            List of (ProjectDoc, headline_snippet) tuples ranked by relevance.
+        """
         if not search or not search.strip():
             return []
 
@@ -872,10 +1155,27 @@ class DocService:
     # -----------------------------------------------------------------------
 
     def get_type_guide(self, doc_type: str) -> str | None:
+        """Return the editorial guide markdown for a doc type, or None.
+
+        Args:
+            doc_type: DocType string key (e.g. "architecture", "_default").
+
+        Returns:
+            Guide markdown string, or None when no guide is configured.
+        """
         guide = self._session.get(DocTypeGuide, doc_type)
         return guide.guide_md if guide is not None else None
 
     def save_type_guide(self, doc_type: str, guide_md: str) -> DocTypeGuide:
+        """Create or update the editorial guide for a doc type.
+
+        Args:
+            doc_type: DocType string key.
+            guide_md: Markdown content for the editorial guide.
+
+        Returns:
+            The created or updated DocTypeGuide row.
+        """
         guide = self._session.get(DocTypeGuide, doc_type)
         if guide is None:
             guide = DocTypeGuide(doc_type=doc_type, guide_md=guide_md)
@@ -890,11 +1190,30 @@ class DocService:
     # -----------------------------------------------------------------------
 
     def get_instance_guide(self, project_id: str, doc_id: str) -> str | None:
+        """Return the instance-specific editorial guide for a document, or None.
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier.
+
+        Returns:
+            Guide markdown string, or None when no instance guide is set.
+        """
         full_id = f"{project_id}:{doc_id}"
         guide = self._session.get(DocInstanceGuide, full_id)
         return guide.guide_md if guide is not None else None
 
     def save_instance_guide(self, project_id: str, doc_id: str, guide_md: str) -> DocInstanceGuide:
+        """Create or update the instance-specific guide for a document.
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier.
+            guide_md: Markdown content for the instance guide.
+
+        Returns:
+            The created or updated DocInstanceGuide row.
+        """
         full_id = f"{project_id}:{doc_id}"
         guide = self._session.get(DocInstanceGuide, full_id)
         if guide is None:
@@ -906,6 +1225,15 @@ class DocService:
         return guide
 
     def delete_instance_guide(self, project_id: str, doc_id: str) -> bool:
+        """Remove the instance-specific guide for a document.
+
+        Args:
+            project_id: Project identifier.
+            doc_id: User-defined document identifier.
+
+        Returns:
+            True if deleted, False if no guide existed.
+        """
         full_id = f"{project_id}:{doc_id}"
         guide = self._session.get(DocInstanceGuide, full_id)
         if guide is None:
@@ -915,6 +1243,7 @@ class DocService:
         return True
 
     def _effective_guide(self, project_id: str, doc_id: str, doc_type: str) -> str | None:
+        """Resolve the effective guide: instance > type > _default > None."""
         instance = self.get_instance_guide(project_id, doc_id)
         if instance is not None:
             return instance

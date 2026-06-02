@@ -180,6 +180,19 @@ def _get_last_run(db: Session, step_db_id: int) -> StepRun | None:
 
 
 def _get_item(db: Session, project_id: str, item_id: str) -> WorkItem:
+    """Fetch a WorkItem by (project_id, item_id) or raise HTTP 404.
+
+    Args:
+        db: Active database session.
+        project_id: Project the item belongs to.
+        item_id: Identifier of the work item.
+
+    Returns:
+        The matching WorkItem row.
+
+    Raises:
+        HTTPException: 404 when no work item with the given ids exists.
+    """
     item = db.scalar(
         select(WorkItem).where(
             WorkItem.project_id == project_id,
@@ -200,6 +213,17 @@ def _emit(
     message: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
+    """Append a DaemonEvent row to the session (not yet committed).
+
+    Args:
+        db: Active database session.
+        event_type: Event type string (e.g. ``"step_killed"``).
+        project_id: Project the event belongs to.
+        entity_id: ID of the entity that triggered the event.
+        entity_type: Optional entity type string (e.g. ``"work_item"``).
+        message: Human-readable description of the event.
+        metadata: Optional dict of structured event data stored as JSON.
+    """
     db.add(
         DaemonEvent(
             project_id=project_id,
@@ -248,6 +272,21 @@ def confirm_dialog(
     step_id: str,
     request: Request,
 ) -> Any:
+    """htmx fragment: confirmation dialog for step-level actions.
+
+    Args:
+        project_id: Project the step belongs to.
+        action: Action slug (e.g. ``"kill-step"``, ``"restart-step"``).
+        item_id: Work item the step belongs to.
+        step_id: Step identifier to include in dialog labels.
+        request: Incoming FastAPI request (used to resolve templates).
+
+    Returns:
+        HTML fragment for ``fragments/confirm_action.html``.
+
+    Raises:
+        HTTPException: 400 when the action is not in ``_ACTION_LABELS``.
+    """
     templates: Jinja2Templates = request.app.state.templates
 
     label_info = _ACTION_LABELS.get(action)
@@ -287,6 +326,20 @@ def kill_step(
     step_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Send SIGTERM to a running step's process and mark it as killed.
+
+    Args:
+        project_id: Project the step belongs to.
+        item_id: Work item the step belongs to.
+        step_id: Step to kill.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger toast header.
+
+    Raises:
+        HTTPException: 422 when the step has no active running StepRun.
+    """
     step = _get_step(db, project_id, item_id, step_id)
 
     run = db.scalar(
@@ -337,6 +390,20 @@ def restart_step(
     step_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Create a new pending StepRun for a failed or skipped step.
+
+    Args:
+        project_id: Project the step belongs to.
+        item_id: Work item the step belongs to.
+        step_id: Step to restart.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger toast header.
+
+    Raises:
+        HTTPException: 422 when the step is not in ``failed`` or ``skipped`` state.
+    """
     step = _get_step(db, project_id, item_id, step_id)
 
     if step.status not in (StepStatus.failed, StepStatus.skipped):
@@ -412,6 +479,21 @@ def scope_amend_modal(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: scope amendment modal for a scope-blocked step.
+
+    Args:
+        project_id: Project the step belongs to.
+        item_id: Work item the step belongs to.
+        step_id: Step that is scope-blocked.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``components/scope_amend_modal.html``.
+
+    Raises:
+        HTTPException: 422 when the step has no scope violations.
+    """
     step = _get_step(db, project_id, item_id, step_id)
     violations = latest_scope_violation(db, step.id)
     if not violations:
@@ -448,6 +530,22 @@ def scope_amend_and_restart(
     paths: list[str] = Form(default=[]),
     db: Session = Depends(get_db),
 ) -> Any:
+    """Add selected violation paths to the manifest's allowed_paths and restart the step.
+
+    Args:
+        project_id: Project the step belongs to.
+        item_id: Work item the step belongs to.
+        step_id: Scope-blocked step to amend and restart.
+        paths: Subset of violated paths to add to allowed_paths.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger toast header.
+
+    Raises:
+        HTTPException: 422 when the step is not scope-blocked, paths are not a
+            subset of violations, or no worktree path is recorded.
+    """
     step = _get_step(db, project_id, item_id, step_id)
     violations = latest_scope_violation(db, step.id)
     if not violations:
@@ -520,6 +618,21 @@ def scope_revert_and_restart(
     step_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Revert out-of-scope file edits in the worktree and restart the step.
+
+    Args:
+        project_id: Project the step belongs to.
+        item_id: Work item the step belongs to.
+        step_id: Scope-blocked step whose edits are reverted.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger toast header.
+
+    Raises:
+        HTTPException: 422 when the step is not scope-blocked or no worktree
+            path is recorded.
+    """
     step = _get_step(db, project_id, item_id, step_id)
     violations = latest_scope_violation(db, step.id)
     if not violations:
@@ -590,6 +703,20 @@ def skip_step(
     step_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Mark a failed or needs_fix step as skipped so the daemon advances.
+
+    Args:
+        project_id: Project the step belongs to.
+        item_id: Work item the step belongs to.
+        step_id: Step to skip.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger toast header.
+
+    Raises:
+        HTTPException: 422 when the step is not in ``failed`` or ``needs_fix`` state.
+    """
     step = _get_step(db, project_id, item_id, step_id)
 
     if step.status not in (StepStatus.failed, StepStatus.needs_fix):
@@ -624,6 +751,20 @@ def restart_from_step(
     step_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Reset all steps from a given step number onward and queue the first one.
+
+    Args:
+        project_id: Project the step belongs to.
+        item_id: Work item to restart from.
+        step_id: First step to reset; all subsequent steps are also reset to pending.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger toast header.
+
+    Raises:
+        HTTPException: 404 when the step or downstream steps are not found.
+    """
     # Find the target step to get its step_number
     first_step = _get_step(db, project_id, item_id, step_id)
 
@@ -694,6 +835,21 @@ def approve_item(
     db: Session = Depends(get_db),
     _guard: None = Depends(require_db_at_head),
 ) -> Any:
+    """Transition a draft work item to approved status.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item to approve.
+        db: Active database session.
+        _guard: Dependency that ensures the DB schema is at head before approving.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when the item is a Research type, not in draft status,
+            or active design files are uncommitted.
+    """
     item = _get_item(db, project_id, item_id)
     if item.type == WorkItemType.Research:
         raise HTTPException(
@@ -729,6 +885,18 @@ def cancel_item(
     to_draft: bool = Form(False),
     db: Session = Depends(get_db),
 ) -> Any:
+    """Cancel a work item, killing its running step and tearing down its worktree.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item to cancel.
+        reason: Human-readable cancellation reason stored in the DB.
+        to_draft: When True, resets the item to draft status instead of cancelled.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+    """
     from orch.cancel import cancel_work_item
 
     try:
@@ -954,6 +1122,21 @@ def confirm_item_dialog(
     item_id: str,
     request: Request,
 ) -> Any:
+    """htmx fragment: confirmation dialog for item-level actions.
+
+    Args:
+        project_id: Project the item belongs to.
+        action: Action slug (e.g. ``"approve"``, ``"cancel"``, ``"full-restart"``).
+        item_id: Work item the action applies to.
+        request: Incoming FastAPI request (used to resolve templates).
+
+    Returns:
+        HTML fragment for the confirmation dialog (form variant for cancel,
+        simple variant for all other actions).
+
+    Raises:
+        HTTPException: 400 when the action is not in ``_ITEM_ACTION_LABELS``.
+    """
     templates: Jinja2Templates = request.app.state.templates
 
     label_info = _ITEM_ACTION_LABELS.get(action)
@@ -1001,6 +1184,19 @@ def unapprove_item(
     item_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Revert an approved item back to draft status.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item to unapprove.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when the item is a Research type or not in approved status.
+    """
     item = _get_item(db, project_id, item_id)
     if item.type == WorkItemType.Research:
         raise HTTPException(
@@ -1036,6 +1232,23 @@ def restart_item(
     item_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Restart a failed item from its first failed step.
+
+    When all steps are still pending (setup-phase failure), resets the item
+    and its BatchItem to approved so the daemon retries from scratch.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item to restart.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when the item is not in ``failed`` status or no
+            failed steps are found.
+    """
     item = _get_item(db, project_id, item_id)
     if item.status != WorkItemStatus.failed:
         raise HTTPException(
@@ -1183,6 +1396,23 @@ def restart_merge(
     item_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Reset a merge-failed batch item so the daemon retries the squash-merge.
+
+    Accepts ``merge_failed``, ``migration_invalid``, ``migration_rebase_failed``
+    statuses as well as legacy ``failed`` rows whose notes start with
+    ``"Merge failed"`` (backward compatibility).
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item with a failed merge to retry.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when no merge-failed batch item is found.
+    """
     # Try new enum values first (CR-00028)
     batch_item = db.scalar(
         select(BatchItem).where(
@@ -1266,6 +1496,19 @@ def abandon_merge(
     item_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Permanently fail a merge-failed item and trigger cascade-fail for dependents.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item to abandon.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when no merge-failed batch item is found.
+    """
     batch_item = db.scalar(
         select(BatchItem).where(
             BatchItem.project_id == project_id,
@@ -1356,6 +1599,19 @@ def pause_item(
     item_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Pause an in-progress item so no new steps are launched.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item to pause.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when the item is not in ``in_progress`` status.
+    """
     item = _get_item(db, project_id, item_id)
     if item.status != WorkItemStatus.in_progress:
         raise HTTPException(
@@ -1379,6 +1635,19 @@ def resume_item(
     item_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Resume a paused item so the daemon picks up pending steps again.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item to resume.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when the item is not in ``paused`` status.
+    """
     item = _get_item(db, project_id, item_id)
     if item.status != WorkItemStatus.paused:
         raise HTTPException(
@@ -1547,6 +1816,20 @@ def full_restart_item(
     item_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Delete the worktree, clear all logs and step runs, and reset the item to approved.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item to fully restart.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when the item is not in ``failed``, ``in_progress``,
+            or ``paused`` status.
+    """
     item = _get_item(db, project_id, item_id)
 
     if item.status not in _FULL_RESTART_ALLOWED:
@@ -1698,6 +1981,21 @@ def confirm_batch_dialog(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: confirmation dialog for batch-level actions.
+
+    Args:
+        project_id: Project the batch belongs to.
+        action: Action slug (e.g. ``"approve"``, ``"cancel"``, ``"archive"``).
+        batch_id: Batch the action applies to.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for the confirmation dialog; archive uses a custom template.
+
+    Raises:
+        HTTPException: 400 when the action is not in ``_BATCH_ACTION_LABELS``.
+    """
     templates: Jinja2Templates = request.app.state.templates
 
     if action == "archive":
@@ -1766,6 +2064,19 @@ def confirm_batch_dialog(
 
 
 def _get_batch(db: Session, project_id: str, batch_id: str) -> Batch:
+    """Fetch a Batch by (project_id, batch_id) or raise HTTP 404.
+
+    Args:
+        db: Active database session.
+        project_id: Project the batch belongs to.
+        batch_id: Identifier of the batch to look up.
+
+    Returns:
+        The matching Batch row.
+
+    Raises:
+        HTTPException: 404 when no batch with the given ids exists.
+    """
     batch = db.scalar(
         select(Batch).where(
             Batch.project_id == project_id,
@@ -1784,6 +2095,20 @@ def approve_batch(
     db: Session = Depends(get_db),
     _guard: None = Depends(require_db_at_head),
 ) -> Any:
+    """Transition a batch from planning to approved so the daemon picks it up.
+
+    Args:
+        project_id: Project the batch belongs to.
+        batch_id: Batch to approve.
+        db: Active database session.
+        _guard: Dependency that ensures the DB schema is at head before approving.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when the batch is not in ``planning`` status.
+    """
     batch = _get_batch(db, project_id, batch_id)
     if batch.status != BatchStatus.planning:
         raise HTTPException(
@@ -1808,6 +2133,19 @@ def pause_batch(
     batch_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Pause an executing batch so no new items are launched.
+
+    Args:
+        project_id: Project the batch belongs to.
+        batch_id: Batch to pause.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when the batch is not in ``executing`` status.
+    """
     batch = _get_batch(db, project_id, batch_id)
     if batch.status != BatchStatus.executing:
         raise HTTPException(
@@ -1832,6 +2170,19 @@ def resume_batch(
     batch_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Resume a paused batch so the daemon launches pending items again.
+
+    Args:
+        project_id: Project the batch belongs to.
+        batch_id: Batch to resume.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when the batch is not in ``paused`` status.
+    """
     batch = _get_batch(db, project_id, batch_id)
     if batch.status != BatchStatus.paused:
         raise HTTPException(
@@ -1858,6 +2209,18 @@ def cancel_batch(
     reset_items: bool = Form(False),
     db: Session = Depends(get_db),
 ) -> Any:
+    """Cancel a batch and every non-terminal item within it.
+
+    Args:
+        project_id: Project the batch belongs to.
+        batch_id: Batch to cancel.
+        reason: Human-readable cancellation reason.
+        reset_items: When True, member items are reset to draft instead of cancelled.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+    """
     from orch.cancel import cancel_batch as _cancel_batch
 
     try:
@@ -1893,6 +2256,25 @@ def archive_batch_endpoint(
     skip_post_commands: bool = False,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Kick off background archiving for a completed batch.
+
+    Launches ``archive_batch`` in a daemon thread so the response returns
+    immediately. Runs post-merge commands (migrations, docker rebuilds) unless
+    ``skip_post_commands`` is set.
+
+    Args:
+        project_id: Project the batch belongs to.
+        batch_id: Batch to archive.
+        skip_post_commands: When True, post-merge commands are skipped.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger reload toast header.
+
+    Raises:
+        HTTPException: 422 when the batch is not in ``completed`` or
+            ``completed_with_errors`` status.
+    """
     batch = _get_batch(db, project_id, batch_id)
     if batch.status not in (BatchStatus.completed, BatchStatus.completed_with_errors):
         raise HTTPException(
@@ -1933,6 +2315,21 @@ def update_batch_max_parallel(
     max_parallel: int = Form(...),
     db: Session = Depends(get_db),
 ) -> Any:
+    """Update the max_parallel concurrency limit on a batch.
+
+    Args:
+        project_id: Project the batch belongs to.
+        batch_id: Batch to update.
+        max_parallel: New maximum number of items to run concurrently (1–20).
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger toast header.
+
+    Raises:
+        HTTPException: 422 when the batch is in an unmodifiable status or
+            max_parallel is outside 1–20.
+    """
     batch = _get_batch(db, project_id, batch_id)
     if batch.status not in (
         BatchStatus.planning,

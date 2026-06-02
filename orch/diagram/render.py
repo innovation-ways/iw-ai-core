@@ -17,6 +17,7 @@ _D2_BINARY_CACHE: str | None = None
 
 
 def _get_mermaid_binary() -> str | None:
+    """Return the path to the mmdc binary, checking PATH then ~/.local/bin. Cached."""
     global _MERMAID_BINARY_CACHE
     if _MERMAID_BINARY_CACHE == "":
         return None
@@ -38,6 +39,7 @@ def _get_mermaid_binary() -> str | None:
 
 
 def _get_d2_binary() -> str | None:
+    """Return the path to the d2 binary from PATH. Cached."""
     global _D2_BINARY_CACHE
     if _D2_BINARY_CACHE == "":
         return None
@@ -130,7 +132,15 @@ def render_d2(dsl: str) -> str | None:
 
 
 def render(dsl: str, dsl_type: str) -> str | None:
-    """Convenience dispatcher: dsl_type is 'mermaid' or 'd2'."""
+    """Render a DSL string to SVG, dispatching by dsl_type.
+
+    Args:
+        dsl: The diagram source string.
+        dsl_type: Either ``"mermaid"`` or ``"d2"``.
+
+    Returns:
+        SVG string, or None when the rendering binary is unavailable or fails.
+    """
     if dsl_type == "mermaid":
         return render_mermaid(dsl)
     if dsl_type == "d2":

@@ -175,9 +175,15 @@ def validate_judge_payload(payload: dict) -> None:
 def _infer_prod_module(test_file: str) -> str | None:
     """Infer the production module path from a test file path.
 
-    Convention: tests/unit/test_foo.py → <project>/foo.py
-    We return the module path relative to the repo root, stripping the
-    'tests/unit/' prefix and the 'test_' prefix.
+    Convention: ``tests/unit/test_foo.py`` → ``<project>/foo.py``
+    Strips the ``tests/unit/`` (or similar) prefix and the ``test_`` name prefix.
+
+    Args:
+        test_file: Relative path to the test file (e.g. ``tests/unit/test_foo.py``).
+
+    Returns:
+        Inferred production module path relative to the repo root, or None when
+        the path does not match the expected convention.
     """
     import re as _re
 
@@ -220,7 +226,14 @@ def load_labelled_set(fp: io.StringIO) -> list[dict]:
 
 
 def _bucket_overall(overall: int) -> str:
-    """Bucket an overall score (1–5) into a label."""
+    """Bucket an overall score into a STRONG / MEDIUM / WEAK label.
+
+    Args:
+        overall: Integer score in the range 1–5.
+
+    Returns:
+        ``"STRONG"`` for 4–5, ``"MEDIUM"`` for 3, ``"WEAK"`` for 1–2.
+    """
     if overall >= 4:
         return "STRONG"
     if overall == 3:
@@ -391,6 +404,14 @@ def _call_judge(
 
 
 def _load_test_code(test_file: str) -> str:
+    """Read and return the full source of a test file, exiting on error.
+
+    Args:
+        test_file: Path to the test file.
+
+    Returns:
+        UTF-8 file contents as a string.
+    """
     path = Path(test_file)
     if not path.exists():
         print(f"ERROR: test file not found: {test_file}", file=sys.stderr)
@@ -399,6 +420,16 @@ def _load_test_code(test_file: str) -> str:
 
 
 def _load_prod_code(prod_file: str | None, test_file: str) -> str:
+    """Read and return the production module source, exiting on error.
+
+    Args:
+        prod_file: Explicit production file path; when None the path is inferred
+                   from ``test_file`` via ``_infer_prod_module``.
+        test_file: Test file path used for inference when ``prod_file`` is None.
+
+    Returns:
+        UTF-8 file contents as a string.
+    """
     if prod_file:
         path = Path(prod_file)
     else:
@@ -459,7 +490,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _run_single_test(args: argparse.Namespace, api_key: str) -> int:
-    """Run the judge on a single test. Returns exit code."""
+    """Invoke the LLM judge on a single test function and emit the scored payload.
+
+    Args:
+        args: Parsed CLI namespace with ``test_file``, ``test_name``,
+              ``prod_file``, and ``model`` attributes.
+        api_key: Anthropic API key for the judge model.
+
+    Returns:
+        0 on success, 1 on parse or validation failure.
+    """
     anthropic_cls = _get_anthropic_client()
     client = anthropic_cls(api_key=api_key)
 
@@ -497,7 +537,17 @@ def _run_single_test(args: argparse.Namespace, api_key: str) -> int:
 
 
 def _run_calibration(args: argparse.Namespace, api_key: str) -> int:
-    """Run calibration over a labelled set. Returns exit code."""
+    """Run the LLM judge over a labelled set and print a calibration confusion matrix.
+
+    Args:
+        args: Parsed CLI namespace with ``calibrate`` (path to ``.jsonl`` file)
+              and ``model`` attributes.
+        api_key: Anthropic API key for the judge model.
+
+    Returns:
+        0 when calibration completes (regardless of whether the acceptance
+        threshold is met), 1 when the labelled-set file is not found.
+    """
     labelled_path = Path(args.calibrate)
     if not labelled_path.exists():
         print(f"ERROR: labelled set not found: {args.calibrate}", file=sys.stderr)
@@ -599,6 +649,14 @@ def _run_calibration(args: argparse.Namespace, api_key: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse arguments and dispatch to single-test or calibration mode.
+
+    Args:
+        argv: Argument list; defaults to ``sys.argv[1:]`` when None.
+
+    Returns:
+        0 on success, 1 on upstream errors, 2 when ``ANTHROPIC_API_KEY`` is unset.
+    """
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
 

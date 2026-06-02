@@ -34,6 +34,16 @@ _DOCKER_TIME_FORMATS = (
 
 
 def _parse_docker_time(raw: str) -> datetime | None:
+    """Parse a Docker timestamp string into a timezone-aware datetime.
+
+    Tries multiple known Docker timestamp formats. Returns None if no format matches.
+
+    Args:
+        raw: Raw timestamp string from Docker inspect output.
+
+    Returns:
+        Timezone-aware datetime, or None if parsing fails.
+    """
     s = raw.replace(" UTC", "").strip()
     for fmt in _DOCKER_TIME_FORMATS:
         try:
@@ -47,6 +57,15 @@ def _parse_docker_time(raw: str) -> datetime | None:
 
 
 def _parse_labels(raw: str | dict[str, object]) -> dict[str, str]:
+    """Parse Docker label string or dict into a ``{key: value}`` mapping.
+
+    Args:
+        raw: Either a comma-separated ``key=value`` string from ``docker ps``
+            output, or a dict from JSON inspect output.
+
+    Returns:
+        Dictionary of label key-value pairs.
+    """
     if isinstance(raw, dict):
         return raw  # type: ignore[return-value]
     labels: dict[str, str] = {}
@@ -62,6 +81,17 @@ def _parse_labels(raw: str | dict[str, object]) -> dict[str, str]:
 
 @dataclass
 class ContainerService:
+    """A single container within a compose stack.
+
+    Attributes:
+        name: Compose service name (e.g. ``db``, ``app``).
+        container_id: First 12 chars of the Docker container ID.
+        image: Docker image name.
+        state: Container state string (``running``, ``exited``, ``paused``, etc.).
+        status_text: Human-readable status from docker ps (e.g. ``Up 2 hours``).
+        ports: Published port mappings string from docker ps.
+    """
+
     name: str
     container_id: str
     image: str
@@ -72,6 +102,18 @@ class ContainerService:
 
 @dataclass
 class ContainerStack:
+    """A per-worktree compose stack grouping one or more ContainerService entries.
+
+    Attributes:
+        compose_project: Docker compose project name.
+        batch_item_pk: Integer PK of the associated BatchItem, or None if unlabelled.
+        item_id: Work item identifier (e.g. ``CR-00036``), resolved from the DB.
+        project_id: Project identifier from labels or the BatchItem row.
+        services: List of containers in this compose project.
+        classification: One of ``active``, ``stale``, ``orphan``, ``malformed``.
+        created_at: Oldest container creation time in the stack.
+    """
+
     compose_project: str
     batch_item_pk: int | None
     item_id: str | None
@@ -231,6 +273,10 @@ def remove_stack(compose_project: str) -> tuple[bool, str]:
 
 
 def _docker_ps_all() -> list[dict[str, Any]]:
+    """Run ``docker ps -a --filter label=iwcore.role`` and return parsed JSON rows.
+
+    Returns an empty list on docker error or if no containers match.
+    """
     try:
         result = subprocess.run(  # noqa: S603
             [  # noqa: S607

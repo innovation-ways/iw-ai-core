@@ -49,6 +49,15 @@ TYPE_LABEL = {
 
 
 def _build_prompt(item: WorkItem, output_path: Path) -> str:
+    """Build the opencode prompt that generates a functional design doc for a work item.
+
+    Args:
+        item: Work item whose technical design is the input context.
+        output_path: Destination path that the agent must write the markdown file to.
+
+    Returns:
+        Fully rendered prompt string ready to pass to ``opencode run``.
+    """
     prefix = item.id.split("-", 1)[0]
     type_label = TYPE_LABEL.get(prefix, "Work Item")
     design_doc = (
@@ -127,6 +136,12 @@ markdown back in chat. Do not ask for confirmation. Just write the file and stop
 
 
 def main() -> int:
+    """CLI entry point: generate a functional design doc for the specified work item.
+
+    Returns:
+        0 on success; non-zero exit codes map to specific failure modes
+        described in the module docstring (2–7 and opencode's own exit code).
+    """
     parser = argparse.ArgumentParser(
         description="Generate a functional design doc for a work item via opencode + MiniMax-M2.7."
     )

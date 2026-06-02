@@ -38,6 +38,12 @@ class DocIndexPoller:
     STALL_TIMEOUT_SECONDS = 600
 
     def __init__(self, session_factory: SessionFactory, config: DaemonConfig) -> None:
+        """Initialize the poller with a session factory and daemon config.
+
+        Args:
+            session_factory: Callable context manager that yields a DB session.
+            config: Daemon configuration (used for the LanceDB index path).
+        """
         self._session_factory = session_factory
         self.config = config
 
@@ -58,6 +64,7 @@ class DocIndexPoller:
             self._process_project(project_id)
 
     def _mark_stalled_jobs(self) -> None:
+        """Mark any running DocIndexJob records that exceed the stall timeout as failed."""
         with self._session_factory() as db:
             cutoff = datetime.now(UTC).timestamp() - self.STALL_TIMEOUT_SECONDS
             cutoff_dt = datetime.fromtimestamp(cutoff, tz=UTC)

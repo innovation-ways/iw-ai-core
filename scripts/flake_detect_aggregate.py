@@ -36,6 +36,16 @@ def parse_log(path: Path) -> dict[str, str]:
 
 
 def main(argv: list[str]) -> int:
+    """Aggregate multiple pytest log files and report tests that flipped outcome.
+
+    Args:
+        argv: Argument list starting with the script name; subsequent entries
+              are paths to pytest log files (at least two required).
+
+    Returns:
+        0 when no flakes are detected, 1 when at least one flaky test is found,
+        2 on usage error.
+    """
     if len(argv) < 3:
         print(  # noqa: T201
             "Usage: flake_detect_aggregate.py run1.log run2.log [run3.log ...]",

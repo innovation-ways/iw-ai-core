@@ -1,3 +1,5 @@
+"""Auto-merge UI router — per-project auto-merge configuration, events, and verdicts."""
+
 from __future__ import annotations
 
 import difflib
@@ -38,11 +40,25 @@ DIR_VALUES = ("asc", "desc")
 
 
 class VerdictBody(BaseModel):
+    """Request body for setting a merge auto-resolved event verdict.
+
+    Attributes:
+        verdict: One of pending|correct|wrong|partial.
+        notes: Optional free-text justification for the verdict.
+    """
+
     verdict: str
     notes: str = ""
 
 
 class ConfigBody(BaseModel):
+    """Request body for updating the auto-merge project config.
+
+    Attributes:
+        phase: Auto-merge phase (0 or 1); None resets to global default.
+        runtime_option_id: FK into agent_runtime_options; None clears override.
+    """
+
     phase: int | None = None
     runtime_option_id: int | None = None
 
@@ -58,6 +74,18 @@ class ConfigBody(BaseModel):
 
 
 def _get_project_or_404(db: Session, project_id: str) -> Project:
+    """Fetch a project by ID or raise HTTP 404.
+
+    Args:
+        db: Active database session.
+        project_id: The project identifier to look up.
+
+    Returns:
+        The matching Project ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the project does not exist.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
@@ -65,14 +93,40 @@ def _get_project_or_404(db: Session, project_id: str) -> Project:
 
 
 def _operator(request: Request) -> str:
+    """Return the operator identity from the X-Operator header or 'dashboard'.
+
+    Args:
+        request: The current FastAPI request.
+
+    Returns:
+        Operator string used for audit events.
+    """
     return request.headers.get("X-Operator") or "dashboard"
 
 
 def _accepts_json(request: Request) -> bool:
+    """Return True when the client accepts application/json.
+
+    Args:
+        request: The current FastAPI request.
+
+    Returns:
+        True if the Accept header includes application/json.
+    """
     return "application/json" in request.headers.get("accept", "").lower()
 
 
 def _render_fragment(request: Request, template_name: str, context: dict[str, Any]) -> HTMLResponse:
+    """Render a Jinja2 template fragment, returning a placeholder on TemplateNotFound.
+
+    Args:
+        request: The current FastAPI request (carries the templates instance).
+        template_name: Template path relative to the templates directory.
+        context: Template rendering context dictionary.
+
+    Returns:
+        HTMLResponse with the rendered fragment or an HTML comment placeholder.
+    """
     templates = request.app.state.templates
     try:
         return cast("HTMLResponse", templates.TemplateResponse(request, template_name, context))
@@ -81,6 +135,15 @@ def _render_fragment(request: Request, template_name: str, context: dict[str, An
 
 
 def _load_status(db: Session, project_id: str) -> agg.StatusSnapshot:
+    """Load the auto-merge status snapshot for a project.
+
+    Args:
+        db: Active database session.
+        project_id: The project to load status for.
+
+    Returns:
+        StatusSnapshot combining DB config and TOML-level defaults.
+    """
     toml_config = AutoMergeConfig.load(str(EXECUTOR_TOML))[0]
     return agg.get_status_snapshot(db, project_id, toml_config)
 
@@ -89,6 +152,16 @@ def _load_status(db: Session, project_id: str) -> agg.StatusSnapshot:
 def auto_merge_page(
     project_id: str, request: Request, db: Session = Depends(get_db)
 ) -> HTMLResponse:
+    """Render the full auto-merge settings and events page for a project.
+
+    Args:
+        project_id: The project whose auto-merge config is displayed.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML page with auto-merge status, configuration form, and events table.
+    """
     project = _get_project_or_404(db, project_id)
     status = _load_status(db, project_id)
     request.state.auto_merge_phase_for_chip = status.config.phase
@@ -122,6 +195,17 @@ def auto_merge_status(
     db: Session = Depends(get_db),
     compact: bool = Query(default=False),
 ) -> HTMLResponse:
+    """Return the auto-merge status chip fragment for htmx auto-refresh.
+
+    Args:
+        project_id: The project whose status chip is rendered.
+        request: The current FastAPI request.
+        db: Active database session.
+        compact: When True, suppress the chip entirely for phase < 1 projects.
+
+    Returns:
+        HTML fragment for the status chip, or empty body when compact + phase < 1.
+    """
     _get_project_or_404(db, project_id)
     status = _load_status(db, project_id)
     if compact and status.config.phase < 1:
@@ -150,6 +234,22 @@ def auto_merge_events(
     dir: str = Query(default="desc"),  # noqa: A002
     all: bool = Query(default=False, alias="all"),  # noqa: A002 — shadowing builtin
 ) -> HTMLResponse:
+    """Return a paginated, sorted auto-merge events table fragment.
+
+    Args:
+        project_id: The project whose events are listed.
+        request: The current FastAPI request.
+        db: Active database session.
+        page: Zero-based page index.
+        type: Optional event type filter string.
+        page_size: Number of rows per page (1–200).
+        sort: Column to sort by; must be one of SORT_VALUES.
+        dir: Sort direction — 'asc' or 'desc'.
+        all: When True, include non-auto-merge events in results.
+
+    Returns:
+        HTML fragment with the events table and pagination controls.
+    """
     _get_project_or_404(db, project_id)
     if sort not in SORT_VALUES:
         raise HTTPException(
@@ -196,6 +296,20 @@ def auto_merge_event_detail(
     event_id: int = Path(..., ge=1),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    """Render the detail panel for a single auto-merge event.
+
+    For merge_auto_resolved events, computes side-by-side diffs of each LLM-
+    proposed file against the current main branch version.
+
+    Args:
+        project_id: The project that owns the event.
+        request: The current FastAPI request.
+        event_id: Primary key of the DaemonEvent row.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with event metadata, diff panels, and verdict form.
+    """
     event = agg.get_event_detail(db, project_id, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail=f"Event {event_id} not found")
@@ -287,6 +401,21 @@ def auto_merge_set_verdict(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Upsert the operator verdict for a merge_auto_resolved event.
+
+    Idempotent — subsequent posts overwrite the previous verdict. Returns JSON
+    when the client accepts application/json, otherwise an HTML event row fragment.
+
+    Args:
+        project_id: The project that owns the event.
+        event_id: Primary key of the DaemonEvent row.
+        body: Verdict and optional justification notes.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        JSON ``{ok, verdict}`` or an HTML event-row fragment.
+    """
     if body.verdict not in ALLOWED_VERDICTS:
         raise HTTPException(
             status_code=400, detail="verdict must be one of pending|correct|wrong|partial"
@@ -344,6 +473,21 @@ def auto_merge_set_config(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Update (or clear) the auto-merge configuration for a project.
+
+    Emits an EVENT_AUTO_MERGE_CONFIG_UPDATED daemon event. Returns JSON when
+    the client accepts application/json; otherwise returns the updated settings
+    fragment plus OOB status chip.
+
+    Args:
+        project_id: The project whose config is updated.
+        body: New phase and/or runtime_option_id values.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        JSON ``{ok, project_id, phase, runtime_option_id}`` or combined HTML fragments.
+    """
     if body.phase not in (None, 0, 1):
         raise HTTPException(status_code=400, detail="phases 2 and 3 are reserved for future CRs")
 
@@ -455,6 +599,17 @@ def auto_merge_rollup(
     db: Session = Depends(get_db),
     window: Literal["7d", "30d"] = Query(default="7d"),
 ) -> HTMLResponse:
+    """Return aggregated auto-merge rollup statistics for a time window.
+
+    Args:
+        project_id: The project to aggregate stats for.
+        request: The current FastAPI request.
+        db: Active database session.
+        window: Rolling look-back window — '7d' or '30d'.
+
+    Returns:
+        HTML fragment with verdict counts, token cost, and refuse-list breakdown.
+    """
     verdict = agg.get_verdict_rollup(db, project_id, window)
     token_cost = agg.get_token_cost_rollup(db, project_id, window)
     try:

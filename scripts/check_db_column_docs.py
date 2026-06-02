@@ -173,7 +173,12 @@ def _load_baseline(path: Path) -> set[str]:
 
 
 def _write_baseline(path: Path, violations: list[Violation]) -> None:
-    """Write violations as a sorted baseline file."""
+    """Write the current violation set as a sorted baseline file.
+
+    Args:
+        path: Destination path for the baseline file.
+        violations: Current violations to persist as the new accepted backlog.
+    """
     lines = sorted({v.as_baseline_line() for v in violations})
     body = BASELINE_HEADER + "\n".join(lines) + ("\n" if lines else "")
     path.write_text(body, encoding="utf-8")
@@ -185,6 +190,12 @@ def _write_baseline(path: Path, violations: list[Violation]) -> None:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser for check_db_column_docs.
+
+    Returns:
+        Configured ArgumentParser with baseline, write-baseline, strict, and
+        JSON output flags.
+    """
     parser = argparse.ArgumentParser(
         prog="check_db_column_docs",
         description=(
@@ -219,6 +230,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Scan SQLAlchemy model columns for missing ``doc=`` descriptions and report results.
+
+    Args:
+        argv: Argument list; defaults to ``sys.argv[1:]`` when None.
+
+    Returns:
+        0 when no new violations are found (after baseline), 1 otherwise.
+    """
     parser = _build_parser()
     args = parser.parse_args(argv)
 

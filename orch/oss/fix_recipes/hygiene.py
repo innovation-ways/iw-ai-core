@@ -1,3 +1,5 @@
+"""Fix recipes for repository hygiene compliance checks (OSS-HYG-*, OSS-ENV-04)."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -19,6 +21,15 @@ LANGUAGE_IGNORES = {
 
 
 def _read_gitignore(repo_root: Path) -> tuple[str, set[str]]:
+    """Read the .gitignore file and return its raw text plus a set of active patterns.
+
+    Args:
+        repo_root: Repository root directory to look up .gitignore in.
+
+    Returns:
+        Tuple of (raw_text, patterns_set) where patterns_set contains every
+        non-blank, non-comment line stripped of surrounding whitespace.
+    """
     gi = repo_root / ".gitignore"
     existing = gi.read_text() if gi.exists() else ""
     lines = existing.splitlines()
@@ -27,6 +38,18 @@ def _read_gitignore(repo_root: Path) -> tuple[str, set[str]]:
 
 
 def _detect_ecosystems(repo_root: Path) -> list[str]:
+    """Infer the project's language ecosystem(s) from well-known manifest files.
+
+    Checks for pyproject.toml/setup.py/requirements.txt (Python), package.json
+    (Node), go.mod (Go), Cargo.toml (Rust), and pom.xml/build.gradle (Java).
+
+    Args:
+        repo_root: Repository root directory to inspect.
+
+    Returns:
+        List of detected ecosystem names (e.g. ``["python"]``). Returns an
+        empty list when no known manifest is found.
+    """
     if (
         (repo_root / "pyproject.toml").exists()
         or (repo_root / "setup.py").exists()
@@ -45,6 +68,12 @@ def _detect_ecosystems(repo_root: Path) -> list[str]:
 
 
 class GitignoreSecretsRecipe:
+    """Fix recipe that adds secret file patterns to .gitignore.
+
+    Addresses OSS-HYG-01: .gitignore missing patterns for common credential
+    files such as .env, PEM keys, and PKCS#12 keystores.
+    """
+
     check_id = "OSS-HYG-01"
     auto_apply_safe = True
 
@@ -96,6 +125,13 @@ register(GitignoreSecretsRecipe())
 
 
 class GitignoreLanguageRecipe:
+    """Fix recipe that adds language-specific build artifact patterns to .gitignore.
+
+    Addresses OSS-HYG-03: .gitignore missing ecosystem-standard patterns such
+    as __pycache__/, .venv/, node_modules/, or target/. The set of patterns
+    added depends on which language manifests are detected in the repository.
+    """
+
     check_id = "OSS-HYG-03"
     auto_apply_safe = True
 
@@ -155,6 +191,13 @@ register(GitignoreLanguageRecipe())
 
 
 class IwDirGitignoreRecipe:
+    """Fix recipe that adds the .iw/ directory to .gitignore.
+
+    Addresses OSS-ENV-04: the IW AI Core working directory (.iw/) is not
+    excluded from version control, risking accidental commits of generated
+    scan artefacts and local config overrides.
+    """
+
     check_id = "OSS-ENV-04"
     auto_apply_safe = True
 

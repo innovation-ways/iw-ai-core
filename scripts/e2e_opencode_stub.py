@@ -1,4 +1,14 @@
-"""Deterministic OpenCode API stub for worktree E2E stacks."""
+"""Deterministic OpenCode API stub for worktree E2E stacks.
+
+Implements the OpenCode 1.15 server API used by the dashboard's chat relay
+(``dashboard/routers/chat.py``) so browser-verification steps can exercise
+the full chat flow — session creation, streaming prompts, abort, permissions,
+and the SSE event bus — without a real LLM. The stub streams chunks at a
+configurable delay so V2/V5 timing assertions are satisfiable.
+
+Run with:  ``opencode serve --hostname 127.0.0.1 --port 4096``
+or:        ``python scripts/e2e_opencode_stub.py serve --port 4096``
+"""
 
 from __future__ import annotations
 
@@ -175,11 +185,25 @@ ADVERTISED_FLAT: list[dict[str, str]] = [
 
 
 def _now_iso() -> str:
+    """Return the current UTC time as an ISO-8601 string ending in ``Z``."""
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(slots=True)
 class SessionState:
+    """Per-session mutable state held in memory by the stub.
+
+    Attributes:
+        session: Raw session dict returned by the ``/session`` and
+                 ``GET /session/{sid}`` endpoints.
+        messages: Accumulated message history in info+parts SDK shape.
+        current_permission_id: ID of the outstanding permission request, or None.
+        permission_future: Future resolved when the operator replies to a
+                           permission prompt; None when no permission is pending.
+        active_task: Background asyncio task running ``_process_prompt``; None
+                     when idle.
+    """
+
     session: dict[str, Any]
     messages: list[dict[str, Any]] = field(default_factory=list)
     current_permission_id: str | None = None
@@ -188,6 +212,19 @@ class SessionState:
 
 
 class StubState:
+    """Global in-memory state for the stub server.
+
+    Attributes:
+        password: Expected Basic-auth password; all protected routes validate
+                  against this value.
+        sessions: Map of session ID to SessionState.
+        session_order: Insertion-ordered list of session IDs for ``GET /session``.
+        event_id: Monotonically incrementing SSE event ID.
+        events: Bounded ring buffer of recent events for reconnect replay.
+        subscribers: Set of per-connection queues that receive new events.
+        lock: Async lock serialising event emission.
+    """
+
     def __init__(self, password: str) -> None:
         self.password = password
         self.sessions: dict[str, SessionState] = {}
@@ -198,6 +235,15 @@ class StubState:
         self.lock = asyncio.Lock()
 
     async def emit(self, event_name: str, properties: dict[str, Any]) -> dict[str, Any]:
+        """Broadcast an SSE event to all active subscribers and buffer it for replay.
+
+        Args:
+            event_name: OpenCode event type string (e.g. ``"message.part.updated"``).
+            properties: Event properties dict forwarded in the SSE ``data`` field.
+
+        Returns:
+            The fully composed event dict including ``id``, ``event``, and ``data``.
+        """
         # Opencode 1.15 wire shape: the JSON in the SSE `data:` field has
         # `type`, `id`, and `properties` keys. The relay (orch/chat/filters.py
         # :normalise) reads `type` to set the event name and forwards
@@ -214,6 +260,15 @@ class StubState:
 
 
 def _decode_basic_token(header: str) -> tuple[str, str] | None:
+    """Decode an HTTP Basic Authorization header into ``(username, password)``.
+
+    Args:
+        header: Raw ``Authorization`` header value (e.g. ``"Basic dXNlcjpwYXNz"``).
+
+    Returns:
+        ``(username, password)`` tuple, or None when the header is malformed or
+        the scheme is not ``Basic``.
+    """
     scheme, _, value = header.partition(" ")
     if scheme.lower() != "basic" or not value:
         return None
@@ -228,6 +283,15 @@ def _decode_basic_token(header: str) -> tuple[str, str] | None:
 
 
 def create_app(password: str) -> FastAPI:
+    """Build and return the FastAPI application with all routes wired.
+
+    Args:
+        password: Basic-auth password; all protected routes reject requests
+                  whose ``Authorization`` header does not carry this value.
+
+    Returns:
+        Configured FastAPI application ready to be served with uvicorn.
+    """
     app = FastAPI(title="e2e-opencode-stub", version="0.1")
     state = StubState(password=password)
 
@@ -533,12 +597,25 @@ def create_app(password: str) -> FastAPI:
 
 
 def _to_sse(event: dict[str, Any]) -> str:
+    """Serialise an event dict to an SSE frame string.
+
+    Args:
+        event: Dict with ``event``, ``data``, and ``id`` keys.
+
+    Returns:
+        Multi-line SSE frame ending with a double newline.
+    """
     import json
 
     return f"event: {event['event']}\ndata: {json.dumps(event['data'])}\nid: {event['id']}\n\n"
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser for the opencode stub entry point.
+
+    Returns:
+        ArgumentParser supporting ``serve`` subcommand and ``--selftest`` flag.
+    """
     parser = argparse.ArgumentParser(prog="opencode")
     parser.add_argument("--selftest", action="store_true")
     subparsers = parser.add_subparsers(dest="command")
@@ -549,6 +626,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse arguments and either run a selftest or start the stub server.
+
+    Args:
+        argv: Argument list; defaults to ``sys.argv[1:]`` when None.
+
+    Returns:
+        0 on success, 2 when the command is not ``serve``.
+    """
     parser = _build_parser()
     args = parser.parse_args(argv)
 

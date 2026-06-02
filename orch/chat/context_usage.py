@@ -14,6 +14,17 @@ DEFAULT_SAFETY_BUFFER_TOKENS = 20_000
 
 @dataclass(frozen=True)
 class ContextUsage:
+    """Snapshot of context-window usage for a single chat session.
+
+    Attributes:
+        status: Whether usage is fully known, the window size is unknown,
+            or the runtime itself is unavailable.
+        pct: Usage as a percentage in [0, 100], or None when unknown.
+        used_tokens: Tokens consumed by the conversation so far, or None.
+        window_tokens: The model's context-window size in tokens, or None.
+        reason: Human-readable explanation when status is not "known".
+    """
+
     status: Literal["known", "unknown_window", "unknown_runtime"]
     pct: float | None
     used_tokens: int | None
@@ -355,6 +366,23 @@ def resolve_context_usage_opencode(
     tab_model: str | None,
     messages: list[Any],
 ) -> ContextUsage:
+    """Compute context usage for an OpenCode-backed chat session.
+
+    Resolves provider and model from message history or tab_model string,
+    looks up the context window from the providers catalogue, then delegates
+    to compute_context_pct.
+
+    Args:
+        client_healthy: Whether the OpenCode runtime is up and reachable.
+        providers: Decoded JSON from GET /config/providers.
+        tab_model: The tab's currently-selected model string in
+            ``"<providerId>/<modelId>"`` form, used as fallback when messages
+            carry no provider/model info.
+        messages: Full message history for the session.
+
+    Returns:
+        ContextUsage with status "known", "unknown_window", or "unknown_runtime".
+    """
     if not client_healthy:
         return _finalize_context_usage(
             ContextUsage(
@@ -423,6 +451,22 @@ def resolve_context_usage_pi(
     tab_model: str | None,
     messages: list[Any],
 ) -> ContextUsage:
+    """Compute context usage for a Pi-backed chat session.
+
+    Reads context_window_tokens from agent_runtime_option, normalises Pi
+    messages to the OpenCode token shape, then delegates to compute_context_pct.
+
+    Args:
+        pi_healthy: Whether the Pi runtime binary is available on PATH.
+        agent_runtime_option: The AgentRuntimeOption row for the session (may
+            be None when not yet resolved or missing from the catalogue).
+        tab_model: The tab's currently-selected model string, used in error
+            messages when the window size is unknown.
+        messages: Full message history as returned by PiRuntime.get_messages().
+
+    Returns:
+        ContextUsage with status "known", "unknown_window", or "unknown_runtime".
+    """
     if not pi_healthy:
         return _finalize_context_usage(
             ContextUsage(

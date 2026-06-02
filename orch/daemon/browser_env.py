@@ -93,7 +93,16 @@ _DEFAULT_PORT_POOL = {
 
 
 def _compute_port_offset(project_id: str, item_id: str, pool_size: int) -> int:
-    """Return a deterministic integer offset in [0, pool_size)."""
+    """Return a deterministic integer offset in [0, pool_size) derived from project and item IDs.
+
+    Args:
+        project_id: Project identifier mixed into the hash.
+        item_id: Work item identifier mixed into the hash.
+        pool_size: Size of the port pool; the offset is clamped to this range.
+
+    Returns:
+        An integer in ``[0, pool_size)``.
+    """
     h = int(hashlib.sha256(f"{project_id}/{item_id}".encode()).hexdigest(), 16)
     return h % pool_size
 
@@ -148,10 +157,20 @@ def _pick_free_offset(pool_cfg: dict[str, Any], project_id: str, item_id: str) -
 
 
 def _state_file_path(worktree_path: str, item_id: str) -> Path:
+    """Return the canonical path for storing a work item's persisted port offset."""
     return Path(worktree_path) / ".tmp" / f"browser_env_{item_id}.state"
 
 
 def _load_persisted_offset(worktree_path: str, item_id: str) -> int | None:
+    """Read the previously persisted port offset from the state file.
+
+    Args:
+        worktree_path: Absolute path to the worktree root.
+        item_id: Work item identifier used in the state file name.
+
+    Returns:
+        The persisted integer offset, or None if the state file is absent or corrupt.
+    """
     state_path = _state_file_path(worktree_path, item_id)
     if not state_path.exists():
         return None
@@ -164,12 +183,25 @@ def _load_persisted_offset(worktree_path: str, item_id: str) -> int | None:
 
 
 def _save_persisted_offset(worktree_path: str, item_id: str, offset: int) -> None:
+    """Persist the chosen port offset to the state file.
+
+    Args:
+        worktree_path: Absolute path to the worktree root.
+        item_id: Work item identifier used in the state file name.
+        offset: Port pool offset to persist for future teardown use.
+    """
     state_path = _state_file_path(worktree_path, item_id)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps({"offset": offset}))
 
 
 def _delete_persisted_offset(worktree_path: str, item_id: str) -> None:
+    """Remove the state file for a work item's port offset. Silently ignores missing files.
+
+    Args:
+        worktree_path: Absolute path to the worktree root.
+        item_id: Work item identifier whose state file should be deleted.
+    """
     state_path = _state_file_path(worktree_path, item_id)
     try:
         state_path.unlink(missing_ok=True)
@@ -188,6 +220,22 @@ def _build_env(
     item_id: str,
     offset: int,
 ) -> dict[str, str]:
+    """Build the environment variable dict for a browser_verification step.
+
+    Computes port assignments from the pool offset, expands the base-URL
+    template, injects E2E credentials, and snapshots orch DB credentials
+    as ``IW_CORE_ORCH_DB_*`` while overriding ``IW_CORE_DB_*`` to point at
+    the isolated E2E Postgres container.
+
+    Args:
+        bv_cfg: The ``browser_verification`` block from ``.iw-orch.json``.
+        project_id: Project identifier used to derive the compose project name.
+        item_id: Work item identifier used in compose project naming.
+        offset: Port pool slot index selecting the four base ports.
+
+    Returns:
+        Dictionary of environment variable names to their string values.
+    """
     pool_cfg = {**_DEFAULT_PORT_POOL, **bv_cfg.get("port_pool", {})}
 
     compose_prefix = bv_cfg.get("compose_project_prefix") or f"{project_id}-e2e"
@@ -382,6 +430,17 @@ def render_prompt_substitutions(prompt_text: str, env: dict[str, str]) -> str:
 
 
 def _log_path(worktree_path: str, item_id: str, step_id: str, suffix: str) -> Path:
+    """Return the path for a browser-env log file, creating the log directory if needed.
+
+    Args:
+        worktree_path: Absolute path to the worktree root.
+        item_id: Work item identifier used in the file name.
+        step_id: Step identifier used in the file name.
+        suffix: Log type suffix (e.g. ``browser_env_up``).
+
+    Returns:
+        Path to ``<worktree>/ai-dev/logs/<item_id>_<step_id>_<suffix>.log``.
+    """
     log_dir = Path(worktree_path) / "ai-dev" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir / f"{item_id}_{step_id}_{suffix}.log"

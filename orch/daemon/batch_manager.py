@@ -1925,6 +1925,12 @@ def substitute_worktree_placeholders(
     """
 
     def _replace(m: re.Match[str]) -> str:
+        """Substitute a single placeholder match with its resolved value.
+
+        Handles the known WORKTREE_*/BATCH_*/PROJECT_* keys, raises
+        UnresolvedWorktreePlaceholderError for WORKTREE_* keys on legacy
+        (no-compose) items, and returns the original match text for unknown keys.
+        """
         key = m.group(1)
         known_keys = (
             "WORKTREE_APP_PORT",

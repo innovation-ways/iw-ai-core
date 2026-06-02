@@ -12,12 +12,27 @@ from typing import TypedDict
 
 
 class DomainCopy(TypedDict):
+    """Human-readable editorial copy describing an OSS compliance domain.
+
+    Attributes:
+        name: Display name for the domain (e.g. ``"Secrets scanning"``).
+        what: Short description of what checks in this domain inspect.
+        risk: Business or security risk if findings in this domain are not addressed.
+    """
+
     name: str
     what: str
     risk: str
 
 
 class SeverityCopy(TypedDict):
+    """Human-readable editorial copy for a severity level used in OSS findings.
+
+    Attributes:
+        label: Short display label (e.g. ``"Critical — blocks publish"``).
+        impact: Explanation of the real-world impact if the finding is published as-is.
+    """
+
     label: str
     impact: str
 
@@ -287,6 +302,15 @@ STATUS_COPY: dict[str, dict[str, str]] = {
 
 
 def domain_copy(domain: str) -> DomainCopy:
+    """Return editorial copy for a compliance domain, with a safe fallback.
+
+    Args:
+        domain: Domain key such as ``"secrets"`` or ``"hygiene"``.
+
+    Returns:
+        DomainCopy with name, what, and risk fields populated; uses a
+        title-cased version of the domain key when not found in the catalog.
+    """
     return DOMAIN_CONTEXT.get(
         domain,
         {
@@ -298,6 +322,15 @@ def domain_copy(domain: str) -> DomainCopy:
 
 
 def severity_copy(severity: str) -> SeverityCopy:
+    """Return editorial copy for a severity level, with a safe fallback.
+
+    Args:
+        severity: Severity string such as ``"MUST"``, ``"SHOULD"``, or ``"INFO"``.
+
+    Returns:
+        SeverityCopy with label and impact fields; uses the raw severity string
+        as the label and a generic impact message when not found in the catalog.
+    """
     return SEVERITY_IMPACT.get(
         severity,
         {"label": severity, "impact": "Impact not classified."},
@@ -305,4 +338,13 @@ def severity_copy(severity: str) -> SeverityCopy:
 
 
 def status_copy(status: str) -> dict[str, str]:
+    """Return editorial copy for a finding status, with a safe fallback.
+
+    Args:
+        status: Status string such as ``"pass"``, ``"fail"``, or ``"accepted"``.
+
+    Returns:
+        Dict with ``"label"`` and ``"line"`` keys; falls back to the uppercased
+        status and an empty line when the status is not in the catalog.
+    """
     return STATUS_COPY.get(status, {"label": status.upper(), "line": ""})

@@ -114,6 +114,11 @@ def _added_migration_files() -> list[Path]:
 
 
 def main() -> int:
+    """Scan newly-added migration files for hardcoded ``down_revision`` values.
+
+    Returns:
+        0 when no violations are found (or no added migrations exist), 1 otherwise.
+    """
     violations: list[str] = []
     for path in _added_migration_files():
         for lineno, snippet in check_file(path):

@@ -374,12 +374,28 @@ cover the module directly, say so explicitly in your answer.
         return _truncate_messages_to_budget(history, HISTORY_SOFT_BUDGET_TOKENS)  # type: ignore[arg-type,return-value]
 
     def _make_llm(self, ollama_url: str) -> Ollama:
+        """Construct an Ollama LLM instance using the project's resolved LLM model.
+
+        Args:
+            ollama_url: Base URL of the Ollama server.
+
+        Returns:
+            Configured Ollama instance ready for completions or streaming.
+        """
         return Ollama(
             model=self.config.resolved_llm_model(),
             base_url=ollama_url,
         )
 
     def _cache_get(self, render_id: str) -> object | None:
+        """Return the cached evidence bundle for render_id, or None if absent or expired.
+
+        Args:
+            render_id: Cache key for the render request.
+
+        Returns:
+            The cached EvidenceBundle object, or None if not found or TTL exceeded.
+        """
         with self._render_cache_lock:
             if render_id not in self._render_cache:
                 return None
@@ -391,6 +407,13 @@ cover the module directly, say so explicitly in your answer.
             return bundle
 
     def _cache_put(self, render_id: str, bundle: object, question: str) -> None:
+        """Insert or replace a render cache entry, evicting expired or overflow entries first.
+
+        Args:
+            render_id: Cache key for the render request.
+            bundle: EvidenceBundle to cache.
+            question: Original question string stored alongside the bundle.
+        """
         with self._render_cache_lock:
             self._evict_expired_locked()
             if len(self._render_cache) >= RENDER_CACHE_MAX:
@@ -412,6 +435,20 @@ cover the module directly, say so explicitly in your answer.
         session: Session,
         _context_level: str = "",
     ) -> EvidenceBundle:
+        """Build an EvidenceBundle by running semantic and FTS retrieval for the question.
+
+        Performs two parallel retrieval passes: LanceDB semantic search over the docs
+        index and PostgreSQL full-text search over WorkItem.functional_doc_search.
+
+        Args:
+            project_id: Project to scope all retrieval queries.
+            question: The user's question used for both embedding and FTS.
+            session: Active SQLAlchemy session for FTS and WorkItem queries.
+            _context_level: Unused context level hint kept for interface consistency.
+
+        Returns:
+            EvidenceBundle populated with doc_chunks from LanceDB and fts_items from Postgres.
+        """
         from orch.db.models import WorkItem
         from orch.rag.evidence import DocChunk
 
@@ -471,6 +508,17 @@ cover the module directly, say so explicitly in your answer.
         return bundle
 
     async def _fetch_full_work_items(self, work_items: list[Any], session: Session) -> list[Any]:
+        """Reload work items that are missing functional_doc_content or other required fields.
+
+        Merges the freshly loaded rows back into the original list, preserving order.
+
+        Args:
+            work_items: List of WorkItem-like objects from retrieval (may be partially loaded).
+            session: Active SQLAlchemy session for loading missing rows.
+
+        Returns:
+            List of fully-loaded WorkItem objects in the same order as the input.
+        """
         from orch.db.models import WorkItem
 
         if not work_items:
@@ -522,6 +570,21 @@ cover the module directly, say so explicitly in your answer.
         full_items: list[Any] | None = None,
         register: str = "functional",  # noqa: ARG002
     ) -> str:
+        """Build the work-item context block to inject into the system prompt.
+
+        Formats the top-ranked work items as numbered candidates with their
+        functional_doc_content (or summary for compact items). Truncates the
+        overall block to 56000 characters to stay within LLM context limits.
+
+        Args:
+            bundle: EvidenceBundle whose work_items are used as fallback if full_items is None.
+            full_items: Fully-loaded WorkItem objects to format; takes precedence over bundle items.
+            register: Unused register hint kept for interface compatibility.
+
+        Returns:
+            A markdown-formatted string with the work-item relevance filter header and
+            candidate sections, or empty string if no items are available.
+        """
         items = full_items if full_items is not None else bundle.work_items
         if not items:
             return ""
@@ -593,6 +656,26 @@ cover the module directly, say so explicitly in your answer.
         symbol_hint: str | None = None,
         conversation_id: str | None = None,
     ) -> AsyncGenerator[dict[str, object], None]:
+        """Stream structured events for a work-item-aware or code-only RAG answer.
+
+        Classifies the query first. Code-only queries are routed directly to
+        answer_stream with token events. Work-item-aware queries perform evidence
+        retrieval, ranking, and citation extraction before streaming the answer.
+
+        Yields dicts with a 'kind' key of 'phase', 'token', or 'citation'.
+
+        Args:
+            question: The user's question text.
+            context_level: Retrieval scope — "project" or "module".
+            context_doc_id: Optional ProjectDoc ID to inject as architecture context.
+            conversation_history: Prior turns for backwards-compatible callers.
+            session: Active SQLAlchemy session for DB queries.
+            module_path: Module path used for LanceDB filtering when context_level is "module".
+            module_name: Human-readable module name for the system prompt.
+            context_chips: Slash-command chips that can override classifier routing.
+            symbol_hint: Optional symbol name to surface in evidence metadata.
+            conversation_id: When provided, loads history from DB instead of argument.
+        """
         from orch.rag.citation_allowlist import extract_citations, filter_citations
         from orch.rag.classifier import classify_query
         from orch.rag.git_log_resolver import resolve_work_items_for_files
@@ -706,6 +789,19 @@ def _emit_citation(
     url: str,
     snippet: str,
 ) -> dict[str, object]:
+    """Build a citation event dict for streaming to the client.
+
+    Args:
+        n: 1-based citation index for display ordering.
+        work_item_type: Type string (e.g. "feature", "incident").
+        work_item_id: Work-item ID (e.g. "F-00042").
+        label: Display label shown in the citation card.
+        url: Relative URL linking to the work-item detail page.
+        snippet: Short excerpt from the work-item content.
+
+    Returns:
+        Dict with kind="citation" and the above fields.
+    """
     return {
         "kind": "citation",
         "n": n,
@@ -718,6 +814,15 @@ def _emit_citation(
 
 
 def _emit_phase(name: str, detail: dict[str, object] | None) -> dict[str, object]:
+    """Build a phase-progress event dict for streaming to the client.
+
+    Args:
+        name: Phase name (e.g. "retrieving", "composing", "finding_items").
+        detail: Optional dict with phase-specific progress metadata.
+
+    Returns:
+        Dict with kind="phase", name, and detail fields.
+    """
     return {
         "kind": "phase",
         "name": name,
@@ -726,6 +831,14 @@ def _emit_phase(name: str, detail: dict[str, object] | None) -> dict[str, object
 
 
 def _emit_token(text: str) -> dict[str, object]:
+    """Build a token event dict for streaming to the client.
+
+    Args:
+        text: The streamed text delta from the LLM.
+
+    Returns:
+        Dict with kind="token" and text fields.
+    """
     return {
         "kind": "token",
         "text": text,
@@ -741,6 +854,24 @@ def _merge_and_rank_work_items(
     beta: float = 0.20,
     gamma: float = 0.35,
 ) -> list[Any]:
+    """Merge and rank work items from multiple retrieval sources using a weighted score.
+
+    Combines FTS rank (alpha), semantic similarity from the docs LanceDB index (gamma),
+    and git-log proximity (beta) into a single combined score per work-item ID.
+    Returns the top-5 items sorted by descending combined score.
+
+    Args:
+        code_chunks: Code chunks from the code LanceDB index (currently unused in scoring).
+        doc_chunks: Doc chunks from the docs LanceDB index providing semantic scores.
+        fts_items: WorkItem rows from Postgres FTS with a rank attribute.
+        git_log_items: WorkItem rows resolved via git log.
+        alpha: Weight for FTS rank contribution (default 0.45).
+        beta: Weight for git-log presence contribution (default 0.20).
+        gamma: Weight for semantic similarity contribution (default 0.35).
+
+    Returns:
+        Up to 5 WorkItem-like objects sorted by combined score descending.
+    """
     if not fts_items and not git_log_items and not doc_chunks:
         return []
 

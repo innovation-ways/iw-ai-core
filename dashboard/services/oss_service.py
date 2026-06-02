@@ -51,6 +51,15 @@ def _utcnow() -> datetime:
 
 
 def _truncate_tail(content: str) -> str:
+    """Truncate content to the last _STDOUT_TAIL_BYTES bytes, preserving valid UTF-8.
+
+    Args:
+        content: Raw string output to trim.
+
+    Returns:
+        The original string if it fits within the byte limit, otherwise the
+        trailing bytes decoded back to a string with replacement on bad sequences.
+    """
     encoded = content.encode("utf-8", errors="replace")
     if len(encoded) <= _STDOUT_TAIL_BYTES:
         return content
@@ -103,6 +112,14 @@ async def _stream_to_tail(
 
 
 def _git_head(repo_root: str) -> str | None:
+    """Return the full SHA of the current HEAD commit for a repository.
+
+    Args:
+        repo_root: Absolute path to the git repository root.
+
+    Returns:
+        40-character hex SHA string, or None if git is unavailable or the call fails.
+    """
     try:
         git_path_str = subprocess.run(
             ["git", "which", "git"], capture_output=True, text=True

@@ -1,3 +1,5 @@
+"""Fix recipes for CI/CD workflow compliance checks (OSS-CI-*)."""
+
 from __future__ import annotations
 
 from textwrap import dedent
@@ -35,6 +37,11 @@ def _load_config(repo_root: Path) -> dict[str, Any]:
 
 
 class CodeqlWorkflowRecipe:
+    """Fix recipe that generates a GitHub Actions CodeQL analysis workflow.
+
+    Addresses OSS-CI-06: absence of a static analysis / SAST workflow.
+    """
+
     check_id = "OSS-CI-06"
     auto_apply_safe = True
 
@@ -96,6 +103,11 @@ register(CodeqlWorkflowRecipe())
 
 
 class ScorecardWorkflowRecipe:
+    """Fix recipe that generates an OpenSSF Scorecard GitHub Actions workflow.
+
+    Addresses OSS-CI-07: absence of a supply-chain security scorecard workflow.
+    """
+
     check_id = "OSS-CI-07"
     auto_apply_safe = True
 
@@ -159,6 +171,11 @@ register(ScorecardWorkflowRecipe())
 
 
 class DependabotRecipe:
+    """Fix recipe that generates a Dependabot configuration file.
+
+    Addresses OSS-CI-08: absence of automated dependency update configuration.
+    """
+
     check_id = "OSS-CI-08"
     auto_apply_safe = True
 
@@ -204,6 +221,11 @@ register(DependabotRecipe())
 
 
 class ComplianceScanWorkflowRecipe:
+    """Fix recipe that generates an OSS compliance scan GitHub Actions workflow.
+
+    Addresses OSS-CI-09: absence of an automated compliance gate in CI.
+    """
+
     check_id = "OSS-CI-09"
     auto_apply_safe = True
 
@@ -258,6 +280,12 @@ register(ComplianceScanWorkflowRecipe())
 
 
 class ActionPinningRecipe:
+    """Fix recipe that pins GitHub Actions to their commit SHAs using pinact.
+
+    Addresses OSS-CI-02: workflow actions referenced by mutable tag rather than
+    an immutable commit SHA, which is a supply-chain security risk.
+    """
+
     check_id = "OSS-CI-02"
     auto_apply_safe = True
 

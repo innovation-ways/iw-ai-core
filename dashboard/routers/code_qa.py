@@ -75,11 +75,31 @@ except ImportError:
 
 
 class ConversationMessage(BaseModel):
+    """A single message in a conversation history (deprecated — kept for backward compatibility).
+
+    Attributes:
+        role: Speaker role ('user' or 'assistant').
+        content: Message text content.
+    """
+
     role: str
     content: str
 
 
 class QARequest(BaseModel):
+    """Request body for the Code Q&A streaming endpoint.
+
+    Attributes:
+        question: The user's question (1–1000 characters).
+        context_level: Either 'architecture' or 'module'.
+        context_doc_id: Optional doc ID to use as context.
+        module_path: Relative path of the focused module when context_level='module'.
+        module_name: Human-readable name of the focused module.
+        conversation_id: ID of the existing conversation to continue, or None to start a new one.
+        conversation_history: Deprecated; ignored server-side.
+        context_chips: Active UI chips that modify retrieval behaviour (e.g. 'findusages').
+    """
+
     question: str = Field(..., min_length=1, max_length=1000)
     context_level: str = Field(..., pattern="^(architecture|module)$")
     context_doc_id: str | None = None
@@ -93,6 +113,13 @@ class QARequest(BaseModel):
 
 
 class QARerenderRequest(BaseModel):
+    """Request body for re-rendering a previously generated Q&A response.
+
+    Attributes:
+        render_id: Identifier of the response to re-render.
+        tone: Target tone — 'technical' or 'functional'.
+    """
+
     render_id: str = Field(..., min_length=1)
     tone: str = Field(..., pattern="^(technical|functional)$")
 
@@ -135,6 +162,18 @@ class _CitationTracker:
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a project by ID or raise HTTP 404.
+
+    Args:
+        project_id: The project identifier to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the project does not exist.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")

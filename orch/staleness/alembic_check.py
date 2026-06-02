@@ -88,8 +88,13 @@ def _parse_revision_from_verbose(output: str) -> str | None:
     starts directly with ``Rev: <rev_id>``. We scan for the first line
     whose stripped form starts with ``Rev: `` and return the token after it.
 
-    Returns None when no ``Rev:`` line is present (e.g. an empty database
-    with no migrations applied yet).
+    Args:
+        output: Full stdout from an ``alembic current --verbose`` or
+            ``alembic heads --verbose`` invocation.
+
+    Returns:
+        The first revision ID found, or None when no Rev: line is present
+        (e.g. an empty database with no migrations applied yet).
     """
     for line in output.splitlines():
         stripped = line.strip()
@@ -110,6 +115,12 @@ def _parse_message_from_verbose(output: str) -> str:
 
     We return the first non-empty line after ``Path:`` that isn't a
     docstring-metadata line. Falls back to an empty string.
+
+    Args:
+        output: Full stdout from an ``alembic heads --verbose`` invocation.
+
+    Returns:
+        The first non-metadata line from the migration docstring, or empty string.
     """
     seen_path = False
     for line in output.splitlines():

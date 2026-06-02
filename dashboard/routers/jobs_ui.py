@@ -28,6 +28,18 @@ router = APIRouter(prefix="/project/{project_id}")
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a project by ID or raise HTTP 404.
+
+    Args:
+        project_id: The project identifier to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the project does not exist.
+    """
     project: Project | None = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
@@ -89,6 +101,21 @@ def jobs_page(
     date_to: str | None = None,
     page: int = 1,
 ) -> Any:
+    """Render the paginated unified jobs list page for a project.
+
+    Args:
+        project_id: The project whose jobs are listed.
+        request: The current FastAPI request.
+        db: Active database session.
+        type: Optional job type filter(s).
+        status: Optional job status filter(s).
+        date_from: ISO date string for the inclusive start of the date range.
+        date_to: ISO date string for the inclusive end of the date range.
+        page: 1-based page number.
+
+    Returns:
+        Full HTML jobs page with filter controls and paginated rows.
+    """
     project = _get_project_or_404(project_id, db)
 
     filter_types: list[JobType] | None = None
@@ -159,6 +186,21 @@ def jobs_fragment_table(
     date_to: str | None = None,
     page: int = 1,
 ) -> Any:
+    """Return the jobs table fragment for htmx partial updates.
+
+    Args:
+        project_id: The project whose jobs are listed.
+        request: The current FastAPI request.
+        db: Active database session.
+        type: Optional job type filter(s).
+        status: Optional job status filter(s).
+        date_from: ISO date string for the inclusive start of the date range.
+        date_to: ISO date string for the inclusive end of the date range.
+        page: 1-based page number.
+
+    Returns:
+        HTML fragment with the jobs table rows and pagination.
+    """
     project = _get_project_or_404(project_id, db)
 
     filter_types: list[JobType] | None = None
@@ -224,6 +266,18 @@ def job_detail(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the detail page for a single job.
+
+    Args:
+        project_id: The project that owns the job.
+        job_type: Job type string matching a JobType enum value.
+        job_id: Job identifier (public ID or UUID).
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML job detail page.
+    """
     _get_project_or_404(project_id, db)
 
     try:

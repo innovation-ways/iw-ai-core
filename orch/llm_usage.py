@@ -295,7 +295,15 @@ def _oauth_is_expired(entry: dict[str, Any]) -> bool:
 
 
 def _codex_zero(status: str) -> dict[str, Any]:
-    """Return the zeroed Codex usage dict tagged with `status`."""
+    """Return the zeroed Codex usage dict tagged with `status`.
+
+    Args:
+        status: One of the _CODEX_STATUS_* constants.
+
+    Returns:
+        Dict with block_pct=0, week_pct=0, *_reset=None, plan_type=None,
+        and the given status.
+    """
     return {
         "block_pct": 0,
         "week_pct": 0,
@@ -340,7 +348,14 @@ def _load_openai_oauth() -> dict[str, Any] | None:
 
 
 def _codex_window_pct(window: Any) -> int:
-    """Extract used_percent from a RateLimitWindowSnapshot dict; 0 if missing/invalid."""
+    """Extract used_percent from a RateLimitWindowSnapshot dict; 0 if missing/invalid.
+
+    Args:
+        window: A dict (or any value) from the Codex rate_limit response.
+
+    Returns:
+        Integer 0–100 representing used percentage.
+    """
     if not isinstance(window, dict):
         return 0
     raw = window.get("used_percent")
@@ -350,7 +365,14 @@ def _codex_window_pct(window: Any) -> int:
 
 
 def _codex_window_reset_ts(window: Any) -> int:
-    """Extract reset_at (epoch seconds) from a window dict; 0 if missing/invalid."""
+    """Extract reset_at (epoch seconds) from a window dict; 0 if missing/invalid.
+
+    Args:
+        window: A dict (or any value) from the Codex rate_limit response.
+
+    Returns:
+        Unix epoch seconds as integer, or 0 when absent or invalid.
+    """
     if not isinstance(window, dict):
         return 0
     raw = window.get("reset_at")

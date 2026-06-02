@@ -31,6 +31,14 @@ from orch.db.models import WorkItem  # noqa: E402
 
 
 def _load_curation(curation_path: Path) -> dict:
+    """Load the curation JSON file and return its parsed contents.
+
+    Args:
+        curation_path: Path to the ``eval_set_f00055_curation.json`` file.
+
+    Returns:
+        Parsed JSON dict with ``project_id`` and ``queries`` keys.
+    """
     with curation_path.open() as f:
         return json.load(f)
 
@@ -74,7 +82,18 @@ def _build_eval_tuple(
     session: Session,
     project_id: str,
 ) -> dict:
-    """Build a complete eval tuple from a curation entry by filling in DB data."""
+    """Build a complete eval tuple by enriching a curation entry with live DB titles.
+
+    Args:
+        curation_entry: Single query dict from the curation file with keys such
+                        as ``question``, ``must_cite_work_items``, and
+                        ``expected_terms``.
+        session: Active SQLAlchemy session for work-item title lookups.
+        project_id: Project to query when resolving work-item metadata.
+
+    Returns:
+        Enriched eval tuple dict ready for serialisation into the fixture file.
+    """
     question = curation_entry["question"]
     context_chips = curation_entry.get("context_chips", [])
     must_cite = curation_entry.get("must_cite_work_items", [])
@@ -133,6 +152,12 @@ def _build_eval_tuple(
 
 
 def main() -> int:
+    """Connect to the platform DB and regenerate the F-00055 eval fixture file.
+
+    Returns:
+        0 on success, 1 when the curation file is missing or any ``must_cite``
+        IDs are no longer present in the DB.
+    """
     parser = argparse.ArgumentParser(description="Regenerate eval_set_f00055.json from platform DB")
     parser.add_argument(
         "--project-id",

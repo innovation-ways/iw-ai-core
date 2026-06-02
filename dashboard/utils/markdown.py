@@ -465,6 +465,20 @@ def render_markdown_with_callouts(text: str | None, render_mermaid: bool = True)
 
 
 def _convert_callout_blockquotes(html: str) -> str:
+    """Convert GitHub-style ``[!TYPE]`` blockquotes to styled callout divs.
+
+    Scans the parsed HTML for ``<blockquote>`` elements whose first ``<p>``
+    child starts with a ``[!NOTE|TIP|WARNING|DANGER|IMPORTANT]`` marker and
+    replaces each with a ``<div class="callout callout-{type}">`` structure
+    containing a header and body element.  Blockquotes without a recognised
+    marker are left untouched.
+
+    Args:
+        html: HTML string produced by the markdown converter.
+
+    Returns:
+        HTML string with callout blockquotes transformed into styled divs.
+    """
     soup = BeautifulSoup(html, "html.parser")
 
     for blockquote in soup.find_all("blockquote"):

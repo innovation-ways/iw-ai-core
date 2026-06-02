@@ -45,12 +45,21 @@ _BAD_FORMAT_RE = re.compile(
 
 
 def _iter_template_files() -> list[Path]:
+    """Return a sorted list of all HTML template files under the dashboard templates directory."""
     if not TEMPLATE_DIR.is_dir():
         return []
     return sorted(TEMPLATE_DIR.rglob("*.html"))
 
 
 def check_file(path: Path) -> list[tuple[int, str]]:
+    """Scan a single Jinja2 template for str.format-style ``{}`` placeholders piped to ``|format``.
+
+    Args:
+        path: HTML template file to scan.
+
+    Returns:
+        List of ``(line_number, matched_snippet)`` tuples for each violation.
+    """
     findings: list[tuple[int, str]] = []
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         for m in _BAD_FORMAT_RE.finditer(line):
@@ -59,6 +68,11 @@ def check_file(path: Path) -> list[tuple[int, str]]:
 
 
 def main() -> int:
+    """Scan all dashboard templates and report Jinja2 format-filter violations.
+
+    Returns:
+        0 when no violations are found, 1 otherwise.
+    """
     violations: list[str] = []
     for path in _iter_template_files():
         for lineno, snippet in check_file(path):

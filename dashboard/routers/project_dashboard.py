@@ -44,7 +44,15 @@ router = APIRouter(prefix="/project/{project_id}")
 
 @dataclass
 class BatchSummary:
-    """Summary of a single batch for the dashboard active-batches list."""
+    """Summary of a single batch for the dashboard active-batches list.
+
+    Attributes:
+        id: Batch identifier.
+        status: Current batch status string.
+        total_items: Total number of work items in the batch.
+        completed_items: Count of items in completed or merged status.
+        progress_pct: Overall step progress percentage (0–100).
+    """
 
     id: str
     status: str
@@ -55,7 +63,15 @@ class BatchSummary:
 
 @dataclass
 class ActivityEntry:
-    """A single daemon_events row for the activity feed."""
+    """A single daemon_events row for the activity feed.
+
+    Attributes:
+        timestamp: When the event was created.
+        event_type: Event type string (e.g. 'step_completed').
+        entity_id: Optional ID of the entity the event relates to.
+        entity_type: Optional type of entity ('item', 'batch', etc.).
+        message: Optional human-readable event description.
+    """
 
     timestamp: datetime
     event_type: str
@@ -66,7 +82,14 @@ class ActivityEntry:
 
 @dataclass
 class GitStatus:
-    """Git state for the project repo."""
+    """Git state for the project repo.
+
+    Attributes:
+        branch: Currently checked-out branch name.
+        unpushed: Number of commits ahead of the remote tracking branch.
+        worktrees: Number of active agent worktrees (excluding main).
+        error: Non-None when git commands failed.
+    """
 
     branch: str
     unpushed: int
@@ -76,7 +99,14 @@ class GitStatus:
 
 @dataclass
 class WeekRow:
-    """Weekly quality KPI row (AC6)."""
+    """Weekly quality KPI row (AC6).
+
+    Attributes:
+        iso_week: ISO week label in the form 'YYYY-WNN'.
+        merges: Count of work items completed in this week.
+        regressions: Count of regressions whose classified_at falls in this week.
+        rate: regressions / merges; 0.0 when merges == 0.
+    """
 
     iso_week: str
     merges: int
@@ -212,6 +242,18 @@ def regression_count_for_merge(
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a project by ID or raise HTTP 404.
+
+    Args:
+        project_id: The project identifier to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the project does not exist.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
@@ -381,6 +423,16 @@ def project_dashboard(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the per-project dashboard home page.
+
+    Args:
+        project_id: The project to render the dashboard for.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML dashboard page with activity feed, active batches, KPIs, and git status.
+    """
     project = _get_project_or_404(project_id, db)
     running_count = _running_steps_count(project_id, db)
     active = _active_batches(project_id, db)

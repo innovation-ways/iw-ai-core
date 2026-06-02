@@ -10,6 +10,12 @@ import yaml
 
 
 def main() -> int:
+    """Curl /health for each service listed in docker-compose.e2e.yml and report results.
+
+    Returns:
+        0 when all services pass the health check, 1 when any service fails
+        or the compose file is missing.
+    """
     compose_path = Path("docker-compose.e2e.yml")
     if not compose_path.exists():
         print("FAIL  docker-compose.e2e.yml not found", file=sys.stderr)

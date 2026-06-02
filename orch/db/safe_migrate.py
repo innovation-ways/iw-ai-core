@@ -324,6 +324,11 @@ class _AlembicRevisionCapture(logging.Handler):
         self.revisions: list[str] = []
 
     def emit(self, record: logging.LogRecord) -> None:
+        """Parse a log record and append the destination revision when matched.
+
+        Args:
+            record: Log record emitted by the alembic.runtime.migration logger.
+        """
         match = _ALEMBIC_UPGRADE_LINE.search(record.getMessage())
         if match is not None:
             self.revisions.append(match.group(1))

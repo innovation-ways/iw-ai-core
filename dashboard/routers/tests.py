@@ -51,6 +51,20 @@ def _get_test_config(project: Project) -> dict[str, Any]:
 
 @dataclass
 class AllureSummary:
+    """Parsed summary statistics from an Allure report JSON.
+
+    Attributes:
+        total: Total test count.
+        passed: Count of passed tests.
+        failed: Count of failed tests.
+        skipped: Count of skipped tests.
+        broken: Count of broken tests.
+        duration_ms: Total duration in milliseconds.
+        run_id: TestRun primary key, or None.
+        category: Test category key.
+        started_at: When the run started, or None.
+    """
+
     total: int = 0
     passed: int = 0
     failed: int = 0
@@ -63,6 +77,15 @@ class AllureSummary:
 
     @classmethod
     def from_json(cls, data: dict[str, Any], run: TestRun) -> AllureSummary:
+        """Construct an AllureSummary from a parsed allure-report summary.json dict.
+
+        Args:
+            data: Parsed contents of the Allure summary.json file.
+            run: The TestRun row whose metadata is merged in.
+
+        Returns:
+            AllureSummary populated from both the JSON and the run row.
+        """
         stat = data.get("statistic", {})
         time_info = data.get("time", {})
         return cls(
@@ -91,6 +114,18 @@ def tests_page(
     tab: str = "launch",
     run: int | None = None,
 ) -> Any:
+    """Render the Tests page with launch, runs, or results tab.
+
+    Args:
+        project_id: The project whose test config is used.
+        request: The current FastAPI request.
+        db: Active database session.
+        tab: Active tab — 'launch', 'runs', or 'results'.
+        run: Optional run ID to pre-select on the results tab.
+
+    Returns:
+        Full HTML tests page for the requested tab.
+    """
     project = get_project_or_404(project_id, db)
     test_config = _get_test_config(project)
     templates: Jinja2Templates = request.app.state.templates
@@ -132,6 +167,16 @@ def tests_fragment_launch(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the test launch panel fragment for htmx partial updates.
+
+    Args:
+        project_id: The project whose test categories are rendered.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with test category cards.
+    """
     project = get_project_or_404(project_id, db)
     test_config = _get_test_config(project)
     templates: Jinja2Templates = request.app.state.templates
@@ -153,6 +198,16 @@ def tests_fragment_runs(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the test runs history fragment.
+
+    Args:
+        project_id: The project whose test run history is shown.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with recent test run rows.
+    """
     project = get_project_or_404(project_id, db)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -172,6 +227,17 @@ def tests_fragment_results(
     db: Session = Depends(get_db),
     run: int | None = None,
 ) -> Any:
+    """Return the results tab fragment, optionally for a specific run.
+
+    Args:
+        project_id: The project whose test results are shown.
+        request: The current FastAPI request.
+        db: Active database session.
+        run: Optional run ID to pre-select; defaults to most recent completed run.
+
+    Returns:
+        HTML fragment with the results view and run selector.
+    """
     project = get_project_or_404(project_id, db)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -188,6 +254,17 @@ def tests_fragment_results_for_run(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the results fragment pre-selected to a specific run.
+
+    Args:
+        project_id: The project that owns the run.
+        run_id: Database primary key of the TestRun to display.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with results for the given run.
+    """
     project = get_project_or_404(project_id, db)
     run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
     if run is None:
@@ -231,6 +308,17 @@ def tests_fragment_log(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the log viewer fragment for a test run.
+
+    Args:
+        project_id: The project that owns the test run.
+        run_id: Database primary key of the TestRun row.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the last 2000 lines of the run log (newest first).
+    """
     project = get_project_or_404(project_id, db)
     run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
     if run is None:
@@ -279,6 +367,19 @@ def launch_test(
     category: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Launch a test run for the named category.
+
+    Guards against concurrent E2E stack tests that share host ports.
+    Returns a warning toast if a run is already active for this category.
+
+    Args:
+        project_id: The project to run tests for.
+        category: Test category key from the project's test_config.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger toast; reloads on success.
+    """
     project = get_project_or_404(project_id, db)
     test_config = _get_test_config(project)
     categories = test_config.get("categories", {})
@@ -349,6 +450,16 @@ def kill_test(
     run_id: int,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Kill a running test run.
+
+    Args:
+        project_id: The project that owns the run.
+        run_id: Database primary key of the TestRun to kill.
+        db: Active database session.
+
+    Returns:
+        204 response with a toast indicating success or that the run was not active.
+    """
     get_project_or_404(project_id, db)
     run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
     if run is None:

@@ -24,6 +24,15 @@ def docs_global_page(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the global cross-project documentation discovery page.
+
+    Args:
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML page with all registered projects and an empty search form.
+    """
     projects = list(db.scalars(select(Project).order_by(Project.display_name)).all())
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -47,6 +56,20 @@ def docs_global_search(
     tier: str | None = None,
     project_id: str | None = None,
 ) -> Any:
+    """Return cross-project document search results as an htmx fragment.
+
+    Args:
+        request: The current FastAPI request.
+        db: Active database session.
+        q: Full-text search query.
+        doc_type: Optional doc type filter value.
+        status: Optional doc status filter value.
+        tier: Optional doc tier filter value.
+        project_id: Optional project ID to restrict search to a single project.
+
+    Returns:
+        HTML fragment with search results grouped by project.
+    """
     svc = DocService(db)
 
     doc_type_enum: DocType | None = None

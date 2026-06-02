@@ -38,6 +38,18 @@ router = APIRouter(prefix="/project/{project_id}")
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a project by ID or raise HTTP 404.
+
+    Args:
+        project_id: The project identifier to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the project does not exist.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
@@ -46,6 +58,17 @@ def _get_project_or_404(project_id: str, db: Session) -> Project:
 
 @dataclass
 class QueueItem:
+    """A work item row for the queue page.
+
+    Attributes:
+        id: Work item identifier.
+        type: Work item type string.
+        title: Human-readable work item title.
+        status: Current status string.
+        created_at: When the work item was created.
+        scope_status: Optional scope-gate status for approved items.
+    """
+
     id: str
     type: str
     title: str
@@ -119,6 +142,19 @@ def _queue_items(project_id: str, db: Session) -> tuple[list[QueueItem], list[Qu
 
 @dataclass
 class HistoryItem:
+    """A completed or failed work item row for the history page.
+
+    Attributes:
+        id: Work item identifier.
+        type: Work item type string.
+        title: Human-readable work item title.
+        status: Terminal status string ('completed' or 'failed').
+        created_at: When the work item was created.
+        completed_at: When the work item reached its terminal status.
+        duration_secs: Total processing duration in seconds, or None.
+        regression_count: Count of regressions introduced by this merge (F-00090 AC7).
+    """
+
     id: str
     type: str
     title: str
@@ -127,7 +163,6 @@ class HistoryItem:
     completed_at: datetime | None
     duration_secs: int | None
     regression_count: int = 0
-    """F-00090 AC7: count of regressions introduced by this merge (prefetched, avoids N+1)."""
 
 
 _HISTORY_PAGE_SIZE = 20
@@ -243,6 +278,16 @@ def _history_items(
 
 @router.get("/queue", response_class=HTMLResponse)
 def project_queue(project_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    """Render the work item queue page (approved + draft items).
+
+    Args:
+        project_id: The project whose queue is displayed.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML queue page with approved and draft item lists.
+    """
     project = _get_project_or_404(project_id, db)
     approved, drafts = _queue_items(project_id, db)
 
@@ -284,6 +329,23 @@ def project_history(
     sort_by: str = "created_at",
     sort_dir: str = "desc",
 ) -> Any:
+    """Render the paginated work item history page.
+
+    Args:
+        project_id: The project whose history is displayed.
+        request: The current FastAPI request.
+        db: Active database session.
+        type: Optional work item type filter.
+        status: Optional terminal status filter.
+        date_from: ISO date string for the inclusive start of the date range.
+        date_to: ISO date string for the inclusive end of the date range.
+        page: 1-based page number.
+        sort_by: Column name to sort by.
+        sort_dir: Sort direction — 'asc' or 'desc'.
+
+    Returns:
+        Full HTML history page with filtered, paginated, sorted work item rows.
+    """
     project = _get_project_or_404(project_id, db)
     items, total = _history_items(
         project_id,

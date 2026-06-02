@@ -40,6 +40,18 @@ BINARY_ALIAS = {
 
 
 def _simple_version(cmd: list[str]) -> str | None:
+    """Run a version command and return its first output line.
+
+    Combines stdout and stderr so callers need not know which stream a tool
+    uses. Returns None on subprocess errors, timeouts, or empty output.
+
+    Args:
+        cmd: Command and arguments to execute (e.g. ``["gitleaks", "version"]``).
+
+    Returns:
+        First non-empty output line, or None if the command fails or produces
+        no output.
+    """
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False)  # noqa: S603
         output = (r.stdout or r.stderr or "").strip()
@@ -49,6 +61,15 @@ def _simple_version(cmd: list[str]) -> str | None:
 
 
 def _get_tier1_tools() -> list[str]:
+    """Load the authoritative TIER1 tool list from the iw-oss-publish skill.
+
+    Attempts to import ``tools.TIER1`` from the skill's scripts/lib/tools.py.
+    Falls back to the keys of TIER1_INSTALL_COMMANDS when the skill file is
+    absent, unloadable, or does not expose a ``TIER1`` attribute.
+
+    Returns:
+        List of canonical tool names that must be probed.
+    """
     skill_tools_path = (
         CORE_ROOT / ".claude" / "skills" / "iw-oss-publish" / "scripts" / "lib" / "tools.py"
     )
@@ -64,12 +85,31 @@ def _get_tier1_tools() -> list[str]:
 
 @dataclass(frozen=True)
 class ToolStatus:
+    """Installation status and version information for a single Tier-1 tool.
+
+    Attributes:
+        installed: True when the tool binary was found on PATH.
+        version: First line of the tool's version output, or None when the
+            tool is absent or the version command fails.
+        install_cmd: Recommended shell command to install this tool.
+    """
+
     installed: bool
     version: str | None
     install_cmd: str
 
 
 def probe_tier1() -> dict[str, ToolStatus]:
+    """Probe PATH for each Tier-1 OSS compliance tool and return their status.
+
+    For each tool in the authoritative TIER1 list, checks whether its binary
+    is present on PATH (respecting BINARY_ALIAS remappings), runs the
+    appropriate version command, and looks up the install hint.
+
+    Returns:
+        Dict mapping each tool name to its ToolStatus (installed flag, version
+        string, and install command).
+    """
     tier1_tools = _get_tier1_tools()
     result: dict[str, ToolStatus] = {}
 

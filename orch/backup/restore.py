@@ -1,3 +1,10 @@
+"""Restore a pg_dump backup set into a target PostgreSQL database.
+
+Applies globals.sql via psql then pg_restore --clean --if-exists for the
+custom-format archive. Refuses to target the live production DB unless
+allow_prod=True is explicitly passed.
+"""
+
 from __future__ import annotations
 
 import subprocess
@@ -13,15 +20,25 @@ from orch.db.identity import check_identity
 
 
 class RestoreError(RuntimeError):
-    pass
+    """Raised when a restore step (psql or pg_restore) fails."""
 
 
 class RestoreSafetyError(RestoreError):
-    pass
+    """Raised when the target matches the live production DB and allow_prod is False."""
 
 
 @dataclass(frozen=True)
 class RestoreTarget:
+    """Connection parameters for the restore destination database.
+
+    Attributes:
+        host: PostgreSQL host.
+        port: PostgreSQL port.
+        db_name: Target database name.
+        user: Database user for the restore commands.
+        password: Password for the database user.
+    """
+
     host: str
     port: int
     db_name: str
@@ -31,12 +48,21 @@ class RestoreTarget:
 
 @dataclass(frozen=True)
 class RestoreResult:
+    """Metadata collected after a successful restore.
+
+    Attributes:
+        target: The RestoreTarget the backup was applied to.
+        identity_mode: The DB identity check mode from check_identity.
+        row_counts: Row counts for projects, batches, and work_items.
+    """
+
     target: RestoreTarget
     identity_mode: str
     row_counts: dict[str, int]
 
 
 def _as_target(config: Any, target: dict[str, Any] | RestoreTarget | None) -> RestoreTarget:
+    """Coerce target into a RestoreTarget, defaulting to a timestamped restore DB."""
     if target is None:
         suffix = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         return RestoreTarget(
@@ -58,6 +84,7 @@ def _as_target(config: Any, target: dict[str, Any] | RestoreTarget | None) -> Re
 
 
 def _is_live_prod_target(config: Any, target: RestoreTarget) -> bool:
+    """Return True when target matches the configured live production DB."""
     return (
         target.host == config.db_host
         and int(target.port) == int(config.db_port)
@@ -77,6 +104,26 @@ def restore(
     allow_prod: bool = False,
     command_runner: Any = None,
 ) -> RestoreResult:
+    """Restore a backup set into a target PostgreSQL database.
+
+    Args:
+        config: Loaded IW config (provides live DB connection params for
+            safety checks and the default target database name).
+        backup_set: Path to the backup set directory containing
+            ``globals.sql`` and ``iw_orch.dump``.
+        target: Destination DB coordinates. When None, a new database named
+            ``<db_name>_restore_<timestamp>`` is created on the same server.
+        allow_prod: Must be True to permit restoring into the live production
+            DB. Defaults to False as a safety guard.
+        command_runner: Injectable callable for tests, replaces subprocess.run.
+
+    Returns:
+        RestoreResult with the target coordinates, identity mode, and row counts.
+
+    Raises:
+        RestoreSafetyError: If target matches production DB and allow_prod is False.
+        RestoreError: If psql or pg_restore exits with a non-zero code.
+    """
     resolved_target = _as_target(config, target)
     if _is_live_prod_target(config, resolved_target) and not allow_prod:
         raise RestoreSafetyError(

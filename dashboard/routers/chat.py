@@ -114,6 +114,8 @@ _OPENCODE_ROOT: Path = Path(
 
 
 class CreateTabRequest(BaseModel):
+    """Request body for POST /api/chat/tabs."""
+
     project_id: str
     runtime: str = "opencode"
     model: str | None = None
@@ -122,17 +124,23 @@ class CreateTabRequest(BaseModel):
 
 
 class UpdateTabRequest(BaseModel):
+    """Request body for PATCH /api/chat/tabs/{tab_id}."""
+
     title: str | None = None
     model: str | None = None
 
 
 class PromptRequest(BaseModel):
+    """Request body for POST /api/chat/tabs/{tab_id}/prompt."""
+
     text: str = Field(..., min_length=1)
     model: str | None = None
     context: dict[str, str] | None = None  # {type, id, title}
 
 
 class PermissionRequest(BaseModel):
+    """Request body for POST /api/chat/tabs/{tab_id}/permissions/{rid}."""
+
     response: str
     remember: bool = False
 
@@ -143,6 +151,7 @@ class PermissionRequest(BaseModel):
 
 
 def _503_unavailable() -> JSONResponse:
+    """Return a standard 503 JSON response when the OpenCode runtime is down."""
     return JSONResponse(
         status_code=503,
         content={"error": "OpenCode runtime unavailable"},

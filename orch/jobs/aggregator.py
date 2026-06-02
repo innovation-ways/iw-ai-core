@@ -94,6 +94,8 @@ from orch.db.models import DocType
 
 
 class JobType(StrEnum):
+    """Discriminator enum for the unified jobs view."""
+
     code_mapping = "code_mapping"
     doc_indexing = "doc_indexing"
     doc_generation = "doc_generation"
@@ -107,6 +109,20 @@ class JobType(StrEnum):
 
 @dataclass(frozen=True)
 class JobRow:
+    """Normalised representation of a single job from any source table.
+
+    Attributes:
+        job_type: Which source table this job came from.
+        job_id: Public identifier for the job.
+        project_id: Project the job belongs to.
+        title: Human-readable title.
+        status: Normalised status string (queued/running/completed/failed/cancelled/paused).
+        started_at: When the job started, or None.
+        finished_at: When the job finished, or None.
+        triggered_by: What or who triggered the job, or None.
+        raw: Source-specific raw fields for the detail view template.
+    """
+
     job_type: JobType
     job_id: str
     project_id: str
@@ -120,6 +136,15 @@ class JobRow:
 
 @dataclass(frozen=True)
 class JobListResult:
+    """Paginated result from JobsAggregator.list_jobs.
+
+    Attributes:
+        rows: JobRow entries for the current page.
+        total: Total number of matching rows before pagination.
+        page: 1-based page number.
+        page_size: Number of rows per page.
+    """
+
     rows: list[JobRow]
     total: int
     page: int
@@ -127,6 +152,7 @@ class JobListResult:
 
 
 def _normalise_doc_status(status: DocStatus) -> str:
+    """Map a DocStatus enum value to a normalised jobs-view status string."""
     mapping = {
         DocStatus.planned: "queued",
         DocStatus.draft: "running",
@@ -137,10 +163,12 @@ def _normalise_doc_status(status: DocStatus) -> str:
 
 
 def _normalise_job_status(status: JobStatus) -> str:
+    """Map a JobStatus enum value to a normalised jobs-view status string."""
     return status.value
 
 
 def _normalise_batch_status(status: BatchStatus) -> str:
+    """Map a BatchStatus enum value to a normalised jobs-view status string."""
     mapping = {
         BatchStatus.planning: "queued",
         BatchStatus.approved: "queued",
@@ -159,6 +187,7 @@ def _normalise_batch_status(status: BatchStatus) -> str:
 
 
 def _normalise_oss_job_status(status: ProjectOssJobStatus) -> str:
+    """Map a ProjectOssJobStatus enum value to a normalised jobs-view status string."""
     mapping = {
         ProjectOssJobStatus.queued: "queued",
         ProjectOssJobStatus.running: "running",
@@ -170,6 +199,7 @@ def _normalise_oss_job_status(status: ProjectOssJobStatus) -> str:
 
 
 def _normalise_db_backup_status(status: DbBackupStatus) -> str:
+    """Map a DbBackupStatus enum value to a normalised jobs-view status string."""
     mapping = {
         DbBackupStatus.queued: "queued",
         DbBackupStatus.running: "running",
@@ -180,6 +210,12 @@ def _normalise_db_backup_status(status: DbBackupStatus) -> str:
 
 
 class JobsAggregator:
+    """Read-only aggregator that merges all job tables into a unified view.
+
+    Attributes:
+        _session: SQLAlchemy session used for all queries.
+    """
+
     def __init__(self, session: Session) -> None:
         self._session = session
 
@@ -196,6 +232,22 @@ class JobsAggregator:
         sort_by: Literal["started_at", "finished_at", "status", "job_type"] = "started_at",
         sort_dir: Literal["asc", "desc"] = "desc",
     ) -> JobListResult:
+        """Return a paginated, filtered, sorted list of jobs from all sources.
+
+        Args:
+            project_id: Project identifier.
+            types: Restrict to these job types; None means all types.
+            statuses: Restrict to these normalised status strings; None means all.
+            date_from: Inclusive lower bound on started_at.
+            date_to: Inclusive upper bound on started_at.
+            page: 1-based page number.
+            page_size: Number of rows per page.
+            sort_by: Field to sort by.
+            sort_dir: Sort direction.
+
+        Returns:
+            JobListResult with the current page of rows and the total count.
+        """
         rows: list[JobRow] = []
         raw_rows: list[tuple[JobRow, dict[str, object]]] = []
 
@@ -253,6 +305,16 @@ class JobsAggregator:
         job_type: JobType,
         job_id: str,
     ) -> JobRow | None:
+        """Return a single JobRow by type and id, or None when not found.
+
+        Args:
+            project_id: Project identifier.
+            job_type: Type of job to look up.
+            job_id: Public job identifier.
+
+        Returns:
+            JobRow, or None if not found.
+        """
         if job_type == JobType.code_mapping:
             return self._get_code_mapping(project_id, job_id)
         if job_type == JobType.doc_indexing:

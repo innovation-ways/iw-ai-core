@@ -26,6 +26,14 @@ if TYPE_CHECKING:
 
 @dataclass
 class DocIndexResult:
+    """Result counters returned after indexing design docs.
+
+    Attributes:
+        work_items_indexed: Number of work items whose content was embedded.
+        chunks_created: Total vector chunks written.
+        errors: Per-item error strings in the form "item_id: message".
+    """
+
     work_items_indexed: int
     chunks_created: int
     errors: list[str] = field(default_factory=list)
@@ -33,6 +41,17 @@ class DocIndexResult:
 
 @dataclass
 class IndexResult:
+    """Result counters returned by CodeIndexer after an indexing or reindex run.
+
+    Attributes:
+        files_indexed: Number of files successfully chunked and embedded.
+        chunks_created: Total vector chunks written to LanceDB.
+        files_skipped: Files present in the repo but unchanged since last run.
+        files_discovered: Total files found before change filtering.
+        languages_detected: Unique language tags seen across indexed files.
+        errors: Per-file error strings in the form "path: message".
+    """
+
     files_indexed: int
     chunks_created: int
     files_skipped: int
@@ -42,6 +61,18 @@ class IndexResult:
 
 
 class CodeIndexer:
+    """Indexes a project's codebase into LanceDB using LlamaIndex CodeSplitter and Ollama
+    embeddings.
+
+    Discovers Python, C++, and header files in the repo, chunks them via language-aware
+    splitting, embeds via Ollama, and writes to a per-project LanceDB table.
+
+    Attributes:
+        project_id: The project whose repository is indexed.
+        config: Embedding model and Ollama connection settings.
+        index_path: Root directory for LanceDB storage and manifest files.
+    """
+
     def __init__(
         self,
         project_id: str,
@@ -72,6 +103,15 @@ class CodeIndexer:
         return hashlib.sha256(file_path.read_bytes()).hexdigest()
 
     def _get_changed_files(self, repo_path: str, manifest: dict[str, str]) -> list[Path]:
+        """Return files whose SHA-256 digest differs from the stored manifest value.
+
+        Args:
+            repo_path: Absolute path to the repository root.
+            manifest: Dict mapping relative file paths to their last-indexed SHA-256 hex digests.
+
+        Returns:
+            List of Path objects for files that are new or have changed content.
+        """
         changed: list[Path] = []
         repo = Path(repo_path)
         for file_path in repo.rglob("*.py"):
@@ -174,6 +214,21 @@ class CodeIndexer:
         _job_id: str,
         progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> IndexResult:
+        """Perform a full index of the repository from scratch.
+
+        Discovers all supported source files, chunks and embeds each one, and
+        writes the resulting nodes to LanceDB. Saves a SHA-256 manifest after
+        completing so subsequent runs can use reindex_changed.
+
+        Args:
+            repo_path: Absolute path to the repository root to index.
+            _job_id: Unused job ID kept for interface symmetry with reindex_changed.
+            progress_callback: Optional callback called with progress dicts
+                containing event, files_indexed, files_total, chunks_created, and phase.
+
+        Returns:
+            IndexResult with counts for indexed files, chunks, and any per-file errors.
+        """
         repo = Path(repo_path)
         discovered: list[Path] = []
         for pattern in ("*.py", "*.cpp", "*.hpp", "*.h"):
@@ -237,6 +292,20 @@ class CodeIndexer:
         _job_id: str,
         progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> IndexResult:
+        """Incrementally re-index only the files that changed since the last run.
+
+        Compares each file's current SHA-256 digest against the stored manifest.
+        Only changed files are re-chunked and re-embedded; unchanged files are
+        counted as skipped.
+
+        Args:
+            repo_path: Absolute path to the repository root.
+            _job_id: Unused job ID kept for interface symmetry with index.
+            progress_callback: Optional callback called with progress dicts.
+
+        Returns:
+            IndexResult with counts where files_skipped reflects unchanged files.
+        """
         manifest = self._load_manifest()
         changed = self._get_changed_files(repo_path, manifest)
 
@@ -338,6 +407,20 @@ async def index_design_docs(
     mode: str = "full",
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> DocIndexResult:
+    """Embed work-item design docs into the per-project docs LanceDB table.
+
+    Args:
+        project_id: The project whose work items are indexed.
+        config: Embedding model and Ollama connection settings.
+        db_session: Active SQLAlchemy session for querying WorkItem rows.
+        index_path: Root directory for LanceDB table storage.
+        mode: One of "full" (all items), "incremental" (updated since epoch),
+            or "mapgen_only" (skip — returns empty result immediately).
+        progress_callback: Optional callback for progress notifications.
+
+    Returns:
+        DocIndexResult with counts for indexed work items and created chunks.
+    """
     from sqlalchemy import select
 
     from orch.db.models import WorkItem

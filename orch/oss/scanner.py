@@ -163,6 +163,18 @@ async def run_scan(
 
 
 def _get_git_head(repo_root: str) -> str | None:
+    """Return the current HEAD commit SHA for the given repository directory.
+
+    Runs ``git rev-parse HEAD`` in repo_root. Returns None when git is not
+    on PATH, the directory is not a git repository, or any subprocess error
+    occurs (logged at exception level).
+
+    Args:
+        repo_root: Absolute path to the git repository to inspect.
+
+    Returns:
+        Full 40-character commit SHA string, or None on any failure.
+    """
     git_path = shutil.which("git")
     if git_path is None:
         return None

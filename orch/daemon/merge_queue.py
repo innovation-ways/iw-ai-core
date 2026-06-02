@@ -71,7 +71,7 @@ OPERATOR_RECOVERABLE_MERGE_STATUSES: frozenset[BatchItemStatus] = frozenset(
 
 
 class MergeError(RuntimeError):
-    """Raised when worktree_commit.sh exits non-zero."""
+    """Raised when ``worktree_commit.sh`` exits with a non-zero return code."""
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +153,21 @@ def _merge_item(
     project_id: str,
     project_config: ProjectConfig,
 ) -> None:
-    """Squash-merge a completed item's branch to main via worktree_commit.sh."""
+    """Squash-merge a completed item's branch to main via ``worktree_commit.sh``.
+
+    Orchestrates the full merge lifecycle: pre-merge rebase, Phase-1 dry-run,
+    branch-guard check, squash-merge script invocation, post-merge Phase-2
+    migration apply, diff capture, doc regeneration hooks, and worktree cleanup.
+    On any failure, marks the BatchItem with the appropriate terminal status and
+    reverts the WorkItem back to failed so the item is not orphaned as completed.
+
+    Args:
+        db: Active database session — this function commits multiple times.
+        batch_item: The BatchItem to merge (must be in ``completed`` status).
+        project_id: Project identifier used for event routing and branch lookup.
+        project_config: Project configuration supplying working_dir and
+            scope-gate settings.
+    """
     from orch.daemon.batch_merge_hooks import trigger_doc_regeneration_on_merge
     from orch.db.models import Project
 

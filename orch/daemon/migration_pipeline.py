@@ -39,6 +39,20 @@ ALEMBIC_MIGRATIONS_DIR = MIGRATIONS_SCRIPT_LOCATION
 
 @dataclass(frozen=True)
 class PipelineResult:
+    """Result returned by each phase of the migration pipeline.
+
+    Attributes:
+        phase: Which pipeline phase produced this result.
+        success: Whether the phase completed without error.
+        final_batch_state: Human-readable label for the resulting BatchItem state.
+        frozen: True when a rollback failure has frozen the merge queue.
+        message: Human-readable summary for logging and dashboard display.
+        revisions_applied: Alembic revision IDs actually applied to the live DB
+            during Phase 2. Empty when the phase was a no-op or failed before
+            touching the DB; used by the merge queue to decide if Phase 3 rollback
+            is safe.
+    """
+
     phase: Literal["dry_run", "apply", "rollback"]
     success: bool
     final_batch_state: str

@@ -125,12 +125,24 @@ _BATCH_ITEM_STATUS: dict[BatchItemStatus, frozenset[BatchItemStatus]] = {
 
 
 def _can(table: dict[object, frozenset[object]], from_s: object, to_s: object) -> bool:
+    """Return True if ``to_s`` is in the set of valid next states for ``from_s``."""
     return to_s in table.get(from_s, frozenset())
 
 
 def _validate(
     entity: str, table: dict[object, frozenset[object]], from_s: object, to_s: object
 ) -> None:
+    """Raise InvalidTransition when the transition from ``from_s`` to ``to_s`` is not allowed.
+
+    Args:
+        entity: Human-readable entity name used in the exception message.
+        table: Transition table mapping each state to its valid next states.
+        from_s: Current state.
+        to_s: Requested next state.
+
+    Raises:
+        InvalidTransition: If the transition is not present in the table.
+    """
     if not _can(table, from_s, to_s):
         raise InvalidTransition(f"Invalid {entity} transition: {from_s!r} \u2192 {to_s!r}")
 

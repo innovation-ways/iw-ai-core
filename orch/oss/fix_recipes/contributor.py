@@ -1,3 +1,5 @@
+"""Fix recipes for contributor agreement compliance checks (OSS-CA-*)."""
+
 from __future__ import annotations
 
 from textwrap import dedent
@@ -11,6 +13,11 @@ if TYPE_CHECKING:
 
 
 class DcoConfigRecipe:
+    """Fix recipe that creates a .github/dco.yml DCO enforcement configuration.
+
+    Addresses OSS-CA-01: absence of GitHub App DCO sign-off enforcement.
+    """
+
     check_id = "OSS-CA-01"
     auto_apply_safe = True
 
@@ -49,6 +56,13 @@ register(DcoConfigRecipe())
 
 
 class DcoContributingRecipe:
+    """Fix recipe that appends a DCO sign-off section to CONTRIBUTING.md.
+
+    Addresses OSS-CA-02: CONTRIBUTING.md exists but does not document the DCO
+    sign-off requirement. No-ops when the file is absent or already contains
+    DCO language.
+    """
+
     check_id = "OSS-CA-02"
     auto_apply_safe = True
 

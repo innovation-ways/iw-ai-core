@@ -1,3 +1,5 @@
+"""Fix recipe for SBOM generation compliance checks (OSS-DEP-*)."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -10,6 +12,14 @@ if TYPE_CHECKING:
 
 
 class SbomRecipe:
+    """Fix recipe that guides SBOM generation using syft.
+
+    Addresses OSS-DEP-05: absence of a Software Bill of Materials. The recipe
+    does not run syft directly — it checks for the tool and provides the
+    operator with the correct manual command, because SBOM generation may take
+    several minutes and produce large files.
+    """
+
     check_id = "OSS-DEP-05"
     auto_apply_safe = True
 

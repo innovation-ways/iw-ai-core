@@ -1,3 +1,15 @@
+"""Narration guard for pi agent runs.
+
+Wraps the pi coding agent to detect when it exits cleanly while the step is
+still in_progress (a "narration exit") and automatically reprompts it to
+continue executing tools. Up to ``--max-reprompts`` reprompt cycles are
+attempted before giving up. Each narration event is emitted to the orch DB
+so the operator can see the reprompt history in the dashboard.
+
+Usage:
+    python pi_narration_guard.py --item-id F-00001 --step-id S01 -- pi ...
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -13,6 +25,15 @@ from typing import Any
 
 
 class NarrationVerdict(StrEnum):
+    """Classification of the last assistant turn in a pi session.
+
+    Attributes:
+        NARRATION: Last turn was pure text/thinking — no tool calls were made.
+        TOOL_CALL: Last turn contained at least one tool call — legitimate exit.
+        NO_ASSISTANT: No assistant turn found in the session JSONL.
+        PARSE_ERROR: Session JSONL could not be read or parsed.
+    """
+
     NARRATION = "NARRATION"
     TOOL_CALL = "TOOL_CALL"
     NO_ASSISTANT = "NO_ASSISTANT"
@@ -21,6 +42,15 @@ class NarrationVerdict(StrEnum):
 
 @dataclass(frozen=True)
 class GuardArgs:
+    """Parsed command-line arguments for the narration guard.
+
+    Attributes:
+        item_id: Work item ID (e.g. ``F-00001``) used to poll step status.
+        step_id: Step ID (e.g. ``S01``) used to identify the running step.
+        max_reprompts: Maximum number of reprompt cycles before giving up.
+        pi_cmd: The full pi command to execute (everything after ``--``).
+    """
+
     item_id: str
     step_id: str
     max_reprompts: int
@@ -28,6 +58,14 @@ class GuardArgs:
 
 
 def parse_args(argv: list[str]) -> GuardArgs:
+    """Parse command-line arguments for the narration guard.
+
+    Args:
+        argv: Raw argument list (typically ``sys.argv[1:]``).
+
+    Returns:
+        Parsed and validated guard arguments.
+    """
     parser = argparse.ArgumentParser(description="Wrap pi and reprompt narration exits")
     parser.add_argument("--item-id", required=True)
     parser.add_argument("--step-id", required=True)
@@ -53,6 +91,15 @@ def _log(message: str) -> None:
 
 
 def run_pi(pi_cmd: list[str], cwd: str | None = None) -> int:
+    """Run the pi command and return its exit code.
+
+    Args:
+        pi_cmd: Full pi command and arguments to execute.
+        cwd: Working directory for the subprocess; defaults to the caller's cwd.
+
+    Returns:
+        The subprocess exit code (0 = success, non-zero = failure).
+    """
     _log(f"running: {' '.join(pi_cmd)}")
     proc = subprocess.run(pi_cmd, cwd=cwd, check=False)  # noqa: S603
     return proc.returncode
@@ -63,6 +110,17 @@ def _uv_bin() -> str:
 
 
 def get_item_status(item_id: str, step_id: str) -> tuple[bool, str | None]:
+    """Query the orch DB to determine whether the given step is still in_progress.
+
+    Args:
+        item_id: Work item ID to query (e.g. ``F-00001``).
+        step_id: Step ID to look up within the item (e.g. ``S01``).
+
+    Returns:
+        A tuple of ``(is_running, project_id)`` where ``is_running`` is True
+        when the step is still in_progress and ``project_id`` is the owning
+        project or None when it could not be determined.
+    """
     proc = subprocess.run(  # noqa: S603
         [_uv_bin(), "run", "iw", "-j", "item-status", item_id],
         capture_output=True,
@@ -95,6 +153,16 @@ def _cwd_to_session_slug(cwd: str) -> str:
 
 
 def find_latest_pi_session(cwd: str) -> Path | None:
+    """Find the most recently modified pi session JSONL file for the given working directory.
+
+    Args:
+        cwd: Absolute path of the worktree directory — used to derive the
+             session slug under ``~/.pi/agent/sessions/``.
+
+    Returns:
+        Path to the most recently modified ``.jsonl`` session file, or None
+        if no sessions exist for the directory.
+    """
     base = Path(Path.home() / ".pi" / "agent" / "sessions")
     override = (
         Path(os.environ["PI_CODING_AGENT_SESSION_DIR"])
@@ -133,6 +201,14 @@ def _extract_last_assistant_blocks(session_path: Path) -> list[dict[str, Any]] |
 
 
 def classify_last_assistant(session_path: Path) -> NarrationVerdict:
+    """Classify the last assistant turn in a pi session JSONL.
+
+    Args:
+        session_path: Path to the pi session ``.jsonl`` file to analyse.
+
+    Returns:
+        The verdict describing the last assistant message's content.
+    """
     try:
         blocks = _extract_last_assistant_blocks(session_path)
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
@@ -168,6 +244,17 @@ def _last_assistant_text(session_path: Path) -> str | None:
 
 
 def build_reprompt_message(last_text: str | None, attempt: int, cap: int) -> str:
+    """Build the reprompt message to send to pi on the next continuation.
+
+    Args:
+        last_text: The last assistant text (up to 300 chars quoted in the message),
+                   or None when the session could not be parsed.
+        attempt: Current reprompt attempt number (1-based).
+        cap: Maximum number of reprompt attempts configured for this run.
+
+    Returns:
+        Formatted reprompt message directing the agent to resume tool execution.
+    """
     base = (
         "Your previous message announced an action but did not execute it. "
         "Continue executing tools now until the step is genuinely complete; "
@@ -189,6 +276,17 @@ def emit_narration_event(
     last_text: str | None,
     verdict: NarrationVerdict = NarrationVerdict.PARSE_ERROR,
 ) -> None:
+    """Emit a ``step_narration_exit`` DaemonEvent to the orch DB.
+
+    Args:
+        project_id: Owning project; skipped silently when None.
+        item_id: Work item ID for the event's ``entity_id`` field.
+        step_id: Step ID recorded in the event metadata.
+        attempt: Current reprompt attempt number.
+        cap: Maximum reprompt cap for this run.
+        last_text: First 500 chars of the last assistant text, or None.
+        verdict: Classification of the narration exit that triggered this event.
+    """
     if not project_id:
         _log("warning: skipping narration event (project_id unknown)")
         return
@@ -240,6 +338,14 @@ def _to_continue_cmd(original: list[str], reprompt_message: str) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
+    """Entry point: run pi with narration-exit detection and automatic reprompts.
+
+    Args:
+        argv: Command-line arguments (typically ``sys.argv[1:]``).
+
+    Returns:
+        Exit code from the last pi subprocess invocation.
+    """
     args = parse_args(argv)
     cwd = str(Path.cwd())
 

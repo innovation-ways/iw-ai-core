@@ -622,6 +622,7 @@ def _emit(
     message: str,
     metadata: dict[str, Any] | None = None,
 ) -> None:
+    """Append a DaemonEvent row to the session without committing."""
     db.add(
         DaemonEvent(
             project_id=project_id,

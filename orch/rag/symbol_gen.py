@@ -18,6 +18,17 @@ if TYPE_CHECKING:
 
 
 class SymbolGenerator:
+    """Generates natural-language explanations of code symbols using tree-sitter and Ollama.
+
+    Parses the source file with tree-sitter to extract the exact source span for the
+    requested symbol, then sends the snippet to Ollama for explanation. Falls back to
+    the full file content if parsing or symbol extraction fails.
+
+    Attributes:
+        LANGUAGE_EXTENSIONS: Mapping of file extensions to tree-sitter language names.
+        SYMBOL_KINDS: Tree-sitter node types treated as named symbols.
+    """
+
     LANGUAGE_EXTENSIONS: dict[str, str] = {
         ".py": "python",
         ".cpp": "cpp",
@@ -47,6 +58,23 @@ class SymbolGenerator:
         config: CodeUnderstandingConfig,
         session: Session,
     ) -> str:
+        """Generate an Ollama explanation for a symbol (or whole file) in the project.
+
+        Args:
+            project_id: Project whose repo_root is used to resolve the file path.
+            file_path: Path relative to the project repo root.
+            symbol_name: Name of the function or class to explain; when None, the
+                entire file is explained.
+            config: LLM model and Ollama connection settings.
+            session: Active SQLAlchemy session for loading the Project row.
+
+        Returns:
+            Plain-text explanation produced by the LLM.
+
+        Raises:
+            ValueError: If the project does not exist in the database.
+            FileNotFoundError: If the resolved file path does not exist on disk.
+        """
         project = session.get(Project, project_id)
         if project is None:
             raise ValueError(f"Project '{project_id}' not found")
@@ -116,6 +144,16 @@ class SymbolGenerator:
         return file_content[start_byte:end_byte]
 
     def _build_prompt(self, file_path: str, symbol_name: str | None, source: str) -> str:
+        """Build the Ollama explanation prompt for a symbol or file.
+
+        Args:
+            file_path: Relative file path shown as context in the prompt.
+            symbol_name: Symbol name used in the opening line; when None, file_path is used.
+            source: The source code snippet or full file content to explain.
+
+        Returns:
+            Formatted prompt string ready to send to the LLM.
+        """
         target = symbol_name if symbol_name else file_path
         return f"""Explain what {target} does:
 

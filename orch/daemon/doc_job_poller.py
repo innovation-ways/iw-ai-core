@@ -61,6 +61,12 @@ class DocJobPoller:
     MAX_CONCURRENT_JOBS_PER_PROJECT = 2
 
     def __init__(self, session_factory: SessionFactory, config: DaemonConfig) -> None:
+        """Initialize the poller with a session factory and daemon config.
+
+        Args:
+            session_factory: Callable context manager that yields a DB session.
+            config: Daemon configuration including CLI tool settings.
+        """
         self._session_factory = session_factory
         self.config = config
 

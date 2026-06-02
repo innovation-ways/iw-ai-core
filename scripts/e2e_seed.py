@@ -151,10 +151,16 @@ MODULE_DOCS: list[dict[str, str]] = [
 
 
 def _ollama_url() -> str:
+    """Return the Ollama URL from env, falling back to the compose-network default."""
     return os.environ.get("IW_E2E_OLLAMA_URL", "http://e2e-ollama:11434")
 
 
 def _seed_project(db: Session) -> None:
+    """Insert or update the ``iw-ai-core`` project row with E2E configuration.
+
+    Args:
+        db: Active SQLAlchemy session targeting the E2E database.
+    """
     existing = db.get(Project, PROJECT_ID)
     config = {
         "code_understanding": {
@@ -178,6 +184,11 @@ def _seed_project(db: Session) -> None:
 
 
 def _seed_level1(db: Session) -> None:
+    """Insert or update the Level-1 architecture-map ProjectDoc.
+
+    Args:
+        db: Active SQLAlchemy session targeting the E2E database.
+    """
     doc_id = "architecture-map"
     pk = f"{PROJECT_ID}:{doc_id}"
     existing = db.get(ProjectDoc, pk)
@@ -203,6 +214,11 @@ def _seed_level1(db: Session) -> None:
 
 
 def _seed_modules(db: Session) -> None:
+    """Insert or update Level-2 per-module ProjectDocs for the seeded modules.
+
+    Args:
+        db: Active SQLAlchemy session targeting the E2E database.
+    """
     for module in MODULE_DOCS:
         doc_id = f"module-{module['slug']}"
         pk = f"{PROJECT_ID}:{doc_id}"
@@ -482,6 +498,7 @@ def _check_production_guardrail() -> None:
 
 
 def seed() -> None:
+    """Run the full E2E seed sequence: project, docs, index job, work items, per-item fixtures."""
     _check_production_guardrail()
     with get_session() as db:
         _seed_project(db)

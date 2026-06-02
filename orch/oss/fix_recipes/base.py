@@ -1,3 +1,5 @@
+"""Base types for OSS compliance fix recipes."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,9 +26,24 @@ class FixRecipe(Protocol):
     auto_apply_safe: bool
 
     def preview(self, repo_root: Path) -> FixPreview:
-        """Compute what would change. MUST NOT write anything."""
+        """Compute what the fix would change without writing to disk.
+
+        Args:
+            repo_root: Absolute path to the target repository root.
+
+        Returns:
+            FixPreview describing the files that would be created or modified.
+        """
 
     def apply(self, repo_root: Path) -> FixPreview:
-        """Apply the fix to the working tree. MUST be idempotent —
-        applying twice yields the same on-disk state as once.
+        """Apply the fix to the working tree.
+
+        MUST be idempotent — applying twice yields the same on-disk state
+        as applying once.
+
+        Args:
+            repo_root: Absolute path to the target repository root.
+
+        Returns:
+            FixPreview describing the files that were created or modified.
         """

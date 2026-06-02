@@ -96,6 +96,12 @@ def create_session_factory(db_url: str) -> SessionFactory:
 
     @contextmanager
     def _factory() -> Generator[Session, None, None]:
+        """Yield a scoped session, committing on success and rolling back on error.
+
+        Opens a new session from the SQLAlchemy sessionmaker, yields it to the
+        caller inside a try/finally block, and guarantees the session is always
+        closed. Designed for use as a context manager via ``with _factory() as db``.
+        """
         session: Session = session_cls()
         try:
             yield session
@@ -794,16 +800,19 @@ class Daemon:
     # ------------------------------------------------------------------
 
     def _setup_signal_handlers(self) -> None:
+        """Register OS signal handlers for graceful shutdown and project reload."""
         signal.signal(signal.SIGTERM, self._handle_shutdown)
         signal.signal(signal.SIGINT, self._handle_shutdown)
         signal.signal(signal.SIGHUP, self._handle_reload)
 
     def _handle_shutdown(self, signum: int, frame: object) -> None:  # noqa: ARG002
+        """Handle SIGTERM/SIGINT by flagging the run loop to stop and waking the sleep."""
         logger.info("Signal %d received — stopping daemon", signum)
         self._running = False
         self._wake_event.set()
 
     def _handle_reload(self, signum: int, frame: object) -> None:  # noqa: ARG002
+        """Handle SIGHUP by invalidating the project registry cache and waking the poll loop."""
         logger.info("SIGHUP received — triggering project reload")
         # Force mtime check on next wake by clearing cached mtime
         self.registry._mtime = 0.0  # noqa: SLF001

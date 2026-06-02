@@ -98,6 +98,19 @@ def _read_db_credentials_from_toml(env_toml_path: Path) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class WorktreeStackConfig:
+    """Configuration bundle for a single per-worktree compose stack.
+
+    Attributes:
+        batch_item_id: BatchItem identifier used in compose project naming and labels.
+        project_id: Project identifier for DaemonEvent routing.
+        worktree_path: Absolute path to the git worktree root.
+        template_path: Path to ``worktree-compose.template.yml``.
+        env_toml_path: Path to ``worktree-env.toml`` (may not exist).
+        seed_script_path: Path to ``worktree-seed.sh``, or None when absent/non-executable.
+        rendered_compose_path: Destination for the Jinja2-rendered compose file.
+        compose_project_name: Docker compose ``-p`` argument value.
+    """
+
     batch_item_id: str
     project_id: str
     worktree_path: Path
@@ -110,6 +123,17 @@ class WorktreeStackConfig:
 
 @dataclass(frozen=True)
 class UpResult:
+    """Result of :func:`up`.
+
+    Attributes:
+        success: True when all phases (render, up, seed) completed successfully.
+        rendered_compose_path: Path to the rendered compose file, or None on render failure.
+        discovered_ports: Mapping of env-var name to discovered host port.
+        discovered_db_credentials: DB credentials read from ``worktree-env.toml``.
+        error_message: Failure description when ``success`` is False.
+        seed_stderr_tail: Last chunk of seed-script stderr when the seed failed.
+    """
+
     success: bool
     rendered_compose_path: Path | None
     discovered_ports: dict[str, int]
@@ -119,10 +143,12 @@ class UpResult:
 
 
 def _compose_project_name(batch_item_id: str) -> str:
+    """Build the Docker compose project name for a batch item."""
     return f"{COMPOSE_PROJECT_PREFIX}-{batch_item_id.lower().replace('_', '-')}"
 
 
 def _iw_config_dir(worktree_path: Path) -> Path:
+    """Return the path to the ``ai-dev/iw-config`` directory in a worktree."""
     return worktree_path / "ai-dev" / "iw-config"
 
 
@@ -602,7 +628,17 @@ def _compose_down(
     compose_path: Path | None,
     batch_item_id: str,
 ) -> None:
-    """Run docker compose down with belt-and-suspenders prune."""
+    """Run ``docker compose down -v --remove-orphans`` followed by container and volume prune.
+
+    This internal helper is called when an ``up`` partially succeeds (e.g. seed
+    failure) to ensure no dangling containers are left behind. The public
+    teardown entry point is :func:`down`.
+
+    Args:
+        compose_project_name: Docker compose ``-p`` argument value.
+        compose_path: Optional path to the rendered compose file for ``-f``.
+        batch_item_id: Used as the label filter value for prune commands.
+    """
     compose_args = [
         "docker",
         "compose",

@@ -79,7 +79,15 @@ _E2E_COMPOSE_FILE = _REPO_ROOT / "docker-compose.e2e.yml"
 
 @dataclass(frozen=True)
 class E2EStackFinding:
-    """A leaked browser-verification compose stack."""
+    """A discovered ``iw-ai-core-e2e-*`` compose stack that may need reaping.
+
+    Attributes:
+        compose_project: Full docker compose project name.
+        work_item_id: Parsed work item identifier (e.g. ``F-00079``), or None
+            if the project name doesn't match the expected convention.
+        classification: Reaper classification after DB lookup.
+        container_count: Number of containers in the stack at scan time.
+    """
 
     compose_project: str
     work_item_id: str | None
@@ -190,9 +198,16 @@ def classify_e2e_stack(finding: E2EStackFinding, db: Session) -> ReaperClassific
 def _reap_e2e_stack(compose_project: str) -> bool:
     """Tear down a leaked e2e stack and remove the per-project images.
 
-    Mirrors ``scripts/e2e_down.sh`` but is invoked directly from the reaper —
-    we cannot call the script because we do not have a worktree cwd nor the
-    ``COMPOSE_PROJECT_NAME`` env var the script expects.
+    Mirrors ``scripts/e2e_down.sh`` but invoked directly from the reaper because
+    no worktree cwd or ``COMPOSE_PROJECT_NAME`` env var is available. Calls
+    :func:`_prune_e2e_label_remnants` after a successful ``compose down`` to
+    sweep dangling images from prior ``--build`` cycles.
+
+    Args:
+        compose_project: Docker compose project name to tear down.
+
+    Returns:
+        True on success, False when the docker command exits non-zero or raises.
     """
     cmd = [
         "docker",
@@ -372,6 +387,17 @@ def reap_e2e_stacks(db: Session) -> list[E2EStackFinding]:
 
 @dataclass(frozen=True)
 class ReaperFinding:
+    """A container found by :func:`scan` that carries the ``iwcore.role`` label.
+
+    Attributes:
+        container_id: Docker container ID (first 12 chars).
+        batch_item_id: Value of the ``iwcore.batch_item`` label (integer PK as string),
+            or None if the label is absent.
+        project_id: Value of the ``iwcore.project`` label, or None if absent.
+        classification: Reaper classification (``active``, ``stale``, ``orphan``, ``malformed``).
+        labels: Full label dict from the container.
+    """
+
     container_id: str
     batch_item_id: str | None
     project_id: str | None
@@ -452,7 +478,7 @@ def scan() -> list[ReaperFinding]:
 
 
 def _is_valid_batch_item_id(value: str) -> bool:
-    """Return True if value looks like a valid batch item ID (e.g., F-00062)."""
+    """Return True if value matches the ``<PREFIX>-<NNNNN>`` batch item ID format."""
     if not value:
         return False
     return bool(__import__("re").match(r"^[A-Z]+-\d+$", value))

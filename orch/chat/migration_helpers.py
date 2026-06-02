@@ -62,6 +62,7 @@ def _pick_most_recent_session(
 
 
 def _session_cwd(session: dict[str, Any]) -> str | None:
+    """Return the working directory from a session blob, or None if absent."""
     for key in ("cwd", "directory", "workingDir", "working_dir"):
         v = session.get(key)
         if isinstance(v, str) and v:

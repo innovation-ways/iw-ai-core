@@ -52,6 +52,18 @@ def _normalize_doc_content_for_render(doc: Any) -> str:
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a Project by id or raise HTTP 404.
+
+    Args:
+        project_id: Identifier of the project to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project row.
+
+    Raises:
+        HTTPException: 404 when no project with the given id exists.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
@@ -64,6 +76,16 @@ def docs_library(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the docs library page listing all non-research documents for a project.
+
+    Args:
+        project_id: Project whose document catalogue is displayed.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        Full-page HTML response for ``docs_library.html``.
+    """
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
     docs = [d for d in svc.list_docs(project_id) if d.doc_type != DocType.research]
@@ -94,6 +116,20 @@ def docs_detail(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the document detail page with rendered content and version list.
+
+    Args:
+        project_id: Project the document belongs to.
+        doc_id: Document identifier to display.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        Full-page HTML response for ``docs_detail.html``.
+
+    Raises:
+        HTTPException: 404 when the document does not exist.
+    """
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
@@ -275,6 +311,21 @@ def docs_pdf(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
+    """Generate and serve a PDF download (with Content-Disposition: attachment).
+
+    Args:
+        project_id: Project the document belongs to.
+        doc_id: Document to export as PDF.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        PDF binary response with a download filename header, or 503 JSON when
+        Chromium is unavailable.
+
+    Raises:
+        HTTPException: 404 when the document or its content does not exist.
+    """
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
@@ -346,6 +397,19 @@ def docs_search(
     doc_type: str | None = None,
     status: str | None = None,
 ) -> Any:
+    """htmx fragment: filtered and searched docs result rows.
+
+    Args:
+        project_id: Project to search within.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+        q: Free-text search query passed to DocService.
+        doc_type: Optional doc type filter string.
+        status: Optional doc status filter string.
+
+    Returns:
+        HTML fragment for ``fragments/docs_search_results.html``.
+    """
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
 
@@ -396,6 +460,17 @@ def docs_versions(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: version drawer listing all versions for a document.
+
+    Args:
+        project_id: Project the document belongs to.
+        doc_id: Document whose version list is returned.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/docs_version_drawer.html``.
+    """
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     versions = svc.list_doc_versions(project_id, doc_id)
@@ -872,6 +947,23 @@ def docs_diff(
     v1: int = 0,
     v2: int = 0,
 ) -> Any:
+    """htmx fragment: unified diff between two document versions.
+
+    Args:
+        project_id: Project the document belongs to.
+        doc_id: Document to diff.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+        v1: Older version number; must be less than v2.
+        v2: Newer version number.
+
+    Returns:
+        HTML fragment for ``fragments/docs_diff.html``.
+
+    Raises:
+        HTTPException: 422 when v1 >= v2, or 404 when the document or
+            a version is not found.
+    """
     _get_project_or_404(project_id, db)
     if v1 >= v2:
         raise HTTPException(
@@ -1031,6 +1123,7 @@ def docs_diff_ai_summary(
 
 
 def _make_render_pdf_fn() -> Any:
+    """Return the PDF rendering callable for use in export helpers."""
     return render_pdf_chromium
 
 
@@ -1040,6 +1133,20 @@ def docs_export_bundle(
     db: Session = Depends(get_db),
     doc_ids: str = "",
 ) -> StreamingResponse:
+    """Stream a ZIP export of one or more project documents (HTML + PDF).
+
+    Args:
+        project_id: Project to export documents from.
+        db: Active database session.
+        doc_ids: Comma-separated list of doc ids to include; when empty all
+            documents in the project are exported.
+
+    Returns:
+        Streaming ZIP response with ``Content-Disposition: attachment``.
+
+    Raises:
+        HTTPException: 422 when no valid doc_ids are provided.
+    """
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
 
@@ -1086,6 +1193,19 @@ def docs_export_single(
     doc_id: str,
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
+    """Stream a ZIP export of a single document (HTML + PDF).
+
+    Args:
+        project_id: Project the document belongs to.
+        doc_id: Document to export.
+        db: Active database session.
+
+    Returns:
+        Streaming ZIP response with a versioned filename.
+
+    Raises:
+        HTTPException: 404 when the document does not exist.
+    """
     _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)
@@ -1125,6 +1245,23 @@ async def docs_validate_links(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: list broken links found in a document.
+
+    Runs link validation in a thread to avoid blocking the event loop.
+
+    Args:
+        project_id: Project the document belongs to.
+        doc_id: Document to validate links in.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/docs_broken_links.html``.
+
+    Raises:
+        HTTPException: 404 when the document does not exist, or 422 when
+            the document has no content.
+    """
     project = _get_project_or_404(project_id, db)
     svc = DocService(db)
     doc = svc.get_doc(project_id, doc_id)

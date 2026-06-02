@@ -32,7 +32,11 @@ logger = logging.getLogger(__name__)
 def _parse_mutation_json(artifact_path: Path) -> tuple[float, dict[str, object]] | None:
     """Parse mutation JSON artefact; handle both CR-00080 (new) and CR-00059 (legacy) shapes.
 
-    Returns (score, meta) or None if the file cannot be parsed.
+    Args:
+        artifact_path: Path to the mutation JSON file.
+
+    Returns:
+        Tuple of (score, meta) where score is 0.0–100.0, or None on failure.
     """
     if not artifact_path.exists():
         return None
@@ -76,7 +80,14 @@ def _parse_mutation_json(artifact_path: Path) -> tuple[float, dict[str, object]]
 
 
 def _read_mutation_score(repo_root: Path) -> tuple[float, dict[str, object]] | None:
-    """Find and parse the latest mutation JSON artefact under repo_root."""
+    """Find and parse the latest mutation JSON artefact under repo_root.
+
+    Args:
+        repo_root: Absolute path to the project repository root.
+
+    Returns:
+        Tuple of (mutation_score, meta) or None when the artefact is absent.
+    """
     # Look for tests/output/mutation/mutation.json (CR-00080 artefact)
     candidate = repo_root / "tests" / "output" / "mutation" / "mutation.json"
     if candidate.exists():
@@ -93,7 +104,15 @@ def _read_mutation_score(repo_root: Path) -> tuple[float, dict[str, object]] | N
 def _read_coverage_pct(
     coverage_json_path: Path, pyproject_path: Path
 ) -> tuple[float, dict[str, object]] | None:
-    """Parse coverage JSON artefact and return (overall_line_pct, meta) or None."""
+    """Parse coverage JSON artefact and return (overall_line_pct, meta) or None.
+
+    Args:
+        coverage_json_path: Path to coverage.json (coverage.py JSON report).
+        pyproject_path: Path to pyproject.toml for reading the fail_under threshold.
+
+    Returns:
+        Tuple of (line_coverage_pct, meta) or None when absent or unparseable.
+    """
     if not coverage_json_path.exists():
         logger.warning("Coverage artefact not found: %s", coverage_json_path)
         return None
@@ -140,8 +159,17 @@ def _read_flaky_count(
 ) -> tuple[float, dict[str, object]] | None:
     """Count flaky tests via direct JSON artefact or script fallback.
 
-    The JSON file has the shape:
+    The JSON file has the shape::
+
         {"flakes": [{"test_id": "...", "outcomes": ["PASSED", "FAILED"]}, ...]}
+
+    Args:
+        repo_root: Absolute path to the project repository root.
+        flake_summary_json: Explicit path to a flake summary JSON file;
+            when provided, the script fallback is skipped.
+
+    Returns:
+        Tuple of (flake_count_as_float, meta) or None when unavailable.
     """
     if flake_summary_json is not None and flake_summary_json.exists():
         try:
@@ -213,6 +241,12 @@ def _read_baseline_size(baseline_path: Path) -> tuple[float, dict[str, object]] 
     """Count non-comment, non-blank lines in the assertion baseline file.
 
     Lines starting with '#' are comments and are excluded.
+
+    Args:
+        baseline_path: Path to tests/assertion_free_baseline.txt.
+
+    Returns:
+        Tuple of (entry_line_count, meta) or None when the file is absent.
     """
     if not baseline_path.exists():
         logger.warning("Assertion baseline not found: %s", baseline_path)
@@ -276,7 +310,14 @@ def read_sources(
 
 
 def _truncate_to_minute(dt: datetime) -> datetime:
-    """Truncate a datetime to the minute (for idempotency grouping)."""
+    """Truncate a datetime to the minute for idempotency grouping.
+
+    Args:
+        dt: Datetime to truncate.
+
+    Returns:
+        The datetime with seconds and microseconds zeroed out.
+    """
     return dt.replace(second=0, microsecond=0)
 
 

@@ -1,3 +1,5 @@
+"""Fix recipes for release process compliance checks (OSS-REL-*)."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -10,6 +12,12 @@ if TYPE_CHECKING:
 
 
 class ChangelogRecipe:
+    """Fix recipe that creates a CHANGELOG.md when one is missing.
+
+    Addresses OSS-REL-01: absence of a structured changelog. Generates a
+    Keep-a-Changelog formatted stub with an Unreleased section.
+    """
+
     check_id = "OSS-REL-01"
     auto_apply_safe = True
 
@@ -64,6 +72,13 @@ register(ChangelogRecipe())
 
 
 class ReleasePleaseRecipe:
+    """Fix recipe that creates or upgrades a release-please GitHub Actions workflow.
+
+    Addresses OSS-REL-03: absence of an automated release process, or use of
+    the deprecated release-please-action@v3. Upgrades existing v3 references
+    to v4 in-place; creates a new workflow file when none exists.
+    """
+
     check_id = "OSS-REL-03"
     auto_apply_safe = True
 
@@ -135,6 +150,14 @@ register(ReleasePleaseRecipe())
 
 
 class AttestBuildProvenanceRecipe:
+    """Fix recipe that checks for build provenance attestation in CI workflows.
+
+    Addresses OSS-REL-04: absence of actions/attest-build-provenance in any
+    workflow. This check is informational only — the recipe reports the finding
+    but does not write files, because provenance attestation requires manual
+    workflow authoring specific to the project's build process.
+    """
+
     check_id = "OSS-REL-04"
     auto_apply_safe = True
 

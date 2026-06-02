@@ -207,6 +207,13 @@ def _normalize_module_path_for_filter(module_path: str) -> str:
 
 
 class ModuleGenerator:
+    """Generates Level 2 per-module documentation using LanceDB RAG retrieval and Ollama.
+
+    Produces structured markdown covering primary responsibility, key files,
+    dependencies, design patterns, and entry points for a given module path.
+    Also generates a Mermaid component diagram stored as a separate ProjectDoc.
+    """
+
     MODULE_QUESTIONS: list[str] = [
         "What is the primary responsibility of the {module} component?",
         "What are the most important files in {module} and what does each do?",
@@ -226,6 +233,19 @@ class ModuleGenerator:
         config: CodeUnderstandingConfig,
         session: Session,
     ) -> tuple[ProjectDoc, bool]:
+        """Return the existing module doc if one exists, otherwise generate it.
+
+        Args:
+            project_id: Project the module belongs to.
+            module_path: Filesystem path of the module (e.g. "orch/daemon/").
+            module_name: Human-readable module name for display and prompts.
+            config: LLM model, embedding model, and Ollama connection settings.
+            session: Active SQLAlchemy session for DB reads and writes.
+
+        Returns:
+            Tuple of (ProjectDoc, was_cached) where was_cached is True when the
+            doc already existed and generation was skipped.
+        """
         slug = self._make_slug(project_id, module_path)
 
         existing = self._get_by_slug(slug, session)
@@ -247,6 +267,22 @@ class ModuleGenerator:
         config: CodeUnderstandingConfig,
         session: Session,
     ) -> ProjectDoc:
+        """Generate a Level 2 module documentation page and store it as a ProjectDoc.
+
+        Retrieves relevant code chunks from LanceDB filtered to the module path,
+        calls Ollama for each of the MODULE_QUESTIONS, assembles the markdown, and
+        persists it. Also triggers module diagram generation (non-fatal on failure).
+
+        Args:
+            project_id: Project the module belongs to.
+            module_path: Filesystem path used for LanceDB filter and doc slug.
+            module_name: Human-readable module name used in prompts and titles.
+            config: LLM model, embedding model, and Ollama connection settings.
+            session: Active SQLAlchemy session; caller is responsible for commit.
+
+        Returns:
+            The newly created ProjectDoc for the module.
+        """
         store_path = Path(config.index_path).expanduser() / project_id / "vectors"
         table_name = f"code_{project_id.replace('-', '_')}"
 
@@ -474,6 +510,16 @@ Rules:
             session.commit()
 
     def _assemble_markdown(self, module_name: str, module_path: str, answers: list[str]) -> str:
+        """Assemble the final module documentation markdown from per-question answers.
+
+        Args:
+            module_name: Human-readable module name used as the H1 heading.
+            module_path: Filesystem path displayed as the Path metadata line.
+            answers: List of LLM answer strings in MODULE_QUESTIONS order.
+
+        Returns:
+            Markdown string with H1 title, path annotation, and one H2 section per answer.
+        """
         lines = [
             f"# {module_name}",
             "",

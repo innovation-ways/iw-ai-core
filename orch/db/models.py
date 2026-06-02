@@ -45,7 +45,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column, relat
 
 
 class Base(DeclarativeBase):
-    pass
+    """Declarative base class shared by all IW AI Core ORM models."""
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +153,8 @@ class AgentRuntimeOption(Base):
 
 
 class WorkItemType(enum.Enum):
+    """Discriminator for the kind of work item (Feature, Issue, ChangeRequest, Research)."""
+
     Feature = "Feature"
     Issue = "Issue"
     ChangeRequest = "ChangeRequest"
@@ -160,6 +162,8 @@ class WorkItemType(enum.Enum):
 
 
 class WorkItemStatus(enum.Enum):
+    """Lifecycle status of a work item from draft through completion or cancellation."""
+
     draft = "draft"
     approved = "approved"
     in_progress = "in_progress"
@@ -170,17 +174,23 @@ class WorkItemStatus(enum.Enum):
 
 
 class WorkItemPhase(enum.Enum):
+    """Coarse phase grouping used to filter the dashboard queue and history views."""
+
     active = "active"
     work = "work"
     done = "done"
 
 
 class EvidencePhase(enum.Enum):
+    """Lifecycle phase at which a work item evidence artifact was captured."""
+
     pre = "pre"
     post = "post"
 
 
 class StepType(enum.Enum):
+    """Classification of a workflow step that determines its agent, timeout, and fix logic."""
+
     implementation = "implementation"
     code_review = "code_review"
     code_review_fix = "code_review_fix"
@@ -193,6 +203,14 @@ class StepType(enum.Enum):
 
 
 class StepStatus(enum.Enum):
+    """Execution status of a workflow step.
+
+    The advance guard for downstream gating treats {completed, skipped} as
+    terminal-success; ``needs_fix`` is a transient state awaiting a fix cycle.
+    Note: there is no ``passed`` variant — non-blocking gate failures use
+    the ``failed → skipped`` transition.
+    """
+
     pending = "pending"
     in_progress = "in_progress"
     completed = "completed"
@@ -202,6 +220,8 @@ class StepStatus(enum.Enum):
 
 
 class RunStatus(enum.Enum):
+    """Execution status of a single StepRun attempt."""
+
     pending = "pending"
     running = "running"
     completed = "completed"
@@ -212,6 +232,8 @@ class RunStatus(enum.Enum):
 
 
 class FixTrigger(enum.Enum):
+    """What caused a fix cycle to be spawned for a workflow step."""
+
     code_review = "code_review"
     code_review_final = "code_review_final"
     quality_validation = "quality_validation"
@@ -219,6 +241,8 @@ class FixTrigger(enum.Enum):
 
 
 class FixStatus(enum.Enum):
+    """Lifecycle status of a single fix cycle attempt."""
+
     pending = "pending"
     in_progress = "in_progress"
     completed = "completed"
@@ -227,6 +251,8 @@ class FixStatus(enum.Enum):
 
 
 class BatchStatus(enum.Enum):
+    """Overall lifecycle status of a Batch from planning through completion or cancellation."""
+
     planning = "planning"
     approved = "approved"
     executing = "executing"
@@ -242,6 +268,8 @@ class BatchStatus(enum.Enum):
 
 
 class BatchItemStatus(enum.Enum):
+    """Per-item execution status within a Batch, tracking the full worktree-to-merge lifecycle."""
+
     pending = "pending"
     setting_up = "setting_up"
     executing = "executing"
@@ -275,10 +303,20 @@ TERMINAL_BATCH_ITEM_STATUSES: frozenset[BatchItemStatus] = frozenset(
 
 
 def is_terminal_batch_item_status(status: BatchItemStatus) -> bool:
+    """Return True when the given status is a terminal BatchItem state.
+
+    Args:
+        status: The BatchItemStatus to test.
+
+    Returns:
+        True when no further state transitions are expected for the item.
+    """
     return status in TERMINAL_BATCH_ITEM_STATUSES
 
 
 class TestRunStatus(enum.Enum):
+    """Lifecycle status of a dashboard-triggered test or quality-gate run."""
+
     pending = "pending"
     running = "running"
     passed = "passed"
@@ -288,6 +326,8 @@ class TestRunStatus(enum.Enum):
 
 
 class DocType(enum.Enum):
+    """Classification of a project document that determines its template and editorial guide."""
+
     module = "module"
     api = "api"
     architecture = "architecture"
@@ -303,12 +343,16 @@ class DocType(enum.Enum):
 
 
 class DocTier(enum.Enum):
+    """Automation tier that governs how frequently a document is regenerated."""
+
     fully_automated = "fully_automated"
     semi_automated = "semi_automated"
     human_authored = "human_authored"
 
 
 class EditorialCategory(enum.Enum):
+    """Editorial audience category used to route a document to the correct style guide."""
+
     technical = "technical"
     functional = "functional"
     guide = "guide"
@@ -318,6 +362,8 @@ class EditorialCategory(enum.Enum):
 
 
 class DocStatus(enum.Enum):
+    """Publication lifecycle status of a project document."""
+
     planned = "planned"
     draft = "draft"
     published = "published"
@@ -325,6 +371,8 @@ class DocStatus(enum.Enum):
 
 
 class JobStatus(enum.Enum):
+    """Lifecycle status for background jobs such as DocGenerationJob."""
+
     queued = "queued"
     running = "running"
     completed = "completed"
@@ -332,11 +380,15 @@ class JobStatus(enum.Enum):
 
 
 class DbBackupType(enum.Enum):
+    """Whether a database backup was triggered by the scheduler or by an operator command."""
+
     scheduled = "scheduled"
     manual = "manual"
 
 
 class DbBackupStatus(enum.Enum):
+    """Execution status of a database backup job."""
+
     queued = "queued"
     running = "running"
     success = "success"
@@ -349,6 +401,8 @@ class DbBackupStatus(enum.Enum):
 
 
 class OssScanStatus(enum.Enum):
+    """Lifecycle status of an OSS compliance scan run."""
+
     pending = "pending"
     running = "running"
     complete = "complete"
@@ -356,10 +410,14 @@ class OssScanStatus(enum.Enum):
 
 
 class OssScanMode(enum.Enum):
+    """Operation mode for an OSS scan; reserved for future install and fix modes."""
+
     scan = "scan"
 
 
 class OssPillColor(enum.Enum):
+    """Dashboard badge colour summarising an OSS scan result at a glance."""
+
     green = "green"
     yellow = "yellow"
     red = "red"
@@ -367,6 +425,8 @@ class OssPillColor(enum.Enum):
 
 
 class OssFindingSeverity(enum.Enum):
+    """OSPS-aligned severity level for an individual OSS compliance finding."""
+
     MUST = "MUST"
     SHOULD = "SHOULD"
     MAY = "MAY"
@@ -374,6 +434,8 @@ class OssFindingSeverity(enum.Enum):
 
 
 class OssFindingStatus(enum.Enum):
+    """Result of evaluating an OSS compliance check for a particular finding."""
+
     pass_status = "pass"  # noqa: S105  (enum member value, not a password)
     fail = "fail"
     skip = "skip"
@@ -381,6 +443,8 @@ class OssFindingStatus(enum.Enum):
 
 
 class OssToolRunStatus(enum.Enum):
+    """Execution outcome of a single OSS tool run within a scan."""
+
     ok = "ok"
     failed = "failed"
     missing = "missing"
@@ -388,12 +452,16 @@ class OssToolRunStatus(enum.Enum):
 
 
 class ProjectOssJobKind(enum.Enum):
+    """Type of async OSS job: a full scan, dependency install, or automated fix."""
+
     scan = "scan"
     install = "install"
     fix = "fix"
 
 
 class ProjectOssJobStatus(enum.Enum):
+    """Lifecycle status of a ProjectOssJob async background job."""
+
     queued = "queued"
     running = "running"
     complete = "complete"
@@ -403,6 +471,8 @@ class ProjectOssJobStatus(enum.Enum):
 
 # F-00090 — regression classification enum
 class RegressionClassification(enum.Enum):
+    """How an Incident relates to a prior merge: a true regression, pre-existing, or unknown."""
+
     regression = "regression"
     pre_existing = "pre_existing"
     unknown = "unknown"

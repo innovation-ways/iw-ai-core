@@ -40,6 +40,15 @@ router = APIRouter()
 
 @dataclass
 class ProjectStats:
+    """Per-project aggregate stats for the project selector page.
+
+    Attributes:
+        active_batches: Number of batches in executing/approved/paused/publishing state.
+        running_steps: Number of steps currently in_progress.
+        queued_items: Number of work items with status approved.
+        total_items: Total work items across all statuses.
+    """
+
     active_batches: int
     running_steps: int
     queued_items: int
@@ -48,6 +57,15 @@ class ProjectStats:
 
 @dataclass
 class ProjectWithStats:
+    """A project combined with its aggregate stats.
+
+    Attributes:
+        id: Project identifier.
+        display_name: Human-readable project name.
+        enabled: Whether the project is enabled in the registry.
+        stats: Live ProjectStats for this project.
+    """
+
     id: str
     display_name: str
     enabled: bool
@@ -56,6 +74,13 @@ class ProjectWithStats:
 
 @dataclass
 class SystemStatus:
+    """System-level status summary for the project selector page.
+
+    Attributes:
+        daemon_running: True when at least one step is actively in_progress.
+        active_steps: Count of in_progress steps across all projects.
+    """
+
     daemon_running: bool
     active_steps: int
 

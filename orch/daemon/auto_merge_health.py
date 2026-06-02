@@ -1,3 +1,10 @@
+"""Auto-merge LLM runtime health probe.
+
+Periodically fires a minimal prompt against the configured LLM runtime to
+verify reachability before a real merge conflict attempt. Results are stored
+as DaemonEvent rows so the dashboard can surface degraded runtime status.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -24,6 +31,19 @@ _EXECUTOR_DIR = Path(__file__).resolve().parent.parent.parent / "executor"
 
 
 def maybe_run_probe(db: Session, project_id: str, toml_config: AutoMergeConfig) -> None:
+    """Fire a minimal health probe against the configured LLM runtime if a probe is due.
+
+    Skips if the project is at phase 0 (disabled) or if the last probe was
+    fired within the configured ``health_probe_interval_seconds``. On completion,
+    writes a DaemonEvent of type ``merge_auto_merge_health_probe`` with
+    reachability status and duration.
+
+    Args:
+        db: Active database session — caller commits.
+        project_id: Project whose runtime configuration should be probed.
+        toml_config: Loaded ``AutoMergeConfig`` containing probe interval and
+            failure-rate threshold settings.
+    """
     resolved = resolve_project_config(db, project_id, toml_config)
     if resolved.phase == 0:
         return

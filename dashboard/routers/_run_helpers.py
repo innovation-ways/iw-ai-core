@@ -21,6 +21,18 @@ if TYPE_CHECKING:
 
 
 def get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a project by ID or raise HTTP 404.
+
+    Args:
+        project_id: The project identifier to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the project does not exist.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
@@ -49,7 +61,17 @@ def action_response(
 
 @dataclass
 class CategoryCard:
-    """A card representing a test or quality gate category."""
+    """A card representing a test or quality gate category.
+
+    Attributes:
+        key: Category key matching the config dict key.
+        label: Human-readable display label.
+        description: Short description shown on the card.
+        command: Shell command that the test runner executes.
+        group: Optional group name for visual grouping.
+        bundle: When True, this card is a composite suite.
+        last_run: Most recent TestRun for this category, or None.
+    """
 
     key: str
     label: str
@@ -62,7 +84,21 @@ class CategoryCard:
 
 @dataclass
 class RunRow:
-    """A row in the runs history table."""
+    """A row in the runs history table.
+
+    Attributes:
+        id: TestRun database PK.
+        category: Category key.
+        status: Run status string.
+        command: Shell command that was executed.
+        duration_secs: Total elapsed seconds, or None.
+        started_at: When the run started, or None.
+        finished_at: When the run finished, or None.
+        exit_code: Process exit code, or None.
+        has_report: True when an Allure HTML report directory exists on disk.
+        has_log: True when the log file exists on disk.
+        triggered_by: Who triggered the run ('user' or 'autofix').
+    """
 
     id: int
     category: str

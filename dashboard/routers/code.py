@@ -38,6 +38,18 @@ router = APIRouter(prefix="/api/projects/{project_id}/code", tags=["code"])
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a project by ID or raise HTTP 404.
+
+    Args:
+        project_id: The project identifier to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the project does not exist.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
@@ -45,10 +57,27 @@ def _get_project_or_404(project_id: str, db: Session) -> Project:
 
 
 def _get_level1_doc(project_id: str, db: Session) -> ProjectDoc | None:
+    """Return the architecture-map doc for a project, or None if not yet generated.
+
+    Args:
+        project_id: The project to fetch the doc for.
+        db: Active database session.
+
+    Returns:
+        The ProjectDoc with slug 'architecture-map', or None.
+    """
     return DocService(db).get_doc(project_id, "architecture-map")
 
 
 def _build_code_config(project: Project) -> CodeUnderstandingConfig:
+    """Build the CodeUnderstandingConfig for a project from its DB config and global settings.
+
+    Args:
+        project: The Project ORM row whose config block is read.
+
+    Returns:
+        Resolved CodeUnderstandingConfig with LLM model, embed model, and index path.
+    """
     from orch.config import load_config
     from orch.rag.config import build_code_config_from_project
 
@@ -57,6 +86,15 @@ def _build_code_config(project: Project) -> CodeUnderstandingConfig:
 
 
 def _module_slug_to_path(module_slug: str, modules: list[dict[str, str]]) -> str | None:
+    """Return the filesystem path for a module given its slug, or None if not found.
+
+    Args:
+        module_slug: URL-safe slug identifying the module.
+        modules: List of module dicts as produced by parse_modules_from_level1.
+
+    Returns:
+        The module's relative path string, or None.
+    """
     for entry in modules:
         if entry.get("slug") == module_slug:
             return entry.get("path")
@@ -69,6 +107,16 @@ async def list_modules(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return a grid of module cards parsed from the architecture-map doc.
+
+    Args:
+        project_id: The project whose modules are listed.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with module cards, or an empty-state fragment when no index exists.
+    """
     _get_project_or_404(project_id, db)
     level1_doc = _get_level1_doc(project_id, db)
 
@@ -135,6 +183,20 @@ async def get_module(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the detail panel for a single code module.
+
+    Serves from cache if the module doc already exists, otherwise launches a
+    background generation task and polls briefly before returning a generating state.
+
+    Args:
+        project_id: The project that owns the module.
+        module_slug: URL slug of the module to retrieve.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with module documentation or a generating/error state panel.
+    """
     project = _get_project_or_404(project_id, db)
     level1_doc = _get_level1_doc(project_id, db)
 
@@ -242,6 +304,17 @@ async def regenerate_module(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Delete the cached module doc and regenerate it synchronously.
+
+    Args:
+        project_id: The project that owns the module.
+        module_slug: URL slug of the module to regenerate.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the freshly generated module documentation.
+    """
     project = _get_project_or_404(project_id, db)
     level1_doc = _get_level1_doc(project_id, db)
 
@@ -291,6 +364,17 @@ async def get_module_diagram(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the Mermaid diagram panel for a module.
+
+    Args:
+        project_id: The project that owns the module.
+        module_slug: URL slug of the module whose diagram is fetched.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the diagram DSL for client-side Mermaid rendering.
+    """
     _get_project_or_404(project_id, db)
 
     import re
@@ -325,6 +409,20 @@ async def explain_symbol(
     file_path: str = Query(..., description="Relative file path within the repo"),
     symbol_name: str | None = Query(None, description="Function or class name"),
 ) -> Any:
+    """Return an LLM-generated explanation for a symbol (function or class) in a file.
+
+    Rejects absolute paths and path traversal attempts.
+
+    Args:
+        project_id: The project whose codebase is queried.
+        request: The current FastAPI request.
+        db: Active database session.
+        file_path: Repo-relative path to the source file.
+        symbol_name: Optional function or class name within the file.
+
+    Returns:
+        HTML fragment with the explanation, or an error message fragment.
+    """
     _get_project_or_404(project_id, db)
 
     if file_path.startswith(("/", "\\")):

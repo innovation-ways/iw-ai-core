@@ -109,6 +109,15 @@ def list_tabs(
 
 
 def get_tab(db: Session, tab_id: str) -> ChatTab | None:
+    """Fetch a single ChatTab by primary key, or None if not found.
+
+    Args:
+        db: Active SQLAlchemy session.
+        tab_id: UUID primary key of the tab to fetch.
+
+    Returns:
+        The ChatTab row, or None when not found.
+    """
     return db.get(ChatTab, tab_id)
 
 

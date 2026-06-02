@@ -36,7 +36,24 @@ router = APIRouter()
 
 @dataclass
 class RunningRow:
-    """A currently-running step with all display info."""
+    """A currently-running step with all display info.
+
+    Attributes:
+        project_id: Owning project identifier.
+        project_name: Human-readable project display name.
+        item_id: Work item identifier.
+        step_id: Step identifier (e.g. 'S01').
+        agent_label: Human-readable step label.
+        opencode_agent: Optional opencode agent name when applicable.
+        pid: OS process ID of the running agent, or None.
+        started_at: When the step run started.
+        run_id: StepRun database PK.
+        last_heartbeat: Timestamp of the last heartbeat update.
+        last_heartbeat_age_secs: Seconds since the last heartbeat, or None.
+        pid_alive: Whether the daemon last confirmed the PID is alive.
+        warned_50pct_at: When the 50% timeout warning was emitted, or None.
+        timeout_secs: Configured step timeout in seconds, or None.
+    """
 
     project_id: str
     project_name: str
@@ -47,9 +64,6 @@ class RunningRow:
     pid: int | None
     started_at: datetime | None
     run_id: int
-    # CR-00024: heartbeat-age and pid-alive are surfaced so operators can tell
-    # whether the daemon recently confirmed the step is alive (vs. been silent
-    # for ages and probably stuck).
     last_heartbeat: datetime | None
     last_heartbeat_age_secs: int | None
     pid_alive: bool | None
@@ -59,7 +73,18 @@ class RunningRow:
 
 @dataclass
 class FailedRow:
-    """A step that failed or needs attention."""
+    """A step that failed or needs attention.
+
+    Attributes:
+        project_id: Owning project identifier.
+        project_name: Human-readable project display name.
+        item_id: Work item identifier.
+        step_id: Step identifier.
+        agent_label: Human-readable step label.
+        status: Step status value string ('failed' or 'needs_fix').
+        error_message: Most recent error message from the step run, or None.
+        scope_violations: Scope-violation paths if this step was blocked by scope checks.
+    """
 
     project_id: str
     project_name: str
@@ -68,13 +93,21 @@ class FailedRow:
     agent_label: str
     status: str  # step status value string
     error_message: str | None
-    # I-00101: scope-violation paths if this is a scope-blocked step
     scope_violations: list[str] | None = None
 
 
 @dataclass
 class CompletedRow:
-    """A step completed in the last hour."""
+    """A step completed in the last hour.
+
+    Attributes:
+        project_id: Owning project identifier.
+        item_id: Work item identifier.
+        step_id: Step identifier.
+        agent_label: Human-readable step label.
+        duration_secs: How long the step took, or None.
+        completed_at: When the step finished.
+    """
 
     project_id: str
     item_id: str
@@ -261,6 +294,15 @@ def running_tasks(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the system-wide running tasks page.
+
+    Args:
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML page with running, failed, and recently completed step rows.
+    """
     templates: Jinja2Templates = request.app.state.templates
     running_rows = _query_running_now(db)
     failed_rows = _query_failed_steps(db)
@@ -299,6 +341,16 @@ def project_running_tasks(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the running tasks page scoped to a single project.
+
+    Args:
+        project_id: The project to filter running, failed, and completed rows for.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML running page with rows filtered to the given project.
+    """
     templates: Jinja2Templates = request.app.state.templates
     project = db.get(Project, project_id)
     running_rows = _query_running_now(db)

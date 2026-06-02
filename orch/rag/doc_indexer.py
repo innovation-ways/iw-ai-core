@@ -24,6 +24,15 @@ if TYPE_CHECKING:
 
 @dataclass
 class DocIndexResult:
+    """Result counters returned by DocIndexer after an indexing run.
+
+    Attributes:
+        items_discovered: Total work items found in the DB query.
+        items_indexed: Work items successfully chunked and embedded.
+        chunks_created: Total vector chunks written to LanceDB.
+        errors: Per-item error records containing work_item_id and error message.
+    """
+
     items_discovered: int = 0
     items_indexed: int = 0
     chunks_created: int = 0
@@ -34,6 +43,17 @@ _MANIFEST_KEY = "embed_model"
 
 
 class DocIndexer:
+    """Embeds work_items.functional_doc_content into a per-project LanceDB table.
+
+    Uses SentenceSplitter for prose chunking and Ollama embeddings via the
+    same CodeUnderstandingConfig used by CodeIndexer.
+
+    Attributes:
+        project_id: The project whose work items are indexed.
+        config: Embedding model and Ollama connection settings.
+        index_path: Root directory for LanceDB table storage.
+    """
+
     def __init__(
         self,
         project_id: str,
@@ -70,6 +90,12 @@ class DocIndexer:
         return embed.get_text_embedding(text)
 
     def get_previous_job_watermark(self) -> datetime | None:
+        """Return the completed_at timestamp of the most recent completed DocIndexJob.
+
+        Returns:
+            Timestamp of the last completed job for this project, or None if no
+            completed job exists.
+        """
         from sqlalchemy import select
 
         from orch.db.models import DocIndexJob
@@ -93,6 +119,15 @@ class DocIndexer:
         self,
         watermark: datetime | None,
     ) -> list[tuple[str, str, str, str | None]]:
+        """Query work items with non-null functional_doc_content, optionally filtered by watermark.
+
+        Args:
+            watermark: Only return items updated after this timestamp; pass None
+                for a full fetch.
+
+        Returns:
+            List of (id, type, title, sanitised_content) tuples.
+        """
         from sqlalchemy import select
 
         from orch.db.models import WorkItem
@@ -237,6 +272,18 @@ class DocIndexer:
         self,
         progress_queue: Any | None = None,
     ) -> DocIndexResult:
+        """Perform a full re-index of all work items for the project.
+
+        Drops and recreates the LanceDB table when the stored embed model differs
+        from the configured one.
+
+        Args:
+            progress_queue: Optional asyncio Queue to receive progress dicts
+                with keys event, items_indexed, chunks_created, and phase.
+
+        Returns:
+            DocIndexResult with counts for discovered, indexed, and chunked items.
+        """
         from llama_index.core.node_parser import SentenceSplitter
 
         embed_model = self._load_embed_model()
@@ -310,6 +357,20 @@ class DocIndexer:
         watermark: datetime | None,
         progress_queue: Any | None = None,
     ) -> DocIndexResult:
+        """Incrementally re-index work items updated since watermark.
+
+        Falls back to a full index_all when the stored embed model differs from
+        the configured one. Uses the most recent completed job's completed_at as
+        the watermark when watermark is None.
+
+        Args:
+            watermark: Only re-index items updated after this timestamp; pass
+                None to derive the watermark from the previous completed job.
+            progress_queue: Optional asyncio Queue to receive progress dicts.
+
+        Returns:
+            DocIndexResult with counts for changed items discovered, indexed, and chunked.
+        """
         from llama_index.core.node_parser import SentenceSplitter
 
         embed_model = self._load_embed_model()

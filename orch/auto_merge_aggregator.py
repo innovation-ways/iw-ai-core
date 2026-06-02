@@ -1,3 +1,11 @@
+"""Auto-merge aggregator — status, events, verdicts, and token-cost rollups.
+
+Provides read-only aggregation helpers consumed by the auto-merge dashboard
+page and API: resolved project config, status snapshots, recent event listing,
+verdict rollups, refuse-list breakdowns, health summaries, and token-cost
+rollups from DaemonEvent llm_calls metadata.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -32,6 +40,18 @@ SORTABLE_COLUMNS: dict[str, ColumnElement[Any]] = {
 
 @dataclass(frozen=True)
 class ResolvedConfig:
+    """Resolved auto-merge configuration for a project, with per-axis provenance.
+
+    Attributes:
+        phase: Auto-merge phase (0 or 1).
+        runtime_option_id: PK of the resolved AgentRuntimeOption, or None when
+            falling back to the hardcoded default.
+        cli_tool: CLI tool name (e.g. "opencode" or "claude").
+        model: LLM model identifier.
+        phase_source: Where the phase value was resolved from.
+        runtime_source: Where the runtime was resolved from.
+    """
+
     phase: int
     runtime_option_id: int | None
     cli_tool: str
@@ -55,6 +75,17 @@ class ResolvedConfig:
 
 @dataclass(frozen=True)
 class StatusSnapshot:
+    """Point-in-time auto-merge status snapshot for one project.
+
+    Attributes:
+        project_id: The project identifier.
+        config: Resolved runtime configuration at the time of the snapshot.
+        deployed_since: Earliest migration_applied or config_updated event timestamp.
+        counts_by_event_type: Event counts grouped by event_type.
+        health_state: Overall health classification.
+        latest_health_probe_at: Timestamp of the most recent health-probe event.
+    """
+
     project_id: str
     config: ResolvedConfig
     deployed_since: datetime
@@ -65,6 +96,21 @@ class StatusSnapshot:
 
 @dataclass(frozen=True)
 class EventRow:
+    """Flattened view of a DaemonEvent with its optional MergeAutoVerdict.
+
+    Attributes:
+        id: DaemonEvent PK.
+        event_type: Event type string.
+        entity_id: Entity identifier (work item, batch, etc.), or None.
+        message: Human-readable event message, or None.
+        metadata: Parsed event_metadata JSON dict.
+        created_at: Event creation timestamp.
+        verdict: Verdict classification, or None.
+        verdict_notes: Free-text verdict notes, or None.
+        verdicted_by: Who submitted the verdict, or None.
+        verdicted_at: When the verdict was submitted, or None.
+    """
+
     id: int
     event_type: str
     entity_id: str | None
@@ -79,6 +125,16 @@ class EventRow:
 
 @dataclass(frozen=True)
 class VerdictRollup:
+    """Verdict outcome counts for a sliding time window.
+
+    Attributes:
+        window: Time window identifier ("7d" or "30d").
+        pending: Count of pending verdicts.
+        correct: Count of correct verdicts.
+        wrong: Count of wrong verdicts.
+        partial: Count of partial verdicts.
+    """
+
     window: Literal["7d", "30d"]
     pending: int
     correct: int
@@ -88,12 +144,30 @@ class VerdictRollup:
 
 @dataclass(frozen=True)
 class RefuseListEntry:
+    """Single reason entry from the auto-merge refuse-list breakdown.
+
+    Attributes:
+        reason: The reason code for refusal (e.g. "no_design_doc").
+        count: Number of skips with this reason in the window.
+    """
+
     reason: str
     count: int
 
 
 @dataclass(frozen=True)
 class HealthSummary:
+    """Auto-merge runtime health summary.
+
+    Attributes:
+        state: Overall health classification.
+        latest_probe_at: Timestamp of the most recent probe, or None.
+        latest_probe_runtime_reachable: Whether the runtime was reachable in
+            the most recent probe, or None when no probe has been recorded.
+        failures_last_24h: Number of failed probes in the last 24 hours.
+        threshold_per_day: Configured failure threshold per day (from toml).
+    """
+
     state: Literal["healthy", "degraded", "down", "unknown"]
     latest_probe_at: datetime | None
     latest_probe_runtime_reachable: bool | None
@@ -103,6 +177,17 @@ class HealthSummary:
 
 @dataclass(frozen=True)
 class TokenCostRollup:
+    """LLM token-cost rollup for a sliding time window.
+
+    Attributes:
+        window: Time window identifier ("7d" or "30d").
+        total_input_tokens: Total input tokens consumed.
+        total_output_tokens: Total output tokens consumed.
+        total_cost_usd: Estimated total cost in USD.
+        breakdown_by_model: Per-model dict with keys "input", "output", "cost".
+        has_unknown_models: True when at least one model had no known pricing.
+    """
+
     window: Literal["7d", "30d"]
     total_input_tokens: int
     total_output_tokens: int
@@ -120,10 +205,12 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
 
 
 def _window_days(window: Literal["7d", "30d"]) -> int:
+    """Return the integer number of days for a window identifier."""
     return 7 if window == "7d" else 30
 
 
 def _default_runtime(db: Session) -> AgentRuntimeOption | None:
+    """Return the default enabled AgentRuntimeOption row, or None if none is set."""
     return db.execute(
         select(AgentRuntimeOption)
         .where(AgentRuntimeOption.is_default.is_(True))
@@ -133,6 +220,7 @@ def _default_runtime(db: Session) -> AgentRuntimeOption | None:
 
 
 def _runtime_by_id(db: Session, runtime_id: int | None) -> AgentRuntimeOption | None:
+    """Return the AgentRuntimeOption for the given PK, or None when id is None."""
     if runtime_id is None:
         return None
     return db.get(AgentRuntimeOption, runtime_id)
@@ -141,6 +229,7 @@ def _runtime_by_id(db: Session, runtime_id: int | None) -> AgentRuntimeOption | 
 def _maybe_emit_disabled_runtime_event(
     db: Session, project_id: str, runtime_option_id: int
 ) -> None:
+    """Emit a config-invalid event when the configured runtime is disabled, deduplicating."""
     latest = db.execute(
         select(DaemonEvent)
         .where(DaemonEvent.project_id == project_id)
@@ -176,6 +265,20 @@ def _maybe_emit_disabled_runtime_event(
 def resolve_project_config(
     db: Session, project_id: str, toml_config: AutoMergeConfig
 ) -> ResolvedConfig:
+    """Resolve the effective auto-merge config for a project with per-axis provenance.
+
+    Priority layers for phase: per_project_db > toml > hardcoded (0).
+    Priority layers for runtime: per_project_db > toml > default DB row > hardcoded fallback.
+    Disabled runtimes are skipped and a config-invalid event is emitted once per unique case.
+
+    Args:
+        db: SQLAlchemy session.
+        project_id: Project identifier.
+        toml_config: Parsed toml-level auto-merge config for this project.
+
+    Returns:
+        ResolvedConfig with both the effective values and their provenance.
+    """
     db_row = db.get(AutoMergeProjectConfig, project_id)
 
     # Determine phase source before any fallback
@@ -247,6 +350,16 @@ def resolve_project_config(
 def get_status_snapshot(
     db: Session, project_id: str, toml_config: AutoMergeConfig
 ) -> StatusSnapshot:
+    """Build a StatusSnapshot for the given project.
+
+    Args:
+        db: SQLAlchemy session.
+        project_id: Project identifier.
+        toml_config: Parsed toml-level auto-merge config for this project.
+
+    Returns:
+        StatusSnapshot with resolved config, event counts, and health state.
+    """
     config = resolve_project_config(db, project_id, toml_config)
     deployed_since = db.execute(
         select(func.min(DaemonEvent.created_at))
@@ -282,6 +395,25 @@ def list_recent_events(
     direction: str = "desc",
     include_non_auto_merge: bool = False,
 ) -> tuple[list[EventRow], int]:
+    """List auto-merge events with optional filtering, sorting, and pagination.
+
+    Args:
+        db: SQLAlchemy session.
+        project_id: Project identifier.
+        page: Zero-based page index.
+        page_size: Number of rows per page.
+        event_type_filter: When set, filter to exactly this event_type.
+        sort: Column to sort by; must be a key in SORTABLE_COLUMNS.
+        direction: Sort direction ("asc" or "desc").
+        include_non_auto_merge: When True, include all event types; otherwise
+            only events whose type starts with an AUTO_MERGE_EVENT_PREFIXES entry.
+
+    Returns:
+        Tuple of (list of EventRow, total row count before pagination).
+
+    Raises:
+        ValueError: If sort or direction is invalid.
+    """
     if sort not in SORTABLE_COLUMNS:
         raise ValueError(f"sort must be one of {sorted(SORTABLE_COLUMNS)}; got {sort!r}")
     if direction not in ("asc", "desc"):
@@ -328,6 +460,16 @@ def list_recent_events(
 
 
 def get_event_detail(db: Session, project_id: str, event_id: int) -> EventRow | None:
+    """Return an EventRow for a single event by id, or None when not found.
+
+    Args:
+        db: SQLAlchemy session.
+        project_id: Project identifier (scopes the lookup).
+        event_id: DaemonEvent primary key.
+
+    Returns:
+        EventRow with verdict fields populated if a verdict exists, else None.
+    """
     row = db.execute(
         select(DaemonEvent, MergeAutoVerdict)
         .outerjoin(
@@ -357,6 +499,16 @@ def get_event_detail(db: Session, project_id: str, event_id: int) -> EventRow | 
 
 
 def get_verdict_rollup(db: Session, project_id: str, window: Literal["7d", "30d"]) -> VerdictRollup:
+    """Count verdicts by outcome for the given project and time window.
+
+    Args:
+        db: SQLAlchemy session.
+        project_id: Project identifier.
+        window: Time window ("7d" or "30d").
+
+    Returns:
+        VerdictRollup with pending, correct, wrong, and partial counts.
+    """
     since_expr = func.now() - timedelta(days=_window_days(window))
     rows = db.execute(
         select(MergeAutoVerdict.verdict, func.count())
@@ -378,6 +530,16 @@ def get_verdict_rollup(db: Session, project_id: str, window: Literal["7d", "30d"
 def get_refuse_list_breakdown(
     db: Session, project_id: str, window: Literal["7d", "30d"]
 ) -> list[RefuseListEntry]:
+    """Return per-reason counts of auto-merge skips for the given window.
+
+    Args:
+        db: SQLAlchemy session.
+        project_id: Project identifier.
+        window: Time window ("7d" or "30d").
+
+    Returns:
+        List of RefuseListEntry sorted by count descending.
+    """
     since_expr = func.now() - timedelta(days=_window_days(window))
     rows = db.execute(
         select(DaemonEvent.event_metadata["reason"].astext, func.count())
@@ -390,6 +552,16 @@ def get_refuse_list_breakdown(
 
 
 def get_health_summary(db: Session, project_id: str, toml_config: AutoMergeConfig) -> HealthSummary:
+    """Compute the auto-merge runtime health summary for a project.
+
+    Args:
+        db: SQLAlchemy session.
+        project_id: Project identifier.
+        toml_config: Parsed toml-level auto-merge config (provides the threshold).
+
+    Returns:
+        HealthSummary with state, latest probe info, and 24h failure count.
+    """
     latest = db.execute(
         select(DaemonEvent)
         .where(DaemonEvent.project_id == project_id)
@@ -429,6 +601,20 @@ def get_health_summary(db: Session, project_id: str, toml_config: AutoMergeConfi
 def get_token_cost_rollup(
     db: Session, project_id: str, window: Literal["7d", "30d"]
 ) -> TokenCostRollup:
+    """Aggregate LLM token usage and estimated cost from event metadata.
+
+    Reads ``llm_calls`` from DaemonEvent.event_metadata for events in the
+    window, applies MODEL_PRICING per-model, and returns totals and a
+    per-model breakdown.
+
+    Args:
+        db: SQLAlchemy session.
+        project_id: Project identifier.
+        window: Time window ("7d" or "30d").
+
+    Returns:
+        TokenCostRollup with totals and per-model breakdown.
+    """
     since_expr = func.now() - timedelta(days=_window_days(window))
     events = db.scalars(
         select(DaemonEvent)

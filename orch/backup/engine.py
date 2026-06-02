@@ -1,3 +1,10 @@
+"""Logical backup engine for the IW AI Core orchestration database.
+
+Creates timestamped backup sets containing a pg_dump custom-format archive,
+a globals SQL file (roles/passwords), and a JSON manifest. Validates the
+archive integrity via pg_restore --list before marking the job successful.
+"""
+
 from __future__ import annotations
 
 import json
@@ -25,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 
 class CommandRunner(Protocol):
+    """Injectable command runner for testing — replaces subprocess.run calls."""
+
     def __call__(
         self,
         argv: list[str],
@@ -35,15 +44,27 @@ class CommandRunner(Protocol):
 
 
 class BackupError(RuntimeError):
-    pass
+    """Raised when a backup operation fails for any reason."""
 
 
 class BackupIntegrityError(BackupError):
-    pass
+    """Raised when pg_restore --list reports the dump archive is corrupt."""
 
 
 @dataclass(frozen=True)
 class BackupResult:
+    """All paths and metadata produced by a successful create_backup call.
+
+    Attributes:
+        backup_dir: The timestamped set directory that holds all artifacts.
+        archive_path: Path to the pg_dump custom-format archive (iw_orch.dump).
+        globals_path: Path to the pg_dumpall globals file (globals.sql).
+        manifest_path: Path to the JSON manifest (manifest.json).
+        manifest: Decoded manifest dict.
+        total_bytes: Combined size of archive + globals + manifest in bytes.
+        server_version: PostgreSQL server version string from SHOW server_version.
+    """
+
     backup_dir: Path
     archive_path: Path
     globals_path: Path
@@ -60,6 +81,7 @@ def _run_cmd(
     env: dict[str, str],
     command_runner: CommandRunner | None,
 ) -> None:
+    """Run argv via command_runner or subprocess.run, redirecting stdout to output_path."""
     if command_runner is not None:
         command_runner(argv, output_path=output_path, _env=env)
         return
@@ -71,6 +93,7 @@ def _run_cmd(
 
 
 def _resolve_db_metadata(config: Any) -> dict[str, Any]:
+    """Connect to the DB and collect metadata needed for the manifest."""
     engine = create_engine(config.db_url)
     try:
         with engine.connect() as conn:
@@ -101,6 +124,7 @@ def _resolve_db_metadata(config: Any) -> dict[str, Any]:
 
 
 def _resolve_tools(which_func: Callable[[str], str | None], server_major: int) -> dict[str, str]:
+    """Return pg_dump/pg_dumpall/pg_restore paths, falling back to Docker if missing."""
     host_tools = {
         "pg_dump": which_func("pg_dump"),
         "pg_dumpall": which_func("pg_dumpall"),
@@ -117,6 +141,11 @@ def _resolve_tools(which_func: Callable[[str], str | None], server_major: int) -
 
 
 def _argv_for_db_tool(tool_ref: str, config: Any) -> list[str]:
+    """Build the argv prefix for a pg_dump/pg_dumpall invocation.
+
+    Supports both host-binary paths (plain string) and Docker image references
+    (``"docker:<image>:<binary>"``).
+    """
     if not tool_ref.startswith("docker:"):
         return [
             tool_ref,
@@ -148,6 +177,7 @@ def _argv_for_db_tool(tool_ref: str, config: Any) -> list[str]:
 
 
 def _argv_for_restore_list(tool_ref: str, archive_path: Path) -> list[str]:
+    """Build argv for pg_restore --list integrity check, supporting Docker refs."""
     if not tool_ref.startswith("docker:"):
         return [tool_ref, "--list", str(archive_path)]
     _, image, binary = tool_ref.split(":", 2)
@@ -176,6 +206,34 @@ def create_backup(
     now_fn: Callable[[], datetime] | None = None,
     which_func: Callable[[str], str | None] = shutil.which,
 ) -> BackupResult:
+    """Create a logical backup set: pg_dump archive + globals + manifest.
+
+    Creates a timestamped directory under config.backup_dir, runs pg_dump
+    (custom format), pg_dumpall --globals-only, validates integrity with
+    pg_restore --list, and writes a manifest.json. Optionally records progress
+    in a DbBackupJob row.
+
+    Args:
+        config: Loaded IW config with db_host, db_port, db_name, db_user,
+            db_password, db_url, and backup_dir attributes.
+        backup_type: Whether this is a scheduled or manual backup.
+        label: Optional human-readable label stored on the DbBackupJob row.
+        session: Existing SQLAlchemy session for the DbBackupJob row; takes
+            precedence over session_factory when provided.
+        session_factory: Callable returning a new Session, used when session
+            is None. The factory-created session is owned and closed here.
+        command_runner: Injectable runner for tests, replaces subprocess.run.
+        db_introspector: Injectable DB metadata collector for tests.
+        now_fn: Injectable clock for tests.
+        which_func: Injectable which() for tests.
+
+    Returns:
+        BackupResult with all artifact paths and metadata.
+
+    Raises:
+        BackupIntegrityError: If pg_restore --list reports the archive is corrupt.
+        BackupError: On any other backup failure.
+    """
     timestamp = (now_fn or (lambda: datetime.now(UTC)))().astimezone(UTC)
     metadata = (db_introspector or _resolve_db_metadata)(config)
 

@@ -13,12 +13,30 @@ JOB_REGISTRY: dict[str, CodeIndexJobRunner] = {}
 
 
 class JobAlreadyRunningError(Exception):
+    """Raised when a code index job is started for a project that already has one running."""
+
     def __init__(self, project_id: str) -> None:
         super().__init__(f"A code index job is already running for project {project_id}")
         self.project_id = project_id
 
 
 class CodeIndexJobRunner:
+    """Asyncio background runner that drives a CodeIndexJob through queued → running →
+    completed/failed.
+
+    Runs code file indexing, updates DB counters, then triggers Level 1 map generation
+    via MapGenerator. Registers itself in JOB_REGISTRY for deduplication.
+
+    Attributes:
+        job_id: Primary key of the CodeIndexJob row being executed.
+        project_id: Project whose repository is being indexed.
+        repo_path: Absolute path to the project repository root.
+        config: Embedding model, LLM model, and Ollama connection settings.
+        index_path: Root directory for LanceDB storage.
+        reindex: When True, only re-index changed files (incremental mode).
+        mapgen_only: When True, skip file indexing and only regenerate the Level 1 map.
+    """
+
     def __init__(
         self,
         job_id: str,
@@ -47,9 +65,11 @@ class CodeIndexJobRunner:
         return self._queue
 
     def request_cancel(self) -> None:
+        """Signal the runner to cancel after the current indexing step completes."""
         self._cancel_requested = True
 
     async def run(self) -> None:
+        """Execute the code index job: index files, persist counters, then run map generation."""
         from orch.rag.indexer import CodeIndexer
 
         try:
@@ -374,6 +394,22 @@ def start_index_job(
     db_session_factory: Any | None = None,
     runner: CodeIndexJobRunner | None = None,
 ) -> CodeIndexJobRunner:
+    """Create and register a CodeIndexJobRunner in JOB_REGISTRY, then return it.
+
+    Args:
+        job: The CodeIndexJob DB row to execute.
+        project: The Project row providing repo_root and config.
+        mode: One of "full" (index all files), "incremental" (changed files only),
+            or "mapgen_only" (skip indexing, regenerate Level 1 map from existing index).
+        db_session_factory: Optional session factory; defaults to SessionLocal.
+        runner: Pre-constructed runner instance, used in tests to inject a mock.
+
+    Returns:
+        The registered CodeIndexJobRunner ready to be awaited with runner.run().
+
+    Raises:
+        JobAlreadyRunningError: If a runner is already registered for the project.
+    """
     if project.id in JOB_REGISTRY:
         raise JobAlreadyRunningError(project.id)
 

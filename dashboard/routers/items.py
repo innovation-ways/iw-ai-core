@@ -346,6 +346,18 @@ def _aggregate_step_spans(
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a Project by id or raise HTTP 404.
+
+    Args:
+        project_id: Identifier of the project to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project row.
+
+    Raises:
+        HTTPException: 404 when no project with the given id exists.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
@@ -353,6 +365,19 @@ def _get_project_or_404(project_id: str, db: Session) -> Project:
 
 
 def _get_item_or_404(project_id: str, item_id: str, db: Session) -> WorkItem:
+    """Fetch a WorkItem by (project_id, item_id) or raise HTTP 404.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Identifier of the work item.
+        db: Active database session.
+
+    Returns:
+        The matching WorkItem row.
+
+    Raises:
+        HTTPException: 404 when no work item with the given ids exists.
+    """
     item = db.scalar(
         select(WorkItem).where(
             WorkItem.project_id == project_id,
@@ -380,6 +405,22 @@ def _read_report_file(report_file: str | None, repo_root: str | None) -> str | N
 def _get_steps(
     project_id: str, item_id: str, db: Session, project: Project | None = None
 ) -> list[StepDetail]:
+    """Load all workflow steps for a work item, enriched with run/fix-cycle data.
+
+    Builds the full list used by the overview and logs tabs: a synthetic S00
+    setup step, all real workflow steps ordered by step_number, and a synthetic
+    MERGE step appended at the end.
+
+    Args:
+        project_id: Project owning the work item.
+        item_id: Work item to load steps for.
+        db: Active database session.
+        project: Optional pre-fetched Project row; used for disk-based report
+            fallback. When None, report fallback is skipped.
+
+    Returns:
+        Ordered list of StepDetail instances including synthetic setup and merge steps.
+    """
     from sqlalchemy import func
 
     bi = _get_batch_item(project_id, item_id, db)
@@ -589,6 +630,17 @@ def _get_steps(
 def _get_metrics(
     project_id: str, item_id: str, steps: list[StepDetail], db: Session
 ) -> ItemMetrics:
+    """Compute aggregate metrics for the item detail header.
+
+    Args:
+        project_id: Project owning the work item.
+        item_id: Work item to compute metrics for.
+        steps: Pre-loaded list of StepDetail instances (from _get_steps).
+        db: Active database session.
+
+    Returns:
+        ItemMetrics with total duration, fix cycle count, and step completion counts.
+    """
     # Total duration: from first step start to last step end
     started_ats = [s.started_at for s in steps if s.started_at]
     completed_ats = [s.completed_at for s in steps if s.completed_at]
@@ -621,6 +673,16 @@ def _get_metrics(
 
 
 def _get_batch_ref(project_id: str, item_id: str, db: Session) -> str | None:
+    """Return the batch_id for the most recent BatchItem associated with an item.
+
+    Args:
+        project_id: Project owning the work item.
+        item_id: Work item to look up.
+        db: Active database session.
+
+    Returns:
+        The batch_id string, or None when no BatchItem exists.
+    """
     bi = db.scalar(
         select(BatchItem)
         .where(
@@ -663,6 +725,16 @@ def _get_batch_item_error(project_id: str, item_id: str, db: Session) -> str | N
 
 
 def _get_batch_item(project_id: str, item_id: str, db: Session) -> BatchItem | None:
+    """Return the most recent BatchItem for a work item, or None if not found.
+
+    Args:
+        project_id: Project the batch item belongs to.
+        item_id: Work item identifier to look up.
+        db: Active database session.
+
+    Returns:
+        The most recent BatchItem row, or None.
+    """
     return db.scalar(
         select(BatchItem)
         .where(
@@ -674,6 +746,14 @@ def _get_batch_item(project_id: str, item_id: str, db: Session) -> BatchItem | N
 
 
 def _setup_status(bi: BatchItem | None) -> str:
+    """Derive the display status string for the synthetic worktree-setup step.
+
+    Args:
+        bi: The most recent BatchItem for the work item, or None.
+
+    Returns:
+        One of ``"completed"``, ``"in_progress"``, ``"failed"``, or ``"pending"``.
+    """
     if bi is None:
         return "pending"
     if bi.worktree_info:
@@ -686,6 +766,15 @@ def _setup_status(bi: BatchItem | None) -> str:
 
 
 def _merge_status(bi: BatchItem | None) -> str:
+    """Derive the display status string for the synthetic squash-merge step.
+
+    Args:
+        bi: The most recent BatchItem for the work item, or None.
+
+    Returns:
+        One of ``"awaiting_approval"``, ``"completed"``, ``"in_progress"``,
+        ``"failed"``, ``"merge_failed"``, or ``"pending"``.
+    """
     if bi is None:
         return "pending"
     if bi.status == BatchItemStatus.awaiting_merge_approval:
@@ -711,6 +800,16 @@ def _merge_status(bi: BatchItem | None) -> str:
 def _synthetic_setup_step(
     bi: BatchItem | None, step_statuses: list[str] | None = None
 ) -> StepDetail:
+    """Build a synthetic StepDetail representing worktree setup (S00).
+
+    Args:
+        bi: The most recent BatchItem for the work item, or None.
+        step_statuses: Optional list of real step status strings used to
+            determine whether the setup step is eligible for restart.
+
+    Returns:
+        A StepDetail with step_id ``"S00"`` and ``is_synthetic=True``.
+    """
     status = _setup_status(bi)
     dur: float | None = None
     if bi and bi.worktree_info and bi.started_at:
@@ -758,6 +857,14 @@ def _synthetic_setup_step(
 
 
 def _synthetic_merge_step(bi: BatchItem | None) -> StepDetail:
+    """Build a synthetic StepDetail representing the squash-merge step.
+
+    Args:
+        bi: The most recent BatchItem for the work item, or None.
+
+    Returns:
+        A StepDetail with step_id ``"MERGE"`` and ``is_synthetic=True``.
+    """
     status = _merge_status(bi)
     return StepDetail(
         step_id="MERGE",
@@ -815,6 +922,14 @@ def _reverse_log(content: str | None) -> str | None:
 
 
 def _setup_log_content(bi: BatchItem) -> str:
+    """Build a human-readable log string for the worktree setup step.
+
+    Args:
+        bi: The BatchItem whose worktree_info and notes are formatted.
+
+    Returns:
+        Multi-line text summarising the setup outcome.
+    """
     lines = ["=== Worktree Setup ==="]
     if bi.worktree_info and isinstance(bi.worktree_info, dict):
         lines.append(f"Path:       {bi.worktree_info.get('path', '-')}")
@@ -829,6 +944,15 @@ def _setup_log_content(bi: BatchItem) -> str:
 
 
 def _merge_log_content(bi: BatchItem) -> str:
+    """Build a human-readable log string for the squash-merge step.
+
+    Args:
+        bi: The BatchItem whose merge_info and notes are formatted.
+
+    Returns:
+        Multi-line text summarising the merge outcome, including any pre-merge
+        failure phase details from merge_info.
+    """
     lines = ["=== Squash Merge ==="]
     if bi.merged_at:
         lines.append(f"Merged at: {bi.merged_at.isoformat()}")
@@ -935,6 +1059,20 @@ def _list_evidences(
 
 
 def _get_log_sections(project_id: str, item_id: str, db: Session) -> list[LogSection]:
+    """Build the complete list of log sections for the logs tab.
+
+    Returns one LogSection per workflow step (with per-run RunLog entries),
+    preceded by a synthetic setup section and followed by a synthetic merge
+    section.
+
+    Args:
+        project_id: Project owning the work item.
+        item_id: Work item to load log sections for.
+        db: Active database session.
+
+    Returns:
+        Ordered list of LogSection instances covering setup, real steps, and merge.
+    """
     bi = _get_batch_item(project_id, item_id, db)
 
     setup_content = _setup_log_content(bi) if bi else "No batch item found."
@@ -1269,6 +1407,17 @@ def item_detail(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the full item detail page.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item to display.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        Full-page HTML response for ``pages/project/item_detail.html``.
+    """
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
     steps = _get_steps(project_id, item_id, db)
@@ -1369,6 +1518,17 @@ def item_tab_overview(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: overview tab for an item, including steps and cascade history.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item to display.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/item_overview.html``.
+    """
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
     steps = _get_steps(project_id, item_id, db)
@@ -1550,6 +1710,17 @@ def item_tab_design_doc(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: design-doc tab with rendered markdown.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item whose design doc is displayed.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/item_design_doc.html``.
+    """
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
 
@@ -1583,6 +1754,17 @@ def item_tab_functional_doc(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: functional-doc tab with rendered markdown.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item whose functional doc is displayed.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/item_functional_doc.html``.
+    """
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
 
@@ -1615,6 +1797,17 @@ def item_tab_reports(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: reports tab listing per-step rendered report content.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item whose step reports are displayed.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/item_reports.html``.
+    """
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
     steps = _get_steps(project_id, item_id, db, project=project)
@@ -2039,6 +2232,17 @@ def item_tab_logs(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: logs tab showing per-step run logs.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item whose logs are displayed.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/item_logs.html``.
+    """
     _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
     log_sections = _get_log_sections(project_id, item_id, db)
@@ -2062,6 +2266,17 @@ def item_tab_fix_cycles(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: fix-cycles tab listing all fix cycles for an item.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item whose fix cycles are displayed.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/item_fix_cycles.html``.
+    """
     _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
     fix_cycles = _get_fix_cycles(project_id, item_id, db)
@@ -2085,6 +2300,17 @@ def item_execution_report(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the standalone execution report page for an item.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item whose execution report is displayed.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        Full-page HTML response for ``pages/project/item_execution_report.html``.
+    """
     _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
     execution_report = assemble_execution_report(db, project_id, item_id)
@@ -2108,6 +2334,17 @@ def item_tab_execution_report(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: execution-report tab for the item detail page.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item whose execution report is displayed.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/item_execution_report.html``.
+    """
     _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
     execution_report = assemble_execution_report(db, project_id, item_id)
@@ -2130,6 +2367,17 @@ def item_tab_evidences(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: evidences tab showing pre/post screenshots.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item whose evidences are displayed.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/item_evidences.html``.
+    """
     project = _get_project_or_404(project_id, db)
     item = _get_item_or_404(project_id, item_id, db)
     bi = _get_batch_item(project_id, item_id, db)
@@ -2209,6 +2457,19 @@ def item_log_content(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """htmx fragment: refreshable log content panel for a single step run.
+
+    Args:
+        project_id: Project the item belongs to.
+        item_id: Work item the step belongs to.
+        step_db_id: Database id of the WorkflowStep.
+        run_number: Run number within the step to display.
+        request: Incoming FastAPI request (used to resolve templates).
+        db: Active database session.
+
+    Returns:
+        HTML fragment for ``fragments/item_log_content.html``.
+    """
     _get_item_or_404(project_id, item_id, db)
     run = db.scalar(
         select(StepRun).where(

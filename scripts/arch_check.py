@@ -87,6 +87,11 @@ def _cross_package_violations(
 
 
 def main() -> int:
+    """Run all cross-package layer checks and report violations.
+
+    Returns:
+        0 when all checks pass, 1 when any layer violation is found.
+    """
     base = Path(__file__).parent.parent
     errors = []
 

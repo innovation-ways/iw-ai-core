@@ -21,6 +21,14 @@ _CODEX_WARNING_MAP: dict[str, str] = {
 
 
 def _bar_color(pct: int) -> str:
+    """Return the Tailwind CSS class for a usage bar based on percentage.
+
+    Args:
+        pct: Usage percentage (0–100).
+
+    Returns:
+        Tailwind bg class — red at >=90%, amber at >=70%, primary otherwise.
+    """
     if pct >= 90:
         return "bg-red-500"
     if pct >= 70:
@@ -30,6 +38,14 @@ def _bar_color(pct: int) -> str:
 
 @router.get("/llm/fragment", response_class=HTMLResponse)
 def llm_usage_fragment(request: Request) -> Any:
+    """Return the LLM usage footer fragment for the dashboard status bar.
+
+    Args:
+        request: The current FastAPI request.
+
+    Returns:
+        HTML fragment with Claude, MiniMax, and Codex usage bars.
+    """
     usage = get_llm_usage()
     claude = usage["claude"]
     minimax = usage["minimax"]

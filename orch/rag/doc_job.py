@@ -18,12 +18,26 @@ JOB_REGISTRY_DOC: dict[str, DocIndexJobRunner] = {}
 
 
 class JobAlreadyRunningError(Exception):
+    """Raised when a doc index job is started for a project that already has one running."""
+
     def __init__(self, project_id: str) -> None:
         super().__init__(f"A doc index job is already running for project {project_id}")
         self.project_id = project_id
 
 
 class DocIndexJobRunner:
+    """Asyncio background runner that drives a DocIndexJob through queued → running →
+    completed/failed.
+
+    Mirrors CodeIndexJobRunner from job.py for the doc indexing side.
+
+    Attributes:
+        job_id: Primary key of the DocIndexJob row being executed.
+        project_id: Project whose work-item docs are being indexed.
+        config: Embedding model and Ollama connection settings.
+        index_path: Root directory for LanceDB table storage.
+    """
+
     def __init__(
         self,
         job_id: str,
@@ -46,9 +60,11 @@ class DocIndexJobRunner:
         return self._queue
 
     def request_cancel(self) -> None:
+        """Signal the runner to cancel after the current indexing step completes."""
         self._cancel_requested = True
 
     async def run(self) -> None:
+        """Execute the doc index job: choose full or incremental strategy and persist results."""
         from orch.rag.doc_indexer import DocIndexer
 
         try:
@@ -195,6 +211,20 @@ def start_doc_index_job(
     db_session_factory: Any | None = None,
     runner: DocIndexJobRunner | None = None,
 ) -> DocIndexJobRunner:
+    """Register a DocIndexJobRunner in JOB_REGISTRY_DOC and return it.
+
+    Args:
+        job: The DocIndexJob DB row to execute.
+        config: Embedding model and Ollama connection settings.
+        db_session_factory: Optional session factory; defaults to SessionLocal.
+        runner: Pre-constructed runner instance, used in tests to inject a mock.
+
+    Returns:
+        The registered DocIndexJobRunner ready to be awaited with runner.run().
+
+    Raises:
+        JobAlreadyRunningError: If a runner is already registered for the project.
+    """
     project_id = job.project_id
     if project_id in JOB_REGISTRY_DOC:
         raise JobAlreadyRunningError(project_id)

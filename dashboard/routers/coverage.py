@@ -17,6 +17,14 @@ router = APIRouter(prefix="/system/coverage", tags=["system"])
 
 @router.get("", response_class=HTMLResponse)
 def coverage_page(request: Request) -> HTMLResponse:
+    """Render the system-level test coverage page.
+
+    Args:
+        request: The current FastAPI request.
+
+    Returns:
+        Full HTML page with per-package coverage summaries.
+    """
     view = load_coverage()
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -28,6 +36,15 @@ def coverage_page(request: Request) -> HTMLResponse:
 
 @router.get("/files/{package}", response_class=HTMLResponse)
 def coverage_files_fragment(request: Request, package: str) -> HTMLResponse:
+    """Return the file-level coverage fragment for a specific package.
+
+    Args:
+        request: The current FastAPI request.
+        package: Python package name whose file details are returned.
+
+    Returns:
+        HTML fragment with per-file coverage rows, or 404 if the package is unknown.
+    """
     view = load_coverage()
     templates: Jinja2Templates = request.app.state.templates
     if package not in view.files_by_package:

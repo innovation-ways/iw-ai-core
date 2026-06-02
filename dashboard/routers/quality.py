@@ -59,6 +59,17 @@ def quality_page(
     db: Session = Depends(get_db),
     tab: str = "launch",
 ) -> Any:
+    """Render the Quality Gates page with launch or runs tab.
+
+    Args:
+        project_id: The project whose quality config is used.
+        request: The current FastAPI request.
+        db: Active database session.
+        tab: Active tab — 'launch' or 'runs'.
+
+    Returns:
+        Full HTML quality page for the requested tab.
+    """
     project = get_project_or_404(project_id, db)
     quality_config = _get_quality_config(project)
     templates: Jinja2Templates = request.app.state.templates
@@ -121,6 +132,16 @@ def quality_fragment_launch(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the quality gates launch panel fragment.
+
+    Args:
+        project_id: The project whose quality categories are rendered.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with quality gate category cards.
+    """
     project = get_project_or_404(project_id, db)
     quality_config = _get_quality_config(project)
     templates: Jinja2Templates = request.app.state.templates
@@ -142,6 +163,16 @@ def quality_fragment_runs(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the quality gate runs history fragment.
+
+    Args:
+        project_id: The project whose quality run history is shown.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with recent quality run rows.
+    """
     project = get_project_or_404(project_id, db)
     templates: Jinja2Templates = request.app.state.templates
     return templates.TemplateResponse(
@@ -161,6 +192,17 @@ def quality_fragment_log(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the log viewer fragment for a quality run.
+
+    Args:
+        project_id: The project that owns the quality run.
+        run_id: Database primary key of the TestRun row.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the last 2000 lines of the run log (newest first).
+    """
     project = get_project_or_404(project_id, db)
     run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
     if run is None:
@@ -209,6 +251,18 @@ def launch_quality_gate(
     category: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Launch a quality gate run for the named category.
+
+    Returns a warning toast if a run is already active for this category.
+
+    Args:
+        project_id: The project to run the quality gate for.
+        category: Quality gate category key from the project's quality_config.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger toast; reloads on success.
+    """
     project = get_project_or_404(project_id, db)
     quality_config = _get_quality_config(project)
     categories = quality_config.get("categories", {})
@@ -322,6 +376,16 @@ def kill_quality_gate(
     run_id: int,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Kill a running quality gate run.
+
+    Args:
+        project_id: The project that owns the run.
+        run_id: Database primary key of the TestRun to kill.
+        db: Active database session.
+
+    Returns:
+        204 response with a toast indicating success or that the run was not active.
+    """
     get_project_or_404(project_id, db)
     run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
     if run is None:

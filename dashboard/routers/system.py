@@ -50,6 +50,18 @@ _TERMINAL_PHASES = {WorkItemPhase.done}
 
 @dataclass
 class DaemonStatus:
+    """Daemon liveness and operational statistics.
+
+    Attributes:
+        is_running: True when the daemon PID is alive.
+        pid: OS process ID of the daemon, or None when not running.
+        uptime_secs: Seconds since the last daemon_started event, or None.
+        last_poll_at: Timestamp of the most recent daemon_poll event.
+        poll_count: Total number of daemon poll events recorded.
+        running_steps: Count of steps currently in_progress across all projects.
+        active_batches: Count of batches in approved or executing state.
+    """
+
     is_running: bool
     pid: int | None
     uptime_secs: float | None
@@ -61,6 +73,20 @@ class DaemonStatus:
 
 @dataclass
 class ProjectSummary:
+    """Per-project summary row for the system status page.
+
+    Attributes:
+        id: Project identifier.
+        display_name: Human-readable project name.
+        enabled: Whether the project is enabled in the registry.
+        item_count: Total work items in the project.
+        active_batch_count: Batches in approved or executing state.
+        branch: Currently checked-out branch in the repo.
+        unpushed: Commits ahead of the remote tracking branch.
+        worktrees: Number of active agent worktrees.
+        git_error: Non-None when git commands failed.
+    """
+
     id: str
     display_name: str
     enabled: bool
@@ -74,6 +100,19 @@ class ProjectSummary:
 
 @dataclass
 class ActiveWorkItem:
+    """A non-completed work item for the all-active view.
+
+    Attributes:
+        project_id: Owning project identifier.
+        project_name: Human-readable project display name.
+        id: Work item identifier.
+        type: Work item type string.
+        title: Human-readable work item title.
+        status: Current status string.
+        phase: Current phase string.
+        batch_id: Batch identifier if the item belongs to a batch, or None.
+    """
+
     project_id: str
     project_name: str
     id: str
@@ -315,6 +354,15 @@ def _safe_config_display(config: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/status", response_class=HTMLResponse)
 def system_status(request: Request, db: Session = Depends(get_db)) -> Any:
+    """Render the system status page with daemon health and per-project summaries.
+
+    Args:
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML system status page.
+    """
     project_summaries = _project_summaries(db)
     daemon = _daemon_status(db)
     templates: Jinja2Templates = request.app.state.templates
@@ -332,6 +380,15 @@ def system_status(request: Request, db: Session = Depends(get_db)) -> Any:
 
 @router.get("/all-active", response_class=HTMLResponse)
 def system_all_active(request: Request, db: Session = Depends(get_db)) -> Any:
+    """Render the all-active work items page grouped by project.
+
+    Args:
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML page with all non-completed, non-failed work items.
+    """
     grouped = _all_active_items(db)
     total = sum(len(v) for v in grouped.values())
     templates: Jinja2Templates = request.app.state.templates
@@ -349,6 +406,17 @@ def system_all_active(request: Request, db: Session = Depends(get_db)) -> Any:
 
 @router.get("/config", response_class=HTMLResponse)
 def system_config(request: Request, db: Session = Depends(get_db)) -> Any:
+    """Render the system configuration page.
+
+    Displays masked environment variables, projects.toml contents, and per-project configs.
+
+    Args:
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML configuration page.
+    """
     projects_toml_raw = _load_projects_toml()
 
     # Parse env summary (non-sensitive)

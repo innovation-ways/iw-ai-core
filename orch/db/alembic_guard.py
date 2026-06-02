@@ -49,6 +49,20 @@ class DBBehindHeadError(RuntimeError):
 
 @dataclass(frozen=True)
 class GuardStatus:
+    """Result of a DB-against-head alembic version comparison.
+
+    Attributes:
+        current_rev: The revision string currently stored in alembic_version,
+            or None when the table is empty.
+        head_rev: The single script-directory head revision, or None when
+            multiple heads are detected.
+        pending: List of revision IDs that have not yet been applied to the DB.
+        multiple_heads: Non-empty list of head revision IDs when >1 head exists
+            in the script directory; empty when exactly one head is present.
+        ok: True when the DB is at the single head revision with no pending
+            migrations.
+    """
+
     current_rev: str | None
     head_rev: str | None
     pending: list[str]

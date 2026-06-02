@@ -28,6 +28,12 @@ def parse_modules_from_level1(doc_content: str) -> list[dict[str, str]]:
 
 
 def _parse_modules_safe(doc_content: str) -> list[dict[str, str]]:
+    """Scan doc_content for component/architecture/module/structure H# sections and parse entries.
+
+    Splits the document into candidate sections by header keywords, then applies
+    _try_parse_line to each line and returns the first section that yields at least
+    one entry. Returns an empty list when no section matches.
+    """
     lines = doc_content.split("\n")
 
     matching_header = re.compile(
@@ -67,6 +73,17 @@ def _parse_modules_safe(doc_content: str) -> list[dict[str, str]]:
 
 
 def _try_parse_line(line: str) -> dict[str, str] | None:
+    """Attempt to parse a single markdown list line as a module entry using multiple format
+    patterns.
+
+    Tries four patterns in priority order:
+    1. Bold with path inside: ``**Name (`path/`)**:``
+    2. Backtick with dash separator: ``- `path/` -- description``
+    3. Bold name with parenthesised path: ``**Name** (`path/`):``
+    4. Plain path with dash separator: ``- path/ -- description``
+
+    Returns None for blank lines, comment-like lines, or lines that match none of the patterns.
+    """
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None

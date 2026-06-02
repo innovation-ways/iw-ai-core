@@ -13,6 +13,16 @@ from pydantic import BaseModel, Field
 
 
 class AcceptedEntry(BaseModel):
+    """A single accepted-risk record for one OSS compliance finding.
+
+    Attributes:
+        check_id: The OSS check identifier (e.g. ``OSS-SEC-01``).
+        finding_hash: 16-hex-char stable hash computed from check_id, summary, and evidence.
+        reason: Free-text rationale provided by the operator accepting the risk.
+        accepted_at: ISO-8601 timestamp of when the acceptance was recorded.
+        accepted_by: Username of the operator who accepted the finding.
+    """
+
     check_id: Annotated[str, Field(min_length=1)]
     finding_hash: Annotated[str, Field(min_length=1)]
     reason: Annotated[str, Field(min_length=1)]
@@ -21,6 +31,12 @@ class AcceptedEntry(BaseModel):
 
 
 class AcceptedFile(BaseModel):
+    """In-memory representation of ``.iw/oss-accepted.yaml``.
+
+    Attributes:
+        accepted: Ordered list of accepted-risk entries; empty when no acceptances exist.
+    """
+
     accepted: list[AcceptedEntry] = []
 
 
@@ -29,6 +45,14 @@ if TYPE_CHECKING:
 
 
 def accepted_path(repo_root: Path) -> Path:
+    """Return the canonical path to the oss-accepted.yaml file for a repository.
+
+    Args:
+        repo_root: Root directory of the managed project.
+
+    Returns:
+        Path to ``<repo_root>/.iw/oss-accepted.yaml``.
+    """
     return repo_root / ".iw" / "oss-accepted.yaml"
 
 
@@ -51,6 +75,15 @@ def _coerce_accepted_at(value: Any) -> str:
 
 
 def load_accepted(repo_root: Path) -> AcceptedFile:
+    """Load and parse the oss-accepted.yaml file for a repository.
+
+    Args:
+        repo_root: Root directory of the managed project.
+
+    Returns:
+        AcceptedFile with all persisted accepted-risk entries; returns an empty
+        AcceptedFile when the file does not exist.
+    """
     path = accepted_path(repo_root)
     if not path.exists():
         return AcceptedFile(accepted=[])
@@ -76,6 +109,16 @@ def append_accepted(repo_root: Path, entry: AcceptedEntry) -> None:
 
 
 def is_accepted(file: AcceptedFile, check_id: str, finding_hash: str) -> AcceptedEntry | None:
+    """Look up an accepted-risk entry by check_id and finding_hash.
+
+    Args:
+        file: In-memory AcceptedFile to search within.
+        check_id: OSS check identifier to match.
+        finding_hash: Stable 16-hex-char hash computed for the specific finding.
+
+    Returns:
+        The matching AcceptedEntry if found, or None when the finding has not been accepted.
+    """
     for e in file.accepted:
         if e.check_id == check_id and e.finding_hash == finding_hash:
             return e

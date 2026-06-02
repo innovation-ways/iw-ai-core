@@ -20,6 +20,18 @@ def identity_check(
     response: Response,
     session: Session = Depends(get_db),
 ) -> dict[str, str | bool | None]:
+    """Check the DB instance identity fingerprint and return JSON status.
+
+    Returns 503 when the DB instance does not match the expected fingerprint.
+    Intentionally unauthenticated so external monitoring probes can reach it.
+
+    Args:
+        response: FastAPI response object used to set the status code.
+        session: Active database session.
+
+    Returns:
+        Dict with keys expected, actual, mode, and match.
+    """
     status_info = check_identity(session)
 
     payload = {

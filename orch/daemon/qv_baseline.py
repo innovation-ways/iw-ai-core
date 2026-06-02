@@ -109,10 +109,12 @@ _UNPARSEABLE_RE = re.compile(r"^(?:\s*$|\s*#)")
 
 
 def _make_key(kind: str, key: str) -> FailureEntry:
+    """Construct a FailureEntry with the given kind and key."""
     return FailureEntry(kind=kind, key=key)
 
 
 def _sort_failures(failures: list[FailureEntry]) -> tuple[FailureEntry, ...]:
+    """Return a sorted, deduplicated tuple of FailureEntry objects."""
     return tuple(sorted(failures, key=lambda f: (f.kind, f.key)))
 
 
@@ -143,6 +145,7 @@ def parse_ruff(raw_output: str) -> Fingerprint:
 
 
 def _parse_ruff_text(lines: list[str]) -> tuple[list[FailureEntry], list[str]]:
+    """Parse ruff text-format output lines into (failures, unparseable)."""
     failures: list[FailureEntry] = []
     unparseable: list[str] = []
     for raw in lines:
@@ -157,6 +160,7 @@ def _parse_ruff_text(lines: list[str]) -> tuple[list[FailureEntry], list[str]]:
 
 
 def _parse_ruff_json(raw_output: str) -> tuple[list[FailureEntry], list[str]]:
+    """Parse ruff JSON-format output into (failures, unparseable)."""
     failures: list[FailureEntry] = []
     unparseable: list[str] = []
     try:

@@ -48,6 +48,18 @@ def _clean_diagram_dsl(raw: str) -> str:
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a project by ID or raise HTTP 404.
+
+    Args:
+        project_id: The project identifier to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the project does not exist.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
@@ -55,12 +67,28 @@ def _get_project_or_404(project_id: str, db: Session) -> Project:
 
 
 def _get_provider_label(project: Project) -> str:
+    """Return a human-readable provider label derived from the project's index tier.
+
+    Args:
+        project: The Project row whose config is inspected.
+
+    Returns:
+        Label string of the form 'local (tier)'.
+    """
     code_cfg = (project.config or {}).get("code_understanding", {})
     tier = code_cfg.get("index_tier", "balanced")
     return f"local ({tier})"
 
 
 def _format_duration(job: CodeIndexJob) -> str | None:
+    """Format the elapsed time of a completed CodeIndexJob as a human-readable string.
+
+    Args:
+        job: The completed CodeIndexJob whose timestamps are used.
+
+    Returns:
+        Formatted duration string (e.g. '45s', '3m 07s', '1h 2m'), or None if not available.
+    """
     if job.completed_at is None or job.triggered_at is None:
         return None
     delta = job.completed_at - job.triggered_at
@@ -172,6 +200,16 @@ def code_page(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the Code Understanding page for a project.
+
+    Args:
+        project_id: The project to render the code page for.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML page with index status, architecture map, and module navigation.
+    """
     project = _get_project_or_404(project_id, db)
 
     last_completed_job: CodeIndexJob | None = db.scalar(
@@ -284,6 +322,19 @@ def code_status(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the code index status fragment for htmx polling.
+
+    Renders running, failed, completed, or empty-state fragment depending on
+    the latest job state.
+
+    Args:
+        project_id: The project whose index status is rendered.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment appropriate to the current job state.
+    """
     _get_project_or_404(project_id, db)
 
     running_job = _latest_job(db, project_id, "running")
@@ -342,6 +393,16 @@ def code_architecture(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Return the architecture map view fragment.
+
+    Args:
+        project_id: The project whose architecture map is fetched.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the rendered architecture map and optional diagram.
+    """
     _get_project_or_404(project_id, db)
 
     svc = DocService(db)
@@ -385,6 +446,18 @@ async def code_index_stream(
     project_id: str,
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
+    """SSE stream of code index job progress events.
+
+    Falls back to a terminal status payload if the runner has already finished
+    before the browser opened the stream.
+
+    Args:
+        project_id: The project whose index job is streamed.
+        db: Active database session.
+
+    Returns:
+        SSE StreamingResponse emitting JSON progress events until the job completes.
+    """
     runner = JOB_REGISTRY.get(project_id)
 
     if runner is None:
@@ -524,6 +597,16 @@ def code_trigger_index(
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> Any:
+    """Trigger a full code index job for the project.
+
+    Args:
+        project_id: The project to index.
+        db: Active database session.
+        background_tasks: FastAPI background task registry.
+
+    Returns:
+        HTML that htmx uses to poll for job status.
+    """
     return _trigger_job(db, project_id, "full", background_tasks)
 
 
@@ -533,6 +616,16 @@ def code_trigger_reindex(
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> Any:
+    """Trigger an incremental re-index job for the project.
+
+    Args:
+        project_id: The project to re-index.
+        db: Active database session.
+        background_tasks: FastAPI background task registry.
+
+    Returns:
+        HTML that htmx uses to poll for job status.
+    """
     return _trigger_job(db, project_id, "incremental", background_tasks)
 
 
@@ -542,6 +635,18 @@ def reindex_docs(
     request: Request,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Enqueue a DocIndexJob to refresh the doc embeddings for a project.
+
+    Returns 409 HTML fragment if a doc index job is already running.
+
+    Args:
+        project_id: The project whose docs will be re-indexed.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment showing the new job's running status.
+    """
     _get_project_or_404(project_id, db)
 
     stale_threshold = datetime.now(UTC) - timedelta(minutes=5)
@@ -606,6 +711,16 @@ def code_trigger_regen_map(
     db: Session = Depends(get_db),
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> Any:
+    """Trigger a map-generation-only job (re-generates the architecture-map doc).
+
+    Args:
+        project_id: The project whose architecture map is regenerated.
+        db: Active database session.
+        background_tasks: FastAPI background task registry.
+
+    Returns:
+        HTML that htmx uses to poll for job status.
+    """
     return _trigger_job(db, project_id, "mapgen_only", background_tasks)
 
 
@@ -614,6 +729,15 @@ def code_cancel_index(
     project_id: str,
     db: Session = Depends(get_db),
 ) -> Any:
+    """Request cancellation of the currently running code index job.
+
+    Args:
+        project_id: The project whose running job should be cancelled.
+        db: Active database session.
+
+    Returns:
+        HTML response with HX-Trigger to signal the job was cancelled.
+    """
     _get_project_or_404(project_id, db)
 
     runner = JOB_REGISTRY.get(project_id)

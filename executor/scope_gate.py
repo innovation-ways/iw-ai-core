@@ -31,6 +31,16 @@ import sys
 
 
 def _matches(path: str, pattern: str) -> bool:
+    """Return True if ``path`` matches the scope-gate ``pattern``.
+
+    Args:
+        path: POSIX-style relative file path to test.
+        pattern: Scope pattern from ``scope.allowed_paths``; supports ``/**``
+                 suffix for subtree matching and fnmatch wildcards otherwise.
+
+    Returns:
+        True when the path is covered by the pattern.
+    """
     if pattern.endswith("/**"):
         prefix = pattern[:-3]
         return path == prefix or path.startswith(prefix + "/")
@@ -38,6 +48,15 @@ def _matches(path: str, pattern: str) -> bool:
 
 
 def main(argv: list[str]) -> int:
+    """Read modified paths from stdin and check them against the manifest scope.
+
+    Args:
+        argv: ``[script_name, manifest_path, item_id]``.
+
+    Returns:
+        0 when all paths are in scope (or no scope is declared), 1 when
+        violations exist, or 2 on manifest read error.
+    """
     if len(argv) != 3:
         sys.stderr.write("usage: scope_gate.py <manifest_path> <item_id>\n")
         return 2

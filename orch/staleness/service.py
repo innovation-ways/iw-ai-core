@@ -128,7 +128,15 @@ def _compute_service_staleness(
     svc_config: Any,
     repo_root: Path,
 ) -> ServiceStaleness:
-    """Compute the staleness state for a single service."""
+    """Compute the staleness state for a single service.
+
+    Args:
+        svc_config: ServiceConfig instance for the service to evaluate.
+        repo_root: Absolute path to the project repository root.
+
+    Returns:
+        ServiceStaleness with status, start time, commits-since, and actions.
+    """
     hot_reload: bool = svc_config.hot_reload
 
     # Docker services handled separately; for all others use find_running_pid.

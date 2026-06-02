@@ -1,3 +1,14 @@
+"""Resolve ``down_revision = "PENDING"`` sentinels in Alembic migration files.
+
+Used by ``migration_rebase.py`` and as a standalone operator tool. For every
+migration file that contains ``down_revision = "PENDING"``, the real chain-head
+revision is computed and written in place. This is the standard pre-merge
+rebase step mandated by CR-00091.
+
+Usage:
+    python scripts/resolve_pending_migration.py [versions_dir]
+"""
+
 from __future__ import annotations
 
 import ast
@@ -20,6 +31,15 @@ DOWN_PARSE_PATTERN = re.compile(
 
 
 def _strip_quotes(value: str) -> str:
+    """Strip surrounding single or double quotes from a string literal token.
+
+    Args:
+        value: Raw token that may be wrapped in ``"..."`` or ``'...'``.
+
+    Returns:
+        The unquoted content, or the original string when no wrapping quotes
+        are present.
+    """
     is_double = value[0] == '"' and value[-1] == '"'
     is_single = value[0] == "'" and value[-1] == "'"
     if len(value) >= 2 and (is_double or is_single):
@@ -28,6 +48,19 @@ def _strip_quotes(value: str) -> str:
 
 
 def _parse_migration(path: Path) -> tuple[str, str | tuple[str, ...] | None]:
+    """Parse ``revision`` and ``down_revision`` from an Alembic migration file.
+
+    Args:
+        path: Path to a ``.py`` migration file.
+
+    Returns:
+        ``(revision, down_revision)`` where ``down_revision`` is ``None``,
+        a string, or a tuple of strings for merge migrations.
+
+    Raises:
+        ValueError: When the file does not contain a parseable ``revision`` or
+                    ``down_revision`` assignment, or the value type is unsupported.
+    """
     content = path.read_text(encoding="utf-8")
 
     revision_match = REVISION_PATTERN.search(content)
@@ -71,6 +104,15 @@ def _parse_migration(path: Path) -> tuple[str, str | tuple[str, ...] | None]:
 
 
 def _rewrite_down_revision(path: Path, replacement_literal: str) -> None:
+    """Replace the ``down_revision`` assignment in a migration file with a new literal.
+
+    Args:
+        path: Migration file to rewrite in place.
+        replacement_literal: Python literal string to substitute (e.g. ``'"abc123"'``).
+
+    Raises:
+        ValueError: When no ``down_revision`` line is found in the file.
+    """
     content = path.read_text(encoding="utf-8")
 
     def _replace(match: re.Match[str]) -> str:
@@ -84,6 +126,19 @@ def _rewrite_down_revision(path: Path, replacement_literal: str) -> None:
 
 
 def resolve_pending_migration(versions_dir: Path) -> list[tuple[str, str | None]]:
+    """Find all PENDING migrations in ``versions_dir`` and rewrite them to the real chain head.
+
+    Args:
+        versions_dir: Directory containing Alembic migration ``.py`` files.
+
+    Returns:
+        List of ``(revision, new_down_revision)`` tuples for each migration
+        that was rewritten. Empty when no PENDING migrations exist.
+
+    Raises:
+        RuntimeError: When multiple real chain heads are detected (multi-head
+                      conflict that must be resolved manually).
+    """
     migrations: list[tuple[Path, str, str | tuple[str, ...] | None]] = []
     for path in sorted(versions_dir.glob("*.py")):
         if "__pycache__" in path.parts:
@@ -126,6 +181,11 @@ def resolve_pending_migration(versions_dir: Path) -> list[tuple[str, str | None]
 
 
 def main() -> int:
+    """Resolve PENDING migrations in the versions directory and report results.
+
+    Returns:
+        0 on success (including no-op), 1 on error.
+    """
     versions_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("orch/db/migrations/versions")
 
     if not versions_dir.exists() or not versions_dir.is_dir():

@@ -92,6 +92,7 @@ _MESSAGES = [
 
 
 def pick_message() -> str:
+    """Return a randomly selected keep-alive message from the pool."""
     return random.choice(_MESSAGES)  # noqa: S311
 
 
@@ -118,7 +119,16 @@ def get_config(db: Session) -> KeepAliveConfig:
 
 
 def upsert_config(db: Session, model: str, window_duration_hours: int) -> KeepAliveConfig:
-    """Update the singleton (id=1). Uses INSERT … ON CONFLICT DO UPDATE."""
+    """Update the singleton config row (id=1).
+
+    Args:
+        db: SQLAlchemy session.
+        model: Claude model identifier to use for keep-alive calls.
+        window_duration_hours: Usage window duration to anchor.
+
+    Returns:
+        The updated KeepAliveConfig row.
+    """
     config = get_config(db)
     config.model = model
     config.window_duration_hours = window_duration_hours
@@ -132,7 +142,14 @@ def upsert_config(db: Session, model: str, window_duration_hours: int) -> KeepAl
 
 
 def list_slots(db: Session) -> list[KeepAliveSlot]:
-    """Return all slots ordered by time_hhmm."""
+    """Return all KeepAliveSlot rows ordered by time_hhmm.
+
+    Args:
+        db: SQLAlchemy session.
+
+    Returns:
+        All slot rows sorted by their scheduled time.
+    """
     return db.query(KeepAliveSlot).order_by(KeepAliveSlot.time_hhmm).all()
 
 
@@ -151,7 +168,15 @@ def add_slot(db: Session, time_hhmm: str) -> KeepAliveSlot:
 
 
 def delete_slot(db: Session, slot_id: int) -> bool:
-    """Delete slot. Returns False if not found."""
+    """Delete a slot by id.
+
+    Args:
+        db: SQLAlchemy session.
+        slot_id: Primary key of the slot to delete.
+
+    Returns:
+        True if deleted, False if not found.
+    """
     slot = db.get(KeepAliveSlot, slot_id)
     if slot is None:
         return False
@@ -161,7 +186,15 @@ def delete_slot(db: Session, slot_id: int) -> bool:
 
 
 def toggle_slot(db: Session, slot_id: int) -> KeepAliveSlot | None:
-    """Flip enabled. Returns updated slot or None if not found."""
+    """Toggle the enabled flag on a slot.
+
+    Args:
+        db: SQLAlchemy session.
+        slot_id: Primary key of the slot to toggle.
+
+    Returns:
+        Updated KeepAliveSlot row, or None if not found.
+    """
     slot = db.get(KeepAliveSlot, slot_id)
     if slot is None:
         return None
@@ -274,7 +307,15 @@ def log_run(
 
 
 def get_recent_runs(db: Session, limit: int = 10) -> list[KeepAliveRun]:
-    """Return most recent runs ordered by fired_at DESC, limit rows."""
+    """Return the most recent KeepAliveRun rows, newest first.
+
+    Args:
+        db: SQLAlchemy session.
+        limit: Maximum number of rows to return.
+
+    Returns:
+        List of KeepAliveRun rows ordered by fired_at descending.
+    """
     return db.query(KeepAliveRun).order_by(KeepAliveRun.fired_at.desc()).limit(limit).all()
 
 

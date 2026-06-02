@@ -184,6 +184,12 @@ def _emit_lifecycle_events(conn: psycopg.Connection) -> None:
 
 
 def _tick(conn: psycopg.Connection) -> None:
+    """Run one polling tick: advance all queued/running jobs and emit lifecycle events.
+
+    Args:
+        conn: Active psycopg connection to the E2E DB; rollback is attempted on
+              any psycopg error so the next tick starts from a clean state.
+    """
     try:
         doc_moves = _advance_doc_index_jobs(conn)
         code_moves = _advance_code_index_jobs(conn)
@@ -206,6 +212,13 @@ def _tick(conn: psycopg.Connection) -> None:
 
 
 def _install_signal_handlers(stop_flag: dict[str, bool]) -> None:
+    """Register SIGTERM and SIGINT handlers that set the stop flag.
+
+    Args:
+        stop_flag: Mutable dict with a ``"stop"`` key; handlers set it to True
+                   so the main loop can exit cleanly on the next iteration.
+    """
+
     def _handler(signum: int, _frame: types.FrameType | None) -> None:
         logger.info("e2e-daemon-stub: received signal %s, shutting down", signum)
         stop_flag["stop"] = True
@@ -215,6 +228,11 @@ def _install_signal_handlers(stop_flag: dict[str, bool]) -> None:
 
 
 def main() -> int:
+    """Start the E2E daemon stub loop, connecting to the DB and polling until stopped.
+
+    Returns:
+        0 on clean shutdown, 1 when the DB connection could not be established.
+    """
     logging.basicConfig(
         level=os.environ.get("E2E_DAEMON_STUB_LOG_LEVEL", "INFO"),
         format="%(asctime)s %(name)s [%(levelname)s] %(message)s",

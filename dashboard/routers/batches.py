@@ -316,6 +316,18 @@ def group_overlap_events(
 
 
 def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a Project by id or raise HTTP 404.
+
+    Args:
+        project_id: Identifier of the project to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project row.
+
+    Raises:
+        HTTPException: 404 when no project with the given id exists.
+    """
     project = db.scalar(select(Project).where(Project.id == project_id))
     if project is None:
         raise HTTPException(status_code=404, detail=f"Project {project_id!r} not found")
@@ -323,6 +335,19 @@ def _get_project_or_404(project_id: str, db: Session) -> Project:
 
 
 def _get_batch_or_404(project_id: str, batch_id: str, db: Session) -> Batch:
+    """Fetch a Batch by (project_id, batch_id) or raise HTTP 404.
+
+    Args:
+        project_id: Project the batch belongs to.
+        batch_id: Identifier of the batch to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Batch row.
+
+    Raises:
+        HTTPException: 404 when no batch with the given ids exists.
+    """
     batch = db.scalar(
         select(Batch).where(
             Batch.project_id == project_id,
@@ -335,6 +360,14 @@ def _get_batch_or_404(project_id: str, batch_id: str, db: Session) -> Batch:
 
 
 def _format_duration(secs: float | None) -> str:
+    """Format a duration in seconds to a ``"Xm00s"`` display string.
+
+    Args:
+        secs: Duration in seconds, or None for an empty result.
+
+    Returns:
+        Formatted string such as ``"2m35s"``, or ``""`` when secs is None.
+    """
     if secs is None:
         return ""
     mins = int(secs // 60)
@@ -526,6 +559,17 @@ def _cascade_counts_for_batches(
 
 
 def _all_batches(project_id: str, db: Session, status_filter: list[str]) -> list[BatchRow]:
+    """Load all batches for a project, enriched with item counts and cascade data.
+
+    Args:
+        project_id: Project to query batches for.
+        db: Active database session.
+        status_filter: Optional list of status strings to restrict results.
+            Unknown statuses are silently ignored.
+
+    Returns:
+        List of BatchRow instances ordered by creation date descending.
+    """
     stmt = select(Batch).where(Batch.project_id == project_id).order_by(Batch.created_at.desc())
     valid = [s for s in status_filter if s in _ALL_STATUSES]
     if valid:
@@ -583,6 +627,17 @@ def batch_list(
     status: list[str] = Query(default=[]),
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the batch list page for a project.
+
+    Args:
+        project_id: Project whose batches are listed.
+        request: Incoming FastAPI request (used to resolve templates).
+        status: Optional status filter values appended as query parameters.
+        db: Active database session.
+
+    Returns:
+        Full-page HTML response for ``pages/project/batches.html``.
+    """
     project = _get_project_or_404(project_id, db)
     batches = _all_batches(project_id, db, status_filter=status)
 
@@ -609,6 +664,19 @@ def batch_detail(
     tab: str = "plan",
     db: Session = Depends(get_db),
 ) -> Any:
+    """Render the batch detail page with items, plan, timeline, and logs tabs.
+
+    Args:
+        project_id: Project the batch belongs to.
+        batch_id: Batch to display.
+        request: Incoming FastAPI request (used to resolve templates).
+        tab: Active tab name; falls back to ``"items"`` when the plan tab is
+            requested but no execution plan exists yet.
+        db: Active database session.
+
+    Returns:
+        Full-page HTML response for ``pages/project/batch_detail.html``.
+    """
     project = _get_project_or_404(project_id, db)
     batch = _get_batch_or_404(project_id, batch_id, db)
     item_ids = [

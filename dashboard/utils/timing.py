@@ -35,6 +35,16 @@ def _before_cursor_execute(
 
 
 class TimingMiddleware(BaseHTTPMiddleware):
+    """Middleware that logs request duration, DB query count, and connection pool state.
+
+    Emits a WARNING log for requests exceeding ``slow_request_ms`` and a DEBUG
+    log for all other requests, both including pool checkout/overflow metrics.
+
+    Attributes:
+        _engine: SQLAlchemy engine used to attach the cursor-execute event listener.
+        _threshold_ms: Duration in milliseconds above which a request is considered slow.
+    """
+
     def __init__(
         self,
         app: ASGIApp,
@@ -55,6 +65,15 @@ class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
+        """Process a request, measuring elapsed time and DB query count.
+
+        Args:
+            request: Incoming HTTP request.
+            call_next: Next middleware or route handler in the ASGI chain.
+
+        Returns:
+            The response produced by the downstream handler.
+        """
         from sqlalchemy import event
 
         start = time.monotonic()
