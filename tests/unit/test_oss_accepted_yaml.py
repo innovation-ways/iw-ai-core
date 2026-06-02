@@ -6,7 +6,10 @@ from pathlib import Path
 
 
 class TestComputeFindingHash:
+    """Tests for ComputeFindingHash scenarios."""
+
     def test_hash_is_deterministic(self) -> None:
+        """Verifies that hash is deterministic."""
         from dashboard.services.oss_accepted import compute_finding_hash
 
         h1 = compute_finding_hash("OSS-CH-01", "Missing README", {"path": "README.md"})
@@ -14,6 +17,7 @@ class TestComputeFindingHash:
         assert h1 == h2
 
     def test_hash_differs_when_summary_differs(self) -> None:
+        """Verifies that hash differs when summary differs."""
         from dashboard.services.oss_accepted import compute_finding_hash
 
         h1 = compute_finding_hash("OSS-CH-01", "Missing README", None)
@@ -21,6 +25,7 @@ class TestComputeFindingHash:
         assert h1 != h2
 
     def test_hash_differs_when_evidence_dict_differs(self) -> None:
+        """Verifies that hash differs when evidence dict differs."""
         from dashboard.services.oss_accepted import compute_finding_hash
 
         h1 = compute_finding_hash("OSS-CH-01", "Missing README", {"path": "README.md"})
@@ -28,6 +33,7 @@ class TestComputeFindingHash:
         assert h1 != h2
 
     def test_hash_order_independent_for_dict(self) -> None:
+        """Verifies that hash order independent for dict."""
         from dashboard.services.oss_accepted import compute_finding_hash
 
         h1 = compute_finding_hash("OSS-CH-01", "Missing", {"a": 1, "b": 2})
@@ -35,6 +41,7 @@ class TestComputeFindingHash:
         assert h1 == h2
 
     def test_hash_is_16_hex_chars(self) -> None:
+        """Verifies that hash is 16 hex chars."""
         from dashboard.services.oss_accepted import compute_finding_hash
 
         h = compute_finding_hash("OSS-CH-01", "test", None)
@@ -43,7 +50,10 @@ class TestComputeFindingHash:
 
 
 class TestAppendAccepted:
+    """Tests for AppendAccepted scenarios."""
+
     def test_append_accepted_creates_file(self, tmp_path: Path) -> None:
+        """Verifies that append accepted creates file."""
         from dashboard.services.oss_accepted import AcceptedEntry, append_accepted, load_accepted
 
         entry = AcceptedEntry(
@@ -61,6 +71,7 @@ class TestAppendAccepted:
         assert accepted_file.accepted[0].check_id == "OSS-CH-01"
 
     def test_append_accepted_is_idempotent(self, tmp_path: Path) -> None:
+        """Verifies that append accepted is idempotent."""
         from dashboard.services.oss_accepted import AcceptedEntry, append_accepted, load_accepted
 
         entry = AcceptedEntry(
@@ -78,6 +89,7 @@ class TestAppendAccepted:
         assert len(accepted_file.accepted) == 1
 
     def test_append_accepted_same_hash_idempotent(self, tmp_path: Path) -> None:
+        """Verifies that append accepted same hash idempotent."""
         from dashboard.services.oss_accepted import AcceptedEntry, append_accepted, load_accepted
 
         entry1 = AcceptedEntry(
@@ -103,13 +115,17 @@ class TestAppendAccepted:
 
 
 class TestLoadAccepted:
+    """Tests for LoadAccepted scenarios."""
+
     def test_load_accepted_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        """Verifies that load accepted missing file returns empty."""
         from dashboard.services.oss_accepted import load_accepted
 
         result = load_accepted(tmp_path)
         assert result.accepted == []
 
     def test_load_accepted_parses_existing_file(self, tmp_path: Path) -> None:
+        """Verifies that load accepted parses existing file."""
         from dashboard.services.oss_accepted import AcceptedEntry, append_accepted, load_accepted
 
         entry = AcceptedEntry(
@@ -128,7 +144,10 @@ class TestLoadAccepted:
 
 
 class TestIsAccepted:
+    """Tests for IsAccepted scenarios."""
+
     def test_is_accepted_matches_exact_check_id_and_hash(self, tmp_path: Path) -> None:
+        """Verifies that is accepted matches exact check id and hash."""
         from dashboard.services.oss_accepted import (
             AcceptedEntry,
             append_accepted,
@@ -151,6 +170,7 @@ class TestIsAccepted:
         assert result.check_id == "OSS-CH-01"
 
     def test_is_accepted_returns_none_for_wrong_hash(self, tmp_path: Path) -> None:
+        """Verifies that is accepted returns none for wrong hash."""
         from dashboard.services.oss_accepted import (
             AcceptedEntry,
             append_accepted,
@@ -172,6 +192,7 @@ class TestIsAccepted:
         assert result is None
 
     def test_is_accepted_returns_none_for_wrong_check_id(self, tmp_path: Path) -> None:
+        """Verifies that is accepted returns none for wrong check id."""
         from dashboard.services.oss_accepted import (
             AcceptedEntry,
             append_accepted,

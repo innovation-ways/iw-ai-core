@@ -38,6 +38,14 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
+    """Provide a FastAPI TestClient with the DB dependency overridden to use the test session.
+
+    Args:
+        db_session: The per-test transactional session from the integration conftest.
+
+    Yields:
+        A configured TestClient with get_db overridden and instance-ID env var cleared.
+    """
     import os
 
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
@@ -59,6 +67,15 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
 
 def make_project(db: Session, project_id: str = "test-proj") -> Project:
+    """Insert a minimal Project row and flush it to the session.
+
+    Args:
+        db: The current test database session.
+        project_id: Identifier for the project.
+
+    Returns:
+        The newly created and flushed Project ORM instance.
+    """
     project = Project(
         id=project_id,
         display_name="Test Project",
@@ -81,6 +98,21 @@ def make_doc(
     content: str
     | None = "# Test Document\n\n## Purpose\nSome content here.\n\n## Architecture\nMore content.",
 ) -> ProjectDoc:
+    """Insert a minimal ProjectDoc row and flush it to the session.
+
+    Args:
+        db: The current test database session.
+        project_id: FK to an existing Project row.
+        doc_id: Identifier for the document.
+        title: Human-readable document title.
+        doc_type: DocType enum value for the document.
+        tier: DocTier enum value for the document.
+        status: Initial DocStatus value.
+        content: Markdown content for the document body.
+
+    Returns:
+        The newly created and flushed ProjectDoc ORM instance.
+    """
     doc = ProjectDoc(
         id=f"{project_id}:{doc_id}",
         project_id=project_id,

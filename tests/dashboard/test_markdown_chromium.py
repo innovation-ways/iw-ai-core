@@ -168,6 +168,7 @@ def test_path_lookup_tries_names_in_order(monkeypatch, tmp_path):
     calls: list[str] = []
 
     def fake_which(name: str) -> str | None:
+        """Return a path for known executables and None for unknown commands."""
         calls.append(name)
         if name == "google-chrome":
             return str(google_chrome_path)

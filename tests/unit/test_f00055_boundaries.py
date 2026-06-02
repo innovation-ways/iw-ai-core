@@ -74,25 +74,31 @@ class TestBoundaryEmptyDocsTable:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("Answer")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             return mock_inner_generator()
 
         mock_llm = MagicMock()
         mock_llm.astream_chat = mock_astream_chat
 
         async def mock_classify(question, config, context_chips=None):
+            """Return mock classify."""
             return "workitem_aware"
 
         async def mock_retrieve(*args, **kwargs):
+            """Return mock retrieve."""
             return mock_bundle
 
         async def mock_fetch(wis, session):
+            """Return mock fetch."""
             return [mock_wi]
 
         async def mock_get_repo_root(pid, session):
-            return None
+            """Return mock get repo root."""
+            return
 
         events = []
 
@@ -276,25 +282,31 @@ class TestBoundaryZeroMatchingItems:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("No matching items found.")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             return mock_inner_generator()
 
         mock_llm = MagicMock()
         mock_llm.astream_chat = mock_astream_chat
 
         async def mock_classify(question, config, context_chips=None):
+            """Return mock classify."""
             return "workitem_aware"
 
         async def mock_retrieve(*args, **kwargs):
+            """Return mock retrieve."""
             return mock_bundle
 
         async def mock_fetch(wis, session):
+            """Return mock fetch."""
             return []
 
         async def mock_get_repo_root(pid, session):
-            return None
+            """Return mock get repo root."""
+            return
 
         events = []
 
@@ -360,6 +372,7 @@ class TestBoundaryMissingDocsTable:
         mock_wi = MockWorkItem()
 
         async def mock_retrieve_evidence_bundle(*args, **kwargs) -> EvidenceBundle:
+            """Return mock retrieve evidence bundle."""
             return EvidenceBundle(
                 question="why?",
                 code_chunks=[CodeChunk(file_path="a.py", text="code")],
@@ -371,10 +384,12 @@ class TestBoundaryMissingDocsTable:
             )
 
         async def mock_fetch(wis, session):
+            """Return mock fetch."""
             return [mock_wi]
 
         async def mock_get_repo_root(pid, session):
-            return None
+            """Return mock get repo root."""
+            return
 
         with (
             patch.object(engine, "_retrieve_evidence_bundle", mock_retrieve_evidence_bundle),
@@ -471,6 +486,7 @@ class TestBoundarySSEConnectionDrop:
                 self.created_at = datetime(2025, 1, 1, tzinfo=UTC)
 
         async def mock_answer_stream_v2_error(**kwargs: object):
+            """Return mock answer stream v2 error."""
             yield {"kind": "phase", "name": "retrieving", "detail": {}}
             yield {"kind": "error", "message": "Connection dropped"}
             return
@@ -480,6 +496,7 @@ class TestBoundarySSEConnectionDrop:
             import asyncio
 
             async def collect():
+                """Return collect."""
                 async for e in engine.answer_stream_v2(
                     question="test",
                     context_level="architecture",

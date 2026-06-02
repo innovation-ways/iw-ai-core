@@ -33,6 +33,14 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def client(db_session: Session) -> TestClient:
+    """Provide a FastAPI TestClient with the DB dependency overridden to use the test session.
+
+    Args:
+        db_session: The per-test transactional session from the integration conftest.
+
+    Yields:
+        A configured TestClient with get_db overridden and instance-ID env var cleared.
+    """
     import os
 
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
@@ -54,6 +62,15 @@ def client(db_session: Session) -> TestClient:
 
 
 def _make_project(db: Session, project_id: str = "test-proj-f00040") -> Project:
+    """Insert a minimal Project row and flush it to the session.
+
+    Args:
+        db: The current test database session.
+        project_id: Identifier for the project (default suitable for F-00040 tests).
+
+    Returns:
+        The newly created and flushed Project ORM instance.
+    """
     project = Project(
         id=project_id,
         display_name="Test Project F-00040",
@@ -74,6 +91,18 @@ def _make_doc(
         "# Test Document\n\n## Purpose\nSome content here.\n\n## Architecture\nMore content."
     ),
 ) -> ProjectDoc:
+    """Insert a minimal ProjectDoc row and flush it to the session.
+
+    Args:
+        db: The current test database session.
+        project_id: FK to an existing Project row.
+        doc_id: Identifier for the document.
+        title: Human-readable document title.
+        content: Markdown content used as the current document body.
+
+    Returns:
+        The newly created and flushed ProjectDoc ORM instance.
+    """
     doc = ProjectDoc(
         id=f"{project_id}:{doc_id}",
         project_id=project_id,
@@ -94,6 +123,14 @@ def _make_doc(
 
 
 def _add_version(db: Session, doc: ProjectDoc, version_num: int, content: str) -> None:
+    """Insert a ProjectDocVersion row and flush it to the session.
+
+    Args:
+        db: The current test database session.
+        doc: The ProjectDoc instance this version belongs to.
+        version_num: Version number for this snapshot.
+        content: Markdown content for this version.
+    """
     ver = ProjectDocVersion(
         doc_id=doc.id,
         version=version_num,
@@ -110,6 +147,8 @@ def _add_version(db: Session, doc: ProjectDoc, version_num: int, content: str) -
 
 
 class TestDiffSectionsEndpoint:
+    """Covers the GET /diff/sections JSON section-level diff endpoint."""
+
     def test_sections_endpoint_returns_json(self, client: TestClient, db_session: Session) -> None:
         """GET /diff/sections returns 200 JSON with section data."""
         proj = _make_project(db_session)
@@ -216,6 +255,8 @@ class TestDiffSectionsEndpoint:
 
 
 class TestDiffSectionsDetailEndpoint:
+    """Covers the GET /diff/sections/{section_name} HTML single-section diff endpoint."""
+
     def test_sections_single_section_returns_html(
         self, client: TestClient, db_session: Session
     ) -> None:
@@ -285,6 +326,8 @@ class TestDiffSectionsDetailEndpoint:
 
 
 class TestDiffAiSummaryEndpoint:
+    """Covers the GET /diff/ai-summary stub endpoint (F-00025 placeholder)."""
+
     def test_ai_summary_returns_204_with_xstub_header(
         self, client: TestClient, db_session: Session
     ) -> None:
@@ -326,6 +369,8 @@ class TestDiffAiSummaryEndpoint:
 
 
 class TestDiffValidation:
+    """Covers input-validation edge cases: invalid version ordering and missing resources."""
+
     def test_v1_gte_v2_returns_422_on_sections_endpoints(
         self, client: TestClient, db_session: Session
     ) -> None:
@@ -426,6 +471,8 @@ class TestDiffValidation:
 
 
 class TestOriginalDiffEndpoint:
+    """Verifies the original /diff HTML unified diff endpoint is unaffected by F-00040 additions."""
+
     def test_existing_diff_endpoint_still_returns_html(
         self, client: TestClient, db_session: Session
     ) -> None:

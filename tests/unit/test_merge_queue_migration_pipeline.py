@@ -35,24 +35,31 @@ class TestToIntBatchId:
     """_to_int_batch_id converts mixed batch-id types to int or None."""
 
     def test_none_input_returns_none(self) -> None:
+        """Verifies that none input returns none."""
         assert _to_int_batch_id(None) is None
 
     def test_int_input_returned_unchanged(self) -> None:
+        """Verifies that int input returned unchanged."""
         assert _to_int_batch_id(42) == 42
 
     def test_int_zero_returned_unchanged(self) -> None:
+        """Verifies that int zero returned unchanged."""
         assert _to_int_batch_id(0) == 0
 
     def test_string_batch_id_extracts_trailing_digits(self) -> None:
+        """Verifies that string batch id extracts trailing digits."""
         assert _to_int_batch_id("BATCH-00060") == 60
 
     def test_string_batch_id_single_digit(self) -> None:
+        """Verifies that string batch id single digit."""
         assert _to_int_batch_id("BATCH-00001") == 1
 
     def test_string_without_trailing_digits_returns_none(self) -> None:
+        """Verifies that string without trailing digits returns none."""
         assert _to_int_batch_id("no-digits") is None
 
     def test_empty_string_returns_none(self) -> None:
+        """Verifies that empty string returns none."""
         assert _to_int_batch_id("") is None
 
     @pytest.mark.parametrize(
@@ -71,6 +78,7 @@ class TestToIntBatchId:
     def test_parametrised_conversions(
         self, batch_id: str | int | None, expected: int | None
     ) -> None:
+        """Verifies that parametrised conversions."""
         assert _to_int_batch_id(batch_id) == expected
 
 
@@ -80,6 +88,7 @@ class TestToIntBatchId:
 
 
 def _make_project_config() -> MagicMock:
+    """Return make project config."""
     from orch.daemon.project_registry import ProjectConfig
 
     return ProjectConfig(
@@ -301,6 +310,7 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
     """
 
     def test_rebase_not_called_when_batch_id_is_none(self) -> None:  # noqa: assertion-scanner
+        """Verifies that rebase not called when batch id is none."""
         item = _make_batch_item(batch_id=None)
         db = MagicMock()
 
@@ -332,6 +342,7 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
         mock_rebase.assert_not_called()
 
     def test_dry_run_not_called_when_batch_id_is_none(self) -> None:  # noqa: assertion-scanner
+        """Verifies that dry run not called when batch id is none."""
         item = _make_batch_item(batch_id=None)
         db = MagicMock()
 
@@ -363,6 +374,7 @@ class TestMergeItemNoneBatchIdSkipsPipeline:
         mock_dry.assert_not_called()
 
     def test_post_merge_apply_not_called_when_batch_id_is_none(self) -> None:  # noqa: assertion-scanner
+        """Verifies that post merge apply not called when batch id is none."""
         item = _make_batch_item(batch_id=None)
         db = MagicMock()
 
@@ -486,6 +498,7 @@ class TestMergeItemRollbackGuard:
     """
 
     def _run_merge_item(self, apply_result: MagicMock) -> dict[str, MagicMock]:
+        """Return run merge item."""
         from orch.daemon.merge_queue import _merge_item
 
         db = MagicMock()
@@ -523,6 +536,7 @@ class TestMergeItemRollbackGuard:
         return {"rollback": mock_rollback, "item": item}
 
     def test_no_rollback_when_apply_failed_with_zero_revisions(self) -> None:
+        """Verifies that no rollback when apply failed with zero revisions."""
         result = self._run_merge_item(_make_failed_apply_result(revisions_applied=[]))
         result["rollback"].assert_not_called()
         # The git squash-merge already happened — the item stays merged.
@@ -531,9 +545,11 @@ class TestMergeItemRollbackGuard:
         assert result["item"].status == BatchItemStatus.merged
 
     def test_rollback_when_apply_failed_after_applying_a_revision(self) -> None:
+        """Verifies that rollback when apply failed after applying a revision."""
         result = self._run_merge_item(_make_failed_apply_result(revisions_applied=["abc123"]))
         result["rollback"].assert_called_once()
 
     def test_no_rollback_on_successful_apply(self) -> None:  # noqa: assertion-scanner
+        """Verifies that no rollback on successful apply."""
         result = self._run_merge_item(_make_successful_apply_result())
         result["rollback"].assert_not_called()

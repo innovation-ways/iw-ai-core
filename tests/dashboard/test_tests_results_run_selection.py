@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
+    """Provide a TestClient with test-context flags and get_db overridden to db_session."""
     _original_test = os.environ.pop("IW_CORE_TEST_CONTEXT", None)
     _original_operator = os.environ.pop("IW_CORE_OPERATOR_APPLY", None)
     original_expected = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
@@ -42,6 +43,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
         app = create_app()
 
         def _override_get_db() -> Generator[Session, None, None]:
+            """Yield the test db_session for FastAPI dependency injection."""
             yield db_session
 
         app.dependency_overrides[get_db] = _override_get_db
@@ -166,6 +168,8 @@ def runs(test_project, db_session: Session, tmp_path: Path) -> dict[str, int]:
 
 
 class TestResultsRunSelection:
+    """Tests that the Results tab honors the ?run= query parameter for run selection."""
+
     def test_results_default_shows_latest_run(
         self, client: TestClient, test_project, runs: dict[str, int]
     ) -> None:

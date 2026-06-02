@@ -18,31 +18,37 @@ class TestModulePathToFilePrefix:
     """Tests for _module_path_to_file_prefix()."""
 
     def test_dotted_path_converts_to_filesystem_prefix(self) -> None:
+        """Verifies that dotted path converts to filesystem prefix."""
         from orch.rag.qa import _module_path_to_file_prefix
 
         assert _module_path_to_file_prefix("orch.daemon") == "orch/daemon"
 
     def test_nested_dotted_path_converts_all_segments(self) -> None:
+        """Verifies that nested dotted path converts all segments."""
         from orch.rag.qa import _module_path_to_file_prefix
 
         assert _module_path_to_file_prefix("orch.rag.indexer") == "orch/rag/indexer"
 
     def test_slash_path_kept_as_is(self) -> None:
+        """Verifies that slash path kept as is."""
         from orch.rag.qa import _module_path_to_file_prefix
 
         assert _module_path_to_file_prefix("orch/daemon") == "orch/daemon"
 
     def test_trailing_slash_stripped(self) -> None:
+        """Verifies that trailing slash stripped."""
         from orch.rag.qa import _module_path_to_file_prefix
 
         assert _module_path_to_file_prefix("orch/daemon/") == "orch/daemon"
 
     def test_leading_slash_stripped(self) -> None:
+        """Verifies that leading slash stripped."""
         from orch.rag.qa import _module_path_to_file_prefix
 
         assert _module_path_to_file_prefix("/orch/daemon") == "orch/daemon"
 
     def test_single_segment_preserved(self) -> None:
+        """Verifies that single segment preserved."""
         from orch.rag.qa import _module_path_to_file_prefix
 
         assert _module_path_to_file_prefix("dashboard") == "dashboard"
@@ -55,16 +61,19 @@ class TestModulePathToFilePrefix:
         assert _module_path_to_file_prefix("docs/readme.md") == "docs/readme.md"
 
     def test_empty_returns_empty(self) -> None:
+        """Verifies that empty returns empty."""
         from orch.rag.qa import _module_path_to_file_prefix
 
         assert _module_path_to_file_prefix("") == ""
 
     def test_whitespace_only_returns_empty(self) -> None:
+        """Verifies that whitespace only returns empty."""
         from orch.rag.qa import _module_path_to_file_prefix
 
         assert _module_path_to_file_prefix("   ") == ""
 
     def test_only_slashes_returns_empty(self) -> None:
+        """Verifies that only slashes returns empty."""
         from orch.rag.qa import _module_path_to_file_prefix
 
         assert _module_path_to_file_prefix("///") == ""
@@ -453,6 +462,7 @@ class TestAnswerStream:
         mock_search.to_pandas.return_value = MagicMock(__iter__=lambda _: iter(mock_chunks))
 
         def mock_search_method(vec):
+            """Return mock search method."""
             return mock_search
 
         mock_table.search = mock_search_method
@@ -478,6 +488,7 @@ class TestAnswerStream:
         ):
 
             async def consume():
+                """Return consume."""
                 result = engine.answer_stream(
                     question="What does this do?",
                     context_level="architecture",
@@ -513,6 +524,7 @@ class TestAnswerStream:
         mock_search.to_pandas.return_value = mock_df
 
         def mock_search_method(vec):
+            """Return mock search method."""
             return mock_search
 
         mock_table.search = mock_search_method
@@ -521,6 +533,7 @@ class TestAnswerStream:
         mock_embedding_instance.get_query_embedding = MagicMock(return_value=[0.1] * 128)
 
         async def mock_astream_chat_error(*args, **kwargs):
+            """Return mock astream chat error."""
             raise httpx.ConnectError("Connection refused")
 
         mock_llm = MagicMock()
@@ -568,6 +581,7 @@ class TestAnswerStream:
         mock_embedding_instance.get_query_embedding = AsyncMock(return_value=[0.1] * 128)
 
         async def mock_to_thread(func, *args, **kwargs):
+            """Return mock to thread."""
             return func(*args, **kwargs)
 
         class _FakeQuery:
@@ -575,6 +589,7 @@ class TestAnswerStream:
                 self._rows = rows
 
             def to_pandas(self) -> pd.DataFrame:
+                """Return to pandas."""
                 return pd.DataFrame({"text": self._rows})
 
         class _FakeSearch:
@@ -583,10 +598,12 @@ class TestAnswerStream:
                 self._last_where: str | None = None
 
             def where(self, clause: str) -> _FakeSearch:
+                """Return where."""
                 self._last_where = clause
                 return self
 
             def limit(self, n: int) -> _FakeQuery:
+                """Return limit."""
                 return _FakeQuery(self._rows_per_where.get(self._last_where or "", []))
 
         class _FakeTable:
@@ -594,6 +611,7 @@ class TestAnswerStream:
                 self._rows_per_where = rows_per_where
 
             def search(self, vec: list[float]) -> _FakeSearch:
+                """Return search."""
                 return _FakeSearch(self._rows_per_where)
 
         filtered_rows: dict[str, list[str]] = {
@@ -611,9 +629,11 @@ class TestAnswerStream:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("Answer")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             captured_messages.extend(messages)
             return mock_inner_generator()
 
@@ -661,6 +681,7 @@ class TestAnswerStream:
         mock_embedding_instance.get_query_embedding = AsyncMock(return_value=[0.1] * 128)
 
         async def mock_to_thread(func, *args, **kwargs):
+            """Return mock to thread."""
             return func(*args, **kwargs)
 
         class _FakeQuery:
@@ -668,6 +689,7 @@ class TestAnswerStream:
                 self._rows = rows
 
             def to_pandas(self) -> pd.DataFrame:
+                """Return to pandas."""
                 return pd.DataFrame({"text": self._rows})
 
         captured_where: list[str] = []
@@ -678,11 +700,13 @@ class TestAnswerStream:
                 self._last_where: str | None = None
 
             def where(self, clause: str) -> _FakeSearch:
+                """Return where."""
                 captured_where.append(clause)
                 self._last_where = clause
                 return self
 
             def limit(self, n: int) -> _FakeQuery:
+                """Return limit."""
                 return _FakeQuery(self._rows_per_where.get(self._last_where or "", []))
 
         class _FakeTable:
@@ -690,6 +714,7 @@ class TestAnswerStream:
                 self._rows_per_where = rows_per_where
 
             def search(self, vec: list[float]) -> _FakeSearch:
+                """Return search."""
                 return _FakeSearch(self._rows_per_where)
 
         filtered_rows: dict[str, list[str]] = {
@@ -709,9 +734,11 @@ class TestAnswerStream:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("Answer")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             captured_messages.extend(messages)
             return mock_inner_generator()
 
@@ -762,6 +789,7 @@ class TestAnswerStream:
         mock_embedding_instance.get_query_embedding = AsyncMock(return_value=[0.1] * 128)
 
         async def mock_to_thread(func, *args, **kwargs):
+            """Return mock to thread."""
             return func(*args, **kwargs)
 
         class _FakeQuery:
@@ -769,6 +797,7 @@ class TestAnswerStream:
                 self._rows = rows
 
             def to_pandas(self) -> pd.DataFrame:
+                """Return to pandas."""
                 return pd.DataFrame({"text": self._rows})
 
         class _FakeSearch:
@@ -777,10 +806,12 @@ class TestAnswerStream:
                 self._last_where: str | None = None
 
             def where(self, clause: str) -> _FakeSearch:
+                """Return where."""
                 self._last_where = clause
                 return self
 
             def limit(self, n: int) -> _FakeQuery:
+                """Return limit."""
                 return _FakeQuery(self._rows_per_where.get(self._last_where or "", []))
 
         class _FakeTable:
@@ -788,6 +819,7 @@ class TestAnswerStream:
                 self._rows_per_where = rows_per_where
 
             def search(self, vec: list[float]) -> _FakeSearch:
+                """Return search."""
                 return _FakeSearch(self._rows_per_where)
 
         filtered_rows: dict[str, list[str]] = {
@@ -805,9 +837,11 @@ class TestAnswerStream:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("Answer")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             captured_messages.extend(messages)
             return mock_inner_generator()
 
@@ -854,6 +888,7 @@ class TestAnswerStream:
         mock_embedding_instance.get_query_embedding = AsyncMock(return_value=[0.1] * 128)
 
         async def mock_to_thread(func, *args, **kwargs):
+            """Return mock to thread."""
             return func(*args, **kwargs)
 
         class _FakeQuery:
@@ -861,6 +896,7 @@ class TestAnswerStream:
                 self._rows = rows
 
             def to_pandas(self) -> pd.DataFrame:
+                """Return to pandas."""
                 return pd.DataFrame({"text": self._rows})
 
         class _FakeSearch:
@@ -868,9 +904,11 @@ class TestAnswerStream:
                 self._rows = rows
 
             def where(self, clause: str) -> _FakeSearch:
+                """Return where."""
                 return self
 
             def limit(self, n: int) -> _FakeQuery:
+                """Return limit."""
                 return _FakeQuery(self._rows)
 
         class _FakeTable:
@@ -878,6 +916,7 @@ class TestAnswerStream:
                 self._rows = rows
 
             def search(self, vec: list[float]) -> _FakeSearch:
+                """Return search."""
                 return _FakeSearch(self._rows)
 
         mock_table = _FakeTable(["chunk-a"])
@@ -891,9 +930,11 @@ class TestAnswerStream:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("Answer")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             captured_messages.extend(messages)
             return mock_inner_generator()
 
@@ -936,6 +977,7 @@ class TestAnswerStream:
         mock_embedding_instance.get_query_embedding = MagicMock(return_value=[0.1] * 128)
 
         async def mock_to_thread(func, *args, **kwargs):
+            """Return mock to thread."""
             return func(*args, **kwargs)
 
         captured_messages: list = []
@@ -945,9 +987,11 @@ class TestAnswerStream:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("Answer")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             captured_messages.extend(messages)
             return mock_inner_generator()
 

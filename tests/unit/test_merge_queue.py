@@ -25,6 +25,7 @@ def _make_branch_info_on_default() -> BranchInfo:
 
 
 def make_project_config() -> ProjectConfig:
+    """Return make project config."""
     return ProjectConfig(
         id="test-proj",
         display_name="Test Project",
@@ -44,6 +45,7 @@ def make_batch_item(
     worktree_info: dict | None = None,
     batch_id: str | int | None = None,
 ) -> MagicMock:
+    """Return make batch item."""
     item = MagicMock(spec=BatchItem)
     item.work_item_id = work_item_id
     item.status = status
@@ -66,6 +68,7 @@ def make_db(
     db = MagicMock()
 
     def query_side_effect(model):
+        """Return query side effect."""
         q = MagicMock()
         filter_q = MagicMock()
         q.filter.return_value = filter_q
@@ -73,6 +76,7 @@ def make_db(
         if model is BatchItem:
 
             def filter_again(*args, **kwargs):
+                """Return filter again."""
                 inner_q = MagicMock()
                 # Used to detect merging check vs. completed check via status kwarg
                 # We rely on call order: first call = merging check, second = completed
@@ -99,7 +103,10 @@ def make_db(
 
 
 class TestProcessMergeQueue:
+    """Tests for ProcessMergeQueue scenarios."""
+
     def test_no_merge_when_already_merging(self):  # noqa: assertion-scanner
+        """Verifies that no merge when already merging."""
         merging_item = make_batch_item("F-00001", status=BatchItemStatus.merging)
         db = MagicMock()
 
@@ -118,6 +125,7 @@ class TestProcessMergeQueue:
         mock_merge.assert_not_called()
 
     def test_no_merge_when_queue_empty(self):  # noqa: assertion-scanner
+        """Verifies that no merge when queue empty."""
         db = MagicMock()
         q = MagicMock()
         q.filter.return_value.first.return_value = None  # no merging, no ready
@@ -139,6 +147,7 @@ class TestProcessMergeQueue:
         call_count = [0]
 
         def query_side(model):
+            """Return query side."""
             q = MagicMock()
             call_count[0] += 1
             if call_count[0] == 1:
@@ -154,6 +163,7 @@ class TestProcessMergeQueue:
         merged_items: list[MagicMock] = []
 
         def fake_merge(db_, item, project_id, project_config):
+            """Return fake merge."""
             merged_items.append(item)
 
         with patch("orch.daemon.merge_queue._merge_item", side_effect=fake_merge):
@@ -169,7 +179,10 @@ class TestProcessMergeQueue:
 
 
 class TestMergeItem:
+    """Tests for MergeItem scenarios."""
+
     def test_successful_merge_sets_merged(self):
+        """Verifies that successful merge sets merged."""
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
 
@@ -221,6 +234,7 @@ class TestMergeItem:
         assert item.notes is not None
 
     def test_missing_worktree_path_marks_failed_without_running_script(self):
+        """Verifies that missing worktree path marks failed without running script."""
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={})  # no "path" key
 
@@ -232,11 +246,13 @@ class TestMergeItem:
         assert "No worktree path" in item.notes
 
     def test_merging_status_set_before_script_runs(self):
+        """Verifies that merging status set before script runs."""
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         status_at_call: list[BatchItemStatus] = []
 
         def capture_status(*args, **kwargs):
+            """Return capture status."""
             status_at_call.append(item.status)
             return MagicMock(returncode=0, stdout="ok", stderr="")
 
@@ -269,6 +285,7 @@ class TestMergeItem:
         assert item.merge_info["stdout_truncated"] is True
 
     def test_rebase_failure_sets_migration_rebase_failed_and_returns(self):
+        """Verifies that rebase failure sets migration rebase failed and returns."""
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         item.batch_id = 42
@@ -296,6 +313,7 @@ class TestMergeItem:
         mock_down.assert_called_once()
 
     def test_rebase_success_continues_to_dry_run_with_worktree_path(self):
+        """Verifies that rebase success continues to dry run with worktree path."""
         db = MagicMock()
         item = make_batch_item("F-00001", worktree_info={"path": "/wt/F-00001"})
         item.batch_id = 42
@@ -366,6 +384,7 @@ def make_db_with_work_item(work_item: MagicMock | None) -> MagicMock:
     db = MagicMock()
 
     def query_side_effect(model):
+        """Return query side effect."""
         q = MagicMock()
         if model is WorkItem:
             q.filter_by.return_value.one_or_none.return_value = work_item
@@ -560,6 +579,8 @@ class TestMergeItemC4WorkItemRevert:
 
 
 class TestMergeInfoM2:
+    """Tests for MergeInfoM2 scenarios."""
+
     def test_stdout_over_8000_truncated_to_8000_with_flag(self):
         """stdout > 8000 chars: stored as 8000 chars, stdout_truncated=True."""
         db = MagicMock()

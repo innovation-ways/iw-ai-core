@@ -22,10 +22,12 @@ AI_DEV_TEMPLATES_DIR = WORKTREE_ROOT / "ai-dev" / "templates"
 
 
 def read_skill(name: str) -> str:
+    """Return read skill."""
     return (SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8")
 
 
 def read_template(name: str) -> str:
+    """Return read template."""
     return (TEMPLATES_DIR / name).read_text(encoding="utf-8")
 
 

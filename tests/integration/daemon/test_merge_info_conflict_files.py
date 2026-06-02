@@ -34,6 +34,14 @@ if TYPE_CHECKING:
 
 
 def _unique_id(prefix: str = "F-00076") -> str:
+    """Generate a unique ID with a UUID suffix for test isolation.
+
+    Args:
+        prefix: Prefix to prepend to the UUID hex suffix.
+
+    Returns:
+        A unique string in the form ``<prefix>-<8-char-hex>``.
+    """
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
 
@@ -68,6 +76,11 @@ class TestMergeInfoConflictFiles:
 
     @pytest.fixture
     def project_id(self) -> str:
+        """Provide a project ID string for merge conflict tests.
+
+        Returns:
+            The ``test-proj-merge-conflict`` project ID string.
+        """
         return "test-proj-merge-conflict"
 
     def test_rebase_with_auto_resolved_conflict_captures_conflict_files(

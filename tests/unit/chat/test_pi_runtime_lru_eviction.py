@@ -27,6 +27,14 @@ from orch.chat.pi.pi_runtime import MAX_PI_TABS, PiRuntime
 
 
 def _make_mock_client(last_activity: float | None = None) -> MagicMock:
+    """Return a minimal mock PiRpcClient with controllable last_activity.
+
+    Args:
+        last_activity: Monotonic timestamp to assign; defaults to time.monotonic() if None.
+
+    Returns:
+        A MagicMock with close, start, and send_command AsyncMocks attached.
+    """
     client = MagicMock()
     client.close = AsyncMock()
     client.start = AsyncMock()

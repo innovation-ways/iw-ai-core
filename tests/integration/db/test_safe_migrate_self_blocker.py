@@ -16,6 +16,11 @@ if TYPE_CHECKING:
 
 
 def _ensure_iw_core_project(db_session_factory: sessionmaker) -> None:
+    """Insert the 'iw-ai-core' project row if it does not already exist.
+
+    Args:
+        db_session_factory: Factory used to create a short-lived seeding session.
+    """
     seed = db_session_factory()
     try:
         seed.execute(
@@ -41,6 +46,7 @@ def _ensure_iw_core_project(db_session_factory: sessionmaker) -> None:
 )
 @pytest.mark.timeout(60)
 def test_assert_no_self_blockers_happy_path(db_engine: Engine) -> None:
+    """Verifies that _assert_no_self_blockers returns None when no locks are held."""
     apply_engine = create_engine(
         db_engine.url.render_as_string(hide_password=False),
         pool_pre_ping=True,
@@ -58,6 +64,9 @@ def test_assert_no_self_blockers_raises_when_same_process_holds_blocking_lock(
     db_engine: Engine,
     db_session_factory: sessionmaker,
 ) -> None:
+    """Verifies that _assert_no_self_blockers raises SelfBlockerError when the calling process holds
+    an AccessShareLock.
+    """
     outer = db_session_factory()
     _ = outer.execute(text("SELECT id FROM batch_items LIMIT 1")).fetchall()
     try:
@@ -87,6 +96,9 @@ def test_assert_no_self_blockers_no_pending_falls_back_to_relevant_tables(
     db_engine: Engine,
     db_session_factory: sessionmaker,
 ) -> None:
+    """Verifies that when no pending migrations exist, self-blocker detection still checks relevant
+    tables and raises on a held lock.
+    """
     outer = db_session_factory()
     _ = outer.execute(text("SELECT id FROM projects LIMIT 1")).fetchall()
     try:
@@ -108,6 +120,9 @@ def test_assert_no_self_blockers_no_pending_falls_back_to_relevant_tables(
 @pytest.mark.integration
 @pytest.mark.timeout(60)
 def test_lock_timeout_set_on_apply_connection(db_engine: Engine) -> None:
+    """Verifies that the apply connection has lock_timeout set to the expected value via an event
+    listener.
+    """
     apply_engine = create_engine(
         db_engine.url.render_as_string(hide_password=False),
         pool_pre_ping=True,
@@ -132,6 +147,9 @@ def test_lock_timeout_set_on_apply_connection(db_engine: Engine) -> None:
 def test_lock_timeout_env_var_honored_by_get_helper(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Verifies that IW_CORE_MIGRATION_LOCK_TIMEOUT_SECS env var is read correctly by the config
+    helper.
+    """
     from orch.config import get_migration_lock_timeout_secs
 
     monkeypatch.setenv("IW_CORE_MIGRATION_LOCK_TIMEOUT_SECS", "5")
@@ -157,6 +175,9 @@ def test_apply_returns_self_blocker_failure_when_caller_holds_share_lock(
     db_session_factory: sessionmaker,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Verifies that safe_apply returns a failure result when the calling session holds a share lock
+    blocking the migration.
+    """
     monkeypatch.setenv("IW_CORE_OPERATOR_APPLY", "true")
     _ensure_iw_core_project(db_session_factory)
 
@@ -184,6 +205,9 @@ def test_apply_returns_lock_timeout_failure_under_short_timeout(
     db_session_factory: sessionmaker,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Verifies that safe_apply fails with a lock timeout error when a short timeout is configured
+    and a blocker holds a lock.
+    """
     monkeypatch.setenv("IW_CORE_OPERATOR_APPLY", "true")
     monkeypatch.setenv("IW_CORE_MIGRATION_LOCK_TIMEOUT_SECS", "5")
     _ensure_iw_core_project(db_session_factory)

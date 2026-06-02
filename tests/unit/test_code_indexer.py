@@ -12,7 +12,10 @@ from orch.rag.config import CodeUnderstandingConfig
 
 
 class TestComputeSha:
+    """Tests for ComputeSha scenarios."""
+
     def test_compute_sha_consistent(self, tmp_path: Path) -> None:
+        """Verifies that compute sha consistent."""
         from orch.rag.indexer import CodeIndexer
 
         config = CodeUnderstandingConfig()
@@ -31,6 +34,7 @@ class TestComputeSha:
         assert len(sha1) == 64
 
     def test_compute_sha_differs(self, tmp_path: Path) -> None:
+        """Verifies that compute sha differs."""
         from orch.rag.indexer import CodeIndexer
 
         config = CodeUnderstandingConfig()
@@ -51,7 +55,10 @@ class TestComputeSha:
 
 
 class TestManifest:
+    """Tests for Manifest scenarios."""
+
     def test_manifest_roundtrip(self, tmp_path: Path) -> None:
+        """Verifies that manifest roundtrip."""
         from orch.rag.indexer import CodeIndexer
 
         config = CodeUnderstandingConfig()
@@ -70,6 +77,7 @@ class TestManifest:
         assert loaded == original
 
     def test_manifest_missing_returns_empty(self, tmp_path: Path) -> None:
+        """Verifies that manifest missing returns empty."""
         from orch.rag.indexer import CodeIndexer
 
         config = CodeUnderstandingConfig()
@@ -84,7 +92,10 @@ class TestManifest:
 
 
 class TestGetChangedFiles:
+    """Tests for GetChangedFiles scenarios."""
+
     def test_get_changed_files_all_changed(self, tmp_path: Path) -> None:
+        """Verifies that get changed files all changed."""
         from orch.rag.indexer import CodeIndexer
 
         config = CodeUnderstandingConfig()
@@ -103,6 +114,7 @@ class TestGetChangedFiles:
         assert all(isinstance(p, Path) for p in changed)
 
     def test_get_changed_files_no_change(self, tmp_path: Path) -> None:
+        """Verifies that get changed files no change."""
         from orch.rag.indexer import CodeIndexer
 
         config = CodeUnderstandingConfig()
@@ -123,6 +135,7 @@ class TestGetChangedFiles:
         assert changed == []
 
     def test_get_changed_files_partial(self, tmp_path: Path) -> None:
+        """Verifies that get changed files partial."""
         from orch.rag.indexer import CodeIndexer
 
         config = CodeUnderstandingConfig()
@@ -147,7 +160,10 @@ class TestGetChangedFiles:
 
 
 class TestMermaid:
+    """Tests for Mermaid scenarios."""
+
     def test_build_mermaid_contains_graph_td(self, tmp_path: Path) -> None:
+        """Verifies that build mermaid contains graph td."""
         from orch.rag.config import CodeUnderstandingConfig
         from orch.rag.mapgen import MapGenerator
 
@@ -168,7 +184,10 @@ class TestMermaid:
 
 
 class TestAssembleMarkdown:
+    """Tests for AssembleMarkdown scenarios."""
+
     def test_assemble_markdown_contains_all_sections(self, tmp_path: Path) -> None:
+        """Verifies that assemble markdown contains all sections."""
         from orch.rag.mapgen import MapGenerator
 
         gen = MapGenerator()
@@ -191,7 +210,10 @@ class TestAssembleMarkdown:
 
 
 class TestIndexResult:
+    """Tests for IndexResult scenarios."""
+
     def test_index_result_dataclass(self) -> None:
+        """Verifies that index result dataclass."""
         from orch.rag.indexer import IndexResult
 
         result = IndexResult(
@@ -207,6 +229,7 @@ class TestIndexResult:
         assert result.errors == []
 
     def test_index_result_defaults_for_new_fields(self) -> None:
+        """Verifies that index result defaults for new fields."""
         from orch.rag.indexer import IndexResult
 
         result = IndexResult(
@@ -220,6 +243,7 @@ class TestIndexResult:
         assert result.errors == []
 
     def test_index_result_accepts_discovery_and_languages(self) -> None:
+        """Verifies that index result accepts discovery and languages."""
         from orch.rag.indexer import IndexResult
 
         result = IndexResult(

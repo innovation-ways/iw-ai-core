@@ -45,6 +45,7 @@ class TestDocsCallouts:
         return p
 
     def _make_doc_with_content(self, doc_id: str, content: str) -> MagicMock:
+        """Create a mock ProjectDoc with the given doc_id and markdown content."""
         doc = MagicMock()
         doc.id = f"{doc_id}"
         doc.doc_id = doc_id

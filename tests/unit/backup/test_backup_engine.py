@@ -1,3 +1,5 @@
+"""Unit tests for the backup engine config fields and core create_backup behavior (F-00092)."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -27,11 +29,17 @@ _VALID_ENV: dict[str, str] = {
 
 
 def _set_base_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Apply the minimal valid environment required to call cfg.load_config().
+
+    Args:
+        monkeypatch: pytest monkeypatch fixture used to set environment variables.
+    """
     for key, value in _VALID_ENV.items():
         monkeypatch.setenv(key, value)
 
 
 def test_backup_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that backup config defaults are applied when environment variables are absent."""
     _set_base_env(monkeypatch)
     monkeypatch.delenv("IW_CORE_BACKUP_ENABLED", raising=False)
     monkeypatch.delenv("IW_CORE_BACKUP_DIR", raising=False)
@@ -47,6 +55,7 @@ def test_backup_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_backup_config_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Verifies that backup config values are overridden when environment variables are set."""
     _set_base_env(monkeypatch)
     monkeypatch.setenv("IW_CORE_BACKUP_ENABLED", "false")
     monkeypatch.setenv("IW_CORE_BACKUP_DIR", str(tmp_path / "backups"))
@@ -62,6 +71,7 @@ def test_backup_config_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 
 
 def test_manifest_fields(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Verifies that the backup manifest is populated with correct metadata fields."""
     from orch.backup.engine import create_backup
 
     _set_base_env(monkeypatch)
@@ -107,6 +117,7 @@ def test_manifest_fields(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Non
 def test_integrity_check_failure_cleans_partial_set(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Verifies that a failed integrity check removes the partial backup set entirely."""
     from orch.backup.engine import BackupIntegrityError, create_backup
 
     _set_base_env(monkeypatch)

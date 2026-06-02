@@ -56,15 +56,18 @@ def _render(env: Environment, *, stale: bool) -> str:
 
 @pytest.fixture
 def jinja_env() -> Environment:
+    """Provide jinja env for tests."""
     return _make_env()
 
 
 def test_write_button_attrs_when_db_is_fresh(jinja_env: Environment) -> None:
+    """Verifies that write button attrs when db is fresh."""
     rendered = _render(jinja_env, stale=False)
     assert rendered == EXPECTED_FRESH, f"Expected empty output when DB is fresh, got: {rendered!r}"
 
 
 def test_write_button_attrs_when_db_is_stale(jinja_env: Environment) -> None:
+    """Verifies that write button attrs when db is stale."""
     rendered = _render(jinja_env, stale=True)
     assert rendered == EXPECTED_STALE, (
         f"Expected pre-quoted attributes when DB is stale, got: {rendered!r}"

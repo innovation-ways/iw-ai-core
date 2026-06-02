@@ -22,25 +22,32 @@ from orch.db.identity import (
 
 
 class TestGetExpectedInstanceId:
+    """Tests for GetExpectedInstanceId scenarios."""
+
     def test_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that unset."""
         monkeypatch.delenv(ENV_VAR, raising=False)
         assert get_expected_instance_id() is None
 
     def test_empty_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that empty string."""
         monkeypatch.setenv(ENV_VAR, "")
         assert get_expected_instance_id() is None
 
     def test_whitespace_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that whitespace only."""
         monkeypatch.setenv(ENV_VAR, "   ")
         assert get_expected_instance_id() is None
 
     def test_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that valid."""
         expected = uuid.uuid4()
         monkeypatch.setenv(ENV_VAR, str(expected))
         result = get_expected_instance_id()
         assert result == expected
 
     def test_uppercase(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that uppercase."""
         raw = str(uuid.uuid4()).upper()
         monkeypatch.setenv(ENV_VAR, raw)
         result = get_expected_instance_id()
@@ -48,17 +55,22 @@ class TestGetExpectedInstanceId:
         assert str(result).upper() == raw
 
     def test_malformed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that malformed."""
         monkeypatch.setenv(ENV_VAR, "not-a-uuid")
         with pytest.raises(ValueError, match="badly formed hexadecimal UUID string"):
             get_expected_instance_id()
 
 
 class TestGetLiveInstanceId:
+    """Tests for GetLiveInstanceId scenarios."""
+
     def test_row_missing(self, db_session: MagicMock) -> None:
+        """Verifies that row missing."""
         db_session.get.return_value = None
         assert get_live_instance_id(db_session) is None
 
     def test_row_present(self, db_session: MagicMock) -> None:
+        """Verifies that row present."""
         expected = uuid.uuid4()
         mock_row = MagicMock()
         mock_row.instance_id = expected
@@ -68,7 +80,10 @@ class TestGetLiveInstanceId:
 
 
 class TestCheckIdentity:
+    """Tests for CheckIdentity scenarios."""
+
     def test_match(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that match."""
         expected_uuid = uuid.uuid4()
         mock_row = MagicMock()
         mock_row.instance_id = expected_uuid
@@ -82,6 +97,7 @@ class TestCheckIdentity:
         assert status.actual == expected_uuid
 
     def test_mismatch(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that mismatch."""
         expected_uuid = uuid.uuid4()
         actual_uuid = uuid.uuid4()
         mock_row = MagicMock()
@@ -96,6 +112,7 @@ class TestCheckIdentity:
         assert status.actual == actual_uuid
 
     def test_bootstrap(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that bootstrap."""
         actual_uuid = uuid.uuid4()
         mock_row = MagicMock()
         mock_row.instance_id = actual_uuid
@@ -109,6 +126,7 @@ class TestCheckIdentity:
         assert status.actual == actual_uuid
 
     def test_missing_env_set(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that missing env set."""
         db_session.get.return_value = None
         monkeypatch.setenv(ENV_VAR, str(uuid.uuid4()))
 
@@ -121,6 +139,7 @@ class TestCheckIdentity:
     def test_missing_env_unset(
         self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Verifies that missing env unset."""
         db_session.get.return_value = None
         monkeypatch.delenv(ENV_VAR, raising=False)
 
@@ -132,7 +151,10 @@ class TestCheckIdentity:
 
 
 class TestCheckBoundIdentity:
+    """Tests for CheckBoundIdentity scenarios."""
+
     def test_match(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that match."""
         bound = uuid.uuid4()
         mock_row = MagicMock()
         mock_row.instance_id = bound
@@ -146,6 +168,7 @@ class TestCheckBoundIdentity:
         assert status.actual == bound
 
     def test_changed(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that changed."""
         bound = uuid.uuid4()
         live = uuid.uuid4()
         mock_row = MagicMock()
@@ -162,6 +185,7 @@ class TestCheckBoundIdentity:
     def test_missing_while_pinned(
         self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Verifies that missing while pinned."""
         bound = uuid.uuid4()
         db_session.get.return_value = None
         monkeypatch.setenv(ENV_VAR, str(bound))
@@ -172,7 +196,10 @@ class TestCheckBoundIdentity:
 
 
 class TestVerifyInstanceIdentity:
+    """Tests for VerifyInstanceIdentity scenarios."""
+
     def test_match(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that match."""
         expected_uuid = uuid.uuid4()
         mock_row = MagicMock()
         mock_row.instance_id = expected_uuid
@@ -185,6 +212,7 @@ class TestVerifyInstanceIdentity:
         assert isinstance(status, IdentityStatus)
 
     def test_bootstrap(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that bootstrap."""
         actual_uuid = uuid.uuid4()
         mock_row = MagicMock()
         mock_row.instance_id = actual_uuid
@@ -196,6 +224,7 @@ class TestVerifyInstanceIdentity:
         assert status.mode == "bootstrap"
 
     def test_mismatch_raises(self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that mismatch raises."""
         expected_uuid = uuid.uuid4()
         actual_uuid = uuid.uuid4()
         mock_row = MagicMock()
@@ -213,6 +242,7 @@ class TestVerifyInstanceIdentity:
     def test_missing_row_with_env_set_raises(
         self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Verifies that missing row with env set raises."""
         db_session.get.return_value = None
         monkeypatch.setenv(ENV_VAR, str(uuid.uuid4()))
 
@@ -222,6 +252,7 @@ class TestVerifyInstanceIdentity:
     def test_missing_row_env_unset_does_not_raise(
         self, db_session: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Verifies that missing row env unset does not raise."""
         db_session.get.return_value = None
         monkeypatch.delenv(ENV_VAR, raising=False)
 

@@ -1,3 +1,5 @@
+"""Tests for the smarter cascade reset logic that skips irrelevant QV gates."""
+
 from __future__ import annotations
 
 from orch.daemon import fix_cycle
@@ -14,6 +16,7 @@ from orch.db.models import (
 
 
 def test_gate_is_relevant_python_file_resets_all_known_gates() -> None:
+    """Verifies that a changed Python file marks every registered gate as relevant."""
     gate_extensions = getattr(fix_cycle, "_GATE_RELEVANT_EXTENSIONS", {})
     assert gate_extensions
 
@@ -27,6 +30,9 @@ def test_gate_is_relevant_python_file_resets_all_known_gates() -> None:
 
 
 def test_gate_is_relevant_txt_file_skips_python_only_gates() -> None:
+    """Verifies that a .txt file change is not relevant to lint/format but is relevant to assertion-
+    check.
+    """
     gate_is_relevant = getattr(fix_cycle, "_gate_is_relevant", None)
     assert callable(gate_is_relevant)
     lint_relevant = gate_is_relevant("lint", ["tests/assertion_free_baseline.txt"])
@@ -39,12 +45,16 @@ def test_gate_is_relevant_txt_file_skips_python_only_gates() -> None:
 
 
 def test_gate_is_relevant_empty_changed_files_is_conservative() -> None:
+    """Verifies that an empty changed-files list conservatively marks the gate as relevant."""
     gate_is_relevant = getattr(fix_cycle, "_gate_is_relevant", None)
     assert callable(gate_is_relevant)
     assert gate_is_relevant("lint", []) is True
 
 
 def test_gate_is_relevant_unknown_gate_is_conservative() -> None:
+    """Verifies that an unregistered gate name is conservatively treated as relevant for any file
+    type.
+    """
     gate_is_relevant = getattr(fix_cycle, "_gate_is_relevant", None)
     assert callable(gate_is_relevant)
     result_readme = gate_is_relevant("some-new-gate", ["README.md"])
@@ -55,6 +65,15 @@ def test_gate_is_relevant_unknown_gate_is_conservative() -> None:
 
 
 def _seed_cascade_fixture(db_session):
+    """Insert a project, work item, and three QV gate steps (lint, assertion-check, unit-tests) into
+    the DB.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+
+    Returns:
+        A tuple of (lint_gate, assertion_gate, failing_step) WorkflowStep rows.
+    """
     project = Project(
         id="proj-cascade",
         display_name="Cascade",
@@ -116,6 +135,9 @@ def _seed_cascade_fixture(db_session):
 
 
 def test_cascade_reset_skips_irrelevant_gates(db_session) -> None:
+    """Verifies that cascade reset only resets gates relevant to the changed files (.txt skips
+    lint).
+    """
     lint_gate, assertion_gate, failing_step = _seed_cascade_fixture(db_session)
 
     cascade_reset = getattr(fix_cycle, "_cascade_reset_upstream_qv_gates", None)
@@ -134,6 +156,7 @@ def test_cascade_reset_skips_irrelevant_gates(db_session) -> None:
 
 
 def test_cascade_reset_empty_changed_files_resets_all(db_session) -> None:
+    """Verifies that cascade reset resets all upstream gates when the changed-files list is."""
     lint_gate, assertion_gate, failing_step = _seed_cascade_fixture(db_session)
 
     cascade_reset = getattr(fix_cycle, "_cascade_reset_upstream_qv_gates", None)

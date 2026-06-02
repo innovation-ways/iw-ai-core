@@ -90,6 +90,7 @@ def test_prompt_includes_recent_commits_both_sides() -> None:
     from orch.daemon.auto_merge import build_resolution_prompt
 
     def _git_stub_with_distinct_logs(cmd, **kwargs):
+        """Return git stub with distinct logs."""
         import subprocess
 
         args = cmd if isinstance(cmd, list) else cmd
@@ -192,7 +193,10 @@ def test_prompt_hash_changes_with_content() -> None:
     from orch.daemon.auto_merge import build_resolution_prompt
 
     def _make_git_stub(ours_content: str):
+        """Return make git stub."""
+
         def _stub(cmd, **kwargs):
+            """Return stub."""
             import subprocess
 
             args = cmd if isinstance(cmd, list) else cmd

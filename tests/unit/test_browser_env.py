@@ -41,6 +41,7 @@ from orch.db.models import StepType
 
 
 def make_project_config(bv_cfg: dict | None = None) -> ProjectConfig:
+    """Return make project config."""
     config: dict = {}
     if bv_cfg is not None:
         config["browser_verification"] = bv_cfg
@@ -79,18 +80,22 @@ _FULL_BV_CFG = {
 
 
 def test_is_browser_verification_step_enum() -> None:
+    """Verifies that is browser verification step enum."""
     assert is_browser_verification_step(StepType.browser_verification) is True
 
 
 def test_is_browser_verification_step_string() -> None:
+    """Verifies that is browser verification step string."""
     assert is_browser_verification_step("browser_verification") is True
 
 
 def test_is_browser_verification_step_other_enum() -> None:
+    """Verifies that is browser verification step other enum."""
     assert is_browser_verification_step(StepType.implementation) is False
 
 
 def test_is_browser_verification_step_other_string() -> None:
+    """Verifies that is browser verification step other string."""
     assert is_browser_verification_step("implementation") is False
 
 
@@ -126,6 +131,7 @@ def test_resolve_browser_env_missing_env_up_command_returns_none() -> None:
 
 
 def test_resolve_browser_env_returns_expected_keys() -> None:
+    """Verifies that resolve browser env returns expected keys."""
     pc = make_project_config(bv_cfg=_FULL_BV_CFG)
     env = resolve_browser_env(pc, "innoforge", "F-00001")
     assert env is not None
@@ -208,6 +214,7 @@ def test_resolve_browser_env_offset_uses_pool_size() -> None:
 
 
 def test_resolve_browser_env_base_url_substituted() -> None:
+    """Verifies that resolve browser env base url substituted."""
     pc = make_project_config(bv_cfg=_FULL_BV_CFG)
     env = resolve_browser_env(pc, "innoforge", "F-00001")
     assert env is not None
@@ -275,18 +282,21 @@ def test_resolve_browser_env_config_creds_override_environment(
 
 
 def test_render_known_placeholder_replaced() -> None:
+    """Verifies that render known placeholder replaced."""
     env = {"IW_BROWSER_BASE_URL": "http://localhost:3137"}
     result = render_prompt_substitutions("Open {{IW_BROWSER_BASE_URL}} in browser.", env)
     assert result == "Open http://localhost:3137 in browser."
 
 
 def test_render_unknown_placeholder_left_untouched() -> None:
+    """Verifies that render unknown placeholder left untouched."""
     env = {"IW_BROWSER_BASE_URL": "http://localhost:3137"}
     result = render_prompt_substitutions("Value: {{UNKNOWN_VAR}}", env)
     assert result == "Value: {{UNKNOWN_VAR}}"
 
 
 def test_render_multiple_placeholders() -> None:
+    """Verifies that render multiple placeholders."""
     env = {
         "IW_BROWSER_BASE_URL": "http://localhost:3137",
         "IW_BROWSER_E2E_USER": "admin@example.com",
@@ -302,6 +312,7 @@ def test_render_multiple_placeholders() -> None:
 
 
 def test_render_no_placeholders_unchanged() -> None:
+    """Verifies that render no placeholders unchanged."""
     text = "No placeholders here."
     result = render_prompt_substitutions(text, {})
     assert result == text
@@ -340,6 +351,7 @@ def test_run_env_up_hook_no_browser_cfg_returns_true(tmp_path: Path) -> None:
 
 
 def test_run_env_up_hook_success(tmp_path: Path) -> None:
+    """Verifies that run env up hook success."""
     pc = make_project_config(bv_cfg={"env_up_command": "/bin/true"})
     success, log_path = run_env_up_hook(pc, str(tmp_path), {}, "F-00001", "S01")
     assert success is True
@@ -352,6 +364,7 @@ def test_run_env_up_hook_success(tmp_path: Path) -> None:
 
 
 def test_run_env_up_hook_nonzero_exit_returns_false(tmp_path: Path) -> None:
+    """Verifies that run env up hook nonzero exit returns false."""
     pc = make_project_config(bv_cfg={"env_up_command": "/bin/false"})
     success, log_path = run_env_up_hook(pc, str(tmp_path), {}, "F-00001", "S01")
     assert success is False
@@ -389,6 +402,7 @@ def test_run_env_down_hook_no_config_is_noop(tmp_path: Path) -> None:  # noqa: a
 
 
 def test_run_env_down_hook_success(tmp_path: Path) -> None:  # noqa: assertion-scanner
+    """Verifies that run env down hook success."""
     pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "/bin/true"})
     run_env_down_hook(pc, str(tmp_path), {}, "F-00001", "S01")  # must not raise
 
@@ -400,6 +414,7 @@ def test_run_env_down_hook_nonzero_exit_does_not_raise(tmp_path: Path) -> None: 
 
 
 def test_run_env_down_hook_timeout_does_not_raise(tmp_path: Path) -> None:  # noqa: assertion-scanner
+    """Verifies that run env down hook timeout does not raise."""
     pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "sleep 9999"})
     with patch(
         "orch.daemon.browser_env.subprocess.run",
@@ -409,6 +424,7 @@ def test_run_env_down_hook_timeout_does_not_raise(tmp_path: Path) -> None:  # no
 
 
 def test_run_env_down_hook_exception_does_not_raise(tmp_path: Path) -> None:  # noqa: assertion-scanner
+    """Verifies that run env down hook exception does not raise."""
     pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "make down"})
     with patch("orch.daemon.browser_env.subprocess.run", side_effect=OSError("docker not found")):
         run_env_down_hook(pc, str(tmp_path), {}, "F-00001", "S01")  # must not raise
@@ -428,6 +444,7 @@ def _reserve_port() -> tuple[socket.socket, int]:
 
 
 def test_is_port_free_true_when_nothing_listens() -> None:
+    """Verifies that is port free true when nothing listens."""
     # Port 1 is almost certainly bound by no test process.
     # Pick a random high port via OS, then close, then probe.
     s, port = _reserve_port()
@@ -436,6 +453,7 @@ def test_is_port_free_true_when_nothing_listens() -> None:
 
 
 def test_is_port_free_false_when_port_in_use() -> None:
+    """Verifies that is port free false when port in use."""
     s, port = _reserve_port()
     try:
         assert _is_port_free(port) is False
@@ -505,21 +523,25 @@ def test_pick_free_offset_scans_forward_on_collision() -> None:
 
 
 def test_state_file_path_under_worktree_tmp(tmp_path: Path) -> None:
+    """Verifies that state file path under worktree tmp."""
     path = _state_file_path(str(tmp_path), "F-00001")
     assert path == tmp_path / ".tmp" / "browser_env_F-00001.state"
 
 
 def test_save_and_load_persisted_offset_roundtrip(tmp_path: Path) -> None:
+    """Verifies that save and load persisted offset roundtrip."""
     _save_persisted_offset(str(tmp_path), "F-00001", 42)
     loaded = _load_persisted_offset(str(tmp_path), "F-00001")
     assert loaded == 42
 
 
 def test_load_persisted_offset_none_when_missing(tmp_path: Path) -> None:
+    """Verifies that load persisted offset none when missing."""
     assert _load_persisted_offset(str(tmp_path), "F-00099") is None
 
 
 def test_load_persisted_offset_none_on_malformed_file(tmp_path: Path) -> None:
+    """Verifies that load persisted offset none on malformed file."""
     state = _state_file_path(str(tmp_path), "F-00001")
     state.parent.mkdir(parents=True, exist_ok=True)
     state.write_text("{not json")
@@ -532,11 +554,13 @@ def test_load_persisted_offset_none_on_malformed_file(tmp_path: Path) -> None:
 
 
 def test_allocate_browser_env_returns_none_when_opted_out(tmp_path: Path) -> None:
+    """Verifies that allocate browser env returns none when opted out."""
     pc = make_project_config(bv_cfg=None)
     assert allocate_browser_env(pc, "innoforge", "F-00001", str(tmp_path)) is None
 
 
 def test_allocate_browser_env_writes_state_file(tmp_path: Path) -> None:
+    """Verifies that allocate browser env writes state file."""
     pc = make_project_config(bv_cfg={**_FULL_BV_CFG, "env_up_command": "/bin/true"})
     env = allocate_browser_env(pc, "innoforge", "F-00001", str(tmp_path))
     assert env is not None
@@ -579,6 +603,7 @@ def test_resolve_browser_env_falls_back_to_hash_without_worktree() -> None:
 
 
 def test_run_env_down_hook_deletes_state_file(tmp_path: Path) -> None:
+    """Verifies that run env down hook deletes state file."""
     _save_persisted_offset(str(tmp_path), "F-00001", 7)
     pc = make_project_config(bv_cfg={"env_up_command": "make up", "env_down_command": "/bin/true"})
     run_env_down_hook(pc, str(tmp_path), {}, "F-00001", "S01")
@@ -591,6 +616,7 @@ def test_run_env_down_hook_deletes_state_file(tmp_path: Path) -> None:
 
 
 def test_i00052_capture_crashed_container_logs_happy_path() -> None:
+    """Verifies that i00052 capture crashed container logs happy path."""
     compose_log = (
         "dependency failed to start: container iw-ai-core-e2e-f00067-e2e-dashboard-1 exited (1)\n"
     )
@@ -611,6 +637,7 @@ def test_i00052_capture_crashed_container_logs_happy_path() -> None:
 
 
 def test_i00052_capture_crashed_container_logs_docker_unavailable() -> None:
+    """Verifies that i00052 capture crashed container logs docker unavailable."""
     compose_log = "container foo-dashboard-1 exited (1)\n"
     with patch(
         "orch.daemon.browser_env.subprocess.run",
@@ -622,6 +649,7 @@ def test_i00052_capture_crashed_container_logs_docker_unavailable() -> None:
 
 
 def test_i00052_capture_crashed_container_logs_docker_timeout() -> None:
+    """Verifies that i00052 capture crashed container logs docker timeout."""
     with patch(
         "orch.daemon.browser_env.subprocess.run",
         side_effect=subprocess.TimeoutExpired("docker", 10),
@@ -632,6 +660,7 @@ def test_i00052_capture_crashed_container_logs_docker_timeout() -> None:
 
 
 def test_i00052_capture_crashed_container_logs_empty_input() -> None:
+    """Verifies that i00052 capture crashed container logs empty input."""
     with patch("orch.daemon.browser_env.subprocess.run") as mock_run:
         result = _capture_crashed_container_logs("")
     assert result == ""
@@ -639,6 +668,7 @@ def test_i00052_capture_crashed_container_logs_empty_input() -> None:
 
 
 def test_i00052_capture_crashed_container_logs_no_crashed_containers() -> None:
+    """Verifies that i00052 capture crashed container logs no crashed containers."""
     compose_log = "container foo-dashboard-1 starting\ncontainer foo-dashboard-1 stopped\n"
     with patch("orch.daemon.browser_env.subprocess.run") as mock_run:
         result = _capture_crashed_container_logs(compose_log)
@@ -647,6 +677,7 @@ def test_i00052_capture_crashed_container_logs_no_crashed_containers() -> None:
 
 
 def test_i00052_capture_crashed_container_logs_deduplicates() -> None:
+    """Verifies that i00052 capture crashed container logs deduplicates."""
     compose_log = "container foo-dashboard-1 exited (1)\ncontainer foo-dashboard-1 exited (1)\n"
     mock_result = MagicMock(stdout="error log\n", stderr="", returncode=0)
     with patch("orch.daemon.browser_env.subprocess.run", return_value=mock_result) as mock_run:

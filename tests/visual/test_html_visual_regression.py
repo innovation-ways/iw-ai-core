@@ -1,3 +1,5 @@
+"""Visual regression tests for HTML document renders (CR-00082 S01)."""
+
 from __future__ import annotations
 
 import shutil
@@ -24,6 +26,11 @@ OUTPUT_DIR = Path("tests/output/visual-diff")
 
 
 def _find_baseline_html() -> list[tuple[str, Path, Path]]:
+    """Discover every source.html/baseline.png pair under the baselines/html tree.
+
+    Returns:
+        List of (doc-name, source-html-path, baseline-png-path) tuples.
+    """
     docs: list[tuple[str, Path, Path]] = []
     for sub_dir in sorted(HTML_DIR.iterdir()):
         if not sub_dir.is_dir():
@@ -46,6 +53,7 @@ def test_html_matches_baseline(
     baseline_png: Path,
     tmp_path: Path,
 ) -> None:
+    """Screenshot the source HTML and assert pixel diff is within the committed baseline."""
     wrapper = PlaywrightWrapper(base_url="")
     actual_path = tmp_path / f"{doc_name}-actual.png"
     wrapper.screenshot_to_baseline(source_html.resolve().as_uri(), actual_path)

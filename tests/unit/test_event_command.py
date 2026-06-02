@@ -1,3 +1,5 @@
+"""Unit tests for event command."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -23,9 +25,11 @@ class _FakeSession:
         self.events: list[Any] = []
 
     def add(self, obj: Any) -> None:
+        """Return add."""
         self.events.append(obj)
 
     def flush(self) -> None:
+        """Return flush."""
         for index, event in enumerate(self.events, start=1):
             if getattr(event, "id", None) is None:
                 event.id = index
@@ -37,6 +41,7 @@ def _get_session(fake_session: _FakeSession):
 
 
 def test_daemon_event_inserts_row() -> None:
+    """Verifies that daemon event inserts row."""
     fake_session = _FakeSession()
     runner = CliRunner()
 
@@ -79,6 +84,7 @@ def test_daemon_event_inserts_row() -> None:
 
 
 def test_daemon_event_json_output_returns_id() -> None:
+    """Verifies that daemon event json output returns id."""
     fake_session = _FakeSession()
     runner = CliRunner()
 

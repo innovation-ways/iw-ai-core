@@ -59,7 +59,10 @@ def _ast_check_ids() -> set[str]:
 
 
 class TestCatalogCompleteness:
+    """Tests for CatalogCompleteness scenarios."""
+
     def test_every_check_id_has_catalog_entry(self) -> None:
+        """Verifies that every check id has catalog entry."""
         if not CATALOG_PATH.exists():
             pytest.skip(f"Catalog not found: {CATALOG_PATH}")
 
@@ -68,6 +71,7 @@ class TestCatalogCompleteness:
         assert not missing, f"Catalog missing entries for: {missing}"
 
     def test_no_orphan_catalog_entries(self) -> None:
+        """Verifies that no orphan catalog entries."""
         if not CATALOG_PATH.exists():
             pytest.skip(f"Catalog not found: {CATALOG_PATH}")
 
@@ -76,6 +80,7 @@ class TestCatalogCompleteness:
         assert not orphans, f"Catalog has orphan entries (no matching check): {orphans}"
 
     def test_catalog_entries_have_required_fields(self) -> None:
+        """Verifies that catalog entries have required fields."""
         if not CATALOG_PATH.exists():
             pytest.skip(f"Catalog not found: {CATALOG_PATH}")
 
@@ -92,6 +97,7 @@ class TestCatalogCompleteness:
                 assert entry_val, f"{check_id}: field '{field}' is missing or empty"
 
     def test_catalog_all_entries_are_strings(self) -> None:
+        """Verifies that catalog all entries are strings."""
         if not CATALOG_PATH.exists():
             pytest.skip(f"Catalog not found: {CATALOG_PATH}")
 

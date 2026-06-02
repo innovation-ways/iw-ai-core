@@ -20,6 +20,7 @@ from orch.db.models import BatchItemStatus
 
 @pytest.fixture
 def cli_runner():
+    """Provide cli runner for tests."""
     return CliRunner()
 
 
@@ -78,24 +79,32 @@ class TestRetryMergeParityOnly:
 
 
 class TestUnfreezeRefusesWithoutAck:
+    """Tests for UnfreezeRefusesWithoutAck scenarios."""
+
     def test_unfreeze_refuses_without_ack(self, cli_runner: CliRunner) -> None:
+        """Verifies that unfreeze refuses without ack."""
         result = cli_runner.invoke(merge_queue_unfreeze, [])
         assert result.exit_code == 3
         assert "--ack" in result.output or "required" in result.output.lower()
 
     def test_unfreeze_refuses_with_empty_ack(self, cli_runner: CliRunner) -> None:
+        """Verifies that unfreeze refuses with empty ack."""
         result = cli_runner.invoke(merge_queue_unfreeze, ["--ack", ""])
         assert result.exit_code == 3
 
     def test_unfreeze_refuses_with_whitespace_only_ack(self, cli_runner: CliRunner) -> None:
+        """Verifies that unfreeze refuses with whitespace only ack."""
         result = cli_runner.invoke(merge_queue_unfreeze, ["--ack", "   "])
         assert result.exit_code == 3
 
 
 class TestUnfreezeRefusesInAgentContext:
+    """Tests for UnfreezeRefusesInAgentContext scenarios."""
+
     def test_unfreeze_refuses_in_agent_context(
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Verifies that unfreeze refuses in agent context."""
         monkeypatch.setenv("IW_CORE_AGENT_CONTEXT", "true")
         result = cli_runner.invoke(
             merge_queue_unfreeze, ["--ack", "intentional unfreeze for testing"]
@@ -105,6 +114,7 @@ class TestUnfreezeRefusesInAgentContext:
     def test_unfreeze_refuses_in_agent_context_json(
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Verifies that unfreeze refuses in agent context json."""
         monkeypatch.setenv("IW_CORE_AGENT_CONTEXT", "true")
         result = cli_runner.invoke(
             merge_queue_unfreeze, ["--ack", "intentional unfreeze", "--json"]
@@ -115,6 +125,8 @@ class TestUnfreezeRefusesInAgentContext:
 
 
 class TestStatusJsonOutput:
+    """Tests for StatusJsonOutput scenarios."""
+
     @patch("orch.cli.merge_queue_commands.is_merge_queue_frozen")
     @patch("orch.cli.merge_queue_commands.safe_create_engine")
     def test_status_json_output(
@@ -124,6 +136,7 @@ class TestStatusJsonOutput:
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that status json output."""
         mock_is_frozen.return_value = False
 
         mock_engine = MagicMock()
@@ -155,6 +168,7 @@ class TestStatusJsonOutput:
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that status frozen state."""
         mock_is_frozen.return_value = True
 
         mock_engine = MagicMock()
@@ -179,6 +193,8 @@ class TestStatusJsonOutput:
 
 
 class TestUnfreezeSuccess:
+    """Tests for UnfreezeSuccess scenarios."""
+
     @patch("orch.cli.merge_queue_commands.set_merge_queue_frozen")
     def test_unfreeze_success(
         self,
@@ -186,6 +202,7 @@ class TestUnfreezeSuccess:
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that unfreeze success."""
         result = cli_runner.invoke(merge_queue_unfreeze, ["--ack", "resolved the migration issue"])
 
         assert result.exit_code == 0
@@ -203,6 +220,7 @@ class TestUnfreezeSuccess:
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that unfreeze success json."""
         result = cli_runner.invoke(merge_queue_unfreeze, ["--ack", "resolved the issue", "--json"])
 
         assert result.exit_code == 0

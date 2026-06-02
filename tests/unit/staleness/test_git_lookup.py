@@ -22,7 +22,17 @@ from orch.staleness.git_lookup import CommitSummary, commits_since, find_commit_
 
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
-    """Create a minimal git repo with one initial commit on main."""
+    """Create a minimal git repo with one initial commit on main.
+
+    Configures a throwaway user identity so commits succeed in CI environments
+    without a global git config.
+
+    Args:
+        tmp_path: Pytest-supplied temporary directory.
+
+    Returns:
+        Path to the initialized git repository root.
+    """
     repo = tmp_path / "repo"
     repo.mkdir()
 
@@ -47,7 +57,17 @@ def git_repo(tmp_path: Path) -> Path:
 
 
 def _add_commit(repo: Path, filename: str, content: str, message: str) -> str:
-    """Add a file and create a commit in the repo; returns the commit SHA."""
+    """Add a file and create a commit in the repo.
+
+    Args:
+        repo: Path to the git repository root.
+        filename: Relative path of the file to write and stage.
+        content: Text content to write to the file.
+        message: Commit message.
+
+    Returns:
+        The full 40-character SHA of the newly created commit.
+    """
     (repo / filename).write_text(content)
     subprocess.run(["git", "-C", str(repo), "add", filename], check=True, capture_output=True)
     subprocess.run(
@@ -70,6 +90,8 @@ def _add_commit(repo: Path, filename: str, content: str, message: str) -> str:
 
 
 class TestFindCommitAt:
+    """Tests for find_commit_at — verifies correct SHA lookup by timestamp."""
+
     def test_returns_sha_for_timestamp_after_commit(self, git_repo: Path) -> None:
         """Returns the most recent commit before the given timestamp."""
         # The initial commit exists; use a timestamp well in the future.
@@ -118,6 +140,8 @@ class TestFindCommitAt:
 
 
 class TestCommitsSince:
+    """Tests for commits_since — verifies watch_paths, ignore_paths, and negated-path filtering."""
+
     def test_no_new_commits_returns_empty(self, git_repo: Path) -> None:
         """Returns empty list when HEAD is the since_sha."""
         result = subprocess.run(

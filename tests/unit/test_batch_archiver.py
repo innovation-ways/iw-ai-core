@@ -50,6 +50,7 @@ def _make_db(
     batch_items: list | None = None,
     project: MagicMock | None = None,
 ) -> MagicMock:
+    """Return make db."""
     db = MagicMock()
 
     work_items: dict[tuple[str, str], MagicMock] = {}
@@ -105,7 +106,10 @@ def _good_run(*args, **kwargs):  # noqa: ANN001
 
 
 class TestArchiveBatchSuccess:
+    """Tests for ArchiveBatchSuccess scenarios."""
+
     def test_returns_archived_item_ids(self) -> None:
+        """Verifies that returns archived item ids."""
         items = [_make_batch_item("F-00001"), _make_batch_item("F-00002")]
         db = _make_db(batch_items=items)
 
@@ -120,6 +124,7 @@ class TestArchiveBatchSuccess:
         assert mock_archive.call_count == 2
 
     def test_sets_batch_status_to_archived(self) -> None:
+        """Verifies that sets batch status to archived."""
         batch = _make_batch()
         db = _make_db(batch=batch, batch_items=[_make_batch_item("F-00001")])
 
@@ -133,6 +138,7 @@ class TestArchiveBatchSuccess:
         assert batch.status == BatchStatus.archived
 
     def test_sets_batch_archived_at(self) -> None:
+        """Verifies that sets batch archived at."""
         batch = _make_batch()
         db = _make_db(batch=batch, batch_items=[])
 
@@ -146,6 +152,7 @@ class TestArchiveBatchSuccess:
         assert batch.archived_at is not None
 
     def test_emits_batch_archived_event(self) -> None:
+        """Verifies that emits batch archived event."""
         db = _make_db(batch_items=[_make_batch_item("F-00001")])
 
         with (
@@ -160,6 +167,7 @@ class TestArchiveBatchSuccess:
         assert "batch_archived" in event_types
 
     def test_commits_once(self) -> None:
+        """Verifies that commits once."""
         db = _make_db(batch_items=[])
 
         with (
@@ -178,7 +186,10 @@ class TestArchiveBatchSuccess:
 
 
 class TestArchiveBatchNoItems:
+    """Tests for ArchiveBatchNoItems scenarios."""
+
     def test_returns_empty_list(self) -> None:
+        """Verifies that returns empty list."""
         db = _make_db(batch_items=[])
 
         with (
@@ -191,6 +202,7 @@ class TestArchiveBatchNoItems:
         mock_archive.assert_not_called()
 
     def test_still_sets_batch_archived(self) -> None:
+        """Verifies that still sets batch archived."""
         batch = _make_batch()
         db = _make_db(batch=batch, batch_items=[])
 
@@ -209,7 +221,10 @@ class TestArchiveBatchNoItems:
 
 
 class TestArchiveBatchItemErrors:
+    """Tests for ArchiveBatchItemErrors scenarios."""
+
     def test_one_item_failure_does_not_stop_others(self) -> None:
+        """Verifies that one item failure does not stop others."""
         items = [_make_batch_item("F-00001"), _make_batch_item("F-00002")]
         db = _make_db(batch_items=items)
 
@@ -228,6 +243,7 @@ class TestArchiveBatchItemErrors:
         assert result == ["F-00002"]
 
     def test_item_errors_emit_batch_archive_failed(self) -> None:
+        """Verifies that item errors emit batch archive failed."""
         items = [_make_batch_item("F-00001")]
         db = _make_db(batch_items=items)
 
@@ -263,7 +279,10 @@ class TestArchiveBatchItemErrors:
 
 
 class TestPostArchiveCommands:
+    """Tests for PostArchiveCommands scenarios."""
+
     def test_commands_are_run_in_repo_root(self) -> None:
+        """Verifies that commands are run in repo root."""
         project = _make_project(
             repo_root="/repos/proj",
             config={"post_archive_commands": ["alembic upgrade head"]},
@@ -283,6 +302,7 @@ class TestPostArchiveCommands:
         assert kwargs["cwd"] == "/repos/proj"
 
     def test_multiple_commands_all_run(self) -> None:
+        """Verifies that multiple commands all run."""
         project = _make_project(
             config={"post_archive_commands": ["cmd1", "cmd2", "cmd3"]},
         )
@@ -299,6 +319,7 @@ class TestPostArchiveCommands:
         assert mock_run.call_count == 3
 
     def test_no_commands_configured_skips_subprocess(self) -> None:  # noqa: assertion-scanner
+        """Verifies that no commands configured skips subprocess."""
         db = _make_db(batch_items=[])
 
         with (
@@ -327,6 +348,7 @@ class TestPostArchiveCommands:
         assert batch.status == BatchStatus.archived
 
     def test_failed_command_emits_batch_archive_failed(self) -> None:
+        """Verifies that failed command emits batch archive failed."""
         project = _make_project(config={"post_archive_commands": ["bad-cmd"]})
         db = _make_db(project=project, batch_items=[])
 
@@ -343,6 +365,7 @@ class TestPostArchiveCommands:
         assert "batch_archive_failed" in event_types
 
     def test_timed_out_command_does_not_prevent_archiving(self) -> None:
+        """Verifies that timed out command does not prevent archiving."""
         import subprocess  # noqa: PLC0415
 
         project = _make_project(config={"post_archive_commands": ["slow-cmd"]})
@@ -368,6 +391,8 @@ class TestPostArchiveCommands:
 
 
 class TestArchivePathsForItem:
+    """Tests for ArchivePathsForItem scenarios."""
+
     def test_includes_work_folder(self) -> None:
         """ai-dev/work/<id>/ is staged for deletion alongside the active folder."""
         from pathlib import Path  # noqa: PLC0415
@@ -396,8 +421,11 @@ class TestArchivePathsForItem:
 
 
 class TestArchiveBatchFatalErrors:
+    """Tests for ArchiveBatchFatalErrors scenarios."""
+
     def test_missing_batch_returns_empty_list(self) -> None:
         # db.get always returns None → batch not found → ValueError → fatal path
+        """Verifies that missing batch returns empty list."""
         db = MagicMock()
         db.get.return_value = None
 
@@ -407,6 +435,7 @@ class TestArchiveBatchFatalErrors:
         assert result == []
 
     def test_missing_batch_emits_batch_archive_failed(self) -> None:
+        """Verifies that missing batch emits batch archive failed."""
         db = MagicMock()
         db.get.return_value = None
 

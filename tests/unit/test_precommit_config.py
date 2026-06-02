@@ -38,11 +38,13 @@ def _all_hook_ids(config_path: Path) -> set[str]:
 
 
 def test_precommit_config_exists() -> None:
+    """Verifies that precommit config exists."""
     assert CONFIG_PATH.is_file(), f".pre-commit-config.yaml missing at {CONFIG_PATH}"
 
 
 @pytest.mark.parametrize("hook_id", sorted(EXPECTED_HOOK_IDS))
 def test_expected_hook_present(hook_id: str) -> None:
+    """Verifies that expected hook present."""
     assert hook_id in _all_hook_ids(CONFIG_PATH), (
         f"Hook '{hook_id}' missing from .pre-commit-config.yaml — see F-00070 design doc"
     )
@@ -63,6 +65,7 @@ def test_pre_commit_hooks_repo_rev_pinned() -> None:
 
 
 def test_large_files_threshold_set() -> None:
+    """Verifies that large files threshold set."""
     data = yaml.safe_load(CONFIG_PATH.read_text())
     for repo in data.get("repos", []):
         for hook in repo.get("hooks", []):

@@ -1,3 +1,5 @@
+"""Scenario 3: worktree setup failure handling and batch isolation in BatchManager."""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -22,10 +24,24 @@ from orch.db.models import (
 
 
 def _ok_guard() -> GuardStatus:
+    """Return a GuardStatus indicating all migrations are up-to-date.
+
+    Returns:
+        A GuardStatus with matching current and head revisions and no pending migrations.
+    """
     return GuardStatus(current_rev="abc", head_rev="abc", pending=[], multiple_heads=[], ok=True)
 
 
 def _make_manager(db_session, tmp_path: Path) -> BatchManager:
+    """Construct a BatchManager wired to the testcontainer db_session.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+        tmp_path: pytest tmp_path used to create the fake project and worktree directories.
+
+    Returns:
+        A BatchManager instance configured for the ``test-proj`` project.
+    """
     project_root = tmp_path / "repo"
     project_root.mkdir(exist_ok=True)
     (project_root / ".worktrees").mkdir(exist_ok=True)
@@ -70,6 +86,16 @@ def _make_manager(db_session, tmp_path: Path) -> BatchManager:
 
 
 def _seed_batch(db_session, batch_id: str, item_ids: list[str]) -> list[BatchItem]:
+    """Create a Batch with approved WorkItems and pending BatchItems in the test DB.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+        batch_id: ID to assign to the new Batch.
+        item_ids: List of work item IDs to create as BatchItem rows in the batch.
+
+    Returns:
+        List of BatchItem rows ordered by work_item_id.
+    """
     db_session.add(
         Batch(project_id="test-proj", id=batch_id, status=BatchStatus.executing, max_parallel=3)
     )
@@ -106,6 +132,9 @@ def _seed_batch(db_session, batch_id: str, item_ids: list[str]) -> list[BatchIte
 def test_worktree_setup_uv_sync_failure_marks_item_terminal_error(
     db_session, test_project, tmp_path, chaos_daemon
 ):
+    """Verifies that a WorktreeSetupError transitions the BatchItem to setup_failed and emits an
+    event.
+    """
     manager = _make_manager(db_session, tmp_path)
     item_a = _seed_batch(db_session, "B-FAIL", ["I-FAIL-A"])[0]
 
@@ -141,6 +170,7 @@ def test_worktree_setup_uv_sync_failure_marks_item_terminal_error(
 def test_worktree_setup_failure_does_not_leave_zombie_directory(
     db_session, test_project, tmp_path, chaos_daemon
 ):
+    """Verifies that a setup failure leaves no stray worktree directory (or only a flag file)."""
     manager = _make_manager(db_session, tmp_path)
     _seed_batch(db_session, "B-ZOMBIE", ["I-ZOMBIE-A"])
     item_a = (
@@ -180,6 +210,7 @@ def test_worktree_setup_failure_does_not_leave_zombie_directory(
 def test_worktree_setup_failure_does_not_poison_batch(
     db_session, test_project, tmp_path, chaos_daemon
 ):
+    """Verifies that one item's setup failure does not block the remaining items in the same."""
     manager = _make_manager(db_session, tmp_path)
     _seed_batch(db_session, "B-POISON", ["I-POISON-A", "I-POISON-B", "I-POISON-C"])
 
@@ -244,6 +275,9 @@ def test_worktree_setup_failure_does_not_poison_batch(
 def test_worktree_setup_failure_before_git_worktree_add(
     db_session, test_project, tmp_path, chaos_daemon
 ):
+    """Verifies that a failure before git worktree add leaves no directory and does not block
+    siblings.
+    """
     manager = _make_manager(db_session, tmp_path)
     _seed_batch(db_session, "B-BOUNDARY", ["I-BOUND-A", "I-BOUND-B", "I-BOUND-C"])
 

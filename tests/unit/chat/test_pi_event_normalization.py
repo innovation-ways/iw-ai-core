@@ -33,6 +33,14 @@ from orch.chat.pi.event_normalizer import normalize_pi_event
 
 
 def _norm(pi_event: dict[str, Any]) -> dict[str, Any]:
+    """Call normalize_pi_event and assert the result is non-None before returning it.
+
+    Args:
+        pi_event: Raw Pi event dict to normalize.
+
+    Returns:
+        The normalized event dict (asserts non-None internally).
+    """
     result = normalize_pi_event(pi_event)
     assert result is not None, f"normalize_pi_event returned None for input: {pi_event!r}"
     return result
@@ -74,6 +82,7 @@ def test_message_update_non_text_delta_passes_through() -> None:
 
 
 def test_tool_execution_start_maps_to_correct_event() -> None:
+    """tool_execution_start is normalized to tool.execution.start with tool and args preserved."""
     pi_event = {"type": "tool_execution_start", "tool": "bash", "args": {"cmd": "ls"}}
     result = _norm(pi_event)
 
@@ -83,6 +92,7 @@ def test_tool_execution_start_maps_to_correct_event() -> None:
 
 
 def test_tool_execution_update_maps_to_correct_event() -> None:
+    """tool_execution_update is normalized to tool.execution.update with payload preserved."""
     pi_event = {"type": "tool_execution_update", "progress": 50, "output": "part1"}
     result = _norm(pi_event)
 
@@ -93,6 +103,9 @@ def test_tool_execution_update_maps_to_correct_event() -> None:
 
 
 def test_tool_execution_end_maps_to_correct_event() -> None:
+    """tool_execution_end is normalized to tool.execution.end with result and extra fields
+    preserved.
+    """
     pi_event = {"type": "tool_execution_end", "result": "done!", "tool": "bash"}
     result = _norm(pi_event)
 
@@ -109,6 +122,7 @@ def test_tool_execution_end_maps_to_correct_event() -> None:
 
 
 def test_agent_start_becomes_session_start() -> None:
+    """agent_start is normalized to session.start with payload preserved and type key removed."""
     pi_event = {"type": "agent_start", "session_id": "abc"}
     result = _norm(pi_event)
 
@@ -118,6 +132,7 @@ def test_agent_start_becomes_session_start() -> None:
 
 
 def test_agent_end_becomes_session_idle() -> None:
+    """agent_end is normalized to session.idle with payload preserved and type key removed."""
     pi_event = {"type": "agent_end", "reason": "done"}
     result = _norm(pi_event)
 
@@ -191,6 +206,7 @@ def test_extension_ui_request_exact_prefix_required() -> None:
 
 
 def test_extension_error_becomes_session_error() -> None:
+    """extension_error is normalized to session.error with message and code preserved."""
     pi_event = {"type": "extension_error", "message": "Extension crashed", "code": 1}
     result = _norm(pi_event)
 

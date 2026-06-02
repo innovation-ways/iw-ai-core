@@ -12,6 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_quarantine_marker_registered():
+    """Verifies that quarantine marker registered."""
     data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     markers = data["tool"]["pytest"]["ini_options"]["markers"]
     assert any(m.startswith("quarantine:") for m in markers), (
@@ -20,6 +21,7 @@ def test_quarantine_marker_registered():
 
 
 def test_addopts_deselects_quarantine():
+    """Verifies that addopts deselects quarantine."""
     data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     addopts = data["tool"]["pytest"]["ini_options"]["addopts"]
     assert "not browser and not quarantine" in addopts, (
@@ -33,12 +35,14 @@ def test_addopts_deselects_quarantine():
 
 
 def test_pytest_rerunfailures_installed():
+    """Verifies that pytest rerunfailures installed."""
     import pytest_rerunfailures
 
     assert hasattr(pytest_rerunfailures, "__version__") or True
 
 
 def test_makefile_exposes_quarantine_and_flake_detect_targets():
+    """Verifies that makefile exposes quarantine and flake detect targets."""
     for target in ("test-quarantine", "test-flake-detect"):
         result = subprocess.run(
             ["make", "-n", target],
@@ -54,6 +58,7 @@ def test_makefile_exposes_quarantine_and_flake_detect_targets():
 
 
 def test_flake_detect_aggregator_is_valid_python():
+    """Verifies that flake detect aggregator is valid python."""
     script = REPO_ROOT / "scripts" / "flake_detect_aggregate.py"
     assert script.exists(), "scripts/flake_detect_aggregate.py missing"
     # Validate it parses

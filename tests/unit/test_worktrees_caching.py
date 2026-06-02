@@ -8,10 +8,14 @@ from dashboard.utils.ttl_cache import TTLCache
 
 
 class TestNavWorktreeBadgeCaching:
+    """Tests for NavWorktreeBadgeCaching scenarios."""
+
     def test_badge_returns_from_cache_on_second_call_within_ttl(self) -> None:
+        """Verifies that badge returns from cache on second call within ttl."""
         call_count = 0
 
         def compute_fn() -> int:
+            """Return compute fn."""
             nonlocal call_count
             call_count += 1
             return 5
@@ -26,9 +30,11 @@ class TestNavWorktreeBadgeCaching:
         assert call_count == 1  # second call served from cache
 
     def test_badge_returns_cached_value_after_expiry(self) -> None:
+        """Verifies that badge returns cached value after expiry."""
         call_count = 0
 
         def compute_fn() -> int:
+            """Return compute fn."""
             nonlocal call_count
             call_count += 1
             return 7
@@ -44,6 +50,7 @@ class TestNavWorktreeBadgeCaching:
         assert call_count == 2  # expired, recomputed
 
     def test_cached_fn_provides_hit_miss_stats(self) -> None:
+        """Verifies that cached fn provides hit miss stats."""
         cached_fn = TTLCache[int](ttl=0.5).wrap(lambda: 42)
 
         cached_fn()
@@ -56,10 +63,14 @@ class TestNavWorktreeBadgeCaching:
 
 
 class TestWorktreePageCaching:
+    """Tests for WorktreePageCaching scenarios."""
+
     def test_collect_worktrees_returns_same_value_from_cache(self) -> None:
+        """Verifies that collect worktrees returns same value from cache."""
         call_count = 0
 
         def compute_fn(path: str) -> dict:
+            """Return compute fn."""
             nonlocal call_count
             call_count += 1
             return {"path": path, "label": "dirty"}

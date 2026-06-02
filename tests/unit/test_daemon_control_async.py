@@ -11,31 +11,42 @@ from dashboard.routers.daemon_control import daemon_restart, daemon_start, daemo
 
 
 class TestDaemonControlAsync:
+    """Tests for DaemonControlAsync scenarios."""
+
     def test_daemon_start_is_async(self) -> None:
+        """Verifies that daemon start is async."""
         assert inspect.iscoroutinefunction(daemon_start)
 
     def test_daemon_stop_is_async(self) -> None:
+        """Verifies that daemon stop is async."""
         assert inspect.iscoroutinefunction(daemon_stop)
 
     def test_daemon_restart_is_async(self) -> None:
+        """Verifies that daemon restart is async."""
         assert inspect.iscoroutinefunction(daemon_restart)
 
 
 class TestDaemonControlSleeps:
+    """Tests for DaemonControlSleeps scenarios."""
+
     def test_daemon_start_source_contains_asyncio_sleep(self) -> None:
+        """Verifies that daemon start source contains asyncio sleep."""
         source = inspect.getsource(daemon_start)
         assert "asyncio.sleep" in source, "daemon_start should use asyncio.sleep for async delays"
 
     def test_daemon_stop_source_contains_asyncio_sleep(self) -> None:
+        """Verifies that daemon stop source contains asyncio sleep."""
         source = inspect.getsource(daemon_stop)
         assert "asyncio.sleep" in source, "daemon_stop should use asyncio.sleep for async delays"
 
     def test_daemon_restart_source_contains_asyncio_sleep(self) -> None:
+        """Verifies that daemon restart source contains asyncio sleep."""
         source = inspect.getsource(daemon_restart)
         assert "asyncio.sleep" in source, "daemon_restart should use asyncio.sleep for async delays"
 
     @pytest.mark.asyncio
     async def test_daemon_start_calls_asyncio_sleep(self) -> None:
+        """Verifies that daemon start calls asyncio sleep."""
         mock_request = MagicMock()
         mock_db = MagicMock()
 
@@ -57,12 +68,14 @@ class TestDaemonControlSleeps:
 
     @pytest.mark.asyncio
     async def test_daemon_stop_calls_asyncio_sleep(self) -> None:
+        """Verifies that daemon stop calls asyncio sleep."""
         mock_request = MagicMock()
         mock_db = MagicMock()
 
         call_count = 0
 
         def mock_is_alive(pid: int) -> bool:
+            """Return mock is alive."""
             nonlocal call_count
             call_count += 1
             return call_count == 1
@@ -90,6 +103,7 @@ class TestDaemonControlSleeps:
 
     @pytest.mark.asyncio
     async def test_daemon_restart_calls_asyncio_sleep(self) -> None:
+        """Verifies that daemon restart calls asyncio sleep."""
         mock_request = MagicMock()
         mock_db = MagicMock()
 

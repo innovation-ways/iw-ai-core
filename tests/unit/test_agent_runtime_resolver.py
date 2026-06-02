@@ -74,6 +74,7 @@ def test_resolver_step_override_wins(caplog: pytest.LogCaptureFixture) -> None:
     ):
 
         def load_side_effect(session, opt_id):
+            """Return load side effect."""
             return {1: opt1, 5: opt5}.get(opt_id)
 
         mock_load.side_effect = load_side_effect
@@ -105,6 +106,7 @@ def test_resolver_item_override_wins_when_no_step_override(
     ):
 
         def load_side_effect(session, opt_id):
+            """Return load side effect."""
             return {1: opt1, 4: opt4}.get(opt_id)
 
         mock_load.side_effect = load_side_effect
@@ -192,6 +194,7 @@ def test_resolver_skips_disabled_step_override(caplog: pytest.LogCaptureFixture)
     ):
 
         def load_side_effect(session, opt_id):
+            """Return load side effect."""
             opts = {1: opt1, 4: opt4, 99: opt99}
             return opts.get(opt_id)
 
@@ -225,6 +228,7 @@ def test_resolver_skips_disabled_item_override(caplog: pytest.LogCaptureFixture)
     ):
 
         def load_side_effect(session, opt_id):
+            """Return load side effect."""
             opts = {1: opt1, 2: opt2, 99: opt99}
             return opts.get(opt_id)
 

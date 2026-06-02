@@ -169,6 +169,8 @@ def app_no_runtime(db_session: Session) -> Generator[TestClient, None, None]:
 
 
 class TestCreateSession:
+    """Tests for POST /api/chat/sessions — create a new chat session."""
+
     def test_create_session_returns_session_id(
         self, db_session: Session, test_project: Project
     ) -> None:
@@ -251,7 +253,10 @@ class TestCreateSession:
 
 
 class TestRuntimeUnavailable:
+    """Tests for chat endpoints when the runtime is None/503."""
+
     def test_runtime_none_create_session_returns_503(self, app_no_runtime: TestClient) -> None:
+        """Verifies that creating a session returns 503 when the OpenCode runtime is None."""
         # POST /api/chat/tabs requires a runtime; 503 when unavailable.
         # project_id "any-id" is fine — the 503 short-circuits before DB lookup.
         resp = app_no_runtime.post("/api/chat/tabs", json={"project_id": "any-id"})
@@ -439,6 +444,8 @@ class TestRuntimeUnavailable:
 
 
 class TestConfigCache:
+    """Tests for GET /api/chat/config — caching behavior."""
+
     def test_config_cache_30s(self, db_session: Session) -> None:
         """Second request within 30s does NOT call upstream endpoints again."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
@@ -488,6 +495,7 @@ class TestConfigCache:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
     def test_config_returns_expected_shape(self, chat_client: TestClient) -> None:
+        """Verifies that the config response has the expected shape with providers and models."""
         chat_mod._config_cache.clear()
         resp = chat_client.get("/api/chat/config")
         assert resp.status_code == 200
@@ -516,6 +524,8 @@ def _providers_payload(
 
 
 class TestConfigFlattensProviders:
+    """Tests that config response flattens multiple providers into a flat model list."""
+
     def test_config_flattens_provider_models_into_string_list(self, db_session: Session) -> None:
         """`/api/chat/config` flattens `/config/providers` into
         ``models = ['<providerId>/<modelId>', ...]``."""
@@ -577,6 +587,8 @@ class TestConfigFlattensProviders:
 
 
 class TestConfigProjectAllowlist:
+    """Tests that project-scoped model allowlists filter the config response."""
+
     @staticmethod
     def _seed_project(db_session: Session, pid: str, config: dict[str, Any]) -> None:
         db_session.add(
@@ -590,6 +602,7 @@ class TestConfigProjectAllowlist:
         db_session.commit()
 
     def test_get_config_no_project_id_returns_full_list(self, db_session: Session) -> None:
+        """Verifies that GET /config without project_id returns all enabled models."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             mock_client = _make_client()
@@ -626,6 +639,7 @@ class TestConfigProjectAllowlist:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
     def test_get_config_with_project_id_filters_to_allowlist(self, db_session: Session) -> None:
+        """Verifies that GET /config with project_id filters to the project's allowed models."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             self._seed_project(
@@ -694,6 +708,7 @@ class TestConfigProjectAllowlist:
     def test_get_config_project_without_allowlist_falls_back(
         self, db_session: Session, caplog: pytest.LogCaptureFixture
     ) -> None:
+        """Verifies that a project with no allowlist returns all models."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             self._seed_project(db_session, "proj-no-allow", {"quality_config": {"enabled": True}})
@@ -721,6 +736,7 @@ class TestConfigProjectAllowlist:
     def test_get_config_unknown_project_id_falls_back(
         self, db_session: Session, caplog: pytest.LogCaptureFixture
     ) -> None:
+        """Verifies that an unknown project_id falls back to the full model list."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             mock_client = _make_client()
@@ -747,6 +763,7 @@ class TestConfigProjectAllowlist:
     def test_get_config_without_project_id_falls_back_with_info_log(
         self, db_session: Session, caplog: pytest.LogCaptureFixture
     ) -> None:
+        """Verifies that missing project_id logs an info message and returns all models."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             mock_client = _make_client()
@@ -773,6 +790,7 @@ class TestConfigProjectAllowlist:
     def test_get_config_filter_drops_unreachable_with_warning(
         self, db_session: Session, caplog: pytest.LogCaptureFixture
     ) -> None:
+        """Verifies that unreachable models are dropped from the filtered list with a warning."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             self._seed_project(
@@ -810,6 +828,7 @@ class TestConfigProjectAllowlist:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
     def test_get_config_default_model_preserved_when_in_filter(self, db_session: Session) -> None:
+        """Verifies that the default model is preserved when it is in the allowed list."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             self._seed_project(
@@ -843,6 +862,9 @@ class TestConfigProjectAllowlist:
     def test_get_config_default_model_dropped_falls_to_first_filtered(
         self, db_session: Session
     ) -> None:
+        """Verifies that when the default model is filtered out, the first allowed model becomes
+        default.
+        """
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             self._seed_project(
@@ -877,6 +899,7 @@ class TestConfigProjectAllowlist:
     def test_get_config_empty_filter_falls_open_with_info_log(
         self, db_session: Session, caplog: pytest.LogCaptureFixture
     ) -> None:
+        """Verifies that an empty allowlist falls open to all models with an info log."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             self._seed_project(
@@ -911,6 +934,7 @@ class TestConfigProjectAllowlist:
                 os.environ["IW_CORE_EXPECTED_INSTANCE_ID"] = original
 
     def test_get_config_cache_keyed_per_project(self, db_session: Session) -> None:
+        """Verifies that the config cache key is scoped per project_id."""
         original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
         try:
             self._seed_project(
@@ -1059,6 +1083,8 @@ class TestConfigProjectAllowlist:
 
 
 class TestSkillsCache:
+    """Tests for GET /api/chat/skills — caching behavior."""
+
     def test_skills_cache_invalidates_on_mtime_change(
         self, tmp_path: Any, chat_client: TestClient
     ) -> None:
@@ -1085,6 +1111,7 @@ class TestSkillsCache:
             assert new_cached_mtime != cached_mtime, "Cache mtime was not updated after file touch"
 
     def test_skills_returns_list(self, chat_client: TestClient) -> None:
+        """Verifies that GET /api/chat/skills returns a non-empty list of skills."""
         chat_mod._skills_cache.clear()
         resp = chat_client.get("/api/chat/skills")
         assert resp.status_code == 200
@@ -1103,6 +1130,8 @@ class TestSkillsCache:
 
 
 class TestSkillsLayoutSupport:
+    """Tests that the skills endpoint returns layout support metadata."""
+
     def test_skills_includes_flat_md_files_under_opencode_commands(
         self, tmp_path: Any, chat_client: TestClient
     ) -> None:
@@ -1192,6 +1221,8 @@ class TestSkillsLayoutSupport:
 
 
 class TestStreamEndpoint:
+    """Tests for the SSE stream endpoint that relays OpenCode events."""
+
     def test_stream_endpoint_forwards_relay_events(
         self, db_session: Session, test_project: Project
     ) -> None:
@@ -1323,6 +1354,8 @@ class TestStreamEndpoint:
 
 
 class TestStreamLastEventId:
+    """Tests for Last-Event-ID resumption in the SSE stream."""
+
     def test_stream_endpoint_passes_last_event_id(
         self, db_session: Session, test_project: Project
     ) -> None:
@@ -1382,6 +1415,8 @@ class TestStreamLastEventId:
 
 
 class TestPromptWithContextChip:
+    """Tests that prompts including context chips are handled correctly."""
+
     def test_prompt_with_context_chip_threaded(
         self, db_session: Session, test_project: Project
     ) -> None:
@@ -1487,6 +1522,8 @@ class TestPromptWithContextChip:
 
 
 class TestPermissionReply:
+    """Tests for the permission-reply endpoint."""
+
     def test_permission_reply_forwards(self, db_session: Session, test_project: Project) -> None:
         """POST /api/chat/tabs/{tab_id}/permissions/{rid} forwards body to client.reply_permission.
 
@@ -1589,6 +1626,8 @@ class TestPermissionReply:
 
 
 class TestSessionEndpoints:
+    """Tests for GET/DELETE chat session endpoints."""
+
     def test_list_sessions(self, db_session: Session, test_project: Project) -> None:
         """GET /api/chat/tabs returns {"tabs": [...]} — the list of tabs for a project.
 
@@ -1664,6 +1703,8 @@ class TestSessionEndpoints:
 
 
 class TestClearTab:
+    """Tests for the POST /api/chat/tabs/{id}/clear endpoint."""
+
     def test_clear_tab_returns_updated_tab(
         self, db_session: Session, test_project: Project
     ) -> None:

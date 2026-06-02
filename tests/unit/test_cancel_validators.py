@@ -93,6 +93,7 @@ def test_batch_cancel_set_matches_published_doc() -> None:
     ],
 )
 def test_item_cancel_allowed_from_post_draft(status: WorkItemStatus) -> None:
+    """Verifies that item cancel allowed from post draft."""
     assert validate_item_cancel_transition(status, active_batch_id=None) is None
 
 
@@ -101,6 +102,7 @@ def test_item_cancel_allowed_from_post_draft(status: WorkItemStatus) -> None:
     [WorkItemStatus.draft, WorkItemStatus.completed, WorkItemStatus.cancelled],
 )
 def test_item_cancel_rejected_from_non_cancellable(status: WorkItemStatus) -> None:
+    """Verifies that item cancel rejected from non cancellable."""
     error = validate_item_cancel_transition(status, active_batch_id=None)
     # Lock the full error message — both the prefix and the quoted status.
     assert error == f"Cannot cancel work item: current status is '{status.value}'"
@@ -137,6 +139,7 @@ def test_item_cancel_status_check_runs_before_batch_check() -> None:
 
 
 def test_item_cancel_set_matches_published_doc() -> None:
+    """Verifies that item cancel set matches published doc."""
     assert (
         frozenset(
             {

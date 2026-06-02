@@ -24,10 +24,12 @@ class MockDaemonEvent(NamedTuple):
 
     @property
     def message(self) -> str:
+        """Return message."""
         return ""
 
     @property
     def metadata(self) -> dict | None:  # type: ignore
+        """Return metadata."""
         return None
 
 
@@ -58,6 +60,7 @@ class TestGroupOverlapEventsEmpty:
     """Edge case: no events."""
 
     def test_empty_list_returns_empty_list(self) -> None:
+        """Verifies that empty list returns empty list."""
         result = group_overlap_events([])
         assert result == []
 
@@ -66,6 +69,7 @@ class TestGroupOverlapEventsSingle:
     """Happy path: single event."""
 
     def test_single_event_returns_one_section(self) -> None:
+        """Verifies that single event returns one section."""
         ev = _ev(
             event_id=1,
             entity_id="CR-00077",
@@ -80,6 +84,7 @@ class TestGroupOverlapEventsDuplicate:
     """Most-recent-wins on duplicate blocking_item_ids (events arrive newest first)."""
 
     def test_duplicate_blocking_item_keeps_first(self) -> None:
+        """Verifies that duplicate blocking item keeps first."""
         # Newest first — all globs from ALL events for the same blocking_item_id
         # are accumulated (union), per the design doc "Accumulate ALL globs".
         ev_newer = _ev(
@@ -100,6 +105,7 @@ class TestGroupOverlapEventsDuplicate:
         assert result == [("CR-00076", ["new.md", "old.md"])]
 
     def test_duplicate_blocking_item_only_first_kept(self) -> None:
+        """Verifies that duplicate blocking item only first kept."""
         # Events with the same blocking_item_id: all globs are accumulated (union).
         # The blocking_item_id ordering is from the FIRST occurrence of each id.
         ev_first = _ev(
@@ -120,6 +126,7 @@ class TestGroupOverlapEventsMultiple:
     """Two different blocking_item_ids — both preserved, original order."""
 
     def test_two_different_blocking_items_both_present(self) -> None:
+        """Verifies that two different blocking items both present."""
         ev1 = _ev(
             event_id=1, entity_id="CR-00077", blocker_item_id="CR-00050", conflicting_globs=["x.py"]
         )
@@ -133,6 +140,7 @@ class TestGroupOverlapEventsMultiple:
         ]
 
     def test_order_preserved_for_distinct_blocking_items(self) -> None:
+        """Verifies that order preserved for distinct blocking items."""
         ev_a = _ev(event_id=3, entity_id="X", blocker_item_id="B-A", conflicting_globs=["a.txt"])
         ev_b = _ev(event_id=2, entity_id="Y", blocker_item_id="B-B", conflicting_globs=["b.txt"])
         ev_c = _ev(event_id=1, entity_id="Z", blocker_item_id="B-C", conflicting_globs=["c.txt"])
@@ -147,11 +155,13 @@ class TestGroupOverlapEventsSkipsInvalid:
     """Events missing required keys are silently skipped."""
 
     def test_event_missing_blocking_item_id_skipped(self) -> None:
+        """Verifies that event missing blocking item id skipped."""
         ev = _ev(event_id=1, entity_id="CR-00077", blocker_item_id="", conflicting_globs=["a.md"])
         result = group_overlap_events([ev])  # type: ignore[list-item]
         assert result == []
 
     def test_event_missing_conflicting_globs_skipped(self) -> None:
+        """Verifies that event missing conflicting globs skipped."""
         created = datetime.now(UTC).replace(microsecond=0)
         ev = MockDaemonEvent(
             id=1,
@@ -166,6 +176,7 @@ class TestGroupOverlapEventsSkipsInvalid:
         assert result == []
 
     def test_event_with_none_metadata_skipped(self) -> None:
+        """Verifies that event with none metadata skipped."""
         created = datetime.now(UTC).replace(microsecond=0)
         ev = MockDaemonEvent(
             id=1,
@@ -180,6 +191,7 @@ class TestGroupOverlapEventsSkipsInvalid:
         assert result == []
 
     def test_event_missing_both_keys_skipped(self) -> None:
+        """Verifies that event missing both keys skipped."""
         created = datetime.now(UTC).replace(microsecond=0)
         ev = MockDaemonEvent(
             id=1,

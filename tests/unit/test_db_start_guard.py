@@ -1,3 +1,5 @@
+"""Unit tests for db start guard."""
+
 from __future__ import annotations
 
 import os
@@ -21,6 +23,7 @@ def _run_db_start(
     expected_instance_id: str | None,
     db_ready_sequence: list[int],
 ) -> DbStartResult:
+    """Return run db start."""
     repo_root = Path(__file__).resolve().parents[2]
 
     sandbox = Path(tempfile.mkdtemp(prefix="db-start-guard-"))
@@ -116,6 +119,7 @@ def _has_bootstrap_up_call(calls: list[str]) -> bool:
 
 
 def test_i00122_db_start_refuses_bootstrap_when_instance_pinned() -> None:
+    """Verifies that i00122 db start refuses bootstrap when instance pinned."""
     result = _run_db_start(
         expected_instance_id="11111111-2222-3333-4444-555555555555",
         db_ready_sequence=[1],
@@ -129,6 +133,7 @@ def test_i00122_db_start_refuses_bootstrap_when_instance_pinned() -> None:
 
 
 def test_db_start_bootstraps_on_fresh_dev_machine_when_no_identity_pinned() -> None:
+    """Verifies that db start bootstraps on fresh dev machine when no identity pinned."""
     result = _run_db_start(expected_instance_id="", db_ready_sequence=[1, 0])
 
     assert result.returncode == 0
@@ -136,6 +141,7 @@ def test_db_start_bootstraps_on_fresh_dev_machine_when_no_identity_pinned() -> N
 
 
 def test_db_start_is_noop_when_db_already_up() -> None:
+    """Verifies that db start is noop when db already up."""
     result = _run_db_start(
         expected_instance_id="11111111-2222-3333-4444-555555555555",
         db_ready_sequence=[0],

@@ -37,6 +37,7 @@ def client(db_session: Session) -> TestClient:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -163,6 +164,7 @@ def test_i00086_bulk_apply_returns_fragment_and_toast_trigger(
     test_project: Project,
     seed_runtime_options: list[AgentRuntimeOption],
 ) -> None:
+    """Verifies that bulk-apply returns an HTML fragment and a toast trigger header."""
     item = _seed_item_with_steps(
         db_session,
         test_project,
@@ -189,6 +191,7 @@ def test_per_step_override_returns_fragment_and_toast_trigger(
     test_project: Project,
     seed_runtime_options: list[AgentRuntimeOption],
 ) -> None:
+    """Verifies that per-step override returns an HTML fragment and a toast trigger header."""
     item = _seed_item_with_steps(
         db_session,
         test_project,
@@ -215,6 +218,9 @@ def test_per_step_clear_override_returns_fragment_and_toast_trigger(
     test_project: Project,
     seed_runtime_options: list[AgentRuntimeOption],
 ) -> None:
+    """Verifies that clearing a per-step override returns an HTML fragment and a toast trigger
+    header.
+    """
     item = _seed_item_with_steps(
         db_session,
         test_project,
@@ -245,6 +251,7 @@ def test_bulk_apply_with_zero_editable_steps_returns_info_toast(
     test_project: Project,
     seed_runtime_options: list[AgentRuntimeOption],
 ) -> None:
+    """Verifies that bulk-apply with no editable steps returns an info toast."""
     item = _seed_item_with_steps(
         db_session,
         test_project,
@@ -302,6 +309,7 @@ def test_per_step_unknown_item_returns_404(
     test_project: Project,
     seed_runtime_options: list[AgentRuntimeOption],
 ) -> None:
+    """Verifies that a per-step override for an unknown item returns 404."""
     resp = client.patch(
         f"/project/{test_project.id}/api/item/UNKNOWN-I00086/step/S01/runtime-override",
         data={"option_id": "2"},
@@ -316,6 +324,7 @@ def test_bulk_unknown_option_returns_404(
     test_project: Project,
     seed_runtime_options: list[AgentRuntimeOption],
 ) -> None:
+    """Verifies that bulk-apply with an unknown runtime option returns 404."""
     item = _seed_item_with_steps(
         db_session,
         test_project,
@@ -338,6 +347,7 @@ def test_bulk_apply_counts_only_editable_steps(
     test_project: Project,
     seed_runtime_options: list[AgentRuntimeOption],
 ) -> None:
+    """Verifies that bulk-apply counts only editable (non-terminal) steps."""
     item = _seed_item_with_steps(
         db_session,
         test_project,
@@ -377,6 +387,7 @@ def test_response_fragment_reflects_updated_options_per_row(
     test_project: Project,
     seed_runtime_options: list[AgentRuntimeOption],
 ) -> None:
+    """Verifies that the response fragment reflects the updated runtime option for each step row."""
     item = _seed_item_with_steps(
         db_session,
         test_project,

@@ -24,9 +24,11 @@ class TestWorkItemChipTemplate:
 
     @pytest.fixture
     def tmpl(self):
+        """Load the relevant work item template from the Jinja2 environment."""
         return _env().get_template("chat/parts/work_item_chip.html")
 
     def test_feature_chip_has_f_glyph(self, tmpl):
+        """Verifies that a Feature work item chip renders with the 'F' glyph prefix."""
         html = tmpl.render(n=1, work_item_id="F-00042", work_item_type="feature")
         assert "citation-chip--workitem" in html
         assert "citation-chip--feature" in html
@@ -36,26 +38,31 @@ class TestWorkItemChipTemplate:
         assert ">F<" in html
 
     def test_change_request_chip_has_cr_glyph(self, tmpl):
+        """Verifies that a ChangeRequest chip renders with the 'CR' glyph prefix."""
         html = tmpl.render(n=2, work_item_id="CR-00010", work_item_type="change_request")
         assert "citation-chip--change_request" in html
         assert 'data-workitem-id="CR-00010"' in html
         assert ">CR<" in html
 
     def test_incident_chip_has_i_glyph(self, tmpl):
+        """Verifies that an Incident chip renders with the 'I' glyph prefix."""
         html = tmpl.render(n=3, work_item_id="I-00099", work_item_type="incident")
         assert "citation-chip--incident" in html
         assert 'data-workitem-id="I-00099"' in html
         assert ">I<" in html
 
     def test_has_aria_haspopup_dialog(self, tmpl):
+        """Verifies that the citation chip has aria-haspopup='dialog'."""
         html = tmpl.render(n=1, work_item_id="F-00042", work_item_type="feature")
         assert 'aria-haspopup="dialog"' in html
 
     def test_has_aria_label_work_item_id(self, tmpl):
+        """Verifies that the citation chip has an aria-label containing the work item ID."""
         html = tmpl.render(n=1, work_item_id="F-00042", work_item_type="feature")
         assert 'aria-label="Work item F-00042"' in html
 
     def test_has_data_cite(self, tmpl):
+        """Verifies that the citation chip has a data-cite attribute."""
         html = tmpl.render(n=1, work_item_id="F-00042", work_item_type="feature")
         assert 'data-cite="1"' in html
 
@@ -65,9 +72,11 @@ class TestWorkItemFeedTemplate:
 
     @pytest.fixture
     def tmpl(self):
+        """Load the relevant work item template from the Jinja2 environment."""
         return _env().get_template("chat/parts/work_item_feed.html")
 
     def test_renders_header(self, tmpl):
+        """Verifies that the work item card renders the item ID as a header."""
         html = tmpl.render(
             items=[],
             project_id="test-project",
@@ -79,6 +88,7 @@ class TestWorkItemFeedTemplate:
         assert "work-item-feed" in html
 
     def test_renders_single_item(self, tmpl):
+        """Verifies that the card renders a single work item with its title."""
         html = tmpl.render(
             items=[
                 {
@@ -98,6 +108,7 @@ class TestWorkItemFeedTemplate:
         assert "2026-04-15" in html
 
     def test_renders_multiple_items(self, tmpl):
+        """Verifies that the card renders multiple work items in order."""
         html = tmpl.render(
             items=[
                 {
@@ -121,6 +132,7 @@ class TestWorkItemFeedTemplate:
         assert html.count("work-item-feed-item") == 2
 
     def test_no_summary_shows_placeholder(self, tmpl):
+        """Verifies that a card without a summary shows a placeholder."""
         html = tmpl.render(
             items=[
                 {
@@ -138,6 +150,7 @@ class TestWorkItemFeedTemplate:
         assert "(no summary available)" in html
 
     def test_work_item_id_link(self, tmpl):
+        """Verifies that the work item ID renders as a link to the item detail page."""
         html = tmpl.render(
             items=[{"id": "F-00042", "created_at": "2026-04-01", "title": "T", "summary": "S"}],
             project_id="my-project",
@@ -148,6 +161,7 @@ class TestWorkItemFeedTemplate:
         assert "/project/my-project/item/F-00042" in html
 
     def test_trust_strip_with_count_and_cutoff(self, tmpl):
+        """Verifies that the trust strip renders count and cutoff values."""
         html = tmpl.render(
             items=[],
             project_id="test-project",
@@ -165,16 +179,20 @@ class TestPhaseStripTemplate:
 
     @pytest.fixture
     def tmpl(self):
+        """Load the relevant work item template from the Jinja2 environment."""
         return _env().get_template("chat/parts/phase_strip.html")
 
     def test_has_role_status(self, tmpl):
+        """Verifies that the phase status element has role='status'."""
         html = tmpl.render()
         assert 'role="status"' in html
 
     def test_has_aria_live_polite(self, tmpl):
+        """Verifies that the phase status element has aria-live='polite'."""
         html = tmpl.render()
         assert 'aria-live="polite"' in html
 
     def test_has_phase_strip_class(self, tmpl):
+        """Verifies that the phase strip has the expected CSS class."""
         html = tmpl.render()
         assert 'class="phase-strip"' in html

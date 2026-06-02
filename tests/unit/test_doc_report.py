@@ -47,6 +47,8 @@ def _make_mock_project(**kwargs) -> MagicMock:
 
 
 class TestReadLogTailExtended:
+    """Tests for ReadLogTailExtended scenarios."""
+
     def test_read_log_tail_full_file(self) -> None:
         """A small log file is returned verbatim — no truncation marker."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False) as fh:
@@ -104,6 +106,8 @@ class TestReadLogTailExtended:
 
 
 class TestParseToolCallsExtended:
+    """Tests for ParseToolCallsExtended scenarios."""
+
     def test_parse_tool_calls_doc_00004_fixture(self) -> None:
         """The DOC-00004 replay log contains expected tool calls.
 
@@ -163,6 +167,8 @@ class TestParseToolCallsExtended:
 
 
 class TestCountDocUpdateInvocationsExtended:
+    """Tests for CountDocUpdateInvocationsExtended scenarios."""
+
     def test_count_doc_update_invocations_zero(self) -> None:
         """The DOC-00004 broken-run fixture has no doc-update invocations (wrong dispatch)."""
         fixture = (
@@ -209,6 +215,8 @@ class TestCountDocUpdateInvocationsExtended:
 
 
 class TestBuildExecutionReportExtended:
+    """Tests for BuildExecutionReportExtended scenarios."""
+
     def test_build_report_wrong_dispatch_diagnosis(self) -> None:
         """When outcome=failed_process_exited and the log shows 'iw item-status'
         but no doc-update, the diagnosis must mention the wrong-dispatch heuristic."""
@@ -338,13 +346,17 @@ class TestBuildExecutionReportExtended:
 
 
 class TestStripAnsi:
+    """Tests for StripAnsi scenarios."""
+
     def test_strip_ansi_removes_color_codes(self) -> None:
+        """Verifies that strip ansi removes color codes."""
         raw = "\x1b[31mError: something went wrong\x1b[0m\n\x1b[1mbold\x1b[0m"
         result = strip_ansi(raw)
         assert "\x1b" not in result
         assert "Error: something went wrong" in result
 
     def test_strip_ansi_preserves_plain_text(self) -> None:
+        """Verifies that strip ansi preserves plain text."""
         plain = "no escape codes here\njust normal text"
         result = strip_ansi(plain)
         assert result == plain

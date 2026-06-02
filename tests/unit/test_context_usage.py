@@ -240,17 +240,21 @@ class TestNormalizePiMessages:
     """Tests for ``normalize_pi_messages``."""
 
     def test_returns_empty_list_for_none(self) -> None:
+        """Verifies that returns empty list for none."""
         assert normalize_pi_messages(None) == []
 
     def test_returns_empty_list_for_non_list(self) -> None:
+        """Verifies that returns empty list for non list."""
         assert normalize_pi_messages("not a list") == []
         assert normalize_pi_messages(42) == []
 
     def test_passes_through_non_dict_messages(self) -> None:
+        """Verifies that passes through non dict messages."""
         msgs = ["string", 123, None]
         assert normalize_pi_messages(msgs) == msgs
 
     def test_translates_usage_dict_to_tokens(self) -> None:
+        """Verifies that translates usage dict to tokens."""
         msgs = [{"role": "assistant", "usage": {"input": 5000, "output": 200}}]
         result = normalize_pi_messages(msgs)
         assert len(result) == 1
@@ -262,6 +266,7 @@ class TestNormalizePiMessages:
         assert result[0]["tokens"]["cache"]["write"] == 0
 
     def test_translates_cache_read_cache_write_fields(self) -> None:
+        """Verifies that translates cache read cache write fields."""
         msgs = [
             {
                 "role": "assistant",
@@ -275,6 +280,7 @@ class TestNormalizePiMessages:
         assert result[0]["tokens"]["cache"]["write"] == 5
 
     def test_preserves_non_usage_fields(self) -> None:
+        """Verifies that preserves non usage fields."""
         msgs = [{"role": "assistant", "content": "hello", "usage": {"input": 100}}]
         result = normalize_pi_messages(msgs)
         assert result[0]["role"] == "assistant"
@@ -283,6 +289,7 @@ class TestNormalizePiMessages:
         assert "usage" in result[0]
 
     def test_omits_tokens_when_no_usage(self) -> None:
+        """Verifies that omits tokens when no usage."""
         msgs = [{"role": "user", "content": "hello"}]
         result = normalize_pi_messages(msgs)
         assert len(result) == 1
@@ -376,45 +383,54 @@ class TestLookupContextWindow:
     """Tests for ``lookup_context_window``."""
 
     def test_returns_context_when_present(self) -> None:
+        """Verifies that returns context when present."""
         providers = {
             "providers": [{"id": "openai", "models": {"gpt-4o": {"limit": {"context": 128000}}}}]
         }
         assert lookup_context_window(providers, "openai", "gpt-4o") == 128000
 
     def test_returns_none_when_providers_absent(self) -> None:
+        """Verifies that returns none when providers absent."""
         assert lookup_context_window({}, "openai", "gpt-4o") is None
 
     def test_returns_none_when_provider_not_found(self) -> None:
+        """Verifies that returns none when provider not found."""
         providers = {"providers": [{"id": "anthropic", "models": {"claude-3-5": {}}}]}
         assert lookup_context_window(providers, "openai", "gpt-4o") is None
 
     def test_returns_none_when_model_not_found(self) -> None:
+        """Verifies that returns none when model not found."""
         providers = {"providers": [{"id": "openai", "models": {"gpt-4o-mini": {}}}]}
         assert lookup_context_window(providers, "openai", "gpt-4o") is None
 
     def test_returns_none_when_limit_absent(self) -> None:
+        """Verifies that returns none when limit absent."""
         providers = {"providers": [{"id": "openai", "models": {"gpt-4o": {}}}]}
         assert lookup_context_window(providers, "openai", "gpt-4o") is None
 
     def test_returns_none_when_context_is_zero(self) -> None:
+        """Verifies that returns none when context is zero."""
         providers = {
             "providers": [{"id": "openai", "models": {"gpt-4o": {"limit": {"context": 0}}}}]
         }
         assert lookup_context_window(providers, "openai", "gpt-4o") is None
 
     def test_returns_none_when_context_is_negative(self) -> None:
+        """Verifies that returns none when context is negative."""
         providers = {
             "providers": [{"id": "openai", "models": {"gpt-4o": {"limit": {"context": -1}}}}]
         }
         assert lookup_context_window(providers, "openai", "gpt-4o") is None
 
     def test_returns_none_when_context_is_string(self) -> None:
+        """Verifies that returns none when context is string."""
         providers = {
             "providers": [{"id": "openai", "models": {"gpt-4o": {"limit": {"context": "128000"}}}}]
         }
         assert lookup_context_window(providers, "openai", "gpt-4o") is None
 
     def test_handles_float_context_value(self) -> None:
+        """Verifies that handles float context value."""
         providers = {
             "providers": [{"id": "openai", "models": {"gpt-4o": {"limit": {"context": 128000.0}}}}]
         }

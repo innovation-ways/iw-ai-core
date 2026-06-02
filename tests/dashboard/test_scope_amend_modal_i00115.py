@@ -1,3 +1,5 @@
+"""Tests for I-00115: scope-amend modal cleanup and dismiss wiring."""
+
 from __future__ import annotations
 
 import os
@@ -28,10 +30,12 @@ from orch.db.models import (
 
 @pytest.fixture
 def client(db_session: Session) -> TestClient:
+    """Provide a TestClient with get_db overridden to the test db_session."""
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -46,6 +50,11 @@ def client(db_session: Session) -> TestClient:
 
 @pytest.fixture
 def seeded_scope_blocked_step(db_session: Session) -> tuple[str, str, str]:
+    """Seed a project, work item, scope-blocked step, and escalated fix cycle.
+
+    Returns:
+        Tuple of (project_id, item_id, step_id) for use in test assertions.
+    """
     project = Project(
         id="test-modal-i00115",
         display_name="Test Project",
@@ -115,6 +124,7 @@ def _modal_html(client: TestClient, seeded_scope_blocked_step: tuple[str, str, s
 def test_i00115_modal_submit_form_wires_cleanup_hook(
     client: TestClient, seeded_scope_blocked_step: tuple[str, str, str]
 ) -> None:
+    """Verifies that the amend-modal form wires the overlay cleanup via hx-on::before-request."""
     html = _modal_html(client, seeded_scope_blocked_step)
     form_match = re.search(r'<form\b[^>]*hx-post="[^"]*scope/amend-and-restart[^"]*"[^>]*>', html)
     assert form_match, "expected amend-and-restart form open tag"
@@ -126,6 +136,7 @@ def test_i00115_modal_submit_form_wires_cleanup_hook(
 def test_i00115_modal_close_button_uses_getelementbyid_for_overlay(
     client: TestClient, seeded_scope_blocked_step: tuple[str, str, str]
 ) -> None:
+    """Verifies that the close button does not use closest() for overlay — uses getElementById."""
     html = _modal_html(client, seeded_scope_blocked_step)
     assert "this.closest('#scope-amend-overlay')" not in html
 
@@ -133,6 +144,7 @@ def test_i00115_modal_close_button_uses_getelementbyid_for_overlay(
 def test_i00115_modal_esc_key_dismisses(
     client: TestClient, seeded_scope_blocked_step: tuple[str, str, str]
 ) -> None:
+    """Verifies that the modal includes an Escape key handler that dismisses it."""
     html = _modal_html(client, seeded_scope_blocked_step)
     assert 'event.key === "Escape"' in html or "keyCode === 27" in html
     assert "scope-amend-modal" in html
@@ -143,6 +155,7 @@ def test_i00115_modal_esc_key_dismisses(
 def test_i00115_modal_backdrop_click_dismisses(
     client: TestClient, seeded_scope_blocked_step: tuple[str, str, str]
 ) -> None:
+    """Verifies that the modal overlay click event dismisses the dialog."""
     html = _modal_html(client, seeded_scope_blocked_step)
     assert "event.target === overlay" in html
     assert (
@@ -155,6 +168,9 @@ def test_i00115_modal_backdrop_click_dismisses(
 def test_i00115_cancel_button_still_works(
     client: TestClient, seeded_scope_blocked_step: tuple[str, str, str]
 ) -> None:
+    """Verifies that the Cancel button calls dismissScopeAmendModal and removes both overlay and
+    modal.
+    """
     html = _modal_html(client, seeded_scope_blocked_step)
     cancel_button_match = re.search(r"<button[^>]*>\s*Cancel\s*</button>", html)
     assert cancel_button_match, "expected cancel button"

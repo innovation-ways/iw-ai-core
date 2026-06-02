@@ -100,6 +100,7 @@ class TestCodeQASseWithConversation:
             mock_instance = MagicMock()
 
             async def fake_stream(**kwargs):
+                """Yield fake SSE tokens simulating a QA stream response."""
                 yield {"kind": "token", "text": "test response"}
                 yield "__DONE__"
 
@@ -138,6 +139,7 @@ class TestCodeQASseWithConversation:
             mock_instance = MagicMock()
 
             async def fake_stream(**kwargs):
+                """Yield fake SSE tokens simulating a QA stream response."""
                 yield {"kind": "token", "text": "hello"}
                 yield "__DONE__"
 
@@ -174,6 +176,7 @@ class TestCodeQASseWithConversation:
             mock_instance = MagicMock()
 
             async def fake_stream(**kwargs):
+                """Yield fake SSE tokens simulating a QA stream response."""
                 yield {"kind": "token", "text": "answer text"}
                 yield "__DONE__"
 
@@ -250,6 +253,7 @@ class TestCodeQASseWithConversation:
             mock_instance = MagicMock()
 
             async def fake_stream(**kwargs):
+                """Yield fake SSE tokens simulating a QA stream response."""
                 yield {"kind": "token", "text": "response"}
                 yield "__DONE__"
 
@@ -290,6 +294,7 @@ class TestCodeQASseWithConversation:
             mock_instance = MagicMock()
 
             async def fake_stream_that_errors(**kwargs):
+                """Yield fake SSE tokens and then raise a runtime exception."""
                 yield {"kind": "token", "text": "partial response "}
                 raise RuntimeError("simulated stream disconnection")
 
@@ -336,6 +341,7 @@ class TestCodeQASseWithConversation:
             mock_instance = MagicMock()
 
             async def fake_stream(**kwargs):
+                """Yield fake SSE tokens simulating a QA stream response."""
                 yield {"kind": "token", "text": "answer"}
                 yield "__DONE__"
 

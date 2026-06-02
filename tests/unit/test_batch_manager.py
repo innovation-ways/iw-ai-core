@@ -43,6 +43,7 @@ from orch.db.models import (
 
 
 def make_config(tmp_path: Path) -> DaemonConfig:
+    """Return make config."""
     projects_toml = tmp_path / "projects.toml"
     projects_toml.write_text("")
     return DaemonConfig(
@@ -66,6 +67,7 @@ def make_config(tmp_path: Path) -> DaemonConfig:
 
 
 def make_project_config(cli_tool: str = "opencode") -> ProjectConfig:
+    """Return make project config."""
     return ProjectConfig(
         id="test-proj",
         display_name="Test Project",
@@ -85,6 +87,7 @@ def make_batch_item(
     started_at: datetime | None = None,
     worktree_info: dict[str, Any] | None = None,
 ) -> MagicMock:
+    """Return make batch item."""
     item = MagicMock(spec=BatchItem)
     item.work_item_id = work_item_id
     item.execution_group = execution_group
@@ -100,6 +103,7 @@ def make_manager(tmp_path: Path, db: MagicMock, cli_tool: str = "opencode") -> B
 
     @contextmanager
     def fake_factory():
+        """Return fake factory."""
         yield db
 
     return BatchManager(
@@ -116,7 +120,10 @@ def make_manager(tmp_path: Path, db: MagicMock, cli_tool: str = "opencode") -> B
 
 
 class TestCurrentExecutionGroup:
+    """Tests for CurrentExecutionGroup scenarios."""
+
     def test_all_pending_returns_group_0(self):
+        """Verifies that all pending returns group 0."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.pending),
             make_batch_item("F-00002", execution_group=0, status=BatchItemStatus.pending),
@@ -124,6 +131,7 @@ class TestCurrentExecutionGroup:
         assert _current_execution_group(items) == 0
 
     def test_group_0_executing_returns_group_0(self):
+        """Verifies that group 0 executing returns group 0."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.executing),
             make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
@@ -131,6 +139,7 @@ class TestCurrentExecutionGroup:
         assert _current_execution_group(items) == 0
 
     def test_group_0_merged_advances_to_group_1(self):
+        """Verifies that group 0 merged advances to group 1."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merged),
             make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
@@ -138,6 +147,7 @@ class TestCurrentExecutionGroup:
         assert _current_execution_group(items) == 1
 
     def test_all_terminal_returns_none(self):
+        """Verifies that all terminal returns none."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merged),
             make_batch_item("F-00002", execution_group=0, status=BatchItemStatus.failed),
@@ -147,6 +157,7 @@ class TestCurrentExecutionGroup:
 
     def test_completed_item_keeps_group_active(self):
         # 'completed' means waiting for merge — still non-terminal
+        """Verifies that completed item keeps group active."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.completed),
             make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
@@ -155,6 +166,7 @@ class TestCurrentExecutionGroup:
 
     def test_merging_item_keeps_group_active(self):
         # 'merging' means squash-merge subprocess is running — dependent group must not launch yet
+        """Verifies that merging item keeps group active."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merging),
             make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
@@ -162,6 +174,7 @@ class TestCurrentExecutionGroup:
         assert _current_execution_group(items) == 0
 
     def test_mixed_groups_returns_lowest_non_terminal(self):
+        """Verifies that mixed groups returns lowest non terminal."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merged),
             make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.executing),
@@ -170,10 +183,12 @@ class TestCurrentExecutionGroup:
         assert _current_execution_group(items) == 1
 
     def test_empty_returns_none(self):
+        """Verifies that empty returns none."""
         assert _current_execution_group([]) is None
 
     def test_merge_failed_item_keeps_group_active(self):
         # CR-00028: merge_failed is non-terminal — group stays open
+        """Verifies that merge failed item keeps group active."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.merge_failed),
             make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
@@ -182,6 +197,7 @@ class TestCurrentExecutionGroup:
 
     def test_migration_invalid_item_keeps_group_active(self):
         # CR-00028: operator-recoverable — group stays open
+        """Verifies that migration invalid item keeps group active."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.migration_invalid),
             make_batch_item("F-00002", execution_group=1, status=BatchItemStatus.pending),
@@ -190,6 +206,7 @@ class TestCurrentExecutionGroup:
 
     def test_migration_rebase_failed_item_keeps_group_active(self):
         # CR-00028: operator-recoverable — group stays open
+        """Verifies that migration rebase failed item keeps group active."""
         items = [
             make_batch_item(
                 "F-00001",
@@ -207,7 +224,10 @@ class TestCurrentExecutionGroup:
 
 
 class TestParallelismLimit:
+    """Tests for ParallelismLimit scenarios."""
+
     def _make_db_with_items(self, items: list[MagicMock]) -> MagicMock:
+        """Return make db with items."""
         db = MagicMock()
         batch_query = MagicMock()
         batch_query.filter.return_value.order_by.return_value.all.return_value = items
@@ -221,6 +241,7 @@ class TestParallelismLimit:
         return db
 
     def test_respects_max_parallel(self, tmp_path):
+        """Verifies that respects max parallel."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.pending),
             make_batch_item("F-00002", execution_group=0, status=BatchItemStatus.pending),
@@ -235,6 +256,7 @@ class TestParallelismLimit:
         launched: list[str] = []
 
         def fake_launch(db_, item_):
+            """Return fake launch."""
             launched.append(item_.work_item_id)
             # Mark as executing so count increases
             item_.status = BatchItemStatus.executing
@@ -263,6 +285,7 @@ class TestParallelismLimit:
         assert "F-00003" not in launched
 
     def test_already_executing_counts_against_limit(self, tmp_path):
+        """Verifies that already executing counts against limit."""
         items = [
             make_batch_item("F-00001", execution_group=0, status=BatchItemStatus.executing),
             make_batch_item("F-00002", execution_group=0, status=BatchItemStatus.pending),
@@ -277,6 +300,7 @@ class TestParallelismLimit:
         launched: list[str] = []
 
         def fake_launch(db_, item_):
+            """Return fake launch."""
             launched.append(item_.work_item_id)
             item_.status = BatchItemStatus.executing
 
@@ -310,7 +334,10 @@ class TestParallelismLimit:
 
 
 class TestCheckBatchCompletion:
+    """Tests for CheckBatchCompletion scenarios."""
+
     def test_all_merged_completes(self, tmp_path):
+        """Verifies that all merged completes."""
         db = MagicMock()
         batch = MagicMock(spec=Batch)
         batch.id = "B001"
@@ -324,6 +351,7 @@ class TestCheckBatchCompletion:
         assert batch.status == BatchStatus.completed
 
     def test_mixed_merged_failed_gives_completed_with_errors(self, tmp_path):
+        """Verifies that mixed merged failed gives completed with errors."""
         db = MagicMock()
         batch = MagicMock(spec=Batch)
         batch.id = "B001"
@@ -337,6 +365,7 @@ class TestCheckBatchCompletion:
         assert batch.status == BatchStatus.completed_with_errors
 
     def test_all_skipped_gives_completed_with_errors(self, tmp_path):
+        """Verifies that all skipped gives completed with errors."""
         db = MagicMock()
         batch = MagicMock(spec=Batch)
         batch.id = "B001"
@@ -350,6 +379,7 @@ class TestCheckBatchCompletion:
         assert batch.status == BatchStatus.completed_with_errors
 
     def test_not_done_if_still_executing(self, tmp_path):
+        """Verifies that not done if still executing."""
         db = MagicMock()
         batch = MagicMock(spec=Batch)
         batch.id = "B001"
@@ -370,7 +400,10 @@ class TestCheckBatchCompletion:
 
 
 class TestCommandBuilding:
+    """Tests for CommandBuilding scenarios."""
+
     def test_opencode_command(self, tmp_path):
+        """Verifies that opencode command."""
         db = MagicMock()
         step = MagicMock(spec=WorkflowStep)
         step.work_item_id = "F-00001"
@@ -406,6 +439,7 @@ class TestCommandBuilding:
         assert "S01" in cmd
 
     def test_claude_command(self, tmp_path):
+        """Verifies that claude command."""
         db = MagicMock()
         step = MagicMock(spec=WorkflowStep)
         step.work_item_id = "F-00002"
@@ -447,7 +481,10 @@ class TestCommandBuilding:
 
 
 class TestStepLaunchFields:
+    """Tests for StepLaunchFields scenarios."""
+
     def test_step_run_records_pid_command_and_timeout(self, tmp_path):
+        """Verifies that step run records pid command and timeout."""
         db = MagicMock()
         step = MagicMock(spec=WorkflowStep)
         step.work_item_id = "F-00003"
@@ -538,6 +575,7 @@ class TestQvDirectExec:
     """
 
     def _make_qv_step(self, *, item_id: str, step_id: str, command: str | None) -> MagicMock:
+        """Return make qv step."""
         step = MagicMock(spec=WorkflowStep)
         step.work_item_id = item_id
         step.step_id = step_id
@@ -552,6 +590,7 @@ class TestQvDirectExec:
         return step
 
     def test_qv_step_with_command_runs_directly_without_llm(self, tmp_path):
+        """Verifies that qv step with command runs directly without llm."""
         db = MagicMock()
         step = self._make_qv_step(item_id="F-00010", step_id="S06", command="make lint")
         worktree_info = {"path": str(tmp_path)}
@@ -635,6 +674,7 @@ class TestBuildQvDirectCommand:
     """Pure unit tests for the wrapper-script builder."""
 
     def test_returns_bash_invocation_of_wrap_script(self, tmp_path):
+        """Verifies that returns bash invocation of wrap script."""
         from orch.daemon.batch_manager import _build_qv_direct_command
 
         cmd = _build_qv_direct_command(
@@ -648,6 +688,7 @@ class TestBuildQvDirectCommand:
         assert cmd == "bash .tmp/F-00020_S06.qv-wrap.sh"
 
     def test_writes_gate_and_wrap_scripts(self, tmp_path):
+        """Verifies that writes gate and wrap scripts."""
         from orch.daemon.batch_manager import _build_qv_direct_command
 
         _build_qv_direct_command(
@@ -671,6 +712,7 @@ class TestBuildQvDirectCommand:
         assert "format" in wrapper
 
     def test_gate_command_with_special_chars_is_preserved(self, tmp_path):
+        """Verifies that gate command with special chars is preserved."""
         from orch.daemon.batch_manager import _build_qv_direct_command
 
         gate_cmd = "pytest -k 'parser or schema' --maxfail=1"
@@ -687,6 +729,7 @@ class TestBuildQvDirectCommand:
         assert gate_cmd in gate_script.read_text()
 
     def test_scripts_are_executable(self, tmp_path):
+        """Verifies that scripts are executable."""
         import stat
 
         from orch.daemon.batch_manager import _build_qv_direct_command
@@ -710,6 +753,8 @@ class TestBuildQvDirectCommand:
 
 
 class TestWorktreeSetup:
+    """Tests for WorktreeSetup scenarios."""
+
     @pytest.fixture(autouse=True)
     def _alembic_guard_ok(self):
         """Mock the I-00040 check_db_at_head() pre-flight at the top of _launch_item.
@@ -725,6 +770,7 @@ class TestWorktreeSetup:
             yield
 
     def test_failed_setup_marks_item_failed(self, tmp_path):
+        """Verifies that failed setup marks item failed."""
         db = MagicMock()
         batch_item = MagicMock(spec=BatchItem)
         batch_item.work_item_id = "F-00001"
@@ -745,6 +791,7 @@ class TestWorktreeSetup:
         assert mock_work_item.status == WorkItemStatus.failed
 
     def test_successful_setup_transitions_to_executing(self, tmp_path):
+        """Verifies that successful setup transitions to executing."""
         db = MagicMock()
         batch_item = MagicMock(spec=BatchItem)
         batch_item.work_item_id = "F-00001"
@@ -769,7 +816,10 @@ class TestWorktreeSetup:
 
 
 class TestNextRunNumber:
+    """Tests for NextRunNumber scenarios."""
+
     def test_first_run_is_1(self):
+        """Verifies that first run is 1."""
         db = MagicMock()
         step = MagicMock(spec=WorkflowStep)
         step.id = 1
@@ -777,6 +827,7 @@ class TestNextRunNumber:
         assert _next_run_number(db, step) == 1
 
     def test_second_run_is_2(self):
+        """Verifies that second run is 2."""
         db = MagicMock()
         step = MagicMock(spec=WorkflowStep)
         step.id = 1
@@ -793,31 +844,39 @@ class TestBlockingTerminalStatuses:
     """Unit tests for the H1 fix: _BLOCKING_TERMINAL_STATUSES set."""
 
     def test_merged_is_not_blocking(self):
+        """Verifies that merged is not blocking."""
         assert BatchItemStatus.merged not in _BLOCKING_TERMINAL_STATUSES
 
     def test_failed_is_blocking(self):
+        """Verifies that failed is blocking."""
         assert BatchItemStatus.failed in _BLOCKING_TERMINAL_STATUSES
 
     def test_setup_failed_is_not_blocking(self):
         # CR-00096: infrastructure failure — worktree never started; retryable;
         # downstream groups must NOT cascade-fail.
+        """Verifies that setup failed is not blocking."""
         assert BatchItemStatus.setup_failed not in _BLOCKING_TERMINAL_STATUSES
 
     def test_migration_invalid_not_blocking(self):
         # CR-00028: operator-recoverable merge failure — excluded from cascade
+        """Verifies that migration invalid not blocking."""
         assert BatchItemStatus.migration_invalid not in _BLOCKING_TERMINAL_STATUSES
 
     def test_migration_rolled_back_is_blocking(self):
+        """Verifies that migration rolled back is blocking."""
         assert BatchItemStatus.migration_rolled_back in _BLOCKING_TERMINAL_STATUSES
 
     def test_stalled_is_blocking(self):
+        """Verifies that stalled is blocking."""
         assert BatchItemStatus.stalled in _BLOCKING_TERMINAL_STATUSES
 
     def test_skipped_is_blocking(self):
+        """Verifies that skipped is blocking."""
         assert BatchItemStatus.skipped in _BLOCKING_TERMINAL_STATUSES
 
     def test_merge_failed_not_blocking(self):
         # CR-00028: operator-recoverable merge failure — excluded from cascade
+        """Verifies that merge failed not blocking."""
         assert BatchItemStatus.merge_failed not in _BLOCKING_TERMINAL_STATUSES
 
 
@@ -825,6 +884,7 @@ class TestExecutionGroupDependencyCheck:
     """Unit tests for H1: process_batch blocks on all terminal-failure statuses."""
 
     def _make_db_for_items(self, items: list[MagicMock]) -> MagicMock:
+        """Return make db for items."""
         db = MagicMock()
         q = MagicMock()
         q.filter.return_value.order_by.return_value.all.return_value = items
@@ -1078,6 +1138,7 @@ class TestAutoMergeGate:
         # db.get: Batch → batch, WorkItem → work_item
         # db.query: BatchItem → batch_item, WorkItem → work_item
         def get_side_effect(model, key):
+            """Return get side effect."""
             if model == Batch and key == ("test-proj", "B001"):
                 return batch
             if model == WorkItem and key == ("test-proj", "F-00001"):
@@ -1120,6 +1181,7 @@ class TestAutoMergeGate:
         batch_item.worktree_info = {"path": "/wt"}
 
         def get_side_effect(model, key):
+            """Return get side effect."""
             if model == Batch and key == ("test-proj", "B001"):
                 return batch
             if model == WorkItem and key == ("test-proj", "F-00001"):

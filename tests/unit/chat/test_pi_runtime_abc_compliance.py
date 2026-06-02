@@ -36,6 +36,7 @@ def _is_async_callable(fn: object) -> bool:
 
 
 def _abc_abstract_methods() -> frozenset[str]:
+    """Return the set of abstract method names declared on ChatRuntime."""
     return frozenset(ChatRuntime.__abstractmethods__)
 
 

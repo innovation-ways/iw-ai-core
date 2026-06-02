@@ -27,6 +27,7 @@ from orch.db.models import (
 
 
 def make_config(tmp_path: Path) -> DaemonConfig:
+    """Return make config."""
     projects_toml = tmp_path / "projects.toml"
     projects_toml.write_text("")
     return DaemonConfig(
@@ -54,6 +55,7 @@ def make_project(
     enabled: bool = True,
     cli_tool: str = "opencode",
 ) -> MagicMock:
+    """Return make project."""
     proj = MagicMock(spec=Project)
     proj.id = project_id
     proj.enabled = enabled
@@ -68,6 +70,7 @@ def make_doc(
     editorial_category: EditorialCategory = EditorialCategory.technical,
     source_paths: list[str] | None = None,
 ) -> MagicMock:
+    """Return make doc."""
     doc = MagicMock(spec=ProjectDoc)
     doc.id = f"{project_id}:{doc_id}"
     doc.project_id = project_id
@@ -85,6 +88,7 @@ def make_job(
     requested_at: datetime | None = None,
     agent_pid: int | None = None,
 ) -> MagicMock:
+    """Return make job."""
     job = MagicMock()
     job.id = str(uuid.uuid4())
     job.project_id = project_id
@@ -100,13 +104,17 @@ def make_job(
 
 
 class TestDocJobPollerSkillSelection:
+    """Tests for DocJobPollerSkillSelection scenarios."""
+
     def test_select_skill_technical(self, tmp_path: Path) -> None:
+        """Verifies that select skill technical."""
         config = make_config(tmp_path)
         poller = DocJobPoller(MagicMock(), config)
         assert poller._select_skill(EditorialCategory.technical) == "iw-doc-generator"
         assert poller._select_skill(EditorialCategory.functional) == "iw-doc-generator"
 
     def test_select_skill_guide(self, tmp_path: Path) -> None:
+        """Verifies that select skill guide."""
         config = make_config(tmp_path)
         poller = DocJobPoller(MagicMock(), config)
         assert poller._select_skill(EditorialCategory.guide) == "iw-doc-system"
@@ -116,7 +124,10 @@ class TestDocJobPollerSkillSelection:
 
 
 class TestDocServiceJobLifecycle:
+    """Tests for DocServiceJobLifecycle scenarios."""
+
     def test_create_doc_job(self, tmp_path: Path) -> None:
+        """Verifies that create doc job."""
         from orch.db.models import DocType
         from orch.doc_service import DocService
 
@@ -137,6 +148,7 @@ class TestDocServiceJobLifecycle:
         mock_db.flush.assert_called_once()
 
     def test_create_doc_job_raises_on_missing_doc(self, tmp_path: Path) -> None:
+        """Verifies that create doc job raises on missing doc."""
         from orch.doc_service import DocService
 
         mock_db = MagicMock()
@@ -147,6 +159,7 @@ class TestDocServiceJobLifecycle:
             svc.create_doc_job("test-proj", "nonexistent")
 
     def test_start_doc_job(self, tmp_path: Path) -> None:
+        """Verifies that start doc job."""
         from orch.doc_service import DocService
 
         mock_db = MagicMock()
@@ -163,6 +176,7 @@ class TestDocServiceJobLifecycle:
         assert result.skill_used == "iw-doc-generator"
 
     def test_start_doc_job_raises_if_not_queued(self, tmp_path: Path) -> None:
+        """Verifies that start doc job raises if not queued."""
         from orch.doc_service import DocService
 
         mock_db = MagicMock()
@@ -175,6 +189,7 @@ class TestDocServiceJobLifecycle:
             svc.start_doc_job("job-123")
 
     def test_complete_doc_job_success(self, tmp_path: Path) -> None:
+        """Verifies that complete doc job success."""
         from orch.doc_service import DocService
 
         mock_db = MagicMock()
@@ -201,6 +216,7 @@ class TestDocServiceJobLifecycle:
         assert result.error is None
 
     def test_complete_doc_job_with_error(self, tmp_path: Path) -> None:
+        """Verifies that complete doc job with error."""
         from orch.doc_service import DocService
 
         mock_db = MagicMock()
@@ -222,6 +238,7 @@ class TestDocServiceJobLifecycle:
         assert result.error == "something went wrong"
 
     def test_complete_doc_job_idempotent(self, tmp_path: Path) -> None:
+        """Verifies that complete doc job idempotent."""
         from orch.doc_service import DocService
 
         mock_db = MagicMock()
@@ -237,6 +254,7 @@ class TestDocServiceJobLifecycle:
         assert result.error is None
 
     def test_get_running_jobs_count(self, tmp_path: Path) -> None:
+        """Verifies that get running jobs count."""
         from orch.doc_service import DocService
 
         mock_db = MagicMock()
@@ -251,6 +269,7 @@ class TestDocServiceJobLifecycle:
         assert count == 2
 
     def test_get_queued_jobs(self, tmp_path: Path) -> None:
+        """Verifies that get queued jobs."""
         from orch.doc_service import DocService
 
         mock_db = MagicMock()
@@ -267,6 +286,7 @@ class TestDocServiceJobLifecycle:
         assert len(jobs) == 2
 
     def test_get_stalled_jobs(self, tmp_path: Path) -> None:
+        """Verifies that get stalled jobs."""
         from orch.doc_service import DocService
 
         mock_db = MagicMock()
@@ -287,11 +307,14 @@ class TestDocServiceJobLifecycle:
 
 
 class TestDocJobPollerLaunch:
+    """Tests for DocJobPollerLaunch scenarios."""
+
     @contextmanager
     def _make_session(self, db):
         yield db
 
     def test_poll_launches_job_when_slot_available(self, tmp_path: Path) -> None:
+        """Verifies that poll launches job when slot available."""
         config = make_config(tmp_path)
         mock_session_factory = MagicMock()
 
@@ -318,25 +341,29 @@ class TestDocJobPollerLaunch:
         mock_query.all.return_value = [mock_project]
 
         def get_running_jobs_count(project_id):
+            """Return get running jobs count."""
             return 0
 
         def get_queued_jobs(project_id, limit=10):
+            """Return get queued jobs."""
             return [mock_job]
 
         def get_stalled_jobs(timeout_minutes=10):
+            """Return get stalled jobs."""
             return []
 
         def complete_doc_job(job_id, error=None, *, worktree_path=None):
-            pass
+            """Return complete doc job."""
 
         def start_doc_job(job_id, pid=None, skill_used=None):
+            """Return start doc job."""
             mock_job.status = JobStatus.running
             mock_job.agent_pid = pid
             mock_job.skill_used = skill_used
             return mock_job
 
         def add_event(event):
-            pass
+            """Return add event."""
 
         mock_db.add = MagicMock()
         mock_db.commit = MagicMock()
@@ -351,6 +378,7 @@ class TestDocJobPollerLaunch:
         call_count = [0]
 
         def doc_service_constructor(db):
+            """Return doc service constructor."""
             call_count[0] += 1
             return mock_svc_instance
 
@@ -372,6 +400,7 @@ class TestDocJobPollerLaunch:
         assert mock_svc_instance.start_doc_job.called
 
     def test_poll_respects_concurrent_limit(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
+        """Verifies that poll respects concurrent limit."""
         config = make_config(tmp_path)
         mock_session_factory = MagicMock()
 
@@ -389,6 +418,7 @@ class TestDocJobPollerLaunch:
         mock_svc_instance.get_queued_jobs.return_value = []
 
         def doc_service_constructor(db):
+            """Return doc service constructor."""
             return mock_svc_instance
 
         mock_session_factory.return_value.__enter__ = MagicMock(return_value=mock_db)
@@ -404,6 +434,7 @@ class TestDocJobPollerLaunch:
         mock_svc_instance.get_queued_jobs.assert_not_called()
 
     def test_poll_marks_stalled_jobs_failed(self, tmp_path: Path) -> None:
+        """Verifies that poll marks stalled jobs failed."""
         config = make_config(tmp_path)
         mock_session_factory = MagicMock()
 
@@ -420,11 +451,13 @@ class TestDocJobPollerLaunch:
         complete_called_with = []
 
         def complete_doc_job(job_id, error=None):
+            """Return complete doc job."""
             complete_called_with.append((job_id, error))
 
         mock_svc_instance.complete_doc_job.side_effect = complete_doc_job
 
         def doc_service_constructor(db):
+            """Return doc service constructor."""
             return mock_svc_instance
 
         mock_session_factory.return_value.__enter__ = MagicMock(return_value=mock_db)

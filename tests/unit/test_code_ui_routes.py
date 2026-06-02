@@ -43,6 +43,7 @@ class TestMermaidPreprocessing:
     """Tests for _preprocess_mermaid helper."""
 
     def test_mermaid_blocks_converted_to_pre(self) -> None:
+        """Verifies that mermaid blocks converted to pre."""
         from dashboard.routers.code_ui import _preprocess_mermaid
 
         input_md = "```mermaid\ngraph TD\n  A-->B\n```"
@@ -52,6 +53,7 @@ class TestMermaidPreprocessing:
         assert "graph TD" in result
 
     def test_multiple_mermaid_blocks_converted(self) -> None:
+        """Verifies that multiple mermaid blocks converted."""
         from dashboard.routers.code_ui import _preprocess_mermaid
 
         input_md = "Some text\n```mermaid\ng1\n```\nMore\n```mermaid\ng2\n```\nEnd"
@@ -60,6 +62,7 @@ class TestMermaidPreprocessing:
         assert "<code>" in result
 
     def test_no_mermaid_blocks_unchanged(self) -> None:
+        """Verifies that no mermaid blocks unchanged."""
         from dashboard.routers.code_ui import _preprocess_mermaid
 
         input_md = "Just regular text\n```python\nprint('hi')\n```"
@@ -67,6 +70,7 @@ class TestMermaidPreprocessing:
         assert '<pre data-lang="mermaid">' not in result
 
     def test_mermaid_blocks_with_whitespace_converted(self) -> None:
+        """Verifies that mermaid blocks with whitespace converted."""
         from dashboard.routers.code_ui import _preprocess_mermaid
 
         input_md = "```mermaid\n  graph TD\n    A-->B\n```"
@@ -79,6 +83,7 @@ class TestFormatDuration:
     """Tests for _format_duration helper."""
 
     def test_format_duration_minutes_seconds(self) -> None:
+        """Verifies that format duration minutes seconds."""
         from dashboard.routers.code_ui import _format_duration
 
         job = MagicMock()
@@ -88,6 +93,7 @@ class TestFormatDuration:
         assert result == "4m 32s"
 
     def test_format_duration_hours(self) -> None:
+        """Verifies that format duration hours."""
         from dashboard.routers.code_ui import _format_duration
 
         job = MagicMock()
@@ -97,6 +103,7 @@ class TestFormatDuration:
         assert result == "2h 30m"
 
     def test_format_duration_seconds_only(self) -> None:
+        """Verifies that format duration seconds only."""
         from dashboard.routers.code_ui import _format_duration
 
         job = MagicMock()
@@ -106,6 +113,7 @@ class TestFormatDuration:
         assert result == "45s"
 
     def test_format_duration_returns_none_when_completed_at_missing(self) -> None:
+        """Verifies that format duration returns none when completed at missing."""
         from dashboard.routers.code_ui import _format_duration
 
         job = MagicMock()
@@ -115,6 +123,7 @@ class TestFormatDuration:
         assert result is None
 
     def test_format_duration_returns_none_when_triggered_at_missing(self) -> None:
+        """Verifies that format duration returns none when triggered at missing."""
         from dashboard.routers.code_ui import _format_duration
 
         job = MagicMock()
@@ -128,6 +137,7 @@ class TestGetProviderLabel:
     """Tests for _get_provider_label helper."""
 
     def test_provider_label_with_config(self) -> None:
+        """Verifies that provider label with config."""
         from dashboard.routers.code_ui import _get_provider_label
 
         project = MagicMock()
@@ -136,6 +146,7 @@ class TestGetProviderLabel:
         assert result == "local (fast)"
 
     def test_provider_label_default_tier(self) -> None:
+        """Verifies that provider label default tier."""
         from dashboard.routers.code_ui import _get_provider_label
 
         project = MagicMock()
@@ -144,6 +155,7 @@ class TestGetProviderLabel:
         assert result == "local (balanced)"
 
     def test_provider_label_no_config(self) -> None:
+        """Verifies that provider label no config."""
         from dashboard.routers.code_ui import _get_provider_label
 
         project = MagicMock()
@@ -152,6 +164,7 @@ class TestGetProviderLabel:
         assert result == "local (balanced)"
 
     def test_provider_label_none_config(self) -> None:
+        """Verifies that provider label none config."""
         from dashboard.routers.code_ui import _get_provider_label
 
         project = MagicMock()
@@ -160,6 +173,7 @@ class TestGetProviderLabel:
         assert result == "local (balanced)"
 
     def test_provider_label_quality_tier(self) -> None:
+        """Verifies that provider label quality tier."""
         from dashboard.routers.code_ui import _get_provider_label
 
         project = MagicMock()
@@ -172,6 +186,7 @@ class TestGetProjectOr404:
     """Tests for _get_project_or_404 helper."""
 
     def test_returns_project_when_found(self) -> None:
+        """Verifies that returns project when found."""
         from dashboard.routers.code_ui import _get_project_or_404
 
         project = _make_project()
@@ -182,6 +197,7 @@ class TestGetProjectOr404:
         assert result is project
 
     def test_raises_404_when_not_found(self) -> None:
+        """Verifies that raises 404 when not found."""
         import pytest
         from fastapi import HTTPException
 
@@ -199,6 +215,7 @@ class TestCodeIndexStream:
     """Tests for the SSE stream endpoint logic."""
 
     def test_sse_stream_returns_idle_when_no_runner_in_registry(self) -> None:
+        """Verifies that sse stream returns idle when no runner in registry."""
         with patch.dict("dashboard.routers.code_ui.JOB_REGISTRY", {}, clear=False):
             app = _make_app()
             from dashboard.dependencies import get_db
@@ -217,6 +234,7 @@ class TestCodeCancelIndex:
     """Tests for the cancel endpoint."""
 
     def test_cancel_returns_404_when_no_running_job(self) -> None:
+        """Verifies that cancel returns 404 when no running job."""
         with patch.dict("dashboard.routers.code_ui.JOB_REGISTRY", {}, clear=False):
             mock_db = MagicMock()
             mock_db.scalar.return_value = _make_project()
@@ -227,6 +245,7 @@ class TestCodeCancelIndex:
             assert response.status_code == 404
 
     def test_cancel_calls_request_cancel_when_runner_exists(self) -> None:
+        """Verifies that cancel calls request cancel when runner exists."""
         mock_runner = MagicMock()
         mock_runner.job_id = "job-abc"
         mock_runner.request_cancel = MagicMock()
@@ -250,6 +269,7 @@ class TestJobAlreadyRunningError:
     """Tests for JobAlreadyRunningError handling in trigger endpoints."""
 
     def test_trigger_raises_409_on_job_already_running_error(self) -> None:
+        """Verifies that trigger raises 409 on job already running error."""
         from orch.rag.job import JobAlreadyRunningError
 
         project = _make_project()

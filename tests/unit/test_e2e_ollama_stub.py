@@ -51,7 +51,10 @@ def _system_prompt_with_three_candidates() -> str:
 
 
 class TestCandidateExtraction:
+    """Tests for CandidateExtraction scenarios."""
+
     def test_extracts_each_candidate_with_id_title_type(self) -> None:
+        """Verifies that extracts each candidate with id title type."""
         stub = _load_stub()
         messages = [{"role": "system", "content": _system_prompt_with_three_candidates()}]
         cands = stub._extract_workitem_candidates(messages)
@@ -65,6 +68,7 @@ class TestCandidateExtraction:
         assert "blue for visual emphasis" in cands[1]["content"]
 
     def test_code_only_prompt_yields_no_candidates(self) -> None:
+        """Verifies that code only prompt yields no candidates."""
         stub = _load_stub()
         messages = [
             {
@@ -100,6 +104,8 @@ class TestCandidateExtraction:
 
 
 class TestCandidateRanking:
+    """Tests for CandidateRanking scenarios."""
+
     def test_question_keyword_lands_recolor_first(self) -> None:
         """F-00060 V3: 'why is the button blue?' must rank the recolor item first,
         not the reshape item, so the allowlist filter emits only the relevant ID."""
@@ -132,6 +138,8 @@ class TestCandidateRanking:
 
 
 class TestReplyBuilder:
+    """Tests for ReplyBuilder scenarios."""
+
     def test_workitem_reply_cites_top_candidate_with_bracket_marker(self) -> None:
         """The first non-whitespace characters of the reply must be ``[1]`` so
         citation_allowlist.extract_citations (which looks for ``[N]``) finds

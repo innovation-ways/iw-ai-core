@@ -32,11 +32,21 @@ _SCRIPT_LOCATION = "orch/db/migrations"
 
 @pytest.fixture(scope="module")
 def pg_container() -> PostgresContainer:
+    """Provide a module-scoped PostgreSQL testcontainer shared across all health-snapshot tests."""
     with PostgresContainer("postgres:15-alpine") as pg:
         yield pg
 
 
 def _sa_url(container: PostgresContainer, dbname: str) -> str:
+    """Build a psycopg3-compatible SQLAlchemy URL for a named database in the container.
+
+    Args:
+        container: The running PostgreSQL testcontainer.
+        dbname: Target database name within the container.
+
+    Returns:
+        A postgresql+psycopg:// URL string for the named database.
+    """
     base = container.get_connection_url().replace("postgresql+psycopg2://", "postgresql+psycopg://")
     parsed = urlparse(base.replace("postgresql+psycopg://", "postgresql://"))
     return (
@@ -46,11 +56,28 @@ def _sa_url(container: PostgresContainer, dbname: str) -> str:
 
 
 def _bootstrap_engine(container: PostgresContainer) -> Engine:
+    """Create an AUTOCOMMIT engine for DDL operations (CREATE/DROP DATABASE).
+
+    Args:
+        container: The running PostgreSQL testcontainer.
+
+    Returns:
+        A SQLAlchemy engine in AUTOCOMMIT isolation mode.
+    """
     url = container.get_connection_url().replace("postgresql+psycopg2://", "postgresql+psycopg://")
     return create_engine(url, isolation_level="AUTOCOMMIT")
 
 
 def _fresh_db(container: PostgresContainer, dbname: str) -> Engine:
+    """Drop (if exists) and create a named database, then return an engine connected to it.
+
+    Args:
+        container: The running PostgreSQL testcontainer.
+        dbname: Name of the database to create.
+
+    Returns:
+        A SQLAlchemy engine connected to the freshly created database.
+    """
     eng = _bootstrap_engine(container)
     with eng.connect() as conn:
         conn.execute(text(f'DROP DATABASE IF EXISTS "{dbname}"'))
@@ -60,6 +87,14 @@ def _fresh_db(container: PostgresContainer, dbname: str) -> Engine:
 
 
 def _alembic_cfg(engine: Engine) -> Config:
+    """Build an Alembic Config pointing at the given engine's URL.
+
+    Args:
+        engine: The SQLAlchemy engine whose URL will be used.
+
+    Returns:
+        An Alembic Config object ready for upgrade/downgrade calls.
+    """
     cfg = Config()
     cfg.set_main_option("script_location", _SCRIPT_LOCATION)
     cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))
@@ -67,6 +102,12 @@ def _alembic_cfg(engine: Engine) -> Config:
 
 
 def _set_env(monkeypatch: pytest.MonkeyPatch, engine: Engine) -> None:
+    """Patch IW_CORE_DB_* env vars to point at the given engine's database.
+
+    Args:
+        monkeypatch: pytest monkeypatch fixture for env var injection.
+        engine: Engine whose connection URL supplies the host/port/name/user/password.
+    """
     parsed = urlparse(
         engine.url.render_as_string(hide_password=False).replace(
             "postgresql+psycopg://", "postgresql://"

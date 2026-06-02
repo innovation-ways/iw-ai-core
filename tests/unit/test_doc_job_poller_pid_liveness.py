@@ -218,6 +218,7 @@ class TestPollDeadSubprocessIntegration:
         complete_calls: list[tuple] = []
 
         def complete_doc_job(job_id, error=None, *, worktree_path=None):
+            """Return complete doc job."""
             complete_calls.append((job_id, error, worktree_path))
             return dead_job
 
@@ -261,6 +262,7 @@ class TestPollDeadSubprocessIntegration:
         complete_calls: list = []
 
         def complete_doc_job(job_id, error=None, *, worktree_path=None):
+            """Return complete doc job."""
             complete_calls.append((job_id, error))
             return alive_job
 
@@ -300,6 +302,7 @@ class TestPollDeadSubprocessIntegration:
         complete_calls: list = []
 
         def complete_doc_job(job_id, error=None, *, worktree_path=None):
+            """Return complete doc job."""
             complete_calls.append((job_id, error))
             return job
 
@@ -342,6 +345,7 @@ class TestPollDeadSubprocessIntegration:
         complete_calls: list = []
 
         def complete_doc_job(job_id, error=None, *, worktree_path=None):
+            """Return complete doc job."""
             complete_calls.append((job_id, error))
             return young_job
 
@@ -378,6 +382,7 @@ class TestPollDeadSubprocessIntegration:
         complete_calls: list = []
 
         def complete_doc_job(job_id, error=None, *, worktree_path=None):
+            """Return complete doc job."""
             complete_calls.append((job_id, error))
             return job
 
@@ -410,6 +415,7 @@ class TestPollDeadSubprocessIntegration:
         complete_calls: list = []
 
         def complete_doc_job(job_id, error=None, *, worktree_path=None):
+            """Return complete doc job."""
             complete_calls.append(job_id)
             return job1 if job_id == job1.id else job2
 

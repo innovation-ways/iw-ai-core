@@ -49,7 +49,9 @@ def test_chat_runtime_cannot_be_instantiated_directly() -> None:
 
 
 def test_subclass_missing_method_cannot_be_instantiated() -> None:
-    """A subclass that misses even ONE abstract method is still abstract."""
+    """Verifies that a subclass omitting even one abstract method remains abstract and non-
+    instantiable.
+    """
 
     class _PartialRuntime(ChatRuntime):
         # Intentionally implements every abstract method EXCEPT ``prompt``.
@@ -116,7 +118,7 @@ def test_subclass_missing_method_cannot_be_instantiated() -> None:
 
 
 def test_complete_subclass_can_be_instantiated() -> None:
-    """A subclass overriding every abstract method instantiates cleanly."""
+    """Verifies that a concrete subclass implementing all abstract methods is instantiable."""
 
     class _CompleteRuntime(ChatRuntime):
         async def health(self) -> bool:

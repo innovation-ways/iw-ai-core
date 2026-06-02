@@ -27,13 +27,17 @@ if str(_SECRETS_DIR) not in sys.path:
 
 
 class TestMaskSecret:
+    """Tests for MaskSecret scenarios."""
+
     def test_short_value_fully_masked(self) -> None:
+        """Verifies that short value fully masked."""
         from checks.secrets import _mask_secret
 
         assert _mask_secret("abcd") == "****"
         assert _mask_secret("12345678") == "********"
 
     def test_long_value_keeps_first_and_last_four(self) -> None:
+        """Verifies that long value keeps first and last four."""
         from checks.secrets import _mask_secret
 
         # Length 20 — keep first 4 and last 4, mask middle.
@@ -44,16 +48,19 @@ class TestMaskSecret:
         assert set(out[4:-4]) == {"*"}
 
     def test_empty_value(self) -> None:
+        """Verifies that empty value."""
         from checks.secrets import _mask_secret
 
         assert _mask_secret("") == ""
 
     def test_none_value(self) -> None:
+        """Verifies that none value."""
         from checks.secrets import _mask_secret
 
         assert _mask_secret(None) == ""
 
     def test_strips_surrounding_whitespace(self) -> None:
+        """Verifies that strips surrounding whitespace."""
         from checks.secrets import _mask_secret
 
         # Leading/trailing whitespace shouldn't leak (it's noise from snippet
@@ -93,6 +100,7 @@ def _gitleaks_result(
     line: int | None = 42,
     snippet: str = "API_KEY=sk-abcd1234ZZZZ9999XY",
 ) -> dict:
+    """Return gitleaks result."""
     region: dict = {"snippet": {"text": snippet}}
     if line is not None:
         region["startLine"] = line
@@ -111,7 +119,10 @@ def _gitleaks_result(
 
 
 class TestParseSarifResults:
+    """Tests for ParseSarifResults scenarios."""
+
     def test_missing_path_returns_empty(self, tmp_path: Path) -> None:
+        """Verifies that missing path returns empty."""
         from checks.secrets import _parse_sarif_results
 
         results, total = _parse_sarif_results(None, target=tmp_path)
@@ -119,6 +130,7 @@ class TestParseSarifResults:
         assert total == 0
 
     def test_nonexistent_file_returns_empty(self, tmp_path: Path) -> None:
+        """Verifies that nonexistent file returns empty."""
         from checks.secrets import _parse_sarif_results
 
         results, total = _parse_sarif_results(
@@ -128,6 +140,7 @@ class TestParseSarifResults:
         assert total == 0
 
     def test_malformed_json_returns_empty(self, tmp_path: Path) -> None:
+        """Verifies that malformed json returns empty."""
         from checks.secrets import _parse_sarif_results
 
         bad = tmp_path / "bad.sarif"
@@ -137,6 +150,7 @@ class TestParseSarifResults:
         assert total == 0
 
     def test_single_result_extracted(self, tmp_path: Path) -> None:
+        """Verifies that single result extracted."""
         from checks.secrets import _parse_sarif_results
 
         sarif = _write_sarif(
@@ -162,6 +176,7 @@ class TestParseSarifResults:
         assert record["snippet_masked"].startswith("AKIA")
 
     def test_absolute_uri_normalized_to_relative(self, tmp_path: Path) -> None:
+        """Verifies that absolute uri normalized to relative."""
         from checks.secrets import _parse_sarif_results
 
         # Gitleaks emits absolute paths when invoked with `--source <abs>`. The
@@ -173,6 +188,7 @@ class TestParseSarifResults:
         assert results[0]["file"] == "src/config.py"
 
     def test_uri_outside_target_kept_as_is(self, tmp_path: Path) -> None:
+        """Verifies that uri outside target kept as is."""
         from checks.secrets import _parse_sarif_results
 
         # If the URI doesn't sit under target (unlikely but possible), keep it
@@ -182,6 +198,7 @@ class TestParseSarifResults:
         assert results[0]["file"] == "/elsewhere/secret.py"
 
     def test_missing_line_number_is_none(self, tmp_path: Path) -> None:
+        """Verifies that missing line number is none."""
         from checks.secrets import _parse_sarif_results
 
         sarif = _write_sarif(tmp_path, [_gitleaks_result(line=None)])
@@ -189,6 +206,7 @@ class TestParseSarifResults:
         assert results[0]["line"] is None
 
     def test_results_capped_but_total_truthful(self, tmp_path: Path) -> None:
+        """Verifies that results capped but total truthful."""
         from checks.secrets import RESULT_CAP, _parse_sarif_results
 
         many = [_gitleaks_result(line=i, uri=f"f{i}.py") for i in range(RESULT_CAP + 50)]
@@ -200,6 +218,7 @@ class TestParseSarifResults:
         assert total == RESULT_CAP + 50
 
     def test_multiple_runs_aggregated(self, tmp_path: Path) -> None:
+        """Verifies that multiple runs aggregated."""
         from checks.secrets import _parse_sarif_results
 
         # Some SARIF producers emit multiple runs. Both must be walked.
@@ -223,6 +242,8 @@ class TestParseSarifResults:
 
 
 class TestFindingEvidenceShape:
+    """Tests for FindingEvidenceShape scenarios."""
+
     def test_evidence_carries_results_capped_and_total(self, tmp_path: Path) -> None:
         """When _gitleaks_scan finds leaks, the Finding.evidence dict should
         carry: sarif (str path), finding_count (legacy total), results (list,
@@ -248,6 +269,7 @@ class TestFindingEvidenceShape:
         assert len(evidence["results"]) == 3
 
     def test_evidence_capped_flag(self, tmp_path: Path) -> None:
+        """Verifies that evidence capped flag."""
         from checks.secrets import RESULT_CAP, _build_evidence_from_sarif
 
         sarif = _write_sarif(

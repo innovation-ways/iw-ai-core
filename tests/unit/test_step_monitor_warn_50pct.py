@@ -24,6 +24,7 @@ _FROZEN_NOW = datetime(2026, 4, 27, 12, 0, 0, tzinfo=UTC)
 
 
 def _config(tmp_path: Path) -> DaemonConfig:
+    """Return config."""
     projects_toml = tmp_path / "projects.toml"
     projects_toml.write_text("")
     return DaemonConfig(
@@ -189,6 +190,7 @@ def test_timeout_branch_shadows_warn_in_same_cycle(tmp_path: Path) -> None:
 
 @freeze_time(_FROZEN_TIME)
 def test_no_warn_when_timeout_secs_is_none(tmp_path: Path) -> None:
+    """Verifies that no warn when timeout secs is none."""
     run = _make_run(started_seconds_ago=320, timeout_secs=600, warned_50pct_at=None)
     run.timeout_secs = None
     db = _make_db([run])

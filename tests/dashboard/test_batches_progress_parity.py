@@ -58,6 +58,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     try:
 
         def override_get_db() -> Generator[Session, None, None]:
+            """Yield the test db_session for FastAPI dependency injection."""
             yield db_session
 
         app = create_app()
@@ -468,6 +469,7 @@ class TestComputeBatchStepProgress:
             completed_count: int,
             total: int = 10,
         ) -> None:
+            """Create a Batch with workflow steps where the first completed_count are completed."""
             for i in range(1, total + 1):
                 status = StepStatus.completed if i <= completed_count else StepStatus.pending
                 db_session.add(

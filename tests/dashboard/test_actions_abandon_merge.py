@@ -53,6 +53,7 @@ def client(db_session: Session) -> TestClient:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -71,6 +72,16 @@ def client(db_session: Session) -> TestClient:
 
 
 def make_work_item(db: Session, project_id: str, item_id: str) -> WorkItem:
+    """Create and flush a minimal WorkItem in approved status for testing.
+
+    Args:
+        db: SQLAlchemy session to use.
+        project_id: ID of the owning project.
+        item_id: Unique work item ID.
+
+    Returns:
+        The flushed WorkItem instance.
+    """
     item = WorkItem(
         id=item_id,
         project_id=project_id,
@@ -88,6 +99,16 @@ def make_work_item(db: Session, project_id: str, item_id: str) -> WorkItem:
 
 
 def make_batch(db: Session, project_id: str, batch_id: str) -> Batch:
+    """Create and flush a minimal Batch in executing status for testing.
+
+    Args:
+        db: SQLAlchemy session to use.
+        project_id: ID of the owning project.
+        batch_id: Unique batch ID.
+
+    Returns:
+        The flushed Batch instance.
+    """
     batch = Batch(
         id=batch_id,
         project_id=project_id,
@@ -109,6 +130,19 @@ def make_batch_item(
     status: BatchItemStatus,
     notes: str | None = None,
 ) -> BatchItem:
+    """Create and flush a BatchItem with the given status for testing.
+
+    Args:
+        db: SQLAlchemy session to use.
+        project_id: ID of the owning project.
+        batch_id: ID of the parent batch.
+        work_item_id: ID of the associated work item.
+        status: Initial BatchItemStatus to set.
+        notes: Optional notes string.
+
+    Returns:
+        The flushed BatchItem instance.
+    """
     item = BatchItem(
         project_id=project_id,
         batch_id=batch_id,

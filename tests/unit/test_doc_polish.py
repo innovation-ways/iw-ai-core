@@ -26,6 +26,7 @@ class _FakeQueryResult:
         self._obj = obj
 
     def scalar_one_or_none(self) -> Any:
+        """Return scalar one or none."""
         return self._obj
 
 
@@ -39,15 +40,19 @@ class _FakeSession:
         self._execute_mock: MagicMock | None = None
 
     def get(self, model: type, key: str) -> Any:
+        """Return get."""
         return self._objects.get((model, key))
 
     def add(self, obj: Any) -> None:
+        """Return add."""
         self._added.append(obj)
 
     def flush(self) -> None:
+        """Return flush."""
         self._flushed = True
 
     def execute(self, query: Any) -> _FakeQueryResult:
+        """Return execute."""
         if self._execute_mock:
             return self._execute_mock(query)
         return _FakeQueryResult(None)
@@ -69,7 +74,10 @@ def _make_fake_get_session(
 
 
 class TestDiffVersions:
+    """Tests for DiffVersions scenarios."""
+
     def test_diff_versions_returns_unified_diff(self) -> None:
+        """Verifies that diff versions returns unified diff."""
         from orch.doc_service import DocService
 
         v1 = MagicMock(spec=ProjectDocVersion)
@@ -84,6 +92,7 @@ class TestDiffVersions:
         call_count = [0]
 
         def fake_execute(query: Any) -> _FakeQueryResult:
+            """Return fake execute."""
             call_count[0] += 1
             if call_count[0] == 1:
                 return _FakeQueryResult(v1)
@@ -99,6 +108,7 @@ class TestDiffVersions:
         assert any("universe" in line for line in diff)
 
     def test_diff_versions_identical_content_empty_diff(self) -> None:
+        """Verifies that diff versions identical content empty diff."""
         from orch.doc_service import DocService
 
         v1 = MagicMock(spec=ProjectDocVersion)
@@ -113,6 +123,7 @@ class TestDiffVersions:
         call_count = [0]
 
         def fake_execute(query: Any) -> _FakeQueryResult:
+            """Return fake execute."""
             call_count[0] += 1
             if call_count[0] == 1:
                 return _FakeQueryResult(v1)
@@ -126,12 +137,14 @@ class TestDiffVersions:
         assert diff == []
 
     def test_diff_versions_raises_key_error_unknown_version(self) -> None:
+        """Verifies that diff versions raises key error unknown version."""
         from orch.doc_service import DocService
 
         fake_session = _FakeSession()
         call_count = [0]
 
         def fake_execute(query: Any) -> _FakeQueryResult:
+            """Return fake execute."""
             call_count[0] += 1
             if call_count[0] == 1:
                 return _FakeQueryResult(None)
@@ -145,12 +158,14 @@ class TestDiffVersions:
             svc.diff_versions("testproj", "mydoc", 1, 99)
 
     def test_diff_versions_raises_value_error_wrong_order(self) -> None:
+        """Verifies that diff versions raises value error wrong order."""
         from orch.doc_service import DocService
 
         fake_session = _FakeSession()
         call_count = [0]
 
         def fake_execute(query: Any) -> _FakeQueryResult:
+            """Return fake execute."""
             call_count[0] += 1
             if call_count[0] == 1:
                 return _FakeQueryResult(MagicMock())
@@ -165,7 +180,10 @@ class TestDiffVersions:
 
 
 class TestValidateLinks:
+    """Tests for ValidateLinks scenarios."""
+
     def test_validate_links_internal_found(self, tmp_path: Any) -> None:
+        """Verifies that validate links internal found."""
         from orch.doc_service import DocService
 
         doc_file = tmp_path / "docs" / "guide.md"
@@ -184,6 +202,7 @@ class TestValidateLinks:
         assert broken == []
 
     def test_validate_links_internal_not_found(self, tmp_path: Any) -> None:
+        """Verifies that validate links internal not found."""
         from orch.doc_service import DocService
 
         doc = MagicMock(spec=ProjectDoc)
@@ -200,6 +219,7 @@ class TestValidateLinks:
         assert broken[0]["status"] == "not_found"
 
     def test_validate_links_external_ok(self, tmp_path: Any) -> None:
+        """Verifies that validate links external ok."""
         from orch.doc_service import DocService
 
         doc = MagicMock(spec=ProjectDoc)
@@ -218,6 +238,7 @@ class TestValidateLinks:
         assert broken == []
 
     def test_validate_links_external_404(self, tmp_path: Any) -> None:
+        """Verifies that validate links external 404."""
         from orch.doc_service import DocService
 
         doc = MagicMock(spec=ProjectDoc)
@@ -239,7 +260,10 @@ class TestValidateLinks:
 
 
 class TestExportBundle:
+    """Tests for ExportBundle scenarios."""
+
     def test_export_bundle_single_doc_zip_contents(self) -> None:
+        """Verifies that export bundle single doc zip contents."""
         from orch.doc_service import DocService
 
         doc = MagicMock(spec=ProjectDoc)
@@ -260,9 +284,11 @@ class TestExportBundle:
         svc = DocService(fake_session)
 
         def render_html(content: str, d: Any) -> str:
+            """Return render html."""
             return f"<html><body>{content}</body></html>"
 
         def render_pdf(html: str) -> bytes | None:
+            """Return render pdf."""
             return None
 
         zip_bytes = svc.export_bundle(
@@ -280,6 +306,7 @@ class TestExportBundle:
             assert "_generation_notes.md" in names
 
     def test_export_bundle_multiple_docs_subdirs(self) -> None:
+        """Verifies that export bundle multiple docs subdirs."""
         from orch.doc_service import DocService
 
         doc1 = MagicMock(spec=ProjectDoc)
@@ -307,6 +334,7 @@ class TestExportBundle:
         doc2.generated_at = None
 
         def fake_get(model: type, key: str) -> Any:
+            """Return fake get."""
             if key == "testproj:doc1":
                 return doc1
             if key == "testproj:doc2":
@@ -319,9 +347,11 @@ class TestExportBundle:
         svc = DocService(fake_session)
 
         def render_html(content: str, d: Any) -> str:
+            """Return render html."""
             return f"<html><body>{content}</body></html>"
 
         def render_pdf(html: str) -> bytes | None:
+            """Return render pdf."""
             return None
 
         zip_bytes = svc.export_bundle(
@@ -338,6 +368,7 @@ class TestExportBundle:
             assert "doc-two/doc-two.md" in names
 
     def test_export_bundle_skips_docs_with_no_content(self) -> None:
+        """Verifies that export bundle skips docs with no content."""
         from orch.doc_service import DocService
 
         doc_with_content = MagicMock(spec=ProjectDoc)
@@ -365,6 +396,7 @@ class TestExportBundle:
         doc_without_content.generated_at = None
 
         def fake_get(model: type, key: str) -> Any:
+            """Return fake get."""
             if key == "testproj:doc1":
                 return doc_with_content
             if key == "testproj:doc2":
@@ -377,9 +409,11 @@ class TestExportBundle:
         svc = DocService(fake_session)
 
         def render_html(content: str, d: Any) -> str:
+            """Return render html."""
             return f"<html><body>{content}</body></html>"
 
         def render_pdf(html: str) -> bytes | None:
+            """Return render pdf."""
             return None
 
         zip_bytes = svc.export_bundle(
@@ -397,7 +431,10 @@ class TestExportBundle:
 
 
 class TestSearchDocsGlobal:
+    """Tests for SearchDocsGlobal scenarios."""
+
     def test_search_docs_global_empty_query_returns_empty(self) -> None:
+        """Verifies that search docs global empty query returns empty."""
         from orch.doc_service import DocService
 
         fake_session = _FakeSession()
@@ -411,7 +448,10 @@ class TestSearchDocsGlobal:
 
 
 class TestDocsExportCli:
+    """Tests for DocsExportCli scenarios."""
+
     def test_docs_export_cli_exits_0(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """Verifies that docs export cli exits 0."""
         from click.testing import CliRunner
 
         from orch.cli.doc_commands import docs_export
@@ -430,6 +470,7 @@ class TestDocsExportCli:
 
         @contextmanager
         def fake_get_session():
+            """Return fake get session."""
             yield session
 
         runner = CliRunner()
@@ -442,6 +483,7 @@ class TestDocsExportCli:
         assert result.exit_code in (0, 1)
 
     def test_docs_export_cli_unknown_project_exits_1(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """Verifies that docs export cli unknown project exits 1."""
         from click.testing import CliRunner
 
         from orch.cli.doc_commands import docs_export
@@ -451,6 +493,7 @@ class TestDocsExportCli:
 
         @contextmanager
         def fake_get_session():
+            """Return fake get session."""
             yield session
 
         runner = CliRunner()

@@ -45,6 +45,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
         from dashboard.app import create_app  # noqa: PLC0415
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()

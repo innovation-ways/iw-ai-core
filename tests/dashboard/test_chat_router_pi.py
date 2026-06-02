@@ -194,6 +194,8 @@ def pi_chat_app(
 
 
 class TestCreatePiTab:
+    """Tests for creating Pi-runtime chat tabs."""
+
     def test_create_pi_tab_calls_pi_runtime_not_opencode(
         self,
         pi_chat_app: tuple[TestClient, Any, Any],
@@ -273,6 +275,8 @@ class TestCreatePiTab:
 
 
 class TestPromptDispatch:
+    """Tests that prompt requests are dispatched to the correct runtime."""
+
     def test_prompt_on_pi_tab_calls_pi_runtime(
         self,
         pi_chat_app: tuple[TestClient, Any, Any],
@@ -323,6 +327,8 @@ class TestPromptDispatch:
 
 
 class TestPermissionDispatch:
+    """Tests that permission replies are dispatched to the correct runtime."""
+
     def test_permission_approve_on_pi_tab_calls_pi_runtime(
         self,
         pi_chat_app: tuple[TestClient, Any, Any],
@@ -353,6 +359,7 @@ class TestPermissionDispatch:
         db_session: Session,
         test_project: Project,
     ) -> None:
+        """Verifies that a permission deny on a Pi tab passes through to the Pi runtime."""
         tc, pi_runtime, _oc = pi_chat_app
         tab = _create_pi_tab_in_db(db_session, project_id=test_project.id)
         resp = tc.post(
@@ -374,12 +381,15 @@ class TestPermissionDispatch:
 
 
 class TestAbortDispatch:
+    """Tests that abort requests are dispatched to the Pi runtime."""
+
     def test_abort_pi_tab_calls_pi_runtime(
         self,
         pi_chat_app: tuple[TestClient, Any, Any],
         db_session: Session,
         test_project: Project,
     ) -> None:
+        """Verifies that aborting a Pi tab calls the Pi runtime's abort method."""
         tc, pi_runtime, oc_client = pi_chat_app
         tab = _create_pi_tab_in_db(db_session, project_id=test_project.id)
         resp = tc.post(f"/api/chat/tabs/{tab.id}/abort")
@@ -394,12 +404,15 @@ class TestAbortDispatch:
 
 
 class TestGetTabDispatch:
+    """Tests that GET tab requests are dispatched to the Pi runtime."""
+
     def test_get_pi_tab_calls_pi_runtime(
         self,
         pi_chat_app: tuple[TestClient, Any, Any],
         db_session: Session,
         test_project: Project,
     ) -> None:
+        """Verifies that GET for a Pi tab calls the Pi runtime's get_session method."""
         tc, pi_runtime, oc_client = pi_chat_app
         tab = _create_pi_tab_in_db(db_session, project_id=test_project.id)
         resp = tc.get(f"/api/chat/tabs/{tab.id}")
@@ -415,6 +428,8 @@ class TestGetTabDispatch:
 
 
 class TestNoCrossRuntimeLeakage:
+    """Tests that Pi and OpenCode runtimes do not share state."""
+
     def test_opencode_tab_still_routes_to_opencode(
         self,
         pi_chat_app: tuple[TestClient, Any, Any],
@@ -444,6 +459,8 @@ class TestNoCrossRuntimeLeakage:
 
 
 class TestClearPiTabDispatch:
+    """Tests that clear-tab requests are dispatched to the Pi runtime."""
+
     def test_clear_pi_tab_calls_pi_runtime_not_opencode(
         self,
         pi_chat_app: tuple[TestClient, Any, Any],

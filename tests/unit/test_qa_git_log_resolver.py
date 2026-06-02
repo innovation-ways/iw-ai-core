@@ -116,6 +116,7 @@ class TestResolveWorkItemsForFiles:
         from orch.rag.git_log_resolver import resolve_work_items_for_files
 
         def side_effect(*args, **kwargs):
+            """Return side effect."""
             cmd = args[0]
             file_arg = cmd[cmd.index("--") + 1] if "--" in cmd else ""
             if "file1" in file_arg:

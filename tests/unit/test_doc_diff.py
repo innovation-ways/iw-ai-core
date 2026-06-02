@@ -6,6 +6,8 @@ from orch.doc_diff import diff_document_versions
 
 
 class TestDiffNoH2Headings:
+    """Tests for DiffNoH2Headings scenarios."""
+
     def test_no_h2_headings_single_document_section(self) -> None:
         """No H2 headings → single 'Document' section."""
         old = "Hello world\n"
@@ -18,6 +20,8 @@ class TestDiffNoH2Headings:
 
 
 class TestDiffUnchangedSection:
+    """Tests for DiffUnchangedSection scenarios."""
+
     def test_identical_section_content_unchanged(self) -> None:
         """Identical section content → status unchanged."""
         content = "## Purpose\nSame content\n"
@@ -36,6 +40,8 @@ class TestDiffUnchangedSection:
 
 
 class TestDiffAddedSection:
+    """Tests for DiffAddedSection scenarios."""
+
     def test_section_only_in_new_version_added(self) -> None:
         """Section present only in new version → status added."""
         old = "## Purpose\nOld purpose\n"
@@ -59,6 +65,8 @@ class TestDiffAddedSection:
 
 
 class TestDiffRemovedSection:
+    """Tests for DiffRemovedSection scenarios."""
+
     def test_section_only_in_old_version_removed(self) -> None:
         """Section present only in old version → status removed."""
         old = "## Purpose\nOld purpose\n## Deprecated\nGoing away\n"
@@ -71,6 +79,8 @@ class TestDiffRemovedSection:
 
 
 class TestDiffChangedSection:
+    """Tests for DiffChangedSection scenarios."""
+
     def test_modified_section_content_changed(self) -> None:
         """Modified section content → status changed with non-empty diff."""
         old = "## Purpose\nVersion 1 content\n"
@@ -91,6 +101,8 @@ class TestDiffChangedSection:
 
 
 class TestDiffVersionNumbers:
+    """Tests for DiffVersionNumbers scenarios."""
+
     def test_version_old_and_new_preserved_in_result(self) -> None:
         """version_old and version_new are preserved in DocDiff."""
         result = diff_document_versions("a\n", "b\n", 3, 7)
@@ -110,6 +122,8 @@ class TestDiffVersionNumbers:
 
 
 class TestDiffMultipleSections:
+    """Tests for DiffMultipleSections scenarios."""
+
     def test_mixed_change_types(self) -> None:
         """Document with added, removed, unchanged, and changed sections."""
         old = "## Overview\nOld overview\n## Purpose\nOld purpose\n## Deprecated\nGoing away\n"
@@ -134,6 +148,8 @@ class TestDiffMultipleSections:
 
 
 class TestDiffUnifiedDiffFormat:
+    """Tests for DiffUnifiedDiffFormat scenarios."""
+
     def test_added_section_unified_diff_no_from_lines(self) -> None:
         """Added section diff has no old content lines."""
         old = "## Purpose\nOld purpose\n"

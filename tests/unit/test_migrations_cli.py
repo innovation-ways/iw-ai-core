@@ -13,24 +13,32 @@ from orch.db.safe_migrate import DryRunResult, MultipleHeadsError, Revision
 
 @pytest.fixture
 def cli_runner():
+    """Provide cli runner for tests."""
     return CliRunner()
 
 
 class TestApplyRefusesWithoutOperatorFlag:
+    """Tests for ApplyRefusesWithoutOperatorFlag scenarios."""
+
     def test_apply_refuses_without_operator_flag(self, cli_runner: CliRunner) -> None:
+        """Verifies that apply refuses without operator flag."""
         result = cli_runner.invoke(apply_migrations, [])
         assert result.exit_code == 3
         assert "--i-am-operator" in result.output or "required" in result.output.lower()
 
     def test_apply_refuses_with_json_output(self, cli_runner: CliRunner) -> None:
+        """Verifies that apply refuses with json output."""
         result = cli_runner.invoke(apply_migrations, ["--json"])
         assert result.exit_code == 3
 
 
 class TestApplyRefusesInAgentContext:
+    """Tests for ApplyRefusesInAgentContext scenarios."""
+
     def test_apply_refuses_in_agent_context(
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Verifies that apply refuses in agent context."""
         monkeypatch.setenv("IW_CORE_AGENT_CONTEXT", "true")
         result = cli_runner.invoke(apply_migrations, ["--i-am-operator"])
         assert result.exit_code == 2
@@ -38,6 +46,7 @@ class TestApplyRefusesInAgentContext:
     def test_apply_refuses_in_agent_context_json(
         self, cli_runner: CliRunner, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Verifies that apply refuses in agent context json."""
         monkeypatch.setenv("IW_CORE_AGENT_CONTEXT", "true")
         result = cli_runner.invoke(apply_migrations, ["--i-am-operator", "--json"])
         assert result.exit_code == 2
@@ -48,6 +57,8 @@ class TestApplyRefusesInAgentContext:
 
 
 class TestListPending:
+    """Tests for ListPending scenarios."""
+
     @patch("orch.cli.migrations_commands.list_pending_revisions")
     def test_list_pending_ok(
         self,
@@ -55,6 +66,7 @@ class TestListPending:
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that list pending ok."""
         mock_list.return_value = [
             Revision(
                 id="abc123",
@@ -77,6 +89,7 @@ class TestListPending:
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that list pending json."""
         import json
 
         mock_list.return_value = [
@@ -101,6 +114,7 @@ class TestListPending:
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that list pending empty."""
         mock_list.return_value = []
 
         result = cli_runner.invoke(list_pending, [])
@@ -110,6 +124,8 @@ class TestListPending:
 
 
 class TestDryRun:
+    """Tests for DryRun scenarios."""
+
     @patch("testcontainers.postgres.PostgresContainer")
     def test_dry_run_success(
         self,
@@ -117,6 +133,7 @@ class TestDryRun:
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that dry run success."""
         mock_container = MagicMock()
         mock_container.get_connection_url.return_value = (
             "postgresql+psycopg2://test:test@localhost:5432/test"
@@ -145,6 +162,7 @@ class TestDryRun:
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that dry run failure exit code."""
         mock_container = MagicMock()
         mock_container.get_connection_url.return_value = (
             "postgresql+psycopg2://test:test@localhost:5432/test"
@@ -168,6 +186,8 @@ class TestDryRun:
 
 
 class TestMultiHead:
+    """Tests for MultiHead scenarios."""
+
     @patch("orch.cli.migrations_commands.list_pending_revisions")
     def test_multi_head_exit_code(
         self,
@@ -175,6 +195,7 @@ class TestMultiHead:
         cli_runner: CliRunner,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that multi head exit code."""
         mock_list.side_effect = MultipleHeadsError(
             "Multiple alembic heads detected: ['head1', 'head2']. Create a merge revision."
         )

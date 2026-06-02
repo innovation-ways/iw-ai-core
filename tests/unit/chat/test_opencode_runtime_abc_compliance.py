@@ -42,6 +42,7 @@ def _abc_abstract_methods() -> frozenset[str]:
 
 
 def test_opencode_runtime_implements_every_abstract_method() -> None:
+    """Verifies that OpencodeRuntime implements every abstract method declared on ChatRuntime."""
     abc_methods = _abc_abstract_methods()
     # Sanity: at design time the ABC has 13 abstract methods.
     assert abc_methods, "ChatRuntime declared zero abstract methods — ABC contract gone?"

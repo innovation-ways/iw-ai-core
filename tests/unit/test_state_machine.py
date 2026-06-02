@@ -69,12 +69,14 @@ _INVALID_WORK_ITEM_STATUS = [
 
 @pytest.mark.parametrize(("from_s", "to_s"), _VALID_WORK_ITEM_STATUS)
 def test_work_item_status_valid(from_s: WorkItemStatus, to_s: WorkItemStatus) -> None:
+    """Verifies that work item status valid."""
     assert can_transition_work_item_status(from_s, to_s)
     validate_work_item_status(from_s, to_s)  # no exception
 
 
 @pytest.mark.parametrize(("from_s", "to_s"), _INVALID_WORK_ITEM_STATUS)
 def test_work_item_status_invalid(from_s: WorkItemStatus, to_s: WorkItemStatus) -> None:
+    """Verifies that work item status invalid."""
     assert not can_transition_work_item_status(from_s, to_s)
     with pytest.raises(InvalidTransition, match="WorkItemStatus"):
         validate_work_item_status(from_s, to_s)
@@ -101,12 +103,14 @@ _INVALID_WORK_ITEM_PHASE = [
 
 @pytest.mark.parametrize(("from_s", "to_s"), _VALID_WORK_ITEM_PHASE)
 def test_work_item_phase_valid(from_s: WorkItemPhase, to_s: WorkItemPhase) -> None:
+    """Verifies that work item phase valid."""
     assert can_transition_work_item_phase(from_s, to_s)
     validate_work_item_phase(from_s, to_s)
 
 
 @pytest.mark.parametrize(("from_s", "to_s"), _INVALID_WORK_ITEM_PHASE)
 def test_work_item_phase_invalid(from_s: WorkItemPhase, to_s: WorkItemPhase) -> None:
+    """Verifies that work item phase invalid."""
     assert not can_transition_work_item_phase(from_s, to_s)
     with pytest.raises(InvalidTransition, match="WorkItemPhase"):
         validate_work_item_phase(from_s, to_s)
@@ -149,12 +153,14 @@ _INVALID_STEP_STATUS = [
 
 @pytest.mark.parametrize(("from_s", "to_s"), _VALID_STEP_STATUS)
 def test_step_status_valid(from_s: StepStatus, to_s: StepStatus) -> None:
+    """Verifies that step status valid."""
     assert can_transition_step_status(from_s, to_s)
     validate_step_status(from_s, to_s)
 
 
 @pytest.mark.parametrize(("from_s", "to_s"), _INVALID_STEP_STATUS)
 def test_step_status_invalid(from_s: StepStatus, to_s: StepStatus) -> None:
+    """Verifies that step status invalid."""
     assert not can_transition_step_status(from_s, to_s)
     with pytest.raises(InvalidTransition, match="StepStatus"):
         validate_step_status(from_s, to_s)
@@ -194,12 +200,14 @@ _INVALID_RUN_STATUS = [
 
 @pytest.mark.parametrize(("from_s", "to_s"), _VALID_RUN_STATUS)
 def test_run_status_valid(from_s: RunStatus, to_s: RunStatus) -> None:
+    """Verifies that run status valid."""
     assert can_transition_run_status(from_s, to_s)
     validate_run_status(from_s, to_s)
 
 
 @pytest.mark.parametrize(("from_s", "to_s"), _INVALID_RUN_STATUS)
 def test_run_status_invalid(from_s: RunStatus, to_s: RunStatus) -> None:
+    """Verifies that run status invalid."""
     assert not can_transition_run_status(from_s, to_s)
     with pytest.raises(InvalidTransition, match="RunStatus"):
         validate_run_status(from_s, to_s)
@@ -249,12 +257,14 @@ _INVALID_BATCH_STATUS = [
 
 @pytest.mark.parametrize(("from_s", "to_s"), _VALID_BATCH_STATUS)
 def test_batch_status_valid(from_s: BatchStatus, to_s: BatchStatus) -> None:
+    """Verifies that batch status valid."""
     assert can_transition_batch_status(from_s, to_s)
     validate_batch_status(from_s, to_s)
 
 
 @pytest.mark.parametrize(("from_s", "to_s"), _INVALID_BATCH_STATUS)
 def test_batch_status_invalid(from_s: BatchStatus, to_s: BatchStatus) -> None:
+    """Verifies that batch status invalid."""
     assert not can_transition_batch_status(from_s, to_s)
     with pytest.raises(InvalidTransition, match="BatchStatus"):
         validate_batch_status(from_s, to_s)
@@ -299,12 +309,14 @@ _INVALID_BATCH_ITEM_STATUS = [
 
 @pytest.mark.parametrize(("from_s", "to_s"), _VALID_BATCH_ITEM_STATUS)
 def test_batch_item_status_valid(from_s: BatchItemStatus, to_s: BatchItemStatus) -> None:
+    """Verifies that batch item status valid."""
     assert can_transition_batch_item_status(from_s, to_s)
     validate_batch_item_status(from_s, to_s)
 
 
 @pytest.mark.parametrize(("from_s", "to_s"), _INVALID_BATCH_ITEM_STATUS)
 def test_batch_item_status_invalid(from_s: BatchItemStatus, to_s: BatchItemStatus) -> None:
+    """Verifies that batch item status invalid."""
     assert not can_transition_batch_item_status(from_s, to_s)
     with pytest.raises(InvalidTransition, match="BatchItemStatus"):
         validate_batch_item_status(from_s, to_s)
@@ -364,6 +376,7 @@ def test_invalid_transition_message_includes_entity_type() -> None:
 def test_work_item_status_transitions_type_aware(
     from_s: WorkItemStatus, to_s: WorkItemStatus, item_type: WorkItemType | None, expected: bool
 ) -> None:
+    """Verifies that work item status transitions type aware."""
     assert can_transition_work_item_status(from_s, to_s, item_type) is expected
 
 
@@ -386,6 +399,7 @@ def test_work_item_status_transitions_type_aware(
 def test_validate_work_item_status_type_aware(
     from_s: WorkItemStatus, to_s: WorkItemStatus, item_type: WorkItemType | None, expected: bool
 ) -> None:
+    """Verifies that validate work item status type aware."""
     if expected:
         validate_work_item_status(from_s, to_s, item_type)
     else:

@@ -25,6 +25,7 @@ def make_segment(
     completed_at: datetime | None = None,
     duration_secs: float = 60.0,
 ) -> StepRunSegment:
+    """Return make segment."""
     if started_at is None:
         started_at = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
     if completed_at is None:
@@ -52,6 +53,7 @@ def make_step_row(
     display_label: str = "Step",
     final_status: StepStatus = StepStatus.completed,
 ) -> StepRow:
+    """Return make step row."""
     runs = [make_segment(rn) for rn in range(1, max_run_number + 1)]
     return StepRow(
         step_id=step_id,
@@ -74,18 +76,22 @@ class TestHotspotDetectionOnlyRetriedSteps:
     """Only steps with max(run_number) >= 2 should appear in hotspots."""
 
     def test_single_run_is_not_hotspot(self) -> None:
+        """Verifies that single run is not hotspot."""
         step = make_step_row("S01", 1, max_run_number=1)
         assert step.is_hotspot is False
 
     def test_two_runs_is_hotspot(self) -> None:
+        """Verifies that two runs is hotspot."""
         step = make_step_row("S01", 1, max_run_number=2)
         assert step.is_hotspot is True
 
     def test_three_runs_is_hotspot(self) -> None:
+        """Verifies that three runs is hotspot."""
         step = make_step_row("S01", 1, max_run_number=3)
         assert step.is_hotspot is True
 
     def test_zero_runs_is_not_hotspot(self) -> None:
+        """Verifies that zero runs is not hotspot."""
         step = StepRow(
             step_id="S01",
             step_number=1,
@@ -108,6 +114,7 @@ class TestHotspotSortOrder:
     """Sort order: retry_count desc, then step_id asc (AC6)."""
 
     def test_retry_count_descending(self) -> None:
+        """Verifies that retry count descending."""
         hotspots = [
             RetryHotspot(
                 step_id="S03", display_label="Step 3", retry_count=2, final_status="failed"
@@ -125,6 +132,7 @@ class TestHotspotSortOrder:
         assert sorted_hotspots[2].retry_count == 2
 
     def test_step_id_ascending_for_same_retry_count(self) -> None:
+        """Verifies that step id ascending for same retry count."""
         hotspots = [
             RetryHotspot(
                 step_id="S03", display_label="Step 3", retry_count=2, final_status="failed"
@@ -142,6 +150,7 @@ class TestHotspotSortOrder:
         assert sorted_hotspots[2].step_id == "S03"
 
     def test_full_sort_order(self) -> None:
+        """Verifies that full sort order."""
         hotspots = [
             RetryHotspot(
                 step_id="S04", display_label="Step 4", retry_count=1, final_status="completed"
@@ -164,6 +173,7 @@ class TestEmptyHotspotList:
     """Empty hotspot list for items where every step has max(run_number) == 1."""
 
     def test_all_single_run_items_produce_empty_hotspots(self) -> None:
+        """Verifies that all single run items produce empty hotspots."""
         steps = [
             make_step_row("S01", 1, max_run_number=1),
             make_step_row("S02", 2, max_run_number=1),
@@ -188,6 +198,7 @@ class TestEmptyHotspotList:
         assert "No retries — clean run." in md
 
     def test_mixed_single_and_multi_run_items(self) -> None:
+        """Verifies that mixed single and multi run items."""
         steps = [
             make_step_row("S01", 1, max_run_number=1),
             make_step_row("S02", 2, max_run_number=3),
@@ -222,6 +233,7 @@ class TestHotspotRenderingInMarkdown:
     """Verify hotspot data renders correctly in markdown."""
 
     def test_hotspot_retry_count_in_markdown(self) -> None:
+        """Verifies that hotspot retry count in markdown."""
         hotspots = [
             RetryHotspot(
                 step_id="S03", display_label="Backend", retry_count=4, final_status="completed"
@@ -248,6 +260,7 @@ class TestHotspotRenderingInMarkdown:
         assert "Backend" in md
 
     def test_hotspot_final_status_in_markdown(self) -> None:
+        """Verifies that hotspot final status in markdown."""
         hotspots = [
             RetryHotspot(
                 step_id="S01", display_label="Tests", retry_count=2, final_status="failed"

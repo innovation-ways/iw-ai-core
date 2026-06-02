@@ -25,6 +25,7 @@ def client(db_session: Session) -> TestClient:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -38,6 +39,8 @@ def client(db_session: Session) -> TestClient:
 
 
 class TestCoveragePage:
+    """Tests for the coverage dashboard page rendering with various data states."""
+
     def test_coverage_page_renders_with_data(self, client: TestClient) -> None:
         """Monkeypatch load_coverage to return a populated view; page renders OK."""
         populated = CoverageView(

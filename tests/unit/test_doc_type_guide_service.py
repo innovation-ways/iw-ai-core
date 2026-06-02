@@ -9,7 +9,10 @@ from orch.doc_service import DocService
 
 
 class TestGetTypeGuide:
+    """Tests for GetTypeGuide scenarios."""
+
     def test_get_type_guide_returns_none_when_missing(self) -> None:
+        """Verifies that get type guide returns none when missing."""
         session = MagicMock()
         session.get.return_value = None
 
@@ -20,6 +23,7 @@ class TestGetTypeGuide:
         session.get.assert_called_once_with(DocTypeGuide, "marketing")
 
     def test_get_type_guide_returns_content_when_present(self) -> None:
+        """Verifies that get type guide returns content when present."""
         session = MagicMock()
         mock_guide = MagicMock(spec=DocTypeGuide)
         mock_guide.guide_md = "# Marketing Guide\n\nUse a friendly tone."
@@ -33,7 +37,10 @@ class TestGetTypeGuide:
 
 
 class TestSaveTypeGuide:
+    """Tests for SaveTypeGuide scenarios."""
+
     def test_save_type_guide_inserts_new_row(self) -> None:
+        """Verifies that save type guide inserts new row."""
         session = MagicMock()
         session.get.return_value = None
 
@@ -48,6 +55,7 @@ class TestSaveTypeGuide:
         assert saved.guide_md == "# New Guide"
 
     def test_save_type_guide_updates_existing_row(self) -> None:
+        """Verifies that save type guide updates existing row."""
         session = MagicMock()
         existing = MagicMock(spec=DocTypeGuide)
         existing.doc_type = "marketing"
@@ -64,6 +72,8 @@ class TestSaveTypeGuide:
 
 
 class TestEffectiveGuide:
+    """Tests for EffectiveGuide scenarios."""
+
     def test_effective_guide_falls_back_to_default_when_no_specific_guide(self) -> None:
         """FAILS before fix: _effective_guide returns None when neither an instance
         guide nor a doc_type-keyed guide exists, even though a '_default' row exists."""
@@ -71,6 +81,7 @@ class TestEffectiveGuide:
         default_guide.guide_md = "# Global Editorial Guidelines\n..."
 
         def fake_get(model, key):
+            """Return fake get."""
             if model is DocInstanceGuide:
                 return None  # no per-doc instance guide
             if model is DocTypeGuide and key == "diagram":
@@ -106,6 +117,7 @@ class TestEffectiveGuide:
         type_guide.guide_md = "# Diagram Type Guide\nfor all diagram docs"
 
         def fake_get(model, key):
+            """Return fake get."""
             if model is DocInstanceGuide:
                 return None
             if model is DocTypeGuide and key == "diagram":

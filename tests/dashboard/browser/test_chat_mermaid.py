@@ -27,6 +27,7 @@ def dashboard_url(http_server):
 
 @pytest.fixture
 def mermaid_good_dsl():
+    """Return a valid Mermaid flowchart DSL string for testing."""
     return """flowchart TD
     A[Start] --> B{Decision}
     B -->|Yes| C[Do Action]
@@ -41,12 +42,16 @@ def mermaid_good_dsl():
 
 @pytest.fixture
 def mermaid_bad_dsl():
+    """Return an invalid Mermaid DSL string that should trigger an error chip."""
     return "flowchart TD\n  A -->"
 
 
 @pytest.mark.browser
 class TestMermaidRendering:
+    """Browser tests for Mermaid diagram rendering via playwright-cli."""
+
     def test_good_mermaid_renders_iframe(self, page, dashboard_url, mermaid_good_dsl):
+        """Verifies that valid Mermaid DSL renders an iframe wrapper."""
         page.goto(dashboard_url)
         page.wait_for_load_state("networkidle")
 
@@ -67,6 +72,7 @@ class TestMermaidRendering:
         assert page.locator(".mermaid-wrapper").count() >= initial_count
 
     def test_bad_mermaid_shows_error_chip(self, page, dashboard_url, mermaid_bad_dsl):
+        """Verifies that invalid Mermaid DSL renders an error chip with a retry button."""
         page.goto(dashboard_url)
         page.wait_for_load_state("networkidle")
 
@@ -90,6 +96,7 @@ class TestMermaidRendering:
         assert page.locator(".mermaid-error details summary").first.inner_text() == "Show source"
 
     def test_mermaid_wrapper_has_data_iw_layout(self, page, dashboard_url, mermaid_good_dsl):
+        """Verifies that the mermaid wrapper has data-iw-layout=\'elk\'."""
         page.goto(dashboard_url)
         page.wait_for_load_state("networkidle")
 
@@ -111,6 +118,7 @@ class TestMermaidRendering:
         assert wrappers.count() > 0
 
     def test_mermaid_iframe_has_sandbox(self, page, dashboard_url, mermaid_good_dsl):
+        """Verifies that the mermaid iframe has a sandbox attribute."""
         page.goto(dashboard_url)
         page.wait_for_load_state("networkidle")
 
@@ -132,6 +140,7 @@ class TestMermaidRendering:
         assert sandboxed_iframe.count() > 0
 
     def test_retry_re_runs_upgrade(self, page, dashboard_url, mermaid_bad_dsl):
+        """Verifies that clicking the retry button re-runs the mermaid upgrade."""
         page.goto(dashboard_url)
         page.wait_for_load_state("networkidle")
 
@@ -167,6 +176,8 @@ def http_server():
     static_dir = Path(__file__).parent.parent.parent / "dashboard" / "static"
 
     class Handler(http.server.SimpleHTTPRequestHandler):
+        """SimpleHTTPRequestHandler configured to serve the dashboard static directory."""
+
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=static_dir, **kwargs)
 

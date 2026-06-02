@@ -15,6 +15,7 @@ def _item(
     content: str = "",
     steps: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
+    """Return item."""
     return {
         "id": iid,
         "title": iid,
@@ -88,6 +89,7 @@ def test_paths_in_out_of_scope_section_do_not_create_overlap() -> None:
 
 
 def test_paths_in_notes_section_do_not_create_overlap() -> None:
+    """Verifies that paths in notes section do not create overlap."""
     a_doc = (
         "## File Manifest\n\n"
         "| File | Type |\n|---|---|\n"

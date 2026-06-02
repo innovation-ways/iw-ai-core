@@ -196,6 +196,7 @@ class TestNoReplaySection:
     """When no cascade events exist, none of the cascade UI is rendered."""
 
     def test_overview_renders_no_replay_section_when_no_cascade_events(self) -> None:
+        """Verifies that no replay section is rendered when no cascade events exist."""
         item = _make_item()
         cascade_history = _make_cascade_history(cascade_event_count=0)
         html = _render_overview(item, cascade_history=cascade_history)
@@ -206,12 +207,14 @@ class TestNoReplaySection:
         assert "cascade-thrashing-alert" not in html
 
     def test_recovery_summary_absent_for_zero_events(self) -> None:
+        """Verifies that the recovery summary is absent when there are no cascade events."""
         cascade_history = _make_cascade_history(cascade_event_count=0)
         html = _render_recovery_summary(cascade_history)
         # Assert rendered element class is absent (comments in template contain the phrase)
         assert "recovery-summary" not in html
 
     def test_cascade_history_absent_for_zero_events(self) -> None:
+        """Verifies that the cascade history tree is absent when there are no cascade events."""
         cascade_history = _make_cascade_history(cascade_event_count=0)
         html = _render_cascade_history(cascade_history)
         assert "Replay history" not in html
@@ -227,6 +230,7 @@ class TestRecoverySummaryWithCascadeEvents:
     """Recovery summary banner appears when cascade_event_count > 0."""
 
     def test_overview_renders_recovery_summary_when_cascade_events_exist(self) -> None:
+        """Verifies that the recovery summary renders when cascade events are present."""
         item = _make_item()
         cascade_history = _make_cascade_history(
             cascade_event_count=8,
@@ -240,6 +244,7 @@ class TestRecoverySummaryWithCascadeEvents:
         assert "95.0 min replay wall-clock" in html
 
     def test_recovery_summary_singular_round(self) -> None:
+        """Verifies that the recovery summary uses singular phrasing for a single fix round."""
         cascade_history = _make_cascade_history(cascade_event_count=1, fix_cycle_count=1)
         html = _render_recovery_summary(cascade_history)
         assert "1 cascade round" in html
@@ -248,6 +253,7 @@ class TestRecoverySummaryWithCascadeEvents:
         assert "1 cascade rounds" not in html
 
     def test_recovery_summary_no_wall_clock_when_none(self) -> None:
+        """Verifies that the recovery summary omits wall-clock time when it is None."""
         cascade_history = _make_cascade_history(
             cascade_event_count=3, replay_wall_clock_minutes=None
         )
@@ -298,6 +304,7 @@ class TestCascadeTreeCausality:
         assert "└─" in html or "├─" in html
 
     def test_cascade_tree_top_level_nodes_without_children(self) -> None:
+        """Verifies that top-level nodes without children render correctly in the cascade tree."""
         node = _make_cascade_node(
             trigger_step_id="S16",
             reset_step_ids=["S12", "S13", "S14", "S15"],
@@ -312,6 +319,7 @@ class TestCascadeTreeCausality:
         assert "S13" in html
 
     def test_review_replay_shows_changed_files(self) -> None:
+        """Verifies that the review replay section shows the changed files for a fix cycle."""
         node = _make_cascade_node(
             trigger_step_id="S17",
             reset_step_ids=["S12"],
@@ -348,6 +356,7 @@ class TestRunCountBadge:
     """C.1: run-count badge only appears when a step ran more than once."""
 
     def test_step_run_count_badge_shown_when_runs_gt_1(self) -> None:
+        """Verifies that a run count badge is shown when a step has more than one run."""
         item = _make_item()
         steps = [_make_step("S12", run_count=7)]
         html = _render_overview(
@@ -361,6 +370,7 @@ class TestRunCountBadge:
         assert "hx-get" in html
 
     def test_run_count_badge_absent_when_runs_eq_1(self) -> None:
+        """Verifies that no run count badge is shown when a step has exactly one run."""
         item = _make_item()
         steps = [_make_step("S01", run_count=1)]
         html = _render_overview(
@@ -371,6 +381,7 @@ class TestRunCountBadge:
         assert "step-run-badge" not in html
 
     def test_run_count_badge_absent_for_synthetic_steps(self) -> None:
+        """Verifies that no run count badge is shown for synthetic steps."""
         item = _make_item()
         # Synthetic steps (S00, MERGE) should never show the badge
         steps = [_make_step("S00", run_count=5, is_synthetic=True)]
@@ -414,6 +425,7 @@ class TestThrashingBanner:
     """C.5: thrashing alert banner."""
 
     def test_thrashing_banner_shown_when_event_exists(self) -> None:
+        """Verifies that a thrashing banner is shown when a thrashing daemon event exists."""
         thrashing = _make_thrashing_alert(trigger_step_id="S12", cascade_count=4)
         cascade_history = _make_cascade_history(
             cascade_event_count=8,
@@ -448,6 +460,7 @@ class TestReplayHistoryCollapseBehavior:
     """Replay history <details> is expanded by default only when turbulent (>3)."""
 
     def test_replay_history_open_when_turbulent(self) -> None:
+        """Verifies that the replay history details element is open when the item is turbulent."""
         cascade_history = _make_cascade_history(
             cascade_event_count=8, tree=[_make_cascade_node("S17", ["S12"])]
         )
@@ -456,6 +469,9 @@ class TestReplayHistoryCollapseBehavior:
         assert "<details open" in html
 
     def test_replay_history_closed_when_not_turbulent(self) -> None:
+        """Verifies that the replay history details element is closed when the item is not
+        turbulent.
+        """
         cascade_history = _make_cascade_history(
             cascade_event_count=2,
             tree=[
@@ -489,6 +505,7 @@ def client(db_session):
     try:
 
         def override_get_db():
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()

@@ -31,7 +31,10 @@ def _render_message(role="assistant", msg_id="test-1", content="Hello"):
 
 
 class TestChatTemplatesNoMarkedReferences:
+    """Tests that chat templates do not use the marked.js parse function."""
+
     def test_no_marked_parse_in_message_html(self):
+        """Verifies that message.html does not call marked.parse()."""
         env = Environment(loader=FileSystemLoader(_template_dir()), autoescape=select_autoescape())
         html = env.get_template("chat/message.html").render(
             role="assistant", id="x", content="test", role_label="A"
@@ -40,15 +43,17 @@ class TestChatTemplatesNoMarkedReferences:
 
     @pytest.mark.skip(reason="item_artifacts.html removed per F-00079 design (Invariant 9)")
     def test_no_marked_parse_in_item_artifacts(self):  # noqa: assertion-scanner
-        pass
+        """Verifies that item_artifacts.html does not call marked.parse() (skipped: file."""
 
     def test_no_marked_cdn_in_base_html(self):  # noqa: assertion-scanner
+        """Verifies that base.html does not load marked.js from a CDN."""
         base_path = Path(__file__).parent.parent.parent / "dashboard" / "templates" / "base.html"
         html = base_path.read_text()
         assert "cdn.jsdelivr.net/npm/marked" not in html
         assert "marked.min.js" not in html
 
     def test_vendor_dompurify_referenced_in_libs_partial(self):
+        """Verifies that DOMPurify is referenced in the libs partial."""
         # base.html no longer loads DOMPurify directly — it's pulled in lazily
         # per-page via the templates/components/libs/dompurify.html include
         # (see the comment in base.html). Verify the vendor file is referenced
@@ -60,6 +65,7 @@ class TestChatTemplatesNoMarkedReferences:
         assert "/static/vendor/dompurify/purify.min.js" in joined
 
     def test_vendor_highlightjs_referenced_in_libs_partial(self):
+        """Verifies that highlight.js is referenced in the libs partial."""
         # Same rationale as the DOMPurify test — highlight.js is loaded via a
         # per-page include rather than being hard-coded in base.html.
         libs_dir = (
@@ -70,17 +76,26 @@ class TestChatTemplatesNoMarkedReferences:
 
 
 class TestItemArtifactsRenderStatic:
+    """Tests that item artifact templates use static markdown rendering."""
+
     @pytest.mark.skip(reason="item_artifacts.html removed per F-00079 design (Invariant 9)")
     def test_loadartifact_calls_render_markdown_static(self):  # noqa: assertion-scanner
-        pass
+        """Verifies that loadArtifact calls the static renderMarkdown function (skipped: file
+        removed).
+        """
 
     @pytest.mark.skip(reason="item_artifacts.html removed per F-00079 design (Invariant 9)")
     def test_no_innerhtml_for_markdown_in_item_artifacts(self):  # noqa: assertion-scanner
-        pass
+        """Verifies that item_artifacts.html does not use innerHTML for markdown (skipped: file
+        removed).
+        """
 
 
 class TestCodeBlockTemplate:
+    """Tests for the code block template rendering."""
+
     def test_code_block_has_copy_button(self):
+        """Verifies that code blocks render a copy button."""
         env = Environment(
             loader=FileSystemLoader(_template_dir()),
             autoescape=select_autoescape(enabled_extensions=()),
@@ -92,6 +107,7 @@ class TestCodeBlockTemplate:
         assert "Copy code" in html
 
     def test_code_block_has_language_label(self):
+        """Verifies that code blocks render a language label."""
         env = Environment(
             loader=FileSystemLoader(_template_dir()),
             autoescape=select_autoescape(enabled_extensions=()),
@@ -103,7 +119,10 @@ class TestCodeBlockTemplate:
 
 
 class TestSourcesPanelTemplate:
+    """Tests for the sources panel template rendering."""
+
     def test_renders_with_citations(self):
+        """Verifies that the sources panel renders citation chips when citations are provided."""
         env = Environment(
             loader=FileSystemLoader(_template_dir()),
             autoescape=select_autoescape(enabled_extensions=()),
@@ -123,6 +142,7 @@ class TestSourcesPanelTemplate:
         assert '<a href="/project/1/code/orch.db.models"' in html
 
     def test_empty_citations_renders_nothing(self):
+        """Verifies that the sources panel renders nothing when the citations list is empty."""
         env = Environment(
             loader=FileSystemLoader(_template_dir()),
             autoescape=select_autoescape(enabled_extensions=()),

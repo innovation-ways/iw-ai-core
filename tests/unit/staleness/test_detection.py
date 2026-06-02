@@ -66,6 +66,8 @@ def _make_proc_entry(
 
 
 class TestIsCwdUnder:
+    """Tests for is_cwd_under — verifies /proc cwd symlink resolution against repo_root."""
+
     def test_cwd_inside_repo_root(self, tmp_path: Path) -> None:
         """Returns True when /proc/<pid>/cwd resolves inside repo_root."""
         repo_root = tmp_path / "myproject"
@@ -128,6 +130,10 @@ class TestIsCwdUnder:
 
 
 class TestReadProcessStartTime:
+    """Tests for read_process_start_time — verifies jiffies-to-wall-clock conversion from
+    /proc/stat.
+    """
+
     def test_reads_start_time_from_proc(self, tmp_path: Path) -> None:
         """read_process_start_time returns a datetime computed from /proc/<pid>/stat."""
         proc_dir = tmp_path / "proc"
@@ -176,6 +182,10 @@ class TestReadProcessStartTime:
 
 
 class TestFindRunningPidPidfile:
+    """Tests for find_running_pid with pidfile detect — covers running, stale, missing, and wrong-
+    cwd cases.
+    """
+
     def test_pidfile_valid_running_pid_inside_repo(self, tmp_path: Path) -> None:
         """Returns pid when pidfile holds a live pid whose cwd is inside repo_root."""
         repo_root = tmp_path / "myproject"
@@ -256,6 +266,8 @@ class TestFindRunningPidPidfile:
 
 
 class TestFindRunningPidPort:
+    """Tests for find_running_pid with port detect — uses mocked ss output."""
+
     def test_port_detect_finds_pid_in_repo(self, tmp_path: Path) -> None:
         """Returns pid when ss output shows a process listening on the port."""
         repo_root = tmp_path / "myproject"
@@ -335,6 +347,10 @@ class TestFindRunningPidPort:
 
 
 class TestFindRunningPidPgrep:
+    """Tests for find_running_pid with pgrep detect — covers match, no-match, wrong-cwd, and multi-
+    match.
+    """
+
     def test_pgrep_finds_matching_pid_in_repo(self, tmp_path: Path) -> None:
         """Returns pid when cmdline matches pattern and cwd is in repo_root."""
         repo_root = tmp_path / "myproject"
@@ -439,6 +455,8 @@ class TestFindRunningPidPgrep:
 
 
 class TestFindRunningContainer:
+    """Tests for find_running_container — covers running, stopped, inspect failure, and timeout."""
+
     def test_running_container_returns_container_id(self) -> None:
         """Returns container id when docker inspect shows it is running."""
         mock_result = MagicMock()
@@ -495,6 +513,8 @@ class TestFindRunningContainer:
 
 
 class TestReadContainerStartTime:
+    """Tests for read_container_start_time — verifies ISO8601 parsing and error handling."""
+
     def test_parses_container_start_time(self) -> None:
         """Parses docker inspect StartedAt ISO8601 timestamp."""
         mock_result = MagicMock()

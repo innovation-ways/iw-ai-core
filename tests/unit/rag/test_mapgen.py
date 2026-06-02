@@ -40,7 +40,7 @@ class TestAssembleMarkdownOmission:
         )
 
     def test_i00055_assemble_markdown_contains_all_sections(self):
-        """Sanity check: all 8 section H2s must be present."""
+        """Verifies that all expected section H2 headings are present in the assembled markdown."""
         from orch.rag.mapgen import _SECTION_TITLES, MapGenerator
 
         answers = {key: f"answer for {key}" for key, _, _ in MapGenerator.QUESTIONS}
@@ -53,7 +53,9 @@ class TestAssembleMarkdownOmission:
             )
 
     def test_i00055_assemble_markdown_answers_are_plain_text(self):
-        """Answers must be embedded verbatim (no markdown fences wrapping them)."""
+        """Verifies that section answers are embedded verbatim without any surrounding markdown
+        fences.
+        """
         from orch.rag.mapgen import MapGenerator
 
         answers = {key: f"plain text for {key}" for key, _, _ in MapGenerator.QUESTIONS}

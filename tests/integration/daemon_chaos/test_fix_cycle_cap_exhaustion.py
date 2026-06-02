@@ -25,6 +25,14 @@ from orch.db.models import (
 
 
 def _daemon_config(tmp_path: Path) -> DaemonConfig:
+    """Build a minimal DaemonConfig for fix-cycle cap tests.
+
+    Args:
+        tmp_path: pytest tmp_path used for auxiliary file paths.
+
+    Returns:
+        A DaemonConfig instance with dummy (non-connectable) DB coordinates.
+    """
     projects_toml = tmp_path / "projects.toml"
     projects_toml.write_text("", encoding="utf-8")
     return DaemonConfig(
@@ -48,6 +56,14 @@ def _daemon_config(tmp_path: Path) -> DaemonConfig:
 
 
 def _project_config(cap: int) -> ProjectConfig:
+    """Build a ProjectConfig with the given per-step fix-cycle cap.
+
+    Args:
+        cap: Maximum number of fix cycles allowed per step.
+
+    Returns:
+        A ProjectConfig for the ``test-proj`` project with ``fix_cycle_max=cap``.
+    """
     return ProjectConfig(
         id="test-proj",
         display_name="Test",
@@ -61,6 +77,15 @@ def _project_config(cap: int) -> ProjectConfig:
 
 
 def _seed_failed_review_step(db_session, item_id: str) -> WorkflowStep:
+    """Insert a WorkItem and a failed code_review WorkflowStep into the test DB.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+        item_id: ID to assign to the new WorkItem (and used in step title).
+
+    Returns:
+        The committed WorkflowStep in ``StepStatus.failed`` state.
+    """
     item = WorkItem(
         project_id="test-proj",
         id=item_id,
@@ -101,6 +126,14 @@ def _seed_failed_review_step(db_session, item_id: str) -> WorkflowStep:
 
 
 def _run_failed_fix_cycle(db_session, step: WorkflowStep, tmp_path: Path, monkeypatch) -> None:
+    """Execute one fix cycle for the given step and assert it terminates as failed.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+        step: The WorkflowStep to attempt a fix cycle against.
+        tmp_path: pytest tmp_path used to create a fake worktree directory.
+        monkeypatch: The pytest MonkeyPatch fixture used to stub ``_launch_fix_agent``.
+    """
     wt = tmp_path / ".worktrees" / step.work_item_id
     wt.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(
@@ -140,6 +173,7 @@ def _run_failed_fix_cycle(db_session, step: WorkflowStep, tmp_path: Path, monkey
 
 @pytest.mark.integration
 def test_fix_cycle_count_equals_cap_exactly(db_session, test_project, tmp_path, monkeypatch):
+    """Verifies that exactly cap fix cycles are allowed and the (cap+1)th attempt is blocked."""
     cap = 5
     step = _seed_failed_review_step(db_session, "I-CAP-1")
 
@@ -154,6 +188,7 @@ def test_fix_cycle_count_equals_cap_exactly(db_session, test_project, tmp_path, 
 
 @pytest.mark.integration
 def test_no_further_fix_attempts_after_cap(db_session, test_project, tmp_path, monkeypatch):
+    """Verifies that no new FixCycle rows are created once the fix-cycle cap is exhausted."""
     cap = 1
     step = _seed_failed_review_step(db_session, "I-CAP-2")
 
@@ -169,6 +204,7 @@ def test_no_further_fix_attempts_after_cap(db_session, test_project, tmp_path, m
 
 @pytest.mark.integration
 def test_daemon_can_move_to_next_item_after_cap(db_session, test_project, tmp_path, monkeypatch):
+    """Verifies that after one item exhausts its cap, a second item can still attempt fix cycles."""
     cap = 1
     first = _seed_failed_review_step(db_session, "I-CAP-FIRST")
     second = _seed_failed_review_step(db_session, "I-CAP-NEXT")

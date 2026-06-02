@@ -1,3 +1,5 @@
+"""Unit tests for rewrite down revision."""
+
 from __future__ import annotations
 
 import subprocess
@@ -16,6 +18,7 @@ def _run_script(path: Path) -> subprocess.CompletedProcess[str]:
 
 
 def test_rewrites_hex_down_revision(tmp_path: Path) -> None:
+    """Verifies that rewrites hex down revision."""
     migration_path = tmp_path / "rev_test.py"
     original = '''"""add table"""
 
@@ -43,6 +46,7 @@ def downgrade() -> None:
 
 
 def test_rewrites_none_down_revision(tmp_path: Path) -> None:
+    """Verifies that rewrites none down revision."""
     migration_path = tmp_path / "rev_none.py"
     migration_path.write_text("down_revision = None\n")
 
@@ -53,6 +57,7 @@ def test_rewrites_none_down_revision(tmp_path: Path) -> None:
 
 
 def test_rewrites_typed_annotation_form(tmp_path: Path) -> None:
+    """Verifies that rewrites typed annotation form."""
     migration_path = tmp_path / "rev_typed.py"
     migration_path.write_text('down_revision: str | tuple[str, ...] | None = "abc123ef"\n')
 
@@ -63,6 +68,7 @@ def test_rewrites_typed_annotation_form(tmp_path: Path) -> None:
 
 
 def test_idempotent_pending(tmp_path: Path) -> None:
+    """Verifies that idempotent pending."""
     migration_path = tmp_path / "rev_pending.py"
     original = 'down_revision = "PENDING"\n'
     migration_path.write_text(original)
@@ -74,6 +80,7 @@ def test_idempotent_pending(tmp_path: Path) -> None:
 
 
 def test_no_down_revision_raises(tmp_path: Path) -> None:
+    """Verifies that no down revision raises."""
     migration_path = tmp_path / "no_down_revision.py"
     migration_path.write_text('revision = "abc"\n')
 
@@ -84,6 +91,7 @@ def test_no_down_revision_raises(tmp_path: Path) -> None:
 
 
 def test_missing_file_raises(tmp_path: Path) -> None:
+    """Verifies that missing file raises."""
     missing_path = tmp_path / "missing.py"
 
     result = _run_script(missing_path)

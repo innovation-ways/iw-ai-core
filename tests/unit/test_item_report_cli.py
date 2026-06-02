@@ -19,12 +19,14 @@ def make_get_session(mock_session: MagicMock) -> object:
 
     @contextmanager
     def get_session() -> Generator[MagicMock, None, None]:
+        """Return get session."""
         yield mock_session
 
     return get_session
 
 
 def make_ctx_obj(mock_session: MagicMock, project_id: str | None = None) -> dict[str, object]:
+    """Return make ctx obj."""
     return {"get_session": make_get_session(mock_session), "project_id": project_id}
 
 
@@ -32,6 +34,7 @@ class TestItemReportCli:
     """Test the iw item-report CLI command."""
 
     def test_exit_code_0_on_success(self) -> None:
+        """Verifies that exit code 0 on success."""
         item_id = "F-00055"
         mock_session = MagicMock()
         mock_item = MagicMock()
@@ -73,6 +76,7 @@ class TestItemReportCli:
                 )
 
     def test_exit_code_1_on_unknown_item(self) -> None:
+        """Verifies that exit code 1 on unknown item."""
         item_id = "F-DOES-NOT-EXIST"
         mock_session = MagicMock()
         mock_session.get.return_value = None
@@ -86,6 +90,7 @@ class TestItemReportCli:
             assert result.exit_code == 1, f"exception: {result.exception}, output: {result.output}"
 
     def test_exit_code_2_on_path_resolution_failure(self) -> None:
+        """Verifies that exit code 2 on path resolution failure."""
         from orch.daemon.execution_report import ExecutionReportResolutionError
 
         item_id = "F-00055"
@@ -131,6 +136,7 @@ class TestItemReportCli:
                 )
 
     def test_stdout_flag_prints_markdown(self) -> None:
+        """Verifies that stdout flag prints markdown."""
         item_id = "F-00055"
         mock_session = MagicMock()
         mock_item = MagicMock()
@@ -173,6 +179,7 @@ class TestItemReportCli:
                 assert "Markdown content" in result.output
 
     def test_project_flag_respected(self) -> None:
+        """Verifies that project flag respected."""
         item_id = "F-00055"
         mock_session = MagicMock()
         mock_item = MagicMock()
@@ -218,6 +225,7 @@ class TestItemReportCliNoDiskWrite:
     """Test that --stdout does not write to disk."""
 
     def test_stdout_does_not_write_file(self) -> None:
+        """Verifies that stdout does not write file."""
         item_id = "F-00055"
         mock_session = MagicMock()
         mock_item = MagicMock()

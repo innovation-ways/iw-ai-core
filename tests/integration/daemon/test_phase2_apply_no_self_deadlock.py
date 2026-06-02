@@ -20,6 +20,11 @@ if TYPE_CHECKING:
 
 
 def _ensure_iw_core_project(db_session_factory: sessionmaker) -> None:
+    """Insert the iw-ai-core project row if it does not already exist.
+
+    Args:
+        db_session_factory: A SQLAlchemy sessionmaker bound to the testcontainer engine.
+    """
     seed = db_session_factory()
     try:
         seed.execute(
@@ -45,6 +50,11 @@ _PREV_REVISION = "76250ecb2593"
 
 @pytest.fixture
 def db_engine_at_prev_revision(db_engine: Engine) -> Engine:
+    """Downgrade the testcontainer DB to _PREV_REVISION and return the engine.
+
+    Yields:
+        The same Engine after Alembic has downgraded the schema to ``_PREV_REVISION``.
+    """
     alembic_cfg = Config()
     alembic_cfg.set_main_option("script_location", "orch/db/migrations")
     alembic_cfg.set_main_option(
@@ -61,6 +71,9 @@ def test_i_00063_apply_does_not_self_deadlock_when_caller_holds_share_lock(
     db_session_factory: sessionmaker,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Verifies that safe_apply completes without deadlocking when a caller holds an
+    AccessShareLock.
+    """
     alembic_cfg = Config()
     alembic_cfg.set_main_option("script_location", "orch/db/migrations")
     alembic_cfg.set_main_option(
@@ -116,6 +129,9 @@ def test_i_00063_apply_succeeds_when_no_blocking_lock(
     db_session_factory: sessionmaker,  # noqa: ARG001
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Verifies that safe_apply succeeds and applies the head revision when no competing lock is
+    held.
+    """
     alembic_cfg = Config()
     alembic_cfg.set_main_option("script_location", "orch/db/migrations")
     alembic_cfg.set_main_option(
@@ -149,6 +165,9 @@ def test_i_00063_assert_no_self_blockers_raises_when_caller_holds_share_lock(
     db_engine_at_prev_revision: Engine,
     db_session_factory: sessionmaker,
 ) -> None:
+    """Verifies that _assert_no_self_blockers raises SelfBlockerError when the caller holds a share
+    lock.
+    """
     from orch.db.safe_migrate import _assert_no_self_blockers
 
     outer_session = db_session_factory()
@@ -185,6 +204,7 @@ def test_i_00063_assert_no_self_blockers_raises_when_caller_holds_share_lock(
 def test_i_00063_assert_no_self_blockers_clean_when_no_blocker(
     db_engine_at_prev_revision: Engine,
 ) -> None:
+    """Verifies that _assert_no_self_blockers returns None when no competing lock exists."""
     from orch.db.safe_migrate import _assert_no_self_blockers
 
     apply_engine = create_engine(

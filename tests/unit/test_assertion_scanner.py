@@ -141,6 +141,7 @@ def test_no_assert_negative_pytest_raises_counts(tmp_path: Path) -> None:
     ],
 )
 def test_tautology_positive_each_subcase(tmp_path: Path, body: str) -> None:
+    """Verifies that tautology positive each subcase."""
     _write(tmp_path, "test_a.py", body)
     result = run_scanner("--strict", "--json", str(tmp_path))
     payload = json.loads(result.stdout)

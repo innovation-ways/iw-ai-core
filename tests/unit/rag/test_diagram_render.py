@@ -13,7 +13,11 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def reset_binary_caches():
-    """Reset module-level binary caches before each test."""
+    """Reset module-level binary caches before each test.
+
+    Clears ``_MERMAID_BINARY_CACHE`` and ``_D2_BINARY_CACHE`` so each test
+    starts with a cold cache and ``shutil.which`` patches are respected.
+    """
     import orch.diagram.render as render_module
 
     render_module._MERMAID_BINARY_CACHE = None
@@ -22,6 +26,8 @@ def reset_binary_caches():
 
 
 class TestRenderMermaid:
+    """Tests for render_mermaid — covers missing binary, timeout, error, and exception paths."""
+
     def test_returns_none_when_binary_missing(self):
         """When mmdc is not on PATH, render_mermaid returns None without raising."""
         from orch.diagram.render import render_mermaid
@@ -87,6 +93,8 @@ class TestRenderMermaid:
 
 
 class TestRenderD2:
+    """Tests for render_d2 — covers missing binary, timeout, and nonzero exit paths."""
+
     def test_returns_none_when_binary_missing(self):
         """When d2 is not on PATH, render_d2 returns None without raising."""
         from orch.diagram.render import render_d2
@@ -123,6 +131,8 @@ class TestRenderD2:
 
 
 class TestRenderDispatcher:
+    """Tests for the render() dispatcher — verifies correct delegation by dsl_type."""
+
     def test_dispatch_mermaid(self):
         """render(dsl, 'mermaid') calls render_mermaid."""
         from orch.diagram.render import render
@@ -152,6 +162,8 @@ class TestRenderDispatcher:
 
 
 class TestCheckDiagramTools:
+    """Tests for check_diagram_tools — verifies detection of mermaid and d2 binaries."""
+
     def test_both_missing(self):
         """check_diagram_tools returns all False when binaries are absent."""
         from orch.diagram.install import check_diagram_tools

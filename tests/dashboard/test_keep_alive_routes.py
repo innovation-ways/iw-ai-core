@@ -33,6 +33,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -46,6 +47,8 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
 
 class TestKeepAlivePage:
+    """Tests for the keep-alive scheduler landing page route."""
+
     def test_get_keep_alive_page_returns_200(self, client: TestClient) -> None:
         """GET /system/keep-alive returns 200."""
         resp = client.get("/system/keep-alive")
@@ -54,6 +57,8 @@ class TestKeepAlivePage:
 
 
 class TestConfigApi:
+    """Tests for the keep-alive config API endpoint."""
+
     def test_post_config_valid(self, client: TestClient) -> None:
         """POST /api/keep-alive/config with valid payload returns 200."""
         resp = client.post(
@@ -80,6 +85,8 @@ class TestConfigApi:
 
 
 class TestSlotsApi:
+    """Tests for the keep-alive slots CRUD API endpoints."""
+
     def test_post_slot_valid(self, client: TestClient) -> None:
         """POST /api/keep-alive/slots with valid time returns 200."""
         resp = client.post(
@@ -114,6 +121,8 @@ class TestSlotsApi:
 
 
 class TestRunsApi:
+    """Tests for the keep-alive runs history API endpoint."""
+
     def test_get_runs_returns_200(self, client: TestClient) -> None:
         """GET /api/keep-alive/runs returns 200."""
         resp = client.get("/api/keep-alive/runs")

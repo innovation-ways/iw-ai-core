@@ -16,6 +16,7 @@ class TestModuleDiagramPromptContent:
 
     @pytest.fixture
     def mock_config(self):
+        """Provide mock config for tests."""
         config = MagicMock()
         config.resolved_llm_model.return_value = "gemma4:26b"
         config.ollama_url = "http://localhost:11434"
@@ -24,6 +25,7 @@ class TestModuleDiagramPromptContent:
 
     @pytest.fixture
     def mock_session(self):
+        """Provide mock session for tests."""
         return MagicMock()
 
     def test_module_diagram_prompt_uses_lr_direction(self, mock_config, mock_session):
@@ -352,6 +354,7 @@ class TestModuleDiagramStoredContent:
 
     @pytest.fixture
     def mock_config(self):
+        """Provide mock config for tests."""
         config = MagicMock()
         config.resolved_llm_model.return_value = "gemma4:26b"
         config.ollama_url = "http://localhost:11434"
@@ -360,6 +363,7 @@ class TestModuleDiagramStoredContent:
 
     @pytest.fixture
     def mock_session(self):
+        """Provide mock session for tests."""
         return MagicMock()
 
     def test_stored_content_starts_with_purpose_comment(self, mock_config, mock_session):

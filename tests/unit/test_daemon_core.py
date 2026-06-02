@@ -74,16 +74,19 @@ def make_daemon(tmp_path: Path) -> Daemon:
 
 
 def test_is_pid_alive_returns_true_when_process_exists() -> None:
+    """Verifies that is pid alive returns true when process exists."""
     with patch("os.kill", return_value=None):
         assert _is_pid_alive(12345) is True
 
 
 def test_is_pid_alive_returns_false_when_process_not_found() -> None:
+    """Verifies that is pid alive returns false when process not found."""
     with patch("os.kill", side_effect=ProcessLookupError):
         assert _is_pid_alive(99999) is False
 
 
 def test_is_pid_alive_returns_false_for_none() -> None:
+    """Verifies that is pid alive returns false for none."""
     assert _is_pid_alive(None) is False
 
 
@@ -228,6 +231,7 @@ def test_poll_cycle_continues_after_project_error(tmp_path: Path) -> None:
     from orch.daemon.project_registry import ProjectConfig
 
     def make_project(pid: str) -> ProjectConfig:
+        """Return make project."""
         return ProjectConfig(
             id=pid,
             display_name=pid,
@@ -272,6 +276,7 @@ def test_run_loop_continues_after_poll_cycle_exception(tmp_path: Path) -> None:
     call_count = 0
 
     def poll_once() -> None:
+        """Return poll once."""
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -297,14 +302,17 @@ def test_run_calls_startup_and_shutdown(tmp_path: Path) -> None:
     shutdown_called = False
 
     def fake_startup() -> None:
+        """Return fake startup."""
         nonlocal startup_called
         startup_called = True
 
     def fake_shutdown() -> None:
+        """Return fake shutdown."""
         nonlocal shutdown_called
         shutdown_called = True
 
     def fake_poll() -> None:
+        """Return fake poll."""
         daemon._running = False
 
     with (

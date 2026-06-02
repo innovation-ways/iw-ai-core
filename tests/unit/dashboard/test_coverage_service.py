@@ -11,6 +11,7 @@ import pytest
 
 @pytest.fixture
 def temp_coverage_dir(tmp_path: Path) -> Generator[Path, None, None]:
+    """Provide temp coverage dir for tests."""
     coverage_dir = tmp_path / "coverage"
     coverage_dir.mkdir()
     return coverage_dir
@@ -18,6 +19,7 @@ def temp_coverage_dir(tmp_path: Path) -> Generator[Path, None, None]:
 
 @pytest.fixture
 def sample_coverage_json(temp_coverage_dir: Path) -> Path:
+    """Provide sample coverage json for tests."""
     path = temp_coverage_dir / "coverage.json"
     path.write_text(
         json.dumps(
@@ -67,6 +69,7 @@ def sample_coverage_json(temp_coverage_dir: Path) -> Path:
 
 @pytest.fixture
 def pyproject_with_threshold(tmp_path: Path) -> Path:
+    """Provide pyproject with threshold for tests."""
     path = tmp_path / "pyproject.toml"
     path.write_text(
         "[tool.coverage.report]\nfail_under = 70\nskip_covered = true\nshow_missing = true\n",
@@ -75,11 +78,14 @@ def pyproject_with_threshold(tmp_path: Path) -> Path:
 
 
 class TestLoadCoverage:
+    """Tests for LoadCoverage scenarios."""
+
     def test_missing_coverage_json(
         self,
         tmp_path: Path,
         pyproject_with_threshold: Path,
     ) -> None:
+        """Verifies that missing coverage json."""
         from dashboard.services.coverage_service import load_coverage
 
         view = load_coverage(
@@ -97,6 +103,7 @@ class TestLoadCoverage:
         temp_coverage_dir: Path,
         pyproject_with_threshold: Path,
     ) -> None:
+        """Verifies that malformed coverage json."""
         from dashboard.services.coverage_service import load_coverage
 
         bad_path = temp_coverage_dir / "coverage.json"
@@ -114,6 +121,7 @@ class TestLoadCoverage:
         sample_coverage_json: Path,
         pyproject_with_threshold: Path,
     ) -> None:
+        """Verifies that valid coverage json."""
         from dashboard.services.coverage_service import load_coverage
 
         view = load_coverage(
@@ -134,6 +142,7 @@ class TestLoadCoverage:
         sample_coverage_json: Path,
         pyproject_with_threshold: Path,
     ) -> None:
+        """Verifies that package rollup."""
         from dashboard.services.coverage_service import load_coverage
 
         view = load_coverage(
@@ -153,6 +162,7 @@ class TestLoadCoverage:
         sample_coverage_json: Path,
         pyproject_with_threshold: Path,
     ) -> None:
+        """Verifies that badge green."""
         from dashboard.services.coverage_service import load_coverage
 
         view = load_coverage(
@@ -167,6 +177,7 @@ class TestLoadCoverage:
         sample_coverage_json: Path,
         pyproject_with_threshold: Path,
     ) -> None:
+        """Verifies that badge amber."""
         from dashboard.services.coverage_service import load_coverage
 
         view = load_coverage(
@@ -181,6 +192,7 @@ class TestLoadCoverage:
         sample_coverage_json: Path,
         pyproject_with_threshold: Path,
     ) -> None:
+        """Verifies that badge red."""
         from dashboard.services.coverage_service import load_coverage
 
         view = load_coverage(
@@ -195,6 +207,7 @@ class TestLoadCoverage:
         sample_coverage_json: Path,
         pyproject_with_threshold: Path,
     ) -> None:
+        """Verifies that files by package."""
         from dashboard.services.coverage_service import load_coverage
 
         view = load_coverage(
@@ -208,6 +221,7 @@ class TestLoadCoverage:
         assert "executor" in view.files_by_package
 
     def test_threshold_from_pyproject(self, tmp_path: Path) -> None:
+        """Verifies that threshold from pyproject."""
         from dashboard.services.coverage_service import load_coverage
 
         pyproject_path = tmp_path / "pyproject.toml"
@@ -220,6 +234,7 @@ class TestLoadCoverage:
         assert view.threshold == 42
 
     def test_threshold_zero_when_missing(self, tmp_path: Path) -> None:
+        """Verifies that threshold zero when missing."""
         from dashboard.services.coverage_service import load_coverage
 
         pyproject_path = tmp_path / "pyproject.toml"
@@ -234,6 +249,7 @@ class TestLoadCoverage:
         temp_coverage_dir: Path,
         pyproject_with_threshold: Path,
     ) -> None:
+        """Verifies that partial coverage json totals present files absent."""
         from dashboard.services.coverage_service import load_coverage
 
         partial_path = temp_coverage_dir / "coverage.json"

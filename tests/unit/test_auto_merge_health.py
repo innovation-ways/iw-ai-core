@@ -1,3 +1,5 @@
+"""Unit tests for auto merge health."""
+
 from __future__ import annotations
 
 import subprocess
@@ -9,6 +11,7 @@ from orch.daemon.auto_merge_health import maybe_run_probe
 
 
 def _cfg(interval: int = 300) -> AutoMergeConfig:
+    """Return cfg."""
     d = AutoMergeConfig.defaults()
     return AutoMergeConfig(
         phase=d.phase,
@@ -38,6 +41,7 @@ def _assert_probe_subprocess_shape(run: MagicMock, cli_tool: str, model: str) ->
 
 
 def test_probe_skipped_when_recent_event_exists() -> None:
+    """Verifies that probe skipped when recent event exists."""
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = MagicMock(
         created_at=datetime.now(UTC) - timedelta(seconds=10)
@@ -51,6 +55,7 @@ def test_probe_skipped_when_recent_event_exists() -> None:
 
 
 def test_probe_fires_when_no_recent_event() -> None:
+    """Verifies that probe fires when no recent event."""
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = None
     with (
@@ -66,6 +71,7 @@ def test_probe_fires_when_no_recent_event() -> None:
 
 
 def test_probe_invokes_lib_script_with_expected_argv_shape() -> None:  # noqa: assertion-scanner
+    """Verifies that probe invokes lib script with expected argv shape."""
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = None
     with (
@@ -80,6 +86,7 @@ def test_probe_invokes_lib_script_with_expected_argv_shape() -> None:  # noqa: a
 
 
 def test_probe_records_failure_on_subprocess_error() -> None:
+    """Verifies that probe records failure on subprocess error."""
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = None
     with (
@@ -96,6 +103,7 @@ def test_probe_records_failure_on_subprocess_error() -> None:
 
 
 def test_probe_records_failure_on_timeout() -> None:
+    """Verifies that probe records failure on timeout."""
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = None
     with (
@@ -110,6 +118,7 @@ def test_probe_records_failure_on_timeout() -> None:
 
 
 def test_probe_skipped_when_phase_0() -> None:
+    """Verifies that probe skipped when phase 0."""
     db = MagicMock()
     with patch("orch.daemon.auto_merge_health.resolve_project_config") as resolve:
         resolve.return_value = MagicMock(phase=0)
@@ -121,6 +130,7 @@ def test_probe_skipped_when_phase_0() -> None:
 
 
 def test_probe_uses_resolved_per_project_runtime() -> None:
+    """Verifies that probe uses resolved per project runtime."""
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = None
     with (
@@ -140,6 +150,7 @@ def test_probe_uses_resolved_per_project_runtime() -> None:
 
 
 def test_probe_subprocess_timeout_capped() -> None:
+    """Verifies that probe subprocess timeout capped."""
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = None
     with (
@@ -156,6 +167,7 @@ def test_probe_subprocess_timeout_capped() -> None:
 
 
 def test_probe_non_blocking_does_not_raise() -> None:
+    """Verifies that probe non blocking does not raise."""
     db = MagicMock()
     db.execute.return_value.scalar_one_or_none.return_value = None
     with (

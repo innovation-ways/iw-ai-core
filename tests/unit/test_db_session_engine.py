@@ -1,3 +1,5 @@
+"""Unit tests for db session engine."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -6,6 +8,7 @@ from orch.daemon.main import create_session_factory
 
 
 def test_create_session_factory_reuses_shared_session_for_default_db_url(monkeypatch) -> None:
+    """Verifies that create session factory reuses shared session for default db url."""
     create_engine_mock = MagicMock()
     monkeypatch.setattr("orch.daemon.main.safe_create_engine", create_engine_mock)
     monkeypatch.setattr(
@@ -20,6 +23,7 @@ def test_create_session_factory_reuses_shared_session_for_default_db_url(monkeyp
 
 
 def test_create_session_factory_sets_explicit_pool_kwargs_for_non_default_url(monkeypatch) -> None:
+    """Verifies that create session factory sets explicit pool kwargs for non default url."""
     mock_engine = object()
     create_engine_mock = MagicMock(return_value=mock_engine)
     monkeypatch.setattr("orch.daemon.main.safe_create_engine", create_engine_mock)

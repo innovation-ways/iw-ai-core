@@ -139,6 +139,7 @@ def client(db_session: Session) -> Iterator[TestClient]:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app.dependency_overrides[get_db] = override_get_db

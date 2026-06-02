@@ -44,12 +44,14 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def client(db_session: Session) -> TestClient:
+    """Provide a TestClient with get_db overridden to the test db_session."""
     import os
 
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()

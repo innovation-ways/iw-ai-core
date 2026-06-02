@@ -15,6 +15,7 @@ from orch.daemon.batch_manager import MAX_PROMPT_BYTES, write_agent_prompt
 
 
 def test_small_prompt_written_verbatim(tmp_path: Path) -> None:
+    """Verifies that a prompt smaller than MAX_PROMPT_BYTES is written without modification."""
     p = tmp_path / "small.prompt"
     text = "fix the failing test\n" * 10
     write_agent_prompt(p, text)
@@ -22,6 +23,7 @@ def test_small_prompt_written_verbatim(tmp_path: Path) -> None:
 
 
 def test_prompt_at_limit_written_verbatim(tmp_path: Path) -> None:
+    """Verifies that a prompt exactly at MAX_PROMPT_BYTES is written verbatim without truncation."""
     p = tmp_path / "atlimit.prompt"
     text = "x" * MAX_PROMPT_BYTES
     write_agent_prompt(p, text)
@@ -29,6 +31,7 @@ def test_prompt_at_limit_written_verbatim(tmp_path: Path) -> None:
 
 
 def test_oversized_prompt_is_truncated_below_limit(tmp_path: Path) -> None:
+    """Verifies that a prompt exceeding MAX_PROMPT_BYTES is truncated and marked as truncated."""
     p = tmp_path / "huge.prompt"
     # Mimic the I-00074 case: a ~350 KB prompt (a full `pytest -v` dump spliced in).
     text = "\n".join(f"tests/unit/x.py::test_{i} PASSED [ 50%]" for i in range(10000))
@@ -40,6 +43,7 @@ def test_oversized_prompt_is_truncated_below_limit(tmp_path: Path) -> None:
 
 
 def test_truncation_keeps_head_and_tail(tmp_path: Path) -> None:
+    """Verifies that truncation preserves the head and tail of the prompt."""
     p = tmp_path / "huge2.prompt"
     text = "HEAD-MARKER\n" + ("y" * (MAX_PROMPT_BYTES * 3)) + "\nTAIL-MARKER"
     write_agent_prompt(p, text)

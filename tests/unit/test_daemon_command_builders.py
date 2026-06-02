@@ -1,3 +1,5 @@
+"""Unit tests for daemon command builders."""
+
 from __future__ import annotations
 
 import inspect
@@ -6,6 +8,7 @@ from orch.daemon.batch_manager import _build_initial_command
 
 
 def test_pi_branch_invokes_narration_guard() -> None:
+    """Verifies that pi branch invokes narration guard."""
     kwargs = {
         "cli_tool": "pi",
         "prompt_file": "/wt/.tmp/X_S01.prompt",
@@ -26,6 +29,7 @@ def test_pi_branch_invokes_narration_guard() -> None:
 
 
 def test_opencode_branch_unchanged() -> None:
+    """Verifies that opencode branch unchanged."""
     cmd = _build_initial_command(
         cli_tool="opencode",
         prompt_file="/wt/.tmp/X_S01.prompt",
@@ -38,6 +42,7 @@ def test_opencode_branch_unchanged() -> None:
 
 
 def test_claude_branch_unchanged() -> None:
+    """Verifies that claude branch unchanged."""
     cmd = _build_initial_command(
         cli_tool="claude",
         prompt_file="/wt/.tmp/X_S01.prompt",

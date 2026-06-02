@@ -17,6 +17,7 @@ from orch.daemon.step_monitor import (
 
 
 def _project_config(timeout_overrides: dict | None = None) -> ProjectConfig:
+    """Return project config."""
     config: dict = {}
     if timeout_overrides:
         config["timeout_overrides"] = timeout_overrides
@@ -66,24 +67,28 @@ def test_lint_gate_returns_120() -> None:
 
 
 def test_format_gate_returns_120() -> None:
+    """Verifies that format gate returns 120."""
     project_config = _project_config()
     step = _step(gate="format")
     assert get_timeout(project_config, "quality_validation", step=step) == 120
 
 
 def test_typecheck_gate_returns_240() -> None:
+    """Verifies that typecheck gate returns 240."""
     project_config = _project_config()
     step = _step(gate="typecheck")
     assert get_timeout(project_config, "quality_validation", step=step) == 240
 
 
 def test_unit_tests_gate_returns_300() -> None:
+    """Verifies that unit tests gate returns 300."""
     project_config = _project_config()
     step = _step(gate="unit-tests")
     assert get_timeout(project_config, "quality_validation", step=step) == 300
 
 
 def test_browser_gate_returns_1800() -> None:
+    """Verifies that browser gate returns 1800."""
     project_config = _project_config()
     step = _step(gate="browser")
     assert get_timeout(project_config, "quality_validation", step=step) == 1800

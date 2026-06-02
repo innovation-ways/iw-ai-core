@@ -283,6 +283,7 @@ class TestFormatResetsAt:
     """Tests for _format_resets_at() — wall-clock reset rendering."""
 
     def test_past_returns_none(self) -> None:
+        """Verifies that past returns none."""
         from datetime import UTC, datetime
 
         from orch import llm_usage
@@ -291,6 +292,7 @@ class TestFormatResetsAt:
         assert llm_usage._format_resets_at(past) is None
 
     def test_zero_returns_none(self) -> None:
+        """Verifies that zero returns none."""
         from orch import llm_usage
 
         assert llm_usage._format_resets_at(0) is None
@@ -405,16 +407,19 @@ class TestNoCcusageRegressions:
     """ccusage path was removed — symbols must be absent from the module."""
 
     def test_no_run_ccusage(self) -> None:
+        """Verifies that no run ccusage."""
         import orch.llm_usage as m
 
         assert not hasattr(m, "_run_ccusage")
 
     def test_no_claude_weekly_limit_constant(self) -> None:
+        """Verifies that no claude weekly limit constant."""
         import orch.llm_usage as m
 
         assert not hasattr(m, "_CLAUDE_WEEKLY_LIMIT")
 
     def test_no_subprocess_import(self) -> None:
+        """Verifies that no subprocess import."""
         import orch.llm_usage as m
 
         assert not hasattr(m, "subprocess")
@@ -481,6 +486,7 @@ class TestMinimaxUsageRemote:
         fixture = _load_fixture()
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             resp = MagicMock()
             resp.json.return_value = fixture
             return resp
@@ -513,6 +519,7 @@ class TestMinimaxUsageRemote:
         )
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return body
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -540,6 +547,7 @@ class TestMinimaxUsageRemote:
         )
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return body
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -566,6 +574,7 @@ class TestMinimaxUsageRemote:
         )
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return body
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -591,6 +600,7 @@ class TestMinimaxUsageRemote:
         )
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return body
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -611,6 +621,7 @@ class TestMinimaxUsageRemote:
         )
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return body
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -624,6 +635,7 @@ class TestMinimaxUsageRemote:
         from orch import llm_usage
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             raise httpx.HTTPStatusError("server error", request=MagicMock(), response=MagicMock())
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -637,6 +649,7 @@ class TestMinimaxUsageRemote:
         captured_kwargs: list[dict[str, Any]] = []
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             captured_kwargs.append(kwargs)
             resp = MagicMock()
             resp.json.return_value = {
@@ -667,6 +680,7 @@ class TestMinimaxUsageRemote:
         captured_urls: list[str] = []
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             captured_urls.append(url)
             resp = MagicMock()
             resp.json.return_value = {
@@ -694,6 +708,7 @@ class TestMinimaxUsageRemote:
         captured_urls: list[str] = []
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             captured_urls.append(url)
             resp = MagicMock()
             resp.json.return_value = {
@@ -721,6 +736,7 @@ class TestMinimaxUsageRemote:
         captured_timeouts: list[float] = []
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             captured_timeouts.append(kwargs.get("timeout"))
             resp = MagicMock()
             resp.json.return_value = {
@@ -771,6 +787,7 @@ class TestMinimaxUsage:
         fixture = _load_fixture()
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             resp = MagicMock()
             resp.json.return_value = fixture
             return resp
@@ -803,6 +820,7 @@ class TestMinimaxUsage:
         )
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return body
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -826,6 +844,7 @@ class TestMinimaxUsage:
         import httpx
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             raise httpx.HTTPStatusError("server error", request=MagicMock(), response=MagicMock())
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -849,6 +868,7 @@ class TestMinimaxUsage:
         import httpx
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             raise httpx.ConnectTimeout("connection refused")
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -871,6 +891,7 @@ class TestMinimaxUsage:
         """Response body that fails JSON parsing → {0, None}, logged."""
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             resp = MagicMock()
             resp.json.side_effect = json.JSONDecodeError("invalid", "", 0)
             return resp
@@ -909,6 +930,7 @@ class TestMinimaxUsage:
         )
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return body
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -949,6 +971,7 @@ class TestCacheTTL:
         get_calls: list[Any] = []
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             get_calls.append(url)
             resp = MagicMock()
             resp.json.return_value = {
@@ -994,6 +1017,7 @@ class TestCacheTTL:
         get_calls: list[Any] = []
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             get_calls.append(url)
             resp = MagicMock()
             resp.json.return_value = {
@@ -1046,6 +1070,7 @@ class TestGetLlmUsageShape:
 
     @pytest.fixture(autouse=True)
     def clear_cache(self) -> None:
+        """Provide clear cache for tests."""
         from orch import llm_usage
 
         llm_usage._cache.clear()
@@ -1059,6 +1084,7 @@ class TestGetLlmUsageShape:
         import httpx
 
         def fake_remote(key: str) -> Any:  # noqa: ARG001
+            """Return fake remote."""
             raise httpx.ConnectTimeout("connection refused")
 
         monkeypatch.setattr("orch.llm_usage._minimax_usage_remote", fake_remote)
@@ -1281,11 +1307,13 @@ class TestCodexWindowExtractors:
     """Tests for the defensive primary/secondary-window extractors."""
 
     def test_pct_from_none(self) -> None:
+        """Verifies that pct from none."""
         from orch import llm_usage
 
         assert llm_usage._codex_window_pct(None) == 0
 
     def test_pct_from_empty_dict(self) -> None:
+        """Verifies that pct from empty dict."""
         from orch import llm_usage
 
         assert llm_usage._codex_window_pct({}) == 0
@@ -1297,11 +1325,13 @@ class TestCodexWindowExtractors:
         assert llm_usage._codex_window_pct({"used_percent": "47"}) == 0
 
     def test_pct_integer_value(self) -> None:
+        """Verifies that pct integer value."""
         from orch import llm_usage
 
         assert llm_usage._codex_window_pct({"used_percent": 47}) == 47
 
     def test_pct_float_rounds(self) -> None:
+        """Verifies that pct float rounds."""
         from orch import llm_usage
 
         assert llm_usage._codex_window_pct({"used_percent": 47.7}) == 48
@@ -1319,6 +1349,7 @@ class TestCodexWindowExtractors:
         assert llm_usage._codex_window_pct({"used_percent": -5}) == 0
 
     def test_reset_ts_from_none(self) -> None:
+        """Verifies that reset ts from none."""
         from orch import llm_usage
 
         assert llm_usage._codex_window_reset_ts(None) == 0
@@ -1330,11 +1361,13 @@ class TestCodexWindowExtractors:
         assert llm_usage._codex_window_reset_ts({"reset_at": None}) == 0
 
     def test_reset_ts_zero(self) -> None:
+        """Verifies that reset ts zero."""
         from orch import llm_usage
 
         assert llm_usage._codex_window_reset_ts({"reset_at": 0}) == 0
 
     def test_reset_ts_integer(self) -> None:
+        """Verifies that reset ts integer."""
         from orch import llm_usage
 
         assert llm_usage._codex_window_reset_ts({"reset_at": 1779689299}) == 1779689299
@@ -1348,6 +1381,7 @@ class TestCodexUsageRemote:
         body = _fake_response(_codex_usage_payload(primary_pct=47, secondary_pct=12))
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return body
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -1368,6 +1402,7 @@ class TestCodexUsageRemote:
         captured: list[dict[str, Any]] = []
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             captured.append(kwargs)
             return _fake_response(_codex_usage_payload())
 
@@ -1388,6 +1423,7 @@ class TestCodexUsageRemote:
         captured: list[str] = []
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             captured.append(url)
             return _fake_response(_codex_usage_payload())
 
@@ -1402,6 +1438,7 @@ class TestCodexUsageRemote:
         captured: list[float] = []
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             captured.append(kwargs.get("timeout"))
             return _fake_response(_codex_usage_payload())
 
@@ -1416,6 +1453,7 @@ class TestCodexUsageRemote:
         """Payload without rate_limit → 0% both bars, no reset labels, plan_type preserved."""
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return _fake_response({"plan_type": "plus"})
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -1432,6 +1470,7 @@ class TestCodexUsageRemote:
         """rate_limit: null (Rust double-Option's outer None) → safe 0%."""
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return _fake_response({"plan_type": "free", "rate_limit": None})
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -1447,6 +1486,7 @@ class TestCodexUsageRemote:
         payload["rate_limit"]["secondary_window"] = None
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return _fake_response(payload)
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -1461,6 +1501,7 @@ class TestCodexUsageRemote:
         """used_percent=100 → block_pct=100; the chip will color red downstream."""
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return _fake_response(_codex_usage_payload(primary_pct=100))
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -1474,6 +1515,7 @@ class TestCodexUsageRemote:
         import httpx
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             raise httpx.HTTPStatusError("401", request=MagicMock(), response=MagicMock())
 
         monkeypatch.setattr("httpx.get", fake_get)
@@ -1510,6 +1552,7 @@ class TestCodexUsage:
         _write_opencode_auth_oauth(tmp_path, access="tok-abc", account_id="acct-1")
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return _fake_response(_codex_usage_payload(primary_pct=66, secondary_pct=33))
 
         with monkeypatch.context() as m:
@@ -1537,6 +1580,7 @@ class TestCodexUsage:
             status_code = 401
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             raise httpx.HTTPStatusError(
                 "token_expired",
                 request=MagicMock(),
@@ -1567,6 +1611,7 @@ class TestCodexUsage:
         _write_opencode_auth_oauth(tmp_path, access="t", account_id="a")
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             raise httpx.ConnectTimeout("connection refused")
 
         with monkeypatch.context() as m:
@@ -1596,6 +1641,7 @@ class TestCodexUsage:
         _write_opencode_auth_oauth(tmp_path, access=secret_access, account_id=secret_account)
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             raise httpx.HTTPStatusError("auth failed", request=MagicMock(), response=MagicMock())
 
         with monkeypatch.context() as m:
@@ -1616,6 +1662,7 @@ class TestGetLlmUsageCodexIntegration:
 
     @pytest.fixture(autouse=True)
     def clear_cache(self) -> None:
+        """Provide clear cache for tests."""
         from orch import llm_usage
 
         llm_usage._cache.clear()
@@ -1656,6 +1703,7 @@ class TestGetLlmUsageCodexIntegration:
         # _codex_usage already catches everything internally — confirm the outer
         # try/except in get_llm_usage doesn't swallow other providers' data either.
         def boom() -> dict[str, Any]:
+            """Return boom."""
             raise RuntimeError("codex blew up after returning")
 
         monkeypatch.setattr("orch.llm_usage._codex_usage", boom)
@@ -1816,6 +1864,7 @@ class TestCodexUsageNeverRaises:
         import httpx
 
         def boom(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return boom."""
             raise httpx.ConnectTimeout("connection refused")
 
         with monkeypatch.context() as m:
@@ -1860,6 +1909,7 @@ class TestCodexUsageNeverRaises:
         )
 
         def gibberish(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return gibberish."""
             resp = MagicMock()
             resp.json.side_effect = json.JSONDecodeError("invalid", "", 0)
             return resp
@@ -1933,6 +1983,7 @@ class TestCodexStatusDiscriminator:
         no_network_calls: list[str] = []
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             no_network_calls.append(url)
             return _fake_response(_codex_usage_payload())
 
@@ -1968,6 +2019,7 @@ class TestCodexStatusDiscriminator:
             status_code = 401
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             raise httpx.HTTPStatusError(
                 "token_expired",
                 request=MagicMock(),
@@ -2040,6 +2092,7 @@ class TestCodexStatusDiscriminator:
             status_code = 500
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             raise httpx.HTTPStatusError(
                 "server error",
                 request=MagicMock(),
@@ -2083,6 +2136,7 @@ class TestCodexStatusDiscriminator:
         )
 
         def fake_get(url: str, **kwargs: Any) -> MagicMock:  # noqa: ARG001
+            """Return fake get."""
             return _fake_response(_codex_usage_payload(primary_pct=30, secondary_pct=10))
 
         with monkeypatch.context() as m:
@@ -2103,6 +2157,7 @@ class TestCodexStatusDiscriminator:
         """When _codex_usage() raises, get_llm_usage outer fallback returns status='error'."""
 
         def boom() -> dict[str, Any]:
+            """Return boom."""
             raise RuntimeError("boom")
 
         monkeypatch.setattr("orch.llm_usage._codex_usage", boom)

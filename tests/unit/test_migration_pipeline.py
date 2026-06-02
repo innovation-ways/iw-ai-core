@@ -13,6 +13,7 @@ class TestIsMergeQueueFrozen:
     """Tests for is_merge_queue_frozen()."""
 
     def test_returns_false_when_no_events_row(self) -> None:
+        """Verifies that returns false when no events row."""
         from orch.daemon.migration_pipeline import is_merge_queue_frozen
 
         mock_result = MagicMock()
@@ -36,6 +37,7 @@ class TestIsMergeQueueFrozen:
         assert result is False
 
     def test_returns_true_when_active_is_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that returns true when active is true."""
         from orch.daemon.migration_pipeline import is_merge_queue_frozen
 
         # is_merge_queue_frozen short-circuits to False under IW_CORE_TEST_CONTEXT
@@ -64,6 +66,7 @@ class TestIsMergeQueueFrozen:
         assert result is True
 
     def test_returns_false_when_active_is_false(self) -> None:
+        """Verifies that returns false when active is false."""
         from orch.daemon.migration_pipeline import is_merge_queue_frozen
 
         mock_result = MagicMock()
@@ -91,6 +94,7 @@ class TestSetMergeQueueFrozen:
     """Tests for set_merge_queue_frozen()."""
 
     def test_writes_expected_daemon_events_row(self) -> None:
+        """Verifies that writes expected daemon events row."""
         mock_session = MagicMock()
         mock_connection = MagicMock()
         mock_connection.__enter__ = MagicMock(return_value=mock_connection)
@@ -120,6 +124,7 @@ class TestRunPreMergeDryRun:
     """Tests for run_pre_merge_dry_run()."""
 
     def test_dispatches_to_safe_dry_run_success(self) -> None:
+        """Verifies that dispatches to safe dry run success."""
         from orch.daemon.migration_pipeline import run_pre_merge_dry_run
         from orch.db.safe_migrate import DryRunResult
 
@@ -150,6 +155,7 @@ class TestRunPreMergeDryRun:
             assert result.final_batch_state == "proceed_to_merge"
 
     def test_returns_migration_invalid_on_dry_run_failure(self) -> None:
+        """Verifies that returns migration invalid on dry run failure."""
         from orch.daemon.migration_pipeline import run_pre_merge_dry_run
         from orch.db.safe_migrate import DryRunResult
 
@@ -180,6 +186,7 @@ class TestRunPreMergeDryRun:
             assert result.final_batch_state == "MIGRATION_INVALID"
 
     def test_run_pre_merge_dry_run_threads_worktree_path(self) -> None:
+        """Verifies that run pre merge dry run threads worktree path."""
         from orch.daemon.migration_pipeline import run_pre_merge_dry_run
         from orch.db.safe_migrate import DryRunResult
 
@@ -214,6 +221,7 @@ class TestRunPreMergeDryRun:
             assert call_kwargs["script_location"] == "/wt/orch/db/migrations"
 
     def test_run_pre_merge_dry_run_backward_compat(self) -> None:
+        """Verifies that run pre merge dry run backward compat."""
         from orch.daemon.migration_pipeline import run_pre_merge_dry_run
         from orch.db.safe_migrate import DryRunResult
 
@@ -252,6 +260,7 @@ class TestRunRollback:
     """Tests for run_rollback()."""
 
     def test_on_rollback_fail_sets_frozen_true(self) -> None:
+        """Verifies that on rollback fail sets frozen true."""
         from orch.daemon.migration_pipeline import run_rollback
         from orch.db.safe_migrate import RollbackResult
 
@@ -278,6 +287,7 @@ class TestRunRollback:
             assert "Downgrade failed" in call_kwargs["reason"]
 
     def test_on_rollback_success_returns_rolled_back_state(self) -> None:
+        """Verifies that on rollback success returns rolled back state."""
         from orch.daemon.migration_pipeline import run_rollback
         from orch.db.safe_migrate import RollbackResult
 

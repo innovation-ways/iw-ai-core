@@ -47,7 +47,16 @@ def _minimal_manifest(
     allowed_paths: list[str] | None = None,
     extra_keys: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return a minimal workflow-manifest.json dict."""
+    """Build a minimal workflow-manifest.json dict for scope amendment tests.
+
+    Args:
+        item_id: Work item ID used as the manifest ``id`` field.
+        allowed_paths: Optional initial ``scope.allowed_paths`` list.
+        extra_keys: Optional additional top-level keys to merge into the manifest.
+
+    Returns:
+        A dict suitable for JSON serialisation as ``workflow-manifest.json``.
+    """
     manifest = {
         "id": item_id,
         "type": "Feature",
@@ -64,6 +73,12 @@ def _minimal_manifest(
 
 
 def _write_manifest(path: Path, data: dict[str, Any]) -> None:
+    """Write a manifest dict as JSON to the given path, creating parent directories as needed.
+
+    Args:
+        path: Filesystem path where the JSON file will be written.
+        data: Dictionary to serialise as the manifest content.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n")
 

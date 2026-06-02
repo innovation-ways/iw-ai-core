@@ -1,3 +1,5 @@
+"""Unit tests for step_monitor child-process probe helpers (I-00113)."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -8,24 +10,38 @@ from orch.daemon import step_monitor as sm
 
 
 class _Ctx:
+    """Minimal context manager that returns a fixed string from read(), used as a file stub."""
+
     def __init__(self, text: str):
+        """Args:
+        text: The string content that read() will return.
+        """
         self._text = text
 
     def __enter__(self):
+        """Returns self as the context object."""
         return self
 
     def __exit__(self, *_args):
+        """No-op exit; always returns False."""
         return False
 
     def read(self):
+        """Returns the text provided at construction.
+
+        Returns:
+            The text string.
+        """
         return self._text
 
 
 def test_has_agent_cmdline_none_pid_returns_false() -> None:
+    """Verifies that _has_agent_cmdline returns False immediately when pid is None."""
     assert sm._has_agent_cmdline(None) is False
 
 
 def test_has_agent_cmdline_detects_agent_from_cwd(monkeypatch) -> None:
+    """Verifies that _has_agent_cmdline returns True when /proc/<pid>/cwd contains a."""
     monkeypatch.setattr(sm.os, "kill", lambda _pid, _sig: None)
 
     def fake_open(path: str, *args, **kwargs):  # noqa: ARG001
@@ -38,6 +54,9 @@ def test_has_agent_cmdline_detects_agent_from_cwd(monkeypatch) -> None:
 
 
 def test_has_agent_cmdline_falls_back_to_comm(monkeypatch) -> None:
+    """Verifies that _has_agent_cmdline falls back to /proc/<pid>/comm when cwd and cmdline are
+    unreadable.
+    """
     monkeypatch.setattr(sm.os, "kill", lambda _pid, _sig: None)
 
     def fake_open(path: str, *args, **kwargs):  # noqa: ARG001
@@ -54,6 +73,7 @@ def test_has_agent_cmdline_falls_back_to_comm(monkeypatch) -> None:
 
 
 def test_has_agent_cmdline_returns_false_when_comm_unreadable(monkeypatch) -> None:
+    """Verifies that _has_agent_cmdline returns False when all /proc filesystem reads fail."""
     monkeypatch.setattr(sm.os, "kill", lambda _pid, _sig: None)
 
     def _raise_os_error(*_args, **_kwargs):
@@ -64,6 +84,9 @@ def test_has_agent_cmdline_returns_false_when_comm_unreadable(monkeypatch) -> No
 
 
 def test_probe_for_child_tier1_finds_agent(monkeypatch) -> None:
+    """Verifies that _probe_for_child returns True when a Tier-1 child thread matches the agent
+    cmdline.
+    """
     monkeypatch.setattr(sm.os, "listdir", lambda p: ["111"] if p.endswith("/task") else [])
 
     def _open_ctx(*_args, **_kwargs):
@@ -76,6 +99,10 @@ def test_probe_for_child_tier1_finds_agent(monkeypatch) -> None:
 
 
 def test_probe_for_child_tier2_finds_agent_after_tier1_read_error(monkeypatch) -> None:
+    """Verifies that _probe_for_child falls back to Tier-2 /proc scan when the children file is
+    unreadable.
+    """
+
     def fake_listdir(path: str):
         if path.endswith("/task"):
             return ["111"]
@@ -99,6 +126,8 @@ def test_probe_for_child_tier2_finds_agent_after_tier1_read_error(monkeypatch) -
 
 
 def test_probe_for_child_handles_proc_scan_errors(monkeypatch) -> None:
+    """Verifies that _probe_for_child returns False gracefully when /proc scanning raises."""
+
     def fake_listdir(path: str):
         if path.endswith("/task"):
             return []
@@ -111,6 +140,9 @@ def test_probe_for_child_handles_proc_scan_errors(monkeypatch) -> None:
 
 
 def test_check_step_health_dead_wrapper_with_child_updates_tokens(monkeypatch) -> None:
+    """Verifies that token counts are updated when the wrapper pid is dead but a child agent is
+    still alive.
+    """
     run = SimpleNamespace(
         pid=123,
         pid_alive=False,

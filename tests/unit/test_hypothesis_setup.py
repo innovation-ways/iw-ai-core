@@ -18,6 +18,7 @@ def test_hypothesis_is_importable():
 
 
 def test_pyproject_has_hypothesis_config_and_marker():
+    """Verifies that pyproject has hypothesis config and marker."""
     data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     assert "hypothesis" in data["tool"], "[tool.hypothesis] block missing"
     assert "database_file" in data["tool"]["hypothesis"]
@@ -28,6 +29,7 @@ def test_pyproject_has_hypothesis_config_and_marker():
 
 
 def test_properties_conftest_registers_three_profiles():
+    """Verifies that properties conftest registers three profiles."""
     conftest = REPO_ROOT / "tests" / "unit" / "properties" / "conftest.py"
     assert conftest.exists(), "tests/unit/properties/conftest.py missing"
     text = conftest.read_text()

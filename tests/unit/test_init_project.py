@@ -42,6 +42,7 @@ def _make_platform_root(tmp_path: Path) -> Path:
 
 
 def test_creates_iw_orch_json(tmp_path: Path) -> None:
+    """Verifies that creates iw orch json."""
     repo_path = tmp_path / "my-project"
     repo_path.mkdir()
     platform_root = _make_platform_root(tmp_path)
@@ -57,6 +58,7 @@ def test_creates_iw_orch_json(tmp_path: Path) -> None:
 
 
 def test_iw_orch_json_contains_project_id(tmp_path: Path) -> None:
+    """Verifies that iw orch json contains project id."""
     repo_path = tmp_path / "proj"
     repo_path.mkdir()
     platform_root = _make_platform_root(tmp_path)
@@ -74,6 +76,7 @@ def test_iw_orch_json_contains_project_id(tmp_path: Path) -> None:
 
 
 def test_creates_ai_dev_directories(tmp_path: Path) -> None:
+    """Verifies that creates ai dev directories."""
     repo_path = tmp_path / "proj"
     repo_path.mkdir()
     platform_root = _make_platform_root(tmp_path)
@@ -90,6 +93,7 @@ def test_creates_ai_dev_directories(tmp_path: Path) -> None:
 
 
 def test_creates_workflow_md_from_template(tmp_path: Path) -> None:
+    """Verifies that creates workflow md from template."""
     repo_path = tmp_path / "proj"
     repo_path.mkdir()
     platform_root = _make_platform_root(tmp_path)
@@ -105,6 +109,7 @@ def test_creates_workflow_md_from_template(tmp_path: Path) -> None:
 
 
 def test_creates_workflow_md_without_template(tmp_path: Path) -> None:
+    """Verifies that creates workflow md without template."""
     repo_path = tmp_path / "proj"
     repo_path.mkdir()
     platform_root = _make_platform_root(tmp_path)
@@ -124,6 +129,7 @@ def test_creates_workflow_md_without_template(tmp_path: Path) -> None:
 
 
 def test_appends_to_projects_toml(tmp_path: Path) -> None:
+    """Verifies that appends to projects toml."""
     repo_path = tmp_path / "proj"
     repo_path.mkdir()
     platform_root = _make_platform_root(tmp_path)
@@ -143,6 +149,7 @@ def test_appends_to_projects_toml(tmp_path: Path) -> None:
 
 
 def test_result_contains_created_files(tmp_path: Path) -> None:
+    """Verifies that result contains created files."""
     repo_path = tmp_path / "proj"
     repo_path.mkdir()
     platform_root = _make_platform_root(tmp_path)
@@ -156,6 +163,7 @@ def test_result_contains_created_files(tmp_path: Path) -> None:
 
 
 def test_result_db_rows_created(tmp_path: Path) -> None:
+    """Verifies that result db rows created."""
     repo_path = tmp_path / "proj"
     repo_path.mkdir()
     platform_root = _make_platform_root(tmp_path)

@@ -55,6 +55,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     try:
 
         def override_get_db() -> Generator[Session, None, None]:
+            """Yield the test db_session for FastAPI dependency injection."""
             yield db_session
 
         app = create_app()
@@ -230,6 +231,7 @@ class TestOverlapModalHappyPath:
     def test_status_200_with_two_blocking_items(
         self, client: TestClient, db_session: Session
     ) -> None:
+        """AC1/AC2/AC3/AC6: modal returns 200 with both blocking items and their globs rendered."""
         project_id = "p1"
         batch_id = "BATCH-99001"
         held_item_id = "CR-99001"
@@ -294,6 +296,7 @@ class TestOverlapModalNoEvent:
     """AC5: 404 when no item_held_for_scope DaemonEvent exists."""
 
     def test_status_404_no_event(self, client: TestClient, db_session: Session) -> None:
+        """AC5: returns 404 with empty-state message when no held event exists for the item."""
         project_id = "p1"
         batch_id = "BATCH-99001"
         held_item_id = "CR-99001"
@@ -326,6 +329,7 @@ class TestOverlapModalWindowCutoff:
     """AC4: event with created_at older than 300 s → 404 (window cutoff regression guard)."""
 
     def test_status_404_event_outside_window(self, client: TestClient, db_session: Session) -> None:
+        """AC4: returns 404 when the most recent held event is older than the 300-second window."""
         project_id = "p1"
         batch_id = "BATCH-99001"
         held_item_id = "CR-99001"

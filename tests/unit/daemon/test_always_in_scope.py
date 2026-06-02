@@ -37,6 +37,7 @@ def test_build_project_config_defaults_always_in_scope_paths_to_empty(tmp_path: 
 
 
 def test_always_in_scope_empty_by_default(tmp_path: Path) -> None:
+    """Verifies that always_in_scope_paths defaults to an empty list when the key is absent."""
     entry = {
         "repo_root": str(tmp_path),
         "enabled": True,
@@ -49,6 +50,7 @@ def test_always_in_scope_empty_by_default(tmp_path: Path) -> None:
 
 
 def test_always_in_scope_invalid_paths_type_defaults_to_empty(tmp_path: Path) -> None:
+    """Verifies that a non-list always_in_scope.paths value is ignored and defaults to empty."""
     entry = {
         "repo_root": str(tmp_path),
         "enabled": True,
@@ -62,6 +64,7 @@ def test_always_in_scope_invalid_paths_type_defaults_to_empty(tmp_path: Path) ->
 
 
 def test_always_in_scope_appended_to_allowed(monkeypatch, tmp_path: Path) -> None:
+    """Verifies that always_in_scope_paths are appended to the allowed paths list during fix."""
     project_config = ProjectConfig(
         id="p",
         display_name="P",
@@ -104,6 +107,7 @@ def test_always_in_scope_appended_to_allowed(monkeypatch, tmp_path: Path) -> Non
 
 
 def test_always_in_scope_no_violation_for_global_file(monkeypatch, tmp_path: Path) -> None:
+    """Verifies that editing an always_in_scope file does not trigger a scope violation."""
     project_config = ProjectConfig(
         id="p",
         display_name="P",

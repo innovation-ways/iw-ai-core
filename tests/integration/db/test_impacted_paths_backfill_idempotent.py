@@ -35,12 +35,21 @@ PREV_REVISION = "a9861af32872"
 
 @pytest.fixture
 def pg_container() -> Iterator[PostgresContainer]:
+    """Provide a fresh PostgreSQL testcontainer per test for isolated migration runs."""
     with PostgresContainer("postgres:15-alpine") as pg:
         yield pg
 
 
 @pytest.fixture
 def db_engine(pg_container: PostgresContainer) -> Iterator[Engine]:
+    """Create a SQLAlchemy engine pointed at the testcontainer DB with env vars set.
+
+    Args:
+        pg_container: The running PostgreSQL testcontainer.
+
+    Yields:
+        A configured SQLAlchemy engine; disposes after the test completes.
+    """
     url = pg_container.get_connection_url().replace(
         "postgresql+psycopg2://", "postgresql+psycopg://"
     )
@@ -57,6 +66,14 @@ def db_engine(pg_container: PostgresContainer) -> Iterator[Engine]:
 
 
 def _alembic_config(engine: Engine) -> Config:
+    """Build an Alembic Config pointing at the given engine's URL.
+
+    Args:
+        engine: The SQLAlchemy engine whose URL will be used.
+
+    Returns:
+        An Alembic Config object ready for upgrade/downgrade calls.
+    """
     cfg = Config()
     cfg.set_main_option("script_location", "orch/db/migrations")
     cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))
@@ -72,6 +89,17 @@ def _insert_work_item(
     phase: str,
     design_doc_content: str,
 ) -> None:
+    """Insert a work_items row at PREV_REVISION schema (no impacted_paths column).
+
+    Args:
+        engine: Database engine to use for the insert.
+        project_id: Foreign key to an existing projects row.
+        item_id: Unique identifier for the work item.
+        title: Human-readable title of the work item.
+        status: Initial status string (e.g. 'draft', 'completed').
+        phase: Phase string (e.g. 'active', 'work').
+        design_doc_content: Raw markdown content for the design document.
+    """
     with engine.begin() as conn:
         conn.execute(
             text(
@@ -93,6 +121,15 @@ def _insert_work_item(
 
 
 def _read_paths(engine: Engine, project_id: str) -> dict[str, list[str]]:
+    """Read the impacted_paths column for all work items belonging to a project.
+
+    Args:
+        engine: Database engine to query.
+        project_id: Project whose work items should be fetched.
+
+    Returns:
+        A mapping of item ID to its list of impacted path strings.
+    """
     with engine.connect() as conn:
         rows = conn.execute(
             text("SELECT id, impacted_paths FROM work_items WHERE project_id = :pid ORDER BY id"),

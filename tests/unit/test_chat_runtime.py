@@ -38,6 +38,7 @@ class _FakeStream:
         self._payload = payload
 
     async def read(self, n: int = -1) -> bytes:
+        """Return read."""
         data = self._payload
         self._payload = b""
         return data
@@ -69,17 +70,20 @@ class _FakeProc:
         self.kill_calls = 0
 
     def terminate(self) -> None:
+        """Return terminate."""
         self.terminate_calls += 1
         if not self._ignore_sigterm:
             self.returncode = self._exit_code
             self._wait_event.set()
 
     def kill(self) -> None:
+        """Return kill."""
         self.kill_calls += 1
         self.returncode = -signal.SIGKILL
         self._wait_event.set()
 
     async def wait(self) -> int:
+        """Return wait."""
         await self._wait_event.wait()
         assert self.returncode is not None
         return self.returncode

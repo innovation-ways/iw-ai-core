@@ -47,6 +47,13 @@ class TestReadConsoleErrors:
 
     @pytest.fixture(autouse=True)
     def _isolated_cwd(self, tmp_path, monkeypatch) -> None:
+        """Change the working directory to a fresh tmp_path for each test.
+
+        ``read_console_errors()`` scans every ``.playwright-cli/console-*.log``
+        under CWD (I-00097: don't let a clean later log mask an earlier error).
+        Isolating per-test ensures no cross-test contamination from accumulated
+        real browser E2E run logs.
+        """
         # read_console_errors() scans every .playwright-cli/console-*.log under
         # CWD by design (I-00097: don't let a clean later log mask an earlier
         # error). chdir into tmp_path so each test sees only its own log file
@@ -97,6 +104,14 @@ class TestAssertNoConsoleErrors:
 
     @pytest.fixture(autouse=True)
     def _isolated_cwd(self, tmp_path, monkeypatch) -> None:
+        """Change the working directory to a fresh tmp_path for each test.
+
+        ``assert_no_console_errors()`` delegates to ``read_console_errors()``,
+        which scans every ``.playwright-cli/console-*.log`` under CWD.
+        Isolating per-test prevents accumulated real-browser logs from causing
+        false failures or false passes in the "clean log" and "raises on error"
+        assertions.
+        """
         # Same reasoning as TestReadConsoleErrors: assert_no_console_errors()
         # delegates to read_console_errors(), which scans every
         # .playwright-cli/console-*.log under CWD. Isolate per-test so the

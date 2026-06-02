@@ -57,6 +57,7 @@ def client(db_session: Session) -> TestClient:
     try:
 
         def override_get_db():
+            """Yield the test db_session for FastAPI dependency injection."""
             yield db_session
 
         app = create_app()

@@ -8,7 +8,11 @@ from orch.rag.chat_repo import enqueue_summarization_if_needed
 
 
 class _FakeRow:
-    """Fake row mimicking a SQLAlchemy mapped instance."""
+    """Fake row mimicking a SQLAlchemy mapped instance.
+
+    Sets arbitrary keyword arguments as instance attributes so tests can
+    construct lightweight stand-ins without a real DB session.
+    """
 
     def __init__(self, **attrs: object) -> None:
         for k, v in attrs.items():

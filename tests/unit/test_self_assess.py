@@ -291,19 +291,25 @@ class TestIsSelfAssessStep:
     """is_self_assess_step narrows step types to self_assess only."""
 
     def test_string_self_assess(self) -> None:
+        """Verifies that string self assess."""
         assert is_self_assess_step("self_assess") is True
 
     def test_string_self_assess_spelled_out(self) -> None:
+        """Verifies that string self assess spelled out."""
         assert is_self_assess_step("StepType.self_assess") is True
 
     def test_implementation_string(self) -> None:
+        """Verifies that implementation string."""
         assert is_self_assess_step("implementation") is False
 
     def test_code_review_string(self) -> None:
+        """Verifies that code review string."""
         assert is_self_assess_step("code_review") is False
 
     def test_empty_string(self) -> None:
+        """Verifies that empty string."""
         assert is_self_assess_step("") is False
 
     def test_none_input(self) -> None:
+        """Verifies that none input."""
         assert is_self_assess_step(None) is False

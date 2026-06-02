@@ -15,7 +15,10 @@ class MockProject:
 
 
 class TestWriteProjectConfig:
+    """Tests for WriteProjectConfig scenarios."""
+
     def test_writes_config_when_absent(self, tmp_path: Path) -> None:
+        """Verifies that writes config when absent."""
         from orch.oss.config_writer import write_project_config
 
         proj = MockProject(project_id="test", display_name="Test Project", repo_root=str(tmp_path))
@@ -25,6 +28,7 @@ class TestWriteProjectConfig:
         assert result.exists()
 
     def test_idempotent_when_identical_content(self, tmp_path: Path) -> None:
+        """Verifies that idempotent when identical content."""
         from orch.oss.config_writer import write_project_config
 
         proj = MockProject(project_id="test", display_name="Test Project", repo_root=str(tmp_path))
@@ -35,6 +39,7 @@ class TestWriteProjectConfig:
         assert path1.exists()
 
     def test_raises_when_file_differs_and_not_forced(self, tmp_path: Path) -> None:
+        """Verifies that raises when file differs and not forced."""
         from orch.oss.config_writer import ConfigFileExistsError, write_project_config
 
         proj = MockProject(project_id="test", display_name="Test Project", repo_root=str(tmp_path))
@@ -45,6 +50,7 @@ class TestWriteProjectConfig:
             write_project_config(proj)
 
     def test_overwrites_when_forced(self, tmp_path: Path) -> None:
+        """Verifies that overwrites when forced."""
         from orch.oss.config_writer import write_project_config
 
         proj = MockProject(project_id="test", display_name="Test Project", repo_root=str(tmp_path))
@@ -55,6 +61,7 @@ class TestWriteProjectConfig:
         assert result.exists()
 
     def test_creates_iw_directory(self, tmp_path: Path) -> None:
+        """Verifies that creates iw directory."""
         from orch.oss.config_writer import write_project_config
 
         proj = MockProject(project_id="test", display_name="Test Project", repo_root=str(tmp_path))

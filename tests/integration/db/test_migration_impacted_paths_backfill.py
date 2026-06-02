@@ -47,6 +47,14 @@ def pg_container() -> Iterator[PostgresContainer]:
 
 @pytest.fixture
 def db_engine(pg_container: PostgresContainer) -> Iterator[Engine]:
+    """Create a SQLAlchemy engine pointed at the testcontainer DB with env vars set.
+
+    Args:
+        pg_container: The running PostgreSQL testcontainer.
+
+    Yields:
+        A configured SQLAlchemy engine; disposes after the test completes.
+    """
     url = pg_container.get_connection_url().replace(
         "postgresql+psycopg2://", "postgresql+psycopg://"
     )
@@ -63,6 +71,14 @@ def db_engine(pg_container: PostgresContainer) -> Iterator[Engine]:
 
 
 def _alembic_config(engine: Engine) -> Config:
+    """Build an Alembic Config pointing at the given engine's URL.
+
+    Args:
+        engine: The SQLAlchemy engine whose URL will be used.
+
+    Returns:
+        An Alembic Config object ready for upgrade/downgrade calls.
+    """
     cfg = Config()
     cfg.set_main_option("script_location", "orch/db/migrations")
     cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))

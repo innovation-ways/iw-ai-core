@@ -22,6 +22,16 @@ from orch.db.models import (
 
 @pytest.fixture
 def migration_rebase_ctx(db_session, tmp_path, chaos_daemon):
+    """Provide a fully-seeded migration rebase failure scenario context.
+
+    Creates a fake worktree with a conflicting Alembic revision file, a
+    completed WorkItem with a Batch and BatchItem in the test DB, and a
+    ProjectConfig pointing at the temporary repo root.
+
+    Yields:
+        dict: Context with keys ``item_id``, ``repo_root``, ``worktree_path``,
+            ``throwaway_revision``, and ``project_config``.
+    """
     from orch.daemon.project_registry import ProjectConfig
 
     item_id = "I-MIGRATION-REBASE-FAIL"
@@ -93,11 +103,29 @@ def migration_rebase_ctx(db_session, tmp_path, chaos_daemon):
 
 
 def _current_alembic_version(db_session) -> str | None:
+    """Query the current Alembic version from the test DB.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+
+    Returns:
+        The current ``version_num`` string, or None if the table is empty.
+    """
     row = db_session.execute(text("SELECT version_num FROM alembic_version")).fetchone()
     return row[0] if row else None
 
 
 def _run_rebase_failure(db_session, chaos_daemon, migration_rebase_ctx):
+    """Execute a simulated migration rebase failure and return the updated BatchItem.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+        chaos_daemon: The ChaosDaemonHarness instance with the rebase failure hook armed.
+        migration_rebase_ctx: Fixture context dict from ``migration_rebase_ctx``.
+
+    Returns:
+        The refreshed BatchItem after _merge_item has processed the failed rebase.
+    """
     from orch.daemon.merge_queue import _merge_item
 
     chaos_daemon.inject_migration_rebase_conflict_revision()
@@ -141,6 +169,7 @@ def _run_rebase_failure(db_session, chaos_daemon, migration_rebase_ctx):
 def test_alembic_version_unchanged_after_failed_rebase(
     db_session, test_project, chaos_daemon, migration_rebase_ctx
 ):
+    """Verifies that a failed rebase does not alter the Alembic version in the database."""
     before = _current_alembic_version(db_session)
     _run_rebase_failure(db_session, chaos_daemon, migration_rebase_ctx)
     after = _current_alembic_version(db_session)
@@ -152,6 +181,9 @@ def test_alembic_version_unchanged_after_failed_rebase(
 def test_migration_rebase_failure_is_detected(
     db_session, test_project, chaos_daemon, migration_rebase_ctx, caplog
 ):
+    """Verifies that a RebaseChainError is logged and the BatchItem is marked
+    migration_rebase_failed.
+    """
     batch_item = _run_rebase_failure(db_session, chaos_daemon, migration_rebase_ctx)
 
     log_text = "\n".join(record.getMessage() for record in caplog.records)
@@ -165,6 +197,7 @@ def test_migration_rebase_failure_is_detected(
 def test_item_marked_migration_rebase_failed(
     db_session, test_project, chaos_daemon, migration_rebase_ctx
 ):
+    """Verifies that both BatchItem and WorkItem are marked failed after a rebase failure."""
     batch_item = _run_rebase_failure(db_session, chaos_daemon, migration_rebase_ctx)
     work_item = db_session.get(WorkItem, ("test-proj", migration_rebase_ctx["item_id"]))
 
@@ -177,6 +210,9 @@ def test_item_marked_migration_rebase_failed(
 def test_worktree_directory_preserved_for_inspection(
     db_session, test_project, chaos_daemon, migration_rebase_ctx
 ):
+    """Verifies that the worktree directory is left intact after a rebase failure for operator
+    inspection.
+    """
     _run_rebase_failure(db_session, chaos_daemon, migration_rebase_ctx)
 
     worktree_path = migration_rebase_ctx["worktree_path"]
@@ -185,6 +221,7 @@ def test_worktree_directory_preserved_for_inspection(
 
 @pytest.mark.integration
 def test_no_alembic_revision_skips_scenario(tmp_path):
+    """Verifies that the test is skipped when no new Alembic revision file exists in the."""
     worktree_path = tmp_path / "repo" / ".worktrees" / "I-NO-REV"
     revisions = list((worktree_path / "orch" / "db" / "migrations" / "versions").glob("*.py"))
     assert revisions == []
@@ -195,6 +232,7 @@ def test_no_alembic_revision_skips_scenario(tmp_path):
 def test_throwaway_revision_written_outside_host_repo(
     migration_rebase_ctx,
 ):
+    """Verifies that the throwaway revision file is written inside tmp_path and not the host."""
     throwaway_revision = migration_rebase_ctx["throwaway_revision"].resolve()
     host_versions = (Path.cwd() / "orch" / "db" / "migrations" / "versions").resolve()
 

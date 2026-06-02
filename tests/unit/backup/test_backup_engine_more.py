@@ -39,6 +39,14 @@ _META: dict[str, Any] = {
 
 
 def _config(backup_dir: Path) -> SimpleNamespace:
+    """Build a minimal config namespace pointing at backup_dir.
+
+    Args:
+        backup_dir: Directory to use as the backup destination.
+
+    Returns:
+        A SimpleNamespace with all required engine config fields.
+    """
     return SimpleNamespace(
         backup_dir=str(backup_dir),
         db_host="127.0.0.1",
@@ -64,6 +72,15 @@ def _ok_runner(
 
 
 def _make(backup_dir: Path, *, command_runner: Any) -> Any:
+    """Invoke create_backup with a fixed metadata set and the given command runner.
+
+    Args:
+        backup_dir: Target directory for the backup set.
+        command_runner: Callable to use in place of actual pg_dump / pg_restore.
+
+    Returns:
+        The BackupResult returned by create_backup.
+    """
     return create_backup(
         _config(backup_dir),
         backup_type=DbBackupType.scheduled,

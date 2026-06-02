@@ -137,6 +137,7 @@ def test_implementation_pair_pre_flight_blocks_match() -> None:
     b = (REPO_ROOT / IMPLEMENTATION_TEMPLATES[1]).read_text(encoding="utf-8")
 
     def extract_block(text: str, start_marker: str, end_marker: str) -> str:
+        """Return extract block."""
         s = text.find(start_marker)
         e = text.find(end_marker, s)
         assert s != -1, f"start marker not found: {start_marker!r}"

@@ -98,26 +98,31 @@ class TestItemOverviewRenders:
     """Each step status that triggers a button must render without UndefinedError."""
 
     def test_in_progress_step_renders_kill_button(self) -> None:
+        """Verifies that an in_progress step renders a kill-step confirm button."""
         html = _render_item_overview([_make_step("S01", "in_progress")])
         assert "/project/iw-ai-core/api/confirm/kill-step/CR-00023/S01" in html
         assert "Kill" in html
 
     def test_failed_step_renders_restart_and_skip(self) -> None:
+        """Verifies that a failed step renders both restart and skip confirm buttons."""
         html = _render_item_overview([_make_step("S01", "failed")])
         assert "/project/iw-ai-core/api/confirm/restart-step/CR-00023/S01" in html
         assert "/project/iw-ai-core/api/confirm/skip-step/CR-00023/S01" in html
 
     def test_needs_fix_step_renders_restart_and_skip(self) -> None:
+        """Verifies that a needs_fix step renders both restart and skip confirm buttons."""
         html = _render_item_overview([_make_step("S01", "needs_fix")])
         assert "/project/iw-ai-core/api/confirm/restart-step/CR-00023/S01" in html
         assert "/project/iw-ai-core/api/confirm/skip-step/CR-00023/S01" in html
 
     def test_failed_merge_renders_restart_merge_button(self) -> None:
+        """Verifies that a failed MERGE step renders a restart-merge confirm button."""
         html = _render_item_overview([_make_step("MERGE", "failed")])
         assert "/project/iw-ai-core/api/confirm-item/restart-merge/CR-00023" in html
         assert "Retry Merge" in html
 
     def test_completed_step_renders_no_action_buttons(self) -> None:
+        """Verifies that a completed step renders no kill/restart/skip action buttons."""
         html = _render_item_overview([_make_step("S01", "completed")])
         assert "kill-step" not in html
         assert "restart-step" not in html
@@ -128,6 +133,7 @@ class TestDbStaleDisablesButtons:
     """When is_db_stale → True, write_button_attrs must inject ``disabled``."""
 
     def test_kill_button_disabled_when_db_stale(self) -> None:
+        """Verifies that kill buttons are disabled and show a migration hint when DB is stale."""
         env = _env()
         env.globals["is_db_stale"] = lambda _request: True
         tmpl = env.get_template("fragments/item_overview.html")
@@ -146,6 +152,7 @@ class TestRunningPageRenders:
     """The system /running page imports the same macros — same regression risk."""
 
     def test_running_table_fragment_renders_with_in_progress_row(self) -> None:
+        """Verifies that the running_table fragment renders a kill button for an in_progress row."""
         env = _env()
         tmpl = env.get_template("fragments/running_table.html")
         running_rows = [
@@ -175,6 +182,7 @@ class TestStepRowFragmentRenders:
     """fragments/step_row.html imports kill_button — same risk."""
 
     def test_step_row_renders_kill_button(self) -> None:
+        """Verifies that step_row.html renders a kill-step button for an in_progress step."""
         env = _env()
         tmpl = env.get_template("fragments/step_row.html")
         row = SimpleNamespace(

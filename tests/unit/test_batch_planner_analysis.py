@@ -17,6 +17,7 @@ from orch.batch_planner import (
 
 
 def test_extract_affected_files_finds_src_paths() -> None:
+    """Verifies that extract affected files finds src paths."""
     doc = """
     | File | Change |
     | src/innoforge/api/routes.py | Add endpoint |
@@ -28,6 +29,7 @@ def test_extract_affected_files_finds_src_paths() -> None:
 
 
 def test_extract_affected_files_excludes_tests() -> None:
+    """Verifies that extract affected files excludes tests."""
     doc = "Modified src/innoforge/tests/test_foo.py and src/innoforge/core.py"
     files = extract_affected_files(doc)
     assert "src/innoforge/core.py" in files
@@ -35,6 +37,7 @@ def test_extract_affected_files_excludes_tests() -> None:
 
 
 def test_extract_affected_files_empty() -> None:
+    """Verifies that extract affected files empty."""
     assert extract_affected_files(None) == []
     assert extract_affected_files("") == []
 
@@ -117,21 +120,25 @@ def test_analyze_f00004_f00005_style_conflict_is_detected() -> None:
 
 
 def test_has_database_step_true() -> None:
+    """Verifies that has database step true."""
     steps = [{"agent_label": "Database", "step_type": "implementation"}]
     assert has_database_step(steps) is True
 
 
 def test_has_database_step_false_wrong_type() -> None:
+    """Verifies that has database step false wrong type."""
     steps = [{"agent_label": "Database", "step_type": "code_review"}]
     assert has_database_step(steps) is False
 
 
 def test_has_database_step_false_no_db() -> None:
+    """Verifies that has database step false no db."""
     steps = [{"agent_label": "Backend", "step_type": "implementation"}]
     assert has_database_step(steps) is False
 
 
 def test_has_database_step_empty() -> None:
+    """Verifies that has database step empty."""
     assert has_database_step([]) is False
 
 
@@ -148,6 +155,7 @@ def _make_item(
     design_doc: str | None = None,
     steps: list[dict[str, str]] | None = None,
 ) -> dict:
+    """Return make item."""
     return {
         "id": item_id,
         "title": title,
@@ -159,12 +167,14 @@ def _make_item(
 
 
 def test_analyze_no_deps_all_group_0() -> None:
+    """Verifies that analyze no deps all group 0."""
     items = [_make_item("F001"), _make_item("F002"), _make_item("F003")]
     result = analyze_dependencies(items)
     assert all(info.group == 0 for info in result.values())
 
 
 def test_analyze_respects_explicit_deps() -> None:
+    """Verifies that analyze respects explicit deps."""
     items = [
         _make_item("F001"),
         _make_item("F002", depends_on=["F001"]),
@@ -190,6 +200,7 @@ def test_analyze_db_step_sequencing() -> None:
 
 
 def test_analyze_file_overlap_creates_dependency() -> None:
+    """Verifies that analyze file overlap creates dependency."""
     doc_a = "Changes to src/innoforge/api/routes.py"
     doc_b = "Also changes src/innoforge/api/routes.py"
     items = [
@@ -203,6 +214,7 @@ def test_analyze_file_overlap_creates_dependency() -> None:
 
 
 def test_analyze_external_deps_ignored() -> None:
+    """Verifies that analyze external deps ignored."""
     items = [_make_item("F001", depends_on=["EXTERNAL-999"])]
     result = analyze_dependencies(items)
     assert result["F001"].group == 0
@@ -215,6 +227,7 @@ def test_analyze_external_deps_ignored() -> None:
 
 
 def test_generate_plan_md_contains_batch_id() -> None:
+    """Verifies that generate plan md contains batch id."""
     items = [_make_item("F001"), _make_item("F002")]
     analysis = analyze_dependencies(items)
     md = generate_execution_plan_md("BATCH-00001", analysis, 4)
@@ -232,6 +245,7 @@ def test_generate_plan_md_contains_batch_id() -> None:
 
 
 def test_generate_drawio_valid_xml() -> None:
+    """Verifies that generate drawio valid xml."""
     items = [_make_item("F001"), _make_item("F002", depends_on=["F001"])]
     analysis = analyze_dependencies(items)
     xml = generate_drawio("BATCH-00001", analysis, 4)

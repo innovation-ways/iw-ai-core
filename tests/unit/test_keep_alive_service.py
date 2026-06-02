@@ -20,6 +20,7 @@ def make_slot(
     time_hhmm: str = "10:00",
     enabled: bool = True,
 ) -> MagicMock:
+    """Return make slot."""
     slot = MagicMock()
     slot.id = slot_id
     slot.time_hhmm = time_hhmm
@@ -67,6 +68,7 @@ class TestGetDueSlots:
         mock_run_query.first.return_value = None
 
         def query_side_effect(model):
+            """Return query side effect."""
             if model is KeepAliveSlot:
                 return mock_slot_query
             if model is KeepAliveRun:

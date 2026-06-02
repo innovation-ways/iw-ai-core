@@ -49,6 +49,14 @@ if TYPE_CHECKING:
 
 
 def _unique_id(prefix: str = "CR-00097") -> str:
+    """Generate a unique ID with a UUID suffix for test isolation.
+
+    Args:
+        prefix: Prefix to prepend to the UUID hex suffix.
+
+    Returns:
+        A unique string in the form ``<prefix>-<8-char-hex>``.
+    """
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
 

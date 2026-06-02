@@ -19,7 +19,10 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 
 class TestParseRgLines:
+    """Tests for ParseRgLines scenarios."""
+
     def test_parses_path_line_text(self) -> None:
+        """Verifies that parses path line text."""
         from lib.results import parse_rg_lines
 
         rows = parse_rg_lines(
@@ -36,6 +39,7 @@ class TestParseRgLines:
         ]
 
     def test_skips_unparseable_lines(self) -> None:
+        """Verifies that skips unparseable lines."""
         from lib.results import parse_rg_lines
 
         rows = parse_rg_lines(
@@ -50,6 +54,7 @@ class TestParseRgLines:
         assert rows[0]["file"] == "src/a.py"
 
     def test_truncates_long_snippets(self) -> None:
+        """Verifies that truncates long snippets."""
         from lib.results import parse_rg_lines
 
         long_text = "x" * 1000
@@ -63,7 +68,10 @@ class TestParseRgLines:
 
 
 class TestBuildResultsEvidence:
+    """Tests for BuildResultsEvidence scenarios."""
+
     def test_total_defaults_to_record_count(self) -> None:
+        """Verifies that total defaults to record count."""
         from lib.results import build_results_evidence
 
         records = [{"file": "a", "line": None, "rule": "R", "snippet_masked": ""}]
@@ -74,6 +82,7 @@ class TestBuildResultsEvidence:
         assert ev["results"] == records
 
     def test_capped_when_total_exceeds_cap(self) -> None:
+        """Verifies that capped when total exceeds cap."""
         from lib.results import RESULT_CAP, build_results_evidence
 
         records = [
@@ -85,6 +94,7 @@ class TestBuildResultsEvidence:
         assert len(ev["results"]) == 10
 
     def test_results_truncated_to_cap(self) -> None:
+        """Verifies that results truncated to cap."""
         from lib.results import RESULT_CAP, build_results_evidence
 
         records = [
@@ -95,6 +105,7 @@ class TestBuildResultsEvidence:
         assert len(ev["results"]) == RESULT_CAP
 
     def test_extras_merged(self) -> None:
+        """Verifies that extras merged."""
         from lib.results import build_results_evidence
 
         ev = build_results_evidence([], extras={"sarif": "/tmp/x.sarif"})
@@ -108,6 +119,7 @@ class TestInternalRefsEvidenceShape:
     ``evidence['results']`` list that persistence will accept."""
 
     def test_rfc1918_finding_carries_results(self) -> None:
+        """Verifies that rfc1918 finding carries results."""
         from checks.internal_refs import _result_to_finding
         from lib.types import Severity
 

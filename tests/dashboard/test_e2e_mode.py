@@ -54,6 +54,7 @@ def client_e2e_on(
     monkeypatch.setenv("IW_CORE_E2E_MODE", "true")
 
     def override_get_db() -> Generator[Session, None, None]:
+        """Yield the test db_session for FastAPI dependency injection."""
         yield db_session
 
     app = create_app()
@@ -88,6 +89,7 @@ def client_e2e_off(
     monkeypatch.delenv("IW_CORE_E2E_MODE", raising=False)
 
     def override_get_db() -> Generator[Session, None, None]:
+        """Yield the test db_session for FastAPI dependency injection."""
         yield db_session
 
     app = create_app()

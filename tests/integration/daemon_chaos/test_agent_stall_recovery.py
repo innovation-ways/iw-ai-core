@@ -1,3 +1,5 @@
+"""Integration tests for agent stall detection and recovery via step_monitor."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -25,17 +27,46 @@ BASE_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 class _Clock:
+    """Deterministic clock shim for injecting controlled time into step_monitor."""
+
     def __init__(self, now: datetime):
+        """Initialise the clock at the given instant.
+
+        Args:
+            now: The starting datetime value for this clock.
+        """
         self.now_value = now
 
     def now(self, _tz):
+        """Return the current simulated time.
+
+        Args:
+            _tz: Timezone argument (ignored; present to match datetime.now() signature).
+
+        Returns:
+            The current ``now_value`` datetime.
+        """
         return self.now_value
 
     def advance(self, *, seconds: int):
+        """Advance the clock by the given number of seconds.
+
+        Args:
+            seconds: Number of seconds to add to the current clock value.
+        """
         self.now_value = self.now_value + timedelta(seconds=seconds)
 
 
 def _config(tmp_path, stall_threshold: int) -> DaemonConfig:
+    """Build a minimal DaemonConfig with the given stall threshold.
+
+    Args:
+        tmp_path: pytest tmp_path directory used for auxiliary config file paths.
+        stall_threshold: Seconds before a step run is classified as stalled.
+
+    Returns:
+        A DaemonConfig instance pointed at dummy (non-connectable) DB coordinates.
+    """
     projects_toml = tmp_path / "projects.toml"
     projects_toml.write_text("")
     return DaemonConfig(
@@ -59,6 +90,11 @@ def _config(tmp_path, stall_threshold: int) -> DaemonConfig:
 
 
 def _project_config() -> ProjectConfig:
+    """Build a minimal ProjectConfig pointing at a non-existent repo.
+
+    Returns:
+        A ProjectConfig for the ``test-proj`` project with dummy paths.
+    """
     return ProjectConfig(
         id="test-proj",
         display_name="Test",
@@ -72,6 +108,15 @@ def _project_config() -> ProjectConfig:
 
 
 def _seed_running_step(db_session, now: datetime) -> tuple[WorkItem, WorkflowStep, StepRun]:
+    """Insert a WorkItem + WorkflowStep + running StepRun into the test DB.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+        now: Timestamp used for ``started_at`` and ``last_heartbeat`` on the StepRun.
+
+    Returns:
+        A tuple of (WorkItem, WorkflowStep, StepRun) that was persisted and committed.
+    """
     item_id = "I-STALL-001"
     item = WorkItem(
         project_id="test-proj",
@@ -117,6 +162,13 @@ def _seed_running_step(db_session, now: datetime) -> tuple[WorkItem, WorkflowSte
 
 
 def _install_clock(monkeypatch, clock: _Clock) -> None:
+    """Monkeypatch step_monitor's datetime with the given _Clock shim.
+
+    Args:
+        monkeypatch: The pytest MonkeyPatch fixture.
+        clock: The _Clock instance to install into ``step_monitor.datetime``.
+    """
+
     class _DateTimeShim:
         @staticmethod
         def now(_tz):
@@ -127,6 +179,7 @@ def _install_clock(monkeypatch, clock: _Clock) -> None:
 
 @pytest.mark.integration
 def test_stalled_agent_is_detected(db_session, test_project, tmp_path, chaos_daemon, monkeypatch):
+    """Verifies that a stalled agent run is classified as stalled after the threshold elapses."""
     base = BASE_TIME
     _, _, run = _seed_running_step(db_session, base)
     chaos_daemon.inject_agent_stall_after_seconds(2)
@@ -146,6 +199,7 @@ def test_stalled_agent_is_detected(db_session, test_project, tmp_path, chaos_dae
 
 @pytest.mark.integration
 def test_stalled_agent_step_recorded(db_session, test_project, tmp_path, monkeypatch):
+    """Verifies that killing a stalled agent emits a step_stall_killed event with correct."""
     base = BASE_TIME
     _, _, run = _seed_running_step(db_session, base)
     clock = _Clock(base)
@@ -180,6 +234,7 @@ def test_stalled_agent_step_recorded(db_session, test_project, tmp_path, monkeyp
 
 @pytest.mark.integration
 def test_stall_policy_routing(db_session, test_project, tmp_path, monkeypatch):
+    """Verifies that a stall marks the StepRun failed while the WorkItem remains in_progress."""
     base = BASE_TIME
     item, step, run = _seed_running_step(db_session, base)
     clock = _Clock(base)
@@ -204,6 +259,9 @@ def test_stall_policy_routing(db_session, test_project, tmp_path, monkeypatch):
 def test_stall_threshold_zero_boundary(
     db_session, test_project, tmp_path, chaos_daemon, monkeypatch
 ):
+    """Verifies that stall_threshold=0 immediately kills a step and that seconds=0 injection is
+    rejected.
+    """
     with pytest.raises(ValueError, match=r"seconds must be > 0"):
         chaos_daemon.inject_agent_stall_after_seconds(0)
 

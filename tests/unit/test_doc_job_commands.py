@@ -22,10 +22,11 @@ class _FakeSession:
         self._job = job
 
     def get(self, model: type, key: str) -> Any:  # noqa: ARG002
+        """Return get."""
         return self._job
 
     def flush(self) -> None:
-        pass
+        """Return flush."""
 
     def __enter__(self) -> _FakeSession:
         return self
@@ -44,6 +45,7 @@ def _make_fake_get_session(job: MagicMock | None = None) -> Any:
 
 
 def _make_mock_job(job_id: str = "job-123", status: JobStatus = JobStatus.queued) -> MagicMock:
+    """Return make mock job."""
     job = MagicMock()
     job.id = job_id
     job.project_id = "test-proj"
@@ -59,7 +61,10 @@ def _make_mock_job(job_id: str = "job-123", status: JobStatus = JobStatus.queued
 
 
 class TestDocJobStart:
+    """Tests for DocJobStart scenarios."""
+
     def test_doc_job_start_transitions_to_running(self) -> None:
+        """Verifies that doc job start transitions to running."""
         runner = CliRunner()
         mock_job = _make_mock_job(status=JobStatus.queued)
 
@@ -78,6 +83,7 @@ class TestDocJobStart:
         assert mock_job.skill_used == "iw-doc-generator"
 
     def test_doc_job_start_already_running_idempotent(self) -> None:
+        """Verifies that doc job start already running idempotent."""
         runner = CliRunner()
         mock_job = _make_mock_job(status=JobStatus.running)
 
@@ -93,6 +99,7 @@ class TestDocJobStart:
         assert output["status"] == "running"
 
     def test_doc_job_start_job_not_found(self) -> None:
+        """Verifies that doc job start job not found."""
         runner = CliRunner()
 
         result = runner.invoke(
@@ -105,6 +112,7 @@ class TestDocJobStart:
         assert "not found" in result.stderr
 
     def test_doc_job_start_invalid_status(self) -> None:
+        """Verifies that doc job start invalid status."""
         runner = CliRunner()
         mock_job = _make_mock_job(status=JobStatus.completed)
 
@@ -119,7 +127,10 @@ class TestDocJobStart:
 
 
 class TestDocJobDone:
+    """Tests for DocJobDone scenarios."""
+
     def test_doc_job_done_marks_completed(self) -> None:
+        """Verifies that doc job done marks completed."""
         runner = CliRunner()
         mock_job = _make_mock_job(status=JobStatus.running)
         mock_job.started_at = None
@@ -137,6 +148,7 @@ class TestDocJobDone:
         assert mock_job.status == JobStatus.completed
 
     def test_doc_job_done_with_error_marks_failed(self) -> None:
+        """Verifies that doc job done with error marks failed."""
         runner = CliRunner()
         mock_job = _make_mock_job(status=JobStatus.running)
         mock_job.started_at = None
@@ -155,6 +167,7 @@ class TestDocJobDone:
         assert mock_job.error == "something went wrong"
 
     def test_doc_job_done_idempotent(self) -> None:
+        """Verifies that doc job done idempotent."""
         runner = CliRunner()
         mock_job = _make_mock_job(status=JobStatus.completed)
         mock_job.error = None
@@ -182,6 +195,7 @@ class TestDocJobDone:
         assert mock_job.error is None
 
     def test_doc_job_done_job_not_found(self) -> None:
+        """Verifies that doc job done job not found."""
         runner = CliRunner()
 
         result = runner.invoke(

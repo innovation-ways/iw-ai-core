@@ -1,3 +1,5 @@
+"""Tests verifying that the active-tab localStorage key is namespaced per project."""
+
 from __future__ import annotations
 
 import os
@@ -17,10 +19,12 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
+    """Provide a TestClient with get_db overridden to the test db_session."""
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -34,6 +38,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
 
 def test_namespaced_active_tab_key_shape(client: TestClient) -> None:
+    """Verifies that _activeTabKey is namespaced by projectId in chat.js."""
     response = client.get("/static/chat_assistant/chat.js")
     assert response.status_code == 200
     text = response.text
@@ -43,6 +48,7 @@ def test_namespaced_active_tab_key_shape(client: TestClient) -> None:
 
 
 def test_no_legacy_browser_tab_active_tab_storage_key_usage(client: TestClient) -> None:
+    """Verifies that the legacy browser-tab-scoped active-tab storage key is removed."""
     response = client.get("/static/chat_assistant/chat.js")
     assert response.status_code == 200
     text = response.text

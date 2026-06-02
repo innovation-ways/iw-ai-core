@@ -43,12 +43,14 @@ class TestComposerDom:
     """The context % container must exist and sit before #chat-assistant-clear."""
 
     def test_context_pct_element_exists(self):
+        """Verifies that the context-pct element exists in the composer template."""
         soup = BeautifulSoup(COMPOSER_HTML.read_text(encoding="utf-8"), "html.parser")
         el = soup.find(id="chat-assistant-context-pct")
         assert el is not None, "composer.html must contain #chat-assistant-context-pct"
         assert el.name == "div", f"#chat-assistant-context-pct must be a <div>, got <{el.name}>"
 
     def test_context_pct_starts_visible_unknown(self):
+        """Verifies that the context-pct element starts in the visible unknown state."""
         soup = BeautifulSoup(COMPOSER_HTML.read_text(encoding="utf-8"), "html.parser")
         el = soup.find(id="chat-assistant-context-pct")
         assert el is not None, "chat-assistant-context-pct element not found"
@@ -84,6 +86,7 @@ class TestContextPctCss:
     """Colour-band rules in chat.css."""
 
     def test_base_rule_exists(self):
+        """Verifies that the base CSS rule for context-pct exists in styles.css."""
         body = _css_rule_body(CHAT_CSS.read_text(encoding="utf-8"), ".chat-assistant-context-pct")
         assert body is not None, "chat.css must define a .chat-assistant-context-pct base rule"
         assert body.strip() != "", (
@@ -91,6 +94,7 @@ class TestContextPctCss:
         )
 
     def test_warn_class_exists(self):
+        """Verifies that the warn modifier class exists in styles.css."""
         body = _css_rule_body(
             CHAT_CSS.read_text(encoding="utf-8"), ".chat-assistant-context-pct.is-warn"
         )
@@ -101,6 +105,7 @@ class TestContextPctCss:
         assert body.count("color") >= 1, "the .is-warn rule must define warning-band color styling"
 
     def test_crit_class_exists(self):
+        """Verifies that the critical modifier class exists in styles.css."""
         body = _css_rule_body(
             CHAT_CSS.read_text(encoding="utf-8"), ".chat-assistant-context-pct.is-crit"
         )
@@ -116,23 +121,27 @@ class TestContextPctJsHelpers:
     _activateTab must all be present."""
 
     def test_apply_context_pct_exists(self):
+        """Verifies that the _applyContextPct function exists in chat.js."""
         js = CHAT_JS.read_text(encoding="utf-8")
         assert js.count("function _applyContextPct") == 1, (
             "chat.js must define function _applyContextPct(pct) exactly once"
         )
 
     def test_refresh_context_pct_exists(self):
+        """Verifies that the _refreshContextPct function exists in chat.js."""
         js = CHAT_JS.read_text(encoding="utf-8")
         assert js.count("function _refreshContextPct") == 1, (
             "chat.js must define function _refreshContextPct(tabId) exactly once"
         )
 
     def test_refresh_context_pct_handles_falsy_tab_id_without_nan_contract(self):
+        """Verifies that _refreshContextPct handles a falsy tab ID without producing NaN."""
         js = CHAT_JS.read_text(encoding="utf-8")
         assert js.count("function _refreshContextPct(tabId)") == 1
         assert "if (!tabId)" in js
 
     def test_activate_tab_calls_refresh_context_pct(self):
+        """Verifies that _activateTab calls _refreshContextPct."""
         js = CHAT_JS.read_text(encoding="utf-8")
         assert js.count("function _refreshContextPct") == 1, (
             "_refreshContextPct must be defined exactly once"
@@ -142,6 +151,7 @@ class TestContextPctJsHelpers:
         )
 
     def test_poll_calls_refresh_context_pct(self):
+        """Verifies that the poll function calls _refreshContextPct."""
         js = CHAT_JS.read_text(encoding="utf-8")
         assert "setInterval" in js, "chat.js must use setInterval for polling"
         # Called from >=2 sites — the immediate _activateTab display and the

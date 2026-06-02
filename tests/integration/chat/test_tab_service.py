@@ -42,6 +42,7 @@ def test_create_tab_persists_row_with_defaults(
     db_session: Session,
     test_project: Any,
 ) -> None:
+    """Verifies that create_tab with only model persists a row with all default field values."""
     tab, soft_cap_exceeded = tab_service.create_tab(
         db_session,
         project_id=test_project.id,
@@ -69,6 +70,7 @@ def test_create_tab_rejects_unknown_runtime(
     db_session: Session,
     test_project: Any,
 ) -> None:
+    """Verifies that create_tab raises ValueError and writes no row for an unknown runtime."""
     # F-00087 added "pi" to ALLOWED_RUNTIMES — use a genuinely unknown runtime.
     with pytest.raises(ValueError, match=r"runtime 'notaruntime' not in allowlist"):
         tab_service.create_tab(
@@ -92,6 +94,7 @@ def test_create_tab_returns_soft_cap_flag_when_count_exceeds_ten(
     db_session: Session,
     test_project: Any,
 ) -> None:
+    """Verifies that the soft-cap exceeded flag is False for the first 10 tabs and True on."""
     flags: list[bool] = []
     for i in range(11):
         _tab, exceeded = tab_service.create_tab(
@@ -118,6 +121,7 @@ def test_close_tab_is_idempotent(
     db_session: Session,
     test_project: Any,
 ) -> None:
+    """Verifies that calling close_tab twice sets status=closed and preserves closed_at."""
     tab, _ = tab_service.create_tab(
         db_session,
         project_id=test_project.id,
@@ -145,6 +149,7 @@ def test_reopen_tab_restores_active_status(
     db_session: Session,
     test_project: Any,
 ) -> None:
+    """Verifies that reopen_tab on a closed tab restores status=active and clears closed_at."""
     tab, _ = tab_service.create_tab(
         db_session,
         project_id=test_project.id,
@@ -172,6 +177,7 @@ def test_empty_patch_does_not_bump_updated_at(
     db_session: Session,
     test_project: Any,
 ) -> None:
+    """Verifies that update_tab with no field changes leaves updated_at unchanged (invariant #8)."""
     tab, _ = tab_service.create_tab(
         db_session,
         project_id=test_project.id,

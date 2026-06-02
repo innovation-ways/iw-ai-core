@@ -34,6 +34,7 @@ from orch.daemon.fix_cycle import _build_fix_inner_command, _build_fix_launch_ar
 
 
 def test_build_initial_command_opencode_shape() -> None:
+    """Verifies that build initial command opencode shape."""
     cmd = _build_initial_command(
         cli_tool="opencode",
         prompt_file="/wt/.tmp/X_S01.prompt",
@@ -56,6 +57,7 @@ def test_build_initial_command_opencode_shape() -> None:
 
 
 def test_build_initial_command_claude_shape() -> None:
+    """Verifies that build initial command claude shape."""
     cmd = _build_initial_command(
         cli_tool="claude",
         prompt_file="/wt/.tmp/X_S01.prompt",
@@ -127,6 +129,7 @@ def test_build_initial_command_unknown_cli_tool_raises() -> None:
 
 
 def test_build_fix_inner_command_opencode_shape() -> None:
+    """Verifies that build fix inner command opencode shape."""
     cmd = _build_fix_inner_command(
         cli_tool="opencode",
         prompt_path="/wt/.tmp/I-00074_S06_fix1.prompt",
@@ -142,6 +145,7 @@ def test_build_fix_inner_command_opencode_shape() -> None:
 
 
 def test_build_fix_inner_command_claude_shape() -> None:
+    """Verifies that build fix inner command claude shape."""
     cmd = _build_fix_inner_command(
         cli_tool="claude",
         prompt_path="/wt/.tmp/I-00074_S06_fix1.prompt",
@@ -158,6 +162,7 @@ def test_build_fix_inner_command_claude_shape() -> None:
 
 
 def test_build_fix_inner_command_pi_shape() -> None:
+    """Verifies that build fix inner command pi shape."""
     cmd = _build_fix_inner_command(
         cli_tool="pi",
         prompt_path="/wt/.tmp/I-00074_S06_fix1.prompt",
@@ -240,6 +245,7 @@ def _make_poller_with_project(cli_tool: str | None) -> tuple[DocJobPoller, Magic
 
 
 def test_doc_job_build_agent_command_opencode() -> None:
+    """Verifies that doc job build agent command opencode."""
     poller, project, job = _make_poller_with_project("opencode")
     cmd_list = poller._build_agent_command(job, project, skill="iw-doc-generator")
     assert len(cmd_list) == 1
@@ -250,6 +256,7 @@ def test_doc_job_build_agent_command_opencode() -> None:
 
 
 def test_doc_job_build_agent_command_claude() -> None:
+    """Verifies that doc job build agent command claude."""
     poller, project, job = _make_poller_with_project("claude")
     cmd_list = poller._build_agent_command(job, project, skill="iw-doc-system")
     assert len(cmd_list) == 1
@@ -260,6 +267,7 @@ def test_doc_job_build_agent_command_claude() -> None:
 
 
 def test_doc_job_build_agent_command_pi() -> None:
+    """Verifies that doc job build agent command pi."""
     poller, project, job = _make_poller_with_project("pi")
     cmd_list = poller._build_agent_command(job, project, skill="iw-doc-generator")
     assert len(cmd_list) == 1
@@ -274,6 +282,7 @@ def test_doc_job_build_agent_command_pi() -> None:
 
 
 def test_doc_job_build_agent_command_unknown_cli_tool_raises() -> None:
+    """Verifies that doc job build agent command unknown cli tool raises."""
     poller, project, job = _make_poller_with_project("aider")
     with pytest.raises(ValueError, match="Unknown cli_tool"):
         poller._build_agent_command(job, project, skill="iw-doc-system")
@@ -358,6 +367,7 @@ def test_doc_service_complete_doc_job_command_issued_shape(
 
 
 def test_doc_service_complete_doc_job_unknown_cli_tool_raises() -> None:
+    """Verifies that doc service complete doc job unknown cli tool raises."""
     from orch.doc_service import DocService
 
     session, _ = _make_doc_service_with_project_cli_tool("aider")

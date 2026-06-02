@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 
 def write_toml(path: Path, content: str) -> None:
+    """Return write toml."""
     path.write_text(content)
 
 

@@ -64,6 +64,7 @@ class TestDetectFileType:
         ],
     )
     def test_detect_file_type(self, filename: str, expected: str) -> None:
+        """Verifies that detect file type."""
         from dashboard.routers.items import _detect_file_type
 
         assert _detect_file_type(filename) == expected

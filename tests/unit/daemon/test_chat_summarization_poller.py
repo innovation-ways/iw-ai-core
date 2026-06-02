@@ -12,6 +12,11 @@ class _FakeRow:
     """Fake row object that mimics a SQLAlchemy mapped instance."""
 
     def __init__(self, **attrs: object) -> None:
+        """Set each keyword argument as an attribute on the instance.
+
+        Args:
+            **attrs: Attribute names and values to set on the stub row.
+        """
         for k, v in attrs.items():
             setattr(self, k, v)
 

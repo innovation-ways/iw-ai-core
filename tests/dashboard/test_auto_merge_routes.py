@@ -1,3 +1,5 @@
+"""Tests for the auto-merge dashboard routes — page rendering, event filtering, and verdict."""
+
 from __future__ import annotations
 
 import re
@@ -66,6 +68,7 @@ def _force_phase_0(db_session, project_id: str) -> None:
 
 @pytest.fixture
 def client(db_session):
+    """Provide a TestClient with get_db overridden to the test db_session."""
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db_session
     with TestClient(app) as c:
@@ -74,6 +77,13 @@ def client(db_session):
 
 
 def _runtime(db_session, rid=1, enabled=True):
+    """Insert or update an AgentRuntimeOption row for use in auto-merge tests.
+
+    Args:
+        db_session: SQLAlchemy session to use.
+        rid: Runtime option ID.
+        enabled: Whether the runtime option is enabled.
+    """
     if rid == 1:
         # Migration 0f11be8f2147 made Pi the catalogue default; clear it so
         # the id=1 row below can reclaim the single is_default slot.
@@ -97,6 +107,16 @@ def _runtime(db_session, rid=1, enabled=True):
 
 
 def _event(db_session, project_id: str, event_type: str = "merge_auto_resolved") -> DaemonEvent:
+    """Insert and flush a DaemonEvent row for auto-merge tests.
+
+    Args:
+        db_session: SQLAlchemy session to use.
+        project_id: ID of the owning project.
+        event_type: Type of daemon event to create.
+
+    Returns:
+        The flushed DaemonEvent instance.
+    """
     e = DaemonEvent(
         project_id=project_id,
         event_type=event_type,
@@ -111,25 +131,30 @@ def _event(db_session, project_id: str, event_type: str = "merge_auto_resolved")
 
 
 def test_page_render(client: TestClient, test_project) -> None:
+    """Verifies that the auto-merge page renders with a 200 status."""
     assert client.get(f"/project/{test_project.id}/auto-merge").status_code == 200
 
 
 def test_status_fragment(client: TestClient, test_project, db_session) -> None:
+    """Verifies that the auto-merge status fragment renders with a 200 status."""
     _runtime(db_session)
     assert client.get(f"/project/{test_project.id}/auto-merge/status").status_code == 200
 
 
 def test_events_fragment(client: TestClient, test_project, db_session) -> None:
+    """Verifies that the auto-merge events fragment renders with a 200 status."""
     _event(db_session, test_project.id)
     assert client.get(f"/project/{test_project.id}/auto-merge/events").status_code == 200
 
 
 def test_event_detail(client: TestClient, test_project, db_session) -> None:
+    """Verifies that the auto-merge event detail modal renders with a 200 status."""
     e = _event(db_session, test_project.id)
     assert client.get(f"/project/{test_project.id}/auto-merge/events/{e.id}").status_code == 200
 
 
 def test_verdict_post_valid(client: TestClient, test_project, db_session) -> None:
+    """Verifies that posting a valid verdict returns 200."""
     e = _event(db_session, test_project.id)
     r = client.post(
         f"/project/{test_project.id}/auto-merge/events/{e.id}/verdict",
@@ -140,6 +165,7 @@ def test_verdict_post_valid(client: TestClient, test_project, db_session) -> Non
 
 
 def test_verdict_post_invalid_verdict(client: TestClient, test_project, db_session) -> None:
+    """Verifies that posting an unknown verdict value returns 400."""
     e = _event(db_session, test_project.id)
     assert (
         client.post(
@@ -152,6 +178,7 @@ def test_verdict_post_invalid_verdict(client: TestClient, test_project, db_sessi
 
 
 def test_verdict_post_oversize_notes(client: TestClient, test_project, db_session) -> None:
+    """Verifies that notes exceeding the size limit returns 413."""
     e = _event(db_session, test_project.id)
     assert (
         client.post(
@@ -164,6 +191,7 @@ def test_verdict_post_oversize_notes(client: TestClient, test_project, db_sessio
 
 
 def test_verdict_post_non_resolved_event(client: TestClient, test_project, db_session) -> None:
+    """Verifies that posting a verdict to a non-resolved event returns 400."""
     e = _event(db_session, test_project.id, event_type="merge_auto_resolution_attempted")
     assert (
         client.post(
@@ -176,6 +204,7 @@ def test_verdict_post_non_resolved_event(client: TestClient, test_project, db_se
 
 
 def test_config_post_valid(client: TestClient, test_project, db_session) -> None:
+    """Verifies that posting a valid phase/runtime config returns 200."""
     _runtime(db_session)
     assert (
         client.post(
@@ -188,6 +217,7 @@ def test_config_post_valid(client: TestClient, test_project, db_session) -> None
 
 
 def test_config_post_disabled_runtime(client: TestClient, test_project, db_session) -> None:
+    """Verifies that selecting a disabled runtime option returns 400."""
     _runtime(db_session, rid=9, enabled=False)
     assert (
         client.post(
@@ -200,6 +230,7 @@ def test_config_post_disabled_runtime(client: TestClient, test_project, db_sessi
 
 
 def test_config_post_phase_2(client: TestClient, test_project) -> None:
+    """Verifies that requesting phase 2 (not yet supported) returns 400."""
     assert (
         client.post(
             f"/project/{test_project.id}/auto-merge/config",
@@ -211,6 +242,7 @@ def test_config_post_phase_2(client: TestClient, test_project) -> None:
 
 
 def test_rollup_fragment(client: TestClient, test_project, db_session) -> None:
+    """Verifies that the auto-merge rollup fragment renders with 200 when a verdict exists."""
     e = _event(db_session, test_project.id)
     db_session.merge(
         MergeAutoVerdict(
@@ -229,6 +261,7 @@ def test_rollup_fragment(client: TestClient, test_project, db_session) -> None:
 def test_ac6_phase_0_hides_chip_in_header_html(
     client: TestClient, test_project, db_session
 ) -> None:
+    """AC6: compact status returns empty body when phase is 0, hiding the header chip."""
     _force_phase_0(db_session, test_project.id)
     r = client.get(f"/project/{test_project.id}/auto-merge/status?compact=true")
     assert r.status_code == 200
@@ -240,6 +273,7 @@ def test_ac6_phase_0_hides_chip_in_header_html(
 def test_ac6_phase_0_page_shows_plumbing_only_message(
     client: TestClient, test_project, db_session
 ) -> None:
+    """AC6: the auto-merge page shows a plumbing-only message when phase is 0."""
     _force_phase_0(db_session, test_project.id)
     r = client.get(f"/project/{test_project.id}/auto-merge")
     assert r.status_code == 200
@@ -250,6 +284,7 @@ def test_ac6_phase_0_page_shows_plumbing_only_message(
 def test_invariant_6_chip_dom_element_absent_in_phase_0_html(
     client: TestClient, test_project, db_session
 ) -> None:
+    """Invariant 6: the auto-merge chip DOM element is absent server-side when phase is 0."""
     _force_phase_0(db_session, test_project.id)
     # The chip must be absent server-side (not just CSS-hidden) on adjacent
     # per-project pages when phase resolves to 0.
@@ -261,6 +296,7 @@ def test_invariant_6_chip_dom_element_absent_in_phase_0_html(
 def test_invariant_8_verdict_upsert_is_idempotent(
     client: TestClient, test_project, db_session
 ) -> None:
+    """Invariant 8: posting a verdict twice upserts, leaving exactly one row with the latest."""
     e = _event(db_session, test_project.id)
     client.post(
         f"/project/{test_project.id}/auto-merge/events/{e.id}/verdict",
@@ -301,6 +337,7 @@ def test_invariant_8_verdict_upsert_is_idempotent(
     ],
 )
 def test_ac9_existing_routes_unaffected(client: TestClient, test_project, suffix: str) -> None:
+    """AC9: existing per-project routes still return 200 after adding auto-merge routes."""
     if suffix == "healthz/identity":
         r = client.get("/healthz/identity")
         assert r.status_code in (200, 503)
@@ -1103,6 +1140,7 @@ def test_event_modal_heading_is_humanized(client: TestClient, test_project, db_s
 
 
 def test_invalid_sort_param_returns_400(client: TestClient, test_project) -> None:
+    """Verifies that an unrecognised sort column name returns 400 with an explanation."""
     response = client.get(
         f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10&sort=message"
     )
@@ -1111,6 +1149,7 @@ def test_invalid_sort_param_returns_400(client: TestClient, test_project) -> Non
 
 
 def test_invalid_dir_param_returns_400(client: TestClient, test_project) -> None:
+    """Verifies that an invalid sort direction value returns 400."""
     response = client.get(
         f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10&dir=random"
     )
@@ -1120,6 +1159,7 @@ def test_invalid_dir_param_returns_400(client: TestClient, test_project) -> None
 def test_table_header_renders_clickable_sort_button_for_timestamp(
     client: TestClient, test_project
 ) -> None:
+    """Verifies that the timestamp column header renders as a clickable sort button."""
     response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10")
     assert response.status_code == 200
     html = response.text
@@ -1134,6 +1174,7 @@ def test_table_header_renders_clickable_sort_button_for_timestamp(
 def test_default_events_view_uses_created_at_desc_as_active_sort(
     client: TestClient, test_project
 ) -> None:
+    """Verifies that the default events view shows created_at descending as the active sort."""
     response = client.get(f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10")
     assert response.status_code == 200
     html = response.text
@@ -1150,6 +1191,7 @@ def test_default_events_view_uses_created_at_desc_as_active_sort(
 def test_active_column_carries_chevron_and_aria_sort(
     client: TestClient, test_project, db_session
 ) -> None:
+    """Verifies that the active sort column carries a chevron indicator and aria-sort attribute."""
     _event(db_session, test_project.id, event_type="auto_merge_health_probe")
     response = client.get(
         f"/project/{test_project.id}/auto-merge/events?page=0&page_size=10&sort=event_type&dir=asc"
@@ -1168,6 +1210,7 @@ def test_active_column_carries_chevron_and_aria_sort(
 
 
 def test_filter_and_sort_combine_correctly(client: TestClient, test_project, db_session) -> None:
+    """Verifies that filtering by event type and sorting by column work together correctly."""
     for _i in range(60):
         _event(db_session, test_project.id, event_type="auto_merge_health_probe")
     response = client.get(

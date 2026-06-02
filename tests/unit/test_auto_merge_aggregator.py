@@ -1,3 +1,5 @@
+"""Unit tests for auto merge aggregator."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -21,6 +23,7 @@ def _event(**kwargs):
 
 
 def _cfg(**kwargs) -> AutoMergeConfig:
+    """Return cfg."""
     d = AutoMergeConfig.defaults()
     return AutoMergeConfig(
         phase=kwargs.get("phase", d.phase),
@@ -40,6 +43,7 @@ def _cfg(**kwargs) -> AutoMergeConfig:
 
 
 def test_status_snapshot_empty_db() -> None:
+    """Verifies that status snapshot empty db."""
     from orch.auto_merge_aggregator import get_status_snapshot
 
     db = MagicMock()
@@ -54,6 +58,7 @@ def test_status_snapshot_empty_db() -> None:
 
 
 def test_status_snapshot_with_seeded_events() -> None:
+    """Verifies that status snapshot with seeded events."""
     from orch.auto_merge_aggregator import get_status_snapshot
 
     db = MagicMock()
@@ -78,6 +83,7 @@ def test_status_snapshot_with_seeded_events() -> None:
 
 
 def test_list_recent_events_pagination() -> None:
+    """Verifies that list recent events pagination."""
     from orch.auto_merge_aggregator import list_recent_events
 
     db = MagicMock()
@@ -89,6 +95,7 @@ def test_list_recent_events_pagination() -> None:
 
 
 def test_list_recent_events_type_filter() -> None:
+    """Verifies that list recent events type filter."""
     from orch.auto_merge_aggregator import list_recent_events
 
     db = MagicMock()
@@ -99,6 +106,7 @@ def test_list_recent_events_type_filter() -> None:
 
 
 def test_list_recent_events_sorts_by_event_type_asc(db_session, test_project) -> None:
+    """Verifies that list recent events sorts by event type asc."""
     from orch.auto_merge_aggregator import list_recent_events
     from orch.db.models import DaemonEvent
 
@@ -133,6 +141,7 @@ def test_list_recent_events_sorts_by_event_type_asc(db_session, test_project) ->
 
 
 def test_list_recent_events_sorts_by_event_type_desc(db_session, test_project) -> None:
+    """Verifies that list recent events sorts by event type desc."""
     from orch.auto_merge_aggregator import list_recent_events
 
     db_session.execute.return_value.scalar_one.return_value = 0
@@ -149,6 +158,7 @@ def test_list_recent_events_sorts_by_event_type_desc(db_session, test_project) -
 
 
 def test_list_recent_events_sorts_by_entity_id_asc(db_session, test_project) -> None:
+    """Verifies that list recent events sorts by entity id asc."""
     from orch.auto_merge_aggregator import list_recent_events
 
     db_session.execute.return_value.scalar_one.return_value = 0
@@ -165,6 +175,7 @@ def test_list_recent_events_sorts_by_entity_id_asc(db_session, test_project) -> 
 
 
 def test_list_recent_events_sorts_by_verdict_nulls_last(db_session, test_project) -> None:
+    """Verifies that list recent events sorts by verdict nulls last."""
     from orch.auto_merge_aggregator import list_recent_events
 
     db_session.execute.return_value.scalar_one.return_value = 0
@@ -190,6 +201,7 @@ def test_list_recent_events_sorts_by_verdict_nulls_last(db_session, test_project
 
 
 def test_list_recent_events_rejects_unknown_sort_column(db_session, test_project) -> None:
+    """Verifies that list recent events rejects unknown sort column."""
     from orch.auto_merge_aggregator import list_recent_events
 
     with pytest.raises(ValueError, match="sort must be one of"):
@@ -201,6 +213,7 @@ def test_list_recent_events_rejects_unknown_sort_column(db_session, test_project
 
 
 def test_list_recent_events_left_joins_verdicts() -> None:
+    """Verifies that list recent events left joins verdicts."""
     from orch.auto_merge_aggregator import list_recent_events
 
     db = MagicMock()
@@ -215,6 +228,7 @@ def test_list_recent_events_left_joins_verdicts() -> None:
 
 
 def test_get_event_detail_returns_none_for_missing() -> None:
+    """Verifies that get event detail returns none for missing."""
     from orch.auto_merge_aggregator import get_event_detail
 
     db = MagicMock()
@@ -223,6 +237,7 @@ def test_get_event_detail_returns_none_for_missing() -> None:
 
 
 def test_get_event_detail_includes_verdict_when_present() -> None:
+    """Verifies that get event detail includes verdict when present."""
     from orch.auto_merge_aggregator import get_event_detail
 
     db = MagicMock()
@@ -236,6 +251,7 @@ def test_get_event_detail_includes_verdict_when_present() -> None:
 
 
 def test_verdict_rollup_7d_window() -> None:
+    """Verifies that verdict rollup 7d window."""
     from orch.auto_merge_aggregator import get_verdict_rollup
 
     db = MagicMock()
@@ -245,6 +261,7 @@ def test_verdict_rollup_7d_window() -> None:
 
 
 def test_verdict_rollup_30d_window() -> None:
+    """Verifies that verdict rollup 30d window."""
     from orch.auto_merge_aggregator import get_verdict_rollup
 
     db = MagicMock()
@@ -254,6 +271,7 @@ def test_verdict_rollup_30d_window() -> None:
 
 
 def test_verdict_rollup_excludes_older_events() -> None:
+    """Verifies that verdict rollup excludes older events."""
     from orch.auto_merge_aggregator import get_verdict_rollup
 
     db = MagicMock()
@@ -263,6 +281,7 @@ def test_verdict_rollup_excludes_older_events() -> None:
 
 
 def test_refuse_list_breakdown_groups_by_reason() -> None:
+    """Verifies that refuse list breakdown groups by reason."""
     from orch.auto_merge_aggregator import get_refuse_list_breakdown
 
     db = MagicMock()
@@ -272,6 +291,7 @@ def test_refuse_list_breakdown_groups_by_reason() -> None:
 
 
 def test_refuse_list_breakdown_window_filter() -> None:
+    """Verifies that refuse list breakdown window filter."""
     from orch.auto_merge_aggregator import get_refuse_list_breakdown
 
     db = MagicMock()
@@ -280,6 +300,7 @@ def test_refuse_list_breakdown_window_filter() -> None:
 
 
 def test_health_summary_no_probes() -> None:
+    """Verifies that health summary no probes."""
     from orch.auto_merge_aggregator import get_health_summary
 
     db = MagicMock()
@@ -290,6 +311,7 @@ def test_health_summary_no_probes() -> None:
 
 
 def test_health_summary_recent_success() -> None:
+    """Verifies that health summary recent success."""
     from orch.auto_merge_aggregator import get_health_summary
 
     db = MagicMock()
@@ -302,6 +324,7 @@ def test_health_summary_recent_success() -> None:
 
 
 def test_health_summary_recent_failures_exceed_threshold() -> None:
+    """Verifies that health summary recent failures exceed threshold."""
     from orch.auto_merge_aggregator import get_health_summary
 
     db = MagicMock()
@@ -314,6 +337,7 @@ def test_health_summary_recent_failures_exceed_threshold() -> None:
 
 
 def test_token_cost_rollup_per_model_breakdown() -> None:
+    """Verifies that token cost rollup per model breakdown."""
     from orch.auto_merge_aggregator import get_token_cost_rollup
 
     db = MagicMock()
@@ -332,6 +356,7 @@ def test_token_cost_rollup_per_model_breakdown() -> None:
 
 
 def test_token_cost_rollup_unknown_model_sets_flag() -> None:
+    """Verifies that token cost rollup unknown model sets flag."""
     from orch.auto_merge_aggregator import get_token_cost_rollup
 
     db = MagicMock()
@@ -347,6 +372,7 @@ def test_token_cost_rollup_unknown_model_sets_flag() -> None:
 
 
 def test_token_cost_rollup_handles_missing_llm_calls_metadata() -> None:
+    """Verifies that token cost rollup handles missing llm calls metadata."""
     from orch.auto_merge_aggregator import get_token_cost_rollup
 
     db = MagicMock()
@@ -361,6 +387,7 @@ def test_token_cost_rollup_handles_missing_llm_calls_metadata() -> None:
 
 
 def test_list_recent_events_includes_verdict_fields() -> None:
+    """Verifies that list recent events includes verdict fields."""
     from orch.auto_merge_aggregator import list_recent_events
 
     db = MagicMock()

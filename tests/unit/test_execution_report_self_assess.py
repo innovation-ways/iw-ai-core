@@ -42,6 +42,7 @@ def make_mock_work_item(
     status: WorkItemStatus = WorkItemStatus.completed,
     title: str = "Test Feature",
 ) -> WorkItem:
+    """Return make mock work item."""
     item = MagicMock(spec=WorkItem)
     item.project_id = project_id
     item.id = work_item_id
@@ -59,6 +60,7 @@ def make_mock_workflow_step(
     step_label: str | None = "SelfAssess",
     agent_label: str = "SelfAssess",
 ) -> WorkflowStep:
+    """Return make mock workflow step."""
     step = MagicMock(spec=WorkflowStep)
     step.id = 1
     step.step_id = step_id
@@ -78,6 +80,7 @@ def make_mock_step_run(
     started_at: datetime | None = None,
     completed_at: datetime | None = None,
 ) -> MagicMock:
+    """Return make mock step run."""
     run = MagicMock()
     run.step_id = step_db_id
     run.run_number = run_number

@@ -1,3 +1,5 @@
+"""Unit tests for pi narration guard."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -21,6 +23,7 @@ find_latest_pi_session = _MODULE.find_latest_pi_session
 
 
 def test_classify_narration_shape_text_only_returns_NARRATION(tmp_path: Path) -> None:  # noqa: N802
+    """Verifies that classify narration shape text only returns NARRATION."""
     session = tmp_path / "session.jsonl"
     session.write_text(
         (
@@ -34,6 +37,7 @@ def test_classify_narration_shape_text_only_returns_NARRATION(tmp_path: Path) ->
 
 
 def test_classify_narration_shape_with_toolcall_returns_TOOL_CALL(tmp_path: Path) -> None:  # noqa: N802
+    """Verifies that classify narration shape with toolcall returns TOOL CALL."""
     session = tmp_path / "session.jsonl"
     session.write_text(
         (
@@ -47,6 +51,7 @@ def test_classify_narration_shape_with_toolcall_returns_TOOL_CALL(tmp_path: Path
 
 
 def test_classify_with_text_and_toolcall_returns_TOOL_CALL(tmp_path: Path) -> None:  # noqa: N802
+    """Verifies that classify with text and toolcall returns TOOL CALL."""
     session = tmp_path / "session.jsonl"
     session.write_text(
         (
@@ -61,6 +66,7 @@ def test_classify_with_text_and_toolcall_returns_TOOL_CALL(tmp_path: Path) -> No
 
 
 def test_classify_empty_session_returns_NO_ASSISTANT(tmp_path: Path) -> None:  # noqa: N802
+    """Verifies that classify empty session returns NO ASSISTANT."""
     session = tmp_path / "session.jsonl"
     session.write_text(
         '{"type":"session","id":"abc"}\n{"type":"model_change","model":"x"}\n',
@@ -71,10 +77,12 @@ def test_classify_empty_session_returns_NO_ASSISTANT(tmp_path: Path) -> None:  #
 
 
 def test_classify_missing_file_returns_PARSE_ERROR(tmp_path: Path) -> None:  # noqa: N802
+    """Verifies that classify missing file returns PARSE ERROR."""
     assert classify_last_assistant(tmp_path / "missing.jsonl") is NarrationVerdict.PARSE_ERROR
 
 
 def test_classify_malformed_jsonl_returns_PARSE_ERROR(tmp_path: Path) -> None:  # noqa: N802
+    """Verifies that classify malformed jsonl returns PARSE ERROR."""
     session = tmp_path / "session.jsonl"
     session.write_text('{"type":"assistant"}\n{not-json}\n', encoding="utf-8")
 
@@ -82,6 +90,7 @@ def test_classify_malformed_jsonl_returns_PARSE_ERROR(tmp_path: Path) -> None:  
 
 
 def test_find_latest_pi_session_picks_most_recent(tmp_path: Path, monkeypatch) -> None:
+    """Verifies that find latest pi session picks most recent."""
     base = tmp_path / "sessions"
     slug = "--tmp-worktree--"
     session_dir = base / slug
@@ -103,6 +112,7 @@ def test_find_latest_pi_session_picks_most_recent(tmp_path: Path, monkeypatch) -
 
 
 def test_find_latest_pi_session_returns_None_for_empty_dir(tmp_path: Path, monkeypatch) -> None:  # noqa: N802
+    """Verifies that find latest pi session returns None for empty dir."""
     base = tmp_path / "sessions"
     (base / "--tmp-worktree--").mkdir(parents=True)
     monkeypatch.setenv("PI_CODING_AGENT_SESSION_DIR", str(base))
@@ -111,6 +121,7 @@ def test_find_latest_pi_session_returns_None_for_empty_dir(tmp_path: Path, monke
 
 
 def test_build_reprompt_message_includes_last_text_truncated() -> None:
+    """Verifies that build reprompt message includes last text truncated."""
     long_text = "x" * 400
     message = build_reprompt_message(long_text, attempt=2, cap=5)
 
@@ -120,6 +131,7 @@ def test_build_reprompt_message_includes_last_text_truncated() -> None:
 
 
 def test_build_reprompt_message_handles_None_last_text() -> None:  # noqa: N802
+    """Verifies that build reprompt message handles None last text."""
     message = build_reprompt_message(None, attempt=1, cap=5)
 
     assert "Reprompt 1/5." in message

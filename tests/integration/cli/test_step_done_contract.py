@@ -139,6 +139,7 @@ def seed_in_progress_step(
 def _step_status_in_db(
     db_session: Session, project_id: str, item_id: str, step_id: str
 ) -> str | None:
+    """Return the current status string of a WorkflowStep row, or None if not found."""
     step = db_session.execute(
         select(WorkflowStep).where(
             WorkflowStep.project_id == project_id,
@@ -152,6 +153,7 @@ def _step_status_in_db(
 def _latest_step_run_status(
     db_session: Session, project_id: str, item_id: str, step_id: str
 ) -> str | None:
+    """Return the status of the most recent StepRun for the given step, or None if absent."""
     step = db_session.execute(
         select(WorkflowStep).where(
             WorkflowStep.project_id == project_id,

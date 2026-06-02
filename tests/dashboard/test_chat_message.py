@@ -24,6 +24,7 @@ class TestChatMessageTemplateStructure:
 
     @pytest.fixture
     def message_tmpl(self):
+        """Load the message.html template from the dashboard Jinja2 environment."""
         return _env().get_template("chat/message.html")
 
     def test_message_uses_chat_message_body_class(self, message_tmpl):

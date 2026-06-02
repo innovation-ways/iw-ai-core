@@ -25,6 +25,7 @@ from orch.daemon.qv_baseline import GATE_PARSERS
 
 
 def make_config(_tmp_path: Path) -> MagicMock:
+    """Return make config."""
     cfg = MagicMock()
     cfg.baseline_qv_enabled = True
     cfg.setting_up_threshold = 600
@@ -32,6 +33,7 @@ def make_config(_tmp_path: Path) -> MagicMock:
 
 
 def make_project_config() -> ProjectConfig:
+    """Return make project config."""
     return ProjectConfig(
         id="test-proj",
         display_name="Test Project",
@@ -45,6 +47,7 @@ def make_project_config() -> ProjectConfig:
 
 
 def make_manager(_tmp_path: Path) -> BatchManager:
+    """Return make manager."""
     manager = BatchManager.__new__(BatchManager)
     manager.project_id = "test-proj"
     manager.project_config = make_project_config()

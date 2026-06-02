@@ -79,6 +79,7 @@ def client(
         from dashboard.dependencies import get_db
 
         def override_get_db():
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -110,6 +111,7 @@ class TestDocJobLogTail:
     """GET /project/{project_id}/jobs/doc_generation/{job_id}/log/tail"""
 
     def test_returns_404_for_unknown_job(self, client: TestClient, test_project) -> None:
+        """Verifies that an unknown job ID returns 404."""
         resp = client.get(f"/project/{test_project.id}/jobs/doc_generation/nonexistent/log/tail")
         assert resp.status_code == 404
 
@@ -120,6 +122,7 @@ class TestDocJobLogTail:
         test_project: Project,
         doc_job_with_project: DocGenerationJob,
     ) -> None:
+        """Verifies that a missing log file returns 404."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_project.repo_root = tmpdir
             db_session.commit()
@@ -136,6 +139,7 @@ class TestDocJobLogTail:
         test_project: Project,
         doc_job_with_project: DocGenerationJob,
     ) -> None:
+        """Verifies that an existing log file returns 200 with its content."""
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "ai-dev" / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -163,6 +167,7 @@ class TestDocJobLogTail:
         test_project: Project,
         doc_job_with_project: DocGenerationJob,
     ) -> None:
+        """Verifies that the n= parameter limits the number of log lines returned."""
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "ai-dev" / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -182,6 +187,7 @@ class TestDocJobLogTail:
     def test_n_parameter_hard_capped_at_1000(
         self, client: TestClient, test_project: Project
     ) -> None:
+        """Verifies that the n= parameter is capped at 1000 lines."""
         resp = client.get(f"/project/{test_project.id}/jobs/doc_generation/some-id/log/tail?n=9999")
         assert resp.status_code == 422
 
@@ -190,6 +196,7 @@ class TestDocJobLogStream:
     """GET /project/{project_id}/jobs/doc_generation/{job_id}/log/stream"""
 
     def test_returns_404_for_unknown_job(self, client: TestClient, test_project) -> None:
+        """Verifies that the SSE log stream endpoint returns 404 for an unknown job ID."""
         resp = client.get(f"/project/{test_project.id}/jobs/doc_generation/nonexistent/log/stream")
         assert resp.status_code == 404
 
@@ -200,6 +207,7 @@ class TestDocJobLogStream:
         test_project: Project,
         doc_job_with_project: DocGenerationJob,
     ) -> None:
+        """Verifies that the SSE log endpoint returns text/event-stream content type."""
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "ai-dev" / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)
@@ -225,6 +233,7 @@ class TestDocJobLogRaw:
     """GET /project/{project_id}/jobs/doc_generation/{job_id}/log/raw"""
 
     def test_returns_404_for_unknown_job(self, client: TestClient, test_project) -> None:
+        """Verifies that the raw log download endpoint returns 404 for an unknown job ID."""
         resp = client.get(f"/project/{test_project.id}/jobs/doc_generation/nonexistent/log/raw")
         assert resp.status_code == 404
 
@@ -235,6 +244,7 @@ class TestDocJobLogRaw:
         test_project: Project,
         doc_job_with_project: DocGenerationJob,
     ) -> None:
+        """Verifies that the raw log endpoint returns 404 when the log file does not exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             test_project.repo_root = tmpdir
             db_session.commit()
@@ -250,6 +260,9 @@ class TestDocJobLogRaw:
         test_project: Project,
         doc_job_with_project: DocGenerationJob,
     ) -> None:
+        """Verifies that the download endpoint returns text/plain with a Content-Disposition
+        attachment header.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir) / "ai-dev" / "logs"
             log_dir.mkdir(parents=True, exist_ok=True)

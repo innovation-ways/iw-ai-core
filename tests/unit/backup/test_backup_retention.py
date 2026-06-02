@@ -1,3 +1,5 @@
+"""Unit tests for the backup retention policy in orch.backup.retention."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,12 +10,15 @@ from orch.backup.retention import select_prunable_backup_jobs
 
 @dataclass(frozen=True)
 class _Candidate:
+    """Minimal stub for a backup job candidate passed to select_prunable_backup_jobs."""
+
     job_id: str
     backup_type: str
     created_at: datetime
 
 
 def test_manual_backups_are_never_pruned() -> None:
+    """Verifies that manual backups are excluded from pruning regardless of age."""
     now = datetime(2026, 6, 1, tzinfo=UTC)
     candidates = [
         _Candidate("m1", "manual", now - timedelta(days=365)),
@@ -26,6 +31,9 @@ def test_manual_backups_are_never_pruned() -> None:
 
 
 def test_retention_boundary_exactly_n_days_is_kept() -> None:
+    """Verifies that a backup exactly at the retention boundary is kept while one second older is
+    pruned.
+    """
     now = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
     exactly_n = now - timedelta(days=30)
     older_than_n = exactly_n - timedelta(seconds=1)

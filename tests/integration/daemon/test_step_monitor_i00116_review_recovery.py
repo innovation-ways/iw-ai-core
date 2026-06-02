@@ -38,7 +38,17 @@ from orch.daemon.step_monitor import _check_step_health
 
 
 def _make_report(tmp_path: Path, item_id: str, step_id: str, verdict: str = "pass") -> Path:
-    """Write a well-formed reviewer report and return its path."""
+    """Write a well-formed reviewer report file at the expected worktree path.
+
+    Args:
+        tmp_path: Root directory used as the fake worktree path.
+        item_id: Work item ID used in the report filename and content.
+        step_id: Step ID string embedded in the report filename and content.
+        verdict: Verdict value written into the JSON block; defaults to ``pass``.
+
+    Returns:
+        Path to the written report file.
+    """
     reports_dir = tmp_path / "ai-dev" / "active" / item_id / "reports"
     reports_dir.mkdir(parents=True)
     report = reports_dir / f"{item_id}_{step_id}_CodeReview_report.md"

@@ -179,7 +179,10 @@ class TestImagesHaveAlt:
 
 
 class TestMessageA11y:
+    """Tests for accessibility attributes in chat message templates."""
+
     def test_assistant_message_has_actions_buttons(self):
+        """Verifies that assistant messages render action buttons."""
         html = _render_message(role="assistant")
         assert 'data-action="copy"' in html
         assert 'data-action="regenerate"' in html
@@ -187,20 +190,24 @@ class TestMessageA11y:
         assert 'data-action="thumbs-down"' in html
 
     def test_user_message_has_no_actions(self):
+        """Verifies that user messages do not render action buttons."""
         html = _render_message(role="user", role_label="You")
         assert 'data-action="copy"' not in html
 
     def test_copy_button_has_aria_label(self):
+        """Verifies that the copy button has an aria-label attribute."""
         html = _render_message(role="assistant")
         assert 'aria-label="Copy message"' in html
 
     def test_all_action_buttons_have_aria_labels(self):
+        """Verifies that all action buttons carry aria-label attributes."""
         html = _render_message(role="assistant")
         buttons = re.findall(r'<button[^>]*data-action="([^"]+)"', html)
         for btn in buttons:
             assert f'data-action="{btn}"' in html
 
     def test_copy_code_button_in_parts(self):
+        """Verifies that code block copy buttons are rendered in the parts template."""
         html = (
             _make_env()
             .get_template("chat/parts/code.html")
@@ -209,10 +216,12 @@ class TestMessageA11y:
         assert 'aria-label="Copy code"' in html
 
     def test_citation_chip_has_aria_haspopup(self):
+        """Verifies that citation chips have aria-haspopup='dialog'."""
         html = _make_env().get_template("chat/parts/citation_chip.html").render(n="1")
         assert 'aria-haspopup="dialog"' in html
 
     def test_sources_panel_has_proper_semantics(self):
+        """Verifies that the sources panel has correct ARIA semantics."""
         html = (
             _make_env()
             .get_template("chat/parts/sources_panel.html")
@@ -232,5 +241,6 @@ class TestMessageA11y:
         assert "<ol" in html
 
     def test_sources_panel_zero_citations_empty(self):
+        """Verifies that an empty citations list renders an empty sources panel."""
         html = _make_env().get_template("chat/parts/sources_panel.html").render(citations=[])
         assert "<details" not in html

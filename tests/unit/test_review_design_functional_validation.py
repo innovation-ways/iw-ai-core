@@ -36,6 +36,7 @@ class ValidationResult:
 
 
 def count_words(text: str) -> int:
+    """Return count words."""
     stripped = text.strip()
     if not stripped:
         return 0
@@ -106,7 +107,10 @@ def validate_functional_doc(
 
 
 class TestValidateFunctionalDocHappyPath:
+    """Tests for ValidateFunctionalDocHappyPath scenarios."""
+
     def test_valid_doc_passes(self, tmp_path: Path) -> None:
+        """Verifies that valid doc passes."""
         content = (
             "# F-00099 — Functional Design\n\n"
             "<!-- Author: test -->\n"
@@ -130,6 +134,7 @@ class TestValidateFunctionalDocHappyPath:
         assert result.violations == []
 
     def test_valid_doc_at_word_boundary_500(self, tmp_path: Path) -> None:
+        """Verifies that valid doc at word boundary 500."""
         body_words = " ".join(["word"] * 491)
         content = (
             "# F-00099 — Functional Design\n\n"
@@ -147,7 +152,10 @@ class TestValidateFunctionalDocHappyPath:
 
 
 class TestValidateFunctionalDocStructural:
+    """Tests for ValidateFunctionalDocStructural scenarios."""
+
     def test_missing_file_blocks(self) -> None:
+        """Verifies that missing file blocks."""
         result = validate_functional_doc(
             "/does/not/exist/F-00099_Functional.md",
             None,
@@ -156,6 +164,7 @@ class TestValidateFunctionalDocStructural:
         assert result.violations == []
 
     def test_missing_h2_why_blocks(self, tmp_path: Path) -> None:
+        """Verifies that missing h2 why blocks."""
         content = (
             "# F-00099 — Functional Design\n\n"
             "## What Changed (for the User)\nTest.\n\n"
@@ -169,6 +178,7 @@ class TestValidateFunctionalDocStructural:
         assert "missing H2 '## Why' section" in result.blocking
 
     def test_missing_h2_what_changed_blocks(self, tmp_path: Path) -> None:
+        """Verifies that missing h2 what changed blocks."""
         content = "# F-00099 — Functional Design\n\n## Why\nTest.\n\n## How It Behaves\nTest.\n"
         path = tmp_path / "F-00099_Functional.md"
         path.write_text(content, encoding="utf-8")
@@ -178,6 +188,7 @@ class TestValidateFunctionalDocStructural:
         assert "missing H2 '## What Changed (for the User)' section" in result.blocking
 
     def test_missing_h2_how_it_behaves_blocks(self, tmp_path: Path) -> None:
+        """Verifies that missing h2 how it behaves blocks."""
         content = (
             "# F-00099 — Functional Design\n\n"
             "## Why\nTest.\n\n"
@@ -192,7 +203,10 @@ class TestValidateFunctionalDocStructural:
 
 
 class TestValidateFunctionalDocWordCount:
+    """Tests for ValidateFunctionalDocWordCount scenarios."""
+
     def test_499_words_passes(self, tmp_path: Path) -> None:
+        """Verifies that 499 words passes."""
         body_words = " ".join(["word"] * 485)
         content = (
             "# F-00099 — Functional Design\n\n"
@@ -208,6 +222,7 @@ class TestValidateFunctionalDocWordCount:
         assert result.blocking == []
 
     def test_500_words_passes(self, tmp_path: Path) -> None:
+        """Verifies that 500 words passes."""
         body_words = " ".join(["word"] * 486)
         content = (
             "# F-00099 — Functional Design\n\n"
@@ -223,6 +238,7 @@ class TestValidateFunctionalDocWordCount:
         assert result.blocking == []
 
     def test_501_words_blocks(self, tmp_path: Path) -> None:
+        """Verifies that 501 words blocks."""
         body_words = " ".join(["word"] * 493)
         content = (
             "# F-00099 — Functional Design\n\n"
@@ -239,11 +255,14 @@ class TestValidateFunctionalDocWordCount:
 
 
 class TestValidateFunctionalDocForbiddenTerms:
+    """Tests for ValidateFunctionalDocForbiddenTerms scenarios."""
+
     @pytest.mark.parametrize(
         "extension",
         [".py", ".md", ".sql", ".js", ".ts", ".tsx", ".html", ".json", ".toml", ".yaml", ".yml"],
     )
     def test_file_extension_triggers_warning(self, tmp_path: Path, extension: str) -> None:
+        """Verifies that file extension triggers warning."""
         safe_word = "foo" + extension
         content = (
             "# F-00099 — Functional Design\n\n"
@@ -272,6 +291,7 @@ class TestValidateFunctionalDocForbiddenTerms:
         ],
     )
     def test_path_fragment_triggers_warning(self, tmp_path: Path, fragment: str) -> None:
+        """Verifies that path fragment triggers warning."""
         content = (
             "# F-00099 — Functional Design\n\n"
             f"## Why\nThe {fragment} module was updated.\n\n"
@@ -299,6 +319,7 @@ class TestValidateFunctionalDocForbiddenTerms:
         ],
     )
     def test_sql_ddl_triggers_warning(self, tmp_path: Path, sql_pattern: str) -> None:
+        """Verifies that sql ddl triggers warning."""
         content = (
             "# F-00099 — Functional Design\n\n"
             f"## Why\nThe migration includes {sql_pattern}.\n\n"
@@ -315,6 +336,7 @@ class TestValidateFunctionalDocForbiddenTerms:
         )
 
     def test_code_fence_triggers_warning(self, tmp_path: Path) -> None:
+        """Verifies that code fence triggers warning."""
         content = (
             "# F-00099 — Functional Design\n\n"
             "## Why\nThe code now looks like:\n\n"
@@ -332,7 +354,10 @@ class TestValidateFunctionalDocForbiddenTerms:
 
 
 class TestValidateFunctionalDocCombined:
+    """Tests for ValidateFunctionalDocCombined scenarios."""
+
     def test_structural_and_content_issues_both_reported(self, tmp_path: Path) -> None:
+        """Verifies that structural and content issues both reported."""
         content = (
             "# F-00099 — Functional Design\n\n"
             "## Why\nWord count here " + " ".join(["word"] * 501) + "\n\n"
@@ -349,6 +374,7 @@ class TestValidateFunctionalDocCombined:
         assert any("missing H2" not in b for b in result.blocking)
 
     def test_structural_failure_drives_blocking_not_content(self, tmp_path: Path) -> None:
+        """Verifies that structural failure drives blocking not content."""
         content = (
             "# F-00099 — Functional Design\n\n"
             "## What Changed (for the User)\nThe orch/ module was updated.\n\n"

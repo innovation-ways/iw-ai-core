@@ -1,3 +1,5 @@
+"""Unit tests for resolve pending migration."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,6 +8,7 @@ from scripts.resolve_pending_migration import resolve_pending_migration
 
 
 def _migration_content(revision: str, down_revision: str | None) -> str:
+    """Return migration content."""
     down = "None" if down_revision is None else f'"{down_revision}"'
 
     return f'''"""Migration {revision}."""
@@ -24,6 +27,7 @@ def downgrade() -> None:
 
 
 def test_no_pending_files_is_noop(tmp_path: Path) -> None:
+    """Verifies that no pending files is noop."""
     versions = tmp_path / "versions"
     versions.mkdir()
     (versions / "a.py").write_text(_migration_content("aabb", None), encoding="utf-8")
@@ -39,6 +43,7 @@ def test_no_pending_files_is_noop(tmp_path: Path) -> None:
 
 
 def test_resolves_single_pending_file(tmp_path: Path) -> None:
+    """Verifies that resolves single pending file."""
     versions = tmp_path / "versions"
     versions.mkdir()
     (versions / "a.py").write_text(_migration_content("aaa111", None), encoding="utf-8")
@@ -54,6 +59,7 @@ def test_resolves_single_pending_file(tmp_path: Path) -> None:
 
 
 def test_resolves_pending_when_it_is_the_only_migration(tmp_path: Path) -> None:
+    """Verifies that resolves pending when it is the only migration."""
     versions = tmp_path / "versions"
     versions.mkdir()
     only = versions / "only.py"
@@ -67,6 +73,7 @@ def test_resolves_pending_when_it_is_the_only_migration(tmp_path: Path) -> None:
 
 
 def test_resolver_idempotent(tmp_path: Path) -> None:
+    """Verifies that resolver idempotent."""
     versions = tmp_path / "versions"
     versions.mkdir()
     (versions / "a.py").write_text(_migration_content("aaa111", None), encoding="utf-8")

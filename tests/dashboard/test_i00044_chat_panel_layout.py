@@ -23,6 +23,7 @@ def _template_dir() -> Path:
 
 @pytest.fixture(scope="module")
 def jinja_env() -> Environment:
+    """Create a Jinja2 environment pointing at the dashboard templates directory."""
     env = Environment(
         loader=FileSystemLoader(str(_template_dir())),
         autoescape=select_autoescape(enabled_extensions=()),
@@ -41,6 +42,7 @@ class TestBug2GridRowConstraint:
     grid row height and prevent <main> from scrolling away with the chat."""
 
     def test_page_body_has_grid_rows_1fr(self, jinja_env: Environment):
+        """Verifies that the page body uses grid-rows: 1fr for the chat panel."""
         mock_request = MagicMock()
         mock_request.url.path = "/project/iw-ai-core/code"
         tpl = jinja_env.get_template("project_code.html")
@@ -62,6 +64,7 @@ class TestBug2GridRowConstraint:
         )
 
     def test_page_body_grid_height_preserved(self, jinja_env: Environment):
+        """Verifies that the page body grid height is preserved across template changes."""
         mock_request = MagicMock()
         mock_request.url.path = "/project/iw-ai-core/code"
         tpl = jinja_env.get_template("project_code.html")
@@ -100,6 +103,7 @@ class TestBug1CollapseToggleAffordance:
     """
 
     def test_collapsed_rail_has_chat_label(self, jinja_env: Environment):
+        """Verifies that the collapsed rail shows a 'Chat' label."""
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
         rail_match = re.search(r'id="chat-expand-rail"[^>]*>(.{0,600})', html, re.DOTALL)
@@ -115,6 +119,7 @@ class TestBug1CollapseToggleAffordance:
         )
 
     def test_expand_and_collapse_controls_have_aria_labels_with_chat(self, jinja_env: Environment):
+        """Verifies that expand and collapse controls have aria-labels referencing 'Chat'."""
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
         for selector, kind in (
@@ -132,6 +137,7 @@ class TestBug1CollapseToggleAffordance:
             )
 
     def test_collapsed_state_is_not_bare_chevron_only(self, jinja_env: Environment):
+        """Verifies that the collapsed state shows more than just a chevron."""
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
         rail_match = re.search(r'id="chat-expand-rail"[^>]*>', html)
@@ -158,6 +164,7 @@ class TestBug1KeyboardAccessibility:
     """
 
     def test_collapse_button_is_a_button_element(self, jinja_env: Environment):
+        """Verifies that the collapse affordance is a proper button element."""
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
         match = re.search(r'<button[^>]+id="chat-collapse-btn"[^>]*>', html)
@@ -167,6 +174,7 @@ class TestBug1KeyboardAccessibility:
         )
 
     def test_expand_rail_is_keyboard_role_button(self, jinja_env: Environment):
+        """Verifies that the expand rail has button role for keyboard accessibility."""
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
         rail_match = re.search(r'<[a-z]+[^>]+id="chat-expand-rail"[^>]*>', html)
@@ -178,6 +186,7 @@ class TestBug1KeyboardAccessibility:
         )
 
     def test_mobile_drawer_elements_unchanged(self, jinja_env: Environment):
+        """Verifies that mobile drawer elements are not affected by the layout changes."""
         tpl = jinja_env.get_template("chat/panel.html")
         html = tpl.render()
         # I-00057 removed #chat-close-btn; collapse is now handled by

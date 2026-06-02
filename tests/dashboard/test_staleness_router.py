@@ -55,6 +55,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     try:
 
         def override_get_db() -> Generator[Session, None, None]:
+            """Yield the test db_session for FastAPI dependency injection."""
             yield db_session
 
         app = create_app()
@@ -799,6 +800,7 @@ class TestAlembicUpgradeTimeoutExpired:
         captured_envs: list[dict] = []
 
         def fake_run(cmd: list, **kwargs: object) -> MagicMock:
+            """Return a MagicMock subprocess result for testing staleness checks."""
             env = kwargs.get("env")
             if env is not None:
                 captured_envs.append(dict(env))
@@ -843,6 +845,7 @@ class TestAlembicUpgradeTimeoutExpired:
         captured_kwargs: list[dict] = []
 
         def fake_run(cmd: list, **kwargs: object) -> MagicMock:
+            """Return a MagicMock subprocess result for testing staleness checks."""
             captured_kwargs.append(dict(kwargs))
             result = MagicMock()
             result.returncode = 0
@@ -1179,6 +1182,7 @@ class TestInvariants:
         results = [original_result, updated_result]
 
         def side_effect(project_id: str) -> object:
+            """Return a simulated staleness result for the given project ID."""
             nonlocal call_count
             r = results[min(call_count, len(results) - 1)]
             call_count += 1

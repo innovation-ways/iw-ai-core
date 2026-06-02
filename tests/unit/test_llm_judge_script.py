@@ -24,7 +24,10 @@ import scripts.llm_judge_test_review as judge_module
 
 
 class TestValidateJudgePayload:
+    """Tests for ValidateJudgePayload scenarios."""
+
     def test_accepts_well_formed(self) -> None:
+        """Verifies that accepts well formed."""
         payload = {
             "file": "tests/unit/test_foo.py",
             "test_name": "test_bar",
@@ -45,6 +48,7 @@ class TestValidateJudgePayload:
         )
 
     def test_rejects_missing_scores(self) -> None:
+        """Verifies that rejects missing scores."""
         payload = {
             "file": "tests/unit/test_foo.py",
             "test_name": "test_bar",
@@ -55,6 +59,7 @@ class TestValidateJudgePayload:
             judge_module.validate_judge_payload(payload)
 
     def test_rejects_non_integer_score(self) -> None:
+        """Verifies that rejects non integer score."""
         payload = {
             "file": "tests/unit/test_foo.py",
             "test_name": "test_bar",
@@ -70,6 +75,7 @@ class TestValidateJudgePayload:
             judge_module.validate_judge_payload(payload)
 
     def test_rejects_out_of_range_score(self) -> None:
+        """Verifies that rejects out of range score."""
         payload = {
             "file": "tests/unit/test_foo.py",
             "test_name": "test_bar",
@@ -85,6 +91,7 @@ class TestValidateJudgePayload:
             judge_module.validate_judge_payload(payload)
 
     def test_rejects_score_above_five(self) -> None:
+        """Verifies that rejects score above five."""
         payload = {
             "file": "tests/unit/test_foo.py",
             "test_name": "test_bar",
@@ -100,6 +107,7 @@ class TestValidateJudgePayload:
             judge_module.validate_judge_payload(payload)
 
     def test_rejects_missing_rationale(self) -> None:
+        """Verifies that rejects missing rationale."""
         payload = {
             "file": "tests/unit/test_foo.py",
             "test_name": "test_bar",
@@ -115,6 +123,7 @@ class TestValidateJudgePayload:
             judge_module.validate_judge_payload(payload)
 
     def test_rejects_missing_overall(self) -> None:
+        """Verifies that rejects missing overall."""
         payload = {
             "file": "tests/unit/test_foo.py",
             "test_name": "test_bar",
@@ -129,6 +138,7 @@ class TestValidateJudgePayload:
             judge_module.validate_judge_payload(payload)
 
     def test_rejects_out_of_range_overall(self) -> None:
+        """Verifies that rejects out of range overall."""
         payload = {
             "file": "tests/unit/test_foo.py",
             "test_name": "test_bar",
@@ -144,6 +154,7 @@ class TestValidateJudgePayload:
             judge_module.validate_judge_payload(payload)
 
     def test_rejects_missing_file(self) -> None:
+        """Verifies that rejects missing file."""
         payload = {
             "test_name": "test_bar",
             "scores": {
@@ -158,6 +169,7 @@ class TestValidateJudgePayload:
             judge_module.validate_judge_payload(payload)
 
     def test_rejects_missing_test_name(self) -> None:
+        """Verifies that rejects missing test name."""
         payload = {
             "file": "tests/unit/test_foo.py",
             "scores": {
@@ -178,7 +190,10 @@ class TestValidateJudgePayload:
 
 
 class TestLoadLabelledSet:
+    """Tests for LoadLabelledSet scenarios."""
+
     def test_accepts_valid_jsonl(self) -> None:
+        """Verifies that accepts valid jsonl."""
         data = json.dumps(
             {
                 "file": "tests/unit/test_foo.py",
@@ -193,6 +208,7 @@ class TestLoadLabelledSet:
         assert records[1]["label"] == "STRONG"
 
     def test_accepts_all_valid_labels(self) -> None:
+        """Verifies that accepts all valid labels."""
         for label in ("STRONG", "MEDIUM", "WEAK"):
             data = json.dumps(
                 {
@@ -206,6 +222,7 @@ class TestLoadLabelledSet:
             assert records[0]["label"] == label
 
     def test_rejects_invalid_label(self) -> None:
+        """Verifies that rejects invalid label."""
         data = json.dumps(
             {
                 "file": "tests/unit/test_foo.py",
@@ -218,6 +235,7 @@ class TestLoadLabelledSet:
             judge_module.load_labelled_set(io.StringIO(data + "\n"))
 
     def test_rejects_missing_required_key(self) -> None:
+        """Verifies that rejects missing required key."""
         data = json.dumps(
             {
                 "file": "tests/unit/test_foo.py",
@@ -230,6 +248,7 @@ class TestLoadLabelledSet:
             judge_module.load_labelled_set(io.StringIO(data + "\n"))
 
     def test_reports_line_number_on_reject(self) -> None:
+        """Verifies that reports line number on reject."""
         lines = (
             json.dumps(
                 {
@@ -256,6 +275,7 @@ class TestLoadLabelledSet:
             judge_module.load_labelled_set(io.StringIO(lines))
 
     def test_empty_stream_returns_empty_list(self) -> None:
+        """Verifies that empty stream returns empty list."""
         records = judge_module.load_labelled_set(io.StringIO(""))
         assert records == []
 
@@ -266,9 +286,12 @@ class TestLoadLabelledSet:
 
 
 class TestAggregateCalibration:
+    """Tests for AggregateCalibration scenarios."""
+
     def test_computes_confusion_matrix(self) -> None:
         # 5 records: 3 STRONG (true), 2 WEAK (true)
         # Predictions: 2 STRONG (correct), 1 STRONG (FP), 2 WEAK (correct for weak)
+        """Verifies that computes confusion matrix."""
         records = [
             {"file": "f1", "test_name": "t1", "label": "STRONG", "rationale": "r"},
             {"file": "f2", "test_name": "t2", "label": "STRONG", "rationale": "r"},
@@ -293,6 +316,7 @@ class TestAggregateCalibration:
         assert matrix["WEAK"]["STRONG"] == 0
 
     def test_computes_recall_and_fp_rate(self) -> None:
+        """Verifies that computes recall and fp rate."""
         records = [
             {"file": "f1", "test_name": "t1", "label": "STRONG", "rationale": "r"},
             {"file": "f2", "test_name": "t2", "label": "STRONG", "rationale": "r"},
@@ -315,6 +339,7 @@ class TestAggregateCalibration:
     def test_weak_recall_formula(self) -> None:
         # 3 WEAK true, judge predicts 1 WEAK, 2 STRONG (FP)
         # WEAK recall = 1/3
+        """Verifies that weak recall formula."""
         records = [
             {"file": "f1", "test_name": "t1", "label": "WEAK", "rationale": "r"},
             {"file": "f2", "test_name": "t2", "label": "WEAK", "rationale": "r"},
@@ -332,6 +357,7 @@ class TestAggregateCalibration:
     def test_strong_fp_rate_formula(self) -> None:
         # 2 STRONG true, judge predicts both as WEAK
         # STRONG FP = 2/2 = 1.0 (every true STRONG was mislabeled as WEAK)
+        """Verifies that strong fp rate formula."""
         records = [
             {"file": "f1", "test_name": "t1", "label": "STRONG", "rationale": "r"},
             {"file": "f2", "test_name": "t2", "label": "STRONG", "rationale": "r"},
@@ -345,6 +371,7 @@ class TestAggregateCalibration:
         assert result["strong_fp_rate"] == pytest.approx(1.0)
 
     def test_handles_skipped_predictions(self) -> None:
+        """Verifies that handles skipped predictions."""
         records = [
             {"file": "f1", "test_name": "t1", "label": "STRONG", "rationale": "r"},
             {"file": "f2", "test_name": "t2", "label": "WEAK", "rationale": "r"},
@@ -362,6 +389,7 @@ class TestAggregateCalibration:
         assert result["total"] == 2
 
     def test_verdict_met_when_thresholds_met(self) -> None:
+        """Verifies that verdict met when thresholds met."""
         records = [{"file": "f1", "test_name": "t1", "label": "WEAK", "rationale": "r"}] * 10
         # Simulate perfect recall and zero false positive rate
         predictions = [{"overall": 1} for _ in range(10)]
@@ -373,6 +401,7 @@ class TestAggregateCalibration:
         assert result["verdict"] == "MET"
 
     def test_verdict_not_met_when_thresholds_fail(self) -> None:
+        """Verifies that verdict not met when thresholds fail."""
         records = [{"file": "f1", "test_name": "t1", "label": "WEAK", "rationale": "r"}] * 10
         # All WEAK predicted as STRONG → 0% recall
         predictions = [{"overall": 5} for _ in range(10)]
@@ -382,6 +411,7 @@ class TestAggregateCalibration:
         assert result["verdict"] == "NOT MET"
 
     def test_empty_predictions_all_skipped(self) -> None:
+        """Verifies that empty predictions all skipped."""
         records = [{"file": "f1", "test_name": "t1", "label": "STRONG", "rationale": "r"}]
         predictions: list[dict | None] = [None]
         result = judge_module.aggregate_calibration(records, predictions)
@@ -391,6 +421,7 @@ class TestAggregateCalibration:
         assert result["verdict"] == "NOT MET"
 
     def test_token_spend_accumulated(self) -> None:
+        """Verifies that token spend accumulated."""
         records = [{"file": "f1", "test_name": "t1", "label": "STRONG", "rationale": "r"}] * 2
         predictions = [{"overall": 5}, {"overall": 4}]
         result = judge_module.aggregate_calibration(records, predictions)
@@ -411,8 +442,11 @@ class TestAggregateCalibration:
 
 
 class TestArgumentParsing:
+    """Tests for ArgumentParsing scenarios."""
+
     def test_rejects_empty_test_name(self) -> None:
         # argparse does not reject empty strings directly; validation is in main()
+        """Verifies that rejects empty test name."""
         args = judge_module._build_arg_parser().parse_args(
             ["--test-file", "tests/unit/test_foo.py", "--test-name", ""]
         )
@@ -424,11 +458,13 @@ class TestArgumentParsing:
         # argparse itself does not enforce --test-file as required;
         # that check is in main(). We verify the parser accepts the partial
         # call (so validation via main() is what should raise).
+        """Verifies that rejects missing test file."""
         args = judge_module._build_arg_parser().parse_args(["--test-name", "test_bar"])
         assert args.test_file is None
         assert args.test_name == "test_bar"
 
     def test_accepts_valid_test_file_and_name(self) -> None:
+        """Verifies that accepts valid test file and name."""
         args = judge_module._build_arg_parser().parse_args(
             ["--test-file", "tests/unit/test_foo.py", "--test-name", "test_bar"]
         )
@@ -436,12 +472,14 @@ class TestArgumentParsing:
         assert args.test_name == "test_bar"
 
     def test_accepts_calibrate_mode(self) -> None:
+        """Verifies that accepts calibrate mode."""
         args = judge_module._build_arg_parser().parse_args(
             ["--calibrate", "tests/llm_judge/labelled_set.jsonl"]
         )
         assert args.calibrate == "tests/llm_judge/labelled_set.jsonl"
 
     def test_accepts_custom_model(self) -> None:
+        """Verifies that accepts custom model."""
         args = judge_module._build_arg_parser().parse_args(
             [
                 "--test-file",
@@ -455,12 +493,14 @@ class TestArgumentParsing:
         assert args.model == "anthropic/claude-opus-4-7"
 
     def test_prod_file_is_optional(self) -> None:
+        """Verifies that prod file is optional."""
         args = judge_module._build_arg_parser().parse_args(
             ["--test-file", "tests/unit/test_foo.py", "--test-name", "test_bar"]
         )
         assert args.prod_file is None
 
     def test_prod_file_accepted(self) -> None:
+        """Verifies that prod file accepted."""
         args = judge_module._build_arg_parser().parse_args(
             [
                 "--test-file",
@@ -475,6 +515,7 @@ class TestArgumentParsing:
 
     def test_mutually_exclusive_test_and_calibrate(self) -> None:
         # argparse allows both; mutual-exclusion check is in main(), not argparser
+        """Verifies that mutually exclusive test and calibrate."""
         args = judge_module._build_arg_parser().parse_args(
             [
                 "--calibrate",
@@ -498,9 +539,12 @@ _ANTHROPIC_INSTALLED = judge_module.anthropic is not None
 
 
 class TestApiKeyGuard:
+    """Tests for ApiKeyGuard scenarios."""
+
     def test_main_exits_2_when_anthropic_api_key_missing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Verifies that main exits 2 when anthropic api key missing."""
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         with pytest.raises(SystemExit) as exc_info:
             # main() returns an int; sys.exit() converts it to SystemExit so pytest
@@ -563,12 +607,15 @@ class TestApiKeyGuard:
         mock_client_class_instance = mock_client_instance
 
         def mock_client_class_factory():
+            """Return mock client class factory."""
+
             class MockAnthropic:
                 def __init__(self, api_key: str) -> None:
                     pass
 
                 @property
                 def messages(self):
+                    """Return messages."""
                     return mock_client_class_instance.messages
 
             return MockAnthropic

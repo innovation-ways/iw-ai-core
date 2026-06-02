@@ -32,6 +32,7 @@ def _make_get_session(mock_session: MagicMock) -> object:
 
     @contextmanager
     def get_session() -> Generator[MagicMock, None, None]:
+        """Return get session."""
         yield mock_session
 
     return get_session
@@ -192,6 +193,7 @@ class TestDocJobStatusCli:
         mock_session.scalar.return_value = None
 
         def get_side_effect(model, pk):
+            """Return get side effect."""
             if model == DocGenerationJob and pk == job.id:
                 return job
             if model == ProjectDoc and pk == doc.id:

@@ -19,38 +19,52 @@ from orch.db.safe_migrate import (
 
 
 class TestAssertNotAgentContext:
+    """Tests for AssertNotAgentContext scenarios."""
+
     def test_does_not_raise_when_env_false(self) -> None:  # noqa: assertion-scanner
+        """Verifies that does not raise when env false."""
         with patch.dict("os.environ", {"IW_CORE_AGENT_CONTEXT": "false"}, clear=False):
             _assert_not_agent_context()
 
     def test_does_not_raise_when_env_absent(self) -> None:  # noqa: assertion-scanner
+        """Verifies that does not raise when env absent."""
         with patch.dict("os.environ", {}, clear=False):
             _assert_not_agent_context()
 
     def test_raises_when_env_true(self) -> None:
+        """Verifies that raises when env true."""
         env = {"IW_CORE_AGENT_CONTEXT": "true"}
         with patch.dict("os.environ", env, clear=False), pytest.raises(AgentContextForbiddenError):
             _assert_not_agent_context()
 
 
 class TestApply:
+    """Tests for Apply scenarios."""
+
     def test_apply_refuses_in_agent_context(self) -> None:
         # IW_CORE_PER_WORKTREE_DB leaks in via clear=False from the ambient agent
         # worktree env; set it explicitly so the refuse path is exercised.
+        """Verifies that apply refuses in agent context."""
         env = {"IW_CORE_AGENT_CONTEXT": "true", "IW_CORE_PER_WORKTREE_DB": "false"}
         with patch.dict("os.environ", env, clear=False), pytest.raises(AgentContextForbiddenError):
             apply("postgresql+psycopg://unused/db")
 
 
 class TestRollback:
+    """Tests for Rollback scenarios."""
+
     def test_rollback_refuses_in_agent_context(self) -> None:
+        """Verifies that rollback refuses in agent context."""
         env = {"IW_CORE_AGENT_CONTEXT": "true", "IW_CORE_PER_WORKTREE_DB": "false"}
         with patch.dict("os.environ", env, clear=False), pytest.raises(AgentContextForbiddenError):
             rollback("postgresql+psycopg://unused/db")
 
 
 class TestDryRun:
+    """Tests for DryRun scenarios."""
+
     def test_dry_run_refuses_live_url(self) -> None:
+        """Verifies that dry run refuses live url."""
         with (
             patch("orch.db.safe_migrate.get_db_url", return_value="postgresql+psycopg://live/db"),
             pytest.raises(ValueError, match="dry_run called on live DB"),
@@ -59,7 +73,10 @@ class TestDryRun:
 
 
 class TestListPendingRevisions:
+    """Tests for ListPendingRevisions scenarios."""
+
     def test_multiple_heads_raises(self) -> None:
+        """Verifies that multiple heads raises."""
         mock_script_dir = MagicMock()
         mock_script_dir.get_heads.return_value = ["rev_a", "rev_b"]
 
@@ -78,7 +95,10 @@ class TestListPendingRevisions:
 
 
 class TestIsLiveDbUrl:
+    """Tests for IsLiveDbUrl scenarios."""
+
     def test_is_live_db_url_matches_config(self) -> None:
+        """Verifies that is live db url matches config."""
         db_url = "postgresql+psycopg://user:pass@localhost:5433/iw_core"
         with patch("orch.db.safe_migrate.get_db_url", return_value=db_url):
             assert is_live_db_url(db_url) is True
@@ -86,7 +106,10 @@ class TestIsLiveDbUrl:
 
 
 class TestBuildAlembicConfig:
+    """Tests for BuildAlembicConfig scenarios."""
+
     def test_build_alembic_config_override_respected(self) -> None:
+        """Verifies that build alembic config override respected."""
         from orch.db.safe_migrate import _build_alembic_config
 
         cfg = _build_alembic_config(
@@ -96,6 +119,7 @@ class TestBuildAlembicConfig:
         assert cfg.get_main_option("sqlalchemy.url") == "postgresql+psycopg://u:p@host:5432/db"
 
     def test_build_alembic_config_falls_back_to_default(self) -> None:
+        """Verifies that build alembic config falls back to default."""
         from orch.db.safe_migrate import MIGRATIONS_SCRIPT_LOCATION, _build_alembic_config
 
         cfg = _build_alembic_config("postgresql+psycopg://u:p@host:5432/db")
@@ -103,7 +127,10 @@ class TestBuildAlembicConfig:
 
 
 class TestWriteMigrationLog:
+    """Tests for WriteMigrationLog scenarios."""
+
     def test_write_migration_log_old_revision_persisted(self) -> None:
+        """Verifies that write migration log old revision persisted."""
         from orch.db.safe_migrate import _write_migration_log
 
         with (
@@ -141,6 +168,7 @@ class TestWriteMigrationLog:
                 mock_session.commit.assert_called_once()
 
     def test_write_migration_log_backward_compat_no_old_revision(self) -> None:
+        """Verifies that write migration log backward compat no old revision."""
         from orch.db.safe_migrate import _write_migration_log
 
         with (
@@ -178,7 +206,10 @@ class TestWriteMigrationLog:
 
 
 class TestAssertNotAgentContextRelax:
+    """Tests for AssertNotAgentContextRelax scenarios."""
+
     def test_blocks_against_orch_db_when_agent_context(self) -> None:
+        """Verifies that blocks against orch db when agent context."""
         from orch.db.safe_migrate import _assert_not_agent_context
 
         with (
@@ -192,6 +223,7 @@ class TestAssertNotAgentContextRelax:
             _assert_not_agent_context("postgresql+psycopg://localhost:5433/iw_core")
 
     def test_allows_against_per_worktree_db_when_per_worktree_flag_set(self) -> None:  # noqa: assertion-scanner
+        """Verifies that allows against per worktree db when per worktree flag set."""
         from orch.db.safe_migrate import _assert_not_agent_context
 
         with patch.dict(
@@ -202,6 +234,7 @@ class TestAssertNotAgentContextRelax:
             _assert_not_agent_context("postgresql+psycopg://localhost:34567/iw_worktree")
 
     def test_blocks_against_orch_db_even_with_per_worktree_flag(self) -> None:
+        """Verifies that blocks against orch db even with per worktree flag."""
         from orch.db.safe_migrate import _assert_not_agent_context
 
         with (
@@ -217,6 +250,7 @@ class TestAssertNotAgentContextRelax:
     def test_blocks_when_only_per_worktree_flag_without_agent_context_is_irrelevant(  # noqa: assertion-scanner
         self,
     ) -> None:
+        """Verifies that blocks when only per worktree flag without agent context is irrelevant."""
         from orch.db.safe_migrate import _assert_not_agent_context
 
         with patch.dict(
@@ -227,6 +261,7 @@ class TestAssertNotAgentContextRelax:
             _assert_not_agent_context("postgresql+psycopg://localhost:34567/iw_worktree")
 
     def test_allows_outside_agent_context_without_flag(self) -> None:  # noqa: assertion-scanner
+        """Verifies that allows outside agent context without flag."""
         from orch.db.safe_migrate import _assert_not_agent_context
 
         with patch.dict(

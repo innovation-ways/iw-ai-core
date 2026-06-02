@@ -42,6 +42,7 @@ class TestFindDocsBySourcePath:
         doc2.status = DocStatus.draft
 
         def mock_query(model: type) -> MagicMock:
+            """Return mock query."""
             q = MagicMock()
             q.filter.return_value.all.return_value = [doc1, doc2]
             return q
@@ -66,6 +67,7 @@ class TestFindDocsBySourcePath:
         doc2.status = DocStatus.draft
 
         def mock_query(model: type) -> MagicMock:
+            """Return mock query."""
             q = MagicMock()
             q.filter.return_value.all.return_value = [doc1, doc2]
             return q
@@ -86,6 +88,7 @@ class TestFindDocsBySourcePath:
         doc1.status = DocStatus.draft
 
         def mock_query(model: type) -> MagicMock:
+            """Return mock query."""
             q = MagicMock()
             q.filter.return_value.all.return_value = [doc1]
             return q
@@ -105,6 +108,7 @@ class TestFindDocsBySourcePath:
         doc1.status = DocStatus.archived
 
         def mock_query(model: type) -> MagicMock:
+            """Return mock query."""
             q = MagicMock()
             q.filter.return_value.filter.return_value.all.return_value = [doc1]
             return q
@@ -136,6 +140,7 @@ class TestGetStaleDocs:
         session.query = MagicMock(return_value=q)
 
         def run_mock(cmd: list[str], **kwargs: Any) -> MagicMock:
+            """Return run mock."""
             if "--" in cmd and "docs/auth/middleware.py" in cmd:
                 r = MagicMock()
                 r.returncode = 0
@@ -164,6 +169,7 @@ class TestGetStaleDocs:
         doc.status = DocStatus.draft
 
         def mock_query(model: type) -> MagicMock:
+            """Return mock query."""
             q = MagicMock()
             q.filter.return_value.all.return_value = [doc]
             return q
@@ -171,6 +177,7 @@ class TestGetStaleDocs:
         session.query = mock_query
 
         def run_mock(cmd: list[str], **kwargs: Any) -> MagicMock:
+            """Return run mock."""
             r = MagicMock()
             r.returncode = 0
             r.stdout = "1700000000"
@@ -299,6 +306,7 @@ class TestTriggerDocRegenerationOnMerge:
         doc.doc_id = "module-auth"
 
         def run_mock(cmd: list[str], **kwargs: Any) -> MagicMock:
+            """Return run mock."""
             r = MagicMock()
             r.returncode = 0
             r.stdout = "docs/auth/middleware.py\n"
@@ -328,6 +336,7 @@ class TestDocsCheckStaleCli:
         project.repo_root = "/fake/repo"
 
         def get_mock(mod: type, key: str) -> Any:
+            """Return get mock."""
             if mod == Project:
                 return project
             return None
@@ -356,6 +365,7 @@ class TestDocsCheckStaleCli:
         project.repo_root = "/fake/repo"
 
         def get_mock(mod: type, key: str) -> Any:
+            """Return get mock."""
             if mod == Project:
                 return project
             return None

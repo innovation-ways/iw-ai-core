@@ -39,10 +39,12 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def client(db_session: Session) -> Generator[TestClient, None, None]:
+    """Provide a TestClient with get_db overridden to the test db_session."""
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
 
         def override_get_db() -> Generator[Session, None, None]:
+            """Yield the test db_session for FastAPI dependency injection."""
             yield db_session
 
         app = create_app()
@@ -59,6 +61,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
 @pytest.fixture
 def project_with_batch(db_session: Session) -> tuple[Project, BatchItem]:
+    """Seed a Project, WorkItem, Batch, and executing BatchItem; return (project, batch_item)."""
     project = Project(
         id="test-proj",
         display_name="Test Project",

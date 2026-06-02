@@ -70,6 +70,8 @@ def _branch_info_mock() -> MagicMock:
 
 
 class TestMergeErrorWritesMergeFailed:
+    """Tests for MergeErrorWritesMergeFailed scenarios."""
+
     def test_merge_error_writes_merge_failed_not_failed(self) -> None:
         """MergeError from worktree_commit.sh → merge_failed (CR-00028 AC1)."""
         db = MagicMock()
@@ -117,6 +119,7 @@ class TestMergeErrorWritesMergeFailed:
         work_item_query.filter_by.return_value.one_or_none.return_value = work_item
 
         def fake_query(model: type[Any]) -> MagicMock:
+            """Return fake query."""
             if model is WorkItem:
                 return work_item_query
             return MagicMock()
@@ -149,6 +152,7 @@ class TestMergeErrorWritesMergeFailed:
             message: str,
             metadata: dict[str, Any] | None = None,
         ) -> None:
+            """Return capture emit."""
             emitted_events.append(
                 {
                     "event_type": event_type,
@@ -176,6 +180,8 @@ class TestMergeErrorWritesMergeFailed:
 
 
 class TestNoWorktreePathStillWritesFailed:
+    """Tests for NoWorktreePathStillWritesFailed scenarios."""
+
     def test_no_worktree_info_writes_failed(self) -> None:
         """worktree_info=None → failed (NOT merge_failed) — unrecoverable cascade fires."""
         db = MagicMock()

@@ -67,6 +67,15 @@ def _unique_id(prefix: str = "F-00061") -> str:
 
 
 def make_manifest(item_id: str, steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build a workflow-manifest dict with the standard QV gate steps plus any extras.
+
+    Args:
+        item_id: Work item ID used as the manifest ``id`` and step prefix.
+        steps: Additional step dicts to append after the standard lint/unit/integration gates.
+
+    Returns:
+        A dict suitable for serialisation as ``workflow-manifest.json``.
+    """
     return {
         "id": item_id,
         "steps": [
@@ -91,6 +100,13 @@ def make_manifest(item_id: str, steps: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def write_manifest(worktree_path: Path, item_id: str, steps: list[dict[str, Any]]) -> None:
+    """Write a workflow-manifest.json for the given item into the worktree's active directory.
+
+    Args:
+        worktree_path: Path to the fake worktree root.
+        item_id: Work item ID; used to locate the ``ai-dev/active/<item_id>/`` directory.
+        steps: Additional step dicts appended to the standard QV gates in the manifest.
+    """
     manifest = make_manifest(item_id, steps)
     manifest_dir = worktree_path / "ai-dev" / "active" / item_id
     manifest_dir.mkdir(parents=True, exist_ok=True)
@@ -211,6 +227,8 @@ def _insert_step_run(
 
 
 class TestAC1:
+    """AC1: Pre-existing failures are excluded from the fix-cycle baseline."""
+
     def test_ac1_pre_existing_failure_excluded_from_fix_cycle(
         self,
         db_session: Session,
@@ -218,6 +236,7 @@ class TestAC1:
         fake_worktree: tuple[Path, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that a failure matching the baseline fingerprint produces empty findings."""
         worktree, item_id = fake_worktree
         step_id = f"{item_id}-S13"
 
@@ -266,6 +285,8 @@ class TestAC1:
 
 
 class TestAC2:
+    """AC2: Genuine regressions that are not in the baseline are surfaced cleanly."""
+
     def test_ac2_regression_surfaced_cleanly(
         self,
         db_session: Session,
@@ -273,6 +294,9 @@ class TestAC2:
         fake_worktree: tuple[Path, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that a new regression failure surfaces in findings while a pre-existing one is
+        suppressed.
+        """
         worktree, item_id = fake_worktree
         step_id = f"{item_id}-S13"
 
@@ -315,6 +339,8 @@ class TestAC2:
 
 
 class TestAssertionsGateBaseline:
+    """Baseline suppression for the assertion-check gate."""
+
     def test_pre_existing_assertions_failure_is_suppressed(
         self,
         db_session: Session,
@@ -322,6 +348,9 @@ class TestAssertionsGateBaseline:
         fake_worktree: tuple[Path, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that a pre-existing assertions-gate failure is suppressed when matched by the
+        baseline.
+        """
         worktree, item_id = fake_worktree
         step_id = f"{item_id}-S12"
 
@@ -380,6 +409,7 @@ class TestAssertionsGateBaseline:
         fake_worktree: tuple[Path, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that a new assertion failure not in the baseline surfaces as a finding."""
         worktree, item_id = fake_worktree
         step_id = f"{item_id}-S12"
 
@@ -442,6 +472,8 @@ class TestAssertionsGateBaseline:
 
 
 class TestAC3:
+    """AC3: QvBaseline rows are created for all gates during worktree setup."""
+
     def test_ac3_baselines_created_at_setup(
         self,
         db_session: Session,
@@ -450,6 +482,7 @@ class TestAC3:
         fake_worktree: tuple[Path, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that _compute_qv_baselines creates one QvBaseline row per manifest gate."""
         worktree, item_id = fake_worktree
 
         for sn, suffix, gate in [
@@ -546,6 +579,8 @@ class TestAC3:
 
 
 class TestAC4:
+    """AC4: A rebase that changes the merge-base SHA invalidates the stale baseline."""
+
     def test_ac4_rebase_invalidates_baseline(
         self,
         db_session: Session,
@@ -553,6 +588,9 @@ class TestAC4:
         fake_worktree: tuple[Path, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that a baseline with a stale base_sha is deleted when a rebase advances the
+        merge-base.
+        """
         worktree, item_id = fake_worktree
         step_id = f"{item_id}-S13"
 
@@ -602,6 +640,8 @@ class TestAC4:
 
 
 class TestAC5:
+    """AC5: IW_CORE_BASELINE_QV=false kill switch disables all baseline QV behaviour."""
+
     def test_ac5_kill_switch_disables(
         self,
         db_session: Session,
@@ -610,6 +650,7 @@ class TestAC5:
         fake_worktree: tuple[Path, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that no QvBaseline rows are created when baseline_qv_enabled is False."""
         worktree, item_id = fake_worktree
         step_id = f"{item_id}-S13"
 
@@ -667,6 +708,8 @@ class TestAC5:
 
 
 class TestAC6:
+    """AC6: Items with no baseline row fall back gracefully to the legacy findings path."""
+
     def test_ac6_legacy_item_graceful(
         self,
         db_session: Session,
@@ -674,6 +717,7 @@ class TestAC6:
         fake_worktree: tuple[Path, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that a step with no QvBaseline row surfaces all failures via the legacy path."""
         worktree, item_id = fake_worktree
         step_id = f"{item_id}-S13"
 
@@ -724,6 +768,9 @@ class TestLegacyFindingsUseReportContent:
         fake_worktree: tuple[Path, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that step.report_content is surfaced in findings when the gate has no structured
+        parser.
+        """
         worktree, item_id = fake_worktree
         step_id = f"{item_id}-S14"
 
@@ -835,6 +882,8 @@ class TestLegacyFindingsUseReportContent:
 
 
 class TestBaselineBoundary:
+    """Boundary behaviour for baseline computation: timeout and empty-passing gates."""
+
     def test_baseline_compute_timeout_is_contained(
         self,
         db_session: Session,
@@ -843,6 +892,9 @@ class TestBaselineBoundary:
         caplog: pytest.LogCaptureFixture,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that a gate command timeout during baseline compute is logged and no row is
+        created.
+        """
         worktree, item_id = fake_worktree
         step_id = f"{item_id}-S10"
 
@@ -905,6 +957,9 @@ class TestBaselineBoundary:
         fake_worktree: tuple[Path, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that a gate with zero failures persists a sentinel QvBaseline row with an empty
+        fingerprint.
+        """
         worktree, item_id = fake_worktree
         step_id = f"{item_id}-S13"
 
@@ -986,6 +1041,8 @@ class TestBaselineBoundary:
 
 
 class TestN1QueryCount:
+    """N+1 query discipline: _compute_qv_baselines must not issue per-gate round trips."""
+
     def test_no_n_plus_one_in_compute_qv_baselines(
         self,
         db_session: Session,
@@ -993,6 +1050,9 @@ class TestN1QueryCount:
         test_project: Project,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """Verifies that the total query count during baseline compute is bounded by O(gates +
+        constant).
+        """
         # Create a fresh unique worktree for this test (not using fake_worktree fixture
         # to avoid counter state issues with N+1 test)
         item_id_n1 = _unique_id()

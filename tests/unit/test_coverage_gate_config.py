@@ -32,6 +32,7 @@ def _pyproject() -> dict:
 
 
 def test_coverage_fail_under_is_the_raised_floor() -> None:
+    """Verifies that coverage fail under is the raised floor."""
     fail_under = _pyproject()["tool"]["coverage"]["report"]["fail_under"]
     assert fail_under == COVERAGE_FAIL_UNDER
     # The whole point of CR-00047 is that the floor is no longer the old 46.
@@ -40,16 +41,19 @@ def test_coverage_fail_under_is_the_raised_floor() -> None:
 
 
 def test_coverage_run_uses_relative_files() -> None:
+    """Verifies that coverage run uses relative files."""
     run_cfg = _pyproject()["tool"]["coverage"]["run"]
     assert run_cfg["relative_files"] is True
 
 
 def test_diff_cover_is_a_dev_dependency() -> None:
+    """Verifies that diff cover is a dev dependency."""
     dev_group = _pyproject()["dependency-groups"]["dev"]
     assert any(spec.split(">=")[0].split("==")[0].strip() == "diff-cover" for spec in dev_group)
 
 
 def test_makefile_has_diff_coverage_target() -> None:
+    """Verifies that makefile has diff coverage target."""
     makefile = _MAKEFILE.read_text(encoding="utf-8")
     # The target is declared exactly once...
     assert makefile.count("\ndiff-coverage:") == 1

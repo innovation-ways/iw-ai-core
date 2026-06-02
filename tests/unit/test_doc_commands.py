@@ -16,6 +16,7 @@ class TestDocUpdateMutualExclusion:
     """--content and --content-file are mutually exclusive."""
 
     def test_both_content_and_content_file_exits_2(self, tmp_path: Path) -> None:
+        """Verifies that both content and content file exits 2."""
         runner = CliRunner()
         content_file = tmp_path / "doc.md"
         content_file.write_text("# Doc", encoding="utf-8")
@@ -34,6 +35,7 @@ class TestDocUpdateContentSizeLimit:
     """Content exceeding 10 MB is rejected."""
 
     def test_content_too_large_exits_2(self, tmp_path: Path) -> None:
+        """Verifies that content too large exits 2."""
         runner = CliRunner()
         large_file = tmp_path / "large.md"
         large_file.write_text("x" * (10 * 1024 * 1024 + 1), encoding="utf-8")
@@ -52,6 +54,7 @@ class TestDocUpdateHelp:
     """CLI help output is correct."""
 
     def test_help_shows_all_options(self) -> None:
+        """Verifies that help shows all options."""
         runner = CliRunner()
         result = runner.invoke(doc_update, ["--help"])
 
@@ -69,6 +72,7 @@ class _FakeSession:
     """Minimal session stub for argument validation tests."""
 
     def get(self, model: type, key: str) -> Any:
+        """Return get."""
         return None
 
     def __enter__(self) -> _FakeSession:

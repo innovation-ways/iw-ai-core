@@ -81,6 +81,7 @@ class TestSseGeneratorDiagramEmission:
         async def fake_answer_stream_v2(
             **kwargs: object,
         ) -> AsyncGenerator[dict[str, object], None]:
+            """Return fake answer stream v2."""
             for t in tokens:
                 yield {"kind": "token", "text": t}
 
@@ -91,12 +92,14 @@ class TestSseGeneratorDiagramEmission:
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Return answer stream v2."""
                 async for item in fake_answer_stream_v2(**kwargs):
                     yield item
 
         rendered_svg = "<svg>test</svg>"
 
         def fake_session_factory() -> object:
+            """Return fake session factory."""
             return None
 
         with (
@@ -151,6 +154,7 @@ class TestSseGeneratorDiagramEmission:
         async def fake_answer_stream_v2(
             **kwargs: object,
         ) -> AsyncGenerator[dict[str, object], None]:
+            """Return fake answer stream v2."""
             for t in tokens:
                 yield {"kind": "token", "text": t}
 
@@ -161,6 +165,7 @@ class TestSseGeneratorDiagramEmission:
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Return answer stream v2."""
                 async for item in fake_answer_stream_v2(**kwargs):
                     yield item
 
@@ -201,6 +206,7 @@ class TestSseGeneratorDiagramEmission:
         async def fake_answer_stream_v2(
             **kwargs: object,
         ) -> AsyncGenerator[dict[str, object], None]:
+            """Return fake answer stream v2."""
             for t in tokens:
                 yield {"kind": "token", "text": t}
 
@@ -211,6 +217,7 @@ class TestSseGeneratorDiagramEmission:
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Return answer stream v2."""
                 async for item in fake_answer_stream_v2(**kwargs):
                     yield item
 

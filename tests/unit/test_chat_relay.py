@@ -36,6 +36,7 @@ class _FakeClient:
         self.connect_calls: list[str | None] = []  # last_event_id observed per call
 
     def feed(self, event: ServerSentEvent) -> None:
+        """Return feed."""
         self._queue.put_nowait(event)
 
     def close_stream(self) -> None:
@@ -43,6 +44,7 @@ class _FakeClient:
         self._queue.put_nowait(None)
 
     def stream_events(self, *, last_event_id: str | None = None) -> AsyncIterator[ServerSentEvent]:
+        """Return stream events."""
         self.connect_calls.append(last_event_id)
         queue = self._queue
 
@@ -95,6 +97,7 @@ async def _collect(stream: AsyncIterator[dict], n: int, timeout: float = 2.0) ->
 
 @pytest.mark.asyncio
 async def test_single_subscriber_receives_events() -> None:
+    """Verifies that single subscriber receives events."""
     fake = _FakeClient()
     relay = SessionRelay(fake, sid="ses_1")  # type: ignore[arg-type]
     await relay.start()
@@ -112,6 +115,7 @@ async def test_single_subscriber_receives_events() -> None:
 
 @pytest.mark.asyncio
 async def test_multi_subscriber_fanout() -> None:
+    """Verifies that multi subscriber fanout."""
     fake = _FakeClient()
     relay = SessionRelay(fake, sid="ses_1")  # type: ignore[arg-type]
     await relay.start()
@@ -137,6 +141,7 @@ async def test_multi_subscriber_fanout() -> None:
 
 @pytest.mark.asyncio
 async def test_ring_buffer_replay_on_subscribe_with_last_event_id() -> None:
+    """Verifies that ring buffer replay on subscribe with last event id."""
     fake = _FakeClient()
     relay = SessionRelay(fake, sid="ses_1")  # type: ignore[arg-type]
     await relay.start()
@@ -156,6 +161,7 @@ async def test_ring_buffer_replay_on_subscribe_with_last_event_id() -> None:
 
 @pytest.mark.asyncio
 async def test_ring_buffer_wrap_drops_oldest() -> None:
+    """Verifies that ring buffer wrap drops oldest."""
     fake = _FakeClient()
     relay = SessionRelay(fake, sid="ses_1", buffer_size=256)  # type: ignore[arg-type]
     await relay.start()
@@ -195,6 +201,7 @@ async def test_ring_buffer_wrap_drops_oldest() -> None:
 
 @pytest.mark.asyncio
 async def test_slow_subscriber_does_not_stall_others() -> None:
+    """Verifies that slow subscriber does not stall others."""
     fake = _FakeClient()
     relay = SessionRelay(fake, sid="ses_1", subscriber_queue_size=2)  # type: ignore[arg-type]
     await relay.start()
@@ -222,6 +229,7 @@ async def test_slow_subscriber_does_not_stall_others() -> None:
 
 @pytest.mark.asyncio
 async def test_subscriber_cleanup_on_cancellation() -> None:
+    """Verifies that subscriber cleanup on cancellation."""
     fake = _FakeClient()
     relay = SessionRelay(fake, sid="ses_1")  # type: ignore[arg-type]
     await relay.start()
@@ -253,6 +261,7 @@ async def test_subscriber_cleanup_on_cancellation() -> None:
 
 @pytest.mark.asyncio
 async def test_relay_manager_creates_one_relay_per_sid() -> None:
+    """Verifies that relay manager creates one relay per sid."""
     fake = _FakeClient()
     mgr = RelayManager(fake)  # type: ignore[arg-type]
     try:
@@ -267,6 +276,7 @@ async def test_relay_manager_creates_one_relay_per_sid() -> None:
 
 @pytest.mark.asyncio
 async def test_relay_manager_drop_relay_stops_pump() -> None:
+    """Verifies that relay manager drop relay stops pump."""
     fake = _FakeClient()
     mgr = RelayManager(fake)  # type: ignore[arg-type]
     relay = await mgr.get_or_create_relay("ses_a")

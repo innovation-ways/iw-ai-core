@@ -55,6 +55,8 @@ enabled = true
 
 
 class TestComputeProjectStalenessEmpty:
+    """Tests for compute_project_staleness with unknown or unconfigured projects."""
+
     def test_unknown_project_returns_empty_result(self, tmp_path: Path) -> None:
         """Unknown project_id returns ProjectStalenessResult with is_stale=False."""
         toml_path = _make_projects_toml(tmp_path)
@@ -86,6 +88,8 @@ class TestComputeProjectStalenessEmpty:
 
 
 class TestComputeProjectStalenessNotRunning:
+    """Tests for compute_project_staleness when the service process is not found."""
+
     def test_service_not_running_status_is_not_running(self, tmp_path: Path) -> None:
         """When process is not found, service status is 'not_running'."""
         extra = """
@@ -142,6 +146,8 @@ stop_command = "./ai-core.sh daemon stop"
 
 
 class TestComputeProjectStalenessUpToDate:
+    """Tests for compute_project_staleness when the running service is current."""
+
     def test_service_up_to_date_when_no_new_commits(self, tmp_path: Path) -> None:
         """When no commits since start, service status is 'up_to_date'."""
         extra = """
@@ -199,6 +205,8 @@ restart_command = "./ai-core.sh daemon restart"
 
 
 class TestComputeProjectStalenessStale:
+    """Tests for compute_project_staleness when commits have landed since the service started."""
+
     def test_service_stale_when_commits_since_start(self, tmp_path: Path) -> None:
         """When commits exist since start, service status is 'stale'."""
         extra = """
@@ -278,6 +286,8 @@ detect = { type = "port", "port" = 9900 }
 
 
 class TestComputeProjectStalenessHotReload:
+    """Tests for compute_project_staleness with hot_reload=true services."""
+
     def test_hot_reload_service_is_skipped(self, tmp_path: Path) -> None:
         """Service with hot_reload=true gets status='hot_reload_skipped', no red dot."""
         extra = """
@@ -311,6 +321,8 @@ hot_reload = true
 
 
 class TestComputeProjectStalenessAlembic:
+    """Tests for compute_project_staleness alembic integration — stale, up-to-date, and."""
+
     def test_alembic_stale_sets_is_stale(self, tmp_path: Path) -> None:
         """Alembic stale status contributes to is_stale=True."""
         extra = """
@@ -394,6 +406,8 @@ config = "alembic.ini"
 
 
 class TestComputeProjectStalenessStartCommitMissing:
+    """Tests for compute_project_staleness when the start-commit lookup returns None."""
+
     def test_start_commit_none_gives_unknown(self, tmp_path: Path) -> None:
         """When find_commit_at returns None, service status is 'unknown'."""
         extra = """
@@ -424,6 +438,8 @@ detect = { type = "pidfile", path = ".daemon.pid" }
 
 
 class TestServiceStalenessDataclass:
+    """Tests for the ServiceStaleness dataclass structure."""
+
     def test_service_staleness_fields(self) -> None:
         """ServiceStaleness carries all required fields."""
         svc = ServiceStaleness(
@@ -638,8 +654,17 @@ class TestComputeProjectStalenessPerfSmoke:
 
     @pytest.fixture
     def large_git_repo(self, tmp_path: Path) -> Path:
-        """Create a temp git repo with ~50 commits touching ~5 different paths."""
+        """Create a temp git repo with ~50 commits touching ~5 different paths.
 
+        Distributes commits evenly across orch/, dashboard/, executor/, tests/, and
+        docs/ directories to exercise the watched-path filter at scale.
+
+        Args:
+            tmp_path: Pytest-supplied temporary directory.
+
+        Returns:
+            Path to the populated git repository root.
+        """
         repo = tmp_path / "repo"
         repo.mkdir()
 

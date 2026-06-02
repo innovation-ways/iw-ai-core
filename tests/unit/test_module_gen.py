@@ -15,22 +15,28 @@ from orch.rag.config import CodeUnderstandingConfig
 
 @pytest.fixture
 def config():
+    """Provide config for tests."""
     return CodeUnderstandingConfig()
 
 
 @pytest.fixture
 def mock_session():
+    """Provide mock session for tests."""
     return MagicMock()
 
 
 class TestModuleGeneratorMakeSlug:
+    """Tests for ModuleGeneratorMakeSlug scenarios."""
+
     def test_make_slug_simple(self):
+        """Verifies that make slug simple."""
         from orch.rag.module_gen import ModuleGenerator
 
         gen = ModuleGenerator()
         assert gen._make_slug("my-project", "engine/") == "my-project-module-engine"
 
     def test_make_slug_nested(self):
+        """Verifies that make slug nested."""
         from orch.rag.module_gen import ModuleGenerator
 
         gen = ModuleGenerator()
@@ -40,6 +46,8 @@ class TestModuleGeneratorMakeSlug:
 
 
 class TestModuleGeneratorGetOrGenerate:
+    """Tests for ModuleGeneratorGetOrGenerate scenarios."""
+
     @pytest.mark.asyncio
     async def test_get_or_generate_cache_hit(self, config, mock_session):
         """When ProjectDoc exists, get_or_generate returns it with was_cached=True"""
@@ -79,6 +87,8 @@ class TestModuleGeneratorGetOrGenerate:
 
 
 class TestModuleGeneratorGenerateLevel2:
+    """Tests for ModuleGeneratorGenerateLevel2 scenarios."""
+
     @pytest.mark.asyncio
     async def test_generate_level2_assembles_markdown(self, config, mock_session):
         """generate_level2 assembles markdown from 5 question answers"""

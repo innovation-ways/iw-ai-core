@@ -6,7 +6,10 @@ from unittest.mock import patch
 
 
 class TestProbeTier1:
+    """Tests for ProbeTier1 scenarios."""
+
     def test_all_tools_reported(self) -> None:
+        """Verifies that all tools reported."""
         from orch.oss.tool_probe import ToolStatus, probe_tier1
 
         with patch("shutil.which") as mock_which:
@@ -20,6 +23,7 @@ class TestProbeTier1:
             assert status.version is None
 
     def test_installed_tool_reports_version(self) -> None:
+        """Verifies that installed tool reports version."""
         from orch.oss.tool_probe import probe_tier1
 
         with patch("shutil.which") as mock_which, patch("subprocess.run") as mock_run:
@@ -32,6 +36,7 @@ class TestProbeTier1:
         assert result["gitleaks"].version is not None
 
     def test_ripgrep_alias(self) -> None:
+        """Verifies that ripgrep alias."""
         from orch.oss.tool_probe import probe_tier1
 
         with patch("shutil.which") as mock_which:
@@ -42,6 +47,7 @@ class TestProbeTier1:
         assert result["ripgrep"].installed is True
 
     def test_install_cmd_is_populated(self) -> None:
+        """Verifies that install cmd is populated."""
         from orch.oss.tool_probe import ToolStatus, probe_tier1
 
         with patch("shutil.which") as mock_which:

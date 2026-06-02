@@ -31,6 +31,7 @@ def make_mock_work_item(
     status: WorkItemStatus = WorkItemStatus.completed,
     title: str = "Test Feature",
 ) -> WorkItem:
+    """Return make mock work item."""
     item = MagicMock(spec=WorkItem)
     item.project_id = project_id
     item.id = work_item_id
@@ -49,6 +50,7 @@ def make_mock_workflow_step(
     opencode_agent: str | None = "backend-impl",
     step_type: StepType = StepType.implementation,
 ) -> WorkflowStep:
+    """Return make mock workflow step."""
     step = MagicMock(spec=WorkflowStep)
     step.id = 1
     step.step_id = step_id
@@ -68,6 +70,7 @@ def make_mock_step_run(
     completed_at: datetime | None = None,
     duration_secs: float = 60.0,
 ) -> MagicMock:
+    """Return make mock step run."""
     run = MagicMock()
     run.step_id = step_db_id
     run.run_number = run_number
@@ -198,30 +201,37 @@ class TestVerdictMapping:
     """Test verdict mapping from WorkItem.status to report verdict string."""
 
     def test_completed_status_maps_to_completed_verdict(self) -> None:
+        """Verifies that completed status maps to completed verdict."""
         item = make_mock_work_item(status=WorkItemStatus.completed)
         assert item.status == WorkItemStatus.completed
 
     def test_failed_status_maps_to_failed_verdict(self) -> None:
+        """Verifies that failed status maps to failed verdict."""
         item = make_mock_work_item(status=WorkItemStatus.failed)
         assert item.status == WorkItemStatus.failed
 
     def test_paused_status_maps_to_stalled_verdict(self) -> None:
+        """Verifies that paused status maps to stalled verdict."""
         item = make_mock_work_item(status=WorkItemStatus.paused)
         assert item.status == WorkItemStatus.paused
 
     def test_in_progress_status_maps_to_in_progress_verdict(self) -> None:
+        """Verifies that in progress status maps to in progress verdict."""
         item = make_mock_work_item(status=WorkItemStatus.in_progress)
         assert item.status == WorkItemStatus.in_progress
 
     def test_draft_status_maps_to_not_started_verdict(self) -> None:
+        """Verifies that draft status maps to not started verdict."""
         item = make_mock_work_item(status=WorkItemStatus.draft)
         assert item.status == WorkItemStatus.draft
 
     def test_approved_status_maps_to_not_started_verdict(self) -> None:
+        """Verifies that approved status maps to not started verdict."""
         item = make_mock_work_item(status=WorkItemStatus.approved)
         assert item.status == WorkItemStatus.approved
 
     def test_cancelled_status_maps_to_failed_verdict(self) -> None:
+        """Verifies that cancelled status maps to failed verdict."""
         item = make_mock_work_item(status=WorkItemStatus.cancelled)
         assert item.status == WorkItemStatus.cancelled
 
@@ -246,6 +256,7 @@ class TestHotspotDetectionInAssembly:
     """Hotspot detection (max_run_number >= 2) in assemble_execution_report."""
 
     def test_step_with_single_run_not_hotspot(self) -> None:
+        """Verifies that step with single run not hotspot."""
         step_row = StepRow(
             step_id="S01",
             step_number=1,
@@ -264,6 +275,7 @@ class TestHotspotDetectionInAssembly:
         assert step_row.is_hotspot is False
 
     def test_step_with_multiple_runs_is_hotspot(self) -> None:
+        """Verifies that step with multiple runs is hotspot."""
         segment = StepRunSegment(
             run_number=3,
             status=RunStatus.completed,
@@ -296,6 +308,7 @@ class TestHotspotDetectionInAssembly:
         assert step_row.is_hotspot is True
 
     def test_hotspot_sort_order_retry_count_desc_step_id_asc(self) -> None:
+        """Verifies that hotspot sort order retry count desc step id asc."""
         hotspots = [
             RetryHotspot(
                 step_id="S03", display_label="Tests", retry_count=3, final_status="completed"
@@ -317,6 +330,7 @@ class TestComputeGanttPcts:
     """Test _compute_gantt_pcts for percentage calculations."""
 
     def test_zero_duration_returns_zero_pcts(self) -> None:
+        """Verifies that zero duration returns zero pcts."""
         left, width = _compute_gantt_pcts(
             None, None, datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC), 0.0
         )
@@ -324,12 +338,14 @@ class TestComputeGanttPcts:
         assert width == 0.0
 
     def test_none_started_at_returns_zero_pcts(self) -> None:
+        """Verifies that none started at returns zero pcts."""
         now = datetime.now(UTC)
         left, width = _compute_gantt_pcts(None, now, now, 3600.0)
         assert left == 0.0
         assert width == 0.0
 
     def test_normal_segment_returns_correct_pcts(self) -> None:
+        """Verifies that normal segment returns correct pcts."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 10, 30, 0, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 11, 0, 0, tzinfo=UTC)
@@ -355,6 +371,7 @@ class TestComputeGanttPcts:
         assert left + width <= 100.0
 
     def test_rounding_to_two_decimals(self) -> None:
+        """Verifies that rounding to two decimals."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 10, 10, 0, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 10, 35, 0, tzinfo=UTC)

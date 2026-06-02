@@ -41,9 +41,11 @@ class TestPhaseEventSequence:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("Answer")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             return mock_inner_generator()
 
         mock_llm = MagicMock()
@@ -52,6 +54,7 @@ class TestPhaseEventSequence:
         events = []
 
         async def mock_classify(question, config, context_chips):
+            """Return mock classify."""
             return "code_only"
 
         with (
@@ -112,9 +115,11 @@ class TestPhaseEventSequence:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("Answer")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             return mock_inner_generator()
 
         mock_llm = MagicMock()
@@ -123,16 +128,20 @@ class TestPhaseEventSequence:
         events = []
 
         async def mock_classify(question, config, context_chips):
+            """Return mock classify."""
             return "workitem_aware"
 
         async def mock_retrieve(*args, **kwargs):
+            """Return mock retrieve."""
             return mock_bundle
 
         async def mock_fetch(wis, session):
+            """Return mock fetch."""
             return [mock_wi]
 
         async def mock_get_repo_root(pid, session):
-            return None
+            """Return mock get repo root."""
+            return
 
         with (
             patch("orch.rag.qa.OllamaEmbedding", return_value=mock_embedding_instance),
@@ -203,9 +212,11 @@ class TestPhaseEventSequence:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("Based on F-00001")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             return mock_inner_generator()
 
         mock_llm = MagicMock()
@@ -214,16 +225,20 @@ class TestPhaseEventSequence:
         events = []
 
         async def mock_classify(question, config, context_chips):
+            """Return mock classify."""
             return "workitem_aware"
 
         async def mock_retrieve(*args, **kwargs):
+            """Return mock retrieve."""
             return mock_bundle
 
         async def mock_fetch(wis, session):
+            """Return mock fetch."""
             return [mock_wi]
 
         async def mock_get_repo_root(pid, session):
-            return None
+            """Return mock get repo root."""
+            return
 
         with (
             patch("orch.rag.qa.OllamaEmbedding", return_value=mock_embedding_instance),
@@ -295,9 +310,11 @@ class TestPhaseEventSequence:
                 self.delta = delta
 
         async def mock_inner_generator() -> AsyncGenerator[MockChunk, None]:
+            """Return mock inner generator."""
             yield MockChunk("Answer")
 
         async def mock_astream_chat(messages: list) -> AsyncGenerator[MockChunk, None]:
+            """Return mock astream chat."""
             return mock_inner_generator()
 
         mock_llm = MagicMock()
@@ -306,16 +323,20 @@ class TestPhaseEventSequence:
         events = []
 
         async def mock_classify(question, config, context_chips):
+            """Return mock classify."""
             return "workitem_aware"
 
         async def mock_retrieve(*args, **kwargs):
+            """Return mock retrieve."""
             return mock_bundle
 
         async def mock_fetch(wis, session):
+            """Return mock fetch."""
             return [mock_wi]
 
         async def mock_get_repo_root(pid, session):
-            return None
+            """Return mock get repo root."""
+            return
 
         with (
             patch("orch.rag.qa.OllamaEmbedding", return_value=mock_embedding_instance),

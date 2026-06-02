@@ -46,12 +46,14 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def client(db_session: Session) -> TestClient:
+    """Provide a TestClient with get_db overridden to the test db_session."""
     import os
 
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -70,6 +72,15 @@ def client(db_session: Session) -> TestClient:
 
 
 def _seed_project(db: Session, project_id: str = "test-item-proj") -> Project:
+    """Create and flush a minimal Project for testing.
+
+    Args:
+        db: SQLAlchemy session to use.
+        project_id: Unique project ID.
+
+    Returns:
+        The flushed Project instance.
+    """
     project = Project(
         id=project_id,
         display_name="Test Item Project",
@@ -87,6 +98,17 @@ def _seed_item(
     item_id: str,
     status: WorkItemStatus = WorkItemStatus.approved,
 ) -> WorkItem:
+    """Create and flush a WorkItem with the given status for testing.
+
+    Args:
+        db: SQLAlchemy session to use.
+        project_id: ID of the owning project.
+        item_id: Unique work item ID.
+        status: Initial WorkItemStatus to set.
+
+    Returns:
+        The flushed WorkItem instance.
+    """
     item = WorkItem(
         id=item_id,
         project_id=project_id,

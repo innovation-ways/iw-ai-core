@@ -28,6 +28,7 @@ class TestParseAndStoreFixSummary:
         return cycle, tmp.name
 
     def test_valid_fix_summary_stored(self, tmp_path: Path) -> None:
+        """Verifies that valid fix summary stored."""
         log_content = json.dumps({"fix_summary": "Fixed the SQL injection issue"})
         log_file = tmp_path / "fix_cycle.json"
         log_file.write_text(log_content)
@@ -40,6 +41,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary == "Fixed the SQL injection issue"
 
     def test_missing_fix_summary_key_stores_none(self, tmp_path: Path) -> None:
+        """Verifies that missing fix summary key stores none."""
         log_content = json.dumps({"other_key": "some_value"})
         log_file = tmp_path / "fix_cycle.json"
         log_file.write_text(log_content)
@@ -52,6 +54,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary is None
 
     def test_empty_string_fix_summary_stores_none(self, tmp_path: Path) -> None:
+        """Verifies that empty string fix summary stores none."""
         log_content = json.dumps({"fix_summary": ""})
         log_file = tmp_path / "fix_cycle.json"
         log_file.write_text(log_content)
@@ -64,6 +67,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary is None
 
     def test_whitespace_only_fix_summary_stores_none(self, tmp_path: Path) -> None:
+        """Verifies that whitespace only fix summary stores none."""
         log_content = json.dumps({"fix_summary": "   \n\t  "})
         log_file = tmp_path / "fix_cycle.json"
         log_file.write_text(log_content)
@@ -76,6 +80,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary is None
 
     def test_content_up_to_20000_chars_stored_verbatim(self, tmp_path: Path) -> None:
+        """Verifies that content up to 20000 chars stored verbatim."""
         long_content = "x" * 20000
         log_content = json.dumps({"fix_summary": long_content})
         log_file = tmp_path / "fix_cycle.json"
@@ -89,6 +94,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary == long_content
 
     def test_content_over_20000_chars_truncated(self, tmp_path: Path) -> None:
+        """Verifies that content over 20000 chars truncated."""
         long_content = "x" * 25000
         log_content = json.dumps({"fix_summary": long_content})
         log_file = tmp_path / "fix_cycle.json"
@@ -102,6 +108,7 @@ class TestParseAndStoreFixSummary:
         assert len(cycle.fix_summary) == 20000
 
     def test_malformed_json_stores_none_no_exception(self, tmp_path: Path) -> None:
+        """Verifies that malformed json stores none no exception."""
         log_content = "not valid json {"
         log_file = tmp_path / "fix_cycle.json"
         log_file.write_text(log_content)
@@ -114,6 +121,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary is None
 
     def test_no_log_file_key_no_crash(self) -> None:
+        """Verifies that no log file key no crash."""
         cycle = MagicMock()
         cycle.fix_metadata = {}
         cycle.fix_summary = None
@@ -122,6 +130,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary is None
 
     def test_none_fix_metadata_no_crash(self) -> None:
+        """Verifies that none fix metadata no crash."""
         cycle = MagicMock()
         cycle.fix_metadata = None
         cycle.fix_summary = None
@@ -130,6 +139,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary is None
 
     def test_log_file_not_found_no_crash(self) -> None:
+        """Verifies that log file not found no crash."""
         cycle = MagicMock()
         cycle.fix_metadata = {"log_file": "/nonexistent/path/fix.json"}
         cycle.fix_summary = "previous"
@@ -138,6 +148,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary == "previous"
 
     def test_fix_summary_not_a_string_no_crash(self, tmp_path: Path) -> None:
+        """Verifies that fix summary not a string no crash."""
         log_content = json.dumps({"fix_summary": 12345})
         log_file = tmp_path / "fix_cycle.json"
         log_file.write_text(log_content)
@@ -150,6 +161,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary is None
 
     def test_fix_summary_is_list_no_crash(self, tmp_path: Path) -> None:
+        """Verifies that fix summary is list no crash."""
         log_content = json.dumps({"fix_summary": ["item1", "item2"]})
         log_file = tmp_path / "fix_cycle.json"
         log_file.write_text(log_content)
@@ -162,6 +174,7 @@ class TestParseAndStoreFixSummary:
         assert cycle.fix_summary is None
 
     def test_existing_fix_summary_preserved_on_error(self, tmp_path: Path) -> None:
+        """Verifies that existing fix summary preserved on error."""
         log_content = "invalid json"
         log_file = tmp_path / "fix_cycle.json"
         log_file.write_text(log_content)
@@ -178,11 +191,13 @@ class TestMaxFixSummaryLength:
     """Test the 20000 character limit constant."""
 
     def test_max_fix_summary_length_constant(self) -> None:
+        """Verifies that max fix summary length constant."""
         from orch.daemon.fix_cycle import _MAX_FIX_SUMMARY_LEN
 
         assert _MAX_FIX_SUMMARY_LEN == 20000
 
     def test_exactly_20000_chars_not_truncated(self, tmp_path: Path) -> None:
+        """Verifies that exactly 20000 chars not truncated."""
         content = "y" * 20000
         log_content = json.dumps({"fix_summary": content})
         log_file = tmp_path / "fix_cycle.json"
@@ -196,6 +211,7 @@ class TestMaxFixSummaryLength:
         assert len(cycle.fix_summary) == 20000
 
     def test_20001_chars_truncated_to_20000(self, tmp_path: Path) -> None:
+        """Verifies that 20001 chars truncated to 20000."""
         content = "z" * 20001
         log_content = json.dumps({"fix_summary": content})
         log_file = tmp_path / "fix_cycle.json"

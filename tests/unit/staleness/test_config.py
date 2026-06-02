@@ -22,6 +22,8 @@ from orch.staleness.config import (
 
 
 class TestServiceDetectParsing:
+    """Tests for ServiceDetect.from_dict — covers all detect types and missing-field errors."""
+
     def test_port_detect(self) -> None:
         """detect.type=port requires a port field."""
         d = ServiceDetect.from_dict({"type": "port", "port": 9900})
@@ -78,7 +80,16 @@ class TestServiceDetectParsing:
 
 
 class TestServiceConfigParsing:
+    """Tests for ServiceConfig.from_dict — covers minimal config, optional fields, and missing
+    fields.
+    """
+
     def _minimal(self) -> dict:  # type: ignore[type-arg]
+        """Return a minimal valid ServiceConfig raw dict for use as a test baseline.
+
+        Returns:
+            Dict with the minimum required fields for ServiceConfig.from_dict.
+        """
         return {
             "name": "daemon",
             "detect": {"type": "pidfile", "path": ".daemon.pid"},
@@ -151,6 +162,8 @@ class TestServiceConfigParsing:
 
 
 class TestAlembicConfigParsing:
+    """Tests for AlembicConfig.from_dict — covers minimal config, optional fields, and errors."""
+
     def test_minimal_alembic_config(self) -> None:
         """A minimal alembic config with just 'config' path."""
         ac = AlembicConfig.from_dict({"config": "alembic.ini"})
@@ -175,6 +188,8 @@ class TestAlembicConfigParsing:
 
 
 class TestParseProjectStaleness:
+    """Tests for parse_project_staleness — covers empty, full, and invalid configurations."""
+
     def test_empty_dict_returns_empty_config(self) -> None:
         """A project with no services/alembic block returns empty config (opt-out)."""
         result = parse_project_staleness({})

@@ -91,6 +91,14 @@ def migrated_engine(pg_container: PostgresContainer, monkeypatch: pytest.MonkeyP
 
 
 def _alembic_config(engine: Engine) -> Config:
+    """Build an Alembic Config pointing at the given engine's URL.
+
+    Args:
+        engine: The SQLAlchemy engine whose URL will be used.
+
+    Returns:
+        An Alembic Config object ready for upgrade/downgrade calls.
+    """
     cfg = Config()
     cfg.set_main_option("script_location", SCRIPT_LOCATION)
     cfg.set_main_option("sqlalchemy.url", engine.url.render_as_string(hide_password=False))

@@ -26,6 +26,7 @@ def _template_dir() -> Path:
 
 @pytest.fixture(scope="module")
 def jinja_env() -> Environment:
+    """Create a Jinja2 environment pointing at the dashboard templates directory."""
     env = Environment(
         loader=FileSystemLoader(str(_template_dir())),
         autoescape=select_autoescape(enabled_extensions=()),

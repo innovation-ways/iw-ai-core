@@ -239,6 +239,7 @@ def test_maybe_resolve_swallows_exceptions_from_resolve(
 
     # Simulate _resolve_pi_session_file raising
     def raise_on_resolve(*args, **kwargs):
+        """Return raise on resolve."""
         raise RuntimeError("simulated filesystem error")
 
     monkeypatch.setattr(

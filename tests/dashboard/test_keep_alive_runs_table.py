@@ -1,3 +1,7 @@
+"""Tests for the keep-alive runs table — diagnostic columns render correctly for NULL and populated
+rows.
+"""
+
 from __future__ import annotations
 
 import re
@@ -13,17 +17,20 @@ from orch.db.models import KeepAliveRun
 
 @pytest.fixture
 def db(db_session):
+    """Alias fixture that returns the shared test db_session."""
     return db_session
 
 
 @pytest.fixture
 def client(db) -> Generator[TestClient, None, None]:
+    """Provide a TestClient with keep-alive config seeded and get_db overridden."""
     from orch.keep_alive_service import get_config
 
     get_config(db)
     db.commit()
 
     def override_get_db():
+        """Return the test db_session for FastAPI dependency injection."""
         return db
 
     app = create_app()

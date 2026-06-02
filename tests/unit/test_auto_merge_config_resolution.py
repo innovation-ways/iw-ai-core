@@ -1,3 +1,5 @@
+"""Unit tests for auto merge config resolution."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -7,6 +9,7 @@ from orch.daemon.auto_merge import AutoMergeConfig
 
 
 def _cfg(**kwargs) -> AutoMergeConfig:
+    """Return cfg."""
     d = AutoMergeConfig.defaults()
     return AutoMergeConfig(
         phase=kwargs.get("phase", d.phase),
@@ -24,6 +27,7 @@ def _cfg(**kwargs) -> AutoMergeConfig:
 
 
 def test_resolve_per_project_db_phase_and_runtime_both_set() -> None:
+    """Verifies that resolve per project db phase and runtime both set."""
     db = MagicMock()
     db.get.side_effect = [
         MagicMock(phase=1, runtime_option_id=3),
@@ -34,6 +38,7 @@ def test_resolve_per_project_db_phase_and_runtime_both_set() -> None:
 
 
 def test_resolve_per_project_db_phase_only_runtime_from_toml() -> None:
+    """Verifies that resolve per project db phase only runtime from toml."""
     db = MagicMock()
     db.get.side_effect = [
         MagicMock(phase=1, runtime_option_id=None),
@@ -48,6 +53,7 @@ def test_resolve_per_project_db_phase_only_runtime_from_toml() -> None:
 
 
 def test_resolve_per_project_db_runtime_only_phase_from_toml() -> None:
+    """Verifies that resolve per project db runtime only phase from toml."""
     db = MagicMock()
     db.get.side_effect = [
         MagicMock(phase=None, runtime_option_id=2),
@@ -58,6 +64,7 @@ def test_resolve_per_project_db_runtime_only_phase_from_toml() -> None:
 
 
 def test_resolve_no_db_row_falls_back_to_toml() -> None:
+    """Verifies that resolve no db row falls back to toml."""
     db = MagicMock()
     db.get.side_effect = [
         None,
@@ -68,6 +75,7 @@ def test_resolve_no_db_row_falls_back_to_toml() -> None:
 
 
 def test_resolve_no_db_no_toml_uses_hardcoded_defaults() -> None:
+    """Verifies that resolve no db no toml uses hardcoded defaults."""
     db = MagicMock()
     db.get.side_effect = [None]
     db.execute.return_value.scalar_one_or_none.return_value = None
@@ -77,6 +85,7 @@ def test_resolve_no_db_no_toml_uses_hardcoded_defaults() -> None:
 
 
 def test_resolve_phase_2_in_db_rejected_with_clear_error() -> None:
+    """Verifies that resolve phase 2 in db rejected with clear error."""
     db = MagicMock()
     db.get.side_effect = [MagicMock(phase=2, runtime_option_id=None)]
     resolved = resolve_project_config(db, "p", _cfg(phase=1, runtime_option_id=None))
@@ -84,6 +93,7 @@ def test_resolve_phase_2_in_db_rejected_with_clear_error() -> None:
 
 
 def test_resolve_phase_3_in_db_rejected_with_clear_error() -> None:
+    """Verifies that resolve phase 3 in db rejected with clear error."""
     db = MagicMock()
     db.get.side_effect = [MagicMock(phase=3, runtime_option_id=None)]
     resolved = resolve_project_config(db, "p", _cfg(phase=1, runtime_option_id=None))
@@ -91,6 +101,7 @@ def test_resolve_phase_3_in_db_rejected_with_clear_error() -> None:
 
 
 def test_resolve_disabled_runtime_in_db_falls_back_to_toml_runtime() -> None:
+    """Verifies that resolve disabled runtime in db falls back to toml runtime."""
     db = MagicMock()
     db.get.side_effect = [
         MagicMock(phase=1, runtime_option_id=99),
@@ -107,6 +118,7 @@ def test_resolve_disabled_runtime_in_db_falls_back_to_toml_runtime() -> None:
 
 
 def test_resolve_disabled_runtime_emits_auto_merge_config_invalid_once() -> None:
+    """Verifies that resolve disabled runtime emits auto merge config invalid once."""
     db = MagicMock()
     latest = MagicMock(event_metadata={"reason": "runtime_option_disabled", "configured_id": 99})
     db.get.side_effect = [
@@ -137,6 +149,7 @@ def test_resolve_disabled_runtime_emits_auto_merge_config_invalid_once() -> None
 
 
 def test_resolve_deterministic_invariant_2() -> None:
+    """Verifies that resolve deterministic invariant 2."""
     db = MagicMock()
     db.get.side_effect = [
         MagicMock(phase=1, runtime_option_id=7),
@@ -148,6 +161,7 @@ def test_resolve_deterministic_invariant_2() -> None:
 
 
 def test_resolve_returns_source_field_per_project_db_when_db_row_exists() -> None:
+    """Verifies that resolve returns source field per project db when db row exists."""
     db = MagicMock()
     db.get.side_effect = [
         MagicMock(phase=1, runtime_option_id=1),
@@ -157,6 +171,7 @@ def test_resolve_returns_source_field_per_project_db_when_db_row_exists() -> Non
 
 
 def test_resolve_returns_source_field_toml_when_no_db_row() -> None:
+    """Verifies that resolve returns source field toml when no db row."""
     db = MagicMock()
     db.get.side_effect = [
         None,

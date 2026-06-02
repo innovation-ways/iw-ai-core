@@ -22,6 +22,8 @@ from orch.db.alembic_guard import (
 
 
 class TestCheckDbAtHead:
+    """Tests for CheckDbAtHead scenarios."""
+
     def test_returns_ok_when_aligned(self) -> None:
         """current_rev == head_rev and zero pending → ok is True."""
         with (
@@ -104,6 +106,8 @@ class TestCheckDbAtHead:
 
 
 class TestAssertDbAtHead:
+    """Tests for AssertDbAtHead scenarios."""
+
     def test_raises_db_behind_head_error_with_revs_in_msg(self) -> None:
         """Raised exception message contains current_rev, head_rev, and 'make db-migrate'."""
         status = GuardStatus(
@@ -171,6 +175,8 @@ class TestAssertDbAtHead:
 
 
 class TestRemediationMessage:
+    """Tests for RemediationMessage scenarios."""
+
     def test_remediation_message_format(self) -> None:
         """Single line contains current_rev=…, head_rev=…, and 'make db-migrate'."""
         status = GuardStatus(
@@ -201,6 +207,8 @@ class TestRemediationMessage:
 
 
 class TestAssertDbAtHeadSkipsGuard:
+    """Tests for AssertDbAtHeadSkipsGuard scenarios."""
+
     def test_assert_db_at_head_skips_when_skip_guard_env(  # noqa: assertion-scanner
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

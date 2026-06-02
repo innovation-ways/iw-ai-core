@@ -9,7 +9,10 @@ if TYPE_CHECKING:
 
 
 class TestPoolConfig:
+    """Tests for PoolConfig scenarios."""
+
     def test_default_pool_size_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that default pool size from env."""
         monkeypatch.setenv("IW_CORE_DB_HOST", "localhost")
         monkeypatch.setenv("IW_CORE_DB_PORT", "5433")
         monkeypatch.setenv("IW_CORE_DB_NAME", "testdb")
@@ -34,6 +37,7 @@ class TestPoolConfig:
         assert config.db_max_overflow == 20
 
     def test_explicit_pool_size_from_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that explicit pool size from env."""
         monkeypatch.setenv("IW_CORE_DB_HOST", "localhost")
         monkeypatch.setenv("IW_CORE_DB_PORT", "5433")
         monkeypatch.setenv("IW_CORE_DB_NAME", "testdb")

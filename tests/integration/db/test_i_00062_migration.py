@@ -33,12 +33,21 @@ PREV_REVISION = "4876b3246ff2"  # head before I-00062 migration
 
 @pytest.fixture(scope="module")
 def pg_container() -> PostgresContainer:
+    """Provide a module-scoped PostgreSQL testcontainer for I-00062 migration tests."""
     with PostgresContainer("postgres:15-alpine") as pg:
         yield pg
 
 
 @pytest.fixture(scope="module")
 def db_engine(pg_container: PostgresContainer) -> Engine:
+    """Create a SQLAlchemy engine pointed at the testcontainer DB with env vars set.
+
+    Args:
+        pg_container: The running PostgreSQL testcontainer.
+
+    Yields:
+        A configured SQLAlchemy engine with IW_CORE_DB_* env vars set.
+    """
     url = pg_container.get_connection_url().replace(
         "postgresql+psycopg2://", "postgresql+psycopg://"
     )
@@ -66,11 +75,21 @@ def migrated_engine(db_engine: Engine) -> Engine:
 
 @pytest.fixture(scope="module")
 def db_session_factory(migrated_engine: Engine) -> sessionmaker:
+    """Provide a sessionmaker bound to the migrated engine.
+
+    Args:
+        migrated_engine: Engine after all alembic migrations have been applied.
+
+    Returns:
+        A sessionmaker configured for manual transaction control.
+    """
     return sessionmaker(bind=migrated_engine, autocommit=False, autoflush=False)
 
 
 @pytest.mark.integration
 class TestI00062MigrationRoundTrip:
+    """Covers upgrade/downgrade round-trip for the I-00062 worktree DB columns migration."""
+
     def test_upgrade_adds_four_columns(self, migrated_engine: Engine) -> None:
         """After alembic upgrade head, batch_items has the four new columns, all nullable."""
         inspector = inspect(migrated_engine)

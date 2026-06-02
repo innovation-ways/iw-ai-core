@@ -50,6 +50,14 @@ if TYPE_CHECKING:
 
 
 def _unique_id(prefix: str = "F") -> str:
+    """Generate a unique ID with a short UUID suffix to prevent test collisions.
+
+    Args:
+        prefix: Short prefix prepended to the UUID hex suffix.
+
+    Returns:
+        A unique string in the form ``<prefix>-<8-char-hex>``.
+    """
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
 
@@ -60,6 +68,18 @@ def _create_work_item(
     item_type: WorkItemType = WorkItemType.Feature,
     impacted_paths: list[str] | None = None,
 ) -> WorkItem:
+    """Insert an approved WorkItem row into the test DB.
+
+    Args:
+        db: The SQLAlchemy session for the testcontainer DB.
+        project_id: Project to which the work item belongs.
+        item_id: ID for the new work item.
+        item_type: Work item type enum value.
+        impacted_paths: Optional list of file glob paths impacted by this item.
+
+    Returns:
+        The flushed WorkItem ORM instance.
+    """
     wi = WorkItem(
         project_id=project_id,
         id=item_id,
@@ -85,6 +105,19 @@ def _create_workflow_step(
     step_id: str,
     status: StepStatus = StepStatus.pending,
 ) -> WorkflowStep:
+    """Insert a WorkflowStep row into the test DB.
+
+    Args:
+        db: The SQLAlchemy session for the testcontainer DB.
+        project_id: Project to which the step belongs.
+        work_item_id: Work item ID that owns this step.
+        step_number: Sequential step number within the work item.
+        step_id: String step identifier (e.g. ``S01``).
+        status: Initial step status; defaults to pending.
+
+    Returns:
+        The flushed WorkflowStep ORM instance.
+    """
     from orch.db.models import StepType
 
     step = WorkflowStep(
@@ -108,6 +141,18 @@ def _create_batch(
     status: BatchStatus = BatchStatus.approved,
     max_parallel: int = 4,
 ) -> Batch:
+    """Insert a Batch row into the test DB.
+
+    Args:
+        db: The SQLAlchemy session for the testcontainer DB.
+        project_id: Project to which the batch belongs.
+        batch_id: ID for the new batch.
+        status: Initial batch status; defaults to approved.
+        max_parallel: Maximum concurrent items for this batch.
+
+    Returns:
+        The flushed Batch ORM instance.
+    """
     batch = Batch(
         id=batch_id,
         project_id=project_id,
@@ -127,6 +172,19 @@ def _create_batch_item(
     execution_group: int = 0,
     status: BatchItemStatus = BatchItemStatus.pending,
 ) -> BatchItem:
+    """Insert a BatchItem row into the test DB.
+
+    Args:
+        db: The SQLAlchemy session for the testcontainer DB.
+        project_id: Project to which the batch item belongs.
+        batch_id: Parent batch ID.
+        work_item_id: Work item ID for this batch item.
+        execution_group: Execution group number controlling dependency ordering.
+        status: Initial batch item status; defaults to pending.
+
+    Returns:
+        The flushed BatchItem ORM instance.
+    """
     bi = BatchItem(
         project_id=project_id,
         batch_id=batch_id,
@@ -215,6 +273,15 @@ class TestCascadeBehaviour:
         ).fetchone()
 
     def _count_dependency_events(self, db: Session, project_id: str) -> int:
+        """Count batch_dependency_failed DaemonEvent rows for the given project.
+
+        Args:
+            db: The SQLAlchemy session for the testcontainer DB.
+            project_id: Project ID to filter events by.
+
+        Returns:
+            Integer count of matching event rows.
+        """
         return db.execute(
             DaemonEvent.__table__.select().where(
                 DaemonEvent.project_id == project_id,

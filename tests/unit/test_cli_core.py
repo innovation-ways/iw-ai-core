@@ -35,6 +35,7 @@ from orch.db.models import (
 
 
 def test_find_project_root_found_in_cwd(tmp_path: Path) -> None:
+    """Verifies that find project root found in cwd."""
     config = tmp_path / ".iw-orch.json"
     config.write_text('{"project_id": "myproject"}')
 
@@ -47,6 +48,7 @@ def test_find_project_root_found_in_cwd(tmp_path: Path) -> None:
 
 
 def test_find_project_root_found_in_ancestor(tmp_path: Path) -> None:
+    """Verifies that find project root found in ancestor."""
     config = tmp_path / ".iw-orch.json"
     config.write_text('{"project_id": "ancestor-proj"}')
 
@@ -62,11 +64,13 @@ def test_find_project_root_found_in_ancestor(tmp_path: Path) -> None:
 
 
 def test_find_project_root_not_found(tmp_path: Path) -> None:
+    """Verifies that find project root not found."""
     result = find_project_root(tmp_path)
     assert result is None
 
 
 def test_find_project_root_invalid_json(tmp_path: Path) -> None:
+    """Verifies that find project root invalid json."""
     config = tmp_path / ".iw-orch.json"
     config.write_text("not valid json {{{")
 
@@ -75,6 +79,7 @@ def test_find_project_root_invalid_json(tmp_path: Path) -> None:
 
 
 def test_find_project_root_missing_project_id(tmp_path: Path) -> None:
+    """Verifies that find project root missing project id."""
     config = tmp_path / ".iw-orch.json"
     config.write_text('{"other_key": "value"}')
 
@@ -103,6 +108,7 @@ def test_find_project_root_missing_project_id(tmp_path: Path) -> None:
     ],
 )
 def test_format_id(prefix: str, number: int, expected: str) -> None:
+    """Verifies that format id."""
     assert format_id(prefix, number) == expected
 
 
@@ -138,6 +144,7 @@ def test_format_id(prefix: str, number: int, expected: str) -> None:
     ],
 )
 def test_validate_id_prefix(item_id: str, item_type: str, expected: bool) -> None:
+    """Verifies that validate id prefix."""
     assert validate_id_prefix(item_id, item_type) == expected
 
 
@@ -147,6 +154,7 @@ def test_validate_id_prefix(item_id: str, item_type: str, expected: bool) -> Non
 
 
 def test_approve_draft_is_valid() -> None:
+    """Verifies that approve draft is valid."""
     assert validate_approve_transition(WorkItemStatus.draft) is None
 
 
@@ -161,6 +169,7 @@ def test_approve_draft_is_valid() -> None:
     ],
 )
 def test_approve_non_draft_returns_error(status: WorkItemStatus) -> None:
+    """Verifies that approve non draft returns error."""
     error = validate_approve_transition(status)
     assert error is not None
     assert status.value in error
@@ -172,22 +181,26 @@ def test_approve_non_draft_returns_error(status: WorkItemStatus) -> None:
 
 
 def test_unapprove_approved_no_batch_is_valid() -> None:
+    """Verifies that unapprove approved no batch is valid."""
     assert validate_unapprove_transition(WorkItemStatus.approved, None) is None
 
 
 def test_unapprove_rejects_non_approved_status() -> None:
+    """Verifies that unapprove rejects non approved status."""
     error = validate_unapprove_transition(WorkItemStatus.draft, None)
     assert error is not None
     assert "draft" in error
 
 
 def test_unapprove_rejects_item_in_active_batch() -> None:
+    """Verifies that unapprove rejects item in active batch."""
     error = validate_unapprove_transition(WorkItemStatus.approved, "BATCH-00003")
     assert error is not None
     assert "BATCH-00003" in error
 
 
 def test_unapprove_status_error_takes_precedence_over_batch() -> None:
+    """Verifies that unapprove status error takes precedence over batch."""
     error = validate_unapprove_transition(WorkItemStatus.in_progress, "BATCH-00001")
     assert error is not None
     assert "in_progress" in error
@@ -223,6 +236,7 @@ def test_unapprove_status_error_takes_precedence_over_batch() -> None:
     ],
 )
 def test_agent_to_step_type(agent: str, expected: StepType) -> None:
+    """Verifies that agent to step type."""
     assert agent_to_step_type(agent) == expected
 
 
@@ -244,6 +258,7 @@ def test_agent_to_step_type(agent: str, expected: StepType) -> None:
     ],
 )
 def test_agent_to_label(agent: str, expected: str) -> None:
+    """Verifies that agent to label."""
     assert agent_to_label(agent) == expected
 
 
@@ -253,6 +268,7 @@ def test_agent_to_label(agent: str, expected: str) -> None:
 
 
 def test_parse_manifest_steps(tmp_path: Path) -> None:
+    """Verifies that parse manifest steps."""
     from orch.cli.item_commands import parse_manifest_steps
 
     manifest = tmp_path / "workflow-manifest.json"
@@ -280,22 +296,27 @@ def test_parse_manifest_steps(tmp_path: Path) -> None:
 
 
 def test_work_item_type_research() -> None:
+    """Verifies that work item type research."""
     assert WorkItemType.Research.value == "Research"
 
 
 def test_doc_type_research() -> None:
+    """Verifies that doc type research."""
     assert DocType.research.value == "research"
 
 
 def test_type_to_prefix_research() -> None:
+    """Verifies that type to prefix research."""
     assert TYPE_TO_PREFIX.get("research") == "R"
 
 
 def test_type_to_id_prefix_research() -> None:
+    """Verifies that type to id prefix research."""
     assert TYPE_TO_ID_PREFIX.get("research") == "R-"
 
 
 def test_item_type_map_research() -> None:
+    """Verifies that item type map research."""
     assert _ITEM_TYPE_MAP.get("research") == WorkItemType.Research
 
 
@@ -305,12 +326,14 @@ def test_item_type_map_research() -> None:
 
 
 def test_validate_approve_transition_rejects_research() -> None:
+    """Verifies that validate approve transition rejects research."""
     msg = validate_approve_transition(WorkItemStatus.draft, WorkItemType.Research)
     assert msg is not None
     assert "Cannot approve research items" in msg
 
 
 def test_validate_approve_transition_non_research_draft_ok() -> None:
+    """Verifies that validate approve transition non research draft ok."""
     assert validate_approve_transition(WorkItemStatus.draft) is None
     assert validate_approve_transition(WorkItemStatus.draft, WorkItemType.Feature) is None
     assert validate_approve_transition(WorkItemStatus.draft, WorkItemType.ChangeRequest) is None
@@ -318,6 +341,7 @@ def test_validate_approve_transition_non_research_draft_ok() -> None:
 
 
 def test_validate_approve_transition_research_check_fires_before_status_check() -> None:
+    """Verifies that validate approve transition research check fires before status check."""
     msg = validate_approve_transition(WorkItemStatus.approved, WorkItemType.Research)
     assert msg is not None
     assert "Cannot approve research items" in msg
@@ -329,12 +353,14 @@ def test_validate_approve_transition_research_check_fires_before_status_check() 
 
 
 def test_validate_unapprove_transition_rejects_research() -> None:
+    """Verifies that validate unapprove transition rejects research."""
     msg = validate_unapprove_transition(WorkItemStatus.approved, None, WorkItemType.Research)
     assert msg is not None
     assert "Cannot unapprove research items" in msg
 
 
 def test_validate_unapprove_transition_non_research_approved_ok() -> None:
+    """Verifies that validate unapprove transition non research approved ok."""
     assert validate_unapprove_transition(WorkItemStatus.approved, None) is None
     assert (
         validate_unapprove_transition(WorkItemStatus.approved, None, WorkItemType.Feature) is None
@@ -347,6 +373,7 @@ def test_validate_unapprove_transition_non_research_approved_ok() -> None:
 
 
 def test_validate_unapprove_transition_research_check_fires_before_status_check() -> None:
+    """Verifies that validate unapprove transition research check fires before status check."""
     msg = validate_unapprove_transition(WorkItemStatus.draft, None, WorkItemType.Research)
     assert msg is not None
     assert "Cannot unapprove research items" in msg

@@ -51,22 +51,27 @@ def _make_step(report_file: str | None = None, report_content: str | None = None
 
 
 def test_fixable_step_types_includes_code_review() -> None:
+    """Verifies that fixable step types includes code review."""
     assert StepType.code_review in _FIXABLE_STEP_TYPES
 
 
 def test_fixable_step_types_includes_code_review_final() -> None:
+    """Verifies that fixable step types includes code review final."""
     assert StepType.code_review_final in _FIXABLE_STEP_TYPES
 
 
 def test_fixable_step_types_excludes_implementation() -> None:
+    """Verifies that fixable step types excludes implementation."""
     assert StepType.implementation not in _FIXABLE_STEP_TYPES
 
 
 def test_fixable_step_types_includes_quality_validation() -> None:
+    """Verifies that fixable step types includes quality validation."""
     assert StepType.quality_validation in _FIXABLE_STEP_TYPES
 
 
 def test_fixable_step_types_includes_browser_verification() -> None:
+    """Verifies that fixable step types includes browser verification."""
     # Browser verification is fixable: V(n) failures are real code defects,
     # not transient environment issues, so the daemon opens a fix cycle
     # instead of plain-retrying the same browser prompt.
@@ -79,11 +84,13 @@ def test_fixable_step_types_includes_browser_verification() -> None:
 
 
 def test_extract_findings_from_json_zero_mandatory() -> None:
+    """Verifies that extract findings from json zero mandatory."""
     content = '{"verdict": "fail", "mandatory_fix_count": 0, "findings": []}'
     assert _extract_mandatory_findings(content) == ""
 
 
 def test_extract_findings_from_markdown_headings() -> None:
+    """Verifies that extract findings from markdown headings."""
     content = (
         "## Findings\n\n"
         "### Finding 1: CRITICAL -- security\n"
@@ -98,6 +105,7 @@ def test_extract_findings_from_markdown_headings() -> None:
 
 
 def test_extract_findings_from_high_severity() -> None:
+    """Verifies that extract findings from high severity."""
     content = (
         "### Finding 1: HIGH -- conventions\n"
         "Wrong naming pattern in utils.py\n\n"
@@ -110,10 +118,12 @@ def test_extract_findings_from_high_severity() -> None:
 
 
 def test_extract_findings_empty_content() -> None:
+    """Verifies that extract findings empty content."""
     assert _extract_mandatory_findings("") == ""
 
 
 def test_extract_findings_no_mandatory_in_content() -> None:
+    """Verifies that extract findings no mandatory in content."""
     content = "### Finding 1: LOW -- style\nMinor formatting issue\n"
     # No CRITICAL/HIGH/MEDIUM-fixable headings → empty
     assert _extract_mandatory_findings(content) == ""
@@ -132,6 +142,7 @@ def test_extract_findings_verdict_fail_no_headings() -> None:
 
 
 def test_build_fix_prompt_includes_findings() -> None:
+    """Verifies that build fix prompt includes findings."""
     prompt = _build_fix_prompt_content(
         "CR-00002",
         "S06",
@@ -147,6 +158,7 @@ def test_build_fix_prompt_includes_findings() -> None:
 
 
 def test_build_fix_prompt_escalation_on_last_cycle() -> None:
+    """Verifies that build fix prompt escalation on last cycle."""
     prompt = _build_fix_prompt_content(
         "F-00001",
         "S03",
@@ -159,6 +171,7 @@ def test_build_fix_prompt_escalation_on_last_cycle() -> None:
 
 
 def test_build_fix_prompt_no_escalation_on_early_cycle() -> None:
+    """Verifies that build fix prompt no escalation on early cycle."""
     prompt = _build_fix_prompt_content(
         "F-00001",
         "S03",
@@ -238,6 +251,7 @@ def test_build_scope_block_returns_empty_when_no_allowed_paths() -> None:
 
 
 def test_qv_fix_prompt_includes_gate_command() -> None:
+    """Verifies that qv fix prompt includes gate command."""
     prompt = _build_qv_fix_prompt_content(
         "CR-00002",
         "S09",
@@ -253,6 +267,7 @@ def test_qv_fix_prompt_includes_gate_command() -> None:
 
 
 def test_qv_fix_prompt_escalation_on_last_cycle() -> None:
+    """Verifies that qv fix prompt escalation on last cycle."""
     prompt = _build_qv_fix_prompt_content(
         "CR-00002", "S10", 5, "mypy errors", 5, "mypy orch/ dashboard/"
     )
@@ -501,16 +516,19 @@ def _seed_design_doc(tmp_path: Path, item_id: str, body: str) -> Path:
 
 
 def test_find_design_doc_returns_path_when_present(tmp_path: Path) -> None:
+    """Verifies that find design doc returns path when present."""
     expected = _seed_design_doc(tmp_path, "I-00099", "# I-00099\n")
     found = _find_design_doc(str(tmp_path), "I-00099")
     assert found == expected
 
 
 def test_find_design_doc_returns_none_when_dir_missing(tmp_path: Path) -> None:
+    """Verifies that find design doc returns none when dir missing."""
     assert _find_design_doc(str(tmp_path), "I-99999") is None
 
 
 def test_find_design_doc_returns_none_when_no_design_file(tmp_path: Path) -> None:
+    """Verifies that find design doc returns none when no design file."""
     item_dir = tmp_path / "ai-dev" / "active" / "I-00099"
     item_dir.mkdir(parents=True)
     (item_dir / "notes.md").write_text("not a design doc")
@@ -518,6 +536,7 @@ def test_find_design_doc_returns_none_when_no_design_file(tmp_path: Path) -> Non
 
 
 def test_extract_step_section_matches_detailed_fix_specification() -> None:
+    """Verifies that extract step section matches detailed fix specification."""
     text = (
         "# Title\n\n"
         "## Detailed Fix Specification for S01\n\n"
@@ -533,6 +552,7 @@ def test_extract_step_section_matches_detailed_fix_specification() -> None:
 
 
 def test_extract_step_section_matches_step_id_heading() -> None:
+    """Verifies that extract step section matches step id heading."""
     text = "## S03 — Tests\n\nWrite tests.\n\n## S04\n\nReview.\n"
     slice_text = _extract_step_section(text, "S03")
     assert slice_text is not None
@@ -548,15 +568,18 @@ def test_extract_step_section_returns_none_on_no_match() -> None:
 
 
 def test_extract_step_section_handles_empty_inputs() -> None:
+    """Verifies that extract step section handles empty inputs."""
     assert _extract_step_section("", "S01") is None
     assert _extract_step_section("text", "") is None
 
 
 def test_build_design_doc_block_returns_empty_when_doc_missing(tmp_path: Path) -> None:
+    """Verifies that build design doc block returns empty when doc missing."""
     assert _build_design_doc_block(str(tmp_path), "I-99999", "S01") == ""
 
 
 def test_build_design_doc_block_includes_path_and_slice(tmp_path: Path) -> None:
+    """Verifies that build design doc block includes path and slice."""
     body = "# Title\n\n## Detailed Fix Specification for S01\n\nSpec: do X then Y.\n"
     doc_path = _seed_design_doc(tmp_path, "I-00099", body)
     block = _build_design_doc_block(str(tmp_path), "I-00099", "S01")
@@ -581,6 +604,7 @@ def test_build_design_doc_block_no_slice_when_step_section_absent(tmp_path: Path
 
 
 def test_build_fix_prompt_includes_design_doc_block_when_provided() -> None:
+    """Verifies that build fix prompt includes design doc block when provided."""
     block = "## Design Doc — Source of Truth (READ FIRST)\n\nPath: /tmp/x.md\n"
     prompt = _build_fix_prompt_content("CR-00002", "S06", 1, "findings", 5, design_doc_block=block)
     assert "Design Doc — Source of Truth" in prompt
@@ -598,6 +622,7 @@ def test_build_fix_prompt_omits_design_section_when_empty() -> None:
 
 
 def test_build_fix_prompt_escalation_prefers_honest_escalation() -> None:
+    """Verifies that build fix prompt escalation prefers honest escalation."""
     prompt = _build_fix_prompt_content("F-00001", "S03", 5, "findings", 5)
     assert "ESCALATION" in prompt
     assert "PREFER honest escalation" in prompt
@@ -605,6 +630,7 @@ def test_build_fix_prompt_escalation_prefers_honest_escalation() -> None:
 
 
 def test_build_qv_fix_prompt_includes_design_doc_block_when_provided() -> None:
+    """Verifies that build qv fix prompt includes design doc block when provided."""
     block = "## Design Doc — Source of Truth (READ FIRST)\n\nPath: /tmp/x.md\n"
     prompt = _build_qv_fix_prompt_content(
         "CR-00002", "S09", 1, "errors", 5, "make lint", design_doc_block=block
@@ -616,12 +642,14 @@ def test_build_qv_fix_prompt_includes_design_doc_block_when_provided() -> None:
 
 
 def test_build_qv_fix_prompt_escalation_prefers_honest_escalation() -> None:
+    """Verifies that build qv fix prompt escalation prefers honest escalation."""
     prompt = _build_qv_fix_prompt_content("CR-00002", "S09", 5, "errors", 5, "make lint")
     assert "PREFER honest escalation" in prompt
     assert "Hail-Mary" in prompt
 
 
 def test_build_browser_fix_prompt_includes_design_doc_block_when_provided() -> None:
+    """Verifies that build browser fix prompt includes design doc block when provided."""
     block = "## Design Doc — Source of Truth (READ FIRST)\n\nPath: /tmp/x.md\n"
     prompt = _build_browser_fix_prompt_content(
         item_id="I-00099",
@@ -638,6 +666,7 @@ def test_build_browser_fix_prompt_includes_design_doc_block_when_provided() -> N
 
 
 def test_build_browser_fix_prompt_escalation_prefers_honest_escalation() -> None:
+    """Verifies that build browser fix prompt escalation prefers honest escalation."""
     prompt = _build_browser_fix_prompt_content(
         item_id="I-00099",
         step_id="S11",
@@ -660,6 +689,7 @@ def test_spec_mismatch_prefix_constant_is_correct() -> None:
 
 
 def test_is_spec_mismatch_failure_returns_true_for_exact_prefix() -> None:
+    """Verifies that is spec mismatch failure returns true for exact prefix."""
     reason = (
         "SPEC_MISMATCH: V4 expects disabled toggle on Plan tab but "
         "design doc scopes that to non-executing states"
@@ -668,25 +698,30 @@ def test_is_spec_mismatch_failure_returns_true_for_exact_prefix() -> None:
 
 
 def test_is_spec_mismatch_failure_returns_true_with_leading_whitespace() -> None:
+    """Verifies that is spec mismatch failure returns true with leading whitespace."""
     reason = "  SPEC_MISMATCH: V3 verifies a feature the design doc says is out of scope"
     assert is_spec_mismatch_failure(reason) is True
 
 
 def test_is_spec_mismatch_failure_returns_false_for_env_data_missing() -> None:
+    """Verifies that is spec mismatch failure returns false for env data missing."""
     reason = "ENV_DATA_MISSING: V1 expects F-00055 step_runs"
     assert is_spec_mismatch_failure(reason) is False
 
 
 def test_is_spec_mismatch_failure_returns_false_for_code_defect() -> None:
+    """Verifies that is spec mismatch failure returns false for code defect."""
     reason = "V1 returned 500 on /tab/execution-report"
     assert is_spec_mismatch_failure(reason) is False
 
 
 def test_is_spec_mismatch_failure_returns_false_for_none() -> None:
+    """Verifies that is spec mismatch failure returns false for none."""
     assert is_spec_mismatch_failure(None) is False
 
 
 def test_is_spec_mismatch_failure_returns_false_for_empty_string() -> None:
+    """Verifies that is spec mismatch failure returns false for empty string."""
     assert is_spec_mismatch_failure("") is False
 
 
@@ -701,6 +736,7 @@ def test_is_spec_mismatch_failure_case_insensitive() -> None:
 
 
 def test_build_fix_launch_argv_opencode_wraps_in_script_pty() -> None:
+    """Verifies that build fix launch argv opencode wraps in script pty."""
     inner = (
         'timeout 600 opencode run "$(cat /wt/.tmp/I-00074_S06_fix1.prompt)" '
         "--model anthropic/claude-x --dangerously-skip-permissions"
@@ -709,6 +745,7 @@ def test_build_fix_launch_argv_opencode_wraps_in_script_pty() -> None:
 
 
 def test_build_fix_launch_argv_non_opencode_runs_under_sh() -> None:
+    """Verifies that build fix launch argv non opencode runs under sh."""
     inner = (
         'timeout 600 claude -p "$(cat /wt/.tmp/I-00074_S06_fix1.prompt)" '
         "--model anthropic/claude-x --dangerously-skip-permissions"

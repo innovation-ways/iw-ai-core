@@ -28,11 +28,13 @@ class TestBatchActionLabels:
     """Verify that 'archive' is registered in _BATCH_ACTION_LABELS."""
 
     def test_archive_key_exists(self) -> None:
+        """Verifies that archive key exists."""
         from dashboard.routers.actions import _BATCH_ACTION_LABELS
 
         assert "archive" in _BATCH_ACTION_LABELS
 
     def test_archive_label_structure(self) -> None:
+        """Verifies that archive label structure."""
         from dashboard.routers.actions import _BATCH_ACTION_LABELS
 
         entry = _BATCH_ACTION_LABELS["archive"]
@@ -45,6 +47,7 @@ class TestBatchActionLabels:
         assert danger is False  # archive is a normal completion action
 
     def test_archive_description_mentions_post_merge(self) -> None:
+        """Verifies that archive description mentions post merge."""
         from dashboard.routers.actions import _BATCH_ACTION_LABELS
 
         _, description, _, _ = _BATCH_ACTION_LABELS["archive"]
@@ -61,31 +64,37 @@ class TestSseEventTypes:
     """Verify that new archive events are registered in sse.py constants."""
 
     def test_batch_archiving_in_toast_events(self) -> None:
+        """Verifies that batch archiving in toast events."""
         from dashboard.routers.sse import _TOAST_EVENTS
 
         assert "batch_archiving" in _TOAST_EVENTS
 
     def test_batch_archived_in_toast_events(self) -> None:
+        """Verifies that batch archived in toast events."""
         from dashboard.routers.sse import _TOAST_EVENTS
 
         assert "batch_archived" in _TOAST_EVENTS
 
     def test_batch_archive_failed_in_toast_events(self) -> None:
+        """Verifies that batch archive failed in toast events."""
         from dashboard.routers.sse import _TOAST_EVENTS
 
         assert "batch_archive_failed" in _TOAST_EVENTS
 
     def test_batch_archived_severity_is_success(self) -> None:
+        """Verifies that batch archived severity is success."""
         from dashboard.routers.sse import _TOAST_SEVERITY
 
         assert _TOAST_SEVERITY.get("batch_archived") == "success"
 
     def test_batch_archive_failed_severity_is_error(self) -> None:
+        """Verifies that batch archive failed severity is error."""
         from dashboard.routers.sse import _TOAST_SEVERITY
 
         assert _TOAST_SEVERITY.get("batch_archive_failed") == "error"
 
     def test_batch_archiving_severity_is_info(self) -> None:
+        """Verifies that batch archiving severity is info."""
         from dashboard.routers.sse import _TOAST_SEVERITY
 
         assert _TOAST_SEVERITY.get("batch_archiving") == "info"

@@ -12,6 +12,7 @@ class TestBuildMermaid:
 
     @pytest.fixture
     def mock_config(self):
+        """Provide mock config for tests."""
         config = MagicMock()
         config.resolved_llm_model.return_value = "gemma4:26b"
         config.ollama_url = "http://localhost:11434"
@@ -215,6 +216,7 @@ class TestBuildMermaidPrompt:
 
     @pytest.fixture
     def mock_config(self):
+        """Provide mock config for tests."""
         config = MagicMock()
         config.resolved_llm_model.return_value = "gemma4:26b"
         config.ollama_url = "http://localhost:11434"

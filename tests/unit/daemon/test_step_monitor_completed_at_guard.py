@@ -1,3 +1,5 @@
+"""Unit tests for the completed_at guard in step_monitor._check_step_health."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -8,6 +10,7 @@ from orch.daemon import step_monitor as sm
 
 
 def test_check_step_health_skips_crash_when_completed_at_set(monkeypatch) -> None:
+    """Verifies that _check_step_health does not call _handle_crashed when completed_at is set."""
     run = SimpleNamespace(
         pid=99999,
         pid_alive=True,
@@ -36,6 +39,9 @@ def test_check_step_health_skips_crash_when_completed_at_set(monkeypatch) -> Non
 
 
 def test_check_step_health_calls_crash_when_not_completed(monkeypatch) -> None:
+    """Verifies that _check_step_health calls _handle_crashed when completed_at is None and pid is
+    dead.
+    """
     run = SimpleNamespace(
         pid=99999,
         pid_alive=True,
@@ -65,6 +71,7 @@ def test_check_step_health_calls_crash_when_not_completed(monkeypatch) -> None:
 
 
 def test_completed_at_none_still_calls_handle_crashed(monkeypatch) -> None:
+    """Verifies that a None completed_at leaves the run unchanged and triggers crash handling."""
     run = SimpleNamespace(
         pid=99999,
         pid_alive=True,
@@ -95,6 +102,9 @@ def test_completed_at_none_still_calls_handle_crashed(monkeypatch) -> None:
 
 
 def test_completed_at_set_and_child_alive_returns_early(monkeypatch) -> None:
+    """Verifies that health check returns early without crashing when completed_at is set and a
+    child is alive.
+    """
     run = SimpleNamespace(
         id=1,
         pid=99999,

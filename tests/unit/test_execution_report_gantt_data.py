@@ -22,6 +22,7 @@ def make_segment(
     completed_at: datetime | None = None,
     duration_secs: float = 60.0,
 ) -> StepRunSegment:
+    """Return make segment."""
     if started_at is None:
         started_at = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
     actual_completed = completed_at
@@ -51,26 +52,31 @@ class TestGanttClassForRun:
     """Test _gantt_class_for_run gantt class assignment rules."""
 
     def test_non_final_run_gets_retry_class(self) -> None:
+        """Verifies that non final run gets retry class."""
         segment = make_segment(run_number=1)
         result = _gantt_class_for_run(segment, max_run_number=3)
         assert result == "retry"
 
     def test_final_run_completed_gets_completed_class(self) -> None:
+        """Verifies that final run completed gets completed class."""
         segment = make_segment(run_number=3, status=RunStatus.completed)
         result = _gantt_class_for_run(segment, max_run_number=3)
         assert result == "completed"
 
     def test_final_run_failed_gets_failed_class(self) -> None:
+        """Verifies that final run failed gets failed class."""
         segment = make_segment(run_number=3, status=RunStatus.failed)
         result = _gantt_class_for_run(segment, max_run_number=3)
         assert result == "failed"
 
     def test_final_run_timeout_gets_skipped_class(self) -> None:
+        """Verifies that final run timeout gets skipped class."""
         segment = make_segment(run_number=2, status=RunStatus.timeout)
         result = _gantt_class_for_run(segment, max_run_number=2)
         assert result == "skipped"
 
     def test_running_final_run_gets_in_progress_class(self) -> None:
+        """Verifies that running final run gets in progress class."""
         segment = make_segment(
             run_number=2,
             status=RunStatus.running,
@@ -81,16 +87,19 @@ class TestGanttClassForRun:
         assert result == "in_progress"
 
     def test_pending_run_gets_in_progress_class(self) -> None:
+        """Verifies that pending run gets in progress class."""
         segment = make_segment(run_number=1, status=RunStatus.pending)
         result = _gantt_class_for_run(segment, max_run_number=1)
         assert result == "in_progress"
 
     def test_stalled_run_gets_in_progress_class(self) -> None:
+        """Verifies that stalled run gets in progress class."""
         segment = make_segment(run_number=1, status=RunStatus.stalled)
         result = _gantt_class_for_run(segment, max_run_number=1)
         assert result == "in_progress"
 
     def test_killed_run_gets_skipped_class(self) -> None:
+        """Verifies that killed run gets skipped class."""
         segment = make_segment(run_number=1, status=RunStatus.killed)
         result = _gantt_class_for_run(segment, max_run_number=1)
         assert result == "skipped"
@@ -100,6 +109,7 @@ class TestComputeGanttPctsBasic:
     """Test _compute_gantt_pcts basic functionality."""
 
     def test_zero_total_duration_returns_zero(self) -> None:
+        """Verifies that zero total duration returns zero."""
         left, width = _compute_gantt_pcts(
             datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),
             datetime(2025, 1, 1, 10, 1, 0, tzinfo=UTC),
@@ -109,6 +119,7 @@ class TestComputeGanttPctsBasic:
         assert (left, width) == (0.0, 0.0)
 
     def test_none_started_at_returns_zero(self) -> None:
+        """Verifies that none started at returns zero."""
         left, width = _compute_gantt_pcts(
             None,
             datetime(2025, 1, 1, 10, 1, 0, tzinfo=UTC),
@@ -118,6 +129,7 @@ class TestComputeGanttPctsBasic:
         assert (left, width) == (0.0, 0.0)
 
     def test_full_duration_segment(self) -> None:
+        """Verifies that full duration segment."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 11, 0, 0, tzinfo=UTC)
@@ -126,6 +138,7 @@ class TestComputeGanttPctsBasic:
         assert width == 100.0
 
     def test_middle_segment(self) -> None:
+        """Verifies that middle segment."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 10, 30, 0, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 11, 0, 0, tzinfo=UTC)
@@ -138,6 +151,7 @@ class TestComputeGanttPctsBoundaryConditions:
     """Boundary conditions: minimum width enforcement, sum constraint."""
 
     def test_sub_second_run_gets_minimum_0_5_percent_width(self) -> None:
+        """Verifies that sub second run gets minimum 0 5 percent width."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 10, 0, 0, 100, tzinfo=UTC)
@@ -145,6 +159,7 @@ class TestComputeGanttPctsBoundaryConditions:
         assert width >= 0.5
 
     def test_left_pct_clamped_to_100_max(self) -> None:
+        """Verifies that left pct clamped to 100 max."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 13, 0, 0, tzinfo=UTC)
@@ -152,6 +167,7 @@ class TestComputeGanttPctsBoundaryConditions:
         assert left <= 100.0
 
     def test_left_pct_not_negative(self) -> None:
+        """Verifies that left pct not negative."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 9, 0, 0, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
@@ -159,6 +175,7 @@ class TestComputeGanttPctsBoundaryConditions:
         assert left >= 0.0
 
     def test_left_plus_width_never_exceeds_100(self) -> None:
+        """Verifies that left plus width never exceeds 100."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 11, 30, 0, tzinfo=UTC)
@@ -170,6 +187,7 @@ class TestComputeGanttPctsRounding:
     """Rounding to 2 decimal places."""
 
     def test_results_are_float(self) -> None:
+        """Verifies that results are float."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 10, 15, 0, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 10, 45, 0, tzinfo=UTC)
@@ -178,6 +196,7 @@ class TestComputeGanttPctsRounding:
         assert isinstance(width, float)
 
     def test_results_rounded_to_two_decimals(self) -> None:
+        """Verifies that results rounded to two decimals."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 10, 17, 43, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 10, 52, 19, tzinfo=UTC)
@@ -190,6 +209,7 @@ class TestSegmentsPerStepOrderedByRunNumber:
     """Segments generated in run_number order per step."""
 
     def test_segments_ordered_by_run_number(self) -> None:
+        """Verifies that segments ordered by run number."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         from orch.daemon.execution_report import _compute_gantt_pcts
 
@@ -238,11 +258,13 @@ class TestZeroDurationItem:
     """Zero-duration item (no StepRun rows) produces zero percentages without raising."""
 
     def test_zero_duration_no_runs_returns_zero_pcts(self) -> None:
+        """Verifies that zero duration no runs returns zero pcts."""
         left, width = _compute_gantt_pcts(None, None, datetime.now(UTC), 0.0)
         assert left == 0.0
         assert width == 0.0
 
     def test_zero_duration_with_started_at_but_no_completed(self) -> None:
+        """Verifies that zero duration with started at but no completed."""
         now = datetime.now(UTC)
         left, width = _compute_gantt_pcts(now, None, now, 0.0)
         assert left == 0.0
@@ -253,6 +275,7 @@ class TestFixCycleEntryGanttPcts:
     """FixCycleEntry left_pct / width_pct are precomputed by same function."""
 
     def test_fix_cycle_entry_uses_same_pct_computation(self) -> None:
+        """Verifies that fix cycle entry uses same pct computation."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         started = datetime(2025, 1, 1, 10, 30, 0, tzinfo=UTC)
         completed = datetime(2025, 1, 1, 11, 0, 0, tzinfo=UTC)
@@ -265,6 +288,7 @@ class TestMultipleSegmentsSumConstraint:
     """Sum of width_pct across a step's segments never exceeds 100%."""
 
     def test_multiple_segments_sum_leq_100(self) -> None:
+        """Verifies that multiple segments sum leq 100."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         total_duration = 3600.0
 
@@ -298,6 +322,7 @@ class TestInProgressSegment:
     """In-progress segment (NULL completed_at) gets in_progress class."""
 
     def test_in_progress_segment_class(self) -> None:
+        """Verifies that in progress segment class."""
         segment = StepRunSegment(
             run_number=2,
             status=RunStatus.running,
@@ -316,6 +341,7 @@ class TestInProgressSegment:
         assert result == "in_progress"
 
     def test_in_progress_segment_with_now_as_completed(self) -> None:
+        """Verifies that in progress segment with now as completed."""
         item_start = datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC)
         left, width = _compute_gantt_pcts(
             datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),

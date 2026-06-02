@@ -310,6 +310,7 @@ class TestArchiveEndpoint:
         mock_engine_class = MagicMock()
 
         async def fake_stream(**kwargs):
+            """Yield fake SSE tokens simulating an LLM stream."""
             yield {"kind": "token", "text": "new response"}
             yield "__DONE__"
 

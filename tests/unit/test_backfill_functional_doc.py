@@ -42,6 +42,7 @@ class TestBackfillLoadDb:
         ):
 
             def fake_run(*args: object, **kwargs: object) -> MagicMock:
+                """Return fake run."""
                 output_path.write_text(_FUNCTIONAL_CONTENT, encoding="utf-8")
                 result = MagicMock()
                 result.returncode = 0
@@ -116,6 +117,7 @@ class TestBackfillLoadDb:
         ):
 
             def fake_run(*args: object, **kwargs: object) -> MagicMock:
+                """Return fake run."""
                 output_path.write_text(_FUNCTIONAL_CONTENT, encoding="utf-8")
                 result = MagicMock()
                 result.returncode = 0
@@ -160,6 +162,7 @@ class TestBackfillLoadDb:
         ):
 
             def fake_run(*args: object, **kwargs: object) -> MagicMock:
+                """Return fake run."""
                 output_path.write_text(_FUNCTIONAL_CONTENT, encoding="utf-8")
                 result = MagicMock()
                 result.returncode = 0
@@ -234,6 +237,7 @@ class TestBackfillLoadDb:
         ):
 
             def fake_run(*args: object, **kwargs: object) -> MagicMock:
+                """Return fake run."""
                 output_path.write_text(_FUNCTIONAL_CONTENT, encoding="utf-8")
                 result = MagicMock()
                 result.returncode = 0

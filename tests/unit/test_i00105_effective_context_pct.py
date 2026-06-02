@@ -144,9 +144,11 @@ class TestI00105EffectiveContextPct:
         assert compute_effective_context_pct(50_000, None, 50_000) is None
 
     def test_zero_context_window_returns_none(self) -> None:
+        """Verifies that zero context window returns none."""
         assert compute_effective_context_pct(50_000, 0, 50_000) is None
 
     def test_negative_context_window_returns_none(self) -> None:
+        """Verifies that negative context window returns none."""
         assert compute_effective_context_pct(50_000, -1, 50_000) is None
 
     # ── Safety buffer shifts the effective budget ─────────────────────────────

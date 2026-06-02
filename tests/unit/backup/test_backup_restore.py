@@ -1,3 +1,5 @@
+"""Unit tests for the backup restore safety guard in orch.backup.restore."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -8,11 +10,14 @@ from orch.backup.restore import RestoreSafetyError, restore
 
 
 class _NoopRunner:
+    """Stub command runner that must never be invoked — asserts if it is."""
+
     def __call__(self, _argv: list[str]) -> None:
         raise AssertionError("command runner must not be called when guard rejects target")
 
 
 def test_restore_refuses_live_prod_target_without_allow_prod(tmp_path) -> None:
+    """Verifies that restore raises RestoreSafetyError when targeting the live production DB."""
     backup_set = tmp_path / "set"
     backup_set.mkdir()
     (backup_set / "globals.sql").write_text("-- globals")

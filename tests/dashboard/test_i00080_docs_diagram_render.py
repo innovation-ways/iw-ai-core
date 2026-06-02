@@ -65,6 +65,7 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -162,6 +163,7 @@ class TestDocsDetailClientSideDiagram:
         call_record: dict[str, Any] = {}
 
         def spy_fn(text: str, render_mermaid: bool = True) -> str:
+            """Spy wrapper that records calls to render_markdown_with_callouts."""
             call_record["render_mermaid"] = render_mermaid
             call_record["text_len"] = len(text)
             return original_fn(text, render_mermaid=render_mermaid)
@@ -316,6 +318,7 @@ class TestHtmlViewCaching:
         call_count: dict[str, int] = {"renders": 0}
 
         def spy_render(text: str, render_mermaid: bool = True) -> str:
+            """Spy wrapper that records calls to render_markdown_with_callouts."""
             call_count["renders"] += 1
             return fake_render_html
 

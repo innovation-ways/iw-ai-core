@@ -69,7 +69,10 @@ def _make_db_scalar(project: Any) -> MagicMock:
 
 
 class TestResolveExecutionDir:
+    """Tests for ResolveExecutionDir scenarios."""
+
     def test_uses_test_config_for_test_run_type(self) -> None:
+        """Verifies that uses test config for test run type."""
         config = {
             "test_config": {"execution_dir": "/app/test"},
             "quality_config": {"execution_dir": "/app/quality"},
@@ -83,6 +86,7 @@ class TestResolveExecutionDir:
         assert result == "/app/test"
 
     def test_uses_quality_config_for_quality_run_type(self) -> None:
+        """Verifies that uses quality config for quality run type."""
         config = {
             "test_config": {"execution_dir": "/app/test"},
             "quality_config": {"execution_dir": "/app/quality"},
@@ -96,6 +100,7 @@ class TestResolveExecutionDir:
         assert result == "/app/quality"
 
     def test_returns_none_when_project_not_found(self) -> None:
+        """Verifies that returns none when project not found."""
         db = MagicMock()
         db.scalar.return_value = None
         run = _make_run(run_type="test")
@@ -105,6 +110,7 @@ class TestResolveExecutionDir:
         assert result is None
 
     def test_returns_none_when_execution_dir_missing_in_config(self) -> None:
+        """Verifies that returns none when execution dir missing in config."""
         project = _make_project_with_config({"test_config": {}})
         db = _make_db_scalar(project)
         run = _make_run(run_type="test")
@@ -114,6 +120,7 @@ class TestResolveExecutionDir:
         assert result is None
 
     def test_quality_returns_none_when_quality_config_missing(self) -> None:
+        """Verifies that quality returns none when quality config missing."""
         project = _make_project_with_config({"test_config": {"execution_dir": "/app/test"}})
         db = _make_db_scalar(project)
         run = _make_run(run_type="quality")
@@ -130,7 +137,10 @@ class TestResolveExecutionDir:
 
 
 class TestResolveAllureDirs:
+    """Tests for ResolveAllureDirs scenarios."""
+
     def test_uses_test_config_for_test_run_type(self) -> None:
+        """Verifies that uses test config for test run type."""
         config = {
             "test_config": {
                 "allure_results_dir": "test-results",
@@ -151,6 +161,7 @@ class TestResolveAllureDirs:
         assert report == "/exec/test-report/unit"
 
     def test_uses_quality_config_for_quality_run_type(self) -> None:
+        """Verifies that uses quality config for quality run type."""
         config = {
             "test_config": {
                 "allure_results_dir": "test-results",
@@ -171,6 +182,7 @@ class TestResolveAllureDirs:
         assert report == "/exec/quality-report/unit"
 
     def test_falls_back_to_defaults_for_test_run_type(self) -> None:
+        """Verifies that falls back to defaults for test run type."""
         project = _make_project_with_config({"test_config": {}})
         db = _make_db_scalar(project)
         run = _make_run(run_type="test")
@@ -181,6 +193,7 @@ class TestResolveAllureDirs:
         assert report == "/exec/allure-report/unit"
 
     def test_falls_back_to_defaults_for_quality_run_type(self) -> None:
+        """Verifies that falls back to defaults for quality run type."""
         project = _make_project_with_config({"quality_config": {}})
         db = _make_db_scalar(project)
         run = _make_run(run_type="quality")
@@ -191,6 +204,7 @@ class TestResolveAllureDirs:
         assert report == "/exec/allure-report/unit"
 
     def test_returns_none_when_project_not_found(self) -> None:
+        """Verifies that returns none when project not found."""
         db = MagicMock()
         db.scalar.return_value = None
         run = _make_run(run_type="test")
@@ -273,6 +287,7 @@ class TestLaunchTestRunEventTypes:
         def fake_emit(
             db: Any, project_id: str, event_type: str, entity_id: str, message: str
         ) -> None:
+            """Return fake emit."""
             emitted_event_types.append(event_type)
 
         mock_proc = MagicMock()
@@ -324,34 +339,42 @@ class TestLaunchTestRunEventTypes:
         return emitted_event_types
 
     def test_test_run_emits_test_started_on_begin(self, tmp_path: Path) -> None:
+        """Verifies that test run emits test started on begin."""
         events = self._run_launch(run_type="test", exit_code=0, tmp_path=tmp_path)
         assert "test_started" in events
 
     def test_test_run_emits_test_completed_on_success(self, tmp_path: Path) -> None:
+        """Verifies that test run emits test completed on success."""
         events = self._run_launch(run_type="test", exit_code=0, tmp_path=tmp_path)
         assert "test_completed" in events
 
     def test_test_run_emits_test_failed_on_failure(self, tmp_path: Path) -> None:
+        """Verifies that test run emits test failed on failure."""
         events = self._run_launch(run_type="test", exit_code=1, tmp_path=tmp_path)
         assert "test_failed" in events
 
     def test_test_run_does_not_emit_quality_events(self, tmp_path: Path) -> None:
+        """Verifies that test run does not emit quality events."""
         events = self._run_launch(run_type="test", exit_code=0, tmp_path=tmp_path)
         assert not any(e.startswith("quality_") for e in events)
 
     def test_quality_run_emits_quality_started_on_begin(self, tmp_path: Path) -> None:
+        """Verifies that quality run emits quality started on begin."""
         events = self._run_launch(run_type="quality", exit_code=0, tmp_path=tmp_path)
         assert "quality_started" in events
 
     def test_quality_run_emits_quality_completed_on_success(self, tmp_path: Path) -> None:
+        """Verifies that quality run emits quality completed on success."""
         events = self._run_launch(run_type="quality", exit_code=0, tmp_path=tmp_path)
         assert "quality_completed" in events
 
     def test_quality_run_emits_quality_failed_on_failure(self, tmp_path: Path) -> None:
+        """Verifies that quality run emits quality failed on failure."""
         events = self._run_launch(run_type="quality", exit_code=1, tmp_path=tmp_path)
         assert "quality_failed" in events
 
     def test_quality_run_does_not_emit_test_events(self, tmp_path: Path) -> None:
+        """Verifies that quality run does not emit test events."""
         events = self._run_launch(run_type="quality", exit_code=0, tmp_path=tmp_path)
         assert not any(e.startswith("test_") for e in events)
 
@@ -397,10 +420,12 @@ class TestLaunchTestRunAllureSkip:
         generate_allure_called = False
 
         def fake_rmtree(*args: Any, **kwargs: Any) -> None:
+            """Return fake rmtree."""
             nonlocal rmtree_called
             rmtree_called = True
 
         def fake_generate(*args: Any, **kwargs: Any) -> bool:
+            """Return fake generate."""
             nonlocal generate_allure_called
             generate_allure_called = True
             return True
@@ -422,18 +447,22 @@ class TestLaunchTestRunAllureSkip:
         return rmtree_called, generate_allure_called
 
     def test_test_run_cleans_allure_results(self, tmp_path: Path) -> None:
+        """Verifies that test run cleans allure results."""
         rmtree_called, _ = self._run_launch_track_allure(run_type="test", tmp_path=tmp_path)
         assert rmtree_called is True
 
     def test_test_run_generates_allure_report(self, tmp_path: Path) -> None:
+        """Verifies that test run generates allure report."""
         _, generate_called = self._run_launch_track_allure(run_type="test", tmp_path=tmp_path)
         assert generate_called is True
 
     def test_quality_run_skips_allure_cleanup(self, tmp_path: Path) -> None:
+        """Verifies that quality run skips allure cleanup."""
         rmtree_called, _ = self._run_launch_track_allure(run_type="quality", tmp_path=tmp_path)
         assert rmtree_called is False
 
     def test_quality_run_skips_allure_report_generation(self, tmp_path: Path) -> None:
+        """Verifies that quality run skips allure report generation."""
         _, generate_called = self._run_launch_track_allure(run_type="quality", tmp_path=tmp_path)
         assert generate_called is False
 
@@ -464,6 +493,7 @@ class TestLaunchTestRunCommandRewrite:
         captured: dict[str, str] = {}
 
         def fake_popen(cmd: str, *args: Any, **kwargs: Any) -> MagicMock:
+            """Return fake popen."""
             captured["command"] = cmd
             proc = MagicMock()
             proc.pid = 12345
@@ -512,6 +542,7 @@ class TestLaunchTestRunCommandRewrite:
         return captured["command"]
 
     def test_pytest_alluredir_equals_is_rewritten_to_per_run_dir(self, tmp_path: Path) -> None:
+        """Verifies that pytest alluredir equals is rewritten to per run dir."""
         cmd = self._capture_command("uv run pytest tests/ -v --alluredir=allure-results", tmp_path)
         # Run id is 1 (from _make_run) → expect allure-results-1
         assert "--alluredir=allure-results-1" in cmd
@@ -520,10 +551,12 @@ class TestLaunchTestRunCommandRewrite:
         assert "--alluredir=allure-results " not in cmd + " "
 
     def test_pytest_alluredir_space_separated_is_rewritten(self, tmp_path: Path) -> None:
+        """Verifies that pytest alluredir space separated is rewritten."""
         cmd = self._capture_command("uv run pytest tests/ -v --alluredir allure-results", tmp_path)
         assert "--alluredir=allure-results-1" in cmd
 
     def test_pytest_alluredir_with_custom_base_dir_is_rewritten(self, tmp_path: Path) -> None:
+        """Verifies that pytest alluredir with custom base dir is rewritten."""
         cmd = self._capture_command(
             "uv run pytest tests/ -v --alluredir=custom-out",
             tmp_path,
@@ -532,11 +565,13 @@ class TestLaunchTestRunCommandRewrite:
         assert "--alluredir=custom-out-1" in cmd
 
     def test_make_command_gets_allure_results_env_prefix(self, tmp_path: Path) -> None:
+        """Verifies that make command gets allure results env prefix."""
         cmd = self._capture_command("make allure-all", tmp_path)
         assert cmd.startswith("ALLURE_RESULTS=allure-results-1 ")
         assert "make allure-all" in cmd
 
     def test_command_without_allure_flag_or_make_is_unchanged(self, tmp_path: Path) -> None:
+        """Verifies that command without allure flag or make is unchanged."""
         cmd = self._capture_command("uv run pytest tests/unit/ -v", tmp_path)
         assert cmd == "uv run pytest tests/unit/ -v"
 
@@ -545,6 +580,7 @@ class TestLaunchTestRunCommandRewrite:
         # should win — env vars don't override Make's own assignment of the same
         # name unless the Makefile uses `?=`, so the inline rewrite is the only
         # reliable path.
+        """Verifies that pytest alluredir takes precedence over make branch."""
         cmd = self._capture_command("make allure-unit ARGS='--alluredir=allure-results'", tmp_path)
         assert "--alluredir=allure-results-1" in cmd
         assert not cmd.startswith("ALLURE_RESULTS=")

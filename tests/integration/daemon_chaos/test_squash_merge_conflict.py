@@ -1,3 +1,5 @@
+"""Scenario 4: squash-merge conflict handling in the daemon merge queue."""
+
 from __future__ import annotations
 
 import subprocess
@@ -20,6 +22,15 @@ from orch.db.models import (
 
 
 def _git(repo: Path, *args: str) -> str:
+    """Run a git command in the given repo directory and return stripped stdout.
+
+    Args:
+        repo: Path to the git repository root.
+        *args: Git subcommand and arguments to pass.
+
+    Returns:
+        The stripped standard output from the git invocation.
+    """
     result = subprocess.run(
         ["git", *args],
         cwd=repo,
@@ -31,6 +42,16 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def _seed_merge_candidate(db_session, repo_root: Path, item_id: str = "I-MERGE-CONFLICT"):
+    """Insert a completed WorkItem with a Batch and BatchItem ready for merging.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+        repo_root: Path to the temporary git repository to use as the worktree parent.
+        item_id: ID for the WorkItem and worktree branch name.
+
+    Returns:
+        The committed BatchItem row.
+    """
     db_session.add(
         WorkItem(
             project_id="test-proj",
@@ -66,6 +87,20 @@ def _seed_merge_candidate(db_session, repo_root: Path, item_id: str = "I-MERGE-C
 
 
 def _build_conflicting_repo(tmp_path: Path, item_id: str):
+    """Create a real git repo with a conflict between a feature worktree and main.
+
+    Initialises a bare repo, commits a base file, adds a worktree on a feature
+    branch, modifies the file in the worktree, then commits a conflicting change
+    on main so a squash merge will conflict.
+
+    Args:
+        tmp_path: pytest tmp_path used as the parent for the repo directory.
+        item_id: Work item ID used to name the feature worktree and branch.
+
+    Returns:
+        A tuple of (repo_path, upstream_sha) where ``upstream_sha`` is the SHA
+        of the conflicting main commit.
+    """
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-b", "main")
@@ -92,6 +127,16 @@ def _build_conflicting_repo(tmp_path: Path, item_id: str):
 
 
 def _run_conflict_merge(db_session, tmp_path: Path, chaos_daemon):
+    """Execute a merge against the conflicting repo and return the result context.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+        tmp_path: pytest tmp_path used by ``_build_conflicting_repo``.
+        chaos_daemon: The ChaosDaemonHarness instance to arm the merge conflict hook.
+
+    Returns:
+        dict: Contains keys ``repo``, ``batch_item``, ``upstream_sha``, and ``item_id``.
+    """
     from orch.daemon.project_registry import ProjectConfig
 
     item_id = "I-MERGE-CONFLICT"
@@ -137,6 +182,7 @@ def _run_conflict_merge(db_session, tmp_path: Path, chaos_daemon):
 
 @pytest.mark.integration
 def test_main_is_not_half_merged(db_session, test_project, tmp_path, chaos_daemon):
+    """Verifies that main has no partial merge state (no MERGE_HEAD or dirty tree) after a."""
     ctx = _run_conflict_merge(db_session, tmp_path, chaos_daemon)
     repo = ctx["repo"]
 
@@ -150,6 +196,9 @@ def test_main_is_not_half_merged(db_session, test_project, tmp_path, chaos_daemo
 def test_squash_merge_conflict_returns_recognised_error(
     db_session, test_project, tmp_path, chaos_daemon
 ):
+    """Verifies that a merge conflict emits a recognisable error message and sets merge_failed
+    status.
+    """
     ctx = _run_conflict_merge(db_session, tmp_path, chaos_daemon)
     event = (
         db_session.query(DaemonEvent)
@@ -169,6 +218,9 @@ def test_squash_merge_conflict_returns_recognised_error(
 
 @pytest.mark.integration
 def test_item_status_after_merge_conflict(db_session, test_project, tmp_path, chaos_daemon):
+    """Verifies that the WorkItem reverts to failed status when the squash merge encounters a
+    conflict.
+    """
     ctx = _run_conflict_merge(db_session, tmp_path, chaos_daemon)
     bi = ctx["batch_item"]
     wi = db_session.get(WorkItem, ("test-proj", ctx["item_id"]))
@@ -211,6 +263,7 @@ def test_item_status_after_merge_conflict(db_session, test_project, tmp_path, ch
 def test_conflicting_upstream_commit_is_head_of_main(
     db_session, test_project, tmp_path, chaos_daemon
 ):
+    """Verifies that the conflicting upstream commit remains HEAD of main after the failed merge."""
     ctx = _run_conflict_merge(db_session, tmp_path, chaos_daemon)
     assert _git(ctx["repo"], "rev-parse", "main") == ctx["upstream_sha"]
 
@@ -221,6 +274,7 @@ def test_conflicting_upstream_commit_is_head_of_main(
     reason="I-00113: environmental precondition not met — main has no commits",
 )
 def test_squash_merge_conflict_empty_main_boundary():
+    """Verifies that the test xfails when the expected empty-main precondition is not met."""
     assert Path.cwd().name == "__empty_main_precondition__", (
         "environmental precondition not met — main has no commits"
     )

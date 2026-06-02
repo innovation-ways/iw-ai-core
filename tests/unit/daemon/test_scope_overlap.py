@@ -57,11 +57,15 @@ class TestIsTestPath:
         ],
     )
     def test_is_test_path(self, path: str, expected: bool) -> None:
+        """Verifies that is_test_path correctly classifies a path as a test path or not."""
         assert is_test_path(path) is expected
 
 
 class TestStripTestGlobs:
+    """Tests for the _strip_test_globs helper."""
+
     def test_strips_test_paths(self) -> None:
+        """Verifies that test-directory globs are removed while non-test globs are kept."""
         globs = [
             "src/app/**/*.py",
             "src/tests/**/*.py",
@@ -73,6 +77,7 @@ class TestStripTestGlobs:
         assert result == ["src/app/**/*.py", "src/lib/utils.py"]
 
     def test_all_test_globs_returns_empty(self) -> None:
+        """Verifies that stripping an all-test-path glob list returns an empty list."""
         # Only paths that contain a test marker are stripped.
         # "tests/**/*.py" has no test marker (no leading slash on "tests");
         # use "src/tests/**/*.py" which contains "/tests/"
@@ -81,6 +86,7 @@ class TestStripTestGlobs:
         assert result == []
 
     def test_empty_input(self) -> None:
+        """Verifies that an empty input list returns an empty list."""
         assert _strip_test_globs([]) == []
 
 

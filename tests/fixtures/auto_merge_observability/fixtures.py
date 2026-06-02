@@ -1,3 +1,5 @@
+"""Test fixture helpers for auto-merge observability scenarios (F-00084)."""
+
 from __future__ import annotations
 
 import subprocess
@@ -17,6 +19,20 @@ def seeded_events_factory(
     skipped: int = 0,
     health_probes: int = 0,
 ) -> list[DaemonEvent]:
+    """Insert a configurable mix of auto-merge DaemonEvent rows and return them.
+
+    Args:
+        db: SQLAlchemy session used to add and flush the rows.
+        project_id: The project ID to associate with each event.
+        attempts: Number of ``merge_auto_resolution_attempted`` events to create.
+        resolved: Number of ``merge_auto_resolved`` events (with LLM call metadata).
+        failed: Number of ``merge_auto_resolution_failed`` events.
+        skipped: Number of ``merge_auto_resolution_skipped`` events.
+        health_probes: Number of ``auto_merge_health_probe`` events.
+
+    Returns:
+        List of all created DaemonEvent instances after flush.
+    """
     rows: list[DaemonEvent] = []
     for _ in range(attempts):
         rows.append(
@@ -91,6 +107,15 @@ def seeded_events_factory(
 
 
 def mock_git_show(monkeypatch, file_contents: dict[str, str | None]) -> None:
+    """Monkeypatch ``dashboard.routers.auto_merge_ui.subprocess.run`` to return synthetic file
+    content.
+
+    Args:
+        monkeypatch: pytest monkeypatch fixture.
+        file_contents: Mapping from file path to content string.  A ``None``
+            value simulates a missing file (non-zero returncode).
+    """
+
     def _run(args: list[str], **kwargs: Any):
         ref = args[-1]
         file_path = ref.split("main:", 1)[1]
@@ -105,6 +130,15 @@ def mock_git_show(monkeypatch, file_contents: dict[str, str | None]) -> None:
 def fake_executor_subprocess(
     monkeypatch, *, response: str = "OK", returncode: int = 0, timeout: bool = False
 ) -> None:
+    """Monkeypatch ``orch.daemon.auto_merge_health.subprocess.run`` with a controllable stub.
+
+    Args:
+        monkeypatch: pytest monkeypatch fixture.
+        response: stdout string returned by the stub process.
+        returncode: Exit code returned by the stub process.
+        timeout: When ``True``, raises ``subprocess.TimeoutExpired`` instead of returning.
+    """
+
     def _run(*args: Any, **kwargs: Any):
         if timeout:
             raise subprocess.TimeoutExpired("probe", kwargs.get("timeout", 1))

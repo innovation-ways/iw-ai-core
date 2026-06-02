@@ -27,7 +27,10 @@ from orch.daemon.worktree_compose import (
 
 
 class TestComposeProjectName:
+    """Tests for the _compose_project_name naming helper."""
+
     def test_lowercase_and_underscore_replaced(self) -> None:
+        """Verifies that uppercase letters and underscores are converted to lowercase dashes."""
         assert _compose_project_name("F-00062") == "iwcore-f-00062"
         assert _compose_project_name("F_00062") == "iwcore-f-00062"
         assert _compose_project_name("ABC_123_XYZ") == "iwcore-abc-123-xyz"
@@ -39,7 +42,10 @@ class TestComposeProjectName:
 
 
 class TestHasIwConfig:
+    """Tests for the has_iw_config predicate."""
+
     def test_returns_true_when_template_exists(self, tmp_path: Path) -> None:
+        """Verifies that has_iw_config returns True when the compose template file is present."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -50,6 +56,7 @@ class TestHasIwConfig:
         assert has_iw_config(worktree) is True
 
     def test_returns_false_when_template_missing(self, tmp_path: Path) -> None:
+        """Verifies that has_iw_config returns False when the compose template file is absent."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         (worktree / "ai-dev" / "iw-config").mkdir(parents=True)
@@ -58,7 +65,10 @@ class TestHasIwConfig:
 
 
 class TestLoadConfig:
+    """Tests for the load_config function."""
+
     def test_raises_when_template_missing(self, tmp_path: Path) -> None:
+        """Verifies that load_config raises FileNotFoundError when the compose template."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         (worktree / "ai-dev" / "iw-config").mkdir(parents=True)
@@ -67,6 +77,7 @@ class TestLoadConfig:
             load_config("F-00062", "iw-ai-core", worktree)
 
     def test_loads_all_paths(self, tmp_path: Path) -> None:
+        """Verifies that load_config correctly populates all path and metadata fields."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -89,6 +100,7 @@ class TestLoadConfig:
         assert cfg.compose_project_name == "iwcore-f-00062"
 
     def test_seed_script_none_when_missing(self, tmp_path: Path) -> None:
+        """Verifies that seed_script_path is None when no seed script exists."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -101,6 +113,7 @@ class TestLoadConfig:
         assert cfg.seed_script_path is None
 
     def test_seed_script_set_when_executable(self, tmp_path: Path) -> None:
+        """Verifies that seed_script_path is populated when an executable seed script exists."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -117,12 +130,18 @@ class TestLoadConfig:
 
 
 class TestAssertGitignoreSafe:
+    """Tests for the assert_gitignore_safe pre-flight check."""
+
     def test_passes_when_env_and_iw_present(self, tmp_path: Path) -> None:  # noqa: assertion-scanner
+        """Verifies that assert_gitignore_safe passes when both .env and .iw/ are listed."""
         gitignore = tmp_path / ".gitignore"
         gitignore.write_text(".env\n.iw/\nother\n")
         assert_gitignore_safe(tmp_path)
 
     def test_raises_when_env_missing(self, tmp_path: Path) -> None:
+        """Verifies that assert_gitignore_safe raises ValueError when .env is absent from
+        .gitignore.
+        """
         gitignore = tmp_path / ".gitignore"
         gitignore.write_text(".iw/\nother\n")
 
@@ -130,6 +149,9 @@ class TestAssertGitignoreSafe:
             assert_gitignore_safe(tmp_path)
 
     def test_raises_when_iw_dir_missing(self, tmp_path: Path) -> None:
+        """Verifies that assert_gitignore_safe raises ValueError when .iw/ is absent from
+        .gitignore.
+        """
         gitignore = tmp_path / ".gitignore"
         gitignore.write_text(".env\nother\n")
 
@@ -137,12 +159,16 @@ class TestAssertGitignoreSafe:
             assert_gitignore_safe(tmp_path)
 
     def test_raises_when_gitignore_missing(self, tmp_path: Path) -> None:
+        """Verifies that assert_gitignore_safe raises ValueError when no .gitignore file exists."""
         with pytest.raises(ValueError, match=".gitignore not found"):
             assert_gitignore_safe(tmp_path)
 
 
 class TestRenderCompose:
+    """Tests for the render_compose template rendering function."""
+
     def test_substitutes_jinja_vars(self, tmp_path: Path) -> None:
+        """Verifies that Jinja2 template variables are substituted with the correct values."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -166,6 +192,7 @@ class TestRenderCompose:
         assert "iwcore-f-00062" in content
 
     def test_writes_to_iw_subdir(self, tmp_path: Path) -> None:
+        """Verifies that render_compose writes the rendered file to the .iw subdirectory."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -202,7 +229,10 @@ class TestRenderCompose:
 
 
 class TestDiscoverPorts:
+    """Tests for the discover_ports port-mapping function."""
+
     def test_parses_docker_compose_port_output(self, tmp_path: Path) -> None:
+        """Verifies that discover_ports correctly maps docker compose port output to env."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_dir = worktree / ".iw"
@@ -234,6 +264,7 @@ class TestDiscoverPorts:
         assert ports["IW_CORE_DB_PORT"] == 34567
 
     def test_handles_ipv6_output(self, tmp_path: Path) -> None:
+        """Verifies that discover_ports correctly parses IPv6-format port output."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_dir = worktree / ".iw"
@@ -263,7 +294,10 @@ class TestDiscoverPorts:
 
 
 class TestRewriteEnv:
+    """Tests for the rewrite_env .env file update function."""
+
     def test_applies_port_to_env_mapping(self, tmp_path: Path) -> None:
+        """Verifies that rewrite_env writes discovered ports and env overrides into the."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -290,6 +324,7 @@ class TestRewriteEnv:
         assert "IW_CORE_OTHER=value" in content
 
     def test_preserves_passthrough_keys(self, tmp_path: Path) -> None:
+        """Verifies that env_passthrough keys are preserved in the .env file after rewrite."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -320,7 +355,10 @@ class TestRewriteEnv:
 
 
 class TestRunSeed:
+    """Tests for the run_seed seed script execution function."""
+
     def test_zero_exit_succeeds(self, tmp_path: Path) -> None:
+        """Verifies that run_seed returns (True, None) when the seed script exits with code 0."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -342,6 +380,7 @@ class TestRunSeed:
         assert stderr is None
 
     def test_nonzero_exit_returns_failure_with_stderr_tail(self, tmp_path: Path) -> None:
+        """Verifies that run_seed returns (False, stderr) when the seed script exits non-zero."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -367,6 +406,7 @@ class TestRunSeed:
         assert stderr == "FATAL: source DB unreachable"
 
     def test_no_seed_script_is_noop(self, tmp_path: Path) -> None:
+        """Verifies that run_seed returns (True, None) immediately when no seed script exists."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -472,7 +512,10 @@ class TestRunSeed:
 
 
 class TestUp:
+    """Tests for the up() compose stack lifecycle function."""
+
     def test_refuses_when_env_not_gitignored(self, tmp_path: Path) -> None:
+        """Verifies that up() returns a failure result when .env is not listed in .gitignore."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         iw_config = worktree / "ai-dev" / "iw-config"
@@ -559,6 +602,7 @@ class TestUp:
         assert call_kwargs.get("project_id") == "proj-A"
 
     def test_legacy_fallback_when_iw_config_missing(self, tmp_path: Path) -> None:
+        """Verifies that has_iw_config returns False for a worktree without the compose template."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         (worktree / "ai-dev" / "iw-config").mkdir(parents=True)
@@ -567,6 +611,8 @@ class TestUp:
 
 
 class TestDown:
+    """Tests for the down() compose stack teardown function."""
+
     def test_down_idempotent_succeeds_when_no_stack_running(self) -> None:
         """AC6 — down() is idempotent; succeeds even when nothing is running."""
         with patch("subprocess.run") as mock_run:
@@ -593,7 +639,7 @@ class TestDown:
         assert call_args[f_idx + 1] == str(compose_path)
 
     def test_down_without_compose_path_relies_on_project_name_only(self) -> None:
-        """AC6 — when compose_path is None, docker compose uses project name only."""
+        """Verifies that down() uses only the project name when compose_path is None (AC6)."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
             down("F-00062", None)
@@ -610,7 +656,10 @@ class TestDown:
 
 
 class TestIsAlive:
+    """Tests for the is_alive container status check."""
+
     def test_returns_true_when_containers_running(self) -> None:
+        """Verifies that is_alive returns True when docker ps reports container IDs."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
@@ -620,6 +669,7 @@ class TestIsAlive:
             assert is_alive("F-00062") is True
 
     def test_returns_false_when_no_containers(self) -> None:
+        """Verifies that is_alive returns False when docker ps reports empty output."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
                 returncode=0,
@@ -629,13 +679,17 @@ class TestIsAlive:
             assert is_alive("F-00062") is False
 
     def test_returns_false_on_error(self) -> None:
+        """Verifies that is_alive returns False when docker raises an OSError."""
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = OSError("docker not available")
             assert is_alive("F-00062") is False
 
 
 class TestWorktreeStackConfig:
+    """Tests for WorktreeStackConfig dataclass immutability."""
+
     def test_dataclass_frozen(self) -> None:
+        """Verifies that WorktreeStackConfig raises FrozenInstanceError when mutated."""
         cfg = WorktreeStackConfig(
             batch_item_id="F-00062",
             project_id="iw-ai-core",
@@ -651,6 +705,8 @@ class TestWorktreeStackConfig:
 
 
 class TestNoSecretsInLogs:
+    """Tests that secrets from .env never appear in log output."""
+
     def test_no_secrets_in_logs(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         """AC9 — secrets from .env never appear in any log output."""
         import logging
@@ -682,7 +738,10 @@ class TestNoSecretsInLogs:
 
 
 class TestUpResult:
+    """Tests for UpResult dataclass immutability."""
+
     def test_dataclass_frozen(self) -> None:
+        """Verifies that UpResult raises FrozenInstanceError when mutated."""
         result = UpResult(
             success=True,
             rendered_compose_path=Path("/tmp/compose.yml"),

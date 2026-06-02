@@ -120,6 +120,8 @@ def _expand_chat_panel(session: str) -> None:
 
 @pytest.mark.browser
 class TestChatPanelSmoke:
+    """Browser smoke tests for the chat panel via playwright-cli."""
+
     def test_panel_visible_on_code_page(self, playwright_session, dashboard_server):
         """AC1 — Navigate to /project/iw-ai-core/code; chat panel <aside> is visible."""
         output = _snapshot_text(playwright_session).lower()

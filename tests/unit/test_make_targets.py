@@ -23,37 +23,50 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 @pytest.fixture
 def makefile_text() -> str:
+    """Provide makefile text for tests."""
     return Path("Makefile").read_text()
 
 
 @pytest.fixture
 def pyproject_text() -> str:
+    """Provide pyproject text for tests."""
     return Path("pyproject.toml").read_text()
 
 
 class TestMakeTargets:
+    """Tests for MakeTargets scenarios."""
+
     def test_makefile_has_test_parallel(self, makefile_text: str) -> None:
+        """Verifies that makefile has test parallel."""
         assert "test-parallel" in makefile_text
 
     def test_makefile_has_e2e_health(self, makefile_text: str) -> None:
+        """Verifies that makefile has e2e health."""
         assert "e2e-health" in makefile_text
 
     def test_makefile_has_e2e_logs(self, makefile_text: str) -> None:
+        """Verifies that makefile has e2e logs."""
         assert "e2e-logs" in makefile_text
 
     def test_makefile_has_e2e_stats(self, makefile_text: str) -> None:
+        """Verifies that makefile has e2e stats."""
         assert "e2e-stats" in makefile_text
 
     def test_makefile_has_allure_report(self, makefile_text: str) -> None:
+        """Verifies that makefile has allure report."""
         assert "allure-report" in makefile_text
 
 
 class TestCoverageThreshold:
+    """Tests for CoverageThreshold scenarios."""
+
     def test_pyproject_has_fail_under(self, pyproject_text: str) -> None:
+        """Verifies that pyproject has fail under."""
         assert "[tool.coverage.report]" in pyproject_text
         assert "fail_under" in pyproject_text
 
     def test_fail_under_is_non_negative(self, pyproject_text: str) -> None:
+        """Verifies that fail under is non negative."""
         import re as _re
 
         match = _re.search(r"fail_under\s*=\s*(\d+(?:\.\d+)?)", pyproject_text)
@@ -63,7 +76,10 @@ class TestCoverageThreshold:
 
 
 class TestF00073SmokeGate:
+    """Tests for F00073SmokeGate scenarios."""
+
     def test_smoke_marker_registered(self) -> None:
+        """Verifies that smoke marker registered."""
         data = tomllib.loads(PYPROJECT.read_text())
         markers = data["tool"]["pytest"]["ini_options"].get("markers", [])
         assert any(m.startswith("smoke:") for m in markers), (
@@ -71,32 +87,38 @@ class TestF00073SmokeGate:
         )
 
     def test_make_smoke_target_exists(self) -> None:
+        """Verifies that make smoke target exists."""
         text = MAKEFILE.read_text()
         assert re.search(r"^smoke:\s", text, re.MULTILINE), (
             "Makefile target `smoke` missing — see F-00073"
         )
 
     def test_make_smoke_uses_strict_markers(self) -> None:
+        """Verifies that make smoke uses strict markers."""
         text = MAKEFILE.read_text()
         smoke_section = re.search(r"^smoke:\s(.+?)(?:\n[\w-]+:|\Z)", text, re.MULTILINE | re.DOTALL)
         assert smoke_section, "Could not locate smoke target body"
         assert "--strict-markers" in smoke_section.group(1), "make smoke must pass --strict-markers"
 
     def test_test_quality_workflow_exists(self) -> None:
+        """Verifies that test quality workflow exists."""
         assert TEST_QUALITY.is_file()
 
     def test_test_quality_workflow_has_job(self) -> None:
+        """Verifies that test quality workflow has job."""
         data = yaml.safe_load(TEST_QUALITY.read_text())
         for job in ["lint-typecheck", "unit", "integration", "smoke"]:
             assert job in data["jobs"], f"test-quality.yml missing job {job!r}"
 
     def test_test_quality_workflow_actions_pinned(self) -> None:
+        """Verifies that test quality workflow actions pinned."""
         text = TEST_QUALITY.read_text()
         pattern = re.compile(r"uses:\s*([\w./-]+)@([\w./-]+)")
         for action, ref in pattern.findall(text):
             assert SHA_RE.match(ref), f"Action {action!r} pinned to non-SHA ref {ref!r}"
 
     def test_test_quality_workflow_permissions_minimal(self) -> None:
+        """Verifies that test quality workflow permissions minimal."""
         data = yaml.safe_load(TEST_QUALITY.read_text())
         perms = data.get("permissions", {})
         assert perms == {"contents": "read"}, (

@@ -89,6 +89,7 @@ class TestParseDiffSummary:
     """Parse a unified diff into a JSON-serialisable summary list."""
 
     def test_added_file(self) -> None:
+        """Verifies that added file."""
         result = parse_diff_summary(ADDED_DIFF)
         assert len(result) == 1
         assert result[0]["path"] == "new.py"
@@ -100,6 +101,7 @@ class TestParseDiffSummary:
         assert result[0]["old_path"] is None
 
     def test_modified_file(self) -> None:
+        """Verifies that modified file."""
         result = parse_diff_summary(MODIFIED_DIFF)
         foo = next(f for f in result if f["path"] == "foo.py")
         assert foo["status"] == "M"
@@ -107,6 +109,7 @@ class TestParseDiffSummary:
         assert foo["removed"] == 0
 
     def test_deleted_file(self) -> None:
+        """Verifies that deleted file."""
         result = parse_diff_summary(DELETED_DIFF)
         deleted = next(f for f in result if f["path"] == "deleted.py")
         assert deleted["status"] == "D"
@@ -114,12 +117,14 @@ class TestParseDiffSummary:
         assert deleted["removed"] == 1
 
     def test_renamed_file(self) -> None:
+        """Verifies that renamed file."""
         result = parse_diff_summary(RENAMED_DIFF)
         renamed = next(f for f in result if f["path"] == "src/renamed_new.py")
         assert renamed["status"] == "R"
         assert renamed["old_path"] == "src/renamed_old.py"
 
     def test_binary_file(self) -> None:
+        """Verifies that binary file."""
         result = parse_diff_summary(BINARY_DIFF)
         assert len(result) == 1
         assert result[0]["path"] == "logo.png"
@@ -128,10 +133,12 @@ class TestParseDiffSummary:
         assert result[0]["removed"] == 0
 
     def test_generated_file_flag(self) -> None:
+        """Verifies that generated file flag."""
         result = parse_diff_summary(GENERATED_DIFF)
         assert result[0]["is_generated"] is True
 
     def test_parsed_entries_have_required_keys(self) -> None:
+        """Verifies that parsed entries have required keys."""
         result = parse_diff_summary(MODIFIED_DIFF)
         entry = result[0]
         assert set(entry.keys()) == {
@@ -170,9 +177,11 @@ class TestIsGeneratedPath:
         ],
     )
     def test_generated_globs(self, path: str, expected: bool) -> None:
+        """Verifies that generated globs."""
         assert is_generated_path(path) == expected
 
     def test_generated_file_globs_is_tuple(self) -> None:
+        """Verifies that generated file globs is tuple."""
         assert isinstance(GENERATED_FILE_GLOBS, tuple)
 
 
@@ -213,6 +222,7 @@ class TestResolveDiff:
 
     # step_run provided → use step_run.diff_text
     def test_step_run_has_diff_text(self) -> None:
+        """Verifies that step run has diff text."""
         item = self._fake_item()
         step_run = self._fake_step_run(diff_text="stored diff", worktree_path="/wt")
         project = self._fake_project()
@@ -226,6 +236,7 @@ class TestResolveDiff:
 
     # step_run provided but no diff_text → fallback to live git diff in worktree
     def test_step_run_no_diff_text_falls_back_to_live(self) -> None:
+        """Verifies that step run no diff text falls back to live."""
         item = self._fake_item()
         step_run = self._fake_step_run(diff_text=None, worktree_path="/wt")
         project = self._fake_project()
@@ -240,6 +251,7 @@ class TestResolveDiff:
 
     # step_run provided, no diff_text, git fails → None
     def test_step_run_git_fails_returns_none(self) -> None:
+        """Verifies that step run git fails returns none."""
         item = self._fake_item()
         step_run = self._fake_step_run(diff_text=None, worktree_path="/wt")
         project = self._fake_project()
@@ -254,6 +266,7 @@ class TestResolveDiff:
 
     # no step_run, item archived → use item.diff_text
     def test_archived_item_uses_db_snapshot(self) -> None:
+        """Verifies that archived item uses db snapshot."""
         import datetime
 
         archived = datetime.datetime.now(tz=datetime.UTC)
@@ -265,6 +278,7 @@ class TestResolveDiff:
 
     # no step_run, not archived, merge_commit_sha → live git diff against parent in repo_root
     def test_merged_item_with_sha_uses_repo_diff(self) -> None:
+        """Verifies that merged item with sha uses repo diff."""
         item = self._fake_item(merge_commit_sha="abc123")
         step_run = None
         project = self._fake_project(repo_root="/repo")
@@ -279,6 +293,7 @@ class TestResolveDiff:
 
     # no step_run, not archived, no merge_commit_sha, worktree alive → live diff in worktree
     def test_in_progress_worktree_live_diff(self) -> None:
+        """Verifies that in progress worktree live diff."""
         item = self._fake_item(archived_at=None, merge_commit_sha=None)
         step_run = None
         project = self._fake_project(repo_root="/repo")
@@ -293,6 +308,7 @@ class TestResolveDiff:
 
     # nothing available → None
     def test_nothing_available_returns_none(self) -> None:
+        """Verifies that nothing available returns none."""
         item = self._fake_item(archived_at=None, merge_commit_sha=None)
         step_run = None
         project = self._fake_project(repo_root="/repo")

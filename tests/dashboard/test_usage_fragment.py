@@ -36,6 +36,7 @@ def client(db_session: Session) -> TestClient:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -102,6 +103,7 @@ class TestCodexFragmentExpired:
         }
 
         def fake_get_llm_usage() -> dict[str, object]:
+            """Return fake LLM usage data for testing."""
             return {
                 "claude": {"block_pct": 0, "week_pct": 0, "block_reset": "5h", "week_reset": "7d"},
                 "minimax": {"block_pct": 0, "block_reset": "5h", "used": None, "total": None},
@@ -166,6 +168,7 @@ class TestCodexFragmentUnauthenticated:
         }
 
         def fake_get_llm_usage() -> dict[str, object]:
+            """Return fake LLM usage data for testing."""
             return {
                 "claude": {"block_pct": 0, "week_pct": 0, "block_reset": "5h", "week_reset": "7d"},
                 "minimax": {"block_pct": 0, "block_reset": "5h", "used": None, "total": None},
@@ -206,6 +209,7 @@ class TestCodexFragmentError:
         }
 
         def fake_get_llm_usage() -> dict[str, object]:
+            """Return fake LLM usage data for testing."""
             return {
                 "claude": {"block_pct": 0, "week_pct": 0, "block_reset": "5h", "week_reset": "7d"},
                 "minimax": {"block_pct": 0, "block_reset": "5h", "used": None, "total": None},
@@ -242,6 +246,7 @@ class TestCodexFragmentOk:
         }
 
         def fake_get_llm_usage() -> dict[str, object]:
+            """Return fake LLM usage data for testing."""
             return {
                 "claude": {"block_pct": 0, "week_pct": 0, "block_reset": "5h", "week_reset": "7d"},
                 "minimax": {"block_pct": 0, "block_reset": "5h", "used": None, "total": None},
@@ -295,6 +300,7 @@ class TestCodexFragmentOk:
         }
 
         def fake_get_llm_usage() -> dict[str, object]:
+            """Return fake LLM usage data for testing."""
             return {
                 "claude": {"block_pct": 0, "week_pct": 0, "block_reset": "5h", "week_reset": "7d"},
                 "minimax": {"block_pct": 0, "block_reset": "5h", "used": None, "total": None},

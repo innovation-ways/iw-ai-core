@@ -18,12 +18,14 @@ class TestScan:
     """Tests for docker container scanning."""
 
     def test_scan_returns_empty_list_when_docker_ps_fails(self) -> None:
+        """Verifies that scan returns an empty list when docker ps exits non-zero."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=1, stderr="docker not running", stdout="")
             findings = scan()
         assert findings == []
 
     def test_scan_parses_json_output(self) -> None:
+        """Verifies that scan correctly parses JSON label strings from docker ps output."""
         json_line = (
             '{"ID":"abc123","Names":"container-1",'
             '"Labels":"iwcore.batch_item=123,iwcore.project=test-proj,iwcore.role=worktree"}'
@@ -38,6 +40,7 @@ class TestScan:
         assert findings[0].project_id == "test-proj"
 
     def test_scan_handles_dict_labels(self) -> None:
+        """Verifies that scan correctly parses dict-format labels from docker ps output."""
         json_line = (
             '{"ID":"abc123","Names":"container-1",'
             '"Labels":{"iwcore.batch_item":"456","iwcore.project":"proj2","iwcore.role":"worktree"}}'
@@ -55,6 +58,7 @@ class TestClassify:
     """Tests for container classification based on DB state."""
 
     def test_classify_running_with_active_batchitem_is_active(self) -> None:
+        """Verifies that a container with an executing batch item is classified as active."""
         finding = ReaperFinding(
             container_id="abc123",
             batch_item_id="123",
@@ -73,6 +77,7 @@ class TestClassify:
         assert result == "active"
 
     def test_classify_running_with_terminal_batchitem_is_stale(self) -> None:
+        """Verifies that a container whose batch item is in a terminal state is."""
         finding = ReaperFinding(
             container_id="abc123",
             batch_item_id="123",
@@ -125,6 +130,7 @@ class TestClassify:
         assert result == "stale"
 
     def test_classify_running_with_no_batchitem_is_orphan(self) -> None:
+        """Verifies that a container with no matching batch item in the DB is classified."""
         finding = ReaperFinding(
             container_id="abc123",
             batch_item_id="999",
@@ -140,6 +146,7 @@ class TestClassify:
         assert result == "orphan"
 
     def test_classify_with_malformed_label_is_malformed(self) -> None:
+        """Verifies that a container with a None batch_item_id label is classified as malformed."""
         finding = ReaperFinding(
             container_id="abc123",
             batch_item_id=None,
@@ -153,6 +160,7 @@ class TestClassify:
         assert result == "malformed"
 
     def test_classify_with_non_numeric_batch_item_id_is_malformed(self) -> None:
+        """Verifies that a container with a non-numeric batch_item_id is classified as malformed."""
         finding = ReaperFinding(
             container_id="abc123",
             batch_item_id="NOT-A-NUMBER",
@@ -170,6 +178,9 @@ class TestReapIntegration:
     """Integration tests for reap() with mocked scan and compose down."""
 
     def test_reap_only_acts_on_stale_and_orphan(self) -> None:
+        """Verifies that reap calls compose down only for stale and orphan containers, not active
+        ones.
+        """
         active_finding = ReaperFinding(
             container_id="active-1",
             batch_item_id="100",
@@ -220,6 +231,7 @@ class TestReapIntegration:
         assert mock_down.call_count == 2
 
     def test_reaper_idempotent_on_already_torn_down_stack(self) -> None:
+        """Verifies that reap succeeds when the compose stack was already torn down."""
         orphan_finding = ReaperFinding(
             container_id="orphan-1",
             batch_item_id="999",

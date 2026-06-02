@@ -51,17 +51,22 @@ def _exec_scalars(values):
 
 
 class TestTeardownComposeStack:
+    """Tests for TeardownComposeStack scenarios."""
+
     def test_none_path_is_noop(self):
+        """Verifies that none path is noop."""
         errors: list[str] = []
         _teardown_compose_stack(None, None, errors)
         assert errors == []
 
     def test_empty_string_path_is_noop(self):
+        """Verifies that empty string path is noop."""
         errors: list[str] = []
         _teardown_compose_stack(1, "", errors)
         assert errors == []
 
     def test_success_calls_docker_compose(self):
+        """Verifies that success calls docker compose."""
         errors: list[str] = []
         with patch("orch.cancel.subprocess.run") as mock_run:
             _teardown_compose_stack(1, "/path/compose.yml", errors)
@@ -73,6 +78,7 @@ class TestTeardownComposeStack:
         assert errors == []
 
     def test_timeout_appends_error(self):
+        """Verifies that timeout appends error."""
         errors: list[str] = []
         with patch(
             "orch.cancel.subprocess.run",
@@ -84,6 +90,7 @@ class TestTeardownComposeStack:
         assert "timed out" in errors[0]
 
     def test_oserror_appends_error(self):
+        """Verifies that oserror appends error."""
         errors: list[str] = []
         with patch(
             "orch.cancel.subprocess.run",
@@ -101,7 +108,10 @@ class TestTeardownComposeStack:
 
 
 class TestTeardownItemWorktree:
+    """Tests for TeardownItemWorktree scenarios."""
+
     def test_no_batch_item_is_noop(self):
+        """Verifies that no batch item is noop."""
         db = MagicMock()
         db.execute.return_value = _exec_scalar(None)
         errors: list[str] = []
@@ -109,6 +119,7 @@ class TestTeardownItemWorktree:
         assert errors == []
 
     def test_no_worktree_path_no_compose_is_noop(self):
+        """Verifies that no worktree path no compose is noop."""
         db = MagicMock()
         bi = MagicMock()
         bi.worktree_info = {}
@@ -121,6 +132,7 @@ class TestTeardownItemWorktree:
         assert errors == []
 
     def test_no_worktree_path_but_compose_tears_down_compose(self):
+        """Verifies that no worktree path but compose tears down compose."""
         db = MagicMock()
         bi = MagicMock()
         bi.id = 42
@@ -134,6 +146,7 @@ class TestTeardownItemWorktree:
         assert errors == []
 
     def test_with_worktree_path_calls_git_worktree_remove(self):
+        """Verifies that with worktree path calls git worktree remove."""
         db = MagicMock()
         bi = MagicMock()
         bi.worktree_info = {"path": "/tmp/test-wt"}
@@ -149,6 +162,7 @@ class TestTeardownItemWorktree:
         assert errors == []
 
     def test_with_worktree_path_and_compose_tears_down_both(self):
+        """Verifies that with worktree path and compose tears down both."""
         db = MagicMock()
         bi = MagicMock()
         bi.id = 99
@@ -161,6 +175,7 @@ class TestTeardownItemWorktree:
         assert mock_run.call_count == 2
 
     def test_worktree_remove_timeout_appends_error(self):
+        """Verifies that worktree remove timeout appends error."""
         db = MagicMock()
         bi = MagicMock()
         bi.worktree_info = {"path": "/tmp/test-wt"}
@@ -176,6 +191,7 @@ class TestTeardownItemWorktree:
         assert "timed out" in errors[0]
 
     def test_worktree_remove_oserror_appends_error(self):
+        """Verifies that worktree remove oserror appends error."""
         db = MagicMock()
         bi = MagicMock()
         bi.worktree_info = {"path": "/tmp/test-wt"}
@@ -194,6 +210,8 @@ class TestTeardownItemWorktree:
 
 
 class TestCancelWorkItemKillPaths:
+    """Tests for CancelWorkItemKillPaths scenarios."""
+
     def _make_item(self, status=WorkItemStatus.in_progress):
         item = MagicMock()
         item.status = status
@@ -229,6 +247,7 @@ class TestCancelWorkItemKillPaths:
         return db
 
     def test_running_step_pid_sigterm_sent(self):
+        """Verifies that running step pid sigterm sent."""
         item = self._make_item()
         step = self._make_step()
         run = self._make_run(pid=12345)
@@ -243,6 +262,7 @@ class TestCancelWorkItemKillPaths:
         assert result.new_status == WorkItemStatus.cancelled
 
     def test_running_step_pid_oserror_appended_to_teardown_errors(self):
+        """Verifies that running step pid oserror appended to teardown errors."""
         item = self._make_item()
         step = self._make_step()
         run = self._make_run(pid=12345)
@@ -255,6 +275,7 @@ class TestCancelWorkItemKillPaths:
         assert result.new_status == WorkItemStatus.cancelled
 
     def test_no_running_steps_skips_kill(self):
+        """Verifies that no running steps skips kill."""
         item = self._make_item()
         db = MagicMock()
         db.execute.side_effect = [
@@ -269,12 +290,14 @@ class TestCancelWorkItemKillPaths:
         assert result.new_status == WorkItemStatus.cancelled
 
     def test_not_found_raises_lookup_error(self):
+        """Verifies that not found raises lookup error."""
         db = MagicMock()
         db.execute.return_value = _exec_scalar(None)
         with pytest.raises(LookupError, match="I-999"):
             cancel_work_item(db, "proj", "I-999")
 
     def test_wrong_status_raises_value_error(self):
+        """Verifies that wrong status raises value error."""
         item = self._make_item(status=WorkItemStatus.draft)
         db = MagicMock()
         db.execute.return_value = _exec_scalar(item)
@@ -288,6 +311,8 @@ class TestCancelWorkItemKillPaths:
 
 
 class TestCancelBatchLoopPaths:
+    """Tests for CancelBatchLoopPaths scenarios."""
+
     def _make_batch(self, status=BatchStatus.executing):
         batch = MagicMock()
         batch.status = status
@@ -335,12 +360,14 @@ class TestCancelBatchLoopPaths:
         return db
 
     def test_not_found_raises_lookup_error(self):
+        """Verifies that not found raises lookup error."""
         db = MagicMock()
         db.execute.return_value = _exec_scalar(None)
         with pytest.raises(LookupError, match="B-999"):
             cancel_batch(db, "proj", "B-999")
 
     def test_wrong_status_raises_value_error(self):
+        """Verifies that wrong status raises value error."""
         batch = self._make_batch(status=BatchStatus.completed)
         db = MagicMock()
         db.execute.return_value = _exec_scalar(batch)
@@ -348,6 +375,7 @@ class TestCancelBatchLoopPaths:
             cancel_batch(db, "proj", "B-001")
 
     def test_batch_item_with_pid_sends_sigterm(self):
+        """Verifies that batch item with pid sends sigterm."""
         batch = self._make_batch()
         bi = self._make_batch_item(pid=54321)
         wi = self._make_work_item()
@@ -360,6 +388,7 @@ class TestCancelBatchLoopPaths:
         assert result.killed_pids == [54321]
 
     def test_batch_item_pid_oserror_appended(self):
+        """Verifies that batch item pid oserror appended."""
         batch = self._make_batch()
         bi = self._make_batch_item(pid=54321)
         wi = self._make_work_item()
@@ -372,6 +401,7 @@ class TestCancelBatchLoopPaths:
         assert result.killed_pids == []
 
     def test_batch_item_with_compose_tears_down(self):
+        """Verifies that batch item with compose tears down."""
         batch = self._make_batch()
         bi = self._make_batch_item(compose="/path/compose.yml")
         wi = self._make_work_item()
@@ -384,6 +414,7 @@ class TestCancelBatchLoopPaths:
         assert result.teardown_errors == []
 
     def test_batch_item_with_worktree_runs_git_remove(self):
+        """Verifies that batch item with worktree runs git remove."""
         batch = self._make_batch()
         bi = self._make_batch_item(worktree={"path": "/tmp/wt"})
         wi = self._make_work_item()
@@ -398,6 +429,7 @@ class TestCancelBatchLoopPaths:
         assert result.teardown_errors == []
 
     def test_batch_item_worktree_timeout_appended(self):
+        """Verifies that batch item worktree timeout appended."""
         batch = self._make_batch()
         bi = self._make_batch_item(worktree={"path": "/tmp/wt"})
         wi = self._make_work_item()
@@ -412,6 +444,7 @@ class TestCancelBatchLoopPaths:
         assert any("timed out" in e for e in result.teardown_errors)
 
     def test_batch_item_worktree_oserror_appended(self):
+        """Verifies that batch item worktree oserror appended."""
         batch = self._make_batch()
         bi = self._make_batch_item(worktree={"path": "/tmp/wt"})
         wi = self._make_work_item()
@@ -477,6 +510,7 @@ class TestCancelBatchLoopPaths:
         assert result.cancelled_batch_items == []
 
     def test_empty_batch_no_items_returns_empty_result(self):
+        """Verifies that empty batch no items returns empty result."""
         batch = self._make_batch()
         db = MagicMock()
         db.execute.side_effect = [

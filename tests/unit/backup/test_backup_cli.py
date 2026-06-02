@@ -20,26 +20,59 @@ from orch.db.models import DbBackupStatus, DbBackupType
 
 
 class _FakeScalarResult:
+    """Stub for SQLAlchemy ScalarResult returned by session.scalars()."""
+
     def __init__(self, rows: list[Any]) -> None:
+        """Args:
+        rows: The rows to return from all().
+        """
         self._rows = rows
 
     def all(self) -> list[Any]:
+        """Returns the list of rows provided at construction.
+
+        Returns:
+            The list of row stubs.
+        """
         return self._rows
 
 
 class _FakeSession:
+    """Stub SQLAlchemy session that returns pre-configured rows from scalars()."""
+
     def __init__(self, rows: list[Any]) -> None:
+        """Args:
+        rows: Rows to be returned by scalars().all().
+        """
         self._rows = rows
         self.committed = False
 
     def scalars(self, _stmt: Any) -> _FakeScalarResult:
+        """Returns a _FakeScalarResult wrapping the pre-configured rows.
+
+        Args:
+            _stmt: Ignored SQLAlchemy statement.
+
+        Returns:
+            A _FakeScalarResult containing the configured rows.
+        """
         return _FakeScalarResult(self._rows)
 
     def commit(self) -> None:
+        """Records that commit was called."""
         self.committed = True
 
 
 def _session_factory(session: _FakeSession) -> Any:
+    """Wrap a _FakeSession in a context-manager factory matching get_session interface.
+
+    Args:
+        session: The fake session to yield.
+
+    Returns:
+        A zero-argument context manager factory that yields the session.
+    """
+
     @contextmanager
     def _cm() -> Any:
         yield session
@@ -48,6 +81,7 @@ def _session_factory(session: _FakeSession) -> Any:
 
 
 def test_list_renders_recorded_backups() -> None:
+    """Verifies that iw db-backup list renders all recorded backup fields in output."""
     rows = [
         SimpleNamespace(
             id="job-1",
@@ -74,6 +108,7 @@ def test_list_renders_recorded_backups() -> None:
 
 
 def test_list_empty_reports_no_backups() -> None:
+    """Verifies that iw db-backup list reports a no-backups message when the table is empty."""
     runner = CliRunner()
     result = runner.invoke(
         db_backup,
@@ -86,6 +121,7 @@ def test_list_empty_reports_no_backups() -> None:
 
 
 def test_create_records_manual_backup(monkeypatch: Any) -> None:
+    """Verifies that iw db-backup create delegates to the engine with backup_type=manual."""
     captured: dict[str, Any] = {}
 
     def fake_create_backup(
@@ -115,6 +151,7 @@ def test_create_records_manual_backup(monkeypatch: Any) -> None:
 
 
 def test_restore_refuses_prod_without_allow_prod(monkeypatch: Any, tmp_path: Path) -> None:
+    """Verifies that iw db-backup restore exits with code 2 and REFUSED when targeting."""
     monkeypatch.setattr(
         "orch.cli.backup_commands.load_config",
         lambda: SimpleNamespace(

@@ -52,6 +52,7 @@ def client(db_session: Session) -> TestClient:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -150,6 +151,7 @@ def test_i00074_render_pdf_chromium_success(monkeypatch, tmp_path):
     fake_pdf_content = b"%PDF-1.4 fake-content"
 
     def fake_run(cmd: list, **kwargs):  # type: ignore[no-untyped-def]
+        """Return a MagicMock simulating a successful chromium subprocess run."""
         # Find --print-to-pdf=<path> and write fake PDF there
         for arg in cmd:
             if isinstance(arg, str) and arg.startswith("--print-to-pdf="):
@@ -179,6 +181,7 @@ def test_i00074_render_pdf_chromium_subprocess_timeout(monkeypatch, tmp_path):
     monkeypatch.setattr(md_mod, "_PLAYWRIGHT_CHROME", fake_chrome)
 
     def fake_run(cmd: list, **kwargs):  # type: ignore[no-untyped-def]
+        """Return a MagicMock simulating a successful chromium subprocess run."""
         raise subprocess.TimeoutExpired(cmd=cmd, timeout=kwargs.get("timeout", 30))
 
     with patch("dashboard.utils.markdown.subprocess.run", side_effect=fake_run):
@@ -196,6 +199,7 @@ def test_i00074_render_pdf_chromium_uses_print_to_pdf_flag(monkeypatch, tmp_path
     captured_calls: list[list] = []
 
     def fake_run(cmd: list, **kwargs):  # type: ignore[no-untyped-def]
+        """Return a MagicMock simulating a successful chromium subprocess run."""
         captured_calls.append(cmd)
         for arg in cmd:
             if isinstance(arg, str) and arg.startswith("--print-to-pdf="):

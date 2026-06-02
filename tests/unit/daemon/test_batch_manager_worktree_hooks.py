@@ -40,6 +40,14 @@ class TestWorktreeLifecycleHooks:
     """Tests for worktree compose lifecycle integration in _launch_item."""
 
     def _make_batch_item(self, work_item_id: str = "F-00001") -> MagicMock:
+        """Create a BatchItem MagicMock with default field values for test use.
+
+        Args:
+            work_item_id: The work item ID to assign to the batch item.
+
+        Returns:
+            A MagicMock configured as a BatchItem stub.
+        """
         item = MagicMock(spec=BatchItem)
         item.work_item_id = work_item_id
         item.id = 123
@@ -52,11 +60,24 @@ class TestWorktreeLifecycleHooks:
         return item
 
     def _make_work_item(self) -> MagicMock:
+        """Create a WorkItem MagicMock with approved status.
+
+        Returns:
+            A MagicMock configured as an approved work item stub.
+        """
         wi = MagicMock()
         wi.status = WorkItemStatus.approved
         return wi
 
     def _make_project_config(self, tmp_path: Path) -> MagicMock:
+        """Create a ProjectConfig MagicMock pointing at a temp directory.
+
+        Args:
+            tmp_path: Temporary directory used as the working directory root.
+
+        Returns:
+            A MagicMock configured as a ProjectConfig stub.
+        """
         from orch.daemon.project_registry import ProjectConfig
 
         cfg = MagicMock(spec=ProjectConfig)
@@ -68,6 +89,15 @@ class TestWorktreeLifecycleHooks:
         return cfg
 
     def _make_manager(self, tmp_path: Path, db: MagicMock) -> BatchManager:
+        """Construct a BatchManager wired with a mock config and mock session factory.
+
+        Args:
+            tmp_path: Temporary directory used as the project working directory root.
+            db: Mock database session to be returned by the session factory.
+
+        Returns:
+            A BatchManager instance ready for testing.
+        """
         from orch.config import DaemonConfig
 
         config = MagicMock(spec=DaemonConfig)
@@ -76,6 +106,9 @@ class TestWorktreeLifecycleHooks:
         return BatchManager("test-proj", cfg, lambda: db, config)
 
     def test_setup_calls_compose_up_when_iw_config_present(self, tmp_path: Path) -> None:
+        """Verifies that compose up is called and batch item transitions to executing when iw-config
+        is present.
+        """
         db = MagicMock()
         batch_item = self._make_batch_item()
         work_item = self._make_work_item()
@@ -117,6 +150,9 @@ class TestWorktreeLifecycleHooks:
         assert batch_item.worktree_db_port == 54321
 
     def test_setup_skips_compose_when_iw_config_absent_legacy_mode(self, tmp_path: Path) -> None:
+        """Verifies that compose up is skipped and ports remain unset in legacy mode without iw-
+        config.
+        """
         db = MagicMock()
         batch_item = self._make_batch_item()
         work_item = self._make_work_item()
@@ -142,6 +178,9 @@ class TestWorktreeLifecycleHooks:
         assert batch_item.worktree_app_port is None
 
     def test_setup_failure_transitions_to_setup_failed_status(self, tmp_path: Path) -> None:
+        """Verifies that a WorktreeSetupError transitions the batch item and work item to failed
+        states.
+        """
         db = MagicMock()
         batch_item = self._make_batch_item()
         work_item = self._make_work_item()
@@ -157,6 +196,9 @@ class TestWorktreeLifecycleHooks:
         assert work_item.status == WorkItemStatus.failed
 
     def test_compose_up_failure_transitions_to_setup_failed(self, tmp_path: Path) -> None:
+        """Verifies that a failed compose up transitions the batch item to setup_failed and clears
+        compose path.
+        """
         db = MagicMock()
         batch_item = self._make_batch_item()
         work_item = self._make_work_item()
@@ -202,6 +244,9 @@ class TestTerminalTransitionComposeDown:
     """Tests that compose down is called on terminal state transitions."""
 
     def test_terminal_transition_calls_compose_down(self, tmp_path: Path) -> None:
+        """Verifies that compose down is called when a batch item reaches a terminal state via
+        merge.
+        """
         from orch.daemon.merge_queue import _merge_item
         from orch.daemon.project_registry import ProjectConfig
 

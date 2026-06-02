@@ -38,6 +38,7 @@ class FixCycleSM(RuleBasedStateMachine):
 
     @invariant()
     def cycle_count_within_cap(self) -> None:
+        """Return cycle count within cap."""
         # After any pass or fail, cycle_count must never exceed the configured cap.
         cap = _DEFAULT_FIX_CYCLE_MAX
         assert self.cycle_count <= cap, (
@@ -48,6 +49,7 @@ class FixCycleSM(RuleBasedStateMachine):
 
     @invariant()
     def terminal_state_correct(self) -> None:
+        """Return terminal state correct."""
         # The max_observed_count is the high-water mark of cycle_count.
         # It must never exceed the cap.
         assert self.max_observed_count <= _DEFAULT_FIX_CYCLE_MAX

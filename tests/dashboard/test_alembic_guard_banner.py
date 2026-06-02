@@ -226,6 +226,8 @@ def _restore_middleware_state():
 
 
 class TestAlembicGuardBanner:
+    """Verifies banner presence/absence based on whether DB is at the Alembic head."""
+
     def test_no_banner_at_head(
         self, migrated_engine: Engine, db_session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -318,6 +320,8 @@ class TestAlembicGuardBanner:
 
 
 class TestWriteActionBlocked:
+    """Verifies that write-action endpoints return HTTP 503 when DB is behind head."""
+
     def test_batch_approve_returns_503_when_db_behind_head(
         self, migrated_engine: Engine, db_session, monkeypatch: pytest.MonkeyPatch
     ) -> None:

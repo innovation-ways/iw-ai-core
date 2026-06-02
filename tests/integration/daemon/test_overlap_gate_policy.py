@@ -79,6 +79,18 @@ def _create_work_item(
     impacted_paths: list[str],
     item_type: WorkItemType = WorkItemType.Feature,
 ) -> WorkItem:
+    """Insert an approved WorkItem with a single pending WorkflowStep into the test DB.
+
+    Args:
+        db: The SQLAlchemy session for the testcontainer DB.
+        project_id: Project to which the work item belongs.
+        item_id: ID for the new work item.
+        impacted_paths: List of file glob paths impacted by this item.
+        item_type: Work item type enum value; defaults to Feature.
+
+    Returns:
+        The flushed WorkItem ORM instance.
+    """
     wi = WorkItem(
         project_id=project_id,
         id=item_id,
@@ -116,6 +128,18 @@ def _create_batch(
     status: BatchStatus = BatchStatus.executing,
     max_parallel: int = 2,
 ) -> Batch:
+    """Insert a Batch row into the test DB.
+
+    Args:
+        db: The SQLAlchemy session for the testcontainer DB.
+        project_id: Project to which the batch belongs.
+        batch_id: ID for the new batch.
+        status: Initial batch status; defaults to executing.
+        max_parallel: Maximum concurrent items for this batch.
+
+    Returns:
+        The flushed Batch ORM instance.
+    """
     batch = Batch(
         id=batch_id,
         project_id=project_id,
@@ -136,6 +160,19 @@ def _create_batch_item(
     execution_group: int = 0,
     status: BatchItemStatus = BatchItemStatus.pending,
 ) -> BatchItem:
+    """Insert a BatchItem row into the test DB.
+
+    Args:
+        db: The SQLAlchemy session for the testcontainer DB.
+        project_id: Project to which the batch item belongs.
+        batch_id: Parent batch ID.
+        work_item_id: Work item ID for this batch item.
+        execution_group: Execution group number for dependency ordering.
+        status: Initial batch item status; defaults to pending.
+
+    Returns:
+        The flushed BatchItem ORM instance.
+    """
     bi = BatchItem(
         project_id=project_id,
         batch_id=batch_id,
@@ -290,6 +327,16 @@ def _load_batch(db: Session, project_id: str, batch_id: str) -> Batch:
 
 
 def _fetch_batch_item(db: Session, project_id: str, work_item_id: str) -> BatchItem:
+    """Query and refresh a BatchItem by work_item_id, asserting the row exists.
+
+    Args:
+        db: The SQLAlchemy session for the testcontainer DB.
+        project_id: Project ID to filter by.
+        work_item_id: Work item ID to look up.
+
+    Returns:
+        The refreshed BatchItem ORM instance.
+    """
     bi = (
         db.query(BatchItem)
         .filter(
@@ -305,6 +352,17 @@ def _fetch_batch_item(db: Session, project_id: str, work_item_id: str) -> BatchI
 def _events(
     db: Session, project_id: str, event_type: str, work_item_id: str | None = None
 ) -> list[DaemonEvent]:
+    """Query DaemonEvent rows filtered by project, event type, and optionally entity ID.
+
+    Args:
+        db: The SQLAlchemy session for the testcontainer DB.
+        project_id: Project ID to filter by.
+        event_type: Event type string to match.
+        work_item_id: Optional entity ID to further narrow results.
+
+    Returns:
+        List of matching DaemonEvent ORM instances.
+    """
     q = db.query(DaemonEvent).filter(
         DaemonEvent.project_id == project_id,
         DaemonEvent.event_type == event_type,

@@ -190,4 +190,5 @@ class TestCredentialRedactionFindings:
     """
 
     def test_blocker_documented_placeholder(self) -> None:
+        """Verifies that blocker documented placeholder."""
         assert True, "Blocker documented in TestCredentialRedactionFindings"

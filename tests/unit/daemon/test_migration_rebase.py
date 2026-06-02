@@ -35,6 +35,8 @@ from orch.daemon.migration_rebase import (
 
 
 class ScratchRepo(NamedTuple):
+    """Holds the root path of a scratch git repository used in migration rebase tests."""
+
     root: Path
 
 
@@ -67,6 +69,15 @@ def _copy_alembic_skeleton(migrations_dir: Path) -> None:
 
 
 def _make_migration_content(revision: str, down_revision: str | None) -> str:
+    """Generate the text content of a minimal Alembic migration file.
+
+    Args:
+        revision: The revision ID string.
+        down_revision: The parent revision ID, or None for the initial migration.
+
+    Returns:
+        A string containing a valid Alembic migration module.
+    """
     dn = f'"{down_revision}"' if down_revision is not None else "None"
     return f'''"""Add {revision} migration.
 
@@ -123,6 +134,9 @@ class TestParseMigration:
     """Tests for _parse_migration helper."""
 
     def test_parses_valid_migration_with_double_quotes(self, tmp_path: Path) -> None:
+        """Verifies that _parse_migration correctly extracts revision and down_revision using double
+        quotes.
+        """
         content = '''"""Add users table.
 
 Revision ID: abc123
@@ -152,6 +166,9 @@ def downgrade() -> None:
         assert down_revision == "def456"
 
     def test_parses_valid_migration_with_single_quotes(self, tmp_path: Path) -> None:
+        """Verifies that _parse_migration correctly extracts revision and down_revision using single
+        quotes.
+        """
         content = '''"""Add orders table.
 
 Revision ID: xyz789
@@ -179,6 +196,7 @@ def downgrade() -> None:
         assert down_revision == "abc123"
 
     def test_parses_down_revision_none(self, tmp_path: Path) -> None:
+        """Verifies that _parse_migration handles a None down_revision (initial migration)."""
         content = '''"""Initial schema.
 
 Revision ID: init001
@@ -202,6 +220,9 @@ def upgrade() -> None:
         assert down_revision is None
 
     def test_raises_on_missing_revision(self, tmp_path: Path) -> None:
+        """Verifies that _parse_migration raises MigrationParseError when the revision assignment is
+        absent.
+        """
         path = tmp_path / "bad.py"
         path.write_text("down_revision = 'abc'\n", encoding="utf-8")
 
@@ -209,6 +230,9 @@ def upgrade() -> None:
             _parse_migration(str(path))
 
     def test_raises_on_missing_down_revision(self, tmp_path: Path) -> None:
+        """Verifies that _parse_migration raises MigrationParseError when the down_revision
+        assignment is absent.
+        """
         path = tmp_path / "bad.py"
         path.write_text('revision = "abc"\n', encoding="utf-8")
 
@@ -220,6 +244,7 @@ class TestGitCommand:
     """Tests for _git helper."""
 
     def test_raises_on_failure(self) -> None:
+        """Verifies that _git raises GitCommandError when the git command exits non-zero."""
         with pytest.raises(GitCommandError):
             _git("/", ["rev-parse", "nonexistent-ref"])
 
@@ -228,6 +253,7 @@ class TestRewriteDownRevision:
     """Tests for _rewrite_down_revision helper."""
 
     def test_replaces_double_quoted_down_revision(self, tmp_path: Path) -> None:
+        """Verifies that _rewrite_down_revision replaces a double-quoted down_revision value."""
         content = 'revision = "abc123"\ndown_revision = "def456"\n'
         path = tmp_path / "abc123_test.py"
         path.write_text(content, encoding="utf-8")
@@ -238,6 +264,7 @@ class TestRewriteDownRevision:
         assert result == 'revision = "abc123"\ndown_revision = "xyz789"\n'
 
     def test_replaces_single_quoted_down_revision(self, tmp_path: Path) -> None:
+        """Verifies that _rewrite_down_revision replaces a single-quoted down_revision value."""
         content = "revision = 'abc123'\ndown_revision = 'def456'\n"
         path = tmp_path / "abc123_test.py"
         path.write_text(content, encoding="utf-8")
@@ -248,6 +275,7 @@ class TestRewriteDownRevision:
         assert result == "revision = 'abc123'\ndown_revision = 'xyz789'\n"
 
     def test_replaces_none_down_revision(self, tmp_path: Path) -> None:
+        """Verifies that _rewrite_down_revision replaces a None down_revision with a."""
         content = "revision = 'abc123'\ndown_revision = None\n"
         path = tmp_path / "abc123_test.py"
         path.write_text(content, encoding="utf-8")
@@ -258,6 +286,9 @@ class TestRewriteDownRevision:
         assert result == "revision = 'abc123'\ndown_revision = \"newbase\"\n"
 
     def test_raises_on_no_matching_line(self, tmp_path: Path) -> None:
+        """Verifies that _rewrite_down_revision raises MigrationParseError when no down_revision
+        line exists.
+        """
         path = tmp_path / "abc123_test.py"
         path.write_text("revision = 'abc123'\n", encoding="utf-8")
 
@@ -269,6 +300,9 @@ class TestEmitDaemonEvent:
     """Tests for _emit_daemon_event helper."""
 
     def test_writes_daemon_event_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that _emit_daemon_event creates and commits a DaemonEvent row with correct
+        fields.
+        """
         monkeypatch.setenv("IW_CORE_DAEMON_CONTEXT", "true")
         monkeypatch.delenv("IW_CORE_TEST_CONTEXT", raising=False)
         mock_session = MagicMock()
@@ -300,6 +334,9 @@ class TestWriteRebaseLog:
     """Tests for _write_rebase_log helper."""
 
     def test_writes_pending_migration_log_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verifies that _write_rebase_log creates and commits a PendingMigrationLog row with
+        correct revision fields.
+        """
         monkeypatch.setenv("IW_CORE_DAEMON_CONTEXT", "true")
         monkeypatch.delenv("IW_CORE_TEST_CONTEXT", raising=False)
         mock_session = MagicMock()
@@ -331,6 +368,13 @@ class TestRunPreMergeRebase:
     """Tests for run_pre_merge_rebase entry point."""
 
     def _make_migration_file(self, path: Path, revision: str, down_revision: str | None) -> None:
+        """Write a minimal Alembic migration file to the given path.
+
+        Args:
+            path: Destination file path to write.
+            revision: The revision ID string.
+            down_revision: The parent revision ID, or None for the initial migration.
+        """
         dn = f'"{down_revision}"' if down_revision is not None else "None"
         content = f'''"""Add {revision} migration."""
 
@@ -348,7 +392,14 @@ def downgrade() -> None:
         path.write_text(content, encoding="utf-8")
 
     def _make_worktree(self, tmp_path: Path) -> Path:
-        """Create a minimal worktree with migrations directory."""
+        """Create a minimal worktree directory with a migrations skeleton.
+
+        Args:
+            tmp_path: Base temporary directory for the worktree.
+
+        Returns:
+            Path to the created worktree directory.
+        """
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         (worktree / ".git").touch()
@@ -920,12 +971,14 @@ class TestRebaseResultDataclass:
     """Tests for RebaseResult and Rewrite dataclasses."""
 
     def test_rewrite_is_frozen(self) -> None:
+        """Verifies that Rewrite is a frozen dataclass with correct field access."""
         rw = Rewrite(revision="abc", old_down_revision="def", new_down_revision="ghi")
         assert rw.revision == "abc"
         assert rw.old_down_revision == "def"
         assert rw.new_down_revision == "ghi"
 
     def test_rebase_result_is_frozen(self) -> None:
+        """Verifies that RebaseResult is a frozen dataclass with correct field access."""
         result = RebaseResult(
             success=True,
             rebased=True,
@@ -941,6 +994,7 @@ class TestRebaseResultDataclass:
 
 
 def test_pending_sentinel_is_always_rewritten(tmp_path: Path) -> None:
+    """Verifies that a PENDING down_revision sentinel is always rewritten to the real main head."""
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
 

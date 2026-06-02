@@ -16,6 +16,7 @@ class TestBuildMermaidSemanticColors:
 
     @pytest.fixture
     def mock_config(self):
+        """Provide mock config for tests."""
         config = MagicMock()
         config.resolved_llm_model.return_value = "gemma4:26b"
         config.ollama_url = "http://localhost:11434"
@@ -177,6 +178,7 @@ class TestBuildMermaidPurpose:
 
     @pytest.fixture
     def mock_config(self):
+        """Provide mock config for tests."""
         config = MagicMock()
         config.resolved_llm_model.return_value = "gemma4:26b"
         config.ollama_url = "http://localhost:11434"
@@ -258,6 +260,7 @@ class TestStoredContentFormat:
 
     @pytest.fixture
     def mock_config(self):
+        """Provide mock config for tests."""
         config = MagicMock()
         config.resolved_llm_model.return_value = "gemma4:26b"
         config.ollama_url = "http://localhost:11434"
@@ -299,6 +302,7 @@ class TestBuildMermaidBoundaryBehaviors:
 
     @pytest.fixture
     def mock_config(self):
+        """Provide mock config for tests."""
         config = MagicMock()
         config.resolved_llm_model.return_value = "gemma4:26b"
         config.ollama_url = "http://localhost:11434"

@@ -31,6 +31,7 @@ def _make_work_item(
     design_doc_path: str | None = None,
     archived_at: object = None,
 ) -> MagicMock:
+    """Return make work item."""
     wi = MagicMock()
     wi.id = item_id
     wi.project_id = project_id
@@ -49,6 +50,7 @@ def _make_project(repo_root: str) -> MagicMock:
 
 
 def _make_session(wi: MagicMock, project: MagicMock, steps: list | None = None) -> MagicMock:
+    """Return make session."""
     if steps is None:
         steps = []
     db = MagicMock()
@@ -116,6 +118,7 @@ def test_tier1_stores_report_content_for_each_step(tmp_path: Path) -> None:
 
 
 def test_tier1_sets_phase_done(tmp_path: Path) -> None:
+    """Verifies that tier1 sets phase done."""
     wi = _make_work_item()
     db = _make_session(wi, _make_project(str(tmp_path)))
 
@@ -125,6 +128,7 @@ def test_tier1_sets_phase_done(tmp_path: Path) -> None:
 
 
 def test_tier1_sets_archived_at(tmp_path: Path) -> None:
+    """Verifies that tier1 sets archived at."""
     wi = _make_work_item()
     db = _make_session(wi, _make_project(str(tmp_path)))
 

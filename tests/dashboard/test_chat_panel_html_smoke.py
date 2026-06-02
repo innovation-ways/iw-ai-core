@@ -1,3 +1,5 @@
+"""Smoke tests for the chat panel HTML — verifies key elements are present in the served markup."""
+
 from __future__ import annotations
 
 import os
@@ -12,6 +14,7 @@ from dashboard.dependencies import get_db
 
 @pytest.fixture
 def client(db_session) -> Generator[TestClient, None, None]:
+    """Provide a TestClient with get_db overridden to the test db_session."""
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
         app = create_app()
@@ -25,6 +28,7 @@ def client(db_session) -> Generator[TestClient, None, None]:
 
 
 def test_home_html_and_chat_js_smoke_contract(client: TestClient) -> None:
+    """Verifies that the home page contains the chat assistant markup and that chat.js is clean."""
     home = client.get("/")
     html = home.text
     assert '<select id="chat-assistant-project-select"' in html
@@ -36,6 +40,9 @@ def test_home_html_and_chat_js_smoke_contract(client: TestClient) -> None:
 
 
 def test_chat_js_contains_boundary_behavior_guards(client: TestClient) -> None:
+    """Verifies that chat.js contains guards for empty projects, localStorage failures, and auto-
+    select.
+    """
     js = client.get("/static/chat_assistant/chat.js").text
     assert js.count("No projects available") == 1
     assert "ignore localStorage failures (private mode/quota)" in js

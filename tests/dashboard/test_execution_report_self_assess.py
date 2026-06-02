@@ -41,6 +41,7 @@ def client(db_session: Session) -> TestClient:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -478,6 +479,7 @@ class TestSelfAssessmentEvidenceAndEffort:
         test_project: Project,
         tmp_path: Path,
     ) -> None:
+        """Verifies that the effort and paste prompt sections render in the."""
         rich_findings = json.dumps(
             {
                 "findings": [

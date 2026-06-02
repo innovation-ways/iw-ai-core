@@ -39,16 +39,20 @@ class TestTokenEventShape:
         tokens = ["hello", "wo\nrld", "fine"]
 
         class FakeEngine:
+            """Minimal fake QA engine for SSE stream testing."""
+
             def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
                 del project_id, config
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
+                """Generate fake SSE answer stream tokens for testing."""
                 for t in tokens:
                     yield t
 
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Generate fake SSE answer stream tokens using the v2 API for testing."""
                 for t in tokens:
                     yield {"kind": "token", "text": t}
 
@@ -83,10 +87,13 @@ class TestTokenEventShape:
         """At most one done event is emitted, and the stream ends immediately after."""
 
         class FakeEngine:
+            """Minimal fake QA engine for SSE stream testing."""
+
             def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
                 del project_id, config
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
+                """Generate fake SSE answer stream tokens for testing."""
                 yield "done"
                 yield "## Summary"
                 yield "The answer is 42."
@@ -94,6 +101,7 @@ class TestTokenEventShape:
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Generate fake SSE answer stream tokens using the v2 API for testing."""
                 for t in ("done", "## Summary", "The answer is 42."):
                     yield {"kind": "token", "text": t}
 
@@ -123,16 +131,20 @@ class TestTokenEventShape:
         """Upstream ConnectionRefusedError yields event: error with a message, no done."""
 
         class FailingEngine:
+            """Minimal fake QA engine for SSE stream testing."""
+
             def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
                 del project_id, config
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
+                """Generate fake SSE answer stream tokens for testing."""
                 raise ConnectionRefusedError("no ollama")
                 yield  # unreachable but makes this an async generator
 
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Generate fake SSE answer stream tokens using the v2 API for testing."""
                 raise ConnectionRefusedError("no ollama")
                 yield  # unreachable
 
@@ -164,10 +176,13 @@ class TestTokenEventShape:
         """If citations are emitted, their n values are strictly increasing from 1."""
 
         class FakeEngine:
+            """Minimal fake QA engine for SSE stream testing."""
+
             def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
                 del project_id, config
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
+                """Generate fake SSE answer stream tokens for testing."""
                 yield "first"
                 yield "second"
                 yield "third"
@@ -175,6 +190,7 @@ class TestTokenEventShape:
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Generate fake SSE answer stream tokens using the v2 API for testing."""
                 for t in ("first", "second", "third"):
                     yield {"kind": "token", "text": t}
 
@@ -219,16 +235,20 @@ class TestTokenEventNewlineAndEncoding:
         tokens = ["hello", "wo\n\nrld", "fine"]
 
         class FakeEngine:
+            """Minimal fake QA engine for SSE stream testing."""
+
             def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
                 del project_id, config
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
+                """Generate fake SSE answer stream tokens for testing."""
                 for t in tokens:
                     yield t
 
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Generate fake SSE answer stream tokens using the v2 API for testing."""
                 for t in tokens:
                     yield {"kind": "token", "text": t}
 
@@ -262,16 +282,20 @@ class TestTokenEventNewlineAndEncoding:
         tokens = ["你好世界", "Hello 👋🚀 世界", "日本語", "emoji: 🎉"]
 
         class FakeEngine:
+            """Minimal fake QA engine for SSE stream testing."""
+
             def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
                 del project_id, config
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
+                """Generate fake SSE answer stream tokens for testing."""
                 for t in tokens:
                     yield t
 
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Generate fake SSE answer stream tokens using the v2 API for testing."""
                 for t in tokens:
                     yield {"kind": "token", "text": t}
 
@@ -308,15 +332,19 @@ class TestDoneAndErrorEvents:
         """done event data payload is {\"ok\": true}."""
 
         class FakeEngine:
+            """Minimal fake QA engine for SSE stream testing."""
+
             def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
                 del project_id, config
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
+                """Generate fake SSE answer stream tokens for testing."""
                 yield "final token"
 
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Generate fake SSE answer stream tokens using the v2 API for testing."""
                 yield {"kind": "token", "text": "final token"}
 
         with patch("orch.rag.qa.QAEngine", FakeEngine):
@@ -346,16 +374,20 @@ class TestDoneAndErrorEvents:
         _ = self  # avoid unused warning
 
         class FailingEngine:
+            """Minimal fake QA engine for SSE stream testing."""
+
             def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
                 del project_id, config
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
+                """Generate fake SSE answer stream tokens for testing."""
                 raise ConnectionRefusedError("no ollama")
                 yield  # unreachable but makes this an async generator
 
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Generate fake SSE answer stream tokens using the v2 API for testing."""
                 raise ConnectionRefusedError("no ollama")
                 yield  # unreachable
 
@@ -399,10 +431,13 @@ class TestCumulativeCitations:
         """Emitting the same citation twice yields one event; n values strictly increase."""
 
         class FakeEngine:
+            """Minimal fake QA engine for SSE stream testing."""
+
             def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
                 del project_id, config
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
+                """Generate fake SSE answer stream tokens for testing."""
                 yield "first symbol"
                 yield "second symbol"
                 yield "first symbol"  # duplicate — should not emit a new citation
@@ -471,15 +506,19 @@ class TestStreamingResponseHeaders:
         from pathlib import Path
 
         class FakeEngine:
+            """Minimal fake QA engine for SSE stream testing."""
+
             def __init__(self, project_id: str, config: CodeUnderstandingConfig) -> None:
                 del project_id, config
 
             async def answer_stream(self, **kwargs: object) -> AsyncGenerator[str, None]:
+                """Generate fake SSE answer stream tokens for testing."""
                 yield "hello"
 
             async def answer_stream_v2(
                 self, **kwargs: object
             ) -> AsyncGenerator[dict[str, object], None]:
+                """Generate fake SSE answer stream tokens using the v2 API for testing."""
                 yield {"kind": "token", "text": "hello"}
 
         from fastapi.testclient import TestClient
@@ -519,6 +558,7 @@ class TestStreamingResponseHeaders:
                 test_db_session.commit()
 
                 def override_get_db():
+                    """Yield the test db_session for FastAPI dependency injection."""
                     yield test_db_session
 
                 app.dependency_overrides[get_db] = override_get_db
@@ -545,18 +585,21 @@ class TestCitationTracker:
     """Unit tests for _CitationTracker."""
 
     def test_add_returns_new_index(self) -> None:
+        """Verifies that adding a citation returns a new sequential index."""
         tracker = _CitationTracker()
         assert tracker.add("sym1") == 1
         assert tracker.add("sym2") == 2
         assert tracker.add("sym3") == 3
 
     def test_add_returns_none_for_duplicates(self) -> None:
+        """Verifies that adding a duplicate citation returns None."""
         tracker = _CitationTracker()
         assert tracker.add("sym1") == 1
         assert tracker.add("sym1") is None
         assert tracker.add("sym1") is None
 
     def test_indices_start_at_one(self) -> None:
+        """Verifies that citation indices start at 1."""
         tracker = _CitationTracker()
         indices = [tracker.add(f"sym{i}") for i in range(5)]
         assert indices == [1, 2, 3, 4, 5]

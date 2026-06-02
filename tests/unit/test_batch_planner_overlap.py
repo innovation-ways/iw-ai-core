@@ -34,6 +34,7 @@ def _item(
     steps: list[dict[str, object]] | None = None,
     depends_on: list[str] | None = None,
 ) -> dict[str, object]:
+    """Return item."""
     return {
         "id": item_id,
         "title": title,

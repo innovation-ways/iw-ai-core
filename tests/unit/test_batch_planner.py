@@ -11,12 +11,14 @@ from orch.cli.batch_commands import build_execution_groups
 
 
 def test_no_deps_all_in_group_0() -> None:
+    """Verifies that no deps all in group 0."""
     item_deps = {"I-00001": [], "I-00002": [], "I-00003": []}
     groups = build_execution_groups(item_deps)
     assert groups == {"I-00001": 0, "I-00002": 0, "I-00003": 0}
 
 
 def test_single_item_no_deps() -> None:
+    """Verifies that single item no deps."""
     groups = build_execution_groups({"I-00001": []})
     assert groups == {"I-00001": 0}
 
@@ -27,6 +29,7 @@ def test_single_item_no_deps() -> None:
 
 
 def test_a_depends_on_b() -> None:
+    """Verifies that a depends on b."""
     # B must run before A → B in group 0, A in group 1
     item_deps = {"A": [], "B": ["A"]}
     groups = build_execution_groups(item_deps)
@@ -35,6 +38,7 @@ def test_a_depends_on_b() -> None:
 
 
 def test_chain_a_b_c() -> None:
+    """Verifies that chain a b c."""
     # C depends on B, B depends on A → groups 0, 1, 2
     item_deps = {"A": [], "B": ["A"], "C": ["B"]}
     groups = build_execution_groups(item_deps)
@@ -49,6 +53,7 @@ def test_chain_a_b_c() -> None:
 
 
 def test_diamond_dependency() -> None:
+    """Verifies that diamond dependency."""
     # A has no deps; B and C both depend on A; D depends on B and C
     #   A (group 0) → B, C (group 1) → D (group 2)
     item_deps = {"A": [], "B": ["A"], "C": ["A"], "D": ["B", "C"]}
@@ -64,6 +69,7 @@ def test_diamond_dependency() -> None:
 
 
 def test_external_dependency_ignored() -> None:
+    """Verifies that external dependency ignored."""
     # I-00001 depends on EXTERNAL-999 which is not in the batch — should be in group 0
     item_deps = {"I-00001": ["EXTERNAL-999"], "I-00002": []}
     groups = build_execution_groups(item_deps)
@@ -77,12 +83,14 @@ def test_external_dependency_ignored() -> None:
 
 
 def test_circular_dependency_raises() -> None:
+    """Verifies that circular dependency raises."""
     item_deps = {"A": ["B"], "B": ["A"]}
     with pytest.raises(ValueError, match="Circular dependency"):
         build_execution_groups(item_deps)
 
 
 def test_self_dependency_not_in_batch() -> None:
+    """Verifies that self dependency not in batch."""
     # Self-references not in batch are filtered as external deps
     item_deps = {"A": ["A_external"], "B": []}
     groups = build_execution_groups(item_deps)
@@ -91,6 +99,7 @@ def test_self_dependency_not_in_batch() -> None:
 
 
 def test_three_way_cycle_raises() -> None:
+    """Verifies that three way cycle raises."""
     item_deps = {"A": ["C"], "B": ["A"], "C": ["B"]}
     with pytest.raises(ValueError, match="Circular dependency"):
         build_execution_groups(item_deps)

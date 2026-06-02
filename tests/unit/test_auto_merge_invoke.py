@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 
 
 def _default_config():
+    """Return default config."""
     from orch.daemon.auto_merge import PHASE_DRY_RUN, AutoMergeConfig
 
     return AutoMergeConfig(
@@ -33,6 +34,7 @@ def _default_config():
 
 
 def _common_kwargs(worktree_path: str = "/tmp/wt") -> dict:
+    """Return common kwargs."""
     return {
         "worktree_path": worktree_path,
         "file_path": "tests/unit/test_foo.py",

@@ -33,6 +33,7 @@ def _expected_basic_auth_header(user: str = "opencode", password: str = PASSWORD
 
 @pytest.mark.asyncio
 async def test_create_session_request_shape() -> None:
+    """Verifies that create session request shape."""
     async with respx.mock(base_url=BASE_URL) as mock:
         route = mock.post("/session").respond(
             json={"id": "ses_abc", "title": "New session", "version": "1.14.50"}
@@ -64,6 +65,7 @@ async def test_create_session_request_shape() -> None:
 
 @pytest.mark.asyncio
 async def test_create_session_omits_none_keys() -> None:
+    """Verifies that create session omits none keys."""
     async with respx.mock(base_url=BASE_URL) as mock:
         route = mock.post("/session").respond(json={"id": "ses_q"})
         client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)
@@ -83,6 +85,7 @@ async def test_create_session_omits_none_keys() -> None:
 
 @pytest.mark.asyncio
 async def test_list_sessions_request_shape() -> None:
+    """Verifies that list sessions request shape."""
     async with respx.mock(base_url=BASE_URL) as mock:
         sessions = [{"id": "ses_1"}, {"id": "ses_2"}]
         route = mock.get("/session").respond(json=sessions)
@@ -98,6 +101,7 @@ async def test_list_sessions_request_shape() -> None:
 
 @pytest.mark.asyncio
 async def test_get_session_request_shape() -> None:
+    """Verifies that get session request shape."""
     async with respx.mock(base_url=BASE_URL) as mock:
         route = mock.get("/session/ses_1").respond(json={"id": "ses_1", "title": "Hi"})
         client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)
@@ -111,6 +115,7 @@ async def test_get_session_request_shape() -> None:
 
 @pytest.mark.asyncio
 async def test_get_messages_request_shape() -> None:
+    """Verifies that get messages request shape."""
     async with respx.mock(base_url=BASE_URL) as mock:
         msgs = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
         route = mock.get("/session/ses_1/messages").respond(json=msgs)
@@ -130,6 +135,7 @@ async def test_get_messages_request_shape() -> None:
 
 @pytest.mark.asyncio
 async def test_prompt_request_shape() -> None:
+    """Verifies that prompt request shape."""
     async with respx.mock(base_url=BASE_URL) as mock:
         route = mock.post("/session/ses_1/prompt_async").respond(json={"ok": True})
         client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)
@@ -214,6 +220,7 @@ async def test_prompt_omits_model_when_none() -> None:
 
 @pytest.mark.asyncio
 async def test_prompt_minimal_body() -> None:
+    """Verifies that prompt minimal body."""
     async with respx.mock(base_url=BASE_URL) as mock:
         route = mock.post("/session/ses_1/prompt_async").respond(json={"ok": True})
         client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)
@@ -227,6 +234,7 @@ async def test_prompt_minimal_body() -> None:
 
 @pytest.mark.asyncio
 async def test_abort_request_shape() -> None:
+    """Verifies that abort request shape."""
     async with respx.mock(base_url=BASE_URL) as mock:
         route = mock.post("/session/ses_1/abort").respond(json={"ok": True})
         client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)
@@ -241,6 +249,7 @@ async def test_abort_request_shape() -> None:
 
 @pytest.mark.asyncio
 async def test_reply_permission_request_shape() -> None:
+    """Verifies that reply permission request shape."""
     async with respx.mock(base_url=BASE_URL) as mock:
         route = mock.post("/session/ses_1/permissions/rid_77").respond(json={"ok": True})
         client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)
@@ -255,6 +264,7 @@ async def test_reply_permission_request_shape() -> None:
 
 @pytest.mark.asyncio
 async def test_get_config_request_shape() -> None:
+    """Verifies that get config request shape."""
     async with respx.mock(base_url=BASE_URL) as mock:
         cfg = {"models": [], "default_model": "x", "default_agent": "build"}
         route = mock.get("/config").respond(json=cfg)
@@ -310,6 +320,7 @@ def _sse_body(payloads: list[dict[str, Any]]) -> bytes:
 
 @pytest.mark.asyncio
 async def test_stream_events_yields_server_sent_events() -> None:
+    """Verifies that stream events yields server sent events."""
     payloads = [
         {"id": "evt_1", "type": "server.connected", "properties": {}},
         {
@@ -343,6 +354,7 @@ async def test_stream_events_yields_server_sent_events() -> None:
 
 @pytest.mark.asyncio
 async def test_stream_events_passes_last_event_id_header() -> None:
+    """Verifies that stream events passes last event id header."""
     async with respx.mock(base_url=BASE_URL) as mock:
         route = mock.get("/event").mock(
             return_value=httpx.Response(
@@ -387,6 +399,7 @@ async def test_stream_events_passes_last_event_id_header() -> None:
 
 @pytest.mark.asyncio
 async def test_http_error_propagates() -> None:
+    """Verifies that http error propagates."""
     async with respx.mock(base_url=BASE_URL) as mock:
         mock.post("/session").respond(503, json={"error": "down"})
         client = OpencodeClient(base_url=BASE_URL, password=PASSWORD)

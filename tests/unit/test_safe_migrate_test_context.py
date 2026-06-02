@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 
 def test_test_context_active_when_only_test_flag_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that test context active when only test flag set."""
     monkeypatch.setenv("IW_CORE_TEST_CONTEXT", "true")
     monkeypatch.delenv("IW_CORE_OPERATOR_APPLY", raising=False)
     monkeypatch.delenv("IW_CORE_DAEMON_CONTEXT", raising=False)
@@ -25,6 +26,7 @@ def test_test_context_active_when_only_test_flag_set(monkeypatch: pytest.MonkeyP
 
 
 def test_agent_context_active_when_agent_flag_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that agent context active when agent flag set."""
     monkeypatch.delenv("IW_CORE_TEST_CONTEXT", raising=False)
     monkeypatch.delenv("IW_CORE_OPERATOR_APPLY", raising=False)
     monkeypatch.delenv("IW_CORE_DAEMON_CONTEXT", raising=False)
@@ -33,6 +35,7 @@ def test_agent_context_active_when_agent_flag_set(monkeypatch: pytest.MonkeyPatc
 
 
 def test_operator_opt_in_overrides_test_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that operator opt in overrides test context."""
     monkeypatch.setenv("IW_CORE_TEST_CONTEXT", "true")
     monkeypatch.setenv("IW_CORE_OPERATOR_APPLY", "true")
     monkeypatch.delenv("IW_CORE_DAEMON_CONTEXT", raising=False)
@@ -41,6 +44,7 @@ def test_operator_opt_in_overrides_test_context(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_daemon_opt_in_overrides_test_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that daemon opt in overrides test context."""
     monkeypatch.setenv("IW_CORE_TEST_CONTEXT", "true")
     monkeypatch.delenv("IW_CORE_OPERATOR_APPLY", raising=False)
     monkeypatch.setenv("IW_CORE_DAEMON_CONTEXT", "true")
@@ -49,6 +53,7 @@ def test_daemon_opt_in_overrides_test_context(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_operator_and_daemon_both_override_agent_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that operator and daemon both override agent context."""
     monkeypatch.delenv("IW_CORE_TEST_CONTEXT", raising=False)
     monkeypatch.setenv("IW_CORE_OPERATOR_APPLY", "true")
     monkeypatch.setenv("IW_CORE_DAEMON_CONTEXT", "true")

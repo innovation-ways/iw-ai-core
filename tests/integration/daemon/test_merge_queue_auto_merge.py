@@ -50,6 +50,14 @@ if TYPE_CHECKING:
 
 
 def _unique_id(prefix: str = "F-00084-mq") -> str:
+    """Generate a unique ID with a UUID suffix for test isolation.
+
+    Args:
+        prefix: Prefix to prepend to the UUID hex suffix.
+
+    Returns:
+        A unique string in the form ``<prefix>-<8-char-hex>``.
+    """
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
 
@@ -58,6 +66,16 @@ def _make_mock_result(
     stderr: str = "",
     returncode: int = 1,
 ) -> MagicMock:
+    """Build a mock subprocess.CompletedProcess with controlled stdout, stderr, and returncode.
+
+    Args:
+        stdout: Simulated standard output text.
+        stderr: Simulated standard error text.
+        returncode: Process exit code; defaults to 1 (failure).
+
+    Returns:
+        A MagicMock with ``stdout``, ``stderr``, and ``returncode`` attributes set.
+    """
     result = MagicMock()
     result.stdout = stdout
     result.stderr = stderr
@@ -66,6 +84,15 @@ def _make_mock_result(
 
 
 def _make_project_config(project_id: str, repo_root: str = "/repos/test"):
+    """Build a ProjectConfig for auto-merge merge_queue tests.
+
+    Args:
+        project_id: ID of the project.
+        repo_root: Filesystem path used as the repository root.
+
+    Returns:
+        A ProjectConfig instance configured for the claude CLI tool.
+    """
     from orch.daemon.project_registry import ProjectConfig
 
     return ProjectConfig(
@@ -126,6 +153,16 @@ def _make_batch_item(
 
 
 def _events_of_type(db: Session, project_id: str, event_type: str) -> list[DaemonEvent]:
+    """Query all DaemonEvent rows matching the given project and event type.
+
+    Args:
+        db: The SQLAlchemy session for the testcontainer DB.
+        project_id: Project ID to filter by.
+        event_type: Event type string to match.
+
+    Returns:
+        List of DaemonEvent ORM instances in insertion order.
+    """
     return list(
         db.scalars(
             select(DaemonEvent).where(
@@ -161,10 +198,23 @@ def _enter_standard_patches(stack: ExitStack) -> None:
 
 
 def _phase0_config() -> AutoMergeConfig:
+    """Return an AutoMergeConfig with Phase 0 (disabled/observation) defaults.
+
+    Returns:
+        An AutoMergeConfig built from ``AutoMergeConfig.defaults()``.
+    """
     return AutoMergeConfig.defaults()
 
 
 def _phase1_config(runtime_option_id: int | None = None) -> AutoMergeConfig:
+    """Build an AutoMergeConfig for Phase 1 (dry-run) with a test allowlist.
+
+    Args:
+        runtime_option_id: Optional runtime option ID to embed in the config.
+
+    Returns:
+        An AutoMergeConfig in PHASE_DRY_RUN with ``tests/**/*.py`` and ``docs/**/*.md`` allowed.
+    """
     d = AutoMergeConfig.defaults()
     return AutoMergeConfig(
         phase=PHASE_DRY_RUN,

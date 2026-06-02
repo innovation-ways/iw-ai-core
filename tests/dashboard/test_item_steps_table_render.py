@@ -31,6 +31,7 @@ def client(db_session: Session) -> TestClient:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -442,6 +443,9 @@ class TestDisabledRuntimeOptionLabel:
     def test_completed_step_shows_model_label_for_disabled_option(
         self, client: TestClient, db_session: Session
     ):
+        """Verifies that a completed step shows the model label even when the runtime option is
+        disabled.
+        """
         from sqlalchemy import select
 
         from orch.db.models import AgentRuntimeOption

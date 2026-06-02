@@ -47,6 +47,14 @@ if TYPE_CHECKING:
 
 
 def _unique_id(prefix: str = "F-00076") -> str:
+    """Generate a unique ID with a UUID suffix to prevent collisions between test runs.
+
+    Args:
+        prefix: Prefix string prepended to the UUID hex suffix.
+
+    Returns:
+        A unique string in the form ``<prefix>-<8-char-hex>``.
+    """
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
 
@@ -178,6 +186,11 @@ class TestBatchManagerScopeGate:
 
     @pytest.fixture
     def project_id(self) -> str:
+        """Provide the project ID string for scope gate integration tests.
+
+        Returns:
+            The ``test-proj-scope-gate`` project ID string.
+        """
         return "test-proj-scope-gate"
 
     @pytest.fixture
@@ -187,7 +200,16 @@ class TestBatchManagerScopeGate:
         test_project: Project,
         tmp_path: Path,
     ) -> BatchManager:
-        """Build a BatchManager wired to the test db_session."""
+        """Build a BatchManager wired to the test db_session.
+
+        Args:
+            db_session: The SQLAlchemy session for the testcontainer DB.
+            test_project: The Project row created by the shared test_project fixture.
+            tmp_path: pytest tmp_path used for the projects.toml placeholder.
+
+        Returns:
+            A BatchManager instance configured for the test project.
+        """
         project_config = ProjectConfig(
             id=test_project.id,
             display_name=test_project.display_name,

@@ -1,4 +1,5 @@
-# Tests for F-00080 help system (S03 frontend-impl)
+"""Smoke tests for F-00080 help system — verifies static assets and template wiring are present."""
+
 # Smoke test: verify help.js, tours.js, driver.js, and base.html contain
 # the expected script tags and static assets are present on disk.
 from pathlib import Path

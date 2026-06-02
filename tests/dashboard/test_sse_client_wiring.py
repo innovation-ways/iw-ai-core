@@ -38,10 +38,12 @@ def _template_dir() -> Path:
 
 @pytest.fixture
 def client(db_session: Session) -> TestClient:
+    """Provide a TestClient with get_db overridden to the test db_session."""
     original = os.environ.pop("IW_CORE_EXPECTED_INSTANCE_ID", None)
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -56,6 +58,7 @@ def client(db_session: Session) -> TestClient:
 
 @pytest.fixture
 def jinja_env() -> Environment:
+    """Create a Jinja2 environment pointing at the dashboard templates directory."""
     return Environment(
         loader=FileSystemLoader(str(_template_dir())),
         autoescape=select_autoescape(enabled_extensions=()),
@@ -188,10 +191,12 @@ class TestSSEClientFileExists:
     """Static assets created by S01 must exist on disk."""
 
     def test_sse_client_js_exists(self) -> None:
+        """Verifies that the SSE client JavaScript file exists in the static directory."""
         path = _dashboard_static_dir() / "sse-client.js"
         assert path.exists(), f"{path} must exist (created by S01)"
 
     def test_sse_shared_worker_js_exists(self) -> None:
+        """Verifies that the SSE shared worker JavaScript file exists in the static directory."""
         path = _dashboard_static_dir() / "sse-shared-worker.js"
         assert path.exists(), f"{path} must exist (created by S01)"
 

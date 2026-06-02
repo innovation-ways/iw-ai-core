@@ -12,6 +12,7 @@ class TestGenerateModuleDiagram:
 
     @pytest.fixture
     def mock_config(self):
+        """Provide mock config for tests."""
         config = MagicMock()
         config.resolved_llm_model.return_value = "gemma4:26b"
         config.ollama_url = "http://localhost:11434"
@@ -20,6 +21,7 @@ class TestGenerateModuleDiagram:
 
     @pytest.fixture
     def mock_session(self):
+        """Provide mock session for tests."""
         return MagicMock()
 
     def test_generates_and_stores_returns_tuple(self, mock_config, mock_session):  # noqa: assertion-scanner
@@ -251,6 +253,7 @@ class TestModuleDiagramPrompt:
 
     @pytest.fixture
     def mock_config(self):
+        """Provide mock config for tests."""
         config = MagicMock()
         config.resolved_llm_model.return_value = "gemma4:26b"
         config.ollama_url = "http://localhost:11434"
@@ -259,6 +262,7 @@ class TestModuleDiagramPrompt:
 
     @pytest.fixture
     def mock_session(self):
+        """Provide mock session for tests."""
         return MagicMock()
 
     def test_prompt_uses_left_to_right_direction(self, mock_config, mock_session):

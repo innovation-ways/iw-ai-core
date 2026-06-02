@@ -1,3 +1,5 @@
+"""Unit tests for context usage status."""
+
 from __future__ import annotations
 
 import math
@@ -15,6 +17,7 @@ def _shape_assert(result: object) -> None:
 
 
 def test_opencode_known() -> None:
+    """Verifies that opencode known."""
     providers = {
         "providers": [{"id": "openai", "models": {"gpt-4o": {"limit": {"context": 100000}}}}]
     }
@@ -34,6 +37,7 @@ def test_opencode_known() -> None:
 
 
 def test_opencode_unknown_window() -> None:
+    """Verifies that opencode unknown window."""
     result = resolve_context_usage_opencode(
         client_healthy=True,
         providers={"providers": []},
@@ -48,6 +52,7 @@ def test_opencode_unknown_window() -> None:
 
 
 def test_opencode_unknown_runtime() -> None:
+    """Verifies that opencode unknown runtime."""
     result = resolve_context_usage_opencode(
         client_healthy=False,
         providers={"providers": []},
@@ -60,6 +65,7 @@ def test_opencode_unknown_runtime() -> None:
 
 
 def test_pi_known() -> None:
+    """Verifies that pi known."""
     row = AgentRuntimeOption(
         cli_tool="pi",
         model="MiniMax-M2.7",
@@ -83,6 +89,7 @@ def test_pi_known() -> None:
 
 
 def test_pi_unknown_window() -> None:
+    """Verifies that pi unknown window."""
     row = AgentRuntimeOption(
         cli_tool="pi",
         model="MiniMax-M2.7",
@@ -103,6 +110,7 @@ def test_pi_unknown_window() -> None:
 
 
 def test_pi_unknown_runtime() -> None:
+    """Verifies that pi unknown runtime."""
     result = resolve_context_usage_pi(
         pi_healthy=False,
         agent_runtime_option=None,
@@ -115,6 +123,7 @@ def test_pi_unknown_runtime() -> None:
 
 
 def test_known_status_equivalence_to_non_null_fields() -> None:
+    """Verifies that known status equivalence to non null fields."""
     providers = {"providers": [{"id": "openai", "models": {"gpt-4o": {"limit": {"context": 100}}}}]}
     known = resolve_context_usage_opencode(
         client_healthy=True,
@@ -130,6 +139,7 @@ def test_known_status_equivalence_to_non_null_fields() -> None:
     )
 
     def pred(r: object) -> bool:
+        """Return pred."""
         pct = getattr(r, "pct")
         return (
             pct is not None

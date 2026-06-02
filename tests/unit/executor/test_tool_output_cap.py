@@ -31,19 +31,24 @@ class TestCountLines:
     """Line-counting helper edge cases."""
 
     def test_empty_string_zero_lines(self) -> None:
+        """Verifies that an empty string has zero lines."""
         assert _count_lines("") == 0
 
     def test_single_line_no_newline(self) -> None:
+        """Verifies that a single-word string with no newline counts as one line."""
         assert _count_lines("hello") == 1
 
     def test_single_line_with_newline(self) -> None:
+        """Verifies that a string ending with a newline counts as one line."""
         assert _count_lines("hello\n") == 1
 
     def test_two_lines(self) -> None:
+        """Verifies that two-line strings are counted correctly with or without trailing newline."""
         assert _count_lines("line1\nline2") == 2
         assert _count_lines("line1\nline2\n") == 2
 
     def test_many_lines(self) -> None:
+        """Verifies that a 100-line string is counted as 100 lines."""
         text = "\n".join([f"line{i}" for i in range(100)])
         assert _count_lines(text) == 100
 
@@ -52,23 +57,27 @@ class TestHashPath:
     """Stable spill-path generation from content hash."""
 
     def test_same_content_same_path(self) -> None:
+        """Verifies that identical inputs always produce the same spill path."""
         d = Path(tempfile.mkdtemp())
         p1 = _hash_path(d, "hello world", "I-00105", "S07")
         p2 = _hash_path(d, "hello world", "I-00105", "S07")
         assert p1 == p2, "Identical (content, item, step) must produce identical path"
 
     def test_different_content_different_path(self) -> None:
+        """Verifies that different content produces a different spill path."""
         d = Path(tempfile.mkdtemp())
         p1 = _hash_path(d, "hello", "I-00105", "S07")
         p2 = _hash_path(d, "world", "I-00105", "S07")
         assert p1 != p2, "Different content must produce different path"
 
     def test_path_is_within_cache_dir(self) -> None:
+        """Verifies that the generated spill path is a direct child of the cache directory."""
         d = Path(tempfile.mkdtemp())
         path = _hash_path(d, "x" * 1000, "I-00105", "S07")
         assert path.parent == d
 
     def test_filename_contains_item_and_step(self) -> None:
+        """Verifies that the generated spill filename includes both the item_id and step_id."""
         d = Path(tempfile.mkdtemp())
         path = _hash_path(d, "data", "I-00105", "S07")
         assert "I-00105" in path.name
@@ -84,6 +93,11 @@ class TestApplyToolOutputCap:
 
     @pytest.fixture
     def cache_dir(self) -> Path:
+        """Provides a fresh temporary directory for spill file storage.
+
+        Returns:
+            Path to a newly created temporary directory.
+        """
         return Path(tempfile.mkdtemp())
 
     # ── 1: Under-cap passthrough ──────────────────────────────────────────
@@ -350,19 +364,25 @@ class TestParseStepFromPath:
     """Spill-path → (item_id, step_id) parser for downstream tools."""
 
     def test_parses_stable_hash_format(self) -> None:
+        """Verifies that parse_step_from_path extracts item and step from the standard."""
         path = "/some/cache/I-00105_S07_a1b2c3d4e5f6abcd.txt"
         result = parse_step_from_path(path)
         assert result == ("I-00105", "S07"), f"Expected (I-00105, S07), got {result}"
 
     def test_parses_step_only_format(self) -> None:
+        """Verifies that parse_step_from_path returns a sentinel item_id when only the step is
+        present.
+        """
         path = "/some/cache/S07-1.txt"
         result = parse_step_from_path(path)
         assert result == ("<unknown>", "S07")
 
     def test_returns_none_for_unknown_format(self) -> None:
+        """Verifies that parse_step_from_path returns None for an unrecognized filename format."""
         result = parse_step_from_path("not_a_spill_path.txt")
         assert result is None
 
     def test_returns_none_for_empty_path(self) -> None:
+        """Verifies that parse_step_from_path returns None for an empty string."""
         result = parse_step_from_path("")
         assert result is None

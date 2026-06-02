@@ -30,22 +30,26 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 @pytest.mark.parametrize("target", REQUIRED_MAKE_TARGETS)
 def test_makefile_target_present(target: str) -> None:
+    """Verifies that makefile target present."""
     text = MAKEFILE.read_text()
     found = bool(re.search(rf"^{re.escape(target)}[\w-]*:\s", text, re.MULTILINE))
     assert found, f"Makefile target '{target}*' missing — see F-00071"
 
 
 def test_workflow_file_exists() -> None:
+    """Verifies that workflow file exists."""
     assert WORKFLOW.is_file()
 
 
 def test_workflow_required_jobs() -> None:
+    """Verifies that workflow required jobs."""
     data = yaml.safe_load(WORKFLOW.read_text())
     assert "deps-audit" in data["jobs"]
     assert "iac-scan" in data["jobs"]
 
 
 def test_workflow_permissions_minimal() -> None:
+    """Verifies that workflow permissions minimal."""
     data = yaml.safe_load(WORKFLOW.read_text())
     perms = data.get("permissions", {})
     assert perms.get("contents") == "read"
@@ -55,6 +59,7 @@ def test_workflow_permissions_minimal() -> None:
 
 
 def test_workflow_actions_pinned_to_sha() -> None:
+    """Verifies that workflow actions pinned to sha."""
     text = WORKFLOW.read_text()
     pattern = re.compile(r"uses:\s*([\w./-]+)@([\w./-]+)")
     for action, ref in pattern.findall(text):
@@ -64,6 +69,7 @@ def test_workflow_actions_pinned_to_sha() -> None:
 
 
 def test_workflow_triggers_pr_push_schedule() -> None:
+    """Verifies that workflow triggers pr push schedule."""
     data = yaml.safe_load(WORKFLOW.read_text())
     on = data.get(True, data.get("on"))
     assert "pull_request" in on
@@ -73,6 +79,7 @@ def test_workflow_triggers_pr_push_schedule() -> None:
 
 @pytest.mark.parametrize("dep", REQUIRED_DEV_DEPS)
 def test_dev_dep_present(dep: str) -> None:
+    """Verifies that dev dep present."""
     data = tomllib.loads(PYPROJECT.read_text())
     dev_deps = data["dependency-groups"]["dev"]
     found = any(item.startswith(dep) for item in dev_deps)
@@ -80,6 +87,7 @@ def test_dev_dep_present(dep: str) -> None:
 
 
 def test_bandit_config_excludes_tests() -> None:
+    """Verifies that bandit config excludes tests."""
     data = tomllib.loads(PYPROJECT.read_text())
     bandit = data.get("tool", {}).get("bandit", {})
     excludes = set(bandit.get("exclude_dirs", []))
@@ -88,6 +96,7 @@ def test_bandit_config_excludes_tests() -> None:
 
 
 def test_trivyignore_exists() -> None:
+    """Verifies that trivyignore exists."""
     assert TRIVYIGNORE.is_file()
     text = TRIVYIGNORE.read_text()
     non_comment_lines = [

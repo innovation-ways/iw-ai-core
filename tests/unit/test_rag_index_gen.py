@@ -10,16 +10,19 @@ class TestExtractFirstSentence:
     """Tests for _extract_first_sentence()."""
 
     def test_none_content_returns_em_dash(self):
+        """Verifies that none content returns em dash."""
         from orch.rag.index_gen import _extract_first_sentence
 
         assert _extract_first_sentence(None) == "—"
 
     def test_empty_string_returns_em_dash(self):
+        """Verifies that empty string returns em dash."""
         from orch.rag.index_gen import _extract_first_sentence
 
         assert _extract_first_sentence("") == "—"
 
     def test_strips_h1_header(self):
+        """Verifies that strips h1 header."""
         from orch.rag.index_gen import _extract_first_sentence
 
         content = "# My Document\n\nThis is the first sentence."
@@ -27,6 +30,7 @@ class TestExtractFirstSentence:
         assert result == "This is the first sentence."
 
     def test_strips_h2_header(self):
+        """Verifies that strips h2 header."""
         from orch.rag.index_gen import _extract_first_sentence
 
         content = "## Second Level\n\nAnother first sentence."
@@ -34,6 +38,7 @@ class TestExtractFirstSentence:
         assert result == "Another first sentence."
 
     def test_extracts_first_sentence_with_period(self):
+        """Verifies that extracts first sentence with period."""
         from orch.rag.index_gen import _extract_first_sentence
 
         content = "First sentence. Second sentence."
@@ -41,6 +46,7 @@ class TestExtractFirstSentence:
         assert result == "First sentence."
 
     def test_extracts_first_sentence_with_question_mark(self):
+        """Verifies that extracts first sentence with question mark."""
         from orch.rag.index_gen import _extract_first_sentence
 
         content = "Is this a question? Yes it is."
@@ -48,6 +54,7 @@ class TestExtractFirstSentence:
         assert result == "Is this a question?"
 
     def test_extracts_first_sentence_with_exclamation(self):
+        """Verifies that extracts first sentence with exclamation."""
         from orch.rag.index_gen import _extract_first_sentence
 
         content = "Watch out! Something happened."
@@ -55,6 +62,7 @@ class TestExtractFirstSentence:
         assert result == "Watch out!"
 
     def test_uses_ellipsis_for_long_text_without_punctuation(self):
+        """Verifies that uses ellipsis for long text without punctuation."""
         from orch.rag.index_gen import _extract_first_sentence
 
         content = "A" * 100
@@ -62,6 +70,7 @@ class TestExtractFirstSentence:
         assert result == "A" * 80 + "…"
 
     def test_handles_multiple_blank_lines(self):
+        """Verifies that handles multiple blank lines."""
         from orch.rag.index_gen import _extract_first_sentence
 
         content = "# Header\n\n\n\nFirst sentence here."
@@ -82,6 +91,7 @@ class TestBuildIndexContent:
         return doc
 
     def test_architecture_section_includes_architecture_map(self):
+        """Verifies that architecture section includes architecture map."""
         from orch.rag.index_gen import _build_index_content
 
         arch_doc = self._make_mock_doc(
@@ -98,6 +108,7 @@ class TestBuildIndexContent:
         assert "[Architecture Overview](code-map)" in result
 
     def test_architecture_section_includes_architecture_diagram(self):
+        """Verifies that architecture section includes architecture diagram."""
         from orch.rag.index_gen import _build_index_content
 
         diagram_doc = self._make_mock_doc(
@@ -115,6 +126,7 @@ class TestBuildIndexContent:
         assert "Shows the system components" in result
 
     def test_module_documentation_section(self):
+        """Verifies that module documentation section."""
         from orch.rag.index_gen import _build_index_content
 
         module_doc = self._make_mock_doc(
@@ -131,6 +143,7 @@ class TestBuildIndexContent:
         assert "[Orch Module](module-orch)" in result
 
     def test_module_diagrams_section(self):
+        """Verifies that module diagrams section."""
         from orch.rag.index_gen import _build_index_content
 
         diagram_doc = self._make_mock_doc(
@@ -147,6 +160,7 @@ class TestBuildIndexContent:
         assert "diagram-module-orch" in result
 
     def test_api_reference_section_when_apis_exist(self):
+        """Verifies that api reference section when apis exist."""
         from orch.rag.index_gen import _build_index_content
 
         api_doc = self._make_mock_doc(
@@ -163,6 +177,7 @@ class TestBuildIndexContent:
         assert "[Dashboard API](api-dashboard)" in result
 
     def test_api_reference_section_when_no_apis(self):
+        """Verifies that api reference section when no apis."""
         from orch.rag.index_gen import _build_index_content
 
         docs_by_type = {DocType.api: []}
@@ -173,6 +188,7 @@ class TestBuildIndexContent:
         assert "_No API documentation registered yet._" in result
 
     def test_research_section_with_docs(self):
+        """Verifies that research section with docs."""
         from orch.rag.index_gen import _build_index_content
 
         research_doc = self._make_mock_doc(
@@ -191,6 +207,7 @@ class TestBuildIndexContent:
         assert "2026-04-15" in result
 
     def test_research_section_when_no_research(self):
+        """Verifies that research section when no research."""
         from orch.rag.index_gen import _build_index_content
 
         docs_by_type = {DocType.research: []}
@@ -201,6 +218,7 @@ class TestBuildIndexContent:
         assert "_No research documents._" in result
 
     def test_generated_date_in_content(self):
+        """Verifies that generated date in content."""
         from orch.rag.index_gen import _build_index_content
 
         docs_by_type = {DocType.architecture: []}
@@ -214,6 +232,7 @@ class TestGenerateIndexPage:
     """Tests for generate_index_page()."""
 
     def test_calls_create_doc_when_no_existing_doc(self):
+        """Verifies that calls create doc when no existing doc."""
         from unittest.mock import MagicMock, patch
 
         from orch.rag.index_gen import generate_index_page
@@ -240,6 +259,7 @@ class TestGenerateIndexPage:
         assert call_kwargs["doc_type"] == DocType.architecture
 
     def test_calls_update_doc_when_existing_doc(self):
+        """Verifies that calls update doc when existing doc."""
         from unittest.mock import MagicMock, patch
 
         from orch.rag.index_gen import generate_index_page
@@ -266,6 +286,7 @@ class TestGenerateIndexPage:
         assert call_kwargs["doc_id"] == "code-index"
 
     def test_empty_project_shows_no_documentation_note(self):
+        """Verifies that empty project shows no documentation note."""
         from unittest.mock import MagicMock, patch
 
         from orch.rag.index_gen import generate_index_page
@@ -289,6 +310,7 @@ class TestGenerateIndexPage:
         assert "No documentation has been generated" in content
 
     def test_generated_content_contains_module_documentation_header(self):
+        """Verifies that generated content contains module documentation header."""
         from unittest.mock import MagicMock, patch
 
         from orch.rag.index_gen import generate_index_page

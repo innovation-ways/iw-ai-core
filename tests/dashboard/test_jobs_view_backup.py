@@ -32,6 +32,7 @@ def client(db_session: Session) -> TestClient:
     try:
 
         def override_get_db() -> Session:
+            """Yield the test db_session for FastAPI dependency injection."""
             return db_session
 
         app = create_app()
@@ -45,6 +46,14 @@ def client(db_session: Session) -> TestClient:
 
 
 def _seed_backup_job(db_session: Session) -> DbBackupJob:
+    """Seed a completed manual DbBackupJob row and flush it.
+
+    Args:
+        db_session: SQLAlchemy session to use.
+
+    Returns:
+        The flushed DbBackupJob instance.
+    """
     now = datetime(2026, 6, 1, 3, 0, tzinfo=UTC)
     job = DbBackupJob(
         id="backup-job-abc123",
@@ -65,6 +74,7 @@ def _seed_backup_job(db_session: Session) -> DbBackupJob:
 def test_jobs_view_renders_backup_job_row(
     client: TestClient, db_session: Session, test_project
 ) -> None:
+    """Verifies that a seeded backup job row appears in the Jobs view with correct metadata."""
     job = _seed_backup_job(db_session)
     db_session.commit()
 
@@ -87,6 +97,7 @@ def test_jobs_view_renders_backup_job_row(
 def test_jobs_view_renders_failed_backup_status(
     client: TestClient, db_session: Session, test_project
 ) -> None:
+    """Verifies that a failed backup job renders with 'failed' status in the Jobs view."""
     now = datetime(2026, 6, 1, 3, 0, tzinfo=UTC)
     db_session.add(
         DbBackupJob(

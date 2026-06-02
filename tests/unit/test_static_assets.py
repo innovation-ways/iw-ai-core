@@ -8,11 +8,15 @@ import pytest
 
 
 class TestStaticAssets:
+    """Tests for StaticAssets scenarios."""
+
     @pytest.fixture
     def static_dir(self) -> Path:
+        """Provide static dir for tests."""
         return Path(__file__).resolve().parent.parent.parent / "dashboard" / "static"
 
     def test_styles_css_exists_and_non_empty(self, static_dir: Path) -> None:
+        """Verifies that styles css exists and non empty."""
         styles_css = static_dir / "styles.css"
         assert styles_css.exists(), "dashboard/static/styles.css must exist"
         content = styles_css.read_text()
@@ -21,6 +25,7 @@ class TestStaticAssets:
         )
 
     def test_inter_woff2_files_exist(self, static_dir: Path) -> None:
+        """Verifies that inter woff2 files exist."""
         fonts_dir = static_dir / "fonts" / "inter"
         assert fonts_dir.exists(), "dashboard/static/fonts/inter/ directory must exist"
 
@@ -43,16 +48,21 @@ class TestStaticAssets:
         )
 
     def test_theme_css_exists(self, static_dir: Path) -> None:
+        """Verifies that theme css exists."""
         theme_css = static_dir / "theme.css"
         assert theme_css.exists(), "dashboard/static/theme.css must exist"
 
     def test_vendor_htmx_exists(self, static_dir: Path) -> None:
+        """Verifies that vendor htmx exists."""
         htmx_js = static_dir / "vendor" / "htmx" / "htmx.min.js"
         assert htmx_js.exists(), "dashboard/static/vendor/htmx/htmx.min.js must exist"
 
 
 class TestStylesCssContent:
+    """Tests for StylesCssContent scenarios."""
+
     def test_styles_css_contains_tailwind_directives(self) -> None:
+        """Verifies that styles css contains tailwind directives."""
         styles_css_path = (
             Path(__file__).resolve().parent.parent.parent / "dashboard" / "static" / "styles.css"
         )
@@ -62,6 +72,7 @@ class TestStylesCssContent:
         )
 
     def test_theme_css_contains_font_face(self) -> None:
+        """Verifies that theme css contains font face."""
         theme_css_path = (
             Path(__file__).resolve().parent.parent.parent / "dashboard" / "static" / "theme.css"
         )

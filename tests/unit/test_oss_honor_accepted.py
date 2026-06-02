@@ -29,7 +29,10 @@ def _load_skill_honor_accepted():
 
 
 class TestHonorAcceptedComputeHash:
+    """Tests for HonorAcceptedComputeHash scenarios."""
+
     def test_compute_finding_hash_deterministic(self) -> None:
+        """Verifies that compute finding hash deterministic."""
         from dashboard.services.oss_accepted import compute_finding_hash as dashboard_hash
 
         skill_module = _load_skill_honor_accepted()
@@ -49,6 +52,7 @@ class TestHonorAcceptedComputeHash:
         )
 
     def test_compute_finding_hash_evidence_order_independent(self) -> None:
+        """Verifies that compute finding hash evidence order independent."""
         from dashboard.services.oss_accepted import compute_finding_hash as dashboard_hash
 
         skill_module = _load_skill_honor_accepted()
@@ -67,6 +71,7 @@ class TestHonorAcceptedComputeHash:
         ) == skill_module.compute_finding_hash(check_id, summary, ev2)
 
     def test_compute_finding_hash_16_hex_chars(self) -> None:
+        """Verifies that compute finding hash 16 hex chars."""
         from dashboard.services.oss_accepted import compute_finding_hash
 
         h = compute_finding_hash("OSS-CH-01", "test", None)
@@ -75,7 +80,10 @@ class TestHonorAcceptedComputeHash:
 
 
 class TestHonorAcceptedCli:
+    """Tests for HonorAcceptedCli scenarios."""
+
     def test_honor_accepted_downgrades_matching(self, tmp_path: Path) -> None:
+        """Verifies that honor accepted downgrades matching."""
         skill_script = (
             Path(__file__).parents[3]
             / "skills"
@@ -155,6 +163,7 @@ class TestHonorAcceptedCli:
         assert "ACCEPTED RISK" in result_entry["message"]["text"]
 
     def test_honor_accepted_nonmatching_unchanged(self, tmp_path: Path) -> None:
+        """Verifies that honor accepted nonmatching unchanged."""
         skill_script = (
             Path(__file__).parents[3]
             / "skills"

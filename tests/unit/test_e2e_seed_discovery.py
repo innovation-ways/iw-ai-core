@@ -27,10 +27,12 @@ def _write_fixture(path: Path, body: str) -> None:
 
 
 def test_discover_returns_empty_when_no_ai_dev_dir(tmp_path: Path) -> None:
+    """Verifies that discover returns empty when no ai dev dir."""
     assert _discover_fixture_files(tmp_path) == []
 
 
 def test_discover_finds_active_and_archive_fixtures(tmp_path: Path) -> None:
+    """Verifies that discover finds active and archive fixtures."""
     active_fx = tmp_path / "ai-dev" / "active" / "F-00099" / "e2e_fixtures" / "001_a.py"
     archive_fx = tmp_path / "ai-dev" / "archive" / "F-00050" / "e2e_fixtures" / "001_b.py"
     _write_fixture(active_fx, "def seed(db): pass\n")
@@ -42,6 +44,7 @@ def test_discover_finds_active_and_archive_fixtures(tmp_path: Path) -> None:
 
 
 def test_discover_orders_fixtures_lexically(tmp_path: Path) -> None:
+    """Verifies that discover orders fixtures lexically."""
     base = tmp_path / "ai-dev" / "active" / "F-00099" / "e2e_fixtures"
     _write_fixture(base / "003_c.py", "def seed(db): pass\n")
     _write_fixture(base / "001_a.py", "def seed(db): pass\n")
@@ -53,6 +56,7 @@ def test_discover_orders_fixtures_lexically(tmp_path: Path) -> None:
 
 
 def test_discover_skips_underscore_prefixed_files(tmp_path: Path) -> None:
+    """Verifies that discover skips underscore prefixed files."""
     base = tmp_path / "ai-dev" / "active" / "F-00099" / "e2e_fixtures"
     _write_fixture(base / "__init__.py", "")
     _write_fixture(base / "_private.py", "def seed(db): pass\n")
@@ -64,6 +68,7 @@ def test_discover_skips_underscore_prefixed_files(tmp_path: Path) -> None:
 
 
 def test_run_fixture_invokes_seed_with_db(tmp_path: Path) -> None:
+    """Verifies that run fixture invokes seed with db."""
     fx = tmp_path / "ai-dev" / "active" / "F-00099" / "e2e_fixtures" / "001_test.py"
     _write_fixture(
         fx,
@@ -76,6 +81,7 @@ def test_run_fixture_invokes_seed_with_db(tmp_path: Path) -> None:
 
 
 def test_run_fixture_rejects_module_without_seed(tmp_path: Path) -> None:
+    """Verifies that run fixture rejects module without seed."""
     fx = tmp_path / "ai-dev" / "active" / "F-00099" / "e2e_fixtures" / "001_broken.py"
     _write_fixture(fx, "# no seed function here\n")
 

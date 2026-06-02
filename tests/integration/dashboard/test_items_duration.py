@@ -42,6 +42,19 @@ def make_step_run(
     started_at: datetime,
     completed_at: datetime | None,
 ) -> StepRun:
+    """Create and flush a StepRun row for the given step.
+
+    Args:
+        db: SQLAlchemy session to use for the insert.
+        step_id: Primary key of the parent WorkflowStep.
+        run_number: Sequential run attempt number (1-based).
+        status: Execution status of this run attempt.
+        started_at: Timestamp when this run attempt began.
+        completed_at: Timestamp when this run attempt ended, or None if still running.
+
+    Returns:
+        The newly flushed StepRun instance.
+    """
     run = StepRun(
         step_id=step_id,
         run_number=run_number,
@@ -62,6 +75,19 @@ def make_fix_cycle(
     started_at: datetime,
     completed_at: datetime | None,
 ) -> FixCycle:
+    """Create and flush a FixCycle row for the given step.
+
+    Args:
+        db: SQLAlchemy session to use for the insert.
+        step_id: Primary key of the parent WorkflowStep.
+        cycle_number: Sequential fix-cycle number (1-based).
+        status: Completion status of this fix cycle.
+        started_at: Timestamp when this fix cycle began.
+        completed_at: Timestamp when this fix cycle ended, or None if still running.
+
+    Returns:
+        The newly flushed FixCycle instance.
+    """
     cycle = FixCycle(
         step_id=step_id,
         cycle_number=cycle_number,
@@ -80,6 +106,16 @@ def _make_work_item(
     project_id: str,
     item_id: str,
 ) -> WorkItem:
+    """Create and flush a minimal WorkItem row for duration aggregation tests.
+
+    Args:
+        db: SQLAlchemy session to use for the insert.
+        project_id: ID of the owning project.
+        item_id: Human-readable work item identifier (e.g. "I-00034").
+
+    Returns:
+        The newly flushed WorkItem instance.
+    """
     work_item = WorkItem(
         project_id=project_id,
         id=item_id,
@@ -469,6 +505,7 @@ class TestI00034StepDurationAggregation:
             _context: object,
             _executemany: object,
         ) -> None:
+            """Increment query_count each time a SQL statement is executed."""
             nonlocal query_count
             query_count += 1
 

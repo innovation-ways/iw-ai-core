@@ -114,6 +114,7 @@ def test_docs_pdf_returns_200_when_cache_dir_not_writable(
     real_mkdir = Path.mkdir
 
     def fail_mkdir_on_docs_cache(self: Path, *args: Any, **kwargs: Any) -> None:
+        """Raise PermissionError only for the docs cache directory; pass all others through."""
         if ".generated" in str(self):
             raise PermissionError(f"[Errno 13] Permission denied: '{self}'")
         real_mkdir(self, *args, **kwargs)

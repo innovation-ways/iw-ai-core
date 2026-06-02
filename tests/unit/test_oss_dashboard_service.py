@@ -10,12 +10,16 @@ from orch.db.models import ProjectOssJobStatus
 
 
 class TestSseMessageFormatter:
+    """Tests for SseMessageFormatter scenarios."""
+
     def _run_stream(self, factory, job_id, heartbeat_interval=0.01, timeout_sec=2.0):
+        """Return run stream."""
         from dashboard.services.oss_service import job_event_stream
 
         events = []
 
         async def collect():
+            """Return collect."""
             nonlocal events
             gen = job_event_stream(factory, job_id, heartbeat_interval=heartbeat_interval)
             try:
@@ -27,6 +31,7 @@ class TestSseMessageFormatter:
                 pass
 
         async def run_with_timeout():
+            """Return run with timeout."""
             import asyncio
 
             with contextlib.suppress(TimeoutError):
@@ -36,6 +41,7 @@ class TestSseMessageFormatter:
         return events
 
     def test_sse_status_event(self) -> None:
+        """Verifies that sse status event."""
         mock_job = MagicMock()
         mock_job.id = 1
         mock_job.status = ProjectOssJobStatus.complete
@@ -44,6 +50,7 @@ class TestSseMessageFormatter:
         mock_job.exit_code = 0
 
         def factory():
+            """Return factory."""
             m = MagicMock()
             m.query.return_value.filter.return_value.first.return_value = mock_job
             return m
@@ -54,6 +61,7 @@ class TestSseMessageFormatter:
         assert any("event: complete" in m for m in events)
 
     def test_sse_progress_line_format(self) -> None:
+        """Verifies that sse progress line format."""
         mock_job = MagicMock()
         mock_job.id = 1
         mock_job.status = ProjectOssJobStatus.running
@@ -62,6 +70,7 @@ class TestSseMessageFormatter:
         mock_job.exit_code = None
 
         def factory():
+            """Return factory."""
             m = MagicMock()
             m.query.return_value.filter.return_value.first.return_value = mock_job
             return m
@@ -74,7 +83,10 @@ class TestSseMessageFormatter:
 
 
 class TestFreshnessHelper:
+    """Tests for FreshnessHelper scenarios."""
+
     def test_compute_freshness_matches_head_sha(self) -> None:
+        """Verifies that compute freshness matches head sha."""
         from dashboard.services.oss_service import compute_freshness
 
         mock_session = MagicMock()
@@ -94,6 +106,7 @@ class TestFreshnessHelper:
         assert result["message"] == "no scans yet"
 
     def test_compute_freshness_stale(self) -> None:
+        """Verifies that compute freshness stale."""
         from dashboard.services.oss_service import compute_freshness
 
         mock_session = MagicMock()
@@ -116,6 +129,7 @@ class TestFreshnessHelper:
         assert "HEAD has advanced" in result["message"]
 
     def test_compute_freshness_fresh(self) -> None:
+        """Verifies that compute freshness fresh."""
         from dashboard.services.oss_service import compute_freshness
 
         mock_session = MagicMock()
@@ -136,6 +150,7 @@ class TestFreshnessHelper:
         assert result["message"] == ""
 
     def test_compute_freshness_project_not_found(self) -> None:
+        """Verifies that compute freshness project not found."""
         from dashboard.services.oss_service import compute_freshness
 
         mock_session = MagicMock()
@@ -148,7 +163,10 @@ class TestFreshnessHelper:
 
 
 class TestProbeTier1Dashboard:
+    """Tests for ProbeTier1Dashboard scenarios."""
+
     def test_probe_tier1_dashboard_returns_dict(self) -> None:
+        """Verifies that probe tier1 dashboard returns dict."""
         from dashboard.services.oss_service import probe_tier1_dashboard
 
         with patch("dashboard.services.oss_service.probe_tier1") as mock_probe:
@@ -159,7 +177,10 @@ class TestProbeTier1Dashboard:
 
 
 class TestTruncateTail:
+    """Tests for TruncateTail scenarios."""
+
     def test_truncate_tail_under_limit(self) -> None:
+        """Verifies that truncate tail under limit."""
         from dashboard.services.oss_service import _truncate_tail
 
         content = "short content"
@@ -167,6 +188,7 @@ class TestTruncateTail:
         assert result == content
 
     def test_truncate_tail_over_limit(self) -> None:
+        """Verifies that truncate tail over limit."""
         from dashboard.services.oss_service import _STDOUT_TAIL_BYTES, _truncate_tail
 
         content = "x" * (_STDOUT_TAIL_BYTES + 100)
@@ -176,7 +198,10 @@ class TestTruncateTail:
 
 
 class TestEnqueueJobUnit:
+    """Tests for EnqueueJobUnit scenarios."""
+
     def test_enqueue_job_string_kind_converts(self) -> None:
+        """Verifies that enqueue job string kind converts."""
         from dashboard.services.oss_service import enqueue_job
         from orch.db.models import ProjectOssJobKind, ProjectOssJobStatus
 
@@ -192,6 +217,7 @@ class TestEnqueueJobUnit:
         assert call_arg.status == ProjectOssJobStatus.queued
 
     def test_enqueue_job_enum_kind_passes_through(self) -> None:
+        """Verifies that enqueue job enum kind passes through."""
         from dashboard.services.oss_service import enqueue_job
         from orch.db.models import ProjectOssJobKind
 
@@ -217,6 +243,7 @@ class TestLegacyEvidenceFallback:
     """
 
     def test_samples_parses_rg_lines(self) -> None:
+        """Verifies that samples parses rg lines."""
         from dashboard.services.oss_service import _legacy_evidence_to_rows
 
         rows = _legacy_evidence_to_rows(
@@ -233,6 +260,7 @@ class TestLegacyEvidenceFallback:
         ]
 
     def test_violations_string_list(self) -> None:
+        """Verifies that violations string list."""
         from dashboard.services.oss_service import _legacy_evidence_to_rows
 
         rows = _legacy_evidence_to_rows(
@@ -244,6 +272,7 @@ class TestLegacyEvidenceFallback:
         assert all(r["rule"] == "OSS-HYG-02" for r in rows)
 
     def test_large_objects(self) -> None:
+        """Verifies that large objects."""
         from dashboard.services.oss_service import _legacy_evidence_to_rows
 
         rows = _legacy_evidence_to_rows(
@@ -254,6 +283,7 @@ class TestLegacyEvidenceFallback:
         assert "75 MB" in rows[0]["snippet_masked"]
 
     def test_incompatible_deps(self) -> None:
+        """Verifies that incompatible deps."""
         from dashboard.services.oss_service import _legacy_evidence_to_rows
 
         rows = _legacy_evidence_to_rows(
@@ -265,6 +295,7 @@ class TestLegacyEvidenceFallback:
         assert "GPL-3.0-only" in rows[0]["snippet_masked"]
 
     def test_non_noreply_emails(self) -> None:
+        """Verifies that non noreply emails."""
         from dashboard.services.oss_service import _legacy_evidence_to_rows
 
         rows = _legacy_evidence_to_rows(
@@ -274,6 +305,7 @@ class TestLegacyEvidenceFallback:
         assert [r["file"] for r in rows] == ["alice@corp.example", "bob@corp.example"]
 
     def test_unknown_evidence_returns_empty(self) -> None:
+        """Verifies that unknown evidence returns empty."""
         from dashboard.services.oss_service import _legacy_evidence_to_rows
 
         assert (

@@ -44,6 +44,8 @@ def _make_heads_output(rev_id: str, rev_msg: str) -> str:
 
 
 class TestCheckAlembicUpToDate:
+    """Tests for check_alembic when the DB is at the head revision."""
+
     def test_current_equals_head_returns_up_to_date(self, tmp_path: Path) -> None:
         """When current == head, returns AlembicStatus with status='up_to_date'."""
         # Create a dummy alembic.ini so the config-existence check passes.
@@ -85,6 +87,8 @@ class TestCheckAlembicUpToDate:
 
 
 class TestCheckAlembicStale:
+    """Tests for check_alembic when the DB is behind the head revision."""
+
     def test_current_behind_head_returns_stale(self, tmp_path: Path) -> None:
         """When current != head, returns stale with pending revisions listed."""
         # Create a dummy alembic.ini so config existence check passes
@@ -147,6 +151,8 @@ class TestCheckAlembicStale:
 
 
 class TestCheckAlembicUnreachable:
+    """Tests for check_alembic when the database is unreachable."""
+
     def test_connection_refused_returns_unreachable(self, tmp_path: Path) -> None:
         """Returns unreachable when alembic current fails with connection error."""
         (tmp_path / "alembic.ini").write_text("[alembic]\n")
@@ -182,6 +188,8 @@ class TestCheckAlembicUnreachable:
 
 
 class TestCheckAlembicDbUrlEnv:
+    """Tests for check_alembic db_url_env parameter handling."""
+
     def test_db_url_env_missing_returns_unreachable(self, tmp_path: Path) -> None:
         """Returns unreachable when db_url_env is set but the env var is missing."""
         (tmp_path / "alembic.ini").write_text("[alembic]\n")
@@ -227,6 +235,8 @@ class TestCheckAlembicDbUrlEnv:
 
 
 class TestAlembicStatusDataclass:
+    """Tests for the AlembicStatus and RevisionSummary dataclass structures."""
+
     def test_status_fields(self) -> None:
         """AlembicStatus carries all required fields."""
         s = AlembicStatus(
@@ -285,6 +295,8 @@ _REAL_HEADS_OUTPUT = (
 
 
 class TestParseRealAlembicOutput:
+    """Regression tests pinning the parser against real alembic verbose output."""
+
     def test_parse_revision_from_real_current_output(self) -> None:
         """`alembic current --verbose` stdout is parsed to the rev_id (not 'Current')."""
         from orch.staleness.alembic_check import _parse_revision_from_verbose

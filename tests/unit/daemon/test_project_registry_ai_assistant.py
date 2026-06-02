@@ -8,6 +8,7 @@ from orch.daemon import project_registry
 
 
 def test_parse_valid_block() -> None:
+    """Verifies that a valid ai_assistant block is returned unchanged."""
     raw = {
         "models": ["anthropic/claude-opus-4-7", "openai/gpt-5.3-codex"],
         "default_model": "anthropic/claude-opus-4-7",
@@ -19,11 +20,13 @@ def test_parse_valid_block() -> None:
 
 
 def test_parse_missing_block() -> None:
+    """Verifies that a None ai_assistant block returns None."""
     parsed = project_registry._parse_ai_assistant_block("iw-ai-core", None)
     assert parsed is None
 
 
 def test_parse_empty_models_list(caplog) -> None:
+    """Verifies that an empty models list logs a warning and returns None."""
     with caplog.at_level(logging.WARNING):
         parsed = project_registry._parse_ai_assistant_block("iw-ai-core", {"models": []})
 
@@ -32,6 +35,7 @@ def test_parse_empty_models_list(caplog) -> None:
 
 
 def test_parse_drops_invalid_entries(caplog) -> None:
+    """Verifies that invalid model entries are dropped with a warning while valid ones are kept."""
     raw = {
         "models": [
             "anthropic/claude-opus-4-7",
@@ -49,6 +53,7 @@ def test_parse_drops_invalid_entries(caplog) -> None:
 
 
 def test_parse_deduplicates_preserving_order() -> None:
+    """Verifies that duplicate model entries are removed while preserving the original order."""
     raw = {
         "models": [
             "anthropic/claude-opus-4-7",
@@ -71,6 +76,7 @@ def test_parse_deduplicates_preserving_order() -> None:
 
 
 def test_parse_default_model_not_in_models(caplog) -> None:
+    """Verifies that a default_model not present in the models list is dropped with a warning."""
     raw = {
         "models": ["anthropic/claude-opus-4-7"],
         "default_model": "openai/gpt-5.3-codex",
@@ -84,6 +90,7 @@ def test_parse_default_model_not_in_models(caplog) -> None:
 
 
 def test_parse_default_model_survives_filter() -> None:
+    """Verifies that a default_model that passes validation is preserved in the output."""
     raw = {
         "models": ["anthropic/claude-opus-4-7", "ollama/gemma4:26b"],
         "default_model": "ollama/gemma4:26b",
@@ -98,6 +105,7 @@ def test_parse_default_model_survives_filter() -> None:
 
 
 def test_parse_non_string_entries_dropped(caplog) -> None:
+    """Verifies that non-string model entries are dropped with a warning."""
     raw = {"models": ["valid/x", 42, None]}
 
     with caplog.at_level(logging.WARNING):
@@ -108,6 +116,7 @@ def test_parse_non_string_entries_dropped(caplog) -> None:
 
 
 def test_parse_default_runtime_pi() -> None:
+    """Verifies that default_runtime 'pi' is accepted and preserved in the parsed block."""
     raw = {"models": ["anthropic/claude-opus-4-7"], "default_runtime": "pi"}
 
     parsed = project_registry._parse_ai_assistant_block("iw-ai-core", raw)
@@ -116,6 +125,7 @@ def test_parse_default_runtime_pi() -> None:
 
 
 def test_parse_default_runtime_opencode() -> None:
+    """Verifies that default_runtime 'opencode' is accepted and preserved in the parsed block."""
     raw = {"models": ["anthropic/claude-opus-4-7"], "default_runtime": "opencode"}
 
     parsed = project_registry._parse_ai_assistant_block("iw-ai-core", raw)
@@ -124,6 +134,7 @@ def test_parse_default_runtime_opencode() -> None:
 
 
 def test_parse_default_runtime_absent_key_omitted() -> None:
+    """Verifies that a missing default_runtime key is omitted from the parsed output."""
     raw = {"models": ["anthropic/claude-opus-4-7"]}
 
     parsed = project_registry._parse_ai_assistant_block("iw-ai-core", raw)
@@ -133,6 +144,7 @@ def test_parse_default_runtime_absent_key_omitted() -> None:
 
 
 def test_parse_default_runtime_invalid_ignored(caplog) -> None:
+    """Verifies that an invalid default_runtime value is ignored with a warning."""
     # "claude" is a valid cli_tool but NOT a valid AI Assistant chat runtime.
     raw = {"models": ["anthropic/claude-opus-4-7"], "default_runtime": "claude"}
 
@@ -145,6 +157,7 @@ def test_parse_default_runtime_invalid_ignored(caplog) -> None:
 
 
 def test_parse_default_runtime_and_default_model_together() -> None:
+    """Verifies that both default_runtime and default_model are preserved when both are valid."""
     raw = {
         "models": ["anthropic/claude-opus-4-7", "minimax/MiniMax-M2.7"],
         "default_model": "minimax/MiniMax-M2.7",

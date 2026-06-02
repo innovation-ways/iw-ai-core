@@ -161,26 +161,32 @@ class TestUnknownProjectReturns404:
     _GHOST = "ghost-project-does-not-exist"
 
     def test_item_detail_unknown_project(self, authz_client: TestClient) -> None:
+        """GET /project/{ghost}/item/{id} returns 404 for a non-existent project."""
         resp = authz_client.get(f"/project/{self._GHOST}/item/I-00001")
         assert resp.status_code == 404
 
     def test_batch_list_unknown_project(self, authz_client: TestClient) -> None:
+        """GET /project/{ghost}/batches returns 404 for a non-existent project."""
         resp = authz_client.get(f"/project/{self._GHOST}/batches")
         assert resp.status_code == 404
 
     def test_batch_detail_unknown_project(self, authz_client: TestClient) -> None:
+        """GET /project/{ghost}/batch/{id} returns 404 for a non-existent project."""
         resp = authz_client.get(f"/project/{self._GHOST}/batch/BATCH-00001")
         assert resp.status_code == 404
 
     def test_docs_library_unknown_project(self, authz_client: TestClient) -> None:
+        """GET /project/{ghost}/docs returns 404 for a non-existent project."""
         resp = authz_client.get(f"/project/{self._GHOST}/docs")
         assert resp.status_code == 404
 
     def test_docs_detail_unknown_project(self, authz_client: TestClient) -> None:
+        """GET /project/{ghost}/docs/{id} returns 404 for a non-existent project."""
         resp = authz_client.get(f"/project/{self._GHOST}/docs/some-doc")
         assert resp.status_code == 404
 
     def test_jobs_page_unknown_project(self, authz_client: TestClient) -> None:
+        """GET /project/{ghost}/jobs returns 404 for a non-existent project."""
         resp = authz_client.get(f"/project/{self._GHOST}/jobs")
         assert resp.status_code == 404
 
@@ -257,18 +263,23 @@ class TestUnknownResourceInValidProject:
     def test_unknown_item_in_valid_project(
         self, authz_client: TestClient, test_project: Project
     ) -> None:
+        """GET /project/{id}/item/{unknown} returns 404 for a non-existent item in a."""
         resp = authz_client.get(f"/project/{test_project.id}/item/I-99999")
         assert resp.status_code == 404
 
     def test_unknown_batch_in_valid_project(
         self, authz_client: TestClient, test_project: Project
     ) -> None:
+        """GET /project/{id}/batch/{unknown} returns 404 for a non-existent batch in a valid
+        project.
+        """
         resp = authz_client.get(f"/project/{test_project.id}/batch/BATCH-99999")
         assert resp.status_code == 404
 
     def test_unknown_doc_in_valid_project(
         self, authz_client: TestClient, test_project: Project
     ) -> None:
+        """GET /project/{id}/docs/{unknown} returns 404 for a non-existent doc in a."""
         resp = authz_client.get(f"/project/{test_project.id}/docs/no-such-doc")
         assert resp.status_code == 404
 

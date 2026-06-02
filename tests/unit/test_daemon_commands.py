@@ -28,23 +28,27 @@ if TYPE_CHECKING:
 
 
 def test_read_pid_returns_none_for_missing_file(tmp_path: Path) -> None:
+    """Verifies that read pid returns none for missing file."""
     pid_file = tmp_path / "daemon.pid"
     assert read_pid(pid_file) is None
 
 
 def test_read_pid_returns_none_for_invalid_content(tmp_path: Path) -> None:
+    """Verifies that read pid returns none for invalid content."""
     pid_file = tmp_path / "daemon.pid"
     pid_file.write_text("not-a-number")
     assert read_pid(pid_file) is None
 
 
 def test_read_pid_returns_integer(tmp_path: Path) -> None:
+    """Verifies that read pid returns integer."""
     pid_file = tmp_path / "daemon.pid"
     pid_file.write_text("12345\n")
     assert read_pid(pid_file) == 12345
 
 
 def test_is_process_alive_false_for_nonexistent_pid() -> None:
+    """Verifies that is process alive false for nonexistent pid."""
     # PID 0 is never a user process; kill(0, 0) signals the calling process group.
     # Use a very high PID unlikely to exist.
     with patch("os.kill", side_effect=ProcessLookupError):
@@ -52,16 +56,19 @@ def test_is_process_alive_false_for_nonexistent_pid() -> None:
 
 
 def test_is_process_alive_true_when_kill_succeeds() -> None:
+    """Verifies that is process alive true when kill succeeds."""
     with patch("os.kill", return_value=None):
         assert is_process_alive(12345) is True
 
 
 def test_get_pid_file_path_uses_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that get pid file path uses env var."""
     monkeypatch.setenv("IW_CORE_PID_FILE", "/var/run/iw-orch.pid")
     assert get_pid_file_path() == Path("/var/run/iw-orch.pid")
 
 
 def test_get_pid_file_path_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verifies that get pid file path default."""
     monkeypatch.delenv("IW_CORE_PID_FILE", raising=False)
     assert get_pid_file_path() == Path("/tmp/iw-orch-daemon.pid")  # noqa: S108
 
@@ -140,6 +147,7 @@ def test_daemon_stop_sends_sigterm(tmp_path: Path) -> None:
     kill_calls: list[tuple[int, int]] = []
 
     def fake_kill(pid: int, sig: int) -> None:
+        """Return fake kill."""
         kill_calls.append((pid, sig))
 
     runner = CliRunner()

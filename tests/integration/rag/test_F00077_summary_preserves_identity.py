@@ -29,6 +29,15 @@ class StubLLMForSummarize:
         self.captured_prompts: list[str] = []
 
     def chat(self, messages, **kwargs) -> MagicMock:  # type: ignore[no-untyped-def]
+        """Return a deterministic summary MagicMock, echoing 'sergio' or 'main.py' if present.
+
+        Args:
+            messages: The conversation messages passed to the LLM.
+            **kwargs: Additional keyword arguments (ignored).
+
+        Returns:
+            A MagicMock whose ``message.content`` contains a contextual summary string.
+        """
         prompt_text = str(messages)
         self.captured_prompts.append(prompt_text)
         # Echo "sergio" and "main.py" if they appear in the prompt
@@ -44,6 +53,15 @@ class StubLLMForCondense:
     """LLM stub for condense that echoes key terms from history."""
 
     def complete(self, prompt: str, **kwargs) -> MagicMock:  # type: ignore[no-untyped-def]
+        """Return a condensed-query MagicMock, echoing key terms found in the prompt.
+
+        Args:
+            prompt: The prompt string passed to the condense LLM.
+            **kwargs: Additional keyword arguments (ignored).
+
+        Returns:
+            A MagicMock whose ``text`` attribute holds a condensed query string.
+        """
         if "keep_alive" in prompt:
             return MagicMock(text="what does keep_alive do in orch/daemon/main.py?")
         return MagicMock(text="condensed query about the topic")

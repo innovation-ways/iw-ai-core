@@ -9,7 +9,10 @@ from orch.doc_service import DocService
 
 
 class TestGetInstanceGuide:
+    """Tests for GetInstanceGuide scenarios."""
+
     def test_get_instance_guide_returns_none_when_missing(self) -> None:
+        """Verifies that get instance guide returns none when missing."""
         session = MagicMock()
         session.get.return_value = None
 
@@ -20,6 +23,7 @@ class TestGetInstanceGuide:
         session.get.assert_called_once_with(DocInstanceGuide, "test-proj:doc001")
 
     def test_get_instance_guide_returns_content_when_present(self) -> None:
+        """Verifies that get instance guide returns content when present."""
         session = MagicMock()
         mock_guide = MagicMock(spec=DocInstanceGuide)
         mock_guide.guide_md = "# Instance Guide\n\nCustom content."
@@ -33,7 +37,10 @@ class TestGetInstanceGuide:
 
 
 class TestSaveInstanceGuide:
+    """Tests for SaveInstanceGuide scenarios."""
+
     def test_save_instance_guide_inserts_new_row(self) -> None:
+        """Verifies that save instance guide inserts new row."""
         session = MagicMock()
         session.get.return_value = None
 
@@ -48,6 +55,7 @@ class TestSaveInstanceGuide:
         assert saved.guide_md == "# New Guide"
 
     def test_save_instance_guide_updates_existing_row(self) -> None:
+        """Verifies that save instance guide updates existing row."""
         session = MagicMock()
         existing = MagicMock(spec=DocInstanceGuide)
         existing.doc_id = "test-proj:doc001"
@@ -64,7 +72,10 @@ class TestSaveInstanceGuide:
 
 
 class TestDeleteInstanceGuide:
+    """Tests for DeleteInstanceGuide scenarios."""
+
     def test_delete_instance_guide_deletes_existing(self) -> None:
+        """Verifies that delete instance guide deletes existing."""
         session = MagicMock()
         existing = MagicMock(spec=DocInstanceGuide)
         existing.doc_id = "test-proj:doc001"
@@ -78,6 +89,7 @@ class TestDeleteInstanceGuide:
         session.flush.assert_called_once()
 
     def test_delete_instance_guide_returns_false_when_missing(self) -> None:
+        """Verifies that delete instance guide returns false when missing."""
         session = MagicMock()
         session.get.return_value = None
 
@@ -89,7 +101,10 @@ class TestDeleteInstanceGuide:
 
 
 class TestEffectiveGuide:
+    """Tests for EffectiveGuide scenarios."""
+
     def test_effective_guide_instance_wins(self) -> None:
+        """Verifies that effective guide instance wins."""
         session = MagicMock()
         mock_instance = MagicMock(spec=DocInstanceGuide)
         mock_instance.guide_md = "# Instance Guide"
@@ -101,6 +116,7 @@ class TestEffectiveGuide:
         assert result == "# Instance Guide"
 
     def test_effective_guide_type_fallback(self) -> None:
+        """Verifies that effective guide type fallback."""
         session = MagicMock()
         session.get.side_effect = [None, MagicMock(guide_md="# Type Guide")]
 
@@ -110,6 +126,7 @@ class TestEffectiveGuide:
         assert result == "# Type Guide"
 
     def test_effective_guide_none_fallback(self) -> None:
+        """Verifies that effective guide none fallback."""
         session = MagicMock()
         session.get.return_value = None
 

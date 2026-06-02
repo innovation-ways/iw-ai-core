@@ -24,6 +24,7 @@ class TestValidateStepRestartTransition:
 
     @pytest.mark.parametrize("status", [StepStatus.failed, StepStatus.needs_fix])
     def test_valid(self, status: StepStatus) -> None:
+        """Verifies that valid."""
         assert validate_step_restart_transition(status) is None
 
     @pytest.mark.parametrize(
@@ -36,6 +37,7 @@ class TestValidateStepRestartTransition:
         ],
     )
     def test_invalid(self, status: StepStatus) -> None:
+        """Verifies that invalid."""
         result = validate_step_restart_transition(status)
         assert result is not None
         assert "Cannot restart step" in result
@@ -51,6 +53,7 @@ class TestValidateStepSkipTransition:
 
     @pytest.mark.parametrize("status", [StepStatus.failed, StepStatus.pending])
     def test_valid(self, status: StepStatus) -> None:
+        """Verifies that valid."""
         assert validate_step_skip_transition(status) is None
 
     @pytest.mark.parametrize(
@@ -63,6 +66,7 @@ class TestValidateStepSkipTransition:
         ],
     )
     def test_invalid(self, status: StepStatus) -> None:
+        """Verifies that invalid."""
         result = validate_step_skip_transition(status)
         assert result is not None
         assert "Cannot skip step" in result
@@ -77,6 +81,7 @@ class TestValidateStepKillTransition:
     """step-kill is valid from in_progress only."""
 
     def test_valid(self) -> None:
+        """Verifies that valid."""
         assert validate_step_kill_transition(StepStatus.in_progress) is None
 
     @pytest.mark.parametrize(
@@ -90,6 +95,7 @@ class TestValidateStepKillTransition:
         ],
     )
     def test_invalid(self, status: StepStatus) -> None:
+        """Verifies that invalid."""
         result = validate_step_kill_transition(status)
         assert result is not None
         assert "Cannot kill step" in result
@@ -118,9 +124,11 @@ class TestValidateBrowserEvidencePresent:
         step_type: StepType,
         tmp_path: Path,
     ) -> None:
+        """Verifies that non browser step types short circuit to none."""
         assert validate_browser_evidence_present(step_type, "I-00036", cwd=tmp_path) is None
 
     def test_browser_step_with_screenshot_passes(self, tmp_path: Path) -> None:
+        """Verifies that browser step with screenshot passes."""
         post_dir = tmp_path / "ai-dev" / "active" / "I-00036" / "evidences" / "post"
         post_dir.mkdir(parents=True)
         (post_dir / "V1_shot.png").write_bytes(b"fake-png")
@@ -132,6 +140,7 @@ class TestValidateBrowserEvidencePresent:
         )
 
     def test_browser_step_with_missing_dir_fails(self, tmp_path: Path) -> None:
+        """Verifies that browser step with missing dir fails."""
         result = validate_browser_evidence_present(
             StepType.browser_verification, "I-00036", cwd=tmp_path
         )
@@ -139,6 +148,7 @@ class TestValidateBrowserEvidencePresent:
         assert "no evidences/post/" in result
 
     def test_browser_step_with_empty_dir_fails(self, tmp_path: Path) -> None:
+        """Verifies that browser step with empty dir fails."""
         post_dir = tmp_path / "ai-dev" / "active" / "I-00036" / "evidences" / "post"
         post_dir.mkdir(parents=True)
         result = validate_browser_evidence_present(
@@ -148,6 +158,7 @@ class TestValidateBrowserEvidencePresent:
         assert "is empty" in result
 
     def test_browser_step_with_only_subdirs_fails(self, tmp_path: Path) -> None:
+        """Verifies that browser step with only subdirs fails."""
         post_dir = tmp_path / "ai-dev" / "active" / "I-00036" / "evidences" / "post"
         (post_dir / "nested").mkdir(parents=True)
         result = validate_browser_evidence_present(

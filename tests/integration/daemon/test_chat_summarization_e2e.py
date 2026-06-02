@@ -23,9 +23,22 @@ class _FakeLLM:
     """Stub LLM that returns deterministic text."""
 
     def __init__(self, response: str = "Compact conversation summary.") -> None:
+        """Initialise the stub with the given canned response text.
+
+        Args:
+            response: The text string returned by every ``chat()`` call.
+        """
         self._response = response
 
     def chat(self, messages: list[dict]) -> object:
+        """Return a mock chat completion carrying the preconfigured response.
+
+        Args:
+            messages: Ignored input messages (present for interface compatibility).
+
+        Returns:
+            A MagicMock whose ``.message.content`` equals the configured response.
+        """
         from unittest.mock import MagicMock
 
         return MagicMock(message=MagicMock(content=self._response))
@@ -33,7 +46,15 @@ class _FakeLLM:
 
 @pytest.fixture
 def chat_conversation_with_messages(db_session: Session, test_project: Project) -> ChatConversation:
-    """Create a conversation with 6 messages (~2000 tokens each)."""
+    """Create a ChatConversation with 6 messages (~300 tokens each) persisted in the test DB.
+
+    Args:
+        db_session: The SQLAlchemy session for the testcontainer DB.
+        test_project: The Project row created by the shared test_project fixture.
+
+    Returns:
+        The committed ChatConversation row, usable as a base for further message additions.
+    """
     conv = ChatConversation(
         id=str(uuid4()),
         project_id=test_project.id,

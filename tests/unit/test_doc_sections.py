@@ -6,7 +6,10 @@ from orch.doc_sections import extract_sections, split_by_sections
 
 
 class TestExtractSections:
+    """Tests for ExtractSections scenarios."""
+
     def test_extract_sections_with_h2_headings(self) -> None:
+        """Verifies that extract sections with h2 headings."""
         content = """# My Document
 
 ## Purpose
@@ -25,6 +28,7 @@ This is the usage section.
         assert result == ["Purpose", "Architecture", "Usage"]
 
     def test_extract_sections_no_h2_returns_document(self) -> None:
+        """Verifies that extract sections no h2 returns document."""
         content = """# My Document
 
 Some content without any H2 headings.
@@ -37,10 +41,12 @@ But no H2.
         assert result == ["Document"]
 
     def test_extract_sections_empty_content(self) -> None:
+        """Verifies that extract sections empty content."""
         result = extract_sections("")
         assert result == ["Document"]
 
     def test_extract_sections_h3_only_returns_document(self) -> None:
+        """Verifies that extract sections h3 only returns document."""
         content = """# Document Title
 
 ### SubSection A
@@ -55,6 +61,7 @@ Content B
         assert result == ["Document"]
 
     def test_extract_sections_strips_whitespace(self) -> None:
+        """Verifies that extract sections strips whitespace."""
         content = """# Doc
 
 ##   Purpose with spaces
@@ -65,6 +72,7 @@ Content
         assert result == ["Purpose with spaces"]
 
     def test_extract_sections_preserves_inline_backticks(self) -> None:
+        """Verifies that extract sections preserves inline backticks."""
         content = """# Doc
 
 ## `Code` Section
@@ -76,7 +84,10 @@ Content
 
 
 class TestSplitBySections:
+    """Tests for SplitBySections scenarios."""
+
     def test_split_by_sections_correct_bodies(self) -> None:
+        """Verifies that split by sections correct bodies."""
         content = """# Document
 
 ## Purpose
@@ -97,6 +108,7 @@ This is the architecture body.
         assert "## Architecture" in result["Architecture"]
 
     def test_split_by_sections_no_h2_returns_document_key(self) -> None:
+        """Verifies that split by sections no h2 returns document key."""
         content = """# Document
 
 Some plain content without any H2 headings.
@@ -108,6 +120,7 @@ More content here.
         assert content in result["Document"]
 
     def test_split_by_sections_last_section_to_end(self) -> None:
+        """Verifies that split by sections last section to end."""
         content = """# Doc
 
 ## First
@@ -125,10 +138,12 @@ Last content goes to the end.
         assert "Last content goes to the end." in result["Last"]
 
     def test_split_by_sections_empty_content(self) -> None:
+        """Verifies that split by sections empty content."""
         result = split_by_sections("")
         assert result == {"Document": ""}
 
     def test_split_by_sections_single_h2(self) -> None:
+        """Verifies that split by sections single h2."""
         content = """# Document
 
 ## Only One

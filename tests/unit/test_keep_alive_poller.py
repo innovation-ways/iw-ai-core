@@ -17,6 +17,7 @@ def _fail(returncode: int = 1, stderr: str = "boom", elapsed_ms: int = 1200) -> 
 
 
 def test_fire_slot_logs_success_without_retry() -> None:
+    """Verifies that fire slot logs success without retry."""
     poller = KeepAlivePoller()
     with (
         patch("orch.daemon.keep_alive_poller.fire_claude", return_value=_ok()) as mock_fire,
@@ -37,6 +38,7 @@ def test_fire_slot_logs_success_without_retry() -> None:
 
 
 def test_fire_slot_retry_success_logs_retried_success() -> None:
+    """Verifies that fire slot retry success logs retried success."""
     poller = KeepAlivePoller()
     with (
         patch(
@@ -59,6 +61,7 @@ def test_fire_slot_retry_success_logs_retried_success() -> None:
 
 
 def test_fire_slot_double_failure_logs_retried_failed() -> None:
+    """Verifies that fire slot double failure logs retried failed."""
     poller = KeepAlivePoller()
     with (
         patch(
@@ -82,6 +85,7 @@ def test_fire_slot_double_failure_logs_retried_failed() -> None:
 
 
 def test_fire_slot_treats_rc0_empty_stdout_as_failure_and_retries() -> None:
+    """Verifies that fire slot treats rc0 empty stdout as failure and retries."""
     poller = KeepAlivePoller()
     first = FireResult(returncode=0, stdout="", stderr="", elapsed_ms=3000)
     second = _ok(stdout="OK retry", elapsed_ms=3200)

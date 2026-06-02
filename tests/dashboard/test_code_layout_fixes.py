@@ -23,6 +23,7 @@ def _template_dir() -> Path:
 
 @pytest.fixture(scope="module")
 def jinja_env() -> Environment:
+    """Create a Jinja2 environment pointing at the dashboard templates directory."""
     env = Environment(
         loader=FileSystemLoader(str(_template_dir())),
         autoescape=select_autoescape(enabled_extensions=()),
@@ -47,6 +48,7 @@ class TestBug1LastRunBannerDismissButton:
     """Bug 1: the 'Last run' banner MUST have a dismiss button wired to the job id."""
 
     def test_last_run_banner_has_dismiss_button(self, jinja_env: Environment):
+        """Verifies that the last-run banner has a dismiss button."""
         tpl = jinja_env.get_template("fragments/code_job_report.html")
         html = tpl.render(
             last_completed_job=type(
@@ -84,6 +86,7 @@ class TestBug2ScrollContainer:
     """Bug 2: scroll container moved from outer column to Architecture card."""
 
     def test_code_content_root_does_not_own_scroll(self, jinja_env: Environment):
+        """Verifies that the code content root does not have overflow scroll."""
         mock_request = MagicMock()
         mock_request.url.path = "/project/iw-ai-core/code"
         tpl = jinja_env.get_template("project_code.html")
@@ -108,6 +111,7 @@ class TestBug2ScrollContainer:
         )
 
     def test_page_body_has_gap_4(self, jinja_env: Environment):
+        """Verifies that the code page body has gap-4 layout spacing."""
         mock_request = MagicMock()
         mock_request.url.path = "/project/iw-ai-core/code"
         tpl = jinja_env.get_template("project_code.html")
@@ -132,6 +136,7 @@ class TestBug2ArchitectureCardOwnsScroll:
     """Bug 2 (companion): the Architecture card IS the scroll container."""
 
     def test_architecture_card_owns_scroll(self, jinja_env: Environment):
+        """Verifies that the architecture card owns the scroll container."""
         tpl = jinja_env.get_template("fragments/code_architecture_view.html")
         html = tpl.render(content_html="<p>x</p>", project_id="iw-ai-core")
 

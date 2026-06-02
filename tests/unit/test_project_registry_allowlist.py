@@ -35,6 +35,7 @@ def _make_repo_root(tmp_path: Path, name: str) -> Path:
 
 
 def test_valid_cli_tool_opencode_loads(tmp_path: Path) -> None:
+    """Verifies that valid cli tool opencode loads."""
     repo_root = _make_repo_root(tmp_path, "p_opencode")
     result = _build_project_config(
         project_id="p-opencode",
@@ -45,6 +46,7 @@ def test_valid_cli_tool_opencode_loads(tmp_path: Path) -> None:
 
 
 def test_valid_cli_tool_claude_loads(tmp_path: Path) -> None:
+    """Verifies that valid cli tool claude loads."""
     repo_root = _make_repo_root(tmp_path, "p_claude")
     result = _build_project_config(
         project_id="p-claude",
@@ -55,6 +57,7 @@ def test_valid_cli_tool_claude_loads(tmp_path: Path) -> None:
 
 
 def test_valid_cli_tool_pi_loads(tmp_path: Path) -> None:
+    """Verifies that valid cli tool pi loads."""
     repo_root = _make_repo_root(tmp_path, "p_pi")
     result = _build_project_config(
         project_id="p-pi",

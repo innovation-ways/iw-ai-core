@@ -73,6 +73,7 @@ class TestLifespanOpencodeStartup:
                 import asyncio
 
                 async def run_startup():
+                    """Run the app lifespan startup to completion."""
                     async with app.router.lifespan_context(app):
                         pass
 
@@ -132,6 +133,7 @@ class TestLifespanOpencodeStartup:
                 import asyncio
 
                 async def run_startup():
+                    """Run the app lifespan startup to completion."""
                     async with app.router.lifespan_context(app):
                         pass
 
@@ -185,6 +187,7 @@ class TestLifespanOpencodeStartup:
                 import asyncio
 
                 async def run_startup():
+                    """Run the app lifespan startup to completion."""
                     async with app.router.lifespan_context(app):
                         pass
 

@@ -43,6 +43,7 @@ class TestAgentContextGuardSemantics:
         ],
     )
     def test_does_not_raise_for_non_exact_true(self, value: str) -> None:  # noqa: assertion-scanner
+        """Verifies that does not raise for non exact true."""
         with patch.dict("os.environ", {"IW_CORE_AGENT_CONTEXT": value}, clear=False):
             _assert_not_agent_context()
 
@@ -54,11 +55,13 @@ class TestAgentContextGuardSemantics:
         ],
     )
     def test_does_not_raise_when_absent_or_empty(self, value: str | None) -> None:  # noqa: assertion-scanner
+        """Verifies that does not raise when absent or empty."""
         env = {} if value is None else {"IW_CORE_AGENT_CONTEXT": value}
         with patch.dict("os.environ", env, clear=False):
             _assert_not_agent_context()
 
     def test_raises_only_for_exact_true(self) -> None:
+        """Verifies that raises only for exact true."""
         env = {"IW_CORE_AGENT_CONTEXT": "true"}
         with patch.dict("os.environ", env, clear=False), pytest.raises(AgentContextForbiddenError):
             _assert_not_agent_context()
@@ -68,6 +71,7 @@ class TestDryRunLiveDbUrlGuard:
     """dry_run refuses when tempdb_url matches the live DB URL."""
 
     def test_raises_value_error_when_tempdb_equals_live(self) -> None:
+        """Verifies that raises value error when tempdb equals live."""
         from orch.db.safe_migrate import dry_run
 
         live_url = "postgresql+psycopg://user:pass@localhost:5433/iw_core"
@@ -86,6 +90,7 @@ class TestListPendingRevisionsEmptyDb:
     """
 
     def test_returns_all_revisions_when_db_is_empty(self) -> None:
+        """Verifies that returns all revisions when db is empty."""
         mock_rev_a = MagicMock()
         mock_rev_a.revision = "abc123"
         mock_rev_a.description = "init"
@@ -121,6 +126,7 @@ class TestMultipleHeadsErrorArgs:
     """MultipleHeadsError.args includes both head revision IDs."""
 
     def test_args_contains_both_heads(self) -> None:
+        """Verifies that args contains both heads."""
         mock_script_dir = MagicMock()
         mock_script_dir.get_heads.return_value = ["rev_a", "rev_b"]
 
@@ -149,6 +155,7 @@ class TestMigrationLogWrittenOnAlembicFailure:
     """
 
     def test_apply_logs_when_alembic_raises(self) -> None:
+        """Verifies that apply logs when alembic raises."""
         from orch.db.safe_migrate import apply
 
         mock_engine = MagicMock()
@@ -190,6 +197,7 @@ class TestMigrationLogWrittenOnAlembicFailure:
             assert call_kwargs["batch_id"] == 99
 
     def test_rollback_logs_when_alembic_raises(self) -> None:
+        """Verifies that rollback logs when alembic raises."""
         from orch.db.safe_migrate import rollback
 
         with (

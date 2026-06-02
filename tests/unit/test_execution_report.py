@@ -41,6 +41,7 @@ def make_segment(
     started_at: datetime | None = None,
     completed_at: datetime | None = None,
 ) -> StepRunSegment:
+    """Return make segment."""
     from orch.db.models import RunStatus
 
     if started_at is None:
@@ -73,6 +74,7 @@ def make_step_row(
     max_run_number: int = 1,
     final_status: str = "completed",
 ) -> StepRow:
+    """Return make step row."""
     from orch.db.models import StepStatus
 
     ss = StepStatus.completed if final_status == "completed" else StepStatus.failed
@@ -100,6 +102,7 @@ def make_report_data(
     steps: list[StepRow] | None = None,
     hotspots: list[RetryHotspot] | None = None,
 ) -> ExecutionReportData:
+    """Return make report data."""
     return ExecutionReportData(
         project_id="test-proj",
         work_item_id=work_item_id,
@@ -123,14 +126,17 @@ def make_report_data(
 
 
 def test_human_duration_seconds() -> None:
+    """Verifies that human duration seconds."""
     assert _human_duration(45.0) == "45s"
 
 
 def test_human_duration_minutes() -> None:
+    """Verifies that human duration minutes."""
     assert _human_duration(90.0) == "1m 30s"
 
 
 def test_human_duration_hours() -> None:
+    """Verifies that human duration hours."""
     assert _human_duration(3665.0) == "1h 1m"
 
 
@@ -140,6 +146,7 @@ def test_human_duration_hours() -> None:
 
 
 def test_iso_or_dash_with_datetime() -> None:
+    """Verifies that iso or dash with datetime."""
     dt = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
     result = _iso_or_dash(dt)
     assert "2025-01-15" in result
@@ -147,6 +154,7 @@ def test_iso_or_dash_with_datetime() -> None:
 
 
 def test_iso_or_dash_with_none() -> None:
+    """Verifies that iso or dash with none."""
     assert _iso_or_dash(None) == "—"
 
 
@@ -156,6 +164,7 @@ def test_iso_or_dash_with_none() -> None:
 
 
 def test_render_header_and_verdict() -> None:
+    """Verifies that render header and verdict."""
     data = make_report_data(
         work_item_id="F-00056",
         title="Test Feature",
@@ -168,6 +177,7 @@ def test_render_header_and_verdict() -> None:
 
 
 def test_render_retry_hotspots_empty() -> None:
+    """Verifies that render retry hotspots empty."""
     data = make_report_data(hotspots=[])
     md = render_execution_report_markdown(data)
     assert "## Retry Hotspots" in md
@@ -175,6 +185,7 @@ def test_render_retry_hotspots_empty() -> None:
 
 
 def test_render_retry_hotspots_populated() -> None:
+    """Verifies that render retry hotspots populated."""
     hotspots = [
         RetryHotspot(
             step_id="S03", display_label="Backend", retry_count=3, final_status="completed"
@@ -191,6 +202,7 @@ def test_render_retry_hotspots_populated() -> None:
 
 
 def test_render_step_timeline() -> None:
+    """Verifies that render step timeline."""
     steps = [
         make_step_row(
             step_id="S01", step_number=1, display_label="Backend", final_status="completed"
@@ -205,6 +217,7 @@ def test_render_step_timeline() -> None:
 
 
 def test_render_fix_cycles_empty() -> None:
+    """Verifies that render fix cycles empty."""
     steps = [make_step_row(cycles=[])]
     data = make_report_data(steps=steps)
     md = render_execution_report_markdown(data)
@@ -213,6 +226,7 @@ def test_render_fix_cycles_empty() -> None:
 
 
 def test_render_fix_cycles_with_summary() -> None:
+    """Verifies that render fix cycles with summary."""
     fc = FixCycleEntry(
         cycle_number=1,
         trigger_type="code_review",
@@ -238,6 +252,7 @@ def test_render_fix_cycles_with_summary() -> None:
 
 
 def test_render_fix_cycles_without_summary() -> None:
+    """Verifies that render fix cycles without summary."""
     fc = FixCycleEntry(
         cycle_number=1,
         trigger_type="code_review",
@@ -258,6 +273,7 @@ def test_render_fix_cycles_without_summary() -> None:
 
 
 def test_render_footer() -> None:
+    """Verifies that render footer."""
     data = make_report_data()
     md = render_execution_report_markdown(data)
     assert "---" in md

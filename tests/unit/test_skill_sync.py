@@ -38,30 +38,35 @@ def _read_lock(project_path: Path) -> dict:
 
 
 def test_parse_version_basic(tmp_path: Path) -> None:
+    """Verifies that parse version basic."""
     skill_md = tmp_path / SKILL_MANIFEST
     skill_md.write_text("---\nversion: 1.2.3\n---\n\n# My Skill\n")
     assert parse_skill_version(skill_md) == "1.2.3"
 
 
 def test_parse_version_with_quotes(tmp_path: Path) -> None:
+    """Verifies that parse version with quotes."""
     skill_md = tmp_path / SKILL_MANIFEST
     skill_md.write_text("---\nversion: '2.0.0'\n---\n")
     assert parse_skill_version(skill_md) == "2.0.0"
 
 
 def test_parse_version_no_frontmatter(tmp_path: Path) -> None:
+    """Verifies that parse version no frontmatter."""
     skill_md = tmp_path / SKILL_MANIFEST
     skill_md.write_text("# Just a doc\nversion: 1.0.0\n")
     assert parse_skill_version(skill_md) is None
 
 
 def test_parse_version_missing_version_key(tmp_path: Path) -> None:
+    """Verifies that parse version missing version key."""
     skill_md = tmp_path / SKILL_MANIFEST
     skill_md.write_text("---\nname: my-skill\n---\n")
     assert parse_skill_version(skill_md) is None
 
 
 def test_parse_version_missing_file(tmp_path: Path) -> None:
+    """Verifies that parse version missing file."""
     assert parse_skill_version(tmp_path / "nonexistent.md") is None
 
 
@@ -71,6 +76,7 @@ def test_parse_version_missing_file(tmp_path: Path) -> None:
 
 
 def test_new_skill_is_copied(tmp_path: Path) -> None:
+    """Verifies that new skill is copied."""
     skills_dir = tmp_path / "skills"
     project_path = tmp_path / "project"
     project_path.mkdir()
@@ -90,6 +96,7 @@ def test_new_skill_is_copied(tmp_path: Path) -> None:
 
 
 def test_outdated_skill_is_updated(tmp_path: Path) -> None:
+    """Verifies that outdated skill is updated."""
     skills_dir = tmp_path / "skills"
     project_path = tmp_path / "project"
     project_path.mkdir()
@@ -120,6 +127,7 @@ def test_outdated_skill_is_updated(tmp_path: Path) -> None:
 
 
 def test_uptodate_skill_is_skipped(tmp_path: Path) -> None:
+    """Verifies that uptodate skill is skipped."""
     skills_dir = tmp_path / "skills"
     project_path = tmp_path / "project"
     project_path.mkdir()
@@ -148,6 +156,7 @@ def test_uptodate_skill_is_skipped(tmp_path: Path) -> None:
 
 
 def test_project_override_not_overwritten(tmp_path: Path) -> None:
+    """Verifies that project override not overwritten."""
     skills_dir = tmp_path / "skills"
     project_path = tmp_path / "project"
     project_path.mkdir()
@@ -186,6 +195,7 @@ def test_project_override_not_overwritten(tmp_path: Path) -> None:
 
 
 def test_force_overwrites_project_override(tmp_path: Path) -> None:
+    """Verifies that force overwrites project override."""
     skills_dir = tmp_path / "skills"
     project_path = tmp_path / "project"
     project_path.mkdir()
@@ -223,6 +233,7 @@ def test_force_overwrites_project_override(tmp_path: Path) -> None:
 
 
 def test_check_only_no_files_modified(tmp_path: Path) -> None:
+    """Verifies that check only no files modified."""
     skills_dir = tmp_path / "skills"
     project_path = tmp_path / "project"
     project_path.mkdir()
@@ -244,6 +255,7 @@ def test_check_only_no_files_modified(tmp_path: Path) -> None:
 
 
 def test_lock_file_created_on_first_sync(tmp_path: Path) -> None:
+    """Verifies that lock file created on first sync."""
     skills_dir = tmp_path / "skills"
     project_path = tmp_path / "project"
     project_path.mkdir()
@@ -266,6 +278,7 @@ def test_lock_file_created_on_first_sync(tmp_path: Path) -> None:
 
 
 def test_lock_file_updated_on_subsequent_sync(tmp_path: Path) -> None:
+    """Verifies that lock file updated on subsequent sync."""
     skills_dir = tmp_path / "skills"
     project_path = tmp_path / "project"
     project_path.mkdir()
@@ -290,6 +303,7 @@ def test_lock_file_updated_on_subsequent_sync(tmp_path: Path) -> None:
 
 
 def test_unlocked_existing_skill_treated_as_override(tmp_path: Path) -> None:
+    """Verifies that unlocked existing skill treated as override."""
     skills_dir = tmp_path / "skills"
     project_path = tmp_path / "project"
     project_path.mkdir()
@@ -313,6 +327,7 @@ def test_unlocked_existing_skill_treated_as_override(tmp_path: Path) -> None:
 
 
 def test_empty_skills_dir_no_changes(tmp_path: Path) -> None:
+    """Verifies that empty skills dir no changes."""
     skills_dir = tmp_path / "skills"
     skills_dir.mkdir()
     project_path = tmp_path / "project"
@@ -331,6 +346,7 @@ def test_empty_skills_dir_no_changes(tmp_path: Path) -> None:
 
 
 def test_skill_missing_manifest_records_error(tmp_path: Path) -> None:
+    """Verifies that skill missing manifest records error."""
     skills_dir = tmp_path / "skills"
     skill_dir = skills_dir / "bad-skill"
     skill_dir.mkdir(parents=True)

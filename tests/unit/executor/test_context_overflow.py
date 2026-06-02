@@ -160,6 +160,7 @@ class TestOverflowSignatures:
     """Sanity-check the exposed signature list (for test discovery)."""
 
     def test_returns_list_of_strings(self) -> None:
+        """Verifies that overflow_signatures returns a non-empty list of string labels."""
         labels = overflow_signatures()
         assert isinstance(labels, list)
         assert len(labels) >= 5

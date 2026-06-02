@@ -23,6 +23,16 @@ SCRIPT = Path(__file__).parent.parent.parent.parent / "executor" / "worktree_com
 
 
 def _git(args: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
+    """Run a git command in the given directory and return the completed process.
+
+    Args:
+        args: List of git subcommand arguments (without the leading "git").
+        cwd: Working directory for the git invocation.
+        check: When True, raises CalledProcessError on non-zero exit.
+
+    Returns:
+        The CompletedProcess result from the subprocess invocation.
+    """
     return subprocess.run(
         ["git"] + args,
         cwd=str(cwd),
