@@ -176,15 +176,17 @@ def github_live(ctx: Context) -> list[Finding]:
     )
 
     # OSS-GH-01: branch protection on main (requires extra API call)
-    prot = _gh_branch_protection(ctx, "main")
+    prot, prot_err = _gh_branch_protection(ctx, "main")
     if prot is None:
         out.append(
             Finding(
                 id="OSS-GH-01",
                 severity=Severity.MUST,
-                status=Status.SKIP,
+                status=Status.FAIL,
                 domain=DOMAIN,
-                summary="Could not read branch protection (not found, not admin, or private-repo repo setting)",
+                summary="main branch protection unverifiable (no admin scope or not configured)",
+                detail=prot_err,
+                remediation="Grant the gh token admin:repo scope and configure branch protection, or add `disable_gh_live_checks = true` if this repo intentionally has no branch protection.",
                 osps_control="OSPS-AC-03.01",
                 auto_apply_safe=False,
             )
@@ -271,7 +273,7 @@ def _gh_release_list(ctx: Context) -> list[dict]:
         return []
 
 
-def _gh_branch_protection(ctx: Context, branch: str) -> dict | None:
+def _gh_branch_protection(ctx: Context, branch: str) -> tuple[dict | None, str]:
     try:
         r = subprocess.run(
             ["gh", "api", f"repos/{{owner}}/{{repo}}/branches/{branch}/protection"],
@@ -282,7 +284,12 @@ def _gh_branch_protection(ctx: Context, branch: str) -> dict | None:
             check=False,
         )
         if r.returncode != 0:
-            return None
-        return json.loads(r.stdout)
-    except (subprocess.SubprocessError, FileNotFoundError, json.JSONDecodeError):
-        return None
+            detail = (r.stderr or r.stdout or "").strip()
+            return None, detail or f"gh exited {r.returncode}"
+        return json.loads(r.stdout), ""
+    except FileNotFoundError:
+        return None, "gh CLI not found"
+    except subprocess.SubprocessError as exc:
+        return None, str(exc)
+    except json.JSONDecodeError as exc:
+        return None, f"invalid JSON from gh: {exc}"
