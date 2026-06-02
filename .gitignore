@@ -45,6 +45,9 @@ tests/output/allure-report/
 .claude/worktrees/
 .tmp/
 
+# Test sandbox dirs created by test_db_start_guard.py (now cleaned up by the test itself)
+db-start-guard-*/
+
 # Post-mortem evidence artifacts (not committed)
 .evidence/
 
