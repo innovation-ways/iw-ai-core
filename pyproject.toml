@@ -126,6 +126,7 @@ select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN
 "orch/db/migrations/**" = ["E501", "TC003", "F401", "UP035", "I001"]  # migration files: long column definitions; Sequence used at runtime in upgrade(); boilerplate imports unused in merge migrations
 "dashboard/routers/**" = ["B008", "TC001", "PT028"]  # FastAPI Depends() in default args is canonical; TC001 conflicts with FastAPI runtime model resolution; PT028 misfires on dashboard/routers/tests.py — ruff treats route handlers prefixed `tests_*` as pytest tests
 "dashboard/services/oss_service.py" = ["S603", "S607", "S108"]  # git subprocess; /tmp paths for worktrees
+"scripts/check_pending_down_revision.py" = ["S603", "S607"]  # git diff is intentional for diff-scoped migration lint
 "scripts/backfill_functional_doc.py" = ["S603", "S607"]  # opencode subprocess; agent script
 "scripts/e2e_health_check.py" = ["T201", "S310"]  # CLI script; print output; http URL fetch
 "orch/test_health_service.py" = ["S110", "S603", "S607"]  # try/except/pass for optional pyproject.toml fail_under; trusted repo scripts only

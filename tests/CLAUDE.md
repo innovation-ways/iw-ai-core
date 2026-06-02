@@ -13,6 +13,8 @@ pytest-based tests with strict DB isolation rules.
 - **TDD = RED → GREEN → REFACTOR.** `backend-impl` writes the failing test first, *runs it and confirms it fails for the right reason*, records the RED output in its execution report, then writes the minimal implementation, then refactors with tests green. Tests are written *before* the implementation — not after, not alongside.
 - **Coverage is a floor on what's exercised, not the gate.** A high coverage number with weak assertions is the failure mode, not the goal. Coverage has a `fail_under` floor (`pyproject.toml`); never drop it — but passing it is necessary, not sufficient. Every assertion must be one that would fail if the production code regressed (the "mutation test question" in the testing skill §0).
 - **Every test must be able to fail.** If deleting the production line it covers wouldn't fail the test, the test is worthless — strengthen or remove it. Tests assert on *behaviour*, never only on their own mocks.
+- **"Should not raise" tests MUST assert on the result.** A test whose only purpose is to confirm a function does not throw must still make a positive assertion. Prefer: `result = fn(); assert result is None` (or assert on a specific non-None value). A test with no `assert` statement is vacuous — `check_test_assertions.py` will flag it.
+- **String-content checks: use `find()`, not `in`.** `assert "substring" in result` is tautological per the assertion scanner (`ast.In` rule). Use `assert result.lower().find("substring") != -1` instead. For list membership checks where order does not matter, use an explicit equality or `any()` call with an informative failure message.
 
 ## Structure
 
@@ -77,6 +79,7 @@ uv run pytest -k "test_next_id" -v         # Match by test name
 
 ## Gotchas
 
+- **`_HEAD_REVISION` and runtime-option count constants must be updated on every migration merge.** Search for `_HEAD_REVISION` across `tests/` and update it to the new Alembic head. Also update any integer literal in test assertions that counts registered runtime options or migration catalog entries — these go stale every time a migration adds a new row. See CLAUDE.md migration section for the full invariant (CR-00095, Issue E).
 - Unit tests must not import `orch.config` at module level if env vars are being patched — import inside the test function or use `importlib` carefully
 - **NEVER import `dashboard.routers.*` or `dashboard.dependencies` in a unit test unless a testcontainer `db_session` is in scope.** These modules load `SessionLocal` on import via `orch.db.session.__getattr__`, which calls `safe_create_engine()`. The live-DB guard fires immediately because `tests/conftest.py` redirects `IW_CORE_DB_HOST:PORT` to a blocked address — making any engine URL look like the "live" DB to `is_live_db_url()`. You will see `LiveDbConnectionRefusedError` at *collection time*, before any test body runs, and every test in the file will fail. To unit-test a pure function from a router module (e.g. `_preprocess_mermaid`): either (a) extract it to a utility module with no DB in its import chain, or (b) use the testcontainer-backed `db_session` fixture + `app.dependency_overrides[get_db]` pattern shown in `tests/dashboard/test_jobs_filter_ui.py`.
 - Integration test fixtures are `scope="session"` for the container, `scope="function"` for DB transactions (rollback after each test)

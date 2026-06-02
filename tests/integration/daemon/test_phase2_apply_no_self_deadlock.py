@@ -36,7 +36,10 @@ def _ensure_iw_core_project(db_session_factory: sessionmaker) -> None:
         seed.close()
 
 
-_HEAD_REVISION = "3448ea03937d"  # F-00092 add db_backup_jobs (current head after I-00130)
+_HEAD_REVISION = (
+    "3448ea03937d"  # MUST update this constant whenever a new migration is added to main —
+)
+# see CLAUDE.md migration section (CR-00095)
 _PREV_REVISION = "76250ecb2593"
 
 

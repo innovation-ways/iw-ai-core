@@ -30,6 +30,8 @@ install:
 # --- Quality ---
 lint: lint-js lint-templates
 	uv run ruff check .
+	uv run python scripts/check_downgrade_minus1.py
+	uv run python scripts/check_pending_down_revision.py
 
 # Auto-fix all ruff-fixable lint and format violations (safe to run in worktrees).
 # Use this as a recovery step when `make lint` or `make format-check` fails with
