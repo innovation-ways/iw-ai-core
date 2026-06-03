@@ -67,12 +67,36 @@ def check_file(path: Path) -> list[tuple[int, str]]:
     return findings
 
 
+def _current_branch() -> str | None:
+    """Return the current git branch name, or None if it cannot be determined."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+    except subprocess.CalledProcessError:
+        return None
+
+
 def _added_migration_files() -> list[Path]:
     """Discover migration files added in the current branch vs main.
+
+    Returns [] immediately when running on the main branch itself — migrations
+    committed directly to main have already been "merged" (their down_revision
+    values are real hashes, not PENDING, which is correct post-merge state).
+    The PENDING check is only meaningful on feature/fix branches pending merge
+    through the daemon's migration_rebase.py queue.
 
     Fails open: if no base ref resolves or any git call fails, returns []
     so the run exits 0 rather than crashing lint.
     """
+    if _current_branch() == "main":
+        return []
+
     # Determine base ref — try origin/main first, then main
     for ref in ("origin/main", "main"):
         try:

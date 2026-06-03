@@ -21,12 +21,12 @@ from orch.db.safe_migrate import (
 class TestAssertNotAgentContext:
     """Tests for AssertNotAgentContext scenarios."""
 
-    def test_does_not_raise_when_env_false(self) -> None:  # noqa: assertion-scanner
+    def test_does_not_raise_when_env_false(self) -> None:  # assertion-scanner
         """Verifies that does not raise when env false."""
         with patch.dict("os.environ", {"IW_CORE_AGENT_CONTEXT": "false"}, clear=False):
             _assert_not_agent_context()
 
-    def test_does_not_raise_when_env_absent(self) -> None:  # noqa: assertion-scanner
+    def test_does_not_raise_when_env_absent(self) -> None:  # assertion-scanner
         """Verifies that does not raise when env absent."""
         with patch.dict("os.environ", {}, clear=False):
             _assert_not_agent_context()
@@ -222,7 +222,7 @@ class TestAssertNotAgentContextRelax:
         ):
             _assert_not_agent_context("postgresql+psycopg://localhost:5433/iw_core")
 
-    def test_allows_against_per_worktree_db_when_per_worktree_flag_set(self) -> None:  # noqa: assertion-scanner
+    def test_allows_against_per_worktree_db_when_per_worktree_flag_set(self) -> None:  # noqa: E501  # assertion-scanner
         """Verifies that allows against per worktree db when per worktree flag set."""
         from orch.db.safe_migrate import _assert_not_agent_context
 
@@ -247,7 +247,7 @@ class TestAssertNotAgentContextRelax:
         ):
             _assert_not_agent_context("postgresql+psycopg://localhost:5433/iw_core")
 
-    def test_blocks_when_only_per_worktree_flag_without_agent_context_is_irrelevant(  # noqa: assertion-scanner
+    def test_blocks_when_only_per_worktree_flag_without_agent_context_is_irrelevant(  # noqa: E501  # assertion-scanner
         self,
     ) -> None:
         """Verifies that blocks when only per worktree flag without agent context is irrelevant."""
@@ -260,7 +260,7 @@ class TestAssertNotAgentContextRelax:
         ):
             _assert_not_agent_context("postgresql+psycopg://localhost:34567/iw_worktree")
 
-    def test_allows_outside_agent_context_without_flag(self) -> None:  # noqa: assertion-scanner
+    def test_allows_outside_agent_context_without_flag(self) -> None:  # assertion-scanner
         """Verifies that allows outside agent context without flag."""
         from orch.db.safe_migrate import _assert_not_agent_context
 

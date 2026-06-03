@@ -318,7 +318,7 @@ class TestPostArchiveCommands:
 
         assert mock_run.call_count == 3
 
-    def test_no_commands_configured_skips_subprocess(self) -> None:  # noqa: assertion-scanner
+    def test_no_commands_configured_skips_subprocess(self) -> None:  # assertion-scanner
         """Verifies that no commands configured skips subprocess."""
         db = _make_db(batch_items=[])
 
