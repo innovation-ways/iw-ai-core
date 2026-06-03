@@ -57,18 +57,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
-        with:
-          args: >-
-            detect
-            --no-git
-            --config .gitleaks.toml
-            --report-format sarif
-            --report-path gitleaks.sarif
-          fail-on: true
 
       # SARIF uploads target GitHub Code Scanning, which on private repos requires
       # GitHub Advanced Security. Skip the upload while private; it resumes
@@ -131,10 +124,13 @@ jobs:
       - name: Install deps
         run: uv sync --frozen
 
+      - name: Install semgrep
+        run: pip install semgrep
+
       - name: Run Semgrep
         run: |
           set -euo pipefail
-          uv run semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --sarif --output semgrep.sarif
+          semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --sarif --output semgrep.sarif
 
       # SARIF uploads target GitHub Code Scanning, which on private repos requires
       # GitHub Advanced Security. Skip the upload while private; it resumes
