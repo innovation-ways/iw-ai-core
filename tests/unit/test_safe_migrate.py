@@ -21,15 +21,17 @@ from orch.db.safe_migrate import (
 class TestAssertNotAgentContext:
     """Tests for AssertNotAgentContext scenarios."""
 
-    def test_does_not_raise_when_env_false(self) -> None:  # assertion-scanner
+    def test_does_not_raise_when_env_false(self) -> None:
         """Verifies that does not raise when env false."""
         with patch.dict("os.environ", {"IW_CORE_AGENT_CONTEXT": "false"}, clear=False):
-            _assert_not_agent_context()
+            result = _assert_not_agent_context()
+        assert result is None
 
-    def test_does_not_raise_when_env_absent(self) -> None:  # assertion-scanner
+    def test_does_not_raise_when_env_absent(self) -> None:
         """Verifies that does not raise when env absent."""
         with patch.dict("os.environ", {}, clear=False):
-            _assert_not_agent_context()
+            result = _assert_not_agent_context()
+        assert result is None
 
     def test_raises_when_env_true(self) -> None:
         """Verifies that raises when env true."""
@@ -260,7 +262,7 @@ class TestAssertNotAgentContextRelax:
         ):
             _assert_not_agent_context("postgresql+psycopg://localhost:34567/iw_worktree")
 
-    def test_allows_outside_agent_context_without_flag(self) -> None:  # assertion-scanner
+    def test_allows_outside_agent_context_without_flag(self) -> None:
         """Verifies that allows outside agent context without flag."""
         from orch.db.safe_migrate import _assert_not_agent_context
 
@@ -269,4 +271,5 @@ class TestAssertNotAgentContextRelax:
             {"IW_CORE_AGENT_CONTEXT": "false"},
             clear=False,
         ):
-            _assert_not_agent_context("postgresql+psycopg://localhost:5433/iw_core")
+            result = _assert_not_agent_context("postgresql+psycopg://localhost:5433/iw_core")
+        assert result is None

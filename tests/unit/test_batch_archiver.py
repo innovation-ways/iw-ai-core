@@ -318,7 +318,7 @@ class TestPostArchiveCommands:
 
         assert mock_run.call_count == 3
 
-    def test_no_commands_configured_skips_subprocess(self) -> None:  # assertion-scanner
+    def test_no_commands_configured_skips_subprocess(self) -> None:
         """Verifies that no commands configured skips subprocess."""
         db = _make_db(batch_items=[])
 
@@ -329,7 +329,7 @@ class TestPostArchiveCommands:
         ):
             archive_batch("proj", "BATCH-001")
 
-        mock_run.assert_not_called()
+        assert mock_run.call_count == 0
 
     def test_failed_command_does_not_prevent_archiving(self) -> None:
         """A non-zero command exit must not stop the archive."""

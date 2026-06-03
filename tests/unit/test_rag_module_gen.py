@@ -24,9 +24,7 @@ class TestGenerateModuleDiagram:
         """Provide mock session for tests."""
         return MagicMock()
 
-    def test_generates_and_stores_returns_tuple(
-        self, mock_config, mock_session
-    ):  # assertion-scanner
+    def test_generates_and_stores_returns_tuple(self, mock_config, mock_session):
         """_generate_and_store_module_diagram processes response to extract purpose."""
         llm_response = MagicMock()
         llm_response.text = """\
@@ -66,6 +64,12 @@ This diagram shows the internal component structure of the orch.rag module.
                     session=mock_session,
                     retrieved_nodes=["context chunk 1", "context chunk 2"],
                 )
+            )
+
+            assert mock_doc_service.create_doc.call_count == 1, "create_doc must be called once"
+            content = mock_doc_service.create_doc.call_args[1]["content"]
+            assert content.find("purpose:") != -1, (
+                f"stored content must contain purpose annotation, got: {content[:200]}"
             )
 
     def test_purpose_extracted_and_normalized_to_single_line(self, mock_config, mock_session):
