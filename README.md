@@ -23,7 +23,9 @@ IW AI Core is the orchestration layer between your backlog and your main branch.
 - [Architecture](#architecture)
 - [Why IW AI Core?](#why-iw-ai-core)
 - [Dashboard](#dashboard)
-- [Documentation](#documentation)
+- [Research](#research)
+- [Documentation Catalogue](#documentation-catalogue)
+- [Docs Reference](#docs-reference)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -101,21 +103,81 @@ Modern AI coding tools answer questions or write patches — they don't own the 
 
 ## Dashboard
 
-![Work item history — 268 completed features, incidents, and change requests](assets/screenshot-queue.png)
+The dashboard is the human interface to the platform — a FastAPI + htmx web app with per-project pages for every stage of the development lifecycle.
 
-The dashboard is the human interface to the platform. Key pages:
-
-- **Queue / History / Batches** — design work items, approve batches, track outcomes
-- **Code** — RAG module browser, symbol explainer, streaming Q&A with citations
-- **Docs** — per-project doc catalogue with version diffs and HTML/PDF export
-- **Jobs** — unified table of all background jobs (batches, indexing, doc generation)
-- **Worktrees** — live git status of every active agent worktree
-
-![Code understanding — architecture map with inline RAG-backed Q&A chat panel](assets/screenshot-code-qa.png)
+<table>
+  <tr>
+    <td align="center">
+      <img src="assets/screenshot-queue.png" width="420"/><br/>
+      <sub><b>Work Item History</b> — filterable log of every feature, incident, and change request</sub>
+    </td>
+    <td align="center">
+      <img src="assets/screenshot-code-qa.png" width="420"/><br/>
+      <sub><b>Code Understanding</b> — architecture map with inline RAG-backed Q&A chat panel</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/screenshot-research.png" width="420"/><br/>
+      <sub><b>Research Catalogue</b> — filed research documents with mode tags and full-text search</sub>
+    </td>
+    <td align="center">
+      <img src="assets/screenshot-docs.png" width="420"/><br/>
+      <sub><b>Documentation Catalogue</b> — AI-generated docs with version tracking and export</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/screenshot-tests.png" width="420"/><br/>
+      <sub><b>Test Runner</b> — launch E2E, performance, and unit suites with one click</sub>
+    </td>
+    <td align="center">
+      <img src="assets/screenshot-quality.png" width="420"/><br/>
+      <sub><b>Quality Gates</b> — lint, format, type-check, dead code, and dependency hygiene</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
-## Documentation
+## Research
+
+![Research catalogue showing filed documents with mode tags](assets/screenshot-research.png)
+
+The Research page is a structured knowledge base built alongside the codebase. Every time a decision requires investigation — evaluating a library, understanding a failure mode, mapping a design space — the `/iw-research` skill files a research document with a unique ID (`R-NNNNN`), registers it in the database, and makes it searchable from the dashboard.
+
+**What it offers:**
+
+- **Filed research documents** tied to work items — so the reasoning behind a design decision is never lost in Slack or a browser tab
+- **Mode tagging** (Technical, Functional, Marketing, Compliance, Release) for filtering by audience
+- **Full-text search** across all research titles
+- **Direct linking** from design documents to the research that informed them
+- **Version-controlled** — every document lives in `docs/research/` in the repository, visible in git history
+
+Research documents are first-class project artifacts. When an agent designs a feature, it can read prior research to avoid reinvestigating solved problems.
+
+---
+
+## Documentation Catalogue
+
+![Documentation catalogue with versioned cards and export options](assets/screenshot-docs.png)
+
+The Docs page manages AI-generated technical documentation for each project. Rather than hand-maintaining docs that drift from the code, IW AI Core regenerates them on demand and tracks what has changed.
+
+**What it offers:**
+
+- **AI-generated documents** covering architecture, modules, components, diagrams, and guides — produced by the `iw-doc-generator` skill against the current codebase
+- **Stale detection** — the platform monitors source files and flags documents whose underlying code has changed since last generation, with a one-click "Regenerate All Stale" action
+- **Version history** — every generation is a new version; diffs show exactly what changed between `v1` and `v2`
+- **Export** — each document can be exported as HTML or PDF for sharing outside the platform
+- **Audience targeting** — documents carry audience metadata (`architects`, `senior-developers`, `contributors`) so agents can serve the right level of detail
+- **Editorial categories** — Technical, Functional, Marketing, Compliance, and Release, with per-project catalogues and a global `/docs` view spanning all projects
+
+Documents are stored in `docs/` in the repository. The platform is the generation and versioning layer — the content itself remains in git.
+
+---
+
+## Docs Reference
 
 | Document | Contents |
 |----------|----------|
