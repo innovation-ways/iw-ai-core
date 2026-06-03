@@ -526,12 +526,12 @@ test-security-module:  ## Run asserted security regression tests (distinct from 
 SECURITY_DIR := tests/output/security
 
 security-deps:
-	@command -v pip-audit >/dev/null 2>&1 || { \
+	@uv run pip-audit --version >/dev/null 2>&1 || { \
 		echo "ERROR: 'pip-audit' not found."; \
 		echo "Install: uv add --dev pip-audit"; \
 		exit 1; \
 	}
-	@command -v bandit >/dev/null 2>&1 || { \
+	@uv run bandit --version >/dev/null 2>&1 || { \
 		echo "ERROR: 'bandit' not found."; \
 		echo "Install: uv add --dev bandit[toml]"; \
 		exit 1; \
