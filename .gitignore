@@ -54,6 +54,25 @@ db-start-guard-*/
 # iw-fix-gates session logs (per-run developer artefact — not committed)
 ai-dev/work/fix-gates-*.md
 
+# Private development workspace — work items, archives, operational configs
+# Keep: ai-dev/templates/ and ai-dev/workflow.md (generic, useful for OSS users)
+ai-dev/active/
+ai-dev/work/
+ai-dev/archive/
+ai-dev/archives/
+ai-dev/iw-config/
+ai-dev/logs/
+
+# Generated work item reports
+reports/
+
+# Multi-project registry — contains local paths and project names
+# Commit projects.toml.example instead; each operator maintains their own projects.toml
+projects.toml
+
+# Internal documentation (marketing materials)
+documentation/
+
 # IDE
 .vscode/
 .idea/
@@ -80,6 +99,8 @@ execution_brief.json
 
 # Claude Code harness lock (per-session, causes merge conflicts)
 .claude/scheduled_tasks.lock
+# User-local Claude Code overrides (personal settings, not project config)
+.claude/settings.local.json
 
 .iw/
 # Per-worktree seed completion sentinel (host writes, app container polls)
