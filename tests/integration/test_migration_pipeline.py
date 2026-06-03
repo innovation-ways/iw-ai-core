@@ -306,6 +306,7 @@ def test_no_pending_migration_log_writes_to_live_db_under_test_context(
     if os.environ.get("IW_CORE_OPERATOR_APPLY") != "true":
         pytest.skip("Operator-only smoke test — set IW_CORE_OPERATOR_APPLY=true to run")
 
+    # Dev-default placeholder — not a real credential; change before any internet-facing deploy.
     url = f"postgresql://iw_orch:iw_orch@{live_host}:{live_port}/iw_orch"
     engine = create_engine(url)
     with engine.connect() as conn:

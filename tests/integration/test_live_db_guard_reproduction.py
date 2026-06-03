@@ -21,7 +21,8 @@ import textwrap
 import pytest
 from testcontainers.postgres import PostgresContainer
 
-# The canonical live DB URL — uses the operator's actual env vars.
+# Synthetic guard-test URL — "iw_orch:iw_orch" is a placeholder, not a real credential.
+# The live-DB guard fires before any network call, so the password is never used.
 _LIVE_HOST = os.environ.get("IW_CORE_DB_HOST", "localhost")
 _LIVE_PORT = os.environ.get("IW_CORE_DB_PORT", "5433")
 _LIVE_URL = f"postgresql://iw_orch:iw_orch@{_LIVE_HOST}:{_LIVE_PORT}/iw_orch"
@@ -44,6 +45,7 @@ def test_subprocess_in_test_context_cannot_connect_to_live_db() -> None:
         os.environ.pop('IW_CORE_DAEMON_CONTEXT', None)
         os.environ['IW_CORE_DB_HOST'] = {_LIVE_HOST!r}
         os.environ['IW_CORE_DB_PORT'] = '5433'
+        # Synthetic placeholder — guard fires before any network call; password unused.
         live_url = 'postgresql://iw_orch:iw_orch@localhost:5433/iw_orch'
         from orch.db.session import safe_create_engine
         e = safe_create_engine(live_url)
@@ -96,6 +98,7 @@ def test_daemon_armed_subprocess_via_agent_env_helper_cannot_connect_to_live_db(
             os.environ[k] = v
         os.environ['IW_CORE_DB_HOST'] = 'localhost'
         os.environ['IW_CORE_DB_PORT'] = '5433'
+        # Synthetic placeholder — guard fires before any network call; password unused.
         live_url = 'postgresql://iw_orch:iw_orch@localhost:5433/iw_orch'
         from orch.db.session import safe_create_engine
         e = safe_create_engine(live_url)
