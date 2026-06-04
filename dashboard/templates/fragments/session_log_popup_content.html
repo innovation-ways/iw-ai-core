@@ -1,0 +1,65 @@
+{# CR-00065: Session log popup content fragment.
+
+    The #session-log-modal-body div stays in the DOM (defined in item_steps_table.html).
+    When is_live=True, an outer wrapper with htmx polling attrs is included so the
+    poll survives after htmx swaps the content in. When is_live=False, only the
+    content body (no htmx wrapper) is returned.
+#}
+{% if is_live %}
+<div hx-get="/project/{{ project_id }}/item/{{ item_id }}/step/{{ step_id }}/session-log"
+     hx-trigger="every 5s[document.visibilityState=='visible'], visibilitychange[document.visibilityState=='visible'] from:document"
+     hx-swap="innerHTML">
+{% endif %}
+
+{% if turns %}
+  <div class="mb-2 flex items-center gap-2 text-muted-foreground border-b border-border pb-2">
+    <span class="font-semibold text-foreground">{{ step_id }}</span>
+    <span>run #{{ run_number }}</span>
+    {% if cli_tool %}<span class="px-1.5 py-0.5 rounded bg-muted text-xs">{{ cli_tool }}</span>{% endif %}
+    {% if is_live %}<span class="text-xs text-primary animate-pulse">● live</span>{% endif %}
+  </div>
+  {% for turn in turns %}
+    {% if not loop.first %}<div class="my-3 border-t border-border"></div>{% endif %}
+    {% for seg in turn %}
+      {% if seg.type == "compaction" %}
+        <div class="my-2 border-t border-dashed border-border text-center text-muted-foreground text-xs py-1">{{ seg.text }}</div>
+      {% elif seg.type == "assistant" %}
+        <div class="mb-2">
+          <span class="text-xs font-semibold text-primary">assistant</span>
+          <pre class="mt-0.5 whitespace-pre-wrap text-foreground">{{ seg.text }}</pre>
+        </div>
+      {% elif seg.type == "thinking" %}
+        <details class="mb-2 text-muted-foreground">
+          <summary class="cursor-pointer text-xs font-semibold hover:text-foreground">thinking (click to expand)</summary>
+          <pre class="mt-1 whitespace-pre-wrap text-xs">{{ seg.text }}</pre>
+        </details>
+      {% elif seg.type == "tool_call" %}
+        <div class="mb-1 px-2 py-1 rounded bg-muted/50 border-l-2 border-primary/50">
+          <span class="text-xs font-semibold text-primary">tool </span>
+          <span class="text-xs">{{ seg.text }}</span>
+        </div>
+      {% elif seg.type == "tool_result" %}
+        <details class="mb-2">
+          <summary class="cursor-pointer text-xs text-muted-foreground hover:text-foreground">result (click to expand)</summary>
+          <pre class="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{{ seg.text }}</pre>
+        </details>
+      {% elif seg.type == "error" %}
+        <div class="mb-2 px-2 py-1 rounded bg-destructive/10 border border-destructive/30 text-destructive text-xs">
+          <span class="font-semibold">error: </span>{{ seg.text }}
+        </div>
+      {% elif seg.type == "log" %}
+        <pre class="whitespace-pre-wrap text-foreground text-xs">{{ seg.text }}</pre>
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+{% else %}
+  <p class="text-muted-foreground text-xs">
+    {% if error_message %}
+      Step ended with: {{ error_message }}
+    {% else %}
+      No log content available yet.
+    {% endif %}
+  </p>
+{% endif %}
+
+{% if is_live %}</div>{% endif %}

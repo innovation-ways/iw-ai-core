@@ -1,0 +1,29 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Tests</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>Tests launches test suites per category (unit, integration, e2e) against the project repo, streams live output via SSE, and stores Allure reports for historical comparison.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Select a test category and click Run to launch a suite</li>
+    <li>Watch live log output as tests execute</li>
+    <li>Browse historical Allure reports</li>
+    <li>Kill a stuck or runaway run</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Work item</dt><dd>A Feature, Incident, or CR — may carry its own test run as part of its definition.</dd>
+    <dt>Fix cycle</dt><dd>Auto-triggered retry after a test failure.</dd>
+    <dt>Step</dt><dd>One atomic test or action within a work item.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="{{ docs_link }}">Open full docs →</a>
+  </footer>
+</section>

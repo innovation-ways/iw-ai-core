@@ -1,0 +1,80 @@
+{# F-00090 AC6: Dedicated Quality KPIs page.
+
+    Renders the full-screen quality KPIs section with a 12-week history table.
+    Route: GET /project/{project_id}/quality-kpis
+#}
+
+{% extends "base.html" %}
+
+{% block title %}Quality KPIs — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}quality-kpis{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl">
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-foreground mb-1">Quality KPIs</h1>
+    <p class="text-sm text-muted-foreground">
+      Regression rate alongside throughput — last 12 ISO weeks.
+    </p>
+  </div>
+
+  {# KPIs section — same fragment as per-project home (full-screen) #}
+  {% include "fragments/quality_kpis_section.html" %}
+
+  {# History table — longer history #}
+  {% if kpi_weeks %}
+    <div class="mt-8">
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+        Weekly Breakdown
+      </h2>
+      <div class="bg-card border border-border rounded-lg overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-border bg-muted/30">
+              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Week</th>
+              <th class="px-4 py-2 text-right font-medium text-muted-foreground">Merges</th>
+              <th class="px-4 py-2 text-right font-medium text-muted-foreground">Regressions</th>
+              <th class="px-4 py-2 text-right font-medium text-muted-foreground">Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for week in kpi_weeks | reverse %}
+              <tr class="border-b border-border last:border-0
+                {% if loop.first %}bg-muted/10{% endif %}">
+                <td class="px-4 py-2 font-mono text-xs text-foreground">{{ week.iso_week }}</td>
+                <td class="px-4 py-2 text-right text-foreground">{{ week.merges }}</td>
+                <td class="px-4 py-2 text-right text-foreground">{{ week.regressions }}</td>
+                <td class="px-4 py-2 text-right font-mono text-xs">
+                  {% if week.merges > 0 %}
+                    {% set rate_pct = "%.1f%%"|format(week.rate * 100) %}
+                    <span class="
+                      {% if week.rate == 0 %}text-success font-semibold
+                      {% elif week.rate >= 0.5 %}text-destructive font-semibold
+                      {% else %}text-warning{% endif %}">
+                      {{ rate_pct }}
+                    </span>
+                  {% else %}
+                    <span class="text-muted-foreground">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  if (!/HeadlessChrome|Playwright/i.test(navigator.userAgent || '')) return;
+  document.querySelectorAll('[hx-get="/system/nav/worktree-badge"], [hx-get="/api/usage/llm/fragment"], [hx-get^="/projects/"][hx-get$="/staleness-dot"]').forEach(function (el) {
+    el.setAttribute('hx-trigger', 'never');
+    el.removeAttribute('hx-get');
+  });
+})();
+</script>
+{% endblock %}

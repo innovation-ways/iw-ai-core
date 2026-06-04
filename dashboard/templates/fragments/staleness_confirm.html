@@ -1,0 +1,31 @@
+<div class="bg-card border border-border p-6 rounded-lg shadow-xl max-w-sm w-full mx-4">
+  <h3 class="text-lg font-semibold text-card-foreground">
+    {% if action and service_name %}
+      Confirm {{ action }} of {{ service_name }}
+    {% elif action %}
+      Confirm {{ action }}
+    {% else %}
+      Confirm action
+    {% endif %}
+  </h3>
+
+  {% if command_text %}
+    <p class="text-muted-foreground text-sm mt-2">Command to execute:</p>
+    <code class="block font-mono text-xs bg-muted text-foreground px-3 py-2 rounded mt-1 break-all">{{ command_text }}</code>
+  {% endif %}
+
+  <div class="flex gap-3 mt-5 justify-end">
+    <button
+      onclick="var d=document.getElementById('staleness-confirm-dialog');if(d){d.style.display='none';d.innerHTML=''}"
+      class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+      Cancel
+    </button>
+    <button
+      hx-post="{{ action_url }}"
+      hx-swap="none"
+      onclick="var d=document.getElementById('staleness-confirm-dialog');setTimeout(function(){if(d){d.style.display='none';d.innerHTML=''}},50)"
+      class="px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 transition-opacity bg-primary text-primary-foreground">
+      Confirm
+    </button>
+  </div>
+</div>

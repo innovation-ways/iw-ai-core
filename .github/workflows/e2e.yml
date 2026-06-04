@@ -1,0 +1,191 @@
+name: E2E Browser Journeys
+
+# E2E workflow: two jobs targeting the isolated E2E stack.
+#
+# Required environment variables (configure as repository secrets/variables):
+#   IW_BROWSER_BASE_URL   — base URL of the E2E dashboard (e.g. http://localhost:9900)
+#   COMPOSE_PROJECT_NAME  — unique compose project name for this run (e.g. iw-ai-core-e2e-f00088)
+#   E2E_FRONTEND_PORT     — host port for the dashboard (e.g. 9900)
+#   E2E_DB_PORT           — host port for the isolated postgres (e.g. 5432)
+#
+# The E2E stack is brought up by `scripts/e2e_up.sh` (called by the daemon's
+# browser_env.allocate_browser_env). Operators must ensure the stack is running
+# before this workflow executes, or trigger it via workflow_dispatch which starts
+# the stack first.
+#
+# See scripts/e2e_up.sh for the full list of env vars the compose stack expects.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Nightly full E2E run — informational during burn-in, alerts on regression.
+    # The e2e-smoke job does NOT trigger on schedule (it blocks PRs on every push).
+    - cron: "30 3 * * *"  # 03:30 UTC daily
+  workflow_dispatch:
+    inputs:
+      e2e_stack_name:
+        description: "COMPOSE_PROJECT_NAME for this run (e.g. iw-ai-core-e2e-f00088)"
+        required: false
+        type: string
+        default: "iw-ai-core-e2e-workflow"
+      frontend_port:
+        description: "E2E_FRONTEND_PORT (dashboard host port)"
+        required: false
+        type: string
+        default: "9900"
+      db_port:
+        description: "E2E_DB_PORT (postgres host port)"
+        required: false
+        type: string
+        default: "5432"
+
+concurrency:
+  # Cancel in-progress runs for the same ref to avoid port conflicts.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # e2e-smoke — blocking smoke subset (test_journey_home_navigation + queue_to_merge)
+  # ---------------------------------------------------------------------------
+  e2e-smoke:
+    name: E2E Smoke
+    # Only runs on pull_request and push — never on schedule or workflow_dispatch alone.
+    # The schedule/ workflow_dispatch triggers are on the e2e-full job only.
+    # E2E_CI_ENABLED must be set as a repository variable to opt in; silently skips
+    # (not fails) when the variable is absent or false, so unconfigured environments
+    # are not blocked by a missing E2E stack.
+    if: (github.event_name == 'pull_request' || github.event_name == 'push') && vars.E2E_CI_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      # These must be set from workflow inputs / repository variables / secrets.
+      # Operators: set IW_BROWSER_BASE_URL as a repository secret; set the port
+      # vars as repository variables (or pass via workflow_dispatch inputs above).
+      COMPOSE_PROJECT_NAME: ${{ github.event.inputs.e2e_stack_name || 'iw-ai-core-e2e-smoke' }}
+      E2E_FRONTEND_PORT: ${{ github.event.inputs.frontend_port || '9900' }}
+      E2E_DB_PORT: ${{ github.event.inputs.db_port || '5432' }}
+      IW_BROWSER_BASE_URL: "http://localhost:${{ github.event.inputs.frontend_port || '9900' }}"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Bring up the isolated E2E stack.
+      # scripts/e2e_up.sh requires: COMPOSE_PROJECT_NAME, E2E_FRONTEND_PORT,
+      # E2E_DB_PORT, IW_BROWSER_BASE_URL. The --wait flag blocks until healthy.
+      # Stale containers from prior failed runs are cleaned up inside e2e_up.sh.
+      - name: Bring up E2E stack
+        env:
+          COMPOSE_PROJECT_NAME: ${{ env.COMPOSE_PROJECT_NAME }}
+          E2E_FRONTEND_PORT: ${{ env.E2E_FRONTEND_PORT }}
+          E2E_DB_PORT: ${{ env.E2E_DB_PORT }}
+          IW_BROWSER_BASE_URL: ${{ env.IW_BROWSER_BASE_URL }}
+        run: |
+          echo "[e2e-smoke] bringing up stack: project=$COMPOSE_PROJECT_NAME dashboard=$E2E_FRONTEND_PORT db=$E2E_DB_PORT"
+          bash scripts/e2e_up.sh
+
+      # Seed the database with the minimum data the smoke journeys need.
+      - name: Seed E2E database
+        env:
+          IW_CORE_DB_HOST: "localhost"
+          IW_CORE_DB_PORT: ${{ env.E2E_DB_PORT }}
+          IW_CORE_DB_NAME: "iw_e2e"
+          IW_CORE_DB_USER: "iw_e2e"
+          IW_CORE_DB_PASSWORD: "iw_e2e_dev"
+          IW_E2E_SEED: "1"
+        run: |
+          echo "[e2e-smoke] seeding database..."
+          uv run python scripts/e2e_seed.py
+
+      # Run the smoke subset — blocks the PR if it fails.
+      - name: Run E2E smoke journeys
+        env:
+          IW_BROWSER_BASE_URL: ${{ env.IW_BROWSER_BASE_URL }}
+          IW_E2E_EVIDENCE_DIR: "tests/e2e/_artifacts"
+        run: make test-e2e-smoke
+
+      # Always clean up the stack, even if the test step fails.
+      - name: Tear down E2E stack
+        if: always()
+        env:
+          COMPOSE_PROJECT_NAME: ${{ env.COMPOSE_PROJECT_NAME }}
+        run: |
+          echo "[e2e-smoke] tearing down stack: $COMPOSE_PROJECT_NAME"
+          docker compose -f docker-compose.e2e.yml -p "$COMPOSE_PROJECT_NAME" down --remove-orphans --volumes || true
+
+  # ---------------------------------------------------------------------------
+  # e2e-full — informational full suite (all 6 journeys, continue-on-error)
+  # ---------------------------------------------------------------------------
+  e2e-full:
+    name: E2E Full
+    # Runs on schedule (nightly) and workflow_dispatch only — NOT on push/PR.
+    # This is intentional: the full suite is informational during burn-in and
+    # would block every PR if it ran on push; the smoke subset (e2e-smoke) is
+    # the blocking gate for PRs.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true  # informational during burn-in; alerts on regression
+    env:
+      COMPOSE_PROJECT_NAME: ${{ github.event.inputs.e2e_stack_name || 'iw-ai-core-e2e-full' }}
+      E2E_FRONTEND_PORT: ${{ github.event.inputs.frontend_port || '9901' }}
+      E2E_DB_PORT: ${{ github.event.inputs.db_port || '5433' }}
+      IW_BROWSER_BASE_URL: "http://localhost:${{ github.event.inputs.frontend_port || '9901' }}"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Bring up E2E stack
+        env:
+          COMPOSE_PROJECT_NAME: ${{ env.COMPOSE_PROJECT_NAME }}
+          E2E_FRONTEND_PORT: ${{ env.E2E_FRONTEND_PORT }}
+          E2E_DB_PORT: ${{ env.E2E_DB_PORT }}
+          IW_BROWSER_BASE_URL: ${{ env.IW_BROWSER_BASE_URL }}
+        run: |
+          echo "[e2e-full] bringing up stack: project=$COMPOSE_PROJECT_NAME dashboard=$E2E_FRONTEND_PORT db=$E2E_DB_PORT"
+          bash scripts/e2e_up.sh
+
+      - name: Seed E2E database
+        env:
+          IW_CORE_DB_HOST: "localhost"
+          IW_CORE_DB_PORT: ${{ env.E2E_DB_PORT }}
+          IW_CORE_DB_NAME: "iw_e2e"
+          IW_CORE_DB_USER: "iw_e2e"
+          IW_CORE_DB_PASSWORD: "iw_e2e_dev"
+          IW_E2E_SEED: "1"
+        run: |
+          echo "[e2e-full] seeding database..."
+          uv run python scripts/e2e_seed.py
+
+      # Run the full suite — continue-on-error so a failure doesn't block the cleanup.
+      - name: Run E2E full journeys
+        env:
+          IW_BROWSER_BASE_URL: ${{ env.IW_BROWSER_BASE_URL }}
+          IW_E2E_EVIDENCE_DIR: "tests/e2e/_artifacts"
+        run: make test-e2e
+
+      - name: Tear down E2E stack
+        if: always()
+        env:
+          COMPOSE_PROJECT_NAME: ${{ env.COMPOSE_PROJECT_NAME }}
+        run: |
+          echo "[e2e-full] tearing down stack: $COMPOSE_PROJECT_NAME"
+          docker compose -f docker-compose.e2e.yml -p "$COMPOSE_PROJECT_NAME" down --remove-orphans --volumes || true

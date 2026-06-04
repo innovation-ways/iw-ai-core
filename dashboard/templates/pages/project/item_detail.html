@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+{% from "components/step_pipeline.html" import step_pipeline %}
+
+{% block title %}{{ item.id }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}item_detail{% endblock %}
+
+{% block head %}
+{{ super() }}
+{% include "components/libs/mermaid.html" %}
+{% endblock %}
+
+{% block content %}
+<!-- Confirm dialog container (htmx swaps fragment here) -->
+<div id="confirm-dialog"></div>
+
+<!-- Toast container (htmx swaps action responses here) -->
+<div id="action-toast" aria-live="polite"></div>
+
+<div id="item-header-container" data-tour="item-header">
+  {% include "fragments/item_header.html" %}
+</div>
+
+<!-- SSE trigger: refreshes item header on status-update event -->
+<div id="item-header-sse-trigger"
+     hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/fragment/header"
+     hx-trigger="item-header-refresh"
+     hx-target="#item-header-container"
+     hx-swap="innerHTML">
+</div>
+
+<!-- Tab navigation -->
+<div id="tab-nav" data-tour="item-tabs" class="flex border-b border-border mb-4 overflow-x-auto">
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/overview"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap border-b-2 border-primary text-primary font-medium transition-colors">
+    Overview
+  </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/design-doc"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
+    Design Document
+  </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/functional-doc"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
+    Functional Design
+  </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/reports"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
+    Reports
+  </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/files"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
+    Files
+  </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/evidences"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
+    Evidences
+  </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/logs"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
+    Logs
+  </button>
+  <button id="tab-fix-cycles-btn" data-tour="item-fix-cycles"
+          hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/fix-cycles"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+    Fix Cycles
+    {% if metrics.fix_cycles_count > 0 %}
+      <span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-xs font-bold bg-warning text-warning-foreground">{{ metrics.fix_cycles_count }}</span>
+    {% endif %}
+  </button>
+  <button hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/execution-report"
+          hx-target="#tab-content"
+          hx-swap="innerHTML"
+          hx-on:click="setActiveTab(this)"
+          class="tab-btn px-4 py-2 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground transition-colors">
+    Execution Report
+  </button>
+</div>
+
+<!-- Tab content area (initially loaded with overview) -->
+<div id="tab-content">
+  {% include "fragments/item_overview.html" %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% include "components/toast.html" %}
+<script>
+// Track active tab URL for SSE-driven refresh
+var _activeTabUrl = '/project/{{ current_project.id }}/item/{{ item.id }}/tab/overview';
+
+function setActiveTab(btn) {
+  document.querySelectorAll('.tab-btn').forEach(function(b) {
+    b.classList.remove('border-b-2', 'border-primary', 'text-primary', 'font-medium');
+    b.classList.add('text-muted-foreground');
+  });
+  btn.classList.add('border-b-2', 'border-primary', 'text-primary', 'font-medium');
+  btn.classList.remove('text-muted-foreground');
+  _activeTabUrl = btn.getAttribute('hx-get') || _activeTabUrl;
+}
+
+function activateFixCyclesTab() {
+  var btn = document.getElementById('tab-fix-cycles-btn');
+  if (btn) setActiveTab(btn);
+}
+
+// SSE for live step status updates
+iwSSE.on('running-update', function (e) {
+  // Refresh header (metrics update on step progress)
+  if (document.getElementById('item-header-sse-trigger')) {
+    htmx.trigger('#item-header-sse-trigger', 'item-header-refresh');
+  }
+  // Refresh overview tab if active
+  if (_activeTabUrl && _activeTabUrl.indexOf('/tab/overview') !== -1) {
+    htmx.ajax('GET', _activeTabUrl, {target: '#tab-content', swap: 'innerHTML'});
+  }
+});
+
+iwSSE.on('status-update', function (e) {
+  // Refresh header (status badge, buttons, metrics)
+  if (document.getElementById('item-header-sse-trigger')) {
+    htmx.trigger('#item-header-sse-trigger', 'item-header-refresh');
+  }
+  // Also refresh overview tab if active
+  if (_activeTabUrl && _activeTabUrl.indexOf('/tab/overview') !== -1) {
+    htmx.ajax('GET', _activeTabUrl, {target: '#tab-content', swap: 'innerHTML'});
+  }
+});
+
+iwSSE.on('toast', function (e) {
+  try { showToast(JSON.parse(e.data)); } catch (_) {}
+});
+
+// Handle HX-Trigger showToast from action buttons
+document.body.addEventListener('htmx:afterRequest', function(e) {
+  var triggerHeader = e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger');
+  if (!triggerHeader) return;
+  try {
+    var trigger = JSON.parse(triggerHeader);
+    if (trigger.showToast) {
+      showToast(trigger.showToast);
+      // Reload the page after item-level actions so status/buttons update
+      if (trigger.showToast.reload) {
+        setTimeout(function() { window.location.reload(); }, 600);
+      }
+    }
+  } catch(_) {}
+});
+</script>
+<script>
+if (typeof window.iwChat !== 'undefined') {
+  window.iwChat.setContext({type: "{{ item.type }}", id: "{{ item.id }}", title: {{ item.title | tojson }}});
+}
+</script>
+<script>
+(function () {
+  if (!/HeadlessChrome|Playwright/i.test(navigator.userAgent || '')) return;
+  document.querySelectorAll('[hx-get="/system/nav/worktree-badge"], [hx-get="/api/usage/llm/fragment"], [hx-get^="/projects/"][hx-get$="/staleness-dot"]').forEach(function (el) {
+    el.setAttribute('hx-trigger', 'never');
+    el.removeAttribute('hx-get');
+  });
+})();
+</script>
+{% endblock %}

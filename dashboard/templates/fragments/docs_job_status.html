@@ -1,0 +1,81 @@
+<div id="docs-job-status-{{ job_id }}" class="flex flex-col gap-2 p-3 bg-card border border-border rounded-lg"
+     hx-ext="sse"
+     sse-connect="/project/{{ project_id }}/api/docs/jobs/{{ job_id }}/stream"
+     sse-swap="message"
+     hx-target="#docs-job-status-{{ job_id }}"
+     hx-swap="innerHTML">
+
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-2 text-sm">
+      <svg class="animate-spin w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span class="font-medium text-foreground">Generating documentation<span id="elapsed-time-{{ job_id }}">...</span></span>
+    </div>
+    <button hx-delete="/project/{{ project_id }}/api/docs/jobs/{{ job_id }}"
+            hx-target="#docs-job-status-{{ job_id }}"
+            hx-swap="innerHTML"
+            class="text-xs text-muted-foreground hover:text-red-500 transition-colors px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+            title="Cancel generation"
+            aria-label="Cancel generation">
+      Cancel
+    </button>
+  </div>
+
+  <div class="flex items-center gap-2 text-xs text-muted-foreground">
+    <span>Skill: <span id="skill-name-{{ job_id }}" class="font-mono">iw-doc-generator</span></span>
+    <span>·</span>
+    <span id="job-elapsed-{{ job_id }}">0:00 elapsed</span>
+  </div>
+
+  <div class="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+    <div class="h-full bg-primary/60 rounded-full animate-pulse w-full"></div>
+  </div>
+
+  <script>
+    (function() {
+      var startTime = Date.now();
+      var intervalId = setInterval(function() {
+        var elapsed = Math.floor((Date.now() - startTime) / 1000);
+        var mins = Math.floor(elapsed / 60);
+        var secs = elapsed % 60;
+        var el = document.getElementById('job-elapsed-{{ job_id }}');
+        if (el) {
+          el.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs + ' elapsed';
+        }
+      }, 1000);
+
+      document.body.addEventListener('docJobCompleted', function(e) {
+        if (e.detail && e.detail.job_id === '{{ job_id }}') {
+          clearInterval(intervalId);
+        }
+      });
+      document.body.addEventListener('docJobFailed', function(e) {
+        if (e.detail && e.detail.job_id === '{{ job_id }}') {
+          clearInterval(intervalId);
+        }
+      });
+    })();
+  </script>
+</div>
+
+<script>
+  document.body.addEventListener('sse message', function(e) {
+    try {
+      var data = JSON.parse(e.detail.data);
+      if (data.event === 'status' && data.status === 'running') {
+        var skillEl = document.getElementById('skill-name-{{ job_id }}');
+        if (skillEl && data.skill) {
+          skillEl.textContent = data.skill;
+        }
+      } else if (data.event === 'completed') {
+        var evt = new CustomEvent('docJobCompleted', {detail: {job_id: '{{ job_id }}', doc_id: data.doc_id}});
+        document.body.dispatchEvent(evt);
+      } else if (data.event === 'failed') {
+        var evt = new CustomEvent('docJobFailed', {detail: {job_id: '{{ job_id }}', doc_id: data.doc_id, error: data.error}});
+        document.body.dispatchEvent(evt);
+      }
+    } catch (err) {}
+  });
+</script>

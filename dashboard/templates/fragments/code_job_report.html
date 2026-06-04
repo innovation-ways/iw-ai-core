@@ -1,0 +1,31 @@
+{# Neutral "Last run" summary for the most recent completed code map job.
+   Replaces the former persistent success banner; success toast is emitted
+   via DaemonEvent(code_map_completed) and shown by components/toast.html. #}
+<div id="code-last-run-banner" class="flex items-center justify-between px-3 py-2 bg-muted/30 border border-border rounded-lg text-xs text-muted-foreground">
+  <div class="flex items-center gap-2 min-w-0">
+    <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    </svg>
+    <span class="truncate">
+      Last run
+      {% if last_completed_duration %}· {{ last_completed_duration }}{% endif %}
+      · {{ last_completed_job.files_indexed }} files · {{ last_completed_job.chunks_created | intcomma }} chunks
+    </span>
+  </div>
+  <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+    <a href="/project/{{ current_project.id }}/jobs/code_mapping/{{ last_completed_job.id }}"
+       class="text-primary hover:underline">
+      View →
+    </a>
+    <button type="button"
+            aria-label="Dismiss last-run banner"
+            data-dismiss-job-id="{{ last_completed_job.id }}"
+            data-project-id="{{ current_project.id }}"
+            class="p-0.5 rounded hover:bg-muted transition-colors">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+</div>
+<script src="/static/code/last_run_banner.js" defer></script>

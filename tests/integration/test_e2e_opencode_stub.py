@@ -1,0 +1,414 @@
+"""Integration tests for the E2E OpenCode stub process."""
+
+from __future__ import annotations
+
+import base64
+import os
+import secrets
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import httpx
+import pytest
+from httpx_sse import connect_sse
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+STUB_PATH = Path(__file__).resolve().parents[2] / "scripts" / "e2e_opencode_stub.py"
+
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
+def _wait_ready(base_url: str, timeout: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            resp = httpx.get(f"{base_url}/global/health", timeout=0.5)
+            if resp.status_code == 200:
+                return
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.1)
+    raise RuntimeError(f"stub at {base_url} did not start within {timeout}s")
+
+
+def _auth_headers(password: str) -> dict[str, str]:
+    token = base64.b64encode(f"opencode:{password}".encode()).decode("ascii")
+    return {"Authorization": f"Basic {token}"}
+
+
+def _create_session(base_url: str, password: str) -> str:
+    with httpx.Client(auth=httpx.BasicAuth("opencode", password), timeout=2.0) as client:
+        resp = client.post(
+            f"{base_url}/session",
+            json={"model": "stub/echo", "agent": "build", "directory": "/tmp"},
+        )
+    assert resp.status_code == 200
+    sid = resp.json()["id"]
+    return str(sid)
+
+
+def _collect_events(iterator: object, *, count: int) -> list[object]:
+    events = []
+    for _ in range(count):
+        events.append(next(iterator))  # type: ignore[arg-type]
+    return events
+
+
+@pytest.fixture(scope="module")
+def stub() -> Iterator[tuple[str, str]]:
+    port = _free_port()
+    password = secrets.token_hex(16)
+    proc = subprocess.Popen(  # noqa: S603
+        [
+            sys.executable,
+            str(STUB_PATH),
+            "serve",
+            "--hostname",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        env={**os.environ, "OPENCODE_SERVER_PASSWORD": password},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    base_url = f"http://127.0.0.1:{port}"
+    try:
+        _wait_ready(base_url)
+        yield base_url, password
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+
+def test_health_returns_200_unauthenticated(stub: tuple[str, str]) -> None:
+    base_url, _ = stub
+    resp = httpx.get(f"{base_url}/global/health", timeout=2.0)
+    assert resp.status_code == 200
+    assert resp.text == ""
+
+
+def test_basic_auth_required_on_protected_endpoints(stub: tuple[str, str]) -> None:
+    base_url, password = stub
+    no_auth = httpx.get(f"{base_url}/config", timeout=2.0)
+    assert no_auth.status_code == 401
+
+    wrong_auth = httpx.get(
+        f"{base_url}/config",
+        headers=_auth_headers("wrong-password"),
+        timeout=2.0,
+    )
+    assert wrong_auth.status_code == 401
+
+    right_auth = httpx.get(f"{base_url}/config", headers=_auth_headers(password), timeout=2.0)
+    assert right_auth.status_code == 200
+
+
+def test_config_returns_models_array(stub: tuple[str, str]) -> None:
+    base_url, password = stub
+    resp = httpx.get(f"{base_url}/config", headers=_auth_headers(password), timeout=2.0)
+    assert resp.status_code == 200
+    data = resp.json()
+    # CR-00057: the stub advertises a realistic catalog (curated 5 + extras
+    # + legacy stub/echo) so the chat allowlist intersection has something
+    # non-trivial to filter. The shape stays {id, name} list; the only
+    # invariants the dashboard relies on are the legacy stub/echo entry
+    # remaining present (default_model fallback) and default_model showing
+    # up in the models list.
+    model_ids = {row["id"] for row in data["models"]}
+    assert "stub/echo" in model_ids
+    assert "anthropic/claude-opus-4-7" in model_ids
+    assert "anthropic/claude-sonnet-4-6" in model_ids
+    assert "minimax/MiniMax-M2.7" in model_ids
+    assert "openai/gpt-5.3-codex" in model_ids
+    assert "ollama/gemma4:26b" in model_ids
+    assert data["default_model"] == "stub/echo"
+    assert data["default_model"] in model_ids
+
+
+def test_session_create_returns_id(stub: tuple[str, str]) -> None:
+    base_url, password = stub
+    sid = _create_session(base_url, password)
+    assert sid.startswith("ses_")
+    assert len(sid) == 12
+    assert set(sid[4:]).issubset(set("0123456789abcdef"))
+
+
+def test_session_list_returns_created_sessions(stub: tuple[str, str]) -> None:
+    base_url, password = stub
+    sid_1 = _create_session(base_url, password)
+    sid_2 = _create_session(base_url, password)
+
+    with httpx.Client(auth=httpx.BasicAuth("opencode", password), timeout=2.0) as client:
+        listed = client.get(f"{base_url}/session")
+
+    assert listed.status_code == 200
+    rows = listed.json()
+    # Use set equality on the last 2: earlier tests in the same module
+    # (e.g. test_session_create_returns_id, alphabetically before this one)
+    # may have created sessions that are still in the list, so rows[-2:]
+    # is not guaranteed to be [sid_1, sid_2] in insertion order — only
+    # that those two IDs are the last two distinct entries.
+    assert {row["id"] for row in rows[-2:]} == {sid_1, sid_2}
+
+
+def test_session_get_unknown_returns_404(stub: tuple[str, str]) -> None:
+    base_url, password = stub
+    with httpx.Client(auth=httpx.BasicAuth("opencode", password), timeout=2.0) as client:
+        resp = client.get(f"{base_url}/session/nonexistent")
+    assert resp.status_code == 404
+
+
+def test_messages_empty_for_new_session(stub: tuple[str, str]) -> None:
+    base_url, password = stub
+    sid = _create_session(base_url, password)
+    with httpx.Client(auth=httpx.BasicAuth("opencode", password), timeout=2.0) as client:
+        resp = client.get(f"{base_url}/session/{sid}/messages")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+_PROMPT_EVENT_COUNT = 6  # 4 message.part.updated + message.updated + session.idle
+
+
+def test_prompt_async_returns_200_then_event_stream_emits_sequence(stub: tuple[str, str]) -> None:
+    """The new (opencode-1.15-shaped) flow streams 4 delta events, finalises
+    with message.updated (info.time.completed), then session.idle. Every
+    payload carries the {type, id, properties} envelope chat.js consumes."""
+    base_url, password = stub
+    sid = _create_session(base_url, password)
+    auth = httpx.BasicAuth("opencode", password)
+
+    with (
+        httpx.Client(base_url=base_url, auth=auth, timeout=3.0) as client,
+        connect_sse(client, "GET", "/event") as event_source,
+    ):
+        event_iter = event_source.iter_sse()
+        prompt = client.post(
+            f"/session/{sid}/prompt_async",
+            json={"parts": [{"type": "text", "text": "run ls"}]},
+        )
+        assert prompt.status_code == 200
+        events = _collect_events(event_iter, count=_PROMPT_EVENT_COUNT)
+
+    assert [ev.event for ev in events] == [
+        "message.part.updated",
+        "message.part.updated",
+        "message.part.updated",
+        "message.part.updated",
+        "message.updated",
+        "session.idle",
+    ]
+    ids = [int(str(ev.id)) for ev in events]
+    assert ids == sorted(ids), "event ids must be monotonically increasing"
+
+    # Wire-shape contract: every native event payload is {type, id, properties}.
+    for ev in events:
+        body = ev.json()
+        assert body["type"] == ev.event
+        assert isinstance(body.get("properties"), dict), f"{ev.event} missing properties wrapper"
+
+    # Delta accumulation: concatenated deltas equal the final part text and
+    # match the stub's hardcoded reply.
+    deltas = [ev.json()["properties"]["delta"] for ev in events[:4]]
+    assert "".join(deltas) == "ok — running ls"
+    final_part_text = events[3].json()["properties"]["part"]["text"]
+    assert final_part_text == "ok — running ls"
+
+    # message.updated finalisation: info.role=assistant, info.time.completed
+    # populated, no error.
+    final = events[4].json()["properties"]
+    assert final["info"]["role"] == "assistant"
+    assert "completed" in final["info"]["time"]
+    assert final["info"]["error"] is None
+    assert final["info"]["sessionID"] == sid
+
+    # session.idle: properties.sessionID identifies the closed session.
+    idle = events[5].json()["properties"]
+    assert idle["sessionID"] == sid
+
+
+def test_permissions_endpoint_acks_with_permission_replied_event(stub: tuple[str, str]) -> None:
+    """The default _process_prompt no longer asks for permission, so the
+    permissions endpoint is idempotent: it returns 200 and emits a
+    permission.replied event so a future variant that re-enables the
+    permission gate can resume against the same wire shape."""
+    base_url, password = stub
+    sid = _create_session(base_url, password)
+    auth = httpx.BasicAuth("opencode", password)
+
+    for response_value in ("allow", "deny"):
+        rid = f"req_test_{response_value}"
+        with (
+            httpx.Client(base_url=base_url, auth=auth, timeout=3.0) as client,
+            connect_sse(client, "GET", "/event") as event_source,
+        ):
+            event_iter = event_source.iter_sse()
+            reply = client.post(
+                f"/session/{sid}/permissions/{rid}",
+                json={"response": response_value},
+            )
+            assert reply.status_code == 200, response_value
+            replied = _collect_events(event_iter, count=1)[0]
+
+        assert replied.event == "permission.replied"
+        body = replied.json()
+        assert body["type"] == "permission.replied"
+        props = body["properties"]
+        assert props["id"] == rid
+        assert props["sessionID"] == sid
+        assert props["response"] == response_value
+
+
+def test_permissions_endpoint_rejects_invalid_response(stub: tuple[str, str]) -> None:
+    base_url, password = stub
+    sid = _create_session(base_url, password)
+    auth = httpx.BasicAuth("opencode", password)
+
+    with httpx.Client(base_url=base_url, auth=auth, timeout=3.0) as client:
+        bad = client.post(
+            f"/session/{sid}/permissions/req_bad",
+            json={"response": "maybe"},
+        )
+    assert bad.status_code == 400
+
+
+def test_abort_emits_session_idle_with_aborted_flag(stub: tuple[str, str]) -> None:
+    """Posting /session/{sid}/abort emits a session.idle whose
+    properties.aborted is True, separate from the session.idle the prompt
+    flow already emitted."""
+    base_url, password = stub
+    sid = _create_session(base_url, password)
+    auth = httpx.BasicAuth("opencode", password)
+
+    with (
+        # Under highly parallel integration runs this flow can be briefly
+        # delayed; give the SSE stream more headroom to avoid false timeouts.
+        httpx.Client(base_url=base_url, auth=auth, timeout=10.0) as client,
+        connect_sse(client, "GET", "/event") as event_source,
+    ):
+        event_iter = event_source.iter_sse()
+        prompt = client.post(
+            f"/session/{sid}/prompt_async",
+            json={"parts": [{"type": "text", "text": "run ls"}]},
+        )
+        assert prompt.status_code == 200
+        # Drain the 6 events of the prompt flow so the next event we observe
+        # is the one abort produced.
+        _collect_events(event_iter, count=_PROMPT_EVENT_COUNT)
+
+        aborted = client.post(f"/session/{sid}/abort")
+        assert aborted.status_code == 200
+        next_event = _collect_events(event_iter, count=1)[0]
+
+    assert next_event.event == "session.idle"
+    props = next_event.json()["properties"]
+    assert props["sessionID"] == sid
+    assert props["aborted"] is True
+
+
+def test_last_event_id_replay_from_ring_buffer(stub: tuple[str, str]) -> None:
+    base_url, password = stub
+    sid = _create_session(base_url, password)
+    auth = httpx.BasicAuth("opencode", password)
+
+    with httpx.Client(base_url=base_url, auth=auth, timeout=3.0) as client:
+        with connect_sse(client, "GET", "/event") as event_source:
+            event_iter = event_source.iter_sse()
+            prompt = client.post(
+                f"/session/{sid}/prompt_async",
+                json={"parts": [{"type": "text", "text": "run ls"}]},
+            )
+            assert prompt.status_code == 200
+            initial = _collect_events(event_iter, count=_PROMPT_EVENT_COUNT)
+            checkpoint = str(initial[0].id)
+
+        with connect_sse(client, "GET", "/event", headers={"Last-Event-ID": checkpoint}) as replay:
+            replay_iter = replay.iter_sse()
+            # Ring buffer must replay every event strictly after the
+            # checkpoint — the remaining 5 of the 6-event prompt sequence.
+            replay_events = _collect_events(replay_iter, count=_PROMPT_EVENT_COUNT - 1)
+
+    replay_ids = [int(str(ev.id)) for ev in replay_events]
+    assert replay_ids == sorted(replay_ids)
+    assert replay_ids[0] > int(checkpoint)
+    assert [ev.event for ev in replay_events] == [ev.event for ev in initial[1:]]
+
+
+def test_invalid_argv_exits_with_code_2() -> None:
+    proc = subprocess.run(  # noqa: S603
+        [sys.executable, str(STUB_PATH), "--unknown-flag"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 2
+
+
+def test_no_password_in_stub_stderr() -> None:
+    port = _free_port()
+    password = secrets.token_hex(16)
+    proc = subprocess.Popen(  # noqa: S603
+        [
+            sys.executable,
+            str(STUB_PATH),
+            "serve",
+            "--hostname",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        env={**os.environ, "OPENCODE_SERVER_PASSWORD": password},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    base_url = f"http://127.0.0.1:{port}"
+    try:
+        _wait_ready(base_url)
+        sid = _create_session(base_url, password)
+        auth = httpx.BasicAuth("opencode", password)
+        with (
+            httpx.Client(base_url=base_url, auth=auth, timeout=3.0) as client,
+            connect_sse(client, "GET", "/event") as event_source,
+        ):
+            event_iter = event_source.iter_sse()
+            prompt = client.post(
+                f"/session/{sid}/prompt_async",
+                json={"parts": [{"type": "text", "text": "run ls"}]},
+            )
+            assert prompt.status_code == 200
+            # Exercise the full prompt sequence and the permissions endpoint
+            # so the stub has logged enough to make a leak detectable.
+            _collect_events(event_iter, count=_PROMPT_EVENT_COUNT)
+            allow = client.post(
+                f"/session/{sid}/permissions/req_leakcheck",
+                json={"response": "allow"},
+            )
+            assert allow.status_code == 200
+            _collect_events(event_iter, count=1)
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+    stderr = proc.stderr.read() if proc.stderr is not None else ""
+    assert password not in stderr

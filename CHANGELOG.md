@@ -1,0 +1,26 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- Initial public release scaffolding.
+
+<!--
+Section templates — use as entries are added:
+
+### Added
+### Changed
+### Deprecated
+### Removed
+### Fixed
+### Security
+
+Example entry:
+### Added
+- New `--json` output flag for scan mode ([#12](https://github.com/innovation-ways/IW AI Core Platform/pull/12))
+-->

@@ -1,0 +1,30 @@
+<table class="w-full text-xs">
+  <thead class="text-left">
+    <tr>
+      <th class="px-2 py-1 font-medium text-muted-foreground">File</th>
+      <th class="px-2 py-1 font-medium text-muted-foreground">Lines</th>
+      <th class="px-2 py-1 font-medium text-muted-foreground">Branches</th>
+      <th class="px-2 py-1 font-medium text-muted-foreground">Missing</th>
+      <th class="px-2 py-1 font-medium text-muted-foreground">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in files %}
+      <tr class="border-t border-border">
+        <td class="px-2 py-1 font-mono text-foreground">{{ f.path }}</td>
+        <td class="px-2 py-1 text-foreground">{{ "%.1f"|format(f.line_pct) }}%</td>
+        <td class="px-2 py-1 text-foreground">
+          {% if f.branch_pct is not none %}{{ "%.1f"|format(f.branch_pct) }}%{% else %}—{% endif %}
+        </td>
+        <td class="px-2 py-1 text-foreground">{{ f.missing_lines }}</td>
+        <td class="px-2 py-1">
+          {% set badge_class = {'green': 'bg-green-100 text-green-800', 'amber': 'bg-amber-100 text-amber-800', 'red': 'bg-red-100 text-red-800'}[f.badge] %}
+          <span class="inline-block px-1.5 py-0.5 rounded text-xs font-medium {{ badge_class }}">{{ f.badge|upper }}</span>
+        </td>
+      </tr>
+    {% endfor %}
+    {% if not files %}
+      <tr><td colspan="5" class="px-2 py-2 text-muted-foreground">No files in this package.</td></tr>
+    {% endif %}
+  </tbody>
+</table>

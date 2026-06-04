@@ -1,0 +1,190 @@
+{# jobs_table.html — table fragment used by the jobs page and filter-refresh htmx endpoint #}
+{# Does NOT extend base.html #}
+
+{% from "components/status_badge.html" import status_badge %}
+{% from "macros/empty_state.html" import empty_state %}
+
+{% macro fmt_duration(start, end) -%}
+  {%- if start and end -%}
+    {%- set diff = end - start -%}
+    {%- set seconds = diff.total_seconds() -%}
+    {%- set mins = (seconds // 60)|int -%}
+    {%- if mins >= 60 -%}
+      {{ (mins // 60) }}h{{ "%02dm"|format(mins % 60) }}
+    {%- else -%}
+      {{ "%dm%02ds"|format(mins, (seconds % 60)|int) }}
+    {%- endif -%}
+  {%- else -%}
+    —
+  {%- endif -%}
+{%- endmacro %}
+
+{% set _has_filters = type_filter or status_filter or date_from or date_to %}
+{% if not rows and not _has_filters %}
+  {# Empty list with no active filters → render the standard empty-state macro
+     (F-00080: V6 expects data-empty-state, h3, p, a.empty-state__cta-primary). #}
+  {{ empty_state(
+       "no-jobs",
+       "No background jobs yet",
+       "Background jobs include code-index builds, doc generation, batch runs, and research drafts. Launch a job from one of the project pages to see it here.",
+       "Open the Code page",
+       "/project/" ~ current_project.id ~ "/code",
+       "Browse all projects",
+       "/projects"
+  ) }}
+{% else %}
+<div class="bg-card border border-border rounded-lg overflow-x-auto mb-4">
+  <table id="jobs-table" data-tour="jobs-table" class="w-full text-sm min-w-[650px]">
+    <thead>
+      <tr class="border-b border-border bg-muted/30">
+        {% set cols = [
+          ("job_id", "ID"),
+          ("job_type", "Type"),
+          ("title", "Title"),
+          ("status", "Status"),
+          ("started_at", "Started"),
+          ("finished_at", "Finished"),
+          ("duration", "Duration"),
+          ("triggered_by", "Triggered by"),
+        ] %}
+        {% for key, label in cols %}
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground cursor-pointer
+                     select-none hover:text-foreground transition-colors"
+              data-sort-key="{{ key }}"
+              onclick="sortJobsTable('{{ key }}')">
+            <span class="inline-flex items-center gap-1">
+              {{ label }}
+              <svg class="w-3 h-3 sort-icon opacity-0 transition-opacity" viewBox="0 0 10 6"
+                   fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <path d="M1 1 L5 5 L9 1"/>
+              </svg>
+            </span>
+          </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr class="border-b border-border last:border-0 hover:bg-muted/20"
+            data-sort-job_id="{{ row.job_id }}"
+            data-sort-job_type="{{ row.job_type.value }}"
+            data-sort-title="{{ row.title }}"
+            data-sort-status="{{ row.status }}"
+            data-sort-started_at="{{ row.started_at.isoformat() if row.started_at else '' }}"
+            data-sort-finished_at="{{ row.finished_at.isoformat() if row.finished_at else '' }}"
+            data-sort-duration="{% if row.started_at and row.finished_at %}{{ (row.finished_at - row.started_at).total_seconds() }}{% else %}-1{% endif %}"
+            data-sort-triggered_by="{{ row.triggered_by or '' }}">
+          <td class="px-4 py-2">
+            <a href="/project/{{ current_project.id }}/jobs/{{ row.job_type.value }}/{{ row.job_id }}"
+               class="font-mono text-xs font-semibold text-primary hover:underline">
+              {{ row.job_id }}
+            </a>
+          </td>
+          <td class="px-4 py-2 text-xs text-foreground">{{ row.job_type.value }}</td>
+          <td class="px-4 py-2 text-xs text-foreground max-w-xs truncate">{{ row.title }}</td>
+          <td class="px-4 py-2">{{ status_badge(row.status) }}</td>
+          <td class="px-4 py-2 text-xs text-muted-foreground" title="{{ row.started_at | localdt('%Y-%m-%d %H:%M:%S') if row.started_at else '' }}">
+            {{ row.started_at | timeago if row.started_at else '—' }}
+          </td>
+          <td class="px-4 py-2 text-xs text-muted-foreground">
+            {{ row.finished_at | localdt('%b %d %H:%M') if row.finished_at else '—' }}
+          </td>
+          <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
+            {{ fmt_duration(row.started_at, row.finished_at) }}
+          </td>
+          <td class="px-4 py-2 text-xs text-muted-foreground">
+            {{ row.triggered_by or '—' }}
+          </td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="8" class="px-4 py-8 text-center text-muted-foreground text-sm">
+            No jobs found{% if type_filter or status_filter or date_from or date_to %} for the selected filters{% endif %}.
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# Pagination #}
+{% macro page_url(target_page) -%}
+  ?page={{ target_page }}
+  {%- for t in type_filter %}&type={{ t | urlencode }}{% endfor -%}
+  {%- for s in status_filter %}&status={{ s | urlencode }}{% endfor -%}
+  {%- if date_from %}&date_from={{ date_from | urlencode }}{% endif -%}
+  {%- if date_to %}&date_to={{ date_to | urlencode }}{% endif -%}
+{%- endmacro %}
+{% if total > page_size %}
+<div class="flex items-center justify-between text-sm">
+  <span class="text-muted-foreground text-xs">
+    {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, total] | min }} of {{ total }}
+  </span>
+  <div class="flex gap-1">
+    {% if page > 1 %}
+      <a href="{{ page_url(page - 1) }}"
+         class="px-3 py-1 border border-border rounded-md text-sm hover:bg-muted/30 transition-colors">
+        ← Prev
+      </a>
+    {% endif %}
+    {% if (page * page_size) < total %}
+      <a href="{{ page_url(page + 1) }}"
+         class="px-3 py-1 border border-border rounded-md text-sm hover:bg-muted/30 transition-colors">
+        Next →
+      </a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function() {
+  var currentSort = null;
+  var currentDir = 'asc';
+
+  function isNumeric(key) {
+    return key === 'duration' || key === 'started_at' || key === 'finished_at';
+  }
+
+  window.sortJobsTable = function(key) {
+    if (currentSort === key) {
+      currentDir = currentDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      currentSort = key;
+      currentDir = 'asc';
+    }
+
+    var tbody = document.querySelector('#jobs-table tbody');
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+
+    rows.sort(function(a, b) {
+      var va = a.getAttribute('data-sort-' + key) || '';
+      var vb = b.getAttribute('data-sort-' + key) || '';
+
+      var cmp;
+      if (isNumeric(key)) {
+        cmp = parseFloat(va) - parseFloat(vb);
+      } else {
+        cmp = va.localeCompare(vb);
+      }
+      return currentDir === 'asc' ? cmp : -cmp;
+    });
+
+    rows.forEach(function(row) { tbody.appendChild(row); });
+
+    document.querySelectorAll('#jobs-table th[data-sort-key]').forEach(function(th) {
+      var icon = th.querySelector('.sort-icon');
+      if (th.getAttribute('data-sort-key') === currentSort) {
+        icon.style.opacity = '1';
+        icon.style.transform = currentDir === 'asc' ? 'rotate(180deg)' : 'rotate(0)';
+        th.setAttribute('aria-sort', currentDir === 'asc' ? 'ascending' : 'descending');
+      } else {
+        icon.style.opacity = '0';
+        icon.style.transform = 'rotate(0)';
+        th.removeAttribute('aria-sort');
+      }
+    });
+  };
+})();
+</script>

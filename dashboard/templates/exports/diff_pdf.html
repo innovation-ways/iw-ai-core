@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Files — {{ item.id }} {{ item.title }}</title>
+  <style>
+    :root {
+      --primary: #5865f2;
+      --foreground: #28282d;
+      --muted: #f6f6f6;
+      --border: #dfdfe1;
+      --added-bg: #ecfdf5;
+      --added-text: #166534;
+      --removed-bg: #fef2f2;
+      --removed-text: #991b1b;
+      --modified-bg: #fffbeb;
+      --modified-text: #92400e;
+      --renamed-bg: #eff6ff;
+      --renamed-text: #1e40af;
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+    }
+
+    @page {
+      size: A4;
+      margin: 15mm 18mm;
+      @bottom-center {
+        content: counter(page) " / " counter(pages);
+      }
+    }
+
+    @page :first {
+      @bottom-center {
+        content: counter(page) " / " counter(pages);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      color: var(--foreground);
+      line-height: 1.5;
+      font-size: 11px;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* ── Header ── */
+    .diff-header {
+      border-bottom: 2.5px solid var(--primary);
+      padding-bottom: 10px;
+      margin-bottom: 16px;
+    }
+
+    .diff-header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--foreground);
+      margin: 0 0 4px 0;
+    }
+
+    .diff-header .item-id {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .diff-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 16px;
+      font-size: 9.5px;
+      color: #6c6d76;
+      margin-top: 6px;
+    }
+
+    .diff-meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .diff-meta strong {
+      color: var(--foreground);
+      font-weight: 600;
+    }
+
+    /* ── Aggregate counters ── */
+    .aggregate-counters {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 14px;
+      font-size: 10px;
+    }
+
+    .counter {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .counter.added {
+      background: var(--added-bg);
+      color: var(--added-text);
+    }
+
+    .counter.removed {
+      background: var(--removed-bg);
+      color: var(--removed-text);
+    }
+
+    .counter.files {
+      background: var(--muted);
+      color: var(--foreground);
+    }
+
+    /* ── Summary table ── */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+      font-size: 10px;
+    }
+
+    .summary-table th {
+      background: var(--muted);
+      font-weight: 600;
+      text-align: left;
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #6c6d76;
+    }
+
+    .summary-table td {
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .summary-table tr:hover td {
+      background: #fafafa;
+    }
+
+    /* Status badge cells */
+    .status-cell {
+      text-align: center;
+      font-weight: 700;
+      font-size: 11px;
+      width: 28px;
+    }
+
+    .status-A { background: var(--added-bg); color: var(--added-text); }
+    .status-M { background: var(--modified-bg); color: var(--modified-text); }
+    .status-D { background: var(--removed-bg); color: var(--removed-text); }
+    .status-R { background: var(--renamed-bg); color: var(--renamed-text); }
+
+    .path-cell {
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      word-break: break-all;
+    }
+
+    .path-cell .old-path {
+      color: #6c6d76;
+      text-decoration: line-through;
+    }
+
+    .path-cell .arrow {
+      color: #6c6d76;
+      margin: 0 4px;
+    }
+
+    .count-cell {
+      text-align: right;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      white-space: nowrap;
+    }
+
+    .count-cell.added { color: var(--added-text); }
+    .count-cell.removed { color: var(--removed-text); }
+
+    .tag-cell {
+      vertical-align: middle;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    .tag-generated {
+      background: #f3f4f6;
+      color: #374151;
+      border: 1px solid #d1d5db;
+    }
+
+    /* ── Per-file diff sections ── */
+    .file-section {
+      margin-bottom: 18px;
+      page-break-inside: avoid;
+    }
+
+    .file-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 10px;
+      background: var(--foreground);
+      color: #ffffff;
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      font-weight: 600;
+      border-radius: 4px 4px 0 0;
+    }
+
+    .file-header .status-pill {
+      display: inline-block;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 700;
+      width: 18px;
+      height: 18px;
+      line-height: 18px;
+      border-radius: 3px;
+    }
+
+    .file-header .status-pill.A { background: var(--added-text); color: #ecfdf5; }
+    .file-header .status-pill.M { background: #92400e; color: #fffbeb; }
+    .file-header .status-pill.D { background: var(--removed-text); color: #fef2f2; }
+    .file-header .status-pill.R { background: #1e40af; color: #eff6ff; }
+
+    .file-header .file-path {
+      flex: 1;
+      word-break: break-all;
+    }
+
+    .file-header .file-counts {
+      font-size: 9px;
+      opacity: 0.85;
+      white-space: nowrap;
+    }
+
+    /* Pygments hunks */
+    .hunks {
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+      overflow-x: auto;
+      background: #fefefe;
+    }
+
+    .hunks pre {
+      margin: 0;
+      padding: 8px 10px;
+      font-family: var(--font-mono);
+      font-size: 8.5pt;
+      line-height: 1.55;
+      background: #fefefe;
+      white-space: pre;
+      overflow-x: visible;
+    }
+
+    /* Pygments theme tweaks for print */
+    .hunks .highlight {
+      background: #fefefe;
+    }
+
+    .hunks .highlight .ln {
+      user-select: none;
+      text-align: right;
+      padding-right: 12px;
+      color: #9ca3af;
+      border-right: 1px solid var(--border);
+      min-width: 36px;
+      display: inline-block;
+    }
+
+    /* ── Placeholder messages ── */
+    .placeholder {
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+      padding: 10px 14px;
+      font-size: 9.5px;
+      color: #6c6d76;
+      background: var(--muted);
+      font-style: italic;
+    }
+
+    .placeholder strong {
+      color: var(--foreground);
+      font-style: normal;
+    }
+
+    /* ── Body cap footer note ── */
+    .cap-note {
+      margin: 20px 0;
+      padding: 10px 14px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 4px;
+      font-size: 10px;
+      color: #92400e;
+    }
+
+    .cap-note strong {
+      color: #78350f;
+    }
+
+    /* ── Footer ── */
+    .diff-footer {
+      margin-top: 24px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      font-size: 8.5px;
+      color: #9ca3af;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .diff-footer .brand {
+      font-weight: 600;
+      color: var(--primary);
+      letter-spacing: 0.02em;
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      padding: 40px 20px;
+      text-align: center;
+      color: #6c6d76;
+    }
+
+    .empty-state h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--foreground);
+      margin: 0 0 8px 0;
+    }
+
+    .empty-state p {
+      font-size: 11px;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+
+{# ── Empty state ── #}
+{% if not summary_files and not truncated_files %}
+  <div class="diff-header">
+    <h1>No changes recorded</h1>
+    <div class="diff-meta">
+      <span><strong>Item:</strong> {{ item.id }}</span>
+      <span><strong>Title:</strong> {{ item.title }}</span>
+    </div>
+  </div>
+  <div class="empty-state">
+    <h2>No changes recorded for this item</h2>
+    <p>No diff was captured for the selected step scope.</p>
+  </div>
+{% else %}
+
+{# ── Header ── #}
+<div class="diff-header">
+  <span class="item-id">{{ item.id }}</span>
+  <h1>{{ item.title }}</h1>
+  <div class="diff-meta">
+    <span><strong>Type:</strong> {{ item.type.value | title }}</span>
+    <span><strong>Generated:</strong> {{ generated_at }}</span>
+    <span><strong>Step:</strong> {{ step_label }}</span>
+    <span><strong>Project:</strong> {{ project_id }}</span>
+  </div>
+</div>
+
+{# ── Aggregate counters ── #}
+<div class="aggregate-counters">
+  <div class="counter added">+{{ aggregate_added }} added</div>
+  <div class="counter removed">−{{ aggregate_removed }} removed</div>
+  <div class="counter files">{{ aggregate_file_count }} file{{ "s" if aggregate_file_count != 1 else "" }}</div>
+</div>
+
+{# ── Summary table ── #}
+<table class="summary-table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Status</th>
+      <th>Path</th>
+      <th style="text-align:right">+Lines</th>
+      <th style="text-align:right">−Lines</th>
+      <th>Tags</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for file in summary_files + truncated_files %}
+    <tr>
+      <td class="count-cell" style="text-align:center;color:#9ca3af;">{{ loop.index }}</td>
+      <td class="status-cell status-{{ file.status }}">{{ file.status }}</td>
+      <td class="path-cell">
+        {% if file.old_path %}
+          <span class="old-path">{{ file.old_path }}</span>
+          <span class="arrow">→</span>
+        {% endif %}
+        {{ file.path }}
+      </td>
+      <td class="count-cell added">{% if file.added > 0 %}+{{ file.added }}{% endif %}</td>
+      <td class="count-cell removed">{% if file.removed > 0 %}−{{ file.removed }}{% endif %}</td>
+      <td class="tag-cell">
+        {% if file.is_generated %}<span class="tag tag-generated">Generated</span>{% endif %}
+        {% if file.is_binary %}<span class="tag tag-generated">Binary</span>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{# ── Per-file diff sections ── #}
+{% for file in summary_files %}
+  {% if file.hunks_html is not none %}
+    <div class="file-section">
+      <div class="file-header">
+        <span class="status-pill {{ file.status }}">{{ file.status }}</span>
+        <span class="file-path">
+          {% if file.old_path %}{{ file.old_path }} → {% endif %}{{ file.path }}
+        </span>
+        <span class="file-counts">
+          +{{ file.added }} −{{ file.removed }}
+        </span>
+      </div>
+      <div class="hunks">
+        {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted diff PDF body #}
+        {{ file.hunks_html | safe }}
+      </div>
+    </div>
+  {% elif file.is_binary %}
+    <div class="file-section">
+      <div class="file-header">
+        <span class="status-pill {{ file.status }}">{{ file.status }}</span>
+        <span class="file-path">{{ file.path }}</span>
+      </div>
+      <div class="placeholder">
+        <strong>Binary file</strong> — changes detected but content is not printable.
+      </div>
+    </div>
+  {% else %}
+    <div class="file-section">
+      <div class="file-header">
+        <span class="status-pill {{ file.status }}">{{ file.status }}</span>
+        <span class="file-path">{{ file.path }}</span>
+      </div>
+      <div class="placeholder">
+        <strong>Diff omitted — too large for PDF</strong> ({{ file.added + file.removed }} lines).
+        The full diff is available via the raw diff endpoint.
+      </div>
+    </div>
+  {% endif %}
+{% endfor %}
+
+{# ── Body cap footer note ── #}
+{% if truncated_files %}
+  <div class="cap-note">
+    <strong>{{ truncated_files | length }} additional file{{ "s" if truncated_files | length != 1 else "" }} omitted</strong>
+    from this PDF body (still listed in the summary table above).
+    PDF caps the body at 100 files alphabetical by path.
+  </div>
+{% endif %}
+
+{% endif %}
+
+{# ── Footer ── #}
+<div class="diff-footer">
+  <span class="brand">IW AI Core</span>
+  <span>{{ item.id }} · Files export</span>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,35 @@
+{% macro status_badge(status) %}
+  {% set colors = {
+    'running': 'bg-primary text-primary-foreground',
+    'in_progress': 'bg-primary text-primary-foreground',
+    'completed': 'bg-success text-success-foreground',
+    'merged': 'bg-success text-success-foreground',
+    'published': 'bg-success text-success-foreground',
+    'failed': 'bg-destructive text-destructive-foreground',
+    'merge_failed': 'bg-warning text-warning-foreground',
+    'migration_invalid': 'bg-warning text-warning-foreground',
+    'migration_rebase_failed': 'bg-warning text-warning-foreground',
+    'timeout': 'bg-warning text-warning-foreground',
+    'stalled': 'bg-warning text-warning-foreground',
+    'needs_fix': 'bg-warning text-warning-foreground',
+    'pending': 'bg-muted text-muted-foreground',
+    'draft': 'bg-secondary text-secondary-foreground',
+    'approved': 'bg-info text-info-foreground',
+    'awaiting_approval': 'bg-info text-info-foreground',
+    'killed': 'bg-destructive text-destructive-foreground',
+    'skipped': 'bg-muted text-muted-foreground',
+    'executing': 'bg-primary text-primary-foreground',
+    'paused': 'bg-muted text-muted-foreground',
+    'planning': 'bg-secondary text-secondary-foreground',
+    'archived': 'bg-muted text-muted-foreground',
+    'enabled': 'bg-success text-success-foreground',
+    'disabled': 'bg-muted text-muted-foreground',
+    'passed': 'bg-success text-success-foreground',
+    'cancelled': 'bg-muted text-muted-foreground',
+    'error': 'bg-destructive text-destructive-foreground',
+    'scope_blocked': 'bg-amber-200 text-amber-900 border border-amber-400',
+  } %}
+  <span class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium {{ colors.get(status, 'bg-muted text-muted-foreground') }}">
+    {{ status }}
+  </span>
+{% endmacro %}

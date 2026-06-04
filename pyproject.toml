@@ -1,0 +1,376 @@
+[project]
+name = "iw-ai-core"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+dependencies = [
+    # Database
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "alembic>=1.13",
+    "mako>=1.3.12",  # CVE-2026-44307
+    # CLI
+    "click>=8.1",
+    "rich>=13.0",
+    # Dashboard
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.26",
+    # Archive
+    "zstandard>=0.23",
+    # Config
+    "python-dotenv>=1.0",
+    # tomllib is stdlib in 3.12+
+    "markdown>=3.10.2",
+    "markupsafe>=3.0.3",
+    "types-markdown>=3.10.2.20260408",
+    "weasyprint>=63.0",
+    "llama-index-core>=0.14.20",
+    "llama-index-llms-ollama>=0.10.1",
+    "llama-index-embeddings-ollama>=0.9.0",
+    "llama-index-vector-stores-lancedb>=0.5.0",
+    "lancedb>=0.30.2",
+    "tree-sitter>=0.25.2",
+    "tree-sitter-languages>=1.10.2",
+    "pandas>=3.0.2",
+    "pathspec>=1.0.4",
+    "tiktoken>=0.12.0",
+    "unidiff>=0.7,<1",
+    # Dashboard AI Assistant — OpenCode HTTP+SSE client (F-00083)
+    "httpx>=0.27",
+    "httpx-sse>=0.4,<0.5",
+    "idna>=3.15",
+    "starlette>=1.0.1",
+    "aiohttp>=3.14.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Testing
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "testcontainers[postgres]>=4.0",
+    "factory-boy>=3.3",
+    "freezegun>=1.4",
+
+    # Quality
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+
+    # Type stubs
+    "types-freezegun",
+    "httpx>=0.27",
+    # anthropic Python SDK — used by scripts/llm_judge_test_review.py (CR-00084)
+    "anthropic>=0.40,<1.0",
+]
+
+[project.scripts]
+iw = "orch.cli.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["orch", "dashboard"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-xdist>=3.5.0",
+    "pytest-randomly>=3.15",
+    "respx>=0.21,<0.23",
+    "testcontainers[postgres]>=4.0",
+    "factory-boy>=3.3",
+    "freezegun>=1.4",
+    "mutmut>=2.5,<3.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pre-commit>=4.0",
+    "types-freezegun",
+    "httpx>=0.27",
+    "hypothesis>=6.100,<7",
+    "allure-pytest>=2.15.3",
+    "pytest-timeout>=2.3.0",
+    "types-pyyaml>=6.0.12.20260408",
+    "beautifulsoup4>=4.14.3",
+    "pip-audit>=2.7",
+    "bandit[toml]>=1.7",
+    "pytest-timeout>=2.4.0",
+    "pytest-rerunfailures>=14.0,<16",
+    "diff-cover>=9",
+    "vulture>=2.11",
+    "deptry>=0.20",
+    "pgtestdbpy>=0.0.1",
+    "Pillow",
+    "pixelmatch",
+    # Pinned to the current major (4.x) — schemathesis's loader and check API
+    # changed across majors; see tests/dashboard/test_schemathesis_contract.py.
+    "schemathesis>=4.19,<5",
+    "pytest-benchmark>=4.0,<5",
+]
+
+# --- Ruff ---
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = ["skills/", ".claude/", "ai-dev/"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "DTZ", "T20", "ICN", "PIE", "PT", "RSE", "RET", "SLF", "SIM", "TCH", "ARG", "PTH", "ERA"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ARG001", "ARG002", "SLF001", "S603", "S607", "TC002", "TC003", "S110", "S108", "DTZ001", "B009", "F401", "PT006"]  # assert ok; fixture side effects; private access in tests ok; git subprocess in test fixtures; TC002: Session alias kept at runtime for reuse across session/scope pattern; DTZ001: freezegun tests pass naive datetimes to freeze_time (legitimate pattern); B009: getattr on module-private names is intentional in unit tests; F401: underscore-prefixed re-import in conftest helpers; PT006: mark.parametrize second-arg is list[tuple] which triggers false-positive
+"orch/db/migrations/**" = ["E501", "TC003", "F401", "UP035", "I001"]  # migration files: long column definitions; Sequence used at runtime in upgrade(); boilerplate imports unused in merge migrations
+"dashboard/routers/**" = ["B008", "TC001", "PT028"]  # FastAPI Depends() in default args is canonical; TC001 conflicts with FastAPI runtime model resolution; PT028 misfires on dashboard/routers/tests.py — ruff treats route handlers prefixed `tests_*` as pytest tests
+"dashboard/services/oss_service.py" = ["S603", "S607", "S108"]  # git subprocess; /tmp paths for worktrees
+"scripts/check_pending_down_revision.py" = ["S603", "S607"]  # git diff is intentional for diff-scoped migration lint
+"scripts/backfill_functional_doc.py" = ["S603", "S607"]  # opencode subprocess; agent script
+"scripts/e2e_health_check.py" = ["T201", "S310"]  # CLI script; print output; http URL fetch
+"orch/test_health_service.py" = ["S110", "S603", "S607"]  # try/except/pass for optional pyproject.toml fail_under; trusted repo scripts only
+"orch/test_runner.py" = ["S602", "S603", "S607"]  # shell=True and npx are intentional for running user-configured test commands
+"scripts/arch_check.py" = ["S112", "SIM102", "T201"]  # architecture checker script: prints to stdout; try-except-continue for file parsing; nested if for AST node type dispatch
+"scripts/check_test_assertions.py" = ["T201"]  # CLI script: prints violations + JSON to stdout
+"scripts/check_db_column_docs.py" = ["T201"]  # CLI script: prints violations + JSON to stdout
+"scripts/llm_judge_test_review.py" = ["ARG001", "T201"]  # CLI script: _call_judge has unused param; print output
+"tests/unit/test_assertion_scanner.py" = ["ERA001"]  # tests carry commented-example labels for the patterns the scanner detects (ERA001 false-positive)
+"orch/keep_alive_service.py" = ["S603", "S607"]  # claude CLI subprocess with hardcoded greetings; never user input
+"orch/daemon/browser_env.py" = ["S603", "S607"]  # docker logs is read-only; name from compose output
+"orch/regression_link_service.py" = ["S603", "S607"]  # git log is intentional for regression link heuristic
+"orch/doc_service.py" = ["S603", "S607"]  # git log is intentional for staleness detection
+"orch/cancel.py" = ["S603", "S607"]  # git worktree and docker compose are intentional for worktree teardown
+
+# --- mypy ---
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+ignore_missing_imports = true
+
+# --- pytest ---
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# xdist is opt-in only via `make test-parallel` which passes `-n auto --dist=loadfile`.
+# Do NOT add xdist defaults here — that would change `make test-unit` / `make test-integration` semantics.
+#
+# `pytest-randomly` is **ON by default** (CR-00055, 2026-05-16). The integration +
+# dashboard suite is robust to randomisation via per-test PostgreSQL template-clone
+# (pgtestdbpy>=0.0.1): a session-scoped template DB is migrated once; each test gets
+# its own fresh clone (~25 ms via CREATE DATABASE … TEMPLATE … with WAL_LOG strategy);
+# IW_CORE_DB_* env vars are monkeypatched per-test so `iw` CLI subprocesses inherit
+# the isolated clone — closing the gap that defeated savepoint-only and per-module-TRUNCATE
+# designs in CR-00049 (see docs/research/R-00077-pytest-randomly-isolation-strategy.md).
+# The per-run seed is printed at the top of every run: "Using --randomly-seed=<N>".
+# Reproduce a specific seed:
+#     uv run pytest tests/integration/ -p randomly --randomly-seed=<N> -q
+# Earlier fallback (CR-00048): `-p no:randomly` was in addopts 2026-05-13 → 2026-05-16
+# after 5 fix cycles could not converge; superseded by CR-00055's template-clone strategy.
+#
+# Coverage flags (--cov / --cov-report) are intentionally NOT in addopts.
+# History: 2026-05-25 — keeping them here broke every narrow pytest invocation
+# (e.g. `pytest tests/visual/` from a code-review fix prompt), because the
+# global `fail_under = 50` tripped on slices that don't exercise orch/dashboard/executor.
+# That structurally-impossible verification command stalled CR-00082 for 11 review runs
+# and 5 fix cycles. Now coverage is opt-in from the make targets that own
+# full-suite gating: `make test-unit`, `make test-integration`, `make test-parallel`,
+# `make allure-unit`, `make allure-all`. Ad-hoc `pytest <path>` and the dozens of
+# `--no-cov` overrides in narrow targets work as expected without escaping.
+addopts = "--import-mode=importlib -m 'not browser and not quarantine and not contract_fuzz and not e2e and not perf' --strict-markers"
+markers = [
+    "integration: marks tests as integration (require docker/testcontainer)",
+    "smoke: fast critical-path tests; <=15 tests, <=5 critical paths, <60s wall-clock; documented in tests/CLAUDE.md; run via `make smoke`",
+    "slow: marks tests as slow (deselected by default unless -m slow is passed)",
+    "browser: marks tests that drive a real Chromium via playwright-cli; deselected by default — run with `-m browser` against a live dashboard the test data is visible to (e.g. iw-ai-core's existing data or an E2E stack)",
+    "order_dependent: test relies on test order; tracked for cleanup in P1-CR-C-followup",
+    "properties: Hypothesis property-based tests (CR-00060, P2-CR-B); auto-applied to tests/unit/properties/",
+    "quarantine: test is intermittently failing or order-dependent in a way we haven't root-caused; excluded from the merge gate; tracked via an Incident (ID in the marker reason). Recovery signal: passes consistently in `make test-quarantine` for >=3 consecutive runs.",
+    "contract_fuzz: schemathesis property-fuzz tests against the OpenAPI schema; excluded from the default pytest selection (never in the blocking suite); run via `make test-contract-fuzz`. See CR-00072.",
+    "e2e: Full browser journey tests — require the isolated E2E stack (IW_BROWSER_BASE_URL). Run via make test-e2e; excluded from the default pytest selection and make test-integration.",
+    "e2e_smoke: Curated smoke subset of the e2e journey suite — blocking on pull_request and push; run via make test-e2e-smoke.",
+    "perf: performance budget tests — excluded from default unit/integration runs; run via make test-perf*",
+]
+
+[tool.coverage.run]
+source = ["orch", "dashboard", "executor"]
+omit = [
+    "orch/db/migrations/versions/*",
+    "tests/*",
+    "scripts/*",
+    "bin/*",
+]
+branch = true
+# Store paths relative to the repo root, not absolute — so coverage data
+# generated in a daemon worktree (`.worktrees/<ITEM>/`) lines up with the
+# main checkout and with diff-cover's git-relative paths. (CR-00047, 1.10 audit.)
+relative_files = true
+
+[tool.coverage.report]
+# Raised from 46 by CR-00047 (P1-CR-B). Set a few points below the *lower* of
+# the two measured branch-coverage slices (the `make test-unit` slice ~52% and
+# the `make test-integration` slice — see ai-dev/work/TESTS_ENHANCEMENT.md
+# changelog). This is a RATCHET: bump it up as coverage improves, never down.
+# Enforced by `pytest --cov` at the end of every test run that picks up addopts.
+fail_under = 50
+skip_covered = true
+show_missing = true
+
+# --- bandit ---
+[tool.bandit]
+exclude_dirs = ["tests", "scripts", "orch/db/migrations/versions", ".venv"]
+skips = ["B101"]
+
+# --- vulture (dead code) ---
+[tool.vulture]
+min_confidence = 70
+paths = ["orch", "dashboard", "executor", "scripts"]
+ignore_decorators = [
+    "fastapi.*",
+    "pytest.*",
+    "click.*",
+    "app.route.*",
+    "routes.*",
+]
+ignore_names = [
+    "test_*",
+    "_*",
+    "__all__",
+    "main",
+]
+
+# --- deptry (dependency hygiene) ---
+[tool.deptry]
+per_rule_ignores = [
+    "DEP001 = sqlalchemy.ext.mypy.plugin",
+    "DEP001 = pytest",
+    "DEP001 = _pytest",
+    "DEP001 = testcontainers",
+    "DEP002 = factory-boy",
+    "DEP002 = freezegun",
+    "DEP002 = ruff",
+    "DEP002 = mypy",
+    "DEP002 = pre-commit",
+    "DEP002 = types-freezegun",
+    "DEP003 = yaml",
+    "DEP003 = pydantic",
+    "DEP002 = hypothesis",
+]
+extend_exclude = ["skills/.*", "tests/llm_judge/**"]
+
+# Hypothesis property-based testing (CR-00060, P2-CR-B)
+# Profile selection: set IW_HYPOTHESIS_PROFILE env var (ci | dev | deep).
+# Defaults to `ci` when unset (merge-gate path).
+[tool.hypothesis]
+database_file = ".hypothesis/examples"
+
+# Mutation testing (CR-00080, P2-CR-A follow-up) — widened to orch/ and
+# runner now disables coverage fail-under for mutmut subprocess runs so mutants execute.
+# Spike measurements (S01): PARTIAL at 01:00:00 (timeout); generated=55, killed=0, survived=55 (score=0%). See evidence file.
+# Usage: make mutation-check MODULE=orch/daemon/auto_merge.py
+#        make mutation-audit
+[tool.mutmut]
+paths_to_mutate = "orch/"
+# tests_dir must be a single existing directory — mutmut 2.5.1 rejects space-joined
+# multi-path strings with FileNotFoundError. Test-scope narrowing happens in `runner`
+# (which mutmut invokes verbatim and DOES accept multiple paths).
+tests_dir = "tests/"
+runner = "sh -c 'IW_CORE_DB_PORT=5433 uv run pytest tests/unit/daemon/ tests/integration/daemon/ -x --tb=no -q --cov-fail-under=0'"
+
+# OSS publish scan — project-wide policy. The iw-oss-publish skill loads in
+# precedence order: DEFAULTS < [tool.iw.oss-publish] (this section, committed
+# to git) < .iw/oss-publish.toml (operator-side state, gitignored). Keep
+# anything that's a project-wide compliance decision (license elections,
+# self-referential allowlists, project identity) HERE so it travels with the
+# repo. Keep operator state (trademark search dates, history-rewrite choice,
+# export-control attestation flags) in .iw/oss-publish.toml.
+[tool.iw.oss-publish]
+project_name           = "IW AI Core Platform"
+project_description    = "Standalone multi-project AI orchestration platform"
+license                = "Apache-2.0"
+company_legal_name     = "Innovation Ways - Unipessoal LDA"
+company_brand          = "Innovation Ways"
+company_github_org     = "innovation-ways"
+company_contact_email  = "info@innovation-ways.com"
+homepage               = "https://innovation-ways.com"
+contributor_agreement  = "DCO"
+coc_version            = "v3"
+sbom_formats           = ["spdx", "cyclonedx"]
+internal_email_domains = ["innovation-ways.com"]
+internal_fqdn_suffixes = [".internal", ".corp", ".local", ".lan", ".intranet"]
+
+# Per-check path globs added to OSS-REF-* excludes. Each entry MUST have a
+# justification comment above it. Strings here are matched the same way as
+# the default EXCLUDES list (ripgrep -g patterns), relative to repo root.
+[tool.iw.oss-publish.internal_refs.allowlist]
+# `dashboard/services/oss_check_catalog.yaml` is the rule catalog that the
+# dashboard reads to describe each OSS-REF check to humans. The check
+# necessarily quotes the very strings it scans for ("we look for 10.0.0.0/8",
+# ".local hostnames", etc.) — a textbook self-referential false positive.
+# `pyproject.toml` is this very file — it stores the allowlist policy
+# itself, which embeds (a) a comment-quoted RFC 1918 example for context
+# and (b) the configured `internal_fqdn_suffixes` list (`.local`, `.internal`,
+# etc.); both surface as self-referential matches under OSS-REF-01/02.
+"OSS-REF-01" = ["dashboard/services/oss_check_catalog.yaml", "pyproject.toml"]
+"OSS-REF-02" = [
+    "dashboard/services/oss_check_catalog.yaml",
+    "pyproject.toml",
+    # `host.docker.internal` is Docker's built-in DNS sentinel that resolves
+    # to the host machine from inside containers. It is canonical Docker
+    # syntax and cannot be renamed.
+    # https://docs.docker.com/desktop/networking/#i-want-to-connect-from-a-container-to-a-service-on-the-host
+    "ai-dev/iw-config/worktree-compose.template.yml",
+]
+# OSS-REF-03 (absolute /home/<user>/… paths):
+# - projects.toml is the daemon's developer-local project registry. The
+#   `repo_root` values MUST be absolute paths on the operator's machine —
+#   this is how the daemon knows where each managed project lives. Anyone
+#   forking iw-ai-core edits these to point at their own workspaces.
+# - The other entries are documentation placeholders (HTML input placeholder,
+#   Python docstring examples) — illustrative, not real paths.
+"OSS-REF-03" = [
+    "projects.toml",
+    "orch/daemon/project_registry.py",
+    "orch/daemon/step_monitor.py",
+    "dashboard/templates/fragments/new_project_modal.html",
+]
+# OSS-REF-04 (employee @innovation-ways.com email addresses):
+# All matches in these files are the group aliases `info@` and `security@`
+# that the iw-oss-publish skill writes as DEFAULTS into newly generated
+# SECURITY.md / CODE_OF_CONDUCT.md / CONTRIBUTING.md for downstream projects.
+# They aren't individual employee emails. The check's intent is to catch
+# personal addresses leaking through; the skill defaults are explicitly
+# group inboxes. pyproject.toml is included because the project's group
+# `company_contact_email` value is declared here.
+"OSS-REF-04" = [
+    "orch/oss/**",
+    "dashboard/services/oss_check_catalog.yaml",
+    "pyproject.toml",
+]
+# OSS-REF-05 (internal chat/tracker URLs): only hit is the catalog quoting
+# an Atlassian URL as a counter-example ("instead of `https://acme.atlassian.
+# net/browse/PROJ-123`"). Same self-reference pattern as OSS-REF-01/-02.
+"OSS-REF-05" = ["dashboard/services/oss_check_catalog.yaml"]
+
+# Per-package license elections for upstream projects offered under multiple
+# licenses. The scanner honours the elected license when it's compatible with
+# the outbound license, suppressing OSS-DEP-01 false positives without
+# weakening the check for genuinely incompatible deps.
+[tool.iw.oss-publish.dependencies.license_elections.pyphen]
+# Upstream Pyphen is tri-licensed (https://github.com/Kozea/Pyphen#license):
+# its README states "Free software: GPL 2.0+ or LGPL 2.1+ or MPL 1.1 for the
+# code" and the repository ships COPYING.GPL, COPYING.LGPL, and COPYING.MPL.
+# PyPI metadata exposes only the GPL-2.0-only SPDX id, which is what
+# OSS-DEP-01 sees. We elect MPL-1.1, which is compatible with Apache-2.0
+# (Apache projects may embed MPL components as long as the MPL files retain
+# their notices). Pyphen is pulled in transitively by weasyprint to support
+# CSS `hyphens: auto` during PDF rendering (dashboard/routers/items.py — diff
+# PDFs).
+upstream_licenses = ["GPL-2.0-or-later", "LGPL-2.1-or-later", "MPL-1.1"]
+elected           = "MPL-1.1"
+rationale         = "Tri-license upstream; MPL-1.1 is Apache-2.0 compatible. See THIRD_PARTY_LICENSES.md."
+upstream_url      = "https://github.com/Kozea/Pyphen#license"
+documented_in     = "THIRD_PARTY_LICENSES.md"

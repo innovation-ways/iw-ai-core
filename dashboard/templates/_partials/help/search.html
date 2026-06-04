@@ -1,0 +1,27 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Search</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>Search runs full-text search across all work items, documents, and research in this project — powered by PostgreSQL FTS with ranking and typo tolerance.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Type any keyword to find matching work items, doc titles, or research headings</li>
+    <li>Results are ranked by relevance and update as you type</li>
+    <li>Click any result to navigate directly to it</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Work item</dt><dd>Feature, Incident, or CR — indexed by ID, title, and body text.</dd>
+    <dt>Fragment</dt><dd>A section of a document that is indexed and returned as a search hit.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="{{ docs_link }}">Open full docs →</a>
+  </footer>
+</section>

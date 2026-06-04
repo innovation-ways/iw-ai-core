@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% from "macros/empty_state.html" import empty_state %}
+{% include "components/toast.html" %}
+
+{% block title %}Documentation — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}docs{% endblock %}
+
+{% block content %}
+<div class="mb-4 flex justify-end">
+  <div class="flex items-center gap-2">
+    <!-- Select mode toggle -->
+    <button
+      id="select-mode-btn"
+      hx-get="/project/{{ current_project.id }}/api/docs/select-mode"
+      hx-target="#docs-grid"
+      hx-swap="innerHTML"
+      class="flex items-center gap-2 px-3 py-2 border border-border rounded-md text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+      onclick="toggleSelectMode()"
+      aria-label="Toggle select mode">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 11l3-3m0 0l3 3m-3-3v8m0-13a9 9 0 110 18 9 9 0 010-18z"/>
+      </svg>
+      Select
+    </button>
+    <!-- Settings Gear Icon -->
+    <button
+      hx-get="/project/{{ current_project.id }}/api/docs/config"
+      hx-target="#docs-config-overlay"
+      hx-swap="innerHTML"
+      data-tour="docs-regen"
+      class="p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors rounded-md"
+      aria-label="Documentation settings">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- Config overlay container -->
+<div id="docs-config-overlay"></div>
+
+<!-- Stale Summary Row (htmx loaded) -->
+<div id="stale-summary" data-tour="docs-diff" hx-get="/project/{{ current_project.id }}/api/docs/stale" hx-trigger="load" hx-swap="innerHTML"></div>
+
+<!-- Filter Bar -->
+<div class="mb-4">
+  <form id="docs-filter-form" class="flex items-center gap-3 flex-wrap">
+    <!-- Type -->
+    <div class="flex items-center gap-1.5">
+      <label for="docs-filter-type" class="text-xs text-muted-foreground font-medium whitespace-nowrap">Type</label>
+      <select id="docs-filter-type"
+              name="doc_type"
+              hx-get="/project/{{ current_project.id }}/api/docs/search"
+              hx-trigger="change"
+              hx-target="#docs-grid"
+              hx-swap="innerHTML"
+              hx-include="#docs-filter-form"
+              class="docs-filter-select text-sm bg-input border border-border rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+        <option value="">All</option>
+        {% for dtype in doc_types %}
+        <option value="{{ dtype }}">{{ dtype|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Status -->
+    <div class="flex items-center gap-1.5">
+      <label for="docs-filter-status" class="text-xs text-muted-foreground font-medium whitespace-nowrap">Status</label>
+      <select id="docs-filter-status"
+              name="status"
+              hx-get="/project/{{ current_project.id }}/api/docs/search"
+              hx-trigger="change"
+              hx-target="#docs-grid"
+              hx-swap="innerHTML"
+              hx-include="#docs-filter-form"
+              class="docs-filter-select text-sm bg-input border border-border rounded-md px-2 py-1.5 text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+        <option value="">All</option>
+        {% for s in statuses %}
+        <option value="{{ s }}">{{ s|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Search -->
+    <div class="relative flex-1 min-w-[180px] max-w-sm">
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none"
+           fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+      <input type="text"
+             id="docs-search-input"
+             name="q"
+             placeholder="Search documentation…"
+             hx-get="/project/{{ current_project.id }}/api/docs/search"
+             hx-trigger="input changed delay:300ms"
+             hx-target="#docs-grid"
+             hx-swap="innerHTML"
+             hx-include="#docs-filter-form"
+             class="w-full pl-10 pr-4 py-1.5 bg-input border border-border rounded-md text-sm
+                    text-foreground placeholder:text-muted-foreground
+                    focus:outline-none focus:ring-2 focus:ring-ring"/>
+    </div>
+  </form>
+</div>
+
+<!-- Running Jobs Strip -->
+<div id="docs-running-jobs"
+     hx-get="/project/{{ current_project.id }}/api/docs/running-jobs"
+     hx-trigger="load, runningJobsReload from:body"
+     hx-swap="innerHTML">
+</div>
+
+<!-- Card Grid (htmx target) -->
+<div id="docs-grid" data-tour="docs-catalogue" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" data-select-mode="false">
+  {% if docs %}
+    {% for doc in docs %}
+      {% include "fragments/docs_card.html" %}
+    {% endfor %}
+  {% else %}
+    {{ empty_state(
+         slug="docs",
+         heading="No project docs yet",
+         body="Generated and human-authored docs for this project will be listed here once they're produced.",
+         primary_label="Doc catalogue →",
+         primary_href="/system/docs/implementation/00_INDEX",
+         secondary_label="",
+         secondary_href=""
+       ) }}
+  {% endif %}
+</div>
+
+<!-- Floating Action Bar (hidden by default) -->
+<div id="export-action-bar"
+     class="fixed bottom-6 left-1/2 -translate-x-1/2 hidden z-40
+            bg-card border border-border rounded-lg shadow-lg px-4 py-3
+            flex items-center gap-4">
+  <span id="selected-count" class="text-sm font-medium text-foreground">0 selected</span>
+  <div class="flex items-center gap-2">
+    <button onclick="exportSelected()"
+            class="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+      </svg>
+      Export Selected
+    </button>
+    <button onclick="clearSelection()"
+            class="flex items-center gap-2 px-4 py-2 border border-border rounded-md text-sm font-medium text-muted-foreground hover:bg-muted transition-colors">
+      Clear
+    </button>
+  </div>
+</div>
+
+<script>
+var selectModeActive = false;
+
+function toggleSelectMode() {
+  selectModeActive = !selectModeActive;
+  var grid = document.getElementById('docs-grid');
+  var actionBar = document.getElementById('export-action-bar');
+  var selectBtn = document.getElementById('select-mode-btn');
+
+  if (grid) {
+    grid.dataset.selectMode = selectModeActive;
+  }
+
+  if (selectBtn) {
+    if (selectModeActive) {
+      selectBtn.classList.add('bg-primary', 'text-primary-foreground', 'border-primary');
+      selectBtn.classList.remove('text-muted-foreground');
+      selectBtn.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+        Cancel
+      `;
+    } else {
+      selectBtn.classList.remove('bg-primary', 'text-primary-foreground', 'border-primary');
+      selectBtn.classList.add('text-muted-foreground');
+      selectBtn.innerHTML = `
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 11l3-3m0 0l3 3m-3-3v8m0-13a9 9 0 110 18 9 9 0 010-18z"/>
+        </svg>
+        Select
+      `;
+      clearSelection();
+    }
+  }
+
+  if (!selectModeActive) {
+    if (actionBar) actionBar.classList.add('hidden');
+  }
+
+  updateCheckboxVisibility();
+}
+
+function updateCheckboxVisibility() {
+  var checkboxes = document.querySelectorAll('.doc-select-checkbox');
+  checkboxes.forEach(function(cb) {
+    if (cb) {
+      cb.style.display = selectModeActive ? 'block' : 'none';
+    }
+  });
+}
+
+function updateSelectedCount() {
+  var checked = document.querySelectorAll('.doc-select-checkbox:checked');
+  var count = checked.length;
+  var countEl = document.getElementById('selected-count');
+  var actionBar = document.getElementById('export-action-bar');
+
+  if (countEl) {
+    countEl.textContent = count + ' selected';
+  }
+
+  if (actionBar) {
+    if (count > 0) {
+      actionBar.classList.remove('hidden');
+    } else {
+      actionBar.classList.add('hidden');
+    }
+  }
+}
+
+function exportSelected() {
+  var checked = document.querySelectorAll('.doc-select-checkbox:checked');
+  var docIds = Array.from(checked).map(function(cb) { return cb.value; });
+
+  if (docIds.length === 0) return;
+
+  var projectId = '{{ current_project.id }}';
+  var url = '/api/project/' + projectId + '/docs/export?doc_ids=' + docIds.join(',');
+  window.location.href = url;
+}
+
+function clearSelection() {
+  var checkboxes = document.querySelectorAll('.doc-select-checkbox:checked');
+  checkboxes.forEach(function(cb) { cb.checked = false; });
+  updateSelectedCount();
+}
+
+// Listen for checkbox changes
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('docs-grid')?.addEventListener('change', function(e) {
+    if (e.target.classList.contains('doc-select-checkbox')) {
+      updateSelectedCount();
+    }
+  });
+});
+
+// Listen for failed doc job events and show a persistent toast
+document.body.addEventListener('docJobFailed', function(e) {
+  var detail = e.detail || {};
+  var msg = 'Documentation generation failed';
+  if (detail.doc_id) { msg += ' — ' + detail.doc_id; }
+  if (detail.error) {
+    var err = detail.error.length > 160 ? detail.error.substring(0, 160) + '…' : detail.error;
+    msg += ': ' + err;
+  }
+  showToast({type: 'error', message: msg});
+});
+
+// Trigger running-jobs strip reload on doc job creation (quick queued→running transition)
+document.body.addEventListener('docJobCreated', function(e) {
+  document.body.dispatchEvent(new CustomEvent('runningJobsReload'));
+  setTimeout(function() { document.body.dispatchEvent(new CustomEvent('runningJobsReload')); }, 3000);
+  setTimeout(function() { document.body.dispatchEvent(new CustomEvent('runningJobsReload')); }, 8000);
+});
+</script>
+<script>
+if (typeof window.iwChat !== 'undefined') {
+  window.iwChat.setContext({type: "docs_library", id: "{{ current_project.id }}", title: "Docs library"});
+}
+</script>
+
+{% endblock %}

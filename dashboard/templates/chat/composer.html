@@ -1,0 +1,30 @@
+<form id="chat-composer" class="border-t border-border p-2 flex flex-col gap-2" enctype="multipart/form-data" onsubmit="return false;">
+  <div id="chat-context-chips" class="flex flex-wrap gap-1"></div>
+  <div id="chat-image-chips"   class="flex flex-wrap gap-1"></div>
+  <div class="relative">
+    <textarea id="chat-input"
+             rows="2"
+             class="w-full resize-y rounded-md border border-border bg-background p-2 text-sm"
+             placeholder="Ask about this module… (/ for commands)"></textarea>
+    <div id="chat-slash-menu"
+         class="hidden absolute bottom-full mb-1 w-full border border-border bg-card rounded-md shadow z-50"
+         role="listbox"
+         aria-label="Slash commands"></div>
+  </div>
+  <div class="flex items-center justify-between">
+    <label class="inline-flex items-center gap-1 text-xs text-muted-foreground cursor-pointer">
+      <input type="file" id="chat-image-picker" class="sr-only" accept="image/png,image/jpeg,image/gif,image/webp" multiple>
+      <span class="min-h-[44px] min-w-[44px] inline-flex items-center">
+        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.414a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+        </svg>
+        Attach image
+      </span>
+    </label>
+    <button id="chat-send"
+            type="submit"
+            class="bg-primary text-primary-foreground text-sm px-3 py-1.5 rounded min-h-[44px] min-w-[44px]">
+      Send ↵
+    </button>
+  </div>
+</form>

@@ -1,0 +1,29 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Docs Library</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>Docs is the versioned document catalogue for this project — everything generated, imported, or linked is stored here with full diff, stale detection, and HTML/PDF export.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Browse all doc versions side-by-side with diffs</li>
+    <li>Run AI regeneration on stale or outdated documents</li>
+    <li>Export any doc as HTML or PDF</li>
+    <li>Validate links and check for lint warnings</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Stale doc</dt><dd>A document whose source code has changed since it was last rendered — a regeneration candidate.</dd>
+    <dt>Fragment</dt><dd>A section-level chunk of a document, rendered and diffed independently.</dd>
+    <dt>Work item</dt><dd>A Feature, Incident, or CR — the unit of work that may own or reference docs.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="{{ docs_link }}">Open full docs →</a>
+  </footer>
+</section>

@@ -1,0 +1,27 @@
+<div class="p-4 border rounded-lg bg-card">
+  <h3 class="font-semibold text-sm mb-2">Instance Guide</h3>
+  {% if instance_guide is none %}
+  <p class="text-xs text-muted-foreground mb-3">Inheriting from type guide — override below</p>
+  {% endif %}
+  <form hx-post="/project/{{ project_id }}/api/docs/{{ doc_id }}/guide/instance"
+        hx-target="this" hx-swap="outerHTML">
+    <textarea name="guide_md" rows="8"
+              class="w-full font-mono text-xs border rounded p-2 bg-background resize-y"
+              placeholder="No instance guide override — leave empty to inherit type guide.">{{ instance_guide or '' }}</textarea>
+    <div class="mt-2 flex gap-2">
+      <button type="submit"
+              class="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90">
+        Save Instance Guide
+      </button>
+      {% if instance_guide is not none %}
+      <button type="button"
+              hx-delete="/project/{{ project_id }}/api/docs/{{ doc_id }}/guide/instance"
+              hx-target="this"
+              hx-swap="outerHTML"
+              class="px-3 py-1.5 text-xs border border-destructive text-destructive rounded hover:bg-destructive/10">
+        Delete Override
+      </button>
+      {% endif %}
+    </div>
+  </form>
+</div>

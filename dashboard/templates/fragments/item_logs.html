@@ -1,0 +1,97 @@
+{% from "components/status_badge.html" import status_badge %}
+
+{% if log_sections %}
+  <script>
+    // Preserve scroll position in log <pre> elements across htmx polling swaps
+    document.addEventListener('htmx:beforeSwap', function(e) {
+      var t = e.detail.target;
+      if (t.id && t.id.startsWith('log-')) {
+        var pre = t.querySelector('pre');
+        if (pre) t._savedScroll = pre.scrollTop;
+      }
+    });
+    document.addEventListener('htmx:afterSwap', function(e) {
+      var t = e.detail.target;
+      if (t.id && t.id.startsWith('log-') && t._savedScroll) {
+        var pre = t.querySelector('pre');
+        if (pre) pre.scrollTop = t._savedScroll;
+      }
+    });
+  </script>
+  <div class="space-y-3">
+    {% for section in log_sections %}
+      <details class="bg-card border border-border rounded-lg group"
+               {% if section.status == 'in_progress' %}open{% endif %}>
+        <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20 transition-colors list-none">
+          <span class="text-xs font-mono text-muted-foreground mr-1">&#9654;</span>
+          <span class="font-mono text-xs font-semibold">{{ section.step_id }}</span>
+          <span class="text-xs text-foreground">{{ section.agent_label }}</span>
+          {{ status_badge(section.status) }}
+          {% if section.static_content is none %}
+            <span class="text-xs text-muted-foreground">({{ section.runs|length }} run{{ 's' if section.runs|length != 1 else '' }})</span>
+          {% endif %}
+        </summary>
+        <div class="border-t border-border">
+          {% if section.static_content is not none %}
+            <!-- Static content (worktree setup / merge) -->
+            <div class="px-4 py-3">
+              <pre class="bg-muted/50 border border-border rounded p-3 text-xs font-mono text-foreground/90 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap break-words">{{ section.static_content }}</pre>
+            </div>
+          {% else %}
+            {% for run in section.runs %}
+              <div class="px-4 py-3 {% if not loop.last %}border-b border-border/50{% endif %}">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-xs font-mono text-muted-foreground">Run #{{ run.run_number }}</span>
+                  {{ status_badge(run.status) }}
+                  {% if run.log_modified %}
+                    <span class="text-xs text-muted-foreground" title="Log last modified">last update {{ run.log_modified }}</span>
+                  {% endif %}
+                  {% if run.duration_secs is not none %}
+                    <span class="text-xs font-mono text-muted-foreground">
+                      {% if run.duration_secs >= 3600 %}
+                        {{ (run.duration_secs // 3600)|int }}h {{ ((run.duration_secs % 3600) // 60)|int }}m
+                      {% elif run.duration_secs >= 60 %}
+                        {{ (run.duration_secs // 60)|int }}m {{ (run.duration_secs % 60)|int }}s
+                      {% else %}
+                        {{ run.duration_secs|round(1) }}s
+                      {% endif %}
+                    </span>
+                  {% endif %}
+                  {% if run.is_running %}
+                    <span class="text-xs text-yellow-500 animate-pulse font-semibold">LIVE</span>
+                  {% endif %}
+                </div>
+                <!-- Log content block.
+                     For running steps: hx-trigger="load" fires once to fetch the log-content
+                     fragment, which injects its own "every 5s" inner poller. This avoids
+                     having two concurrent pollers (outer + inner) which was causing
+                     browser connection exhaustion. -->
+                <div id="log-{{ section.db_step_id }}-{{ run.run_number }}"
+                     {% if run.is_running %}
+                       hx-get="/project/{{ project_id }}/item/{{ item.id }}/log-content/{{ section.db_step_id }}/{{ run.run_number }}"
+                       hx-trigger="load"
+                       hx-swap="innerHTML"
+                     {% endif %}>
+                  {% if run.log_content %}
+                    <pre class="bg-muted/50 border border-border rounded p-3 text-xs font-mono text-foreground/90 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap break-words">{{ run.log_content }}</pre>
+                  {% else %}
+                    <p class="text-xs text-muted-foreground italic">No log content available.</p>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+            {% if section.runs|length == 0 %}
+              <div class="px-4 py-3">
+                <p class="text-xs text-muted-foreground italic">No runs recorded yet.</p>
+              </div>
+            {% endif %}
+          {% endif %}
+        </div>
+      </details>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="bg-card border border-border rounded-lg p-8 text-center">
+    <p class="text-muted-foreground text-sm">No execution logs available for this item.</p>
+  </div>
+{% endif %}

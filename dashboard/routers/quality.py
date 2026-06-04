@@ -1,0 +1,399 @@
+"""Dashboard Quality Gates tab — launch and monitor static analysis runs per project."""
+
+from __future__ import annotations
+
+import logging
+import threading
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse, Response
+from sqlalchemy import select
+
+from dashboard.dependencies import get_db
+from dashboard.routers._run_helpers import (
+    action_response,
+    build_category_cards,
+    build_run_rows,
+    get_project_or_404,
+    group_cards,
+)
+from dashboard.routers._test_health_helpers import build_test_health_cards
+from orch.db.models import Project, TestRun, TestRunStatus
+from orch.test_health_service import latest
+from orch.test_runner import kill_test_run, launch_quality_fix_run, launch_test_run
+
+if TYPE_CHECKING:
+    from fastapi.templating import Jinja2Templates
+    from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/project/{project_id}")
+
+_RUN_TYPE = "quality"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_quality_config(project: Project) -> dict[str, Any]:
+    """Extract quality_config from project JSONB config."""
+    config: dict[str, Any] = project.config or {}
+    result: dict[str, Any] = config.get("quality_config", {})
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Page routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/quality", response_class=HTMLResponse)
+def quality_page(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    tab: str = "launch",
+) -> Any:
+    """Render the Quality Gates page with launch or runs tab.
+
+    Args:
+        project_id: The project whose quality config is used.
+        request: The current FastAPI request.
+        db: Active database session.
+        tab: Active tab — 'launch' or 'runs'.
+
+    Returns:
+        Full HTML quality page for the requested tab.
+    """
+    project = get_project_or_404(project_id, db)
+    quality_config = _get_quality_config(project)
+    templates: Jinja2Templates = request.app.state.templates
+
+    active_tab = tab if tab in ("launch", "runs") else "launch"
+
+    context: dict[str, Any] = {
+        "current_project": project,
+        "running_count": 0,
+        "active_tab": active_tab,
+        "has_config": bool(quality_config.get("categories")),
+    }
+
+    if active_tab == "launch":
+        cards = build_category_cards(project_id, quality_config, db, run_type=_RUN_TYPE)
+        context["grouped_categories"] = group_cards(cards)
+    elif active_tab == "runs":
+        context["runs"] = build_run_rows(project_id, db, run_type=_RUN_TYPE)
+
+    return templates.TemplateResponse(
+        request,
+        "pages/project/quality.html",
+        context,
+    )
+
+
+@router.get(
+    "/test-health", response_class=HTMLResponse, operation_id="test_health_fragment_quality"
+)
+def test_health_fragment(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """htmx fragment: Test Health panel (shared with tests router)."""
+    project = get_project_or_404(project_id, db)
+    templates: Jinja2Templates = request.app.state.templates
+
+    latest_snapshots = latest(db, project_id)
+    metrics_data = build_test_health_cards(project, latest_snapshots, db)
+
+    return templates.TemplateResponse(
+        request,
+        "fragments/test_health_panel.html",
+        {
+            "current_project": project,
+            "metrics_data": metrics_data,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fragment routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/quality/fragment/launch", response_class=HTMLResponse)
+def quality_fragment_launch(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Return the quality gates launch panel fragment.
+
+    Args:
+        project_id: The project whose quality categories are rendered.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with quality gate category cards.
+    """
+    project = get_project_or_404(project_id, db)
+    quality_config = _get_quality_config(project)
+    templates: Jinja2Templates = request.app.state.templates
+    cards = build_category_cards(project_id, quality_config, db, run_type=_RUN_TYPE)
+    return templates.TemplateResponse(
+        request,
+        "fragments/quality_launch.html",
+        {
+            "current_project": project,
+            "grouped_categories": group_cards(cards),
+            "has_config": bool(quality_config.get("categories")),
+        },
+    )
+
+
+@router.get("/quality/fragment/runs", response_class=HTMLResponse)
+def quality_fragment_runs(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Return the quality gate runs history fragment.
+
+    Args:
+        project_id: The project whose quality run history is shown.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with recent quality run rows.
+    """
+    project = get_project_or_404(project_id, db)
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/quality_runs.html",
+        {
+            "current_project": project,
+            "runs": build_run_rows(project_id, db, run_type=_RUN_TYPE),
+        },
+    )
+
+
+@router.get("/quality/fragment/log/{run_id}", response_class=HTMLResponse)
+def quality_fragment_log(
+    project_id: str,
+    run_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Return the log viewer fragment for a quality run.
+
+    Args:
+        project_id: The project that owns the quality run.
+        run_id: Database primary key of the TestRun row.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        HTML fragment with the last 2000 lines of the run log (newest first).
+    """
+    project = get_project_or_404(project_id, db)
+    run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="Quality run not found")
+
+    log_content = ""
+    if run.log_path and Path(run.log_path).is_file():
+        try:
+            lines = Path(run.log_path).read_text(encoding="utf-8", errors="replace").splitlines()
+            # Tail last 2000 lines for large logs, then reverse (newest first)
+            if len(lines) > 2000:
+                tail = lines[-2000:]
+                tail.reverse()
+                log_content = "\n".join(tail)
+                log_content += f"\n\n... ({len(lines) - 2000} earlier lines not shown) ..."
+            else:
+                lines_copy = list(lines)
+                lines_copy.reverse()
+                log_content = "\n".join(lines_copy)
+        except OSError:
+            log_content = "(Error reading log file)"
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "fragments/tests_log.html",
+        {
+            "current_project": project,
+            "run": run,
+            "log_content": log_content,
+            "is_running": run.status == TestRunStatus.running,
+            "run_type_label": "Quality",
+            "log_fetch_url": f"/project/{project_id}/quality/fragment/log/{run_id}",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Action routes
+# ---------------------------------------------------------------------------
+
+
+@router.post("/api/quality/launch/{category}", response_class=Response)
+def launch_quality_gate(
+    project_id: str,
+    category: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Launch a quality gate run for the named category.
+
+    Returns a warning toast if a run is already active for this category.
+
+    Args:
+        project_id: The project to run the quality gate for.
+        category: Quality gate category key from the project's quality_config.
+        db: Active database session.
+
+    Returns:
+        204 response with HX-Trigger toast; reloads on success.
+    """
+    project = get_project_or_404(project_id, db)
+    quality_config = _get_quality_config(project)
+    categories = quality_config.get("categories", {})
+
+    if category not in categories:
+        raise HTTPException(status_code=400, detail=f"Unknown quality category: {category}")
+
+    # Check for already running/pending run in same category
+    existing = db.scalar(
+        select(TestRun).where(
+            TestRun.project_id == project_id,
+            TestRun.category == category,
+            TestRun.run_type == _RUN_TYPE,
+            TestRun.status.in_([TestRunStatus.pending, TestRunStatus.running]),
+        )
+    )
+    if existing:
+        return action_response(
+            f"A {category} quality run is already in progress (#{existing.id}).",
+            toast_type="warning",
+        )
+
+    cat_config = categories[category]
+    command = cat_config["command"]
+
+    run = TestRun(
+        project_id=project_id,
+        category=category,
+        status=TestRunStatus.pending,
+        command=command,
+        triggered_by="user",
+        run_type=_RUN_TYPE,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    thread = threading.Thread(
+        target=launch_test_run,
+        args=(run.id,),
+        daemon=True,
+        name=f"quality-run-{run.id}",
+    )
+    thread.start()
+
+    return action_response(
+        f"Quality run #{run.id} launched ({cat_config.get('label', category)}).", reload=True
+    )
+
+
+@router.post("/api/quality/launch-fix/{category}", response_class=Response)
+def launch_quality_gate_fix(
+    project_id: str,
+    category: str,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Launch a Claude agent that runs the gate command and auto-fixes errors in a loop."""
+    project = get_project_or_404(project_id, db)
+    quality_config = _get_quality_config(project)
+    categories = quality_config.get("categories", {})
+
+    if category not in categories:
+        raise HTTPException(status_code=400, detail=f"Unknown quality category: {category}")
+
+    # Block if any run (plain or autofix) is already active for this category
+    existing = db.scalar(
+        select(TestRun).where(
+            TestRun.project_id == project_id,
+            TestRun.category == category,
+            TestRun.run_type == _RUN_TYPE,
+            TestRun.status.in_([TestRunStatus.pending, TestRunStatus.running]),
+        )
+    )
+    if existing:
+        return action_response(
+            f"A {category} quality run is already in progress (#{existing.id}).",
+            toast_type="warning",
+        )
+
+    cat_config = categories[category]
+    command = cat_config["command"]
+
+    run = TestRun(
+        project_id=project_id,
+        category=category,
+        status=TestRunStatus.pending,
+        command=command,
+        triggered_by="autofix",
+        run_type=_RUN_TYPE,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    thread = threading.Thread(
+        target=launch_quality_fix_run,
+        args=(run.id,),
+        daemon=True,
+        name=f"quality-fix-{run.id}",
+    )
+    thread.start()
+
+    return action_response(
+        f"Quality auto-fix #{run.id} launched ({cat_config.get('label', category)}).", reload=True
+    )
+
+
+@router.post("/api/quality/kill/{run_id}", response_class=Response)
+def kill_quality_gate(
+    project_id: str,
+    run_id: int,
+    db: Session = Depends(get_db),
+) -> Any:
+    """Kill a running quality gate run.
+
+    Args:
+        project_id: The project that owns the run.
+        run_id: Database primary key of the TestRun to kill.
+        db: Active database session.
+
+    Returns:
+        204 response with a toast indicating success or that the run was not active.
+    """
+    get_project_or_404(project_id, db)
+    run = db.scalar(select(TestRun).where(TestRun.id == run_id, TestRun.project_id == project_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="Quality run not found")
+
+    success = kill_test_run(run_id)
+    if success:
+        return action_response(
+            f"Quality run #{run_id} cancelled.", toast_type="warning", reload=True
+        )
+    return action_response(f"Quality run #{run_id} is not running.", toast_type="warning")

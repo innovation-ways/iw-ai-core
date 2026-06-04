@@ -1,0 +1,441 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+{% from "components/step_pipeline.html" import step_pipeline %}
+
+{% block title %}{{ batch.id }} — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}batch_detail{% endblock %}
+
+{% block content %}
+<!-- Confirm dialog container (htmx swaps fragment here) -->
+<div id="confirm-dialog"></div>
+
+<!-- CR-00077: htmx swap target for overlap modal (populated by htmx on held pill click) -->
+<div id="overlap-modal-root"></div>
+
+<!-- CR-00078: overlap ignore modal overlay (populated by htmx on held pill click) -->
+<div id="overlap-modal-overlay"
+     class="fixed inset-0 z-50"
+     style="display:none; background:rgba(0,0,0,.55); align-items:center; justify-content:center;"
+     onclick="if(event.target===this)this.style.display='none'">
+  <div id="overlap-modal-inner"
+       style="background:var(--card); border:1px solid var(--border); border-radius:8px; max-width:36rem; width:100%; max-height:90vh; overflow:auto; box-shadow:0 25px 50px -12px rgba(0,0,0,.25);"
+       onclick="event.stopPropagation()">
+  </div>
+</div>
+
+<div id="batch-header-container"
+     data-batch-id="{{ batch.id }}"
+     data-project-id="{{ current_project.id }}">
+  {% include "fragments/batch_detail_header.html" %}
+</div>
+
+<!-- SSE trigger: refreshes batch header on status-update event -->
+<div id="batch-header-sse-trigger"
+     hx-get="/project/{{ current_project.id }}/batch/{{ batch.id }}/fragment/header"
+     hx-trigger="batch-header-refresh"
+     hx-target="#batch-header-container"
+     hx-swap="innerHTML">
+</div>
+
+<!-- Tab navigation -->
+<div class="flex border-b border-border mb-4 overflow-x-auto">
+  <a href="?tab=plan"
+     class="px-4 py-2 text-sm whitespace-nowrap transition-colors
+            {% if active_tab == 'plan' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+    Plan
+  </a>
+  <a href="?tab=items"
+     class="px-4 py-2 text-sm whitespace-nowrap transition-colors
+            {% if active_tab == 'items' or (not active_tab and not has_plan) %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+    Items
+  </a>
+  <a href="?tab=timeline"
+     class="px-4 py-2 text-sm whitespace-nowrap transition-colors
+            {% if active_tab == 'timeline' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+    Timeline
+  </a>
+  <a href="?tab=logs"
+     class="px-4 py-2 text-sm whitespace-nowrap transition-colors
+            {% if active_tab == 'logs' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+    Logs
+  </a>
+</div>
+
+<!-- Plan tab -->
+{% if active_tab == 'plan' %}
+<div class="space-y-6">
+  <!-- Max parallel control -->
+  <div class="flex items-center gap-3">
+    <label for="max-parallel-select" class="text-sm text-muted-foreground">Max parallel executions:</label>
+    <select id="max-parallel-select"
+            name="max_parallel"
+            hx-post="/project/{{ current_project.id }}/api/batch/{{ batch.id }}/max-parallel"
+            hx-trigger="change"
+            hx-swap="none"
+            hx-on::after-request="htmx.trigger('#batch-header-sse-trigger', 'batch-header-refresh')"
+            {% if batch_status not in ('planning', 'approved', 'paused') %}disabled{% endif %}
+            class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-sm border border-border disabled:opacity-50 disabled:cursor-not-allowed">
+      {% for n in range(1, 21) %}
+        <option value="{{ n }}" {% if batch.max_parallel == n %}selected{% endif %}>{{ n }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <!-- Auto-merge control -->
+  <div class="flex items-center gap-3">
+    <label for="auto-merge-toggle" class="text-sm text-muted-foreground">Auto-merge:</label>
+    <input id="auto-merge-toggle"
+           type="checkbox"
+           name="auto_merge"
+           {% if batch.auto_merge %}checked{% endif %}
+           hx-post="/project/{{ current_project.id }}/api/batch/{{ batch.id }}/auto-merge"
+           hx-trigger="change"
+           hx-swap="none"
+           hx-on::after-request="htmx.trigger('#batch-header-sse-trigger', 'batch-header-refresh')"
+           {% if batch_status not in ('planning', 'approved', 'paused') %}disabled{% endif %}
+           class="rounded border-border text-primary focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed" />
+    <span class="text-xs text-muted-foreground">When off, each item waits for an operator to approve the merge.</span>
+  </div>
+
+  {% if has_diagram %}
+  <div class="bg-card border border-border rounded-lg p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-medium text-foreground">Execution Diagram</h3>
+      <a href="/project/{{ current_project.id }}/batch/{{ batch.id }}/diagram.drawio"
+         class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90 transition-opacity">
+        Download .drawio
+      </a>
+    </div>
+    <img src="/project/{{ current_project.id }}/batch/{{ batch.id }}/diagram.png?v={{ batch.updated_at.timestamp() | int }}"
+         alt="{{ batch.id }} execution plan diagram"
+         class="w-full rounded border border-border bg-white" />
+  </div>
+  {% endif %}
+
+  {% if plan_html %}
+  <div class="bg-card border border-border rounded-lg p-6">
+    <h3 class="text-sm font-medium text-foreground mb-3">Execution Plan</h3>
+    <div class="prose prose-sm prose-invert max-w-none
+                [&_table]:w-full [&_table]:text-xs [&_table]:border-collapse
+                [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:border [&_th]:border-border [&_th]:bg-muted/30 [&_th]:font-medium [&_th]:text-muted-foreground
+                [&_td]:px-3 [&_td]:py-2 [&_td]:border [&_td]:border-border [&_td]:text-sm
+                [&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-foreground [&_h1]:mb-4
+                [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:mt-6 [&_h2]:mb-3
+                [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mt-4 [&_h3]:mb-2
+                [&_p]:text-sm [&_p]:text-muted-foreground
+                [&_li]:text-sm [&_li]:text-muted-foreground
+                [&_strong]:text-foreground
+                [&_hr]:border-border [&_hr]:my-4">
+      {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted batch-plan content #}
+      {{ plan_html | safe }}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Items tab -->
+{% elif active_tab in ('items', '', none) or (not active_tab and not has_plan) %}
+<div class="bg-card border border-border rounded-lg overflow-x-auto">
+  <!-- SSE trigger: refreshes batch items on running-update event -->
+  <div id="batch-items-sse-trigger"
+       hx-get="/project/{{ current_project.id }}/batch/{{ batch.id }}/fragment/items"
+       hx-trigger="batch-items-refresh"
+       hx-target="#batch-items-body"
+       hx-swap="innerHTML">
+  </div>
+  <table class="w-full text-sm min-w-[550px]">
+    {% include "fragments/batch_items_rows.html" %}
+  </table>
+</div>
+
+<!-- Timeline tab -->
+{% elif active_tab == 'timeline' %}
+<div class="bg-card border border-border rounded-lg p-6">
+  {% if items and gantt_total_secs and gantt_total_secs > 0 %}
+    {# Time axis labels at 0%, 25%, 50%, 75%, 100% #}
+    {% set axis_pcts = [0, 25, 50, 75, 100] %}
+    <div class="flex items-end mb-1" style="padding-left: 6.5rem;">
+      <div class="flex-1 relative h-5">
+        {% for pct in axis_pcts %}
+          {% set ts = gantt_start_ts + gantt_total_secs * pct / 100 %}
+          <span class="absolute text-xs text-muted-foreground"
+                style="left: {{ pct }}%; transform: translateX(-50%){% if pct == 0 %} translateX(0){% elif pct == 100 %} translateX(-100%){% endif %}">
+            {{ ts | fmt_ts_time }}
+          </span>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# Grid + bars #}
+    <div class="space-y-1.5">
+      {% for row in items %}
+        {# Compute bar position and width as percentages #}
+        {% if row.started_at_ts is not none %}
+          {% set offset_secs = row.started_at_ts - gantt_start_ts %}
+          {% set bar_left = (offset_secs / gantt_total_secs * 100) | round(3) %}
+          {% if row.ended_at_ts is not none %}
+            {% set bar_width = ((row.ended_at_ts - row.started_at_ts) / gantt_total_secs * 100) | round(3) %}
+          {% else %}
+            {% set bar_width = ((gantt_end_ts - row.started_at_ts) / gantt_total_secs * 100) | round(3) %}
+          {% endif %}
+          {% set bar_width = [bar_width, 0.5] | max %}
+        {% else %}
+          {% set bar_left = 0 %}
+          {% set bar_width = 0 %}
+        {% endif %}
+        <div class="flex items-center gap-2">
+          <a href="/project/{{ current_project.id }}/item/{{ row.item_id }}"
+             class="font-mono text-xs font-semibold text-primary shrink-0 hover:underline text-right"
+             style="width: 6rem;">
+            {{ row.item_id }}
+          </a>
+          <div class="flex-1 h-6 rounded relative" style="background: hsl(var(--muted) / 0.3); border: 1px solid hsl(var(--border) / 0.3);">
+            {# Grid lines at 25%, 50%, 75% #}
+            {% for gp in [25, 50, 75] %}
+              <div class="absolute top-0 bottom-0" style="left: {{ gp }}%; width: 1px; background: hsl(var(--border) / 0.5);"></div>
+            {% endfor %}
+            {# Bar #}
+            {% if row.started_at_ts is not none %}
+              <div class="absolute top-0.5 bottom-0.5 rounded"
+                   title="{{ row.item_id }}: {{ row.duration_secs | round | int if row.duration_secs else '?' }}s"
+                   style="left: {{ bar_left }}%; width: {{ bar_width }}%;
+                          {% if row.status == 'merged' %}background: var(--success);
+                          {% elif row.status == 'failed' %}background: var(--destructive);
+                          {% elif row.status == 'executing' %}background: var(--primary);
+                          {% else %}background: var(--muted-foreground);{% endif %}">
+              </div>
+            {% endif %}
+          </div>
+          <span class="font-mono text-xs text-muted-foreground shrink-0 text-right" style="width: 4rem;">
+            {% if row.duration_secs is not none %}
+              {{ "%dm%02ds"|format((row.duration_secs // 60)|int, (row.duration_secs % 60)|int) }}
+            {% else %}
+              —
+            {% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+
+    {# Legend #}
+    <div class="flex items-center gap-4 mt-4 pt-4 border-t border-border">
+      <span class="text-xs text-muted-foreground">Legend:</span>
+      {% for status, label, color in [('merged', 'Merged', 'var(--success)'), ('failed', 'Failed', 'var(--destructive)'), ('executing', 'Executing', 'var(--primary)'), ('approved', 'Queued', 'var(--muted-foreground)')] %}
+        <div class="flex items-center gap-1.5">
+          <div class="w-3 h-3 rounded-sm" style="background: {{ color }};"></div>
+          <span class="text-xs text-muted-foreground">{{ label }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-muted-foreground text-sm text-center">No timeline data available — items must have started to appear here.</p>
+  {% endif %}
+</div>
+
+<!-- Logs tab -->
+{% elif active_tab == 'logs' %}
+{% if batch_events %}
+<div class="bg-card border border-border rounded-lg overflow-x-auto">
+  <table class="w-full text-sm min-w-[500px]">
+    <thead>
+      <tr class="border-b border-border bg-muted/30">
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Time</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Event</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Entity</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Message</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ev in batch_events %}
+      <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+        <td class="px-4 py-2 font-mono text-xs text-muted-foreground whitespace-nowrap">
+          {{ ev.created_at | localdt('%Y-%m-%d %H:%M:%S') }}
+        </td>
+        <td class="px-4 py-2">
+          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+            {% if 'failed' in ev.event_type or 'error' in ev.event_type %}bg-destructive/20 text-destructive
+            {% elif 'completed' in ev.event_type or 'merged' in ev.event_type %}bg-success/20 text-success
+            {% elif 'launched' in ev.event_type or 'executing' in ev.event_type or 'started' in ev.event_type %}bg-primary/20 text-primary
+            {% else %}bg-secondary text-secondary-foreground{% endif %}">
+            {{ ev.event_type }}
+          </span>
+        </td>
+        <td class="px-4 py-2 font-mono text-xs hidden sm:table-cell">
+          {% if ev.entity_id == batch.id %}
+            <span class="text-muted-foreground">{{ ev.entity_id }}</span>
+          {% else %}
+            <a href="/project/{{ current_project.id }}/item/{{ ev.entity_id }}"
+               class="text-primary hover:underline">{{ ev.entity_id }}</a>
+          {% endif %}
+        </td>
+        <td class="px-4 py-2 text-sm text-foreground">{{ ev.message or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="bg-card border border-border rounded-lg p-6">
+  <p class="text-muted-foreground text-sm text-center">
+    No dispatcher events recorded for this batch.
+  </p>
+</div>
+{% endif %}
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% include "components/toast.html" %}
+<script>
+// CR-00077: close the overlap modal — wired to Esc key, backdrop click, × button
+function _iwCloseOverlapModal() {
+  var overlay = document.getElementById('overlap-modal-overlay');
+  var inner   = document.getElementById('overlap-modal-inner');
+  if (overlay) overlay.style.display = 'none';
+  if (inner)   inner.innerHTML = '';
+}
+
+(function () {
+  // Esc key closes the modal
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      var overlay = document.getElementById('overlap-modal-overlay');
+      if (overlay && overlay.style.display !== 'none') {
+        _iwCloseOverlapModal();
+      }
+    }
+  });
+
+  // Backdrop (dimmed area outside the white box) closes the modal
+  document.addEventListener('click', function (e) {
+    var overlay = document.getElementById('overlap-modal-overlay');
+    if (!overlay || overlay.style.display === 'none') return;
+    // Only close when clicking the backdrop itself, not the inner container
+    if (e.target === overlay) {
+      _iwCloseOverlapModal();
+    }
+    // × close button
+    if (e.target.matches && e.target.matches('.iw-modal-close')) {
+      _iwCloseOverlapModal();
+    }
+  });
+})();
+</script>
+<script>
+// CR-00078: make the Held scope pill clickable to open the overlap ignore modal
+(function () {
+  document.addEventListener('htmx:afterSwap', function (evt) {
+    var detail = evt.detail;
+    // The overlap modal fragment is #overlap-modal-root; once htmx swaps it in,
+    // show the overlay container
+    if (detail.target && detail.target.id === 'overlap-modal-inner') {
+      var overlay = document.getElementById('overlap-modal-overlay');
+      if (overlay) overlay.style.display = 'flex';
+    }
+    // Per-file ignore: htmx swaps in empty outerHTML — hide the overlay once all
+    // rows are gone and the modal's "Ignore all" is the only remaining action
+    if (detail.target && detail.target.classList && detail.target.classList.contains('iw-modal-file-row')) {
+      // Row was removed — nothing extra needed; modal content auto-updates
+    }
+  });
+
+  document.addEventListener('htmx:afterRequest', function (evt) {
+    var detail = evt.detail;
+    if (!detail.xhr) return;
+    // CR-00078: close overlay when modal content is replaced with empty (ignore or ignore-all)
+    var reqEl = detail.requestConfig && detail.requestConfig.elt;
+    if (reqEl && reqEl.matches && reqEl.matches('.iw-modal-ignore-btn, .iw-modal-ignore-all-btn')) {
+      var xhr = detail.xhr;
+      if (xhr.status === 200) {
+        var overlay = document.getElementById('overlap-modal-overlay');
+        if (overlay) {
+          // Check if modal is now empty / showing no sections
+          var root = document.getElementById('overlap-modal-root');
+          if (!root || !root.querySelector('.iw-modal-section-block')) {
+            overlay.style.display = 'none';
+          }
+        }
+      }
+    }
+    var trigger = detail.xhr.getResponseHeader('HX-Trigger');
+    try { trigger = trigger ? JSON.parse(trigger) : {}; } catch (_) { trigger = {}; }
+    if (trigger.showToast) showToast(trigger.showToast);
+  });
+
+  // Wire up Held pill clicks in the batch items table
+  document.addEventListener('click', function (e) {
+    // The Held pill is a <span class="text-warning ..."> containing the text "Held:"
+    var el = e.target;
+    // Walk up to the scope_status cell
+    var cell = el.closest('[aria-label]');
+    if (!cell) return;
+    var label = cell.getAttribute('aria-label') || '';
+    if (!label.startsWith('Held:')) return;
+    // Extract batch_id and held_item_id from the page context
+    // The page exposes batch_id via data attributes on a known element
+    var batchIdEl = document.querySelector('[data-batch-id]');
+    var projectIdEl = document.querySelector('[data-project-id]');
+    var batchId = batchIdEl ? batchIdEl.getAttribute('data-batch-id') : null;
+    var projectId = projectIdEl ? projectIdEl.getAttribute('data-project-id') : null;
+    if (!batchId || !projectId) return;
+    // Find the held item id from the row
+    var row = cell.closest('tr');
+    if (!row) return;
+    var itemLink = row.querySelector('a[href*="/item/"]');
+    if (!itemLink) return;
+    var m = itemLink.getAttribute('href').match(/\/item\/([^/?#]+)/);
+    if (!m) return;
+    var heldItemId = m[1];
+    // Fetch modal content via htmx and inject into #overlap-modal-inner
+    var modalUrl = '/project/' + encodeURIComponent(projectId) + '/batch/' +
+                    encodeURIComponent(batchId) + '/overlap/' + encodeURIComponent(heldItemId);
+    htmx.ajax('GET', modalUrl, {
+      target: '#overlap-modal-inner',
+      swap: 'innerHTML',
+    });
+  });
+})();
+</script>
+<script>
+iwSSE.on('running-update', function () {
+  if (document.getElementById('batch-items-sse-trigger')) {
+    htmx.trigger('#batch-items-sse-trigger', 'batch-items-refresh');
+  }
+  if (document.getElementById('batch-header-sse-trigger')) {
+    htmx.trigger('#batch-header-sse-trigger', 'batch-header-refresh');
+  }
+});
+
+iwSSE.on('status-update', function () {
+  if (document.getElementById('batch-header-sse-trigger')) {
+    htmx.trigger('#batch-header-sse-trigger', 'batch-header-refresh');
+  }
+  if (document.getElementById('batch-items-sse-trigger')) {
+    htmx.trigger('#batch-items-sse-trigger', 'batch-items-refresh');
+  }
+});
+
+iwSSE.on('toast', function (e) {
+  try {
+    showToast(JSON.parse(e.data));
+  } catch (_) { /* ignore malformed */ }
+});
+
+document.body.addEventListener('htmx:afterRequest', function (e) {
+  var triggerHeader = e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger');
+  if (!triggerHeader) return;
+  try {
+    var trigger = JSON.parse(triggerHeader);
+    if (trigger.showToast) {
+      showToast(trigger.showToast);
+    }
+  } catch (_) { /* ignore */ }
+});
+</script>
+<script>
+if (typeof window.iwChat !== 'undefined') {
+  window.iwChat.setContext({type: "batch", id: "{{ batch.id }}", title: {{ batch.id | tojson }}});
+}
+</script>
+{% endblock %}

@@ -1,0 +1,107 @@
+<div id="code-job-status-panel" class="flex flex-col gap-2 p-3 bg-card border border-border rounded-lg">
+
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-2 text-sm">
+      <svg class="animate-spin w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-label="Loading" role="status">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span id="code-phase-label" class="font-medium text-foreground">{% if job_type_label %}{{ job_type_label }}{% else %}Indexing files...{% endif %}</span>
+    </div>
+    <button hx-delete="/project/{{ project_id }}/api/code/index"
+            hx-target="#code-status-panel"
+            hx-swap="innerHTML"
+            hx-confirm="Cancel the running code index job?"
+            onclick="this.disabled=true;this.textContent='Cancelling...'"
+            class="text-xs text-muted-foreground hover:text-red-500 transition-colors px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+            title="Cancel indexing"
+            aria-label="Cancel indexing">
+      Cancel
+    </button>
+  </div>
+
+  <div class="flex items-center gap-2 text-xs text-muted-foreground">
+    <span>Files: <span id="code-files-progress">0 / 0 indexed</span></span>
+    <span>·</span>
+    <span>Chunks: <span id="code-chunks-count">0</span></span>
+    <span>·</span>
+    <span id="code-elapsed-time">0:00 elapsed</span>
+  </div>
+
+  <div class="w-full bg-muted rounded-full h-2 overflow-hidden">
+    <div id="code-progress-bar" class="h-full bg-primary rounded-full transition-all duration-300" style="width: 0%"
+         role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+  </div>
+
+  <script>
+    (function() {
+      var projectId = '{{ project_id }}';
+      var streamUrl = '/project/' + projectId + '/api/code/index/stream';
+      var es = new EventSource(streamUrl);
+
+      function updateUI(data) {
+        var phaseEl = document.getElementById('code-phase-label');
+        if (phaseEl && data.phase) {
+          var phaseLabels = {
+            'indexing': 'Indexing files...',
+            'embedding': 'Creating embeddings...',
+            'map_generation': 'Generating architecture map...',
+          };
+          phaseEl.textContent = phaseLabels[data.phase] || data.phase;
+        }
+        var filesEl = document.getElementById('code-files-progress');
+        if (filesEl && data.files_total) {
+          filesEl.textContent = data.files_indexed + ' / ' + data.files_total + ' indexed';
+        }
+        var chunksEl = document.getElementById('code-chunks-count');
+        if (chunksEl && data.chunks_created !== undefined) {
+          chunksEl.textContent = data.chunks_created.toLocaleString();
+        }
+        var bar = document.getElementById('code-progress-bar');
+        if (bar && data.files_total) {
+          var pct = Math.round((data.files_indexed / data.files_total) * 100);
+          bar.style.width = pct + '%';
+          bar.setAttribute('aria-valuenow', pct);
+        }
+      }
+
+      es.onmessage = function(e) {
+        try {
+          var data = JSON.parse(e.data);
+          if (data.event === 'progress') {
+            updateUI(data);
+          } else if (data.event === 'done') {
+            es.close();
+            if (clearInterval && typeof timerId !== 'undefined') { clearInterval(timerId); }
+            if (data.status === 'failed' && typeof showToast === 'function') {
+              showToast({
+                type: 'error',
+                message: 'Code indexing failed: ' + (data.error || 'unknown error'),
+              });
+            }
+            htmx.ajax('GET', '/project/' + projectId + '/api/code/status',
+                      {target: '#code-status-panel', swap: 'innerHTML'});
+            if (data.status !== 'failed') {
+              htmx.ajax('GET', '/project/' + projectId + '/api/code/architecture',
+                        {target: '#code-content-root', swap: 'innerHTML'});
+            }
+          }
+        } catch (err) {}
+      };
+
+      es.onerror = function() {
+        es.close();
+      };
+
+      var startTime = Date.now();
+      var timerId = setInterval(function() {
+        var el = document.getElementById('code-elapsed-time');
+        if (!el) { clearInterval(timerId); return; }
+        var elapsed = Math.floor((Date.now() - startTime) / 1000);
+        var mins = Math.floor(elapsed / 60);
+        var secs = elapsed % 60;
+        el.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs + ' elapsed';
+      }, 1000);
+    })();
+  </script>
+</div>

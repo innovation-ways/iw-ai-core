@@ -1,0 +1,25 @@
+<tr id="slot-row-{{ slot.id }}" class="border-t">
+  <td class="px-4 py-3 font-mono font-medium">{{ slot.time_hhmm }}</td>
+  <td class="px-4 py-3">
+    {% if slot.enabled %}
+      <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-400">Active</span>
+    {% else %}
+      <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">Disabled</span>
+    {% endif %}
+  </td>
+  <td class="px-4 py-3 flex gap-2">
+    <button hx-patch="/api/keep-alive/slots/{{ slot.id }}/toggle"
+            hx-target="#slot-row-{{ slot.id }}"
+            hx-swap="outerHTML"
+            class="text-xs px-2 py-1 rounded border border-border hover:bg-muted transition-colors">
+      {% if slot.enabled %}Disable{% else %}Enable{% endif %}
+    </button>
+    <button hx-delete="/api/keep-alive/slots/{{ slot.id }}"
+            hx-target="#slot-list"
+            hx-swap="outerHTML"
+            hx-confirm="Delete slot {{ slot.time_hhmm }}?"
+            class="text-xs px-2 py-1 rounded border border-destructive text-destructive hover:bg-destructive/10 transition-colors">
+      Delete
+    </button>
+  </td>
+</tr>

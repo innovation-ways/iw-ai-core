@@ -1,0 +1,56 @@
+{# LLM usage footer fragment — returned by GET /api/usage/llm/fragment
+   Replaces the footer's innerHTML via htmx every 60s. No base.html extend. #}
+
+<span class="font-medium text-foreground">Claude</span>
+
+<div class="hidden sm:flex items-center gap-1.5">
+  <span class="text-muted-foreground">{{ claude_reset or '5h' }}</span>
+  <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
+    <div class="h-full {{ claude_5h_color }} rounded-full transition-all duration-700" style="width: {{ claude_5h_pct }}%"></div>
+  </div>
+  <span class="font-medium tabular-nums">{{ claude_5h_pct }}%</span>
+</div>
+
+<div class="hidden sm:flex items-center gap-1.5">
+  <span class="text-muted-foreground">{{ claude_7d_reset or '7d' }}</span>
+  <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
+    <div class="h-full {{ claude_7d_color }} rounded-full transition-all duration-700" style="width: {{ claude_7d_pct }}%"></div>
+  </div>
+  <span class="font-medium tabular-nums">{{ claude_7d_pct }}%</span>
+</div>
+
+<span class="hidden sm:block text-border select-none mx-1">·</span>
+
+<span class="font-medium text-foreground">MiniMax</span>
+
+<div class="hidden sm:flex items-center gap-1.5"{% if minimax_5h_used is not none and minimax_5h_total is not none %} title="{{ minimax_5h_used }} / {{ minimax_5h_total }} requests"{% endif %}>
+  <span class="text-muted-foreground">{{ minimax_reset or '5h' }}</span>
+  <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
+    <div class="h-full {{ minimax_5h_color }} rounded-full transition-all duration-700" style="width: {{ minimax_5h_pct }}%"></div>
+  </div>
+  <span class="font-medium tabular-nums">{{ minimax_5h_pct }}%</span>
+</div>
+
+<span class="hidden sm:block text-border select-none mx-1">·</span>
+
+<span class="font-medium text-foreground"{% if codex_plan_type %} title="ChatGPT {{ codex_plan_type }} plan"{% endif %}>Codex</span>
+
+{% if codex_warning %}
+<span class="hidden sm:flex items-center gap-1 text-amber-600" title="Codex {{ codex_warning }}">⚠ {{ codex_warning }}</span>
+{% else %}
+<div class="hidden sm:flex items-center gap-1.5">
+  <span class="text-muted-foreground">{{ codex_5h_reset or '5h' }}</span>
+  <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
+    <div class="h-full {{ codex_5h_color }} rounded-full transition-all duration-700" style="width: {{ codex_5h_pct }}%"></div>
+  </div>
+  <span class="font-medium tabular-nums">{{ codex_5h_pct }}%</span>
+</div>
+
+<div class="hidden sm:flex items-center gap-1.5">
+  <span class="text-muted-foreground">{{ codex_7d_reset or '7d' }}</span>
+  <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
+    <div class="h-full {{ codex_7d_color }} rounded-full transition-all duration-700" style="width: {{ codex_7d_pct }}%"></div>
+  </div>
+  <span class="font-medium tabular-nums">{{ codex_7d_pct }}%</span>
+</div>
+{% endif %}

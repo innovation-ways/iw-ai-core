@@ -1,0 +1,5 @@
+[0m> build · MiniMax-M2.7
+[0m→ Skill "iw-doc-generator"
+$ uv run iw doc-update missing-project nonexistent-doc --content-file -
+Error: project 'missing-project' not found
+[0m

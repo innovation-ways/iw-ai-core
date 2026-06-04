@@ -1,0 +1,62 @@
+<!-- chat_assistant/approval.html
+     Rendered inside #chat-assistant-approval-root by chat.js when a permission.asked event arrives.
+-->
+<div id="chat-assistant-approval-modal"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="chat-assistant-approval-title">
+
+  <div class="bg-card border border-border rounded-lg shadow-lg max-w-lg w-full mx-4 p-5">
+    <h2 id="chat-assistant-approval-title"
+        class="text-sm font-semibold text-foreground mb-3">
+      Permission Request
+    </h2>
+
+    <!-- Tool name + args -->
+    <div class="mb-3">
+      <div class="text-xs text-muted-foreground mb-1">Tool</div>
+      <div id="chat-assistant-approval-tool"
+           class="font-mono text-xs bg-muted px-2 py-1 rounded text-foreground"></div>
+    </div>
+
+    <div class="mb-3">
+      <div class="text-xs text-muted-foreground mb-1">Arguments</div>
+      <pre id="chat-assistant-approval-args"
+           class="font-mono text-xs bg-muted px-2 py-2 rounded text-foreground overflow-x-auto whitespace-pre-wrap break-all max-h-48"></pre>
+    </div>
+
+    <!-- Agent rationale (optional) -->
+    <div id="chat-assistant-approval-rationale-wrap" class="mb-4 hidden">
+      <div class="text-xs text-muted-foreground mb-1">Rationale</div>
+      <p id="chat-assistant-approval-rationale"
+         class="text-sm text-foreground bg-muted/40 px-2 py-1.5 rounded"></p>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="flex items-center gap-3 flex-wrap">
+      <button id="chat-assistant-approval-allow"
+              type="button"
+              class="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded min-h-[44px]">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        Allow
+      </button>
+      <button id="chat-assistant-approval-deny"
+              type="button"
+              class="inline-flex items-center gap-1.5 px-4 py-2 border border-destructive text-destructive text-sm font-medium rounded hover:bg-destructive/10 min-h-[44px]">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+        Deny
+      </button>
+      <label class="ml-auto flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+        <input type="checkbox" id="chat-assistant-approval-remember"
+               class="rounded border-border" />
+        Remember for this session
+      </label>
+    </div>
+  </div>
+
+</div>

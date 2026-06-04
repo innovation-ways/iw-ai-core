@@ -1,0 +1,61 @@
+{% from "components/status_badge.html" import status_badge %}
+
+{% if fix_cycles %}
+  <div class="space-y-3">
+    {% for fc in fix_cycles %}
+      <details class="bg-card border border-border rounded-lg group"
+               {% if fc.is_running %}open{% endif %}>
+        <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/20 transition-colors list-none">
+          <span class="text-xs font-mono text-muted-foreground mr-1">&#9654;</span>
+
+          {# Step identifier #}
+          <span class="font-mono text-xs font-semibold">{{ fc.step_id }}</span>
+          <span class="text-xs text-foreground">{{ fc.agent_label }}</span>
+
+          {# Cycle badge #}
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground font-mono">
+            cycle {{ fc.cycle_number }}
+          </span>
+
+          {# Trigger type #}
+          <span class="text-xs text-muted-foreground">{{ fc.trigger_type | replace('_', ' ') }}</span>
+
+          {# Status badge #}
+          {{ status_badge(fc.status) }}
+
+          {# Duration #}
+          {% if fc.duration_secs is not none %}
+            <span class="text-xs font-mono text-muted-foreground ml-auto">
+              {% if fc.duration_secs >= 3600 %}
+                {{ (fc.duration_secs // 3600)|int }}h {{ ((fc.duration_secs % 3600) // 60)|int }}m
+              {% elif fc.duration_secs >= 60 %}
+                {{ (fc.duration_secs // 60)|int }}m {{ (fc.duration_secs % 60)|int }}s
+              {% else %}
+                {{ fc.duration_secs | round(1) }}s
+              {% endif %}
+            </span>
+          {% elif fc.is_running %}
+            <span class="text-xs text-yellow-500 animate-pulse font-semibold ml-auto">RUNNING</span>
+          {% endif %}
+
+          {# Last log update timestamp #}
+          {% if fc.log_modified %}
+            <span class="text-xs text-muted-foreground" title="Log last modified">{{ fc.log_modified }}</span>
+          {% endif %}
+        </summary>
+
+        <div class="border-t border-border px-4 py-3">
+          {% if fc.log_content %}
+            <pre class="bg-muted/50 border border-border rounded p-3 text-xs font-mono text-foreground/90 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap break-words">{{ fc.log_content }}</pre>
+          {% else %}
+            <p class="text-xs text-muted-foreground italic">No log content available yet.</p>
+          {% endif %}
+        </div>
+      </details>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="bg-card border border-border rounded-lg p-8 text-center">
+    <p class="text-muted-foreground text-sm">No fix cycles recorded for this item.</p>
+  </div>
+{% endif %}

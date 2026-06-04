@@ -1,0 +1,139 @@
+{
+  "_generated_at": "2026-04-19T00:00:00+00:00",
+  "_generator": "scripts/regen_eval_set_f00055.py",
+  "_project_id": "iw-ai-core",
+  "_curation_source": "scripts/eval_set_f00055_curation.json",
+  "_warning": "This fixture is baseline. Run scripts/regen_eval_set_f00055.py to refresh from live DB.",
+  "evaluation_set": [
+    {
+      "question": "why is the daemon polling interval 60 seconds?",
+      "context_chips": ["why"],
+      "expected_phase_sequence": ["retrieving", "finding_items", "reading_docs", "composing"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["poll", "60", "daemon", "interval"],
+      "register": "functional",
+      "notes": "Core F-00055 feature - daemon polling behavior"
+    },
+    {
+      "question": "how does the work-item-aware code chat work?",
+      "context_chips": ["why"],
+      "expected_phase_sequence": ["retrieving", "finding_items", "reading_docs", "composing"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["work-item", "chat", "code", "question"],
+      "register": "functional",
+      "notes": "Core F-00055 feature - behavior description"
+    },
+    {
+      "question": "show me the signature of parse_id",
+      "context_chips": [],
+      "expected_phase_sequence": [],
+      "must_cite_work_items": [],
+      "may_cite_work_items": [],
+      "expected_terms": ["parse_id", "def", "function"],
+      "register": "technical",
+      "notes": "Code-only negative control - should NOT emit phase events"
+    },
+    {
+      "question": "where is CodeIndexJob defined?",
+      "context_chips": [],
+      "expected_phase_sequence": [],
+      "must_cite_work_items": [],
+      "may_cite_work_items": [],
+      "expected_terms": ["CodeIndexJob", "class", "defined"],
+      "register": "technical",
+      "notes": "Code-only negative control - should NOT emit phase events"
+    },
+    {
+      "question": "/findusages CodeIndexJob",
+      "context_chips": ["findusages"],
+      "expected_phase_sequence": ["retrieving", "finding_items", "reading_docs", "composing"],
+      "must_cite_work_items": [],
+      "may_cite_work_items": [],
+      "expected_terms": ["CodeIndexJob", "findusages"],
+      "register": "technical",
+      "notes": "/findusages slash override - should emit phase events"
+    },
+    {
+      "question": "what does the batch approval workflow do?",
+      "context_chips": ["why"],
+      "expected_phase_sequence": ["retrieving", "finding_items", "reading_docs", "composing"],
+      "must_cite_work_items": [],
+      "may_cite_work_items": [],
+      "expected_terms": ["batch", "approval", "workflow"],
+      "register": "functional",
+      "notes": "Functional query - should route to work-item-aware pipeline"
+    },
+    {
+      "question": "why does the rerender cache have a 64-item limit?",
+      "context_chips": ["why"],
+      "expected_phase_sequence": ["retrieving", "finding_items", "reading_docs", "composing"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["rerender", "cache", "64", "limit"],
+      "register": "functional",
+      "notes": "F-00055 implementation detail"
+    },
+    {
+      "question": "how is the classifier LLM timeout handled?",
+      "context_chips": ["why"],
+      "expected_phase_sequence": ["retrieving", "finding_items", "reading_docs", "composing"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["classifier", "timeout", "fallback", "code_only"],
+      "register": "technical",
+      "notes": "F-00055 classifier fallback behavior"
+    },
+    {
+      "question": "where is the evidence bundle defined?",
+      "context_chips": [],
+      "expected_phase_sequence": [],
+      "must_cite_work_items": [],
+      "may_cite_work_items": [],
+      "expected_terms": ["evidence", "bundle", "EvidenceBundle"],
+      "register": "technical",
+      "notes": "Code-only negative control"
+    },
+    {
+      "question": "why does the SSE stream include phase events?",
+      "context_chips": ["why"],
+      "expected_phase_sequence": ["retrieving", "finding_items", "reading_docs", "composing"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["SSE", "phase", "stream", "event"],
+      "register": "functional",
+      "notes": "F-00055 phase event behavior"
+    },
+    {
+      "question": "show me the hybrid retrieval merge logic",
+      "context_chips": [],
+      "expected_phase_sequence": [],
+      "must_cite_work_items": [],
+      "may_cite_work_items": ["F-00055"],
+      "expected_terms": ["hybrid", "retrieval", "merge", "alpha", "beta", "gamma"],
+      "register": "technical",
+      "notes": "Technical query - code retrieval, may cite F-00055"
+    },
+    {
+      "question": "what is the citation allowlist pattern?",
+      "context_chips": [],
+      "expected_phase_sequence": [],
+      "must_cite_work_items": [],
+      "may_cite_work_items": ["F-00055"],
+      "expected_terms": ["citation", "allowlist", "pattern", "F-"],
+      "register": "technical",
+      "notes": "Technical query that might cite F-00055"
+    },
+    {
+      "question": "what features were added in F-00055?",
+      "context_chips": ["why"],
+      "expected_phase_sequence": ["retrieving", "finding_items", "reading_docs", "composing"],
+      "must_cite_work_items": ["F-00055"],
+      "may_cite_work_items": [],
+      "expected_terms": ["F-00055", "work-item", "aware", "chat"],
+      "register": "functional",
+      "notes": "Core F-00055 feature - feature history"
+    }
+  ]
+}

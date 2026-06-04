@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+{% from "macros/empty_state.html" import empty_state %}
+
+{% block title %}Batches — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}batches{% endblock %}
+
+{% block content %}
+<!-- Status filter: preset buttons + individual status pills -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <span class="text-sm text-muted-foreground">Filter:</span>
+  <button id="preset-active" onclick="setPreset('active')"
+          class="rounded-full border px-3 py-1 text-xs font-medium transition-colors
+                 border-border text-muted-foreground hover:border-primary/60 hover:text-foreground">
+    All active
+  </button>
+  <button id="preset-all" onclick="setPreset('all')"
+          class="rounded-full border px-3 py-1 text-xs font-medium transition-colors
+                 border-border text-muted-foreground hover:border-primary/60 hover:text-foreground">
+    All
+  </button>
+  <span class="text-muted-foreground select-none">·</span>
+  {% for s in visible_statuses %}
+    <label class="inline-flex items-center gap-1.5 cursor-pointer select-none
+                  rounded-full border px-3 py-1 text-xs font-medium transition-colors
+                  has-[:checked]:bg-primary has-[:checked]:border-primary has-[:checked]:text-primary-foreground
+                  border-border text-muted-foreground hover:border-primary/60 hover:text-foreground">
+      <input type="checkbox"
+             class="status-cb sr-only"
+             value="{{ s }}"
+             onchange="applyStatusFilter()"
+             {% if s in status_filter %}checked{% endif %}>
+      {{ s }}
+    </label>
+  {% endfor %}
+</div>
+
+<!-- Batch table -->
+<div class="bg-card border border-border rounded-lg overflow-x-auto">
+  <!-- SSE trigger: refreshes batch rows on running-update event -->
+  <div id="batches-sse-trigger"
+       hx-get="/project/{{ current_project.id }}/batches/fragment{% if status_filter %}?{% for s in status_filter %}status={{ s }}{% if not loop.last %}&amp;{% endif %}{% endfor %}{% endif %}"
+       hx-trigger="batches-refresh"
+       hx-target="#batches-body"
+       hx-swap="innerHTML">
+  </div>
+  <table id="batches-table" data-tour="batches-table" class="w-full text-sm min-w-[500px]">
+    <thead>
+      <tr class="border-b border-border bg-muted/30">
+        {% set cols = [
+          ("id", "Batch ID"),
+          ("status", "Status"),
+          ("items", "Items"),
+          ("progress", "Progress"),
+          ("created", "Created"),
+          ("duration", "Duration"),
+          ("cascades", ""),
+          ("actions", ""),
+        ] %}
+        {% for key, label in cols %}
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground {% if key != 'actions' %}cursor-pointer select-none hover:text-foreground transition-colors{% endif %}"
+              data-sort-key="{{ key }}"
+              {% if key != 'actions' %}onclick="sortTable('{{ key }}')"{% endif %}>
+            <span class="inline-flex items-center gap-1">
+              {{ label }}
+              {% if key != 'actions' %}
+              <svg class="w-3 h-3 sort-icon opacity-0 transition-opacity" viewBox="0 0 10 6"
+                   fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <path d="M1 1 L5 5 L9 1"/>
+              </svg>
+              {% endif %}
+            </span>
+          </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody id="batches-body">
+      {% for batch in batches %}
+        <tr class="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
+            onclick="window.location='/project/{{ current_project.id }}/batch/{{ batch.id }}'"
+            data-sort-id="{{ batch.id }}"
+            data-sort-status="{{ batch.status }}"
+            data-sort-items="{{ batch.completed_items }}"
+            data-sort-progress="{{ batch.progress_pct }}"
+            data-sort-created="{{ batch.created_at.isoformat() }}"
+            data-sort-duration="{{ batch.duration_secs if batch.duration_secs is not none else -1 }}">
+          <td class="px-4 py-2 font-mono text-xs font-semibold text-primary">{{ batch.id }}</td>
+          <td class="px-4 py-2">{{ status_badge(batch.status) }}</td>
+          <td class="px-4 py-2 text-xs text-foreground">
+            {{ batch.completed_items }}/{{ batch.total_items }}
+          </td>
+          <td class="px-4 py-2">
+            <div class="flex items-center gap-2">
+              <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
+                <div class="h-full bg-primary rounded-full"
+                     style="width: {{ batch.progress_pct }}%"></div>
+              </div>
+              <span class="text-xs text-muted-foreground">{{ batch.progress_pct }}%</span>
+            </div>
+          </td>
+          <td class="px-4 py-2 text-xs text-muted-foreground">
+            {{ batch.created_at | localdt('%b %d %H:%M') }}
+          </td>
+          <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
+            {% if batch.duration_secs is not none %}
+              {% set mins = (batch.duration_secs // 60)|int %}
+              {% set secs = (batch.duration_secs % 60)|int %}
+              {{ "%dm%02ds"|format(mins, secs) }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <!-- C.4: cascade indicator -->
+          <td class="px-4 py-2 text-center">
+            {% if batch.cascade_item_count > 0 %}
+              <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium
+                           bg-warning/20 text-warning-foreground border border-warning/30"
+                    title="{{ batch.cascade_item_count }} work item{{ 's' if batch.cascade_item_count != 1 else '' }} had cascade rounds"
+                    aria-label="{{ batch.cascade_item_count }} work item{{ 's' if batch.cascade_item_count != 1 else '' }} had cascade rounds">
+                &#x1f501; {{ batch.cascade_item_count }}
+              </span>
+            {% endif %}
+          </td>
+          <!-- Actions: quick-cancel for cancellable batches -->
+          <td class="px-4 py-2 text-center" onclick="event.stopPropagation()">
+            {% if batch.status in ('planning', 'approved', 'executing', 'paused', 'blocked', 'publish_failed') %}
+              <button type="button"
+                      onclick="confirm('Cancel {{ batch.id }}? This is destructive.') && htmx.ajax('POST', '/project/{{ current_project.id }}/api/batch/{{ batch.id }}/cancel', {values:{reason:'cancelled from batches list'}, swap:'none'})"
+                      class="text-destructive hover:opacity-80 text-sm"
+                      title="Cancel batch">
+                ✕
+              </button>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      {% if not batches %}
+        {{ empty_state(
+             slug="batches",
+             heading="No batches yet",
+             body="Approved items become batches that the daemon executes in worktrees.",
+             primary_label="About batches →",
+             primary_href="/system/docs/IW_AI_Core_Daemon_Design#batches",
+             secondary_label="",
+             secondary_href=""
+           ) }}
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% include "components/toast.html" %}
+<script>
+var ACTIVE_STATUSES = {{ active_statuses | tojson }};
+
+function applyStatusFilter() {
+  var checked = Array.from(document.querySelectorAll('.status-cb:checked')).map(function(cb) {
+    return cb.value;
+  });
+
+  // Filter rows client-side — no round-trip
+  var rows = Array.from(document.querySelectorAll('#batches-table tbody tr:not(.empty-row)'));
+  rows.forEach(function(row) {
+    var rowStatus = row.getAttribute('data-sort-status') || '';
+    row.style.display = (checked.length === 0 || checked.indexOf(rowStatus) !== -1) ? '' : 'none';
+  });
+
+  // Show empty-row only when all data rows are hidden
+  var emptyRow = document.querySelector('#batches-table tbody tr.empty-row');
+  if (emptyRow) {
+    var anyVisible = rows.some(function(r) { return r.style.display !== 'none'; });
+    emptyRow.style.display = anyVisible ? 'none' : '';
+  }
+
+  // Keep URL in sync for bookmarking/sharing
+  var qs = checked.map(function(s) { return 'status=' + encodeURIComponent(s); }).join('&');
+  history.replaceState(null, '', qs ? '?' + qs : location.pathname);
+
+  // Keep the SSE-refresh URL in sync so live updates respect the current filter
+  // (otherwise the trigger keeps the hx-get baked in at server render time and
+  // SSE refreshes return all batches regardless of the active filter).
+  // htmx caches the parsed URL when it processes the element, so we must call
+  // htmx.process() after changing the attribute for the new URL to take effect.
+  var trigger = document.getElementById('batches-sse-trigger');
+  if (trigger) {
+    var basePath = (trigger.getAttribute('hx-get') || '').split('?')[0];
+    trigger.setAttribute('hx-get', qs ? basePath + '?' + qs : basePath);
+    if (window.htmx && typeof window.htmx.process === 'function') {
+      window.htmx.process(trigger);
+    }
+  }
+
+  // Highlight matching preset button if any
+  var allVisible = Array.from(document.querySelectorAll('.status-cb')).map(function(cb) { return cb.value; });
+  var isAll = checked.length === 0 || allVisible.every(function(s) { return checked.indexOf(s) !== -1; });
+  var isActive = !isAll
+    && ACTIVE_STATUSES.every(function(s) { return checked.indexOf(s) !== -1; })
+    && checked.every(function(s) { return ACTIVE_STATUSES.indexOf(s) !== -1; });
+  highlightPreset(isAll ? 'all' : isActive ? 'active' : null);
+}
+
+function highlightPreset(name) {
+  ['preset-active', 'preset-all'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    var active = (name === 'active' && id === 'preset-active') || (name === 'all' && id === 'preset-all');
+    if (active) {
+      btn.classList.add('bg-primary', 'border-primary', 'text-primary-foreground');
+      btn.classList.remove('border-border', 'text-muted-foreground');
+    } else {
+      btn.classList.remove('bg-primary', 'border-primary', 'text-primary-foreground');
+      btn.classList.add('border-border', 'text-muted-foreground');
+    }
+  });
+}
+
+function setPreset(preset) {
+  var cbs = document.querySelectorAll('.status-cb');
+  cbs.forEach(function(cb) {
+    cb.checked = preset === 'all' ? false : ACTIVE_STATUSES.indexOf(cb.value) !== -1;
+  });
+  applyStatusFilter();
+}
+
+// On page load: default to "All active" when no URL params present
+(function() {
+  var params = new URLSearchParams(location.search);
+  if (params.getAll('status').length === 0) {
+    setPreset('active');
+  }
+})();
+</script>
+<script>
+iwSSE.on('running-update', function () {
+  htmx.trigger('#batches-sse-trigger', 'batches-refresh');
+});
+
+iwSSE.on('status-update', function () {
+  htmx.trigger('#batches-sse-trigger', 'batches-refresh');
+});
+
+iwSSE.on('toast', function (e) {
+  try { showToast(JSON.parse(e.data)); } catch (_) {}
+});
+
+document.body.addEventListener('htmx:afterRequest', function (e) {
+  var triggerHeader = e.detail.xhr && e.detail.xhr.getResponseHeader('HX-Trigger');
+  if (!triggerHeader) return;
+  try {
+    var trigger = JSON.parse(triggerHeader);
+    if (trigger.showToast) showToast(trigger.showToast);
+  } catch (_) {}
+});
+</script>
+
+<script>
+(function() {
+  var currentSort = null;
+  var currentDir = 'asc';
+
+  function isNumeric(key) {
+    return key === 'items' || key === 'progress' || key === 'duration';
+  }
+
+  window.sortTable = function(key) {
+    if (currentSort === key) {
+      currentDir = currentDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      currentSort = key;
+      currentDir = 'asc';
+    }
+
+    var tbody = document.querySelector('#batches-table tbody');
+    var rows = Array.from(tbody.querySelectorAll('tr:not(.empty-row)'));
+
+    rows.sort(function(a, b) {
+      var va = a.getAttribute('data-sort-' + key) || '';
+      var vb = b.getAttribute('data-sort-' + key) || '';
+
+      var cmp;
+      if (isNumeric(key)) {
+        cmp = parseFloat(va) - parseFloat(vb);
+      } else {
+        cmp = va.localeCompare(vb);
+      }
+      return currentDir === 'asc' ? cmp : -cmp;
+    });
+
+    rows.forEach(function(row) { tbody.appendChild(row); });
+
+    // Update sort indicators
+    document.querySelectorAll('#batches-table th[data-sort-key]').forEach(function(th) {
+      var icon = th.querySelector('.sort-icon');
+      if (th.getAttribute('data-sort-key') === currentSort) {
+        icon.style.opacity = '1';
+        icon.style.transform = currentDir === 'asc' ? 'rotate(180deg)' : 'rotate(0)';
+      } else {
+        icon.style.opacity = '0';
+        icon.style.transform = 'rotate(0)';
+      }
+    });
+  };
+})();
+</script>
+<script>
+(function () {
+  if (!/HeadlessChrome|Playwright/i.test(navigator.userAgent || '')) return;
+  document.querySelectorAll('[hx-get="/system/nav/worktree-badge"], [hx-get="/api/usage/llm/fragment"], [hx-get^="/projects/"][hx-get$="/staleness-dot"]').forEach(function (el) {
+    el.setAttribute('hx-trigger', 'never');
+    el.removeAttribute('hx-get');
+  });
+})();
+</script>
+{% endblock %}

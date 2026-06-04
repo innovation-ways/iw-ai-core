@@ -1,0 +1,41 @@
+# docker-compose.bootstrap.yml
+#
+# Bootstrap compose file — for FRESH DEV MACHINES ONLY.
+#
+# Production-path orchestration DB is NOT managed by Compose. It is a raw
+# `docker run` postgres container with a host bind mount at /opt/postgres/data.
+# See docs/IW_AI_Core_DB_Setup.md for the full setup guide.
+#
+# This file exists because the previous default docker-compose.yml caused a
+# data-loss incident on 2026-04-22 when it was invoked from a git worktree
+# and created a per-worktree empty volume that clobbered port 5433.
+#
+# Usage:
+#   docker compose -f docker-compose.bootstrap.yml up -d db
+#
+# Never invoke this file implicitly (i.e. without `-f`). The default
+# docker-compose.yml at the project root is intentionally empty so that
+# `docker compose up` from any directory (including worktrees) is a no-op.
+
+name: iw-ai-core
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: iw-ai-core-db
+    ports:
+      - "${IW_CORE_BOOTSTRAP_DB_PORT:?Set IW_CORE_BOOTSTRAP_DB_PORT explicitly (use ./ai-core.sh db start for safe defaults)}:5432"
+    environment:
+      POSTGRES_DB: ${IW_CORE_DB_NAME:-iw_orch}
+      POSTGRES_USER: ${IW_CORE_DB_USER:-iw_orch}
+      POSTGRES_PASSWORD: ${IW_CORE_DB_PASSWORD:-iw_orch_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${IW_CORE_DB_USER:-iw_orch}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

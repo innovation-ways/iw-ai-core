@@ -1,0 +1,522 @@
+/* chat_assistant/chat.css — Dashboard AI Assistant styles
+   Loaded from base.html via <link> tag (same pattern as chat.css).
+   All selectors are scoped under chat-assistant- ids to avoid collisions
+   with the existing right-side Code Q&A chat (#chat-panel, #chat-messages, etc.)
+*/
+
+/* ── Panel container ── */
+#chat-assistant-panel {
+  width: 40px;
+  transition: width 0.2s ease-in-out;
+  overflow: hidden;
+}
+
+#chat-assistant-panel:not([data-collapsed="true"]) {
+  width: 360px;
+}
+
+/* ── Messages area ── */
+#chat-assistant-messages {
+  scroll-behavior: smooth;
+}
+
+/* ── Message body prose ── */
+.chat-assistant-msg-body {
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--foreground);
+}
+
+.chat-assistant-msg-body h1,
+.chat-assistant-msg-body h2,
+.chat-assistant-msg-body h3,
+.chat-assistant-msg-body h4 {
+  font-weight: 600;
+  margin-top: 1.2em;
+  margin-bottom: 0.35em;
+  line-height: 1.3;
+}
+
+.chat-assistant-msg-body h1 {
+  font-size: 1.05rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.2em;
+}
+
+.chat-assistant-msg-body h2 { font-size: 1rem; }
+.chat-assistant-msg-body h3 { font-size: 0.9rem; color: var(--muted-foreground); }
+.chat-assistant-msg-body h4 { font-size: 0.875rem; color: var(--muted-foreground); }
+.chat-assistant-msg-body p  { margin-bottom: 0.6em; }
+
+.chat-assistant-msg-body ul,
+.chat-assistant-msg-body ol {
+  padding-left: 1.25em;
+  margin-bottom: 0.6em;
+}
+
+.chat-assistant-msg-body li { margin-bottom: 0.2em; }
+
+.chat-assistant-msg-body code {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  background: var(--muted);
+  color: var(--foreground);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+.chat-assistant-msg-body pre {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  margin-bottom: 0.75em;
+}
+
+.chat-assistant-msg-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.chat-assistant-msg-body a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.chat-assistant-msg-body blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.75em;
+  color: var(--muted-foreground);
+  margin: 0.75em 0;
+  font-style: italic;
+  font-size: 0.875rem;
+}
+
+/* ── Slash menu items ── */
+.chat-assistant-slash-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  padding: 0.35em 0.75em;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.chat-assistant-slash-item:hover,
+.chat-assistant-slash-item[aria-selected="true"] {
+  background: var(--muted);
+}
+
+.chat-assistant-slash-item-name {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--foreground);
+  flex-shrink: 0;
+}
+
+.chat-assistant-slash-item-desc {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Context chip ── */
+.chat-assistant-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2em 0.6em;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chat-assistant-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-assistant-chip-dismiss {
+  flex-shrink: 0;
+  cursor: pointer;
+  opacity: 0.6;
+  line-height: 1;
+}
+
+.chat-assistant-chip-dismiss:hover {
+  opacity: 1;
+}
+
+/* ── Warning / gap banner inside messages ── */
+.chat-assistant-gap-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.4em 0.75em;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  margin: 0.5em 0;
+}
+
+/* ── Reconnecting pill ── */
+#chat-assistant-reconnecting-pill {
+  display: none;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.25em 0.75em;
+  background: var(--muted);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  position: absolute;
+  top: 0.5em;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+#chat-assistant-reconnecting-pill.visible {
+  display: flex;
+}
+
+/* ── Skills tray entries ── */
+.chat-assistant-skill-entry {
+  padding: 0.3em 0;
+}
+
+.chat-assistant-skill-name {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.chat-assistant-skill-desc {
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  margin-top: 0.1em;
+}
+
+/* ── Session list entries ── */
+.chat-assistant-session-entry {
+  padding: 0.3em 0.5em;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--foreground);
+}
+
+.chat-assistant-session-entry:hover {
+  background: var(--muted);
+}
+
+.chat-assistant-session-entry.active {
+  background: var(--muted);
+  font-weight: 600;
+}
+
+.chat-assistant-session-date {
+  font-size: 0.65rem;
+  color: var(--muted-foreground);
+}
+
+/* ── Approval modal ── */
+#chat-assistant-approval-modal {
+  animation: chat-assistant-modal-in 0.15s ease-out;
+}
+
+@keyframes chat-assistant-modal-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Nav toggle button in top bar ── */
+#chat-assistant-nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ── Collapse button distinct affordance (I-00089) ── */
+#chat-assistant-panel:not([data-collapsed="true"]) #chat-assistant-collapse-btn.chat-assistant-collapse-btn-distinct {
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+#chat-assistant-panel:not([data-collapsed="true"]) #chat-assistant-collapse-btn.chat-assistant-collapse-btn-distinct:hover {
+  background: var(--muted-foreground);
+  color: var(--background);
+}
+
+/* ── Tab strip (F-00086) ── */
+#chat-assistant-tab-strip {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+#chat-assistant-tab-strip::-webkit-scrollbar {
+  height: 3px;
+}
+
+#chat-assistant-tab-strip::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+.chat-assistant-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  min-height: 32px;
+  max-width: 160px;
+  transition: background 0.1s;
+}
+
+.chat-assistant-tab-btn:hover {
+  background: var(--muted);
+}
+
+.chat-assistant-tab-btn-active {
+  background: var(--muted);
+  color: var(--foreground);
+  border-bottom: 2px solid var(--primary);
+}
+
+.chat-assistant-tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-assistant-tab-model-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  padding: 0 4px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+.chat-assistant-tab-btn-active .chat-assistant-tab-model-badge {
+  background: var(--background);
+}
+
+.chat-assistant-tab-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 0.65rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted-foreground);
+  border-radius: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  padding: 0;
+  line-height: 1;
+}
+
+.chat-assistant-tab-btn:hover .chat-assistant-tab-close-btn,
+.chat-assistant-tab-btn-active .chat-assistant-tab-close-btn {
+  opacity: 0.6;
+}
+
+.chat-assistant-tab-close-btn:hover {
+  opacity: 1 !important;
+  background: var(--destructive);
+  color: var(--background);
+}
+
+/* ── Inline rename input ── */
+.chat-assistant-tab-rename-input {
+  font-size: 0.75rem;
+  border: 1px solid var(--ring);
+  border-radius: 3px;
+  padding: 1px 4px;
+  background: var(--background);
+  color: var(--foreground);
+  width: 90px;
+  outline: none;
+}
+
+/* ── "+" add-tab button in the tab strip ── */
+.chat-assistant-tab-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  font-size: 1rem;
+  font-weight: 400;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted-foreground);
+  min-height: 32px;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+  line-height: 1;
+}
+
+.chat-assistant-tab-add-btn:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+/* ── Soft-cap banner ── */
+.chat-assistant-softcap-banner-inner {
+  background: #fefce8;
+  border-bottom: 1px solid #fde68a;
+  color: #92400e;
+}
+
+/* Dark mode softcap (basic override) */
+@media (prefers-color-scheme: dark) {
+  .chat-assistant-softcap-banner-inner {
+    background: #451a03;
+    border-bottom-color: #78350f;
+    color: #fcd34d;
+  }
+}
+
+/* ── Recent-closed tab entries ── */
+.chat-assistant-closed-tab-entry {
+  padding: 6px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.chat-assistant-closed-tab-entry:hover {
+  background: var(--muted);
+}
+
+.chat-assistant-closed-tab-title {
+  font-weight: 500;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-assistant-closed-tab-meta {
+  font-size: 0.65rem;
+  color: var(--muted-foreground);
+  margin-top: 1px;
+}
+
+/* ── Clear button disabled state ── */
+/* Use !important: the button may carry inline style="opacity:1" from a Tailwind
+   class; the :disabled pseudo-class rule must win regardless of source order. */
+#chat-assistant-clear:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+
+/* ── Context % indicator (F-00091) ── */
+.chat-assistant-context-pct {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.chat-assistant-context-pct__bar {
+  display: inline-block;
+  width: 60px;
+  height: 5px;
+  background: var(--muted);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.chat-assistant-context-pct__fill {
+  display: block;
+  height: 100%;
+  background: #16a34a;
+  transition: width 250ms ease;
+}
+
+.chat-assistant-context-pct.is-warn {
+  color: #d97706;
+}
+
+.chat-assistant-context-pct.is-warn .chat-assistant-context-pct__fill {
+  background: #d97706;
+}
+
+.chat-assistant-context-pct.is-crit {
+  color: var(--destructive);
+}
+
+.chat-assistant-context-pct.is-crit .chat-assistant-context-pct__fill {
+  background: var(--destructive);
+}
+
+.chat-assistant-context-pct--unknown .chat-assistant-context-pct__fill {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--muted) 0 4px,
+    var(--border) 4px 8px
+  );
+  width: 100% !important;
+  opacity: 0.5;
+}
+
+.chat-assistant-context-pct--unknown .chat-assistant-context-pct__label {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chat-assistant-context-pct.is-warn .chat-assistant-context-pct__fill {
+    background: #fbbf24;
+  }
+}
+
+/* ── Header project selector (F-00091) ── */
+#chat-assistant-project-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 190px;
+}
+
+#chat-assistant-project-select:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

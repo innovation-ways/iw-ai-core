@@ -1,0 +1,141 @@
+<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+     onclick="if(event.target===this)document.getElementById('new-project-modal').innerHTML=''">
+  <div class="bg-card border border-border p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold text-card-foreground">Register New Project</h3>
+      <button
+        onclick="document.getElementById('new-project-modal').innerHTML=''"
+        class="text-muted-foreground hover:text-foreground transition-colors p-1">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    {% if errors.get('_global') %}
+    <div class="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-md">
+      <p class="text-sm text-destructive">{{ errors['_global'] }}</p>
+    </div>
+    {% endif %}
+
+    <form hx-post="/api/projects/create"
+          hx-swap="none"
+          onsubmit="handleProjectSubmit(event)">
+      <div class="space-y-4">
+        <!-- Project ID -->
+        <div>
+          <label for="project_id" class="block text-sm font-medium text-card-foreground mb-1">
+            Project ID
+          </label>
+          <input type="text"
+                 id="project_id"
+                 name="project_id"
+                 value="{{ form.project_id }}"
+                 placeholder="e.g. my-project"
+                 class="w-full px-3 py-2 bg-input border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring {% if errors.project_id %}border-destructive{% endif %}"
+                 autocomplete="off"
+                 oninput="slugifyDisplayName()" />
+          {% if errors.project_id %}
+          <p class="mt-1 text-xs text-destructive">{{ errors.project_id }}</p>
+          {% endif %}
+          <p class="mt-1 text-xs text-muted-foreground">Lowercase letters, numbers, and hyphens only.</p>
+        </div>
+
+        <!-- Display Name -->
+        <div>
+          <label for="display_name" class="block text-sm font-medium text-card-foreground mb-1">
+            Display Name
+          </label>
+          <input type="text"
+                 id="display_name"
+                 name="display_name"
+                 value="{{ form.display_name }}"
+                 placeholder="e.g. My Project"
+                 class="w-full px-3 py-2 bg-input border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring {% if errors.display_name %}border-destructive{% endif %}" />
+          {% if errors.display_name %}
+          <p class="mt-1 text-xs text-destructive">{{ errors.display_name }}</p>
+          {% endif %}
+        </div>
+
+        <!-- Repo Root -->
+        <div>
+          <label for="repo_root" class="block text-sm font-medium text-card-foreground mb-1">
+            Repository Root
+          </label>
+          <div class="flex gap-2">
+            <input type="text"
+                   id="repo_root"
+                   name="repo_root"
+                   value="{{ form.repo_root }}"
+                   placeholder="/home/user/projects/my-project"
+                   class="flex-1 px-3 py-2 bg-input border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring {% if errors.repo_root %}border-destructive{% endif %}" />
+            <button type="button"
+                    onclick="openDirectoryBrowser()"
+                    class="px-3 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity border border-border">
+              Browse
+            </button>
+          </div>
+          {% if errors.repo_root %}
+          <p class="mt-1 text-xs text-destructive">{{ errors.repo_root }}</p>
+          {% endif %}
+          <p class="mt-1 text-xs text-muted-foreground">Must be a git repository.</p>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex gap-3 mt-6 justify-end">
+        <button type="button"
+                onclick="document.getElementById('new-project-modal').innerHTML=''"
+                class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+          Cancel
+        </button>
+        <button type="submit"
+                class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition-opacity">
+          Register Project
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Directory Browser Modal (loaded dynamically) -->
+<div id="directory-browser-modal"></div>
+
+<script>
+  function slugifyDisplayName() {
+    var displayName = document.getElementById('display_name');
+    var projectId = document.getElementById('project_id');
+    if (displayName && projectId && !displayName.value && !projectId.dataset.autoSlug) {
+      projectId.dataset.autoSlug = 'true';
+    }
+  }
+
+  function openDirectoryBrowser() {
+    var repoRoot = document.getElementById('repo_root').value || '';
+    var modal = document.getElementById('directory-browser-modal');
+    htmx.ajax('GET', '/api/projects/browse?path=' + encodeURIComponent(repoRoot), {
+      target: modal,
+      swap: 'innerHTML'
+    });
+  }
+
+  function selectDirectory(path) {
+    document.getElementById('repo_root').value = path;
+    document.getElementById('directory-browser-modal').innerHTML = '';
+    var projectIdInput = document.getElementById('project_id');
+    if (projectIdInput && !projectIdInput.value) {
+      fetch('/api/projects/slug?path=' + encodeURIComponent(path))
+        .then(function(r) { return r.text(); })
+        .then(function(slug) {
+          if (slug && projectIdInput && !projectIdInput.value) {
+            projectIdInput.value = slug;
+          }
+        });
+    }
+  }
+
+  function handleProjectSubmit(event) {
+    event.submitter.disabled = true;
+    event.submitter.classList.add('opacity-70', 'cursor-not-allowed');
+  }
+</script>

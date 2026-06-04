@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+
+{% block title %}Quality — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}quality{% endblock %}
+
+{% block content %}
+<!-- Confirm dialog container -->
+<div id="confirm-dialog"></div>
+
+{% if not has_config %}
+  <!-- No quality configuration -->
+  <div class="bg-card border border-border rounded-lg p-8 text-center">
+    <svg class="w-12 h-12 mx-auto text-muted-foreground mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+    </svg>
+    <h3 class="text-lg font-medium text-foreground mb-2">No Quality Configuration</h3>
+    <p class="text-muted-foreground text-sm mb-4">
+      Add a <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">quality_config</code> section to your
+      <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">.iw-orch.json</code> to enable quality gate execution.
+    </p>
+    <details class="text-left max-w-lg mx-auto">
+      <summary class="text-sm text-primary cursor-pointer hover:underline">Example configuration</summary>
+      <pre class="mt-2 bg-muted p-3 rounded text-xs font-mono overflow-x-auto text-foreground">{
+  "quality_config": {
+    "execution_dir": "/path/to/project",
+    "categories": {
+      "lint": {
+        "label": "Lint (Ruff)",
+        "command": "make lint",
+        "description": "Code style and linting checks",
+        "group": "style"
+      }
+    }
+  }
+}</pre>
+    </details>
+  </div>
+{% else %}
+    <!-- Test Health panel — loaded asynchronously via htmx -->
+    <div id="test-health-panel"
+         hx-get="/project/{{ current_project.id }}/test-health"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <!-- loading placeholder: no content until htmx fetch completes -->
+    </div>
+
+  <!-- Tab navigation -->
+  <div class="flex border-b border-border mb-4 overflow-x-auto">
+    <a href="?tab=launch"
+       class="px-4 py-2 text-sm transition-colors
+              {% if active_tab == 'launch' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+      Launch
+    </a>
+    <a href="?tab=runs"
+       class="px-4 py-2 text-sm transition-colors
+              {% if active_tab == 'runs' %}border-b-2 border-primary text-primary font-medium{% else %}text-muted-foreground hover:text-foreground{% endif %}">
+      Runs
+    </a>
+  </div>
+
+  <!-- Tab content -->
+  <div id="tab-content">
+    {% if active_tab == 'launch' %}
+      {% include "fragments/quality_launch.html" %}
+    {% elif active_tab == 'runs' %}
+      {% include "fragments/quality_runs.html" %}
+    {% endif %}
+  </div>
+{% endif %}
+
+<!-- Log modal container — outside #tab-content so SSE reloads don't destroy an open modal -->
+<div id="log-modal"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var _fragmentUrls = {
+  launch: '/project/{{ current_project.id }}/quality/fragment/launch',
+  runs:   '/project/{{ current_project.id }}/quality/fragment/runs',
+};
+
+function _reloadTabContent() {
+  var params = new URLSearchParams(window.location.search);
+  var tab = params.get('tab') || 'launch';
+  var url = _fragmentUrls[tab] || _fragmentUrls.launch;
+  htmx.ajax('GET', url, {target: '#tab-content', swap: 'innerHTML'});
+}
+
+iwSSE.on('quality-update', function () {
+  _reloadTabContent();
+});
+iwSSE.on('toast', function (e) {
+  try { showToast(JSON.parse(e.data)); } catch (_) {}
+});
+</script>
+{% endblock %}

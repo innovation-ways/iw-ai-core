@@ -1,0 +1,12 @@
+IW AI Core Platform
+Copyright 2026 Innovation Ways - Unipessoal LDA
+
+This product is developed and maintained by Innovation Ways
+(https://innovation-ways.com).
+
+This product includes software from third parties under their respective
+licenses; see THIRD_PARTY_LICENSES.md for the full inventory. Where an
+upstream project is offered under multiple licenses, the license elected by
+this product is recorded under "License Elections" in
+THIRD_PARTY_LICENSES.md. Notably, pyphen (a transitive dependency of
+WeasyPrint) is consumed under its MPL 1.1 grant, not its GPL grant.

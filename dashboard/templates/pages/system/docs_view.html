@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}{{ doc_title }}{% endblock %}
+
+{% block content %}
+<a href="javascript:history.back()" class="text-sm text-muted-foreground hover:text-foreground mb-4 inline-block">← Back</a>
+<div class="prose-doc max-w-4xl mx-auto px-4 py-8">
+  <style>
+    .prose-doc h1,.prose-doc h2,.prose-doc h3,.prose-doc h4 { color:var(--foreground); margin-top:1.5em; margin-bottom:0.5em; }
+    .prose-doc h1 { font-size:1.6rem; font-weight:700; border-bottom:2px solid var(--border); padding-bottom:0.4em; margin-top:0; }
+    .prose-doc h2 { font-size:1.2rem; font-weight:600; border-bottom:1px solid var(--border); padding-bottom:0.25em; }
+    .prose-doc h3 { font-size:1rem; font-weight:600; color:var(--muted-foreground); }
+    .prose-doc h4 { font-size:0.9375rem; font-weight:600; color:var(--muted-foreground); }
+    .prose-doc p  { color:var(--foreground); line-height:1.8; max-width:72ch; margin-bottom:0.85em; font-size:0.9375rem; }
+    .prose-doc ul,.prose-doc ol { padding-left:1.5em; margin-bottom:0.75em; font-size:0.9375rem; color:var(--foreground); }
+    .prose-doc li { margin-bottom:0.3em; line-height:1.65; }
+    .prose-doc code { font-family:var(--font-mono); font-size:0.8rem; background:var(--muted); color:var(--foreground); padding:0.1em 0.35em; border-radius:3px; }
+    .prose-doc pre { background:var(--muted); border:1px solid var(--border); border-radius:var(--radius); padding:1em; overflow-x:auto; margin-bottom:1em; }
+    .prose-doc pre code { background:none; padding:0; font-size:0.8rem; }
+    .prose-doc table { width:100%; border-collapse:collapse; font-size:0.9rem; margin-bottom:1em; }
+    .prose-doc th,.prose-doc td { border:1px solid var(--border); padding:0.45em 0.8em; text-align:left; }
+    .prose-doc th { background:var(--muted); font-weight:600; }
+    .prose-doc blockquote { border-left:3px solid var(--primary); padding-left:1em; color:var(--muted-foreground); margin:1em 0; font-style:italic; font-size:0.9rem; }
+    .prose-doc a { color:var(--primary); text-decoration:underline; }
+    .prose-doc img { max-width:100%; border-radius:var(--radius); border:1px solid var(--border); margin:1em 0; }
+    .prose-doc hr { border:none; border-top:1px solid var(--border); margin:2em 0; }
+    .callout { border-left:4px solid; border-radius:0 var(--radius) var(--radius) 0; padding:0.75em 1em; margin:1.25em 0; font-size:0.9rem; }
+    .callout-header { display:flex; align-items:center; gap:0.4em; font-weight:600; margin-bottom:0.4em; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em; }
+    .callout-note     { border-color:#3B82F6; background:#EFF6FF; }
+    .callout-note     .callout-header { color:#1D4ED8; }
+    .callout-tip      { border-color:#10B981; background:#ECFDF5; }
+    .callout-tip      .callout-header { color:#065F46; }
+    .callout-warning  { border-color:#F59E0B; background:#FFFBEB; }
+    .callout-warning  .callout-header { color:#92400E; }
+    .callout-danger   { border-color:#EF4444; background:#FEF2F2; }
+    .callout-danger   .callout-header { color:#991B1B; }
+    .callout-important{ border-color:#8B5CF6; background:#F5F3FF; }
+    .callout-important .callout-header { color:#4C1D95; }
+  </style>
+  {{ rendered_html }}
+</div>
+{% endblock %}

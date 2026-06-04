@@ -1,0 +1,53 @@
+# IW AI Core — Project Registry Example
+# Copy this file to projects.toml and fill in your local values.
+# projects.toml is gitignored — never commit it with real paths or project names.
+# The daemon re-reads this file on SIGHUP or `./ai-core.sh daemon reload`.
+
+# Example managed project
+[projects.my-project]
+display_name = "My Project"
+repo_root = "/path/to/my-project"
+enabled = true
+
+# Example: register IW AI Core itself as a managed project
+[projects.iw-ai-core]
+display_name = "IW AI Core Platform"
+repo_root = "/path/to/iw-ai-core"
+enabled = true
+self_assess = true
+
+[projects.iw-ai-core.always_in_scope]
+paths = [
+  "tests/assertion_free_baseline.txt",
+]
+
+[projects.iw-ai-core.ai_assistant]
+# Allowlist of LLM models available in the Code Understanding assistant.
+# Supported providers: anthropic/, openai/, ollama/, minimax/
+models = [
+  "anthropic/claude-opus-4-8",
+  "anthropic/claude-sonnet-4-6",
+]
+default_model = "anthropic/claude-sonnet-4-6"
+# Runtime a new chat tab uses when there is no active tab to inherit from.
+# One of: "opencode", "pi". Absent → "opencode".
+default_runtime = "opencode"
+
+[[projects.iw-ai-core.services]]
+name = "daemon"
+watch_paths = ["orch/**", "executor/**"]
+ignore_paths = ["**/tests/**", "**/*.md"]
+restart_command = "./ai-core.sh daemon restart"
+detect = { type = "pidfile", path = ".daemon.pid" }
+
+[[projects.iw-ai-core.services]]
+name = "dashboard"
+watch_paths = ["dashboard/**", "orch/**"]
+ignore_paths = ["**/tests/**", "**/*.md"]
+restart_command = "bin/restart-dashboard.sh"
+detect = { type = "pidfile", path = ".dashboard.pid" }
+
+[projects.iw-ai-core.alembic]
+config = "alembic.ini"
+# db_url_env intentionally omitted — iw-ai-core's alembic env.py resolves
+# the URL via orch.config.get_db_url() from IW_CORE_DB_* env vars in .env.

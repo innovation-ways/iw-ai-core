@@ -1,0 +1,43 @@
+{% if diff_lines %}
+  {% set MAX_LINES = 100 %}
+  {% set total_lines = diff_lines|length %}
+  {% set truncated = total_lines > MAX_LINES %}
+  <div class="diff-viewer font-mono text-sm">
+    <div class="diff-header flex justify-between text-gray-500 text-xs px-2 py-1 bg-gray-50 dark:bg-gray-800 border-b border-border">
+      <span>v{{ v1 }}</span>
+      <span>v{{ v2 }}</span>
+    </div>
+    <div class="diff-content">
+      {% for line in diff_lines[:MAX_LINES] %}
+        {% if line.startswith('+++') or line.startswith('---') %}
+          {# skip file headers in unified view #}
+        {% elif line.startswith('+') %}
+      <div class="diff-line-added bg-green-50 dark:bg-green-950/30 text-green-800 dark:text-green-300 px-2 py-0.5">{{ line }}</div>
+        {% elif line.startswith('-') %}
+      <div class="diff-line-removed bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300 px-2 py-0.5">{{ line }}</div>
+        {% elif line.startswith('@@') %}
+      <div class="diff-line-hunk text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 px-2 py-0.5 text-xs">{{ line }}</div>
+        {% else %}
+      <div class="diff-line-context text-gray-600 dark:text-gray-400 px-2 py-0.5">{{ line }}</div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% if truncated %}
+      <div class="px-4 py-3 bg-muted/50 border-t border-border text-xs text-muted-foreground text-center">
+        Showing first {{ MAX_LINES }} lines of diff — {{ total_lines }} total lines
+        <button @click="htmx.ajax('GET', '/api/project/{{ project_id }}/docs/{{ doc_id }}/diff?v1={{ v1 }}&v2={{ v2 }}&full=true', {target: '#diff-viewer', swap: 'innerHTML'})"
+                class="ml-2 text-primary hover:underline">Show all</button>
+      </div>
+    {% endif %}
+    <div class="px-4 py-2 border-t border-border bg-muted/20">
+      <button @click="document.getElementById('diff-viewer').innerHTML = ''; resetVersionSelection()"
+              class="text-sm text-muted-foreground hover:text-foreground transition-colors">
+        Close diff
+      </button>
+    </div>
+  </div>
+{% else %}
+  <div class="px-4 py-8 text-center text-muted-foreground text-sm">
+    These versions are identical.
+  </div>
+{% endif %}

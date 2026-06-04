@@ -1,0 +1,832 @@
+"""Safe migration wrapper — single choke-point for DB-mutating alembic calls.
+
+Every migration operation that ever touches the live DB must go through this module.
+The module enforces:
+
+1. **Agent-context guard** — apply() and rollback() raise AgentContextForbidden
+   when IW_CORE_AGENT_CONTEXT='true' (daemon sets this when launching agents).
+2. **Live-DB sanity check** — dry_run() refuses to operate on the live DB URL
+   even if called by an operator.
+3. **Multi-head detection** — list_pending_revisions() raises MultipleHeadsError when
+   the alembic revision graph has >1 head.
+4. **Audit logging** — every dry_run / apply / rollback call writes to pending_migration_log
+   via a fresh short-lived session.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import re
+import time
+import warnings
+from contextlib import redirect_stderr, redirect_stdout, suppress
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from io import StringIO
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
+
+from alembic import command
+from alembic.config import Config as AlembicConfig
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.orm import Session, sessionmaker
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
+
+from orch.config import get_db_url, get_migration_lock_timeout_secs
+from orch.db.live_db_guard import assert_engine_url_allowed
+from orch.db.models import PendingMigrationLog
+
+__all__ = [
+    "AgentContextForbiddenError",
+    "MultipleHeadsError",
+    "MigrationLockHeldError",
+    "SelfBlockerError",
+    "Revision",
+    "DryRunResult",
+    "ApplyResult",
+    "RollbackResult",
+    "list_pending_revisions",
+    "dry_run",
+    "apply",
+    "rollback",
+    "current_revision",
+    "is_live_db_url",
+]
+
+logger = logging.getLogger(__name__)
+
+MIGRATIONS_SCRIPT_LOCATION = str(Path(__file__).parent / "migrations")
+
+_RELEVANT_TABLES = (
+    "batch_items",
+    "batches",
+    "daemon_events",
+    "projects",
+    "step_runs",
+    "work_items",
+)
+
+
+def _is_test_context_active() -> bool:
+    """Return True if pytest is running and no operator/daemon opt-in is set.
+
+    When True, helpers in this module that would write to the live orch DB
+    (`_write_migration_log`, `_acquire_migration_lock`, `_release_migration_lock`)
+    short-circuit instead of executing. Prevents tests from corrupting
+    `alembic_version` / `pending_migration_log` / `migration_locks` via the
+    mock-bypass that flows through `get_db_url()`.
+
+    See CR-00022 S17 R0 (and incident I-00041) for context.
+    """
+    if os.environ.get("IW_CORE_OPERATOR_APPLY") == "true":
+        return False
+    if os.environ.get("IW_CORE_DAEMON_CONTEXT") == "true":
+        return False
+    return (
+        os.environ.get("IW_CORE_TEST_CONTEXT") == "true"
+        or os.environ.get("IW_CORE_AGENT_CONTEXT") == "true"
+    )
+
+
+MAX_TAIL_BYTES = 16 * 1024
+
+
+def _to_int_batch_id(batch_id: str | int | None) -> int | None:
+    """Convert a batch_id to int for storage in pending_migration_log (BigInteger column).
+
+    String batch IDs (e.g. "BATCH-00060") are parsed by extracting the trailing digits.
+    Returns None if batch_id is None or contains no digits.
+    """
+    if batch_id is None:
+        return None
+    if isinstance(batch_id, int):
+        return batch_id
+    m = re.search(r"\d+$", str(batch_id))
+    return int(m.group()) if m else None
+
+
+# The orch DB is a single shared store; migration_locks is a per-project mutex
+# with a FK to projects.id. We key the lock on the orch project's own row
+# ("iw-ai-core") because the orch DB migrations are global and there is only
+# one orchestrator. The previous hardcoded 'innoForge' value never existed in
+# the projects table, so lock acquisition always raised FK violations.
+_ORCH_MIGRATION_LOCK_PROJECT = "iw-ai-core"
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class AgentContextForbiddenError(RuntimeError):
+    """Raised when a caller tries to apply/rollback inside an agent subprocess."""
+
+
+class MultipleHeadsError(RuntimeError):
+    """Raised when the alembic revision graph has >1 head."""
+
+
+class MigrationLockHeldError(RuntimeError):
+    """Raised when the migration lock is held by another item (stale agent)."""
+
+
+class SelfBlockerError(RuntimeError):
+    """Raised when safe_migrate.apply() detects it would deadlock against its own session.
+
+    This happens when the caller (e.g. _merge_item) holds AccessShareLock on a table
+    the pending migration will alter, and then calls apply() from the same process.
+    See I-00063 for context.
+    """
+
+
+# ---------------------------------------------------------------------------
+# Dataclasses
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Revision:
+    id: str
+    description: str
+    down_revision: str | None
+
+
+@dataclass(frozen=True)
+class DryRunResult:
+    revisions_applied: list[str]
+    success: bool
+    duration_ms: int
+    stdout_tail: str
+    stderr_tail: str
+    error_message: str | None
+
+
+@dataclass(frozen=True)
+class ApplyResult(DryRunResult):
+    pass
+
+
+@dataclass(frozen=True)
+class RollbackResult:
+    revision_from: str
+    revision_to: str
+    success: bool
+    duration_ms: int
+    error_message: str | None
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _assert_not_agent_context(db_url: str | None = None) -> None:
+    """DEPRECATED: use orch.db.live_db_guard.assert_engine_url_allowed.
+
+    Retained for backwards compatibility with any in-flight branches.
+    Will be removed in a follow-up incident no earlier than 2026-05-26.
+
+    Preserves the F-00062 semantics callers (apply/rollback) and tests still
+    rely on: only inspects IW_CORE_AGENT_CONTEXT (and IW_CORE_PER_WORKTREE_DB
+    for the per-worktree relax against non-5433 ports), and raises
+    AgentContextForbiddenError. The new live_db_guard chokepoint runs ahead of
+    real connections (in safe_create_engine / _build_alembic_config) — this
+    wrapper does not delegate to it, to avoid the TEST_CONTEXT/exception-type
+    coupling the deprecated tests don't model.
+    """
+    warnings.warn(
+        "_assert_not_agent_context is deprecated; use "
+        "orch.db.live_db_guard.assert_engine_url_allowed",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    if os.environ.get("IW_CORE_AGENT_CONTEXT") != "true":
+        return
+
+    if os.environ.get("IW_CORE_PER_WORKTREE_DB") == "true" and db_url is not None:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(db_url)
+        port = parsed.port or 5432
+        if port != 5433:
+            return
+
+    raise AgentContextForbiddenError(
+        "Migration operation refused: IW_CORE_AGENT_CONTEXT='true'. "
+        "Only the daemon may apply/rollback migrations against the live DB."
+    )
+
+
+def _is_live_db_url(url: str) -> bool:
+    """Return True iff URL matches the live DB connection from orch.config."""
+    try:
+        return url == get_db_url()
+    except Exception:
+        return False
+
+
+def _build_alembic_config(
+    db_url: str,
+    script_location: str | None = None,
+) -> AlembicConfig:
+    """Build an alembic Config configured to point at db_url with our migrations."""
+    assert_engine_url_allowed(db_url)
+    cfg = AlembicConfig()
+    cfg.set_main_option("sqlalchemy.url", db_url)
+    cfg.set_main_option("script_location", script_location or MIGRATIONS_SCRIPT_LOCATION)
+    return cfg
+
+
+def _current_revision_from_db(db_url: str) -> str | None:
+    """Read the current revision from the DB's alembic_version table."""
+    from orch.db.session import safe_create_engine
+
+    engine = safe_create_engine(db_url, pool_pre_ping=True)
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT version_num FROM alembic_version"))
+            row = result.fetchone()
+            return row[0] if row else None
+    finally:
+        engine.dispose()
+
+
+def _truncate_tail(s: str) -> str:
+    """Truncate string to at most MAX_TAIL_BYTES, keeping the end."""
+    if len(s) <= MAX_TAIL_BYTES:
+        return s
+    return s[-MAX_TAIL_BYTES:]
+
+
+def _write_migration_log(
+    revision: str,
+    direction: Literal["upgrade", "downgrade"],
+    phase: Literal["dry_run", "apply", "rollback", "rebase"],
+    batch_id: str | int | None,
+    success: bool,
+    stdout_tail: str,
+    stderr_tail: str,
+    error_message: str | None,
+    old_revision: str | None = None,
+) -> None:
+    """Write an entry to pending_migration_log via a fresh short-lived session."""
+    if _is_test_context_active():
+        return
+    log_db_url = get_db_url()
+    from orch.db.session import safe_create_engine
+
+    engine = safe_create_engine(log_db_url, pool_pre_ping=True)
+    session_factory = sessionmaker(bind=engine)
+    session: Session = session_factory()
+    try:
+        entry = PendingMigrationLog(
+            revision=revision,
+            direction=direction,
+            phase=phase,
+            batch_id=_to_int_batch_id(batch_id),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+            success=success,
+            stdout_tail=stdout_tail,
+            stderr_tail=stderr_tail,
+            error_message=error_message,
+            old_revision=old_revision,
+        )
+        session.add(entry)
+        session.commit()
+    except Exception as exc:
+        logger.error("Failed to write pending_migration_log entry: %s", exc)
+        session.rollback()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+_ALEMBIC_UPGRADE_LINE = re.compile(r"Running upgrade\s+[^>]+->\s+([A-Za-z0-9_]+)")
+
+
+class _AlembicRevisionCapture(logging.Handler):
+    """Parses alembic's 'Running upgrade X -> Y' log records into a revision list.
+
+    `command.upgrade` emits one such record per revision it applies via the
+    `alembic.runtime.migration` logger. Capturing them here is the only
+    in-process way to know which revisions actually ran without re-querying
+    the DB and reconstructing the graph (which is fragile across merge
+    revisions).
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.revisions: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Parse a log record and append the destination revision when matched.
+
+        Args:
+            record: Log record emitted by the alembic.runtime.migration logger.
+        """
+        match = _ALEMBIC_UPGRADE_LINE.search(record.getMessage())
+        if match is not None:
+            self.revisions.append(match.group(1))
+
+
+def _run_alembic_upgrade(
+    cfg: AlembicConfig,
+) -> tuple[list[str], str, str, str | None]:
+    """Run alembic upgrade head, capturing stdout/stderr and applied revisions.
+
+    Returns (revisions_applied, stdout_tail, stderr_tail, error_message).
+    `revisions_applied` is chronological (first → last applied).
+    """
+    stdout_buf = StringIO()
+    stderr_buf = StringIO()
+    error_message: str | None = None
+
+    capture = _AlembicRevisionCapture()
+    capture.setLevel(logging.INFO)
+    alembic_logger = logging.getLogger("alembic.runtime.migration")
+    previous_level = alembic_logger.level
+    alembic_logger.addHandler(capture)
+    if previous_level == logging.NOTSET or previous_level > logging.INFO:
+        alembic_logger.setLevel(logging.INFO)
+
+    try:
+        with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+            command.upgrade(cfg, "head")
+    except Exception as exc:
+        error_message = str(exc)
+    finally:
+        alembic_logger.removeHandler(capture)
+        alembic_logger.setLevel(previous_level)
+
+    stdout_tail = _truncate_tail(stdout_buf.getvalue())
+    stderr_tail = _truncate_tail(stderr_buf.getvalue())
+
+    return capture.revisions, stdout_tail, stderr_tail, error_message
+
+
+def _run_alembic_downgrade(cfg: AlembicConfig, steps: int) -> tuple[str, str, str | None]:
+    """Run alembic downgrade -N, capturing stdout/stderr.
+
+    Returns (revision_from, stderr_tail, error_message).
+    revision_from is the revision we were at before downgrade.
+    """
+    revision_from = _current_revision_from_db(cfg.get_main_option("sqlalchemy.url") or "")
+    stderr_buf = StringIO()
+    error_message: str | None = None
+
+    try:
+        with redirect_stderr(stderr_buf):
+            command.downgrade(cfg, f"-{steps}")
+    except Exception as exc:
+        error_message = str(exc)
+
+    stderr_tail = _truncate_tail(stderr_buf.getvalue())
+
+    return revision_from or "", stderr_tail, error_message
+
+
+def _acquire_migration_lock(item: str = "daemon") -> None:
+    """Acquire the iw migration-lock for the daemon.
+
+    Raises MigrationLockHeldError if the lock is held by another item.
+    """
+    if _is_test_context_active():
+        return
+    lock_db_url = get_db_url()
+    from orch.db.session import safe_create_engine
+
+    engine = safe_create_engine(lock_db_url, pool_pre_ping=True)
+    session_factory = sessionmaker(bind=engine)
+    session: Session = session_factory()
+    try:
+        result = session.execute(
+            text("SELECT current_holder FROM migration_locks WHERE project_id = :pid FOR UPDATE"),
+            {"pid": _ORCH_MIGRATION_LOCK_PROJECT},
+        )
+        row = result.fetchone()
+        current_holder = row[0] if row else None
+        if current_holder is not None and current_holder != item:
+            raise MigrationLockHeldError(
+                f"Migration lock is held by '{current_holder}'. "
+                f"Cannot acquire for '{item}'. "
+                "Check for stale agent processes."
+            )
+        session.execute(
+            text(
+                "INSERT INTO migration_locks (project_id, current_holder, locked_at) "
+                "VALUES (:pid, :item, now()) "
+                "ON CONFLICT (project_id) DO UPDATE "
+                "SET current_holder = :item, locked_at = now()"
+            ),
+            {"pid": _ORCH_MIGRATION_LOCK_PROJECT, "item": item},
+        )
+        session.commit()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def _release_migration_lock(item: str = "daemon") -> None:
+    """Release the iw migration-lock for the daemon."""
+    if _is_test_context_active():
+        return
+    lock_db_url = get_db_url()
+    from orch.db.session import safe_create_engine
+
+    engine = safe_create_engine(lock_db_url, pool_pre_ping=True)
+    session_factory = sessionmaker(bind=engine)
+    session: Session = session_factory()
+    try:
+        session.execute(
+            text(
+                "UPDATE migration_locks SET current_holder = NULL "
+                "WHERE project_id = :pid AND current_holder = :item"
+            ),
+            {"pid": _ORCH_MIGRATION_LOCK_PROJECT, "item": item},
+        )
+        session.commit()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def _assert_no_self_blockers(apply_engine: Engine) -> None:
+    """Raise SelfBlockerError if the current process already holds a conflicting lock.
+
+    Uses pg_blocking_pids() to detect whether the apply connection's backend PID
+    is blocked by any session that originates from the same process (same parent PID
+    and local connection). This catches the I-00063 self-deadlock where the daemon's
+    outer session holds AccessShareLock on a table the migration will alter.
+
+    The check runs against the apply engine's own connection, which has a known
+    backend PID we can use to query for blockers.
+    """
+    try:
+        with apply_engine.connect() as apply_conn:
+            apply_pid = apply_conn.execute(text("SELECT pg_backend_pid()")).scalar()
+
+            tables_to_check: set[str] = set()
+            pending_revisions: list[Revision] = []
+            with suppress(Exception):
+                pending_revisions = list_pending_revisions(
+                    apply_engine.url.render_as_string(hide_password=False)
+                )
+            if pending_revisions:
+                for rev in pending_revisions:
+                    doc = rev.description or ""
+                    for table in _RELEVANT_TABLES:
+                        if table in doc.lower():
+                            tables_to_check.add(table)
+
+            tables_to_check.update(_RELEVANT_TABLES)
+
+            for table in tables_to_check:
+                result = apply_conn.execute(
+                    text(
+                        """
+                        SELECT l.pid, l.mode, l.relation::regclass
+                        FROM pg_locks l
+                        JOIN pg_stat_activity a ON l.pid = a.pid
+                        WHERE l.relation::regclass::text = :table
+                          AND l.granted
+                          AND l.mode = 'AccessShareLock'
+                          AND a.state = 'idle in transaction'
+                          AND a.pid != :apply_pid
+                        LIMIT 1
+                        """
+                    ),
+                    {"table": table, "apply_pid": apply_pid},
+                )
+                row = result.fetchone()
+                if row is not None:
+                    blocker_pid, mode, relname = row
+                    raise SelfBlockerError(
+                        f"Phase 2 apply would self-deadlock: daemon's own session "
+                        f"(backend PID {blocker_pid}, application_name="
+                        f"iw-ai-core-daemon-main) holds AccessShareLock on "
+                        f"{relname}. Caller must commit and close its session "
+                        f"before invoking apply(). See I-00063 for context."
+                    )
+    except SelfBlockerError:
+        raise
+    except Exception as exc:
+        if "alembic_version" in str(exc):
+            return
+        logger.exception("Self-blocker detection check failed, continuing anyway")
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def list_pending_revisions(db_url: str | None = None) -> list[Revision]:
+    """Compare alembic ScriptDirectory heads to the DB's current revision.
+
+    Returns a list of Revision objects representing pending (not-yet-applied) revisions.
+    Raises MultipleHeadsError if multiple heads are detected in ScriptDirectory.
+    """
+    if db_url is None:
+        db_url = get_db_url()
+
+    script_dir = ScriptDirectory.from_config(_build_alembic_config(db_url))
+
+    heads = script_dir.get_heads()
+    if len(heads) > 1:
+        raise MultipleHeadsError(
+            f"Multiple alembic heads detected: {heads}. "
+            "Create a merge revision with "
+            f"`alembic merge -m 'merge branches' {' '.join(heads)}` "
+            "before applying migrations."
+        )
+
+    current_rev = _current_revision_from_db(db_url)
+    pending: list[Revision] = []
+
+    for rev in script_dir.walk_revisions(current_rev or "base", "head"):
+        if rev.revision == current_rev:
+            break
+        if rev.revision not in (r.id for r in pending):
+            _down = rev.down_revision
+            if isinstance(_down, (list, tuple)):
+                _down = ",".join(_down)
+            pending.append(
+                Revision(
+                    id=rev.revision,
+                    description=rev.doc or "",
+                    down_revision=_down,
+                )
+            )
+
+    return list(reversed(pending))
+
+
+def dry_run(
+    tempdb_url: str,
+    batch_id: str | int | None = None,
+    script_location: str | None = None,
+) -> DryRunResult:
+    """Spin up alembic context against tempdb_url, upgrade to head, record log entry.
+
+    tempdb_url is expected to be a testcontainer URL (caller provides).
+    Refuses if tempdb_url matches the live DB URL.
+
+    When script_location is provided it overrides the default migrations directory
+    (used by the merge queue to exercise the batch's worktree migrations).
+    """
+    if _is_live_db_url(tempdb_url):
+        raise ValueError("dry_run called on live DB — refusing")
+
+    started_at = time.perf_counter()
+    cfg = _build_alembic_config(tempdb_url, script_location=script_location)
+
+    revisions_applied, stdout_tail, stderr_tail, error_message = _run_alembic_upgrade(cfg)
+    duration_ms = int((time.perf_counter() - started_at) * 1000)
+    success = error_message is None
+
+    revision_str = revisions_applied[-1] if revisions_applied else "head"
+
+    _write_migration_log(
+        revision=revision_str,
+        direction="upgrade",
+        phase="dry_run",
+        batch_id=batch_id,
+        success=success,
+        stdout_tail=stdout_tail,
+        stderr_tail=stderr_tail,
+        error_message=error_message,
+    )
+
+    return DryRunResult(
+        revisions_applied=revisions_applied,
+        success=success,
+        duration_ms=duration_ms,
+        stdout_tail=stdout_tail,
+        stderr_tail=stderr_tail,
+        error_message=error_message,
+    )
+
+
+def apply(live_db_url: str, batch_id: str | int | None = None) -> ApplyResult:
+    """Acquire migration lock, upgrade to head against live DB, release lock.
+
+    RAISES AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true' unless
+    IW_CORE_PER_WORKTREE_DB='true' AND live_db_url points at the per-worktree
+    DB (port != 5433). The live orch DB on port 5433 is always protected.
+    Records log entry with phase='apply'.
+
+    Sets lock_timeout on the apply connection (default 30s, configurable via
+    IW_CORE_MIGRATION_LOCK_TIMEOUT_SECS) to bound the maximum silent-hang
+    duration on lock contention.
+
+    Runs a pre-flight self-blocker check (via _assert_no_self_blockers) that
+    raises SelfBlockerError before invoking command.upgrade() if the current
+    process already holds a conflicting lock.
+    """
+    _assert_not_agent_context(live_db_url)
+
+    _acquire_migration_lock(item="daemon")
+    try:
+        started_at = time.perf_counter()
+
+        # Build our own engine with lock_timeout so alembic uses it.
+        # We pass the connection to alembic's EnvironmentContext so the
+        # lock_timeout is set on the same connection alembic uses for DDL.
+        lock_timeout_secs = get_migration_lock_timeout_secs()
+        apply_engine = create_engine(live_db_url)
+
+        if lock_timeout_secs > 0:
+
+            @event.listens_for(apply_engine, "connect")
+            def set_lock_timeout(dbapi_connection: Any, _connection_record: Any) -> None:
+                with dbapi_connection.cursor() as cur:
+                    cur.execute(f"SET lock_timeout = '{lock_timeout_secs}s'")
+
+        apply_conn = apply_engine.connect()
+        transaction = apply_conn.begin()
+
+        error_message: str | None = None
+
+        try:
+            _assert_no_self_blockers(apply_engine)
+        except SelfBlockerError as exc:
+            error_message = str(exc)
+            _write_migration_log(
+                revision="head",
+                direction="upgrade",
+                phase="apply",
+                batch_id=batch_id,
+                success=False,
+                stdout_tail="",
+                stderr_tail="",
+                error_message=error_message,
+            )
+            transaction.close()
+            apply_conn.close()
+            apply_engine.dispose()
+            return ApplyResult(
+                revisions_applied=[],
+                success=False,
+                duration_ms=0,
+                stdout_tail="",
+                stderr_tail="",
+                error_message=error_message,
+            )
+
+        try:
+            cfg = _build_alembic_config(live_db_url)
+
+            # Pass our already-connected connection to alembic so it uses the
+            # lock_timeout set on the same connection rather than opening a new one.
+            # alembic checks cfg.attributes.get('connection') in EnvironmentContext.configure().
+            cfg.attributes["connection"] = apply_conn
+
+            revisions_applied, stdout_tail, stderr_tail, error_message = _run_alembic_upgrade(cfg)
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
+            success = error_message is None
+
+            revision_str = revisions_applied[-1] if revisions_applied else "head"
+
+            _write_migration_log(
+                revision=revision_str,
+                direction="upgrade",
+                phase="apply",
+                batch_id=batch_id,
+                success=success,
+                stdout_tail=stdout_tail,
+                stderr_tail=stderr_tail,
+                error_message=error_message,
+            )
+
+            return ApplyResult(
+                revisions_applied=revisions_applied,
+                success=success,
+                duration_ms=duration_ms,
+                stdout_tail=stdout_tail,
+                stderr_tail=stderr_tail,
+                error_message=error_message,
+            )
+        finally:
+            transaction.close()
+            apply_conn.close()
+            apply_engine.dispose()
+    except SelfBlockerError as exc:
+        success = False
+        error_message = str(exc)
+        stdout_tail = ""
+        stderr_tail = ""
+        revision_str = "head"
+        duration_ms = 0
+        _write_migration_log(
+            revision=revision_str,
+            direction="upgrade",
+            phase="apply",
+            batch_id=batch_id,
+            success=success,
+            stdout_tail=stdout_tail,
+            stderr_tail=stderr_tail,
+            error_message=error_message,
+        )
+        return ApplyResult(
+            revisions_applied=[],
+            success=success,
+            duration_ms=duration_ms,
+            stdout_tail=stdout_tail,
+            stderr_tail=stderr_tail,
+            error_message=error_message,
+        )
+    except Exception as exc:
+        success = False
+        error_message = str(exc)
+        stdout_tail = ""
+        stderr_tail = ""
+        revision_str = "head"
+        duration_ms = 0
+        _write_migration_log(
+            revision=revision_str,
+            direction="upgrade",
+            phase="apply",
+            batch_id=batch_id,
+            success=success,
+            stdout_tail=stdout_tail,
+            stderr_tail=stderr_tail,
+            error_message=error_message,
+        )
+        raise
+    finally:
+        _release_migration_lock(item="daemon")
+
+
+def rollback(live_db_url: str, steps: int = 1, batch_id: str | int | None = None) -> RollbackResult:
+    """Alembic downgrade -N against live DB.
+
+    RAISES AgentContextForbiddenError if IW_CORE_AGENT_CONTEXT='true' unless
+    IW_CORE_PER_WORKTREE_DB='true' AND live_db_url points at the per-worktree
+    DB (port != 5433). The live orch DB on port 5433 is always protected.
+    Records log entry with phase='rollback'.
+    """
+    _assert_not_agent_context(live_db_url)
+
+    _acquire_migration_lock(item="daemon")
+    try:
+        started_at = time.perf_counter()
+        cfg = _build_alembic_config(live_db_url)
+
+        revision_from, stderr_tail, error_message = _run_alembic_downgrade(cfg, steps)
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        success = error_message is None
+
+        revision_to = _current_revision_from_db(live_db_url) or "base"
+
+        _write_migration_log(
+            revision=revision_from,
+            direction="downgrade",
+            phase="rollback",
+            batch_id=batch_id,
+            success=success,
+            stdout_tail="",
+            stderr_tail=stderr_tail,
+            error_message=error_message,
+        )
+
+        return RollbackResult(
+            revision_from=revision_from,
+            revision_to=revision_to,
+            success=success,
+            duration_ms=duration_ms,
+            error_message=error_message,
+        )
+    except Exception as exc:
+        success = False
+        error_message = str(exc)
+        stderr_tail = ""
+        revision_from = "?"
+        duration_ms = 0
+        _write_migration_log(
+            revision=revision_from,
+            direction="downgrade",
+            phase="rollback",
+            batch_id=batch_id,
+            success=success,
+            stdout_tail="",
+            stderr_tail=stderr_tail,
+            error_message=error_message,
+        )
+        raise
+    finally:
+        _release_migration_lock(item="daemon")
+
+
+def current_revision(db_url: str) -> str | None:
+    """Read the current revision from the DB's alembic_version table."""
+    return _current_revision_from_db(db_url)
+
+
+def is_live_db_url(url: str) -> bool:
+    """Return True iff the URL matches the live DB connection from orch.config."""
+    return _is_live_db_url(url)

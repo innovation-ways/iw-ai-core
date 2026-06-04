@@ -1,0 +1,92 @@
+name: Performance Budgets
+
+# Nightly perf-budget assertions — regression-alert only, NOT blocking on PR.
+# Per intake: runner variance makes per-PR perf measurement too noisy.
+# `workflow_dispatch` allows operator-on-demand runs.
+on:
+  schedule:
+    # 03:17 UTC daily — offset from sibling nightly workflows (e2e: 03:30,
+    # daemon-chaos: 02:00, contract-fuzz: 03:00) to spread runner load.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  perf-budgets:
+    name: Perf budgets
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: iw
+          POSTGRES_PASSWORD: iw
+          POSTGRES_DB: iw_ai_core
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U iw"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      IW_CORE_DB_HOST: localhost
+      IW_CORE_DB_PORT: "5433"
+      IW_CORE_DB_NAME: iw_ai_core
+      IW_CORE_DB_USER: iw
+      IW_CORE_DB_PASSWORD: iw
+      IW_CORE_DASHBOARD_HOST: localhost
+      IW_CORE_DASHBOARD_PORT: "9900"
+      IW_CORE_POLL_INTERVAL: "60"
+      IW_CORE_STALL_THRESHOLD: "300"
+      IW_CORE_PID_FILE: "/tmp/iw-orch-daemon.pid"
+      IW_CORE_ARCHIVE_DIR: "/tmp/iw-archive"
+      IW_CORE_ARCHIVE_TTL: "30"
+      IW_CORE_LOG_LEVEL: "INFO"
+      IW_CORE_LOG_FILE: "/tmp/iw-ai-core.log"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.email "ci@iw-ai-core.local"
+          git config --global user.name "iw-ai-core CI"
+      - name: Install dependencies
+        run: uv sync --all-extras --dev --frozen
+      - name: Apply alembic migrations to services postgres
+        run: uv run alembic upgrade head
+      - name: Run performance budget tests
+        run: make test-perf 2>&1 | tee perf-budgets.log
+      - name: Upload pytest output
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: perf-benchmarks
+          path: |
+            perf-budgets.log
+            .benchmarks/
+            tests/perf/baselines/
+          if-no-files-found: ignore
+      # On failure: append a follow-up entry to the TESTS_ENHANCEMENT.md tracker.
+      # This uses the peter-evans/create-pull-request action to edit the file
+      # in place rather than create a separate PR.
+      - name: Record regression follow-up
+        if: failure()
+        uses: peter-evans/create-pull-request@4320041ed380b20e97d388d56a7fb4f9b8c20e79 # v7.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          branch: perf-budgets-regression-follow-up
+          title: "Perf regression follow-up (nightly)"
+          body: |
+            ## Perf regression detected
+
+            See workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Investigate and either fix the regression or, if intentional, file a CR to update the baseline.
+          commit-message: "chore: record perf regression follow-up"
+          signoff: false

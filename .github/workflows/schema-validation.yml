@@ -1,0 +1,62 @@
+# Schema validation — runs `alembic check` on every PR to catch
+# model/migration drift (a model field added without a migration).
+#
+# Action versions are pinned to commit SHAs.
+
+name: Schema Validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  alembic-check:
+    name: alembic check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: iw
+          POSTGRES_PASSWORD: iw
+          POSTGRES_DB: iw_ai_core
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U iw"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      IW_CORE_DB_HOST: localhost
+      IW_CORE_DB_PORT: "5432"
+      IW_CORE_DB_NAME: iw_ai_core
+      IW_CORE_DB_USER: iw
+      IW_CORE_DB_PASSWORD: iw
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install deps
+        run: uv sync --frozen
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      - name: Check for drift
+        run: uv run alembic check

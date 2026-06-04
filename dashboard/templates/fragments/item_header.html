@@ -1,0 +1,207 @@
+{% from "components/status_badge.html" import status_badge %}
+
+<!-- Header -->
+<div class="mb-6">
+  <div class="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+    <a href="/project/{{ current_project.id }}/" class="hover:text-foreground transition-colors">{{ current_project.display_name }}</a>
+    <span>/</span>
+    {% if batch_ref %}
+      <a href="/project/{{ current_project.id }}/batch/{{ batch_ref }}"
+         class="hover:text-foreground transition-colors font-mono">{{ batch_ref }}</a>
+      <span>/</span>
+    {% endif %}
+    <span class="text-foreground font-mono">{{ item.id }}</span>
+  </div>
+  <h1 class="text-xl font-semibold text-foreground">
+    <span class="font-mono text-primary mr-2">{{ item.id }}</span>{{ item.title }}
+  </h1>
+  <div class="flex items-center gap-3 mt-2">
+    {{ status_badge(item_type) }}
+    {{ status_badge(item_status) }}
+    {% if batch_ref %}
+      <a href="/project/{{ current_project.id }}/batch/{{ batch_ref }}"
+         class="text-xs text-muted-foreground hover:text-foreground transition-colors font-mono">
+        {{ batch_ref }}
+      </a>
+    {% endif %}
+
+    {# ── Item-level action buttons (contextual by status) ── #}
+    {# Research items bypass the approval workflow entirely — they auto-complete when #}
+    {# the research document is created via iw doc-update, so no approve/unapprove UI. #}
+    <div class="flex items-center gap-2 ml-auto">
+      {% if item_type == 'Research' %}
+        <p class="text-xs text-muted-foreground ml-auto">
+          Research items auto-complete when the research document is created via
+          <code class="font-mono">iw doc-update</code>. They do not use the approval workflow.
+        </p>
+      {% elif item_status == 'draft' %}
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/approve/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Approve
+        </button>
+      {% elif item_status == 'approved' %}
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/unapprove/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-secondary text-secondary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Unapprove
+        </button>
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-muted text-destructive rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Cancel
+        </button>
+      {% elif item_status == 'in_progress' %}
+        {% if batch_ref and batch_status in ('planning', 'approved', 'executing', 'paused', 'blocked', 'publish_failed', 'publishing') %}
+          {# Item is in an active batch — cancel must go through the batch #}
+          <button type="button" disabled class="px-3 py-1 bg-muted text-muted-foreground rounded text-xs font-medium cursor-not-allowed opacity-50">
+            Cancel
+          </button>
+          <p class="text-xs text-muted-foreground">Belongs to active batch
+            <a href="/project/{{ current_project.id }}/batch/{{ batch_ref }}" class="underline font-mono">{{ batch_ref }}</a>
+            — cancel the batch instead.
+          </p>
+        {% else %}
+          <button
+            hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+            hx-target="#confirm-dialog"
+            hx-swap="innerHTML"
+            class="px-3 py-1 bg-muted text-destructive rounded text-xs font-medium hover:opacity-90 transition-opacity">
+            Cancel
+          </button>
+        {% endif %}
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/pause/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-warning text-warning-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Pause
+        </button>
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/full-restart/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Full Restart
+        </button>
+      {% elif item_status == 'paused' %}
+        {% if batch_ref and batch_status in ('planning', 'approved', 'executing', 'paused', 'blocked', 'publish_failed', 'publishing') %}
+          <button type="button" disabled class="px-3 py-1 bg-muted text-muted-foreground rounded text-xs font-medium cursor-not-allowed opacity-50">
+            Cancel
+          </button>
+          <p class="text-xs text-muted-foreground">Belongs to active batch
+            <a href="/project/{{ current_project.id }}/batch/{{ batch_ref }}" class="underline font-mono">{{ batch_ref }}</a>
+            — cancel the batch instead.
+          </p>
+        {% else %}
+          <button
+            hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+            hx-target="#confirm-dialog"
+            hx-swap="innerHTML"
+            class="px-3 py-1 bg-muted text-destructive rounded text-xs font-medium hover:opacity-90 transition-opacity">
+            Cancel
+          </button>
+        {% endif %}
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/resume/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Resume
+        </button>
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/full-restart/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Full Restart
+        </button>
+      {% elif item_status == 'failed' %}
+        {% if batch_ref and batch_status in ('planning', 'approved', 'executing', 'paused', 'blocked', 'publish_failed', 'publishing') %}
+          <button type="button" disabled class="px-3 py-1 bg-muted text-muted-foreground rounded text-xs font-medium cursor-not-allowed opacity-50">
+            Cancel
+          </button>
+          <p class="text-xs text-muted-foreground">Belongs to active batch
+            <a href="/project/{{ current_project.id }}/batch/{{ batch_ref }}" class="underline font-mono">{{ batch_ref }}</a>
+            — cancel the batch instead.
+          </p>
+        {% else %}
+          <button
+            hx-get="/project/{{ current_project.id }}/api/confirm-item/cancel/{{ item.id }}"
+            hx-target="#confirm-dialog"
+            hx-swap="innerHTML"
+            class="px-3 py-1 bg-muted text-destructive rounded text-xs font-medium hover:opacity-90 transition-opacity">
+            Cancel
+          </button>
+        {% endif %}
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/restart/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Restart
+        </button>
+        <button
+          hx-get="/project/{{ current_project.id }}/api/confirm-item/full-restart/{{ item.id }}"
+          hx-target="#confirm-dialog"
+          hx-swap="innerHTML"
+          class="px-3 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity">
+          Full Restart
+        </button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Setup failure banner -->
+{% if setup_error %}
+  <div class="bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-3 mb-6">
+    <div class="flex items-start gap-2">
+      <span class="text-destructive font-bold text-sm mt-0.5">Setup Failed</span>
+      <pre class="text-xs text-destructive/90 whitespace-pre-wrap break-all flex-1 font-mono">{{ setup_error }}</pre>
+    </div>
+  </div>
+{% endif %}
+
+<!-- Summary (if available) -->
+{% if item.summary %}
+  <div class="bg-muted/50 border border-border rounded-lg px-4 py-3 mb-6 text-sm text-foreground">
+    {{ item.summary }}
+  </div>
+{% endif %}
+
+<!-- Metric cards -->
+<div class="grid grid-cols-3 gap-4 mb-6">
+  <div class="bg-card border border-border rounded-lg p-4">
+    <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Total Time</p>
+    <p class="text-xl font-bold font-mono text-foreground">
+      {% if metrics.total_duration_secs is not none %}
+        {% set mins = (metrics.total_duration_secs // 60)|int %}
+        {% set secs = (metrics.total_duration_secs % 60)|int %}
+        {{ "%dm%02ds"|format(mins, secs) }}
+      {% else %}
+        —
+      {% endif %}
+    </p>
+  </div>
+  <div class="bg-card border border-border rounded-lg p-4 {% if metrics.fix_cycles_count > 0 %}cursor-pointer hover:bg-muted/40 transition-colors{% endif %}"
+       {% if metrics.fix_cycles_count > 0 %}
+         hx-get="/project/{{ current_project.id }}/item/{{ item.id }}/tab/fix-cycles"
+         hx-target="#tab-content"
+         hx-swap="innerHTML"
+         onclick="activateFixCyclesTab()"
+       {% endif %}>
+    <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Fix Cycles</p>
+    <p class="text-xl font-bold {% if metrics.fix_cycles_count > 0 %}text-warning{% else %}text-foreground{% endif %}">{{ metrics.fix_cycles_count }}</p>
+  </div>
+  <div class="bg-card border border-border rounded-lg p-4">
+    <p class="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Steps</p>
+    <p class="text-xl font-bold text-foreground">{{ metrics.steps_completed }}/{{ metrics.steps_total }}</p>
+  </div>
+</div>

@@ -1,0 +1,63 @@
+{% from "components/step_pipeline.html" import step_pipeline %}
+{% from "components/status_badge.html" import status_badge %}
+{% from "components/action_button.html" import restart_button, skip_button, kill_button, restart_merge_button, abandon_merge_button, restart_setup_button, approve_merge_button with context %}
+{% from "macros/db_guard.html" import write_button_attrs %}
+
+<!-- C.3: Recovery summary banner (only when cascade events exist) -->
+{% include "fragments/recovery_summary.html" %}
+
+<!-- Step pipeline overview -->
+<div class="mb-6">
+  <h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Step Pipeline</h3>
+  <div class="bg-card border border-border rounded-lg p-4 overflow-x-auto">
+    {% if steps %}
+      {{ step_pipeline(steps) }}
+    {% else %}
+      <p class="text-muted-foreground text-sm">No steps defined.</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Step detail table -->
+<div>
+  {% include "fragments/item_steps_table.html" %}
+</div>
+
+<!-- C.2: Cascade causality timeline (only when cascade events exist) -->
+{% include "fragments/cascade_history.html" %}
+
+{# F-00090: Regression classification form (AC5) — always visible on the item detail overview tab #}
+{% include "fragments/regression_classification_form.html" %}
+
+<!-- Impacted Paths (F-00076 cross-batch conflict gate visibility) -->
+{% set scope_config = item.config.get('scope_extraction') if item.config else None %}
+{% set scope_source = scope_config.get('source') if scope_config else None %}
+{% set impacted = item.impacted_paths if item.impacted_paths else [] %}
+{% set default_open = impacted | length < 6 %}
+<details {% if default_open %}open{% endif %} class="mt-4">
+  <summary class="flex items-center gap-2 cursor-pointer text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2
+                  hover:text-foreground transition-colors list-none">
+    <span>Impacted Paths</span>
+    {% if scope_source == 'declared' %}
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success/10 text-success border border-success/20">declared</span>
+    {% elif scope_source == 'regex_fallback' %}
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning border border-warning/20"
+            title="regex fallback — please verify in design doc">auto</span>
+    {% elif not impacted %}
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">none</span>
+    {% else %}
+      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">—</span>
+    {% endif %}
+  </summary>
+  <div class="bg-card border border-border rounded-lg p-4">
+    {% if impacted %}
+      <div class="flex flex-wrap gap-1.5">
+        {% for path in impacted %}
+          <code class="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground">{{ path }}</code>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="text-muted-foreground text-sm">No paths declared — item bypasses cross-batch conflict gate.</p>
+    {% endif %}
+  </div>
+</details>

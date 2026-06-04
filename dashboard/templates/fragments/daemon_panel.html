@@ -1,0 +1,116 @@
+<!-- Daemon status panel — rendered as an htmx fragment, no base.html -->
+{% from "macros/db_guard.html" import write_button_attrs %}
+<div id="daemon-panel"
+     hx-get="/system/daemon/panel"
+     hx-trigger="every 15s"
+     hx-swap="outerHTML">
+  <div class="bg-card border border-border rounded-lg p-5">
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+
+      <!-- Status -->
+      <div>
+        <p class="text-xs text-muted-foreground mb-1">Status</p>
+        <div class="flex items-center gap-2">
+          {% if daemon.is_running %}
+            <span class="w-2 h-2 rounded-full bg-success animate-pulse"></span>
+            <span class="text-sm text-foreground font-medium">Running</span>
+          {% else %}
+            <span class="w-2 h-2 rounded-full bg-destructive"></span>
+            <span class="text-sm text-foreground font-medium">Stopped</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- PID -->
+      <div>
+        <p class="text-xs text-muted-foreground mb-1">PID</p>
+        <p class="text-sm font-mono text-foreground">
+          {{ daemon.pid if daemon.pid else "—" }}
+        </p>
+      </div>
+
+      <!-- Uptime -->
+      <div>
+        <p class="text-xs text-muted-foreground mb-1">Uptime</p>
+        <p class="text-sm text-foreground">
+          {% if daemon.uptime_secs is not none %}
+            {% set h = (daemon.uptime_secs // 3600) | int %}
+            {% set m = ((daemon.uptime_secs % 3600) // 60) | int %}
+            {% set s = (daemon.uptime_secs % 60) | int %}
+            {% if h > 0 %}{{ h }}h {{ m }}m{% elif m > 0 %}{{ m }}m {{ s }}s{% else %}{{ s }}s{% endif %}
+          {% else %}
+            —
+          {% endif %}
+        </p>
+      </div>
+
+      <!-- Last poll -->
+      <div>
+        <p class="text-xs text-muted-foreground mb-1">Last poll</p>
+        <p class="text-sm text-foreground">
+          {% if daemon.last_poll_at %}
+            {{ daemon.last_poll_at | localdt('%H:%M:%S') }}
+          {% else %}
+            —
+          {% endif %}
+        </p>
+      </div>
+
+      <!-- Poll count -->
+      <div>
+        <p class="text-xs text-muted-foreground mb-1">Poll count</p>
+        <p class="text-sm font-mono text-foreground">
+          {{ daemon.poll_count if daemon.poll_count else "—" }}
+        </p>
+      </div>
+
+      <!-- Running / Active -->
+      <div>
+        <p class="text-xs text-muted-foreground mb-1">Active</p>
+        <p class="text-sm text-foreground">
+          {{ daemon.running_steps }} step{{ "s" if daemon.running_steps != 1 }},
+          {{ daemon.active_batches }} batch{{ "es" if daemon.active_batches != 1 }}
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Action buttons -->
+    <div class="flex gap-2 mt-4">
+      {% if daemon.is_running %}
+        <button hx-post="/system/daemon/stop"
+                hx-target="#daemon-panel"
+                hx-swap="outerHTML"
+                hx-confirm="Stop the daemon? Running steps will finish but no new ones will launch."
+                class="px-3 py-1.5 bg-destructive text-destructive-foreground rounded text-xs
+                       hover:opacity-90 transition-opacity cursor-pointer"
+                {{ write_button_attrs(request) }}>
+          Stop
+        </button>
+        <button hx-post="/system/daemon/restart"
+                hx-target="#daemon-panel"
+                hx-swap="outerHTML"
+                hx-confirm="Restart the daemon? It will stop gracefully and start fresh."
+                class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded text-xs
+                       hover:opacity-90 transition-opacity cursor-pointer"
+                {{ write_button_attrs(request) }}>
+          Restart
+        </button>
+      {% else %}
+        <button hx-post="/system/daemon/start"
+                hx-target="#daemon-panel"
+                hx-swap="outerHTML"
+                class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs
+                       hover:opacity-90 transition-opacity cursor-pointer"
+                {{ write_button_attrs(request) }}>
+          Start
+        </button>
+        <button disabled
+                class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded text-xs
+                       opacity-40 cursor-not-allowed">
+          Restart
+        </button>
+      {% endif %}
+    </div>
+  </div>
+</div>

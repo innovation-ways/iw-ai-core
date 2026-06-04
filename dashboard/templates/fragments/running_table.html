@@ -1,0 +1,29 @@
+{% from "components/action_button.html" import kill_button with context %}
+{% from "components/heartbeat_cell.html" import heartbeat_cell %}
+{% for row in running_rows %}
+  <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+    <td class="px-4 py-2 font-mono text-xs text-muted-foreground">{{ row.project_name }}</td>
+    <td class="px-4 py-2 font-mono text-xs font-semibold">{{ row.item_id }}</td>
+    <td class="px-4 py-2">
+      <span class="font-mono text-xs">{{ row.step_id }}</span>
+      <span class="text-muted-foreground ml-1 text-xs">{{ row.agent_label }}</span>
+      {% if row.opencode_agent %}
+        <span class="text-xs text-muted-foreground/60 ml-1">({{ row.opencode_agent }})</span>
+      {% endif %}
+    </td>
+    <td class="px-4 py-2 font-mono text-xs text-muted-foreground hidden sm:table-cell">
+      {% if row.pid %}{{ row.pid }}{% else %}—{% endif %}
+    </td>
+    <td class="px-4 py-2 font-mono text-xs text-primary">
+      {% if row.started_at %}
+        <span data-started-at="{{ row.started_at.isoformat() }}">...</span>
+      {% else %}
+        —
+      {% endif %}
+    </td>
+    {{ heartbeat_cell(row) }}
+    <td class="px-4 py-2 text-right">
+      {{ kill_button(row.project_id, row.item_id, row.step_id) }}
+    </td>
+  </tr>
+{% endfor %}

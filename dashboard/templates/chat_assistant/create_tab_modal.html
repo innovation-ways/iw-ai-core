@@ -1,0 +1,88 @@
+<!-- chat_assistant/create_tab_modal.html
+     Create-tab modal. Injected into #chat-assistant-create-tab-modal-root by panel.html.
+     Shown/hidden by chat.js via openCreateTabModal() / closeCreateTabModal().
+-->
+<div id="chat-assistant-create-tab-modal"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+     style="display: none;"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="chat-assistant-create-tab-title">
+
+  <div class="bg-card border border-border rounded-lg shadow-lg max-w-sm w-full mx-4 p-5">
+    <h2 id="chat-assistant-create-tab-title"
+        class="text-sm font-semibold text-foreground mb-4">
+      New Chat Tab
+    </h2>
+
+    <!-- Project (locked when in per-project context) -->
+    <div class="mb-3">
+      <label class="block text-xs text-muted-foreground mb-1" for="chat-assistant-create-tab-project">
+        Project
+      </label>
+      <input id="chat-assistant-create-tab-project"
+             type="text"
+             class="w-full text-xs bg-input border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+             readonly
+             aria-readonly="true" />
+    </div>
+
+    <!-- Runtime -->
+    <div class="mb-3">
+      <label class="block text-xs text-muted-foreground mb-1" for="chat-assistant-create-tab-runtime">
+        Runtime
+      </label>
+      <select id="chat-assistant-create-tab-runtime"
+              class="w-full text-xs bg-input border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              aria-label="Runtime">
+        <option value="opencode" selected>OpenCode</option>
+        <option value="pi">Pi</option>
+      </select>
+    </div>
+
+    <!-- Model -->
+    <div class="mb-3">
+      <label class="block text-xs text-muted-foreground mb-1" for="chat-assistant-create-tab-model">
+        Model
+      </label>
+      <select id="chat-assistant-create-tab-model"
+              class="w-full text-xs bg-input border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              aria-label="Model">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+
+    <!-- Title -->
+    <div class="mb-4">
+      <label class="block text-xs text-muted-foreground mb-1" for="chat-assistant-create-tab-title-input">
+        Title <span class="text-muted-foreground">(optional)</span>
+      </label>
+      <input id="chat-assistant-create-tab-title-input"
+             type="text"
+             class="w-full text-xs bg-input border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+             placeholder="New chat"
+             maxlength="120" />
+    </div>
+
+    <!-- Inline error message -->
+    <div id="chat-assistant-create-tab-error"
+         class="hidden mb-3 text-xs text-destructive border border-destructive/30 bg-destructive/5 rounded px-2 py-1.5"
+         role="alert">
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center justify-end gap-2">
+      <button id="chat-assistant-create-tab-cancel"
+              type="button"
+              class="text-xs px-3 py-1.5 rounded border border-border hover:bg-muted text-foreground min-h-[36px]">
+        Cancel
+      </button>
+      <button id="chat-assistant-create-tab-submit"
+              type="button"
+              class="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground hover:opacity-90 min-h-[36px]">
+        Create Tab
+      </button>
+    </div>
+  </div>
+
+</div>

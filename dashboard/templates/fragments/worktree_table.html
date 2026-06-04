@@ -1,0 +1,308 @@
+<!-- Worktree health table fragment — auto-refreshes every 30 s via htmx -->
+{% from "macros/db_guard.html" import write_button_attrs %}
+{% from "components/heartbeat_cell.html" import heartbeat_cell %}
+{% if prune_errors %}
+<div class="mb-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-2 text-xs text-destructive space-y-0.5">
+  <p class="font-medium">git worktree prune failed for some projects:</p>
+  {% for err in prune_errors %}<p class="font-mono">{{ err }}</p>{% endfor %}
+</div>
+{% endif %}
+<div id="worktree-table" data-tour="worktrees-table"
+     hx-get="/system/worktrees/table"
+     hx-trigger="every 30s, worktree-committed from:body"
+     hx-swap="outerHTML">
+
+  {% if not worktrees %}
+    <div class="bg-card border border-border rounded-lg px-4 py-10 text-center text-muted-foreground text-sm">
+      No active worktrees. Agent worktrees appear here when a batch is executing.
+    </div>
+
+  {% else %}
+    <div class="bg-card border border-border rounded-lg overflow-x-auto">
+      <table class="w-full text-sm min-w-[900px]">
+        <thead>
+          <tr class="border-b border-border bg-muted/30">
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Project</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Item</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground text-xs">In-flight Scope</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Branch</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Batch</th>
+            <th class="px-4 py-2 text-right font-medium text-muted-foreground">Ahead</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden lg:table-cell">Path</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Container</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground text-xs">Last seen</th>
+            <th class="px-4 py-2 text-center font-medium text-muted-foreground text-xs">DB :Port</th>
+            <th class="px-4 py-2 text-center font-medium text-muted-foreground text-xs">App :Port</th>
+            <th class="px-4 py-2 text-center font-medium text-muted-foreground text-xs">Class</th>
+            <th class="px-4 py-2 text-center font-medium text-muted-foreground">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for wt in worktrees %}
+            {% if not loop.first and wt.batch_status != 'main' and loop.previtem.batch_status == 'main' %}
+            <tr class="border-t-2 border-border/60">
+              <td colspan="14" class="px-4 py-0.5 text-xs text-muted-foreground bg-muted/20">Agent worktrees</td>
+            </tr>
+            {% endif %}
+
+            {# Only rows with actual changes are clickable #}
+            {% set clickable = wt.git_label in ('dirty', 'untracked') %}
+            <tr class="border-b border-border last:border-0
+                       {% if wt.git_label == 'dirty' %}bg-destructive/5
+                       {% elif wt.git_label in ('orphaned', 'untracked') %}bg-warning/5
+                       {% endif %}
+                       {% if wt.batch_status == 'container-orphan' %}row-orphan
+                       {% endif %}
+                       {% if clickable %}cursor-pointer hover:bg-muted/30{% else %}hover:bg-muted/20{% endif %}
+                       transition-colors"
+                {% if clickable %}
+                hx-get="/system/worktrees/files?path={{ wt.path | urlencode }}"
+                hx-target="#worktree-detail"
+                hx-swap="innerHTML"
+                hx-indicator="#worktree-detail"
+                title="Click to view and commit changes"
+                {% endif %}>
+
+              <!-- Git status badge -->
+              <td class="px-4 py-2.5">
+                {% if wt.git_label == 'clean' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success">
+                    <span class="w-1.5 h-1.5 rounded-full bg-success"></span>clean
+                  </span>
+                {% elif wt.git_label == 'dirty' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive">
+                    <span class="w-1.5 h-1.5 rounded-full bg-destructive animate-pulse"></span>
+                    dirty
+                    {% if wt.modified %}· {{ wt.modified }}M{% endif %}
+                    {% if wt.untracked %}· {{ wt.untracked }}U{% endif %}
+                  </span>
+                {% elif wt.git_label == 'untracked' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                    <span class="w-1.5 h-1.5 rounded-full bg-warning"></span>
+                    untracked · {{ wt.untracked }}
+                  </span>
+                {% elif wt.git_label == 'orphaned' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                    <span class="w-1.5 h-1.5 rounded-full bg-warning"></span>orphaned
+                  </span>
+                {% elif wt.git_label == 'no_path' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                    <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground"></span>no path
+                  </span>
+                {% elif wt.git_label == 'n/a' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                    <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground"></span>n/a
+                  </span>
+                {% else %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive">
+                    <span class="w-1.5 h-1.5 rounded-full bg-destructive"></span>{{ wt.git_label }}
+                  </span>
+                {% endif %}
+              </td>
+
+              <!-- Project -->
+              <td class="px-4 py-2.5 text-xs text-muted-foreground font-mono">
+                {{ wt.project_id }}
+              </td>
+
+              <!-- Item -->
+              <td class="px-4 py-2.5">
+                {% if wt.item_id not in ('—', '(main)') %}
+                  <a href="/project/{{ wt.project_id }}/item/{{ wt.item_id }}"
+                     onclick="event.stopPropagation()"
+                     class="font-mono text-xs font-semibold text-primary hover:underline">
+                    {{ wt.item_id }}
+                  </a>
+                {% else %}
+                  <span class="text-xs text-muted-foreground">{{ wt.item_id }}</span>
+                {% endif %}
+              </td>
+
+              <!-- In-flight scope (F-00076) -->
+              <td class="px-4 py-2.5">
+                {% if wt.impacted_paths %}
+                  {% set paths = wt.impacted_paths[:5] %}
+                  {% set extra = (wt.impacted_paths | length) - 5 %}
+                  <span class="font-mono text-xs text-muted-foreground"
+                        title="{{ wt.impacted_paths | join('\n') }}">
+                    {%- for p in paths -%}
+                      <code class="text-foreground">{{ p }}</code>{% if not loop.last %}, {% endif %}
+                    {%- endfor -%}
+                    {% if extra > 0 %}
+                      <span class="text-muted-foreground">+{{ extra }} more</span>
+                    {% endif %}
+                  </span>
+                {% else %}
+                  <span class="text-xs text-muted-foreground">—</span>
+                {% endif %}
+              </td>
+
+              <!-- Branch -->
+              <td class="px-4 py-2.5 font-mono text-xs text-foreground max-w-[180px] truncate" title="{{ wt.branch }}">
+                {{ wt.branch }}
+              </td>
+
+              <!-- Batch status -->
+              <td class="px-4 py-2.5">
+                {% if wt.batch_status == 'main' %}
+                  <span class="text-xs text-muted-foreground font-medium">main checkout</span>
+                {% elif wt.batch_status == 'executing' %}
+                  <span class="text-xs text-primary font-medium">executing</span>
+                {% elif wt.batch_status == 'setting_up' %}
+                  <span class="text-xs text-info font-medium">setting up</span>
+                {% elif wt.batch_status == 'merging' %}
+                  <span class="text-xs text-warning font-medium">merging</span>
+                {% elif wt.batch_status == 'container-orphan' %}
+                  <span class="text-xs text-destructive font-medium">orphan</span>
+                {% else %}
+                  <span class="text-xs text-muted-foreground">{{ wt.batch_status }}</span>
+                {% endif %}
+              </td>
+
+              <!-- Commits ahead -->
+              <td class="px-4 py-2.5 text-right font-mono text-xs">
+                {% if wt.ahead >= 0 %}
+                  <span class="{% if wt.ahead == 0 %}text-muted-foreground{% else %}text-foreground{% endif %}">
+                    +{{ wt.ahead }}
+                  </span>
+                {% else %}
+                  <span class="text-muted-foreground">—</span>
+                {% endif %}
+              </td>
+
+              <!-- Path -->
+              <td class="px-4 py-2.5 font-mono text-xs text-muted-foreground max-w-xs truncate hidden lg:table-cell"
+                  title="{{ wt.path }}">
+                {{ wt.path }}
+              </td>
+
+              <!-- Container status badge -->
+              <td class="px-4 py-2.5">
+                {% if wt.container_status == 'running' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success">
+                    <span class="w-1.5 h-1.5 rounded-full bg-success"></span>running
+                  </span>
+                {% elif wt.container_status == 'stopped' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                    <span class="w-1.5 h-1.5 rounded-full bg-warning"></span>stopped
+                  </span>
+                {% elif wt.container_status == 'missing' %}
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                    <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground"></span>missing
+                  </span>
+                {% else %}
+                  <span class="text-xs text-muted-foreground">n/a</span>
+                {% endif %}
+              </td>
+
+              <!-- Last seen (heartbeat-age + pid-alive pip) -->
+              {{ heartbeat_cell(wt) }}
+
+              <!-- DB Port -->
+              <td class="px-4 py-2.5 text-center font-mono text-xs text-muted-foreground">
+                {% if wt.db_port %}{{ wt.db_port }}{% else %}—{% endif %}
+              </td>
+
+              <!-- App Port -->
+              <td class="px-4 py-2.5 text-center font-mono text-xs text-muted-foreground">
+                {% if wt.app_port %}{{ wt.app_port }}{% else %}—{% endif %}
+              </td>
+
+              <!-- Classification badge -->
+              <td class="px-4 py-2.5 text-center">
+                {% if wt.classification == 'active' %}
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">active</span>
+                {% elif wt.classification == 'stale' %}
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning">stale</span>
+                {% elif wt.classification == 'orphan' %}
+                  <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive">orphan</span>
+                {% else %}
+                  <span class="text-xs text-muted-foreground">—</span>
+                {% endif %}
+              </td>
+
+              <!-- Actions -->
+              <td class="px-4 py-2.5">
+                <div class="flex items-center gap-1 justify-end">
+                  {% if wt.app_port %}
+                  <a href="http://localhost:{{ wt.app_port }}"
+                     target="_blank"
+                     onclick="event.stopPropagation()"
+                     class="inline-flex items-center justify-center w-7 h-7 rounded-md bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors"
+                     title="Open dashboard">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                    </svg>
+                  </a>
+                  {% endif %}
+
+                  {% if wt.batch_item_pk %}
+                  <button type="button"
+                          class="inline-flex items-center justify-center w-7 h-7 rounded-md bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground transition-colors"
+                          hx-get="/system/worktrees/{{ wt.batch_item_pk }}/logs/stream"
+                          hx-target="#wt-logs-{{ wt.batch_item_pk }}"
+                          hx-swap="innerHTML"
+                          title="Stream logs">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                  </button>
+
+                  <button type="button"
+                          class="inline-flex items-center justify-center w-7 h-7 rounded-md bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                          hx-post="/system/worktrees/{{ wt.batch_item_pk }}/teardown"
+                          hx-confirm="Tear down this worktree's containers? This is irreversible."
+                          hx-target="#worktree-table"
+                          hx-swap="outerHTML"
+                          title="Force teardown"
+                          {{ write_button_attrs(request) }}>
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                  </button>
+                  {% endif %}
+                </div>
+              </td>
+
+            </tr>
+
+            <!-- Logs panel (hidden, populated by htmx) -->
+            {% if wt.batch_item_pk %}
+            <tr id="wt-logs-{{ wt.batch_item_pk }}" class="wt-logs-panel" style="display: none;">
+              <td colspan="14" class="px-4 py-2 bg-muted/50 border-b border-border">
+                <div class="text-xs text-muted-foreground font-mono max-h-48 overflow-auto bg-black/5 rounded p-2">
+                  <!-- SSE logs stream here -->
+                </div>
+              </td>
+            </tr>
+            {% endif %}
+
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Summary row -->
+    {% set dirty_count = worktrees | selectattr('git_label', 'equalto', 'dirty') | list | length %}
+    {% set orphan_count = worktrees | selectattr('is_orphan') | list | length %}
+    {% set clean_count = worktrees | selectattr('git_label', 'equalto', 'clean') | list | length %}
+    {% set running_count = worktrees | selectattr('container_status', 'equalto', 'running') | list | length %}
+    <p class="mt-2 text-xs text-muted-foreground">
+      {{ worktrees | length }} worktree{% if worktrees | length != 1 %}s{% endif %}
+      &nbsp;·&nbsp; <span class="text-success">{{ clean_count }} clean</span>
+      {% if dirty_count %}
+        &nbsp;·&nbsp; <span class="text-destructive">{{ dirty_count }} dirty</span>
+      {% endif %}
+      {% if orphan_count %}
+        &nbsp;·&nbsp; <span class="text-warning">{{ orphan_count }} orphaned</span>
+      {% endif %}
+      {% if running_count %}
+        &nbsp;·&nbsp; <span class="text-success">{{ running_count }} running</span>
+      {% endif %}
+      &nbsp;·&nbsp; refreshed {{ worktrees[0].checked_at.strftime('%H:%M:%S') if worktrees else '' }} UTC
+      &nbsp;·&nbsp; <span class="text-muted-foreground italic">click a dirty row to view &amp; commit</span>
+    </p>
+
+  {% endif %}
+</div>

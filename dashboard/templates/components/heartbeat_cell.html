@@ -1,0 +1,44 @@
+{# CR-00024: shared heartbeat-age + pid-alive cell for running/worktrees/jobs tables.
+
+  Caller passes a `row` exposing:
+    - row.last_heartbeat_age_secs : int | None   (seconds since last poll)
+    - row.pid_alive               : bool | None  (True/False/None=unknown)
+    - row.warned_50pct_at         : datetime | None (50%-warn marker)
+
+  Renders: a coloured pip + a humanised "Xs/Xm ago" label, with an amber
+  pip overlay when the 50% timeout warn has fired. Falls back to "—" when
+  the run has no heartbeat yet.
+#}
+{% macro heartbeat_cell(row) -%}
+  <td class="px-4 py-2 font-mono text-xs">
+    {% if row.last_heartbeat_age_secs is none %}
+      <span class="text-muted-foreground">—</span>
+    {% else %}
+      {%- if row.pid_alive == True -%}
+        {%- set pip_class = "bg-emerald-500" -%}
+        {%- set pip_title = "PID alive (last poll)" -%}
+      {%- elif row.pid_alive == False -%}
+        {%- set pip_class = "bg-rose-500" -%}
+        {%- set pip_title = "PID not alive at last poll" -%}
+      {%- else -%}
+        {%- set pip_class = "bg-muted-foreground/40" -%}
+        {%- set pip_title = "PID liveness unknown" -%}
+      {%- endif -%}
+      <span class="inline-flex items-center gap-1.5 align-middle">
+        <span class="inline-block h-2 w-2 rounded-full {{ pip_class }}"
+              title="{{ pip_title }}"></span>
+        {%- if row.last_heartbeat_age_secs < 60 -%}
+          <span class="text-muted-foreground">{{ row.last_heartbeat_age_secs }}s ago</span>
+        {%- elif row.last_heartbeat_age_secs < 3600 -%}
+          <span class="text-muted-foreground">{{ (row.last_heartbeat_age_secs // 60) }}m ago</span>
+        {%- else -%}
+          <span class="text-muted-foreground">{{ (row.last_heartbeat_age_secs // 3600) }}h ago</span>
+        {%- endif -%}
+        {%- if row.warned_50pct_at -%}
+          <span class="inline-block h-2 w-2 rounded-full bg-amber-500"
+                title="Past 50% of timeout — warning fired"></span>
+        {%- endif -%}
+      </span>
+    {% endif %}
+  </td>
+{%- endmacro %}

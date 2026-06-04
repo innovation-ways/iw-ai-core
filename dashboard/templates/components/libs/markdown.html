@@ -1,0 +1,14 @@
+<script src="/static/vendor/dompurify/purify.min.js"></script>
+<script type="module" src="/static/chat/smd-loader.js"></script>
+<script>
+  window.addEventListener('iw-smd-ready', function() {
+    var s = document.createElement('script');
+    s.src = '/static/chat/render.js';
+    document.head.appendChild(s);
+  });
+  if (window.__iwSMD) {
+    var s = document.createElement('script');
+    s.src = '/static/chat/render.js';
+    document.head.appendChild(s);
+  }
+</script>

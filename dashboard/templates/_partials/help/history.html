@@ -1,0 +1,28 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">History</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>History shows every batch that has been run for this project — past and present — in reverse chronological order.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Inspect any historical batch to see which items ran, their outcomes, and any fix cycles</li>
+    <li>Filter by status (completed, failed, cancelled) or date range</li>
+    <li>Open the full execution report for any batch</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Batch</dt><dd>A group of work items launched together in one daemon pass.</dd>
+    <dt>Fix cycle</dt><dd>An additional agent run triggered automatically when a step fails, to attempt correction before surfacing the error.</dd>
+    <dt>Step</dt><dd>A single atomic action within a work item — e.g., implement feature, write tests, update docs.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="{{ docs_link }}">Open full docs →</a>
+  </footer>
+</section>

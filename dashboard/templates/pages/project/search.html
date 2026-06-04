@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+
+{% block title %}Search — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}search{% endblock %}
+
+{% block content %}
+<!-- Search form -->
+<form method="get" class="flex flex-col sm:flex-row gap-3 mb-6">
+  <input type="search" name="q" value="{{ query }}"
+         placeholder="Search work items..."
+         autofocus
+         class="flex-1 px-4 py-2 bg-input border border-border rounded-md text-foreground
+                placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring text-sm">
+  <select name="type"
+          class="px-3 py-2 bg-input border border-border rounded-md text-sm text-foreground
+                 focus:outline-none focus:ring-2 focus:ring-ring">
+    <option value="">All types</option>
+    <option value="Feature" {% if type_filter == 'Feature' %}selected{% endif %}>Feature</option>
+    <option value="Issue" {% if type_filter == 'Issue' %}selected{% endif %}>Issue</option>
+    <option value="ChangeRequest" {% if type_filter == 'ChangeRequest' %}selected{% endif %}>CR</option>
+  </select>
+  <button type="submit"
+          class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium
+                 hover:opacity-90 transition-opacity">
+    Search
+  </button>
+</form>
+
+<!-- Results -->
+{% if query %}
+  <p class="text-xs text-muted-foreground mb-3">
+    {% if results %}
+      {{ results|length }} result{% if results|length != 1 %}s{% endif %} for "{{ query }}"
+      {% if has_more %}(showing first 20){% endif %}
+    {% else %}
+      No results for "{{ query }}"
+    {% endif %}
+  </p>
+
+  {% if results %}
+    <div class="bg-card border border-border rounded-lg overflow-hidden">
+      <ul class="divide-y divide-border">
+        {% for r in results %}
+          <li>
+            <a href="/project/{{ r.project_id }}/item/{{ r.id }}"
+               class="flex items-start gap-3 px-4 py-3 hover:bg-muted/20 transition-colors block">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1 flex-wrap">
+                  <span class="font-mono text-xs font-semibold text-primary">{{ r.id }}</span>
+                  {{ status_badge(r.type) }}
+                  {{ status_badge(r.status) }}
+                </div>
+                <p class="text-sm text-foreground font-medium">{{ r.title }}</p>
+                {% if r.snippet %}
+                  <p class="text-xs text-muted-foreground mt-1">
+                    {{ r.snippet[:200] }}{% if r.snippet|length > 200 %}…{% endif %}
+                  </p>
+                {% endif %}
+              </div>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

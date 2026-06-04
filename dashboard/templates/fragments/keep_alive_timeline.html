@@ -1,0 +1,32 @@
+{% if not slots or not slots | selectattr("enabled") | list %}
+  <span class="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">No active slots</span>
+{% else %}
+  {% for slot in slots %}
+    {% if slot.enabled %}
+      {% set parts = slot.time_hhmm.split(':') %}
+      {% set hh = parts[0] | int %}
+      {% set mm = parts[1] | int %}
+      {% set start_minutes = hh * 60 + mm %}
+      {% set duration_minutes = config.window_duration_hours * 60 %}
+      {% set end_minutes = start_minutes + duration_minutes %}
+      {% if end_minutes <= 1440 %}
+        {% set left_pct = (start_minutes / 1440 * 100) | round(4) %}
+        {% set width_pct = (duration_minutes / 1440 * 100) | round(4) %}
+        <div class="absolute top-0 h-full bg-green-400 dark:bg-green-600 opacity-80 rounded"
+             style="left: {{ left_pct }}%; width: {{ width_pct }}%"
+             title="{{ slot.time_hhmm }} + {{ config.window_duration_hours }}h"></div>
+      {% else %}
+        {% set left_pct = (start_minutes / 1440 * 100) | round(4) %}
+        {% set width_pct = ((1440 - start_minutes) / 1440 * 100) | round(4) %}
+        <div class="absolute top-0 h-full bg-green-400 dark:bg-green-600 opacity-80 rounded"
+             style="left: {{ left_pct }}%; width: {{ width_pct }}%"
+             title="{{ slot.time_hhmm }} + {{ config.window_duration_hours }}h (wraps)"></div>
+        {% set left_pct_2 = 0 %}
+        {% set width_pct_2 = ((end_minutes - 1440) / 1440 * 100) | round(4) %}
+        <div class="absolute top-0 h-full bg-green-400 dark:bg-green-600 opacity-80 rounded"
+             style="left: {{ left_pct_2 }}%; width: {{ width_pct_2 }}%"
+             title="{{ slot.time_hhmm }} + {{ config.window_duration_hours }}h (wraps)"></div>
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+{% endif %}

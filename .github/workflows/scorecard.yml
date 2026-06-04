@@ -1,0 +1,54 @@
+# OpenSSF Scorecard — automated security posture scoring
+# Docs: https://github.com/ossf/scorecard-action
+# Results published to: https://scorecard.dev/viewer/?uri=github.com/{org}/{repo}
+
+name: OpenSSF Scorecard
+
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: "30 4 * * 1"  # weekly, Monday 04:30 UTC
+  push:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    # Scorecard is built for public OSS projects: it publishes to a public
+    # dashboard and uploads SARIF to Code Scanning (which needs GHAS on
+    # private repos). Skip the whole job while private; it activates
+    # automatically once the repo is published.
+    if: ${{ !github.event.repository.private }}
+    permissions:
+      security-events: write   # upload SARIF
+      id-token: write          # publish results to public dashboard
+      contents: read
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@62b2cac7ed8198b15735ed49ab1e5cf35480ba46 # v2.4.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true   # show badge at scorecard.dev
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 30
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        with:
+          sarif_file: results.sarif

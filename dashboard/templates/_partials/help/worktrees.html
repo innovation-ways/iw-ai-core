@@ -1,0 +1,28 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Worktrees</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>Worktrees shows every active git worktree the daemon has created for agent runs — with branch, last-commit status, and prune controls.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Inspect git status of all active worktrees</li>
+    <li>Commit and prune stale worktrees that are no longer needed</li>
+    <li>See which batch each worktree is serving</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Worktree</dt><dd>An isolated git worktree created per-agent-run; disposable after merge.</dd>
+    <dt>Daemon</dt><dd>The orchestration daemon that creates worktrees and drives agent execution.</dd>
+    <dt>Batch</dt><dd>The daemon's scheduling unit — a named group of work items run together.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="{{ docs_link }}">Open full docs →</a>
+  </footer>
+</section>

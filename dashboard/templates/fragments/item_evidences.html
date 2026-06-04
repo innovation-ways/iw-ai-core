@@ -1,0 +1,105 @@
+{% if not evidences %}
+  <div class="bg-card border border-border rounded-lg p-8 text-center">
+    <p class="text-muted-foreground text-sm">No evidences captured for this item.</p>
+    <p class="text-xs text-muted-foreground mt-2">
+      Evidences are collected by agents for UI-visible changes
+      (screenshots before and after implementation).
+    </p>
+  </div>
+{% else %}
+  <div class="space-y-6">
+
+    {# ── Pre-implementation evidences ── #}
+    <div>
+      <div class="flex items-center gap-2 mb-3">
+        <span class="px-2 py-0.5 rounded text-xs font-medium bg-warning/20 text-warning border border-warning/30">PRE</span>
+        <h3 class="text-sm font-semibold text-foreground">Before Implementation</h3>
+        <span class="text-xs text-muted-foreground">({{ pre_evidences | length }} file{{ 's' if pre_evidences | length != 1 else '' }})</span>
+      </div>
+      {% if pre_evidences %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {% for ev in pre_evidences %}
+            {% set is_image = ev.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
+            <div class="bg-card border border-border rounded-lg overflow-hidden">
+              <div class="px-3 py-2 border-b border-border bg-muted/30 flex items-center justify-between">
+                <span class="font-mono text-xs text-foreground truncate">{{ ev.filename }}</span>
+                <span class="text-xs text-muted-foreground ml-2 shrink-0">
+                  {% if ev.size_bytes > 1048576 %}{{ "%.1f"|format(ev.size_bytes / 1048576) }} MB
+                  {% elif ev.size_bytes > 1024 %}{{ "%.1f"|format(ev.size_bytes / 1024) }} KB
+                  {% else %}{{ ev.size_bytes }} B{% endif %}
+                </span>
+              </div>
+              {% if is_image %}
+                <div class="p-2 bg-muted/10">
+                  <img src="/project/{{ project_id }}/item/{{ item.id }}/evidence/pre/{{ ev.filename }}"
+                       alt="{{ ev.filename }}"
+                       class="w-full rounded object-contain max-h-96 cursor-pointer"
+                       onclick="window.open(this.src,'_blank')"
+                       title="Click to open full size">
+                </div>
+              {% else %}
+                <div class="px-4 py-6 text-center">
+                  <p class="text-xs text-muted-foreground">{{ ev.filename }}</p>
+                  <a href="/project/{{ project_id }}/item/{{ item.id }}/evidence/pre/{{ ev.filename }}"
+                     target="_blank"
+                     class="text-xs text-primary hover:underline mt-1 inline-block">Download</a>
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="bg-muted/20 border border-border rounded-lg px-4 py-3">
+          <p class="text-xs text-muted-foreground">No pre-implementation evidences captured.</p>
+        </div>
+      {% endif %}
+    </div>
+
+    {# ── Post-implementation evidences ── #}
+    <div>
+      <div class="flex items-center gap-2 mb-3">
+        <span class="px-2 py-0.5 rounded text-xs font-medium bg-success/20 text-success border border-success/30">POST</span>
+        <h3 class="text-sm font-semibold text-foreground">After Implementation</h3>
+        <span class="text-xs text-muted-foreground">({{ post_evidences | length }} file{{ 's' if post_evidences | length != 1 else '' }})</span>
+      </div>
+      {% if post_evidences %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {% for ev in post_evidences %}
+            {% set is_image = ev.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')) %}
+            <div class="bg-card border border-border rounded-lg overflow-hidden">
+              <div class="px-3 py-2 border-b border-border bg-muted/30 flex items-center justify-between">
+                <span class="font-mono text-xs text-foreground truncate">{{ ev.filename }}</span>
+                <span class="text-xs text-muted-foreground ml-2 shrink-0">
+                  {% if ev.size_bytes > 1048576 %}{{ "%.1f"|format(ev.size_bytes / 1048576) }} MB
+                  {% elif ev.size_bytes > 1024 %}{{ "%.1f"|format(ev.size_bytes / 1024) }} KB
+                  {% else %}{{ ev.size_bytes }} B{% endif %}
+                </span>
+              </div>
+              {% if is_image %}
+                <div class="p-2 bg-muted/10">
+                  <img src="/project/{{ project_id }}/item/{{ item.id }}/evidence/post/{{ ev.filename }}"
+                       alt="{{ ev.filename }}"
+                       class="w-full rounded object-contain max-h-96 cursor-pointer"
+                       onclick="window.open(this.src,'_blank')"
+                       title="Click to open full size">
+                </div>
+              {% else %}
+                <div class="px-4 py-6 text-center">
+                  <p class="text-xs text-muted-foreground">{{ ev.filename }}</p>
+                  <a href="/project/{{ project_id }}/item/{{ item.id }}/evidence/post/{{ ev.filename }}"
+                     target="_blank"
+                     class="text-xs text-primary hover:underline mt-1 inline-block">Download</a>
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="bg-muted/20 border border-border rounded-lg px-4 py-3">
+          <p class="text-xs text-muted-foreground">No post-implementation evidences captured yet.</p>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+{% endif %}

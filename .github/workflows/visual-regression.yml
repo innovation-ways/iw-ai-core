@@ -1,0 +1,57 @@
+name: Visual Regression
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch: {}
+  pull_request:
+    branches: [main]
+    paths:
+      - "dashboard/static/styles.css"
+      - "dashboard/templates/pdf/**"
+      - "dashboard/templates/components/doc_*"
+      - "doc-system/**"
+
+permissions:
+  contents: read
+
+jobs:
+  visual-regression:
+    name: Visual regression (HTML + PDF)
+    runs-on: ubuntu-latest
+    # BURN-IN: flip to continue-on-error: false after 2026-06-01
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Install dependencies
+        run: uv sync --all-groups --frozen
+
+      - name: Ensure pdftoppm is available (poppler-utils)
+        run: |
+          if command -v pdftoppm >/dev/null 2>&1; then
+            echo "pdftoppm already available"
+          else
+            sudo apt-get update
+            sudo apt-get install -y poppler-utils
+          fi
+
+      - name: Install playwright-cli
+        run: |
+          uv tool install --force playwright-cli
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run visual regression
+        run: make visual-regression
+
+      - name: Upload visual-diff artifacts
+        if: failure()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: visual-regression-diff
+          path: tests/output/visual-diff/**
+          if-no-files-found: ignore

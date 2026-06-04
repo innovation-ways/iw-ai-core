@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "macros/db_guard.html" import write_button_attrs %}
+{% from "macros/empty_state.html" import empty_state %}
+
+{% block title %}Worktree Health{% endblock %}
+{% block page_help_slug %}worktrees{% endblock %}
+
+{% block content %}
+<div class="mb-4 flex justify-end">
+  <button hx-post="/system/worktrees/prune"
+          hx-target="#worktree-table"
+          hx-swap="outerHTML"
+          hx-indicator="#prune-indicator"
+          data-tour="worktree-prune"
+          class="shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-card text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          {{ write_button_attrs(request) }}>
+    <span id="prune-indicator" class="htmx-indicator">
+      <svg class="animate-spin w-3.5 h-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+      </svg>
+    </span>
+    Prune orphans
+  </button>
+</div>
+
+<!-- Worktree table (auto-refreshes every 30 s) -->
+{% include "fragments/worktree_table.html" %}
+
+<!-- File detail panel — populated by clicking a dirty row -->
+<div id="worktree-detail" class="mt-4"></div>
+
+<!-- Help text -->
+<div class="mt-6 bg-muted/30 border border-border rounded-lg p-4 text-xs text-muted-foreground space-y-1.5">
+  <p class="font-medium text-foreground">Status guide</p>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 mt-2">
+    <div><span class="font-mono text-success">clean</span> — no changes, safe to merge</div>
+    <div><span class="font-mono text-destructive">dirty</span> — tracked files modified; merge will fail</div>
+    <div><span class="font-mono text-warning">untracked</span> — new files not staged; harmless but worth reviewing</div>
+    <div><span class="font-mono text-warning">orphaned</span> — worktree on disk with no active batch item; safe to delete</div>
+    <div><span class="font-mono text-muted-foreground">no_path</span> — path in DB does not exist on disk</div>
+    <div><span class="font-mono text-muted-foreground">error / timeout</span> — git command failed</div>
+    <div><span class="font-mono text-success">running</span> — container stack is up</div>
+    <div><span class="font-mono text-warning">stopped</span> — container stack exists but is not running</div>
+    <div><span class="font-mono text-muted-foreground">missing</span> — no container found for this batch item</div>
+    <div><span class="font-mono text-muted-foreground">n/a</span> — legacy item (pre-containers)</div>
+  </div>
+  <p class="mt-2">
+    To remove an orphaned worktree: delete via the item detail page or
+    <code class="bg-muted px-1 py-0.5 rounded">git worktree remove --force &lt;path&gt;</code>,
+    then click <strong>Prune orphans</strong> to run <code class="bg-muted px-1 py-0.5 rounded">git worktree prune</code>
+    across all projects so the dashboard no longer shows stale entries.
+  </p>
+</div>
+{% endblock %}

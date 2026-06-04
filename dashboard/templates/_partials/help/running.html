@@ -1,0 +1,29 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Running Tasks</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>Running tasks is a live, cross-project view of every work item and batch currently being executed by the daemon — updated in real time via SSE.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Watch the live progress of any in-flight work item</li>
+    <li>See which step is currently executing</li>
+    <li>Spot all running batches across all registered projects at once</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Work item</dt><dd>Feature, Incident, or CR — the unit the daemon executes.</dd>
+    <dt>Step</dt><dd>One atomic action within a work item (e.g., implement, test, doc, merge).</dd>
+    <dt>Batch</dt><dd>A group of work items launched together in one daemon pass.</dd>
+    <dt>Daemon</dt><dd>The background orchestration process that drives all execution.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="{{ docs_link }}">Open full docs →</a>
+  </footer>
+</section>

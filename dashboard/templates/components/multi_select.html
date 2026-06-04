@@ -1,0 +1,26 @@
+{% macro multi_select(name, label, options, selected) %}
+<div data-multi-select="{{ name }}">
+  <button type="button"
+          data-multi-select-btn="{{ name }}"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md text-sm
+                 hover:opacity-90 transition-opacity">
+    {{ label }}{% if selected|length > 0 %} ({{ selected|length }} selected){% endif %}
+  </button>
+  <div data-multi-select-panel="{{ name }}"
+       hidden
+       class="absolute z-50 mt-1 bg-card border border-border rounded-md shadow-lg min-w-[160px] p-2">
+    {% for option in options %}
+      <label class="flex items-center gap-2 text-xs cursor-pointer py-1 px-1 hover:bg-muted/30 rounded">
+        <input type="checkbox"
+               name="{{ name }}"
+               value="{{ option }}"
+               {% if option in selected %}checked{% endif %}
+               class="accent-primary">
+        {{ option }}
+      </label>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}

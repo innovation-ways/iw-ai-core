@@ -1,0 +1,36 @@
+{% set health = status.health_state if status is defined else 'unknown' %}
+{% set health_class = {
+  'healthy': 'auto-merge-health--healthy',
+  'degraded': 'auto-merge-health--degraded',
+  'down': 'auto-merge-health--down',
+  'unknown': 'auto-merge-health--unknown'
+}[health] if health in ['healthy', 'degraded', 'down', 'unknown'] else 'auto-merge-health--unknown' %}
+{% set attempts = status.counts_by_event_type.get('merge_auto_resolution_attempted', 0) if status is defined else 0 %}
+
+{% if compact %}
+  {% if status.config.phase >= 1 %}
+  <a href="/project/{{ request.path_params.project_id }}/auto-merge" class="auto-merge-chip auto-merge-chip--compact {{ health_class }}">
+    <span>P{{ status.config.phase }}</span>
+    <span>{{ status.config.cli_tool }}/{{ status.config.model }}</span>
+    <span>{{ "%d attempts"|format(attempts) }}</span>
+    <span class="auto-merge-chip__health">● {{ health }}</span>
+  </a>
+  {% endif %}
+{% else %}
+<section id="auto-merge-status-chip" class="auto-merge-chip auto-merge-chip--rich {{ health_class }} bg-card border border-border rounded-lg p-4"{% if oob %} hx-swap-oob="outerHTML:#auto-merge-status-chip"{% endif %}>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-sm font-semibold text-foreground">Resolver status</h2>
+    <span class="text-xs auto-merge-chip__health">{{ health }}</span>
+  </div>
+  <dl class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+    <div><dt class="text-muted-foreground">Phase</dt> <dd class="text-foreground">{{ status.config.phase }}</dd></div>
+    <div><dt class="text-muted-foreground">Runtime</dt> <dd class="text-foreground">{{ status.config.cli_tool }}/{{ status.config.model }}</dd></div>
+    <div><dt class="text-muted-foreground">Deployed since</dt> <dd class="text-foreground">{{ status.deployed_since | localdt('%Y-%m-%d %H:%M:%S') }}</dd></div>
+    <div><dt class="text-muted-foreground">Events since deploy</dt> <dd class="text-foreground">{{ status.counts_by_event_type.values() | sum }}</dd></div>
+  </dl>
+  <p class="mt-2 text-xs text-muted-foreground">
+    Phase source: {{ status.config.phase_source }}{% if status.config.phase_source == 'per_project_db' %} (Per-project override){% endif %}
+    · Runtime source: {{ status.config.runtime_source }}{% if status.config.runtime_source == 'per_project_db' %} (Per-project override){% endif %}
+  </p>
+</section>
+{% endif %}

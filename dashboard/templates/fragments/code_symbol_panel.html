@@ -1,0 +1,16 @@
+<div id="symbol-panel-{{ symbol_name or file_path | urlencode }}"
+     class="bg-card border border-border rounded-lg overflow-hidden"
+     data-file-path="{{ file_path }}"
+     data-symbol-name="{{ symbol_name or '' }}">
+  <div class="px-4 py-2 border-b border-border flex items-center justify-between">
+    <h4 class="text-sm font-semibold">
+      {% if symbol_name %}{{ symbol_name }}{% else %}{{ file_path }}{% endif %}
+    </h4>
+    <button onclick="this.closest('[id^=symbol-panel-]').remove()"
+            class="text-xs text-muted-foreground hover:text-primary ml-2">✕ close</button>
+  </div>
+  <div class="p-4">
+    {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted code symbol panel #}
+    <div class="prose-doc text-sm">{{ explanation_html | safe }}</div>
+  </div>
+</div>

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+{% from "macros/empty_state.html" import empty_state %}
+
+{% block title %}History — {{ current_project.display_name if current_project else '' }}{% endblock %}
+{% block page_help_slug %}history{% endblock %}
+
+{% block content %}
+<!-- Filters -->
+<form method="get" class="flex flex-wrap gap-3 mb-4 items-end">
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">Type</label>
+    <select name="type"
+            class="px-3 py-1.5 bg-input border border-border rounded-md text-sm text-foreground
+                   focus:outline-none focus:ring-2 focus:ring-ring">
+      <option value="">All types</option>
+      {% for t in item_types %}
+        <option value="{{ t }}" {% if type_filter == t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">Status</label>
+    <select name="status"
+            class="px-3 py-1.5 bg-input border border-border rounded-md text-sm text-foreground
+                   focus:outline-none focus:ring-2 focus:ring-ring">
+      <option value="">All statuses</option>
+      {% for s in item_statuses %}
+        <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">From</label>
+    <input type="date" name="date_from" value="{{ date_from }}"
+           class="px-3 py-1.5 bg-input border border-border rounded-md text-sm text-foreground
+                  focus:outline-none focus:ring-2 focus:ring-ring">
+  </div>
+
+  <div>
+    <label class="block text-xs text-muted-foreground mb-1">To</label>
+    <input type="date" name="date_to" value="{{ date_to }}"
+           class="px-3 py-1.5 bg-input border border-border rounded-md text-sm text-foreground
+                  focus:outline-none focus:ring-2 focus:ring-ring">
+  </div>
+
+  <button type="submit"
+          class="px-3 py-1.5 bg-secondary text-secondary-foreground rounded-md text-sm
+                 hover:opacity-90 transition-opacity">
+    Filter
+  </button>
+
+  {% if type_filter or status_filter or date_from or date_to %}
+    <a href="?"
+       class="px-3 py-1.5 text-muted-foreground text-sm hover:text-foreground transition-colors">
+      Clear
+    </a>
+  {% endif %}
+</form>
+
+<!-- Results count -->
+<p class="text-xs text-muted-foreground mb-3">
+  {{ total }} items
+</p>
+
+<!-- Table -->
+<div class="bg-card border border-border rounded-lg overflow-x-auto mb-4">
+  <table id="history-table" class="w-full text-sm min-w-[550px]">
+    <thead>
+      <tr class="border-b border-border bg-muted/30">
+        {% set cols = [
+          ("id", "ID"),
+          ("type", "Type"),
+          ("title", "Title"),
+          ("status", "Status"),
+          ("created", "Date"),
+          ("duration", "Duration"),
+        ] %}
+        {% for key, label in cols %}
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground cursor-pointer
+                     select-none hover:text-foreground transition-colors"
+              data-sort-key="{{ key if key }}"
+              onclick="sortTable('{{ key }}')">
+            <span class="inline-flex items-center gap-1">
+              {{ label }}
+              <svg class="w-3 h-3 sort-icon opacity-0 transition-opacity" viewBox="0 0 10 6"
+                   fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <path d="M1 1 L5 5 L9 1"/>
+              </svg>
+            </span>
+          </th>
+        {% endfor %}
+          <th class="px-4 py-2 text-left font-medium text-muted-foreground">
+            {# Regression badge column — no sort key #}
+          </th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+        <tr class="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
+            onclick="window.location='/project/{{ current_project.id }}/item/{{ item.id }}'"
+            data-sort-id="{{ item.id }}"
+            data-sort-type="{{ item.type }}"
+            data-sort-title="{{ item.title }}"
+            data-sort-status="{{ item.status }}"
+            data-sort-created="{{ item.created_at.isoformat() }}"
+            data-sort-duration="{{ item.duration_secs if item.duration_secs is not none else -1 }}">
+          <td class="px-4 py-2 font-mono text-xs text-primary">{{ item.id }}</td>
+          <td class="px-4 py-2">{{ status_badge(item.type) }}</td>
+          <td class="px-4 py-2 text-xs text-foreground max-w-xs truncate">{{ item.title }}</td>
+          <td class="px-4 py-2">{{ status_badge(item.status) }}</td>
+          <td class="px-4 py-2 text-xs text-muted-foreground">
+            {{ item.created_at | localdt('%b %d') }}
+          </td>
+          <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
+            {% if item.duration_secs is not none %}
+              {% set mins = (item.duration_secs // 60)|int %}
+              {% set secs = (item.duration_secs % 60)|int %}
+              {% if mins >= 60 %}
+                {{ (mins // 60) }}h{{ "%02dm"|format(mins % 60) }}
+              {% else %}
+                {{ "%dm%02ds"|format(mins, secs) }}
+              {% endif %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="px-4 py-2">
+            {# F-00090 AC7: regression badge on history rows #}
+            {% with count = item.regression_count %}{% include "fragments/regression_badge.html" %}{% endwith %}
+          </td>
+        </tr>
+      {% else %}
+        {{ empty_state(
+             slug="history",
+             heading="No completed items yet",
+             body="Once items merge to main, they show up here with a link to their final commit.",
+             primary_label="How execution works →",
+             primary_href="/system/docs/IW_AI_Core_Architecture",
+             secondary_label="",
+             secondary_href=""
+           ) }}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# Pagination #}
+{% if total > page_size %}
+{% set total_pages = ((total - 1) // page_size + 1) %}
+<div class="flex items-center justify-between text-sm">
+  <span class="text-muted-foreground text-xs">
+    {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, total] | min }} of {{ total }}
+  </span>
+  <div class="flex gap-1">
+    {% if page > 1 %}
+    <a href="?page={{ page - 1 }}{% if type_filter %}&type={{ type_filter | urlencode }}{% endif %}{% if status_filter %}&status={{ status_filter | urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from | urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to | urlencode }}{% endif %}{% if sort_by != 'created_at' %}&sort_by={{ sort_by | urlencode }}{% endif %}{% if sort_dir != 'desc' %}&sort_dir={{ sort_dir | urlencode }}{% endif %}"
+       class="px-3 py-1 border border-border rounded-md text-sm hover:bg-muted/30 transition-colors">
+      Prev
+    </a>
+    {% endif %}
+    {% if page < total_pages %}
+    <a href="?page={{ page + 1 }}{% if type_filter %}&type={{ type_filter | urlencode }}{% endif %}{% if status_filter %}&status={{ status_filter | urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from | urlencode }}{% endif %}{% if date_to %}&date_to={{ date_to | urlencode }}{% endif %}{% if sort_by != 'created_at' %}&sort_by={{ sort_by | urlencode }}{% endif %}{% if sort_dir != 'desc' %}&sort_dir={{ sort_dir | urlencode }}{% endif %}"
+       class="px-3 py-1 border border-border rounded-md text-sm hover:bg-muted/30 transition-colors">
+      Next
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function() {
+  var currentSort = null;
+  var currentDir = 'asc';
+
+  function isNumeric(key) {
+    return key === 'duration';
+  }
+
+  window.sortTable = function(key) {
+    if (currentSort === key) {
+      currentDir = currentDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      currentSort = key;
+      currentDir = 'asc';
+    }
+
+    var tbody = document.querySelector('#history-table tbody');
+    var rows = Array.from(tbody.querySelectorAll('tr:not(.empty-row)'));
+
+    rows.sort(function(a, b) {
+      var va = a.getAttribute('data-sort-' + key) || '';
+      var vb = b.getAttribute('data-sort-' + key) || '';
+
+      var cmp;
+      if (isNumeric(key)) {
+        cmp = parseFloat(va) - parseFloat(vb);
+      } else {
+        cmp = va.localeCompare(vb);
+      }
+      return currentDir === 'asc' ? cmp : -cmp;
+    });
+
+    rows.forEach(function(row) { tbody.appendChild(row); });
+
+    // Update sort indicators and aria-sort
+    document.querySelectorAll('#history-table th[data-sort-key]').forEach(function(th) {
+      var icon = th.querySelector('.sort-icon');
+      if (th.getAttribute('data-sort-key') === currentSort) {
+        icon.style.opacity = '1';
+        icon.style.transform = currentDir === 'asc' ? 'rotate(180deg)' : 'rotate(0)';
+        th.setAttribute('aria-sort', currentDir === 'asc' ? 'ascending' : 'descending');
+      } else {
+        icon.style.opacity = '0';
+        icon.style.transform = 'rotate(0)';
+        th.removeAttribute('aria-sort');
+      }
+    });
+  };
+})();
+</script>
+<script>
+(function () {
+  if (!/HeadlessChrome|Playwright/i.test(navigator.userAgent || '')) return;
+  document.querySelectorAll('[hx-get="/system/nav/worktree-badge"], [hx-get="/api/usage/llm/fragment"], [hx-get^="/projects/"][hx-get$="/staleness-dot"]').forEach(function (el) {
+    el.setAttribute('hx-trigger', 'never');
+    el.removeAttribute('hx-get');
+  });
+})();
+</script>
+{% endblock %}

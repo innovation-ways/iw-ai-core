@@ -1,0 +1,98 @@
+{
+  "project_id": "my-project",
+  "cli_tool": "iw",
+  "max_parallel": 4,
+  "overlap_gate": {
+    "block_on_overlap": [
+      "**/*"
+    ],
+    "allow_on_overlap": [
+      "tests/**",
+      "test/**",
+      "__tests__/**",
+      "**/*conftest*",
+      "**/*.test.*",
+      "**/*.spec.*",
+      "**/*.md",
+      "skills/**",
+      ".claude/skills/**",
+      "ai-dev/**"
+    ]
+  },
+  "auto_publish": false,
+  "browser_verification": {
+    "env_up_command": "scripts/e2e_up.sh",
+    "env_down_command": "scripts/e2e_down.sh",
+    "base_url_template": "http://localhost:${E2E_FRONTEND_PORT}",
+    "port_pool": {
+      "frontend_base": 3000,
+      "api_base": 8000,
+      "db_base": 5440,
+      "redis_base": 6380,
+      "pool_size": 50
+    },
+    "compose_project_prefix": "my-project-e2e"
+  },
+  "fix_cycle_max": 5,
+  "post_archive_commands": [],
+  "test_config": {
+    "execution_dir": "/path/to/your/project",
+    "allure_results_dir": "allure-results",
+    "allure_report_dir": "allure-report",
+    "categories": {
+      "unit": {
+        "label": "Unit Tests",
+        "command": "pytest tests/unit/ -v",
+        "description": "Fast tests, no external dependencies",
+        "group": "backend"
+      },
+      "integration": {
+        "label": "Integration Tests",
+        "command": "pytest tests/integration/ -v",
+        "description": "Requires external services",
+        "group": "backend"
+      },
+      "all": {
+        "label": "Run All Tests",
+        "command": "pytest tests/ -v",
+        "description": "Complete test suite",
+        "group": "suites",
+        "bundle": true
+      }
+    }
+  },
+  "quality_config": {
+    "execution_dir": "/path/to/your/project",
+    "categories": {
+      "lint": {
+        "label": "Lint",
+        "description": "Code style and linting checks",
+        "command": "make lint",
+        "group": "style"
+      },
+      "typecheck": {
+        "label": "Type Check",
+        "description": "Static type checking",
+        "command": "make typecheck",
+        "group": "style"
+      },
+      "all-quality": {
+        "label": "Run All Quality Gates",
+        "description": "Lint + type check",
+        "command": "make quality",
+        "group": "suites",
+        "bundle": true
+      }
+    }
+  },
+  "_auto_amend_scope_example": {
+    "_note": "Uncomment by renaming to 'auto_amend_scope'. When present, the daemon auto-amends scope violations that all match auto_allow_patterns and stay within max_paths.",
+    "auto_allow_patterns": [
+      "tests/**",
+      "**/*.md",
+      "docs/**",
+      "ai-dev/**"
+    ],
+    "max_paths": 10
+  }
+}

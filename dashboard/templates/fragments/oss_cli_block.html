@@ -1,0 +1,23 @@
+{% macro oss_cli_block(command, description='') %}
+<details class="oss-cli-block">
+  <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground flex items-center gap-1 list-none select-none">
+    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h2v2H6V6zm8 0h2v2h-2V6zm-8 4h2v2H6v-2zm8 0h2v2h-2v-2zm-8 4h2v2H6v-2zm8 0h2v2h-2v-2z"/>
+    </svg>
+    Run it yourself
+  </summary>
+  <div class="mt-2">
+    {% if description %}
+      <p class="text-xs text-muted-foreground mb-1">{{ description }}</p>
+    {% endif %}
+    <div class="relative">
+      <pre class="bg-muted rounded p-2 pr-8 text-xs font-mono text-foreground overflow-x-auto"><code>{{ command }}</code></pre>
+      <button onclick="window.iwClipboard.copy(this.closest('.relative').querySelector('code').textContent, this).catch(function(){})"
+              class="absolute right-2 top-2 text-muted-foreground hover:text-foreground text-xs"
+              title="Copy command">
+        📋
+      </button>
+    </div>
+  </div>
+</details>
+{% endmacro %}

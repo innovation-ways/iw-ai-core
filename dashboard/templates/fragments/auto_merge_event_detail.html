@@ -1,0 +1,131 @@
+<div class="auto-merge-modal-backdrop" onclick="if(event.target===this)document.getElementById('modal-root').innerHTML=''" data-auto-merge-modal>
+  <div class="auto-merge-modal" role="dialog" aria-modal="true" aria-labelledby="auto-merge-event-title">
+    <div class="flex items-center justify-between border-b border-border px-4 py-3">
+      <h3 id="auto-merge-event-title" class="text-sm font-semibold">{{ humanized_title }}</h3>
+      <button type="button" class="text-muted-foreground" onclick="document.getElementById('modal-root').innerHTML=''">✕</button>
+    </div>
+    <script>
+      (function(){
+        function _onKey(e){
+          if(e.key==='Escape'){
+            var root=document.getElementById('modal-root');
+            if(root){root.innerHTML='';}
+            document.removeEventListener('keydown',_onKey,true);
+          }
+        }
+        document.addEventListener('keydown',_onKey,true);
+      })();
+    </script>
+
+    <div class="p-4 space-y-4 max-h-[75vh] overflow-y-auto">
+      <dl class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+        <div><dt class="text-muted-foreground">timestamp</dt><dd>{{ event.created_at | localdt('%Y-%m-%d %H:%M:%S') }}</dd></div>
+        <div><dt class="text-muted-foreground">type</dt><dd>{{ event.event_type }}</dd></div>
+        <div><dt class="text-muted-foreground">entity_type</dt><dd>{{ raw_event.entity_type or '—' }}</dd></div>
+        <div><dt class="text-muted-foreground">entity_id</dt><dd class="font-mono">{{ event.entity_id or '—' }}</dd></div>
+        <div><dt class="text-muted-foreground">project_id</dt><dd class="font-mono">{{ event.metadata.get('project_id', request.path_params.project_id) }}</dd></div>
+      </dl>
+
+      {% if event.message %}
+      <section class="text-xs">
+        <h4 class="text-muted-foreground uppercase tracking-wide mb-1">Message</h4>
+        <p class="auto-merge-modal__message">{{ event.message }}</p>
+      </section>
+      {% endif %}
+
+      {% set per_file_errors = event.metadata.get('per_file_errors') if event.metadata else None %}
+      {% if per_file_errors %}
+      <section class="text-xs">
+        <h4 class="text-muted-foreground uppercase tracking-wide mb-1">Per-file errors</h4>
+        <div class="auto-merge-modal__per-file-errors">
+          {% for entry in per_file_errors %}
+          <div class="auto-merge-modal__per-file-error">
+            <dl class="grid grid-cols-1 gap-1">
+              <div><dt class="text-muted-foreground">file</dt><dd class="font-mono">{{ entry.file_path }}</dd></div>
+              <div><dt class="text-muted-foreground">runtime</dt><dd class="font-mono">{{ entry.cli_tool }}/{{ entry.model }}</dd></div>
+              <div><dt class="text-muted-foreground">error</dt><dd><pre class="auto-merge-modal__error-text">{{ entry.error }}</pre></dd></div>
+            </dl>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      {% if event.metadata %}
+      <section class="text-xs space-y-1">
+        <div class="flex items-center justify-between">
+          <h4 class="text-muted-foreground uppercase tracking-wide">Metadata</h4>
+          <button type="button"
+                  class="auto-merge-modal__copy-btn"
+                  onclick="window.iwClipboard.copy({{ event.metadata | tojson }}, this)">
+            Copy as JSON
+          </button>
+        </div>
+        <details {% if (event.metadata | tojson)|length < 400 %}open{% endif %}>
+          <summary class="cursor-pointer text-muted-foreground">
+            {{ event.metadata.keys() | list | length }} key{{ 's' if event.metadata|length != 1 else '' }}
+          </summary>
+          <pre class="auto-merge-modal__metadata">{{ event.metadata | tojson(indent=2) }}</pre>
+        </details>
+      </section>
+      {% endif %}
+
+      {% if event.verdict %}
+      <section class="text-xs space-y-1 border-t border-border pt-3">
+        <h4 class="text-muted-foreground uppercase tracking-wide mb-1">Verdict</h4>
+        <dl class="grid grid-cols-2 gap-2">
+          <div><dt class="text-muted-foreground">value</dt><dd>{{ event.verdict }}</dd></div>
+          <div><dt class="text-muted-foreground">by</dt><dd>{{ event.verdicted_by or '—' }}</dd></div>
+          <div><dt class="text-muted-foreground">at</dt><dd>{{ event.verdicted_at | localdt('%Y-%m-%d %H:%M:%S') if event.verdicted_at else '—' }}</dd></div>
+        </dl>
+        {% if event.verdict_notes %}
+        <p>{{ event.verdict_notes }}</p>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% if event.event_type == 'merge_auto_resolved' and diffs %}
+        <section class="space-y-2">
+          <h4 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Diffs</h4>
+          {% for diff in diffs %}
+            <details {% if loop.first %}open{% endif %} class="border border-border rounded-md">
+              <summary class="px-3 py-2 text-xs font-mono cursor-pointer">{{ diff.file_path or '(unknown file)' }}</summary>
+              <div class="px-3 pb-3">
+                <div class="diff-viewer">
+                  {% if diff.diff_html %}
+                    {{ diff.diff_html }}
+                  {% else %}
+                    <p class="text-xs text-muted-foreground">(file no longer exists on main)</p>
+                  {% endif %}
+                </div>
+              </div>
+            </details>
+          {% endfor %}
+        </section>
+      {% endif %}
+
+      {% if event.event_type == 'merge_auto_resolved' %}
+      <form hx-post="/project/{{ request.path_params.project_id }}/auto-merge/events/{{ event.id }}/verdict"
+            hx-ext="json-enc"
+            hx-target="#auto-merge-events"
+            hx-swap="innerHTML"
+            class="space-y-3 border-t border-border pt-3">
+        <div class="auto-merge-verdict-group">
+          {% set active = verdict or 'pending' %}
+          {% for v in ['pending', 'correct', 'wrong', 'partial'] %}
+            <label class="auto-merge-verdict auto-merge-verdict--{{ v }} {% if active == v %}is-active{% endif %}">
+              <input type="radio" name="verdict" value="{{ v }}" {% if active == v %}checked{% endif %}>
+              {{ v }}
+            </label>
+          {% endfor %}
+        </div>
+        <textarea name="notes" rows="3" class="w-full px-3 py-2 bg-input border border-border rounded text-sm" placeholder="Add notes (optional)">{{ event.verdict_notes or '' }}</textarea>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="px-3 py-1.5 border border-border rounded text-sm" onclick="document.getElementById('modal-root').innerHTML=''">Close</button>
+          <button type="submit" class="px-3 py-1.5 bg-primary text-primary-foreground rounded text-sm">Save</button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>

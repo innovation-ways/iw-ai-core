@@ -1,0 +1,15 @@
+{% if modules %}
+<div id="code-component-chips" class="flex flex-wrap gap-2 px-4 py-3 border-b border-border bg-muted/30" aria-label="Code components">
+  {% for m in modules %}
+  <a href="/api/projects/{{ project_id }}/code/modules/{{ m.slug }}"
+     hx-get="/api/projects/{{ project_id }}/code/modules/{{ m.slug }}"
+     hx-target="#code-detail-panel"
+     hx-swap="innerHTML"
+     aria-label="{{ m.name }} ({{ m.path }})"
+     class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-card border border-border hover:border-primary hover:text-primary transition-colors">
+    <span class="font-medium text-foreground">{{ m.name }}</span>
+    <code class="font-mono text-[11px] text-muted-foreground">{{ m.path }}</code>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}

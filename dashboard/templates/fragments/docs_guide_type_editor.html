@@ -1,0 +1,15 @@
+<div class="p-4 border rounded-lg bg-card">
+  <h3 class="font-semibold text-sm mb-2">Type Guide
+    <span class="text-xs text-muted-foreground ml-1">({{ doc_type }} default)</span>
+  </h3>
+  <form hx-post="/project/{{ project_id }}/api/docs/{{ doc_id }}/guide/type"
+        hx-target="this" hx-swap="outerHTML">
+    <textarea name="guide_md" rows="12"
+              class="w-full font-mono text-xs border rounded p-2 bg-background resize-y"
+              placeholder="No type guide configured — leave empty to inherit default.">{{ guide_md or '' }}</textarea>
+    <button type="submit"
+            class="mt-2 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90">
+      Save Type Guide
+    </button>
+  </form>
+</div>

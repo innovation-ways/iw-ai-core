@@ -1,0 +1,13 @@
+{# empty_state.html — Empty state with call-to-action #}
+{% macro empty_state(slug, heading, body, primary_label, primary_href, secondary_label=None, secondary_href=None) %}
+<div class="empty-state" data-empty-state="{{ slug }}">
+  <h3 class="empty-state__heading">{{ heading }}</h3>
+  <p class="empty-state__body">{{ body }}</p>
+  <div class="empty-state__actions">
+    <a href="{{ primary_href }}" class="empty-state__cta-primary">{{ primary_label }}</a>
+    {% if secondary_label and secondary_href %}
+      <a href="{{ secondary_href }}" class="empty-state__cta-secondary">{{ secondary_label }}</a>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}

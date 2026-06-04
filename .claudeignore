@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Reports and archives
+/ai-dev/design/done/*
+/ai-dev/logs/*

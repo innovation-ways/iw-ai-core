@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <title>{% block title %}IW AI Core{% endblock %} — IW AI Core</title>
+  <meta name="page-help-slug" content="{% block page_help_slug %}{% endblock %}" />
+
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+
+  <!-- Theme CSS (custom properties + Inter font) -->
+  <link rel="stylesheet" href="/static/theme.css" />
+
+  <!-- Prebuilt Tailwind CSS -->
+  <link rel="stylesheet" href="/static/styles.css" />
+
+  <!-- AI Assistant panel CSS -->
+  <link rel="stylesheet" href="/static/chat_assistant/chat.css?v={{ static_v }}" />
+
+  <!-- Dark mode: apply saved preference before paint to avoid flash -->
+  <script>
+    (function () {
+      var saved = localStorage.getItem('theme');
+      if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
+
+  <!-- htmx — vendored (0BSD, v2.0.3) -->
+  <script src="/static/vendor/htmx/htmx.min.js" defer></script>
+  <!-- htmx json-enc extension — serialises forms as JSON instead of url-encoded -->
+  <script src="/static/vendor/htmx/json-enc.js" defer></script>
+
+  <!-- Help system (tours + popover) — driver.js is lazy-loaded on first tour start -->
+  <script src="/static/help/tours.js" defer></script>
+  <script src="/static/help/help.js" defer></script>
+
+  <!-- Highlight.js, DOMPurify, Mermaid, streaming-markdown loaded lazily per-page via per-page includes.
+       See templates/components/libs/*.html for the include snippets. -->
+
+  {% block head %}{% endblock %}
+</head>
+<body class="bg-background text-foreground font-sans antialiased h-dvh overflow-hidden flex flex-col">
+{% if is_db_stale(request) %}
+{% set status = request.state.alembic_guard_status %}
+<div role="alert"
+     aria-live="polite"
+     class="bg-destructive text-white px-4 py-3 text-sm flex items-center justify-between flex-shrink-0"
+     id="stale-db-banner">
+  <div>
+    <strong>Orch DB schema is behind head</strong> —
+    current_rev=<code>{{ status.current_rev or 'EMPTY' }}</code>
+    head_rev=<code>{{ status.head_rev }}</code>.
+    Run <code>make db-migrate</code> to fix.
+    Write actions are disabled until then.
+  </div>
+  <div>
+    {{ status.pending|length }} pending revision{{ '' if status.pending|length == 1 else 's' }}
+  </div>
+</div>
+{% endif %}
+
+<!-- Toast container (SSE toasts rendered here) -->
+<div id="toast-container"></div>
+
+<!-- Modal mount point -->
+<div id="modal-root"></div>
+
+<!-- Confirmation dialog overlay (htmx loads content here) -->
+<div id="confirm-dialog"></div>
+
+<!-- App shell: AI Assistant panel + sidebar + main -->
+<div class="flex flex-1 overflow-hidden">
+
+  <!-- ===== Dashboard AI Assistant panel (left sidebar, collapsed by default) ===== -->
+  {% include "chat_assistant/panel.html" %}
+
+  <!-- ===== Sidebar backdrop (mobile only) ===== -->
+  <div id="sidebar-backdrop"
+       class="fixed inset-0 bg-black/50 z-30 hidden lg:hidden"
+       onclick="toggleSidebar()"></div>
+
+  <!-- ===== Sidebar ===== -->
+  <aside id="sidebar"
+         class="fixed inset-y-0 left-0 z-40 w-60 flex-shrink-0 flex flex-col bg-sidebar border-r border-sidebar-border overflow-y-auto
+                -translate-x-full lg:translate-x-0 lg:static lg:z-auto
+                transition-transform duration-200 ease-in-out">
+
+    <!-- Logo / brand -->
+    <a href="/" class="flex items-center gap-2 px-4 py-4 border-b border-sidebar-border hover:opacity-80 transition-opacity">
+      <img src="/static/logo.png" alt="IW AI Core" class="w-7 h-7">
+      <span class="font-semibold text-sidebar-primary-foreground text-sm">IW AI Core</span>
+    </a>
+
+    <!-- Sidebar nav -->
+    <nav class="flex-1 px-2 py-3 space-y-0.5">
+
+      <details id="sidebar-projects" open class="group/proj">
+        <summary class="flex items-center justify-between px-2 py-1.5 mb-1 rounded cursor-pointer list-none select-none
+                        text-sidebar-primary-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors">
+          <span class="text-xs font-semibold uppercase tracking-wide">Projects</span>
+          <svg class="w-3 h-3 flex-shrink-0 transition-transform duration-150 group-open/proj:rotate-90"
+               fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+          </svg>
+        </summary>
+        {% set nav_current = current_project.id if current_project else '' %}
+        <div hx-get="/api/nav-projects?current={{ nav_current }}&path={{ request.url.path }}"
+             hx-trigger="load"
+             hx-swap="innerHTML"
+             class="space-y-0.5">
+        </div>
+      </details>
+
+
+
+      <details id="sidebar-system" open class="group/sys border-t border-sidebar-border mt-2 pt-1">
+        <summary class="flex items-center justify-between px-2 py-1.5 rounded cursor-pointer list-none select-none
+                        text-sidebar-primary-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors">
+          <span class="text-xs font-semibold uppercase tracking-wide">System</span>
+          <svg class="w-3 h-3 flex-shrink-0 transition-transform duration-150 group-open/sys:rotate-90"
+               fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+          </svg>
+        </summary>
+        {% set system_links = [
+          ('/system/running', 'Running Tasks'),
+          ('/system/worktrees', 'Worktree Health'),
+          ('/system/containers', 'Container Health'),
+          ('/system/status', 'System Status'),
+          ('/system/coverage', 'Test Coverage'),
+          ('/system/keep-alive', 'Keep-Alive'),
+          ('/system/all-active', 'All Active Work'),
+          ('/system/config', 'Configuration'),
+        ] %}
+        {% for href, label in system_links %}
+          <a href="{{ href }}"
+             class="flex items-center px-2 py-1.5 rounded text-sm transition-colors
+                    {% if request.url.path == href %}
+                      bg-sidebar-accent text-sidebar-accent-foreground font-medium
+                    {% else %}
+                      text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
+                    {% endif %}">
+            <span>{{ label }}</span>
+            {% if href == '/system/running' and running_count|default(0) > 0 %}
+              <span class="ml-auto text-xs bg-primary text-primary-foreground rounded-full px-1.5 py-0.5">{{ running_count }}</span>
+            {% elif href == '/system/worktrees' %}
+              {% set _ua = (request.headers.get('user-agent', '')|lower) %}
+              {% set _headless = _e2e_mode or ('headlesschrome' in _ua) or ('playwright' in _ua) %}
+              <span {% if not _headless %}hx-get="/system/nav/worktree-badge"{% endif %}
+                    hx-trigger="{% if _headless %}never{% else %}load, every 60s{% endif %}"
+                    hx-swap="outerHTML"
+                    class="ml-auto"></span>
+            {% endif %}
+          </a>
+        {% endfor %}
+      </details>
+
+    </nav>
+  </aside>
+
+  <!-- ===== Main content ===== -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- Global search bar -->
+    <div class="flex-shrink-0 border-b border-border bg-card px-3 sm:px-6 py-2 relative flex items-center gap-3">
+      <!-- AI Assistant toggle (all screen sizes) -->
+      <button id="chat-assistant-nav-toggle"
+              class="p-1.5 -ml-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-accent transition-colors"
+              title="AI Assistant (Ctrl+/)"
+              aria-label="Toggle AI Assistant panel (Ctrl+/)">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+        </svg>
+      </button>
+
+      <!-- Hamburger menu (mobile only) -->
+      <button id="sidebar-toggle"
+              class="lg:hidden p-1.5 -ml-1 text-muted-foreground hover:text-foreground rounded-md hover:bg-accent transition-colors"
+              onclick="toggleSidebar()">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+      <input type="search"
+             hx-get="/api/search"
+             hx-trigger="keyup changed delay:300ms"
+             hx-target="#global-search-results"
+             {% if current_project %}hx-vals='{"project": "{{ current_project.id }}"}'{% endif %}
+             name="q"
+             placeholder="Search work items… (Ctrl+K)"
+             class="w-full max-w-full sm:max-w-md px-4 py-1.5 bg-input border border-border rounded-md text-sm
+                    text-foreground placeholder:text-muted-foreground
+                    focus:outline-none focus:ring-2 focus:ring-ring" />
+      <div id="global-search-results" class="absolute left-3 sm:left-6 top-full z-50 w-full max-w-md"></div>
+      {% if not request.state.suppress_topbar_auto_merge_chip and current_project and (request.state.auto_merge_phase_for_chip is defined) and (request.state.auto_merge_phase_for_chip is integer) and (request.state.auto_merge_phase_for_chip >= 1) and (request.state.auto_merge_status_for_chip is defined) and (request.state.auto_merge_status_for_chip is not none) %}
+        {% set compact = true %}
+        {% set status = request.state.auto_merge_status_for_chip %}
+        <div id="auto-merge-chip-header">{% include "fragments/auto_merge_status_chip.html" %}</div>
+      {% endif %}
+      {% set _help_slug = self.page_help_slug() %}
+      {% if _help_slug %}
+        {% from "macros/help_button.html" import help_button %}
+        <div class="ml-auto flex-shrink-0">{{ help_button(_help_slug) }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Page content area -->
+    <main class="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+      {# OSS Status frame is rendered only on the project dashboard page,
+         inline under Git Status. This block is kept for backward-compat
+         with templates that reference it but is empty by default. #}
+      {% block oss_status_anchor %}{% endblock %}
+      {% block breadcrumb %}{% endblock %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+</div>
+
+<!-- Full-width footer — below the sidebar + content row -->
+<footer class="flex-shrink-0 w-full border-t border-border bg-muted px-3 sm:px-6 py-2 flex items-center gap-3 sm:gap-4 text-xs text-muted-foreground">
+  <button onclick="toggleDarkMode()"
+          class="flex items-center gap-1.5 hover:text-foreground transition-colors flex-shrink-0"
+          aria-label="Toggle theme">
+    <span id="theme-icon">☾</span>
+    <span>Theme</span>
+  </button>
+  <span class="text-border select-none">·</span>
+  <div class="flex-1 flex items-center gap-3 sm:gap-4"
+       hx-get="/api/usage/llm/fragment"
+       hx-trigger="load, every 300s[document.visibilityState=='visible'], visibilitychange[document.visibilityState=='visible'] from:document"
+       hx-swap="innerHTML">
+    <span class="font-medium">Claude</span>
+    <span class="text-muted-foreground">—</span>
+  </div>
+</footer>
+
+<!-- JS -->
+<script src="/static/theme-toggle.js"></script>
+<script src="/static/duration.js"></script>
+<script src="/static/clipboard.js"></script>
+<script defer src="/static/prompt_modal.js"></script>
+<script>
+  function toggleSidebar() {
+    var sidebar = document.getElementById('sidebar');
+    var backdrop = document.getElementById('sidebar-backdrop');
+    var isOpen = !sidebar.classList.contains('-translate-x-full');
+    if (isOpen) {
+      sidebar.classList.add('-translate-x-full');
+      backdrop.classList.add('hidden');
+      document.body.classList.remove('sidebar-open');
+    } else {
+      sidebar.classList.remove('-translate-x-full');
+      backdrop.classList.remove('hidden');
+      document.body.classList.add('sidebar-open');
+    }
+  }
+  // Auto-close sidebar on link click (mobile)
+  document.getElementById('sidebar').addEventListener('click', function(e) {
+    if (e.target.closest('a') && window.innerWidth < 1024) {
+      toggleSidebar();
+    }
+  });
+</script>
+<script>
+  document.body.addEventListener('htmx:afterSwap', function(e) {
+    if (typeof window.iwRenderMermaid === 'function' && e.detail.target) {
+      window.iwRenderMermaid(e.detail.target);
+    }
+  });
+// Persist sidebar section open/closed state across page loads
+  (function () {
+    ['sidebar-projects', 'sidebar-system'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var saved = localStorage.getItem(id + '-open');
+      if (saved === 'false') el.removeAttribute('open');
+      el.addEventListener('toggle', function () {
+        try {
+          localStorage.setItem(id + '-open', el.open ? 'true' : 'false');
+        } catch (e) {
+          // localStorage unavailable (private browsing quota exceeded) — silently ignore
+        }
+      });
+    });
+  })();
+</script>
+<script src="{{ url_for('static', path='/sse-client.js') }}"></script>
+<script src="/static/chat_assistant/chat.js?v={{ static_v }}" defer></script>
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

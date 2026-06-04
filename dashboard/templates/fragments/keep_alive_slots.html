@@ -1,0 +1,20 @@
+<div id="slot-list">
+  {% if not slots %}
+    <p class="text-sm text-muted-foreground py-4">No slots configured. Add a time above.</p>
+  {% else %}
+    <table class="w-full text-sm">
+      <thead class="bg-muted/40 text-left">
+        <tr>
+          <th class="px-4 py-2">Time</th>
+          <th class="px-4 py-2">Status</th>
+          <th class="px-4 py-2">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for slot in slots %}
+          {% include "fragments/keep_alive_slot_row.html" %}
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>

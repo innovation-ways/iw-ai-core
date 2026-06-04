@@ -1,0 +1,749 @@
+"""Integration tests for batch management CLI commands against a real PostgreSQL testcontainer."""
+
+import json
+from typing import Any
+
+import pytest
+from click.testing import CliRunner
+
+from orch.cli.main import cli
+from orch.db.models import (
+    Batch,
+    BatchItem,
+    BatchItemStatus,
+    BatchStatus,
+    DaemonEvent,
+    Project,
+    WorkItem,
+    WorkItemPhase,
+    WorkItemStatus,
+    WorkItemType,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def invoke(
+    runner: CliRunner,
+    args: list[str],
+    get_session: Any,
+    project_id: str = "test-proj",
+) -> Any:
+    return runner.invoke(
+        cli,
+        ["--project", project_id, *args],
+        obj={"get_session": get_session},
+        catch_exceptions=False,
+    )
+
+
+def _register_research(cli_get_session: Any) -> str:
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "next-id", "--type", "research"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    research_id = json.loads(result.output)["id"]
+
+    result = runner.invoke(
+        cli,
+        [
+            "--project",
+            "test-proj",
+            "--json",
+            "register",
+            research_id,
+            "Test Research",
+            "--type",
+            "research",
+        ],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    return research_id
+
+
+def _register_and_approve_feature(cli_get_session: Any) -> str:
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "next-id", "--type", "feature"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    feature_id = json.loads(result.output)["id"]
+
+    runner.invoke(
+        cli,
+        ["--project", "test-proj", "register", feature_id, "Test Feature", "--type", "feature"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    runner.invoke(
+        cli,
+        ["--project", "test-proj", "approve", feature_id],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    return feature_id
+
+
+def make_item(
+    db_session: Any,
+    item_id: str,
+    status: WorkItemStatus = WorkItemStatus.approved,
+    depends_on: list[str] | None = None,
+) -> WorkItem:
+    item = WorkItem(
+        project_id="test-proj",
+        id=item_id,
+        type=WorkItemType.Issue,
+        title=f"Test item {item_id}",
+        status=status,
+        phase=WorkItemPhase.active,
+        config={},
+        depends_on=depends_on or [],
+        blocks=[],
+    )
+    db_session.add(item)
+    db_session.flush()
+    return item
+
+
+def make_batch(
+    db_session: Any,
+    batch_id: str,
+    status: BatchStatus = BatchStatus.executing,
+) -> Batch:
+    batch = Batch(
+        project_id="test-proj",
+        id=batch_id,
+        status=status,
+        cli_tool="opencode",
+    )
+    db_session.add(batch)
+    db_session.flush()
+    return batch
+
+
+# ---------------------------------------------------------------------------
+# batch-create
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.smoke
+def test_batch_create_independent_items_all_group_0(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session, "I-00001")
+    make_item(db_session, "I-00002")
+    make_item(db_session, "I-00003")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "batch-create", "I-00001", "I-00002", "I-00003"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+
+    assert data["status"] == "planning"
+    assert len(data["groups"]) == 1
+    assert data["groups"][0]["group"] == 0
+    assert sorted(data["groups"][0]["items"]) == ["I-00001", "I-00002", "I-00003"]
+
+
+def test_batch_create_with_dependencies_correct_groups(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    # I-00002 depends on I-00001 → I-00001 in group 0, I-00002 in group 1
+    make_item(db_session, "I-00001")
+    make_item(db_session, "I-00002", depends_on=["I-00001"])
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "batch-create", "I-00001", "I-00002"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+
+    groups_by_number = {g["group"]: g["items"] for g in data["groups"]}
+    assert groups_by_number[0] == ["I-00001"]
+    assert groups_by_number[1] == ["I-00002"]
+
+
+def test_batch_create_rejects_non_approved_item(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session, "I-00001", status=WorkItemStatus.draft)
+
+    runner = CliRunner()
+    result = invoke(runner, ["batch-create", "I-00001"], cli_get_session)
+    assert result.exit_code == 1
+
+
+def test_batch_create_rejects_item_in_active_batch(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session, "I-00001")
+    make_batch(db_session, "BATCH-00001", status=BatchStatus.executing)
+    db_session.add(
+        BatchItem(
+            project_id="test-proj",
+            batch_id="BATCH-00001",
+            work_item_id="I-00001",
+            status=BatchItemStatus.executing,
+        )
+    )
+    db_session.flush()
+
+    runner = CliRunner()
+    result = invoke(runner, ["batch-create", "I-00001"], cli_get_session)
+    assert result.exit_code == 4
+
+
+def test_batch_create_item_in_completed_batch_is_ok(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session, "I-00001")
+    # Manually create a completed batch — use a higher ID to avoid conflicting with
+    # the auto-allocated sequence (which starts at BATCH-00001).
+    make_batch(db_session, "BATCH-00099", status=BatchStatus.completed)
+    db_session.add(
+        BatchItem(
+            project_id="test-proj",
+            batch_id="BATCH-00099",
+            work_item_id="I-00001",
+            status=BatchItemStatus.merged,
+        )
+    )
+    db_session.flush()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "batch-create", "I-00001"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["status"] == "planning"
+
+
+def test_batch_create_persists_to_db(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session, "I-00001")
+    make_item(db_session, "I-00002")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "batch-create", "I-00001", "I-00002"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    batch_id = data["batch_id"]
+
+    batch = db_session.get(Batch, ("test-proj", batch_id))
+    assert batch is not None
+    assert batch.status == BatchStatus.planning
+
+    items = (
+        db_session.query(BatchItem)
+        .filter(
+            BatchItem.project_id == "test-proj",
+            BatchItem.batch_id == batch_id,
+        )
+        .all()
+    )
+    assert len(items) == 2
+    work_item_ids = {bi.work_item_id for bi in items}
+    assert work_item_ids == {"I-00001", "I-00002"}
+
+
+def test_batch_create_human_output(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session, "I-00001")
+    make_item(db_session, "I-00002")
+
+    runner = CliRunner()
+    result = invoke(runner, ["batch-create", "I-00001", "I-00002"], cli_get_session)
+    assert result.exit_code == 0
+    assert "Group 0" in result.output
+    assert "planning" in result.output
+
+
+# ---------------------------------------------------------------------------
+# batch-approve
+# ---------------------------------------------------------------------------
+
+
+def test_batch_approve_planning_to_approved(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    batch = make_batch(db_session, "BATCH-00001", status=BatchStatus.planning)
+
+    runner = CliRunner()
+    result = invoke(runner, ["batch-approve", "BATCH-00001"], cli_get_session)
+    assert result.exit_code == 0, result.output
+
+    db_session.refresh(batch)
+    assert batch.status == BatchStatus.approved
+
+
+def test_batch_approve_emits_daemon_event(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_batch(db_session, "BATCH-00001", status=BatchStatus.planning)
+
+    runner = CliRunner()
+    result = invoke(runner, ["batch-approve", "BATCH-00001"], cli_get_session)
+    assert result.exit_code == 0
+
+    event = (
+        db_session.query(DaemonEvent)
+        .filter(
+            DaemonEvent.project_id == "test-proj",
+            DaemonEvent.event_type == "batch_approved",
+            DaemonEvent.entity_id == "BATCH-00001",
+        )
+        .first()
+    )
+    assert event is not None
+
+
+def test_batch_approve_json_output(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_batch(db_session, "BATCH-00001", status=BatchStatus.planning)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "batch-approve", "BATCH-00001"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["status"] == "approved"
+
+
+def test_batch_approve_rejects_non_planning(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_batch(db_session, "BATCH-00001", status=BatchStatus.executing)
+
+    runner = CliRunner()
+    result = invoke(runner, ["batch-approve", "BATCH-00001"], cli_get_session)
+    assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# batch-status
+# ---------------------------------------------------------------------------
+
+
+def test_batch_status_json_output(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session, "I-00001")
+    make_batch(db_session, "BATCH-00001", status=BatchStatus.planning)
+    db_session.add(
+        BatchItem(
+            project_id="test-proj",
+            batch_id="BATCH-00001",
+            work_item_id="I-00001",
+            execution_group=0,
+            status=BatchItemStatus.pending,
+        )
+    )
+    db_session.flush()
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "batch-status", "BATCH-00001"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["batch_id"] == "BATCH-00001"
+    assert data["status"] == "planning"
+    assert len(data["items"]) == 1
+    assert data["items"][0]["work_item_id"] == "I-00001"
+    assert data["items"][0]["execution_group"] == 0
+
+
+def test_batch_status_not_found_exits_1(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    runner = CliRunner()
+    result = invoke(runner, ["batch-status", "BATCH-00999"], cli_get_session)
+    assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# batch-pause and batch-resume
+# ---------------------------------------------------------------------------
+
+
+def test_batch_pause_executing_to_paused(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    batch = make_batch(db_session, "BATCH-00001", status=BatchStatus.executing)
+
+    runner = CliRunner()
+    result = invoke(runner, ["batch-pause", "BATCH-00001"], cli_get_session)
+    assert result.exit_code == 0, result.output
+
+    db_session.refresh(batch)
+    assert batch.status == BatchStatus.paused
+
+
+def test_batch_pause_rejects_non_executing(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_batch(db_session, "BATCH-00001", status=BatchStatus.planning)
+
+    runner = CliRunner()
+    result = invoke(runner, ["batch-pause", "BATCH-00001"], cli_get_session)
+    assert result.exit_code == 1
+
+
+def test_batch_resume_paused_to_executing(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    batch = make_batch(db_session, "BATCH-00001", status=BatchStatus.paused)
+
+    runner = CliRunner()
+    result = invoke(runner, ["batch-resume", "BATCH-00001"], cli_get_session)
+    assert result.exit_code == 0, result.output
+
+    db_session.refresh(batch)
+    assert batch.status == BatchStatus.executing
+
+
+def test_batch_resume_rejects_non_paused(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_batch(db_session, "BATCH-00001", status=BatchStatus.executing)
+
+    runner = CliRunner()
+    result = invoke(runner, ["batch-resume", "BATCH-00001"], cli_get_session)
+    assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# Full batch lifecycle: create → approve → pause → resume
+# ---------------------------------------------------------------------------
+
+
+def test_batch_full_lifecycle(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    make_item(db_session, "I-00001")
+    make_item(db_session, "I-00002")
+    make_item(db_session, "I-00003")
+
+    runner = CliRunner()
+
+    # Create
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "batch-create", "I-00001", "I-00002", "I-00003"],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    batch_id = json.loads(result.output)["batch_id"]
+
+    # Approve
+    result = invoke(runner, ["batch-approve", batch_id], cli_get_session)
+    assert result.exit_code == 0
+
+    batch = db_session.get(Batch, ("test-proj", batch_id))
+    assert batch is not None
+    assert batch.status == BatchStatus.approved
+
+    # Simulate daemon transition to executing
+    batch.status = BatchStatus.executing
+    db_session.flush()
+
+    # Pause
+    result = invoke(runner, ["batch-pause", batch_id], cli_get_session)
+    assert result.exit_code == 0
+
+    db_session.refresh(batch)
+    assert batch.status == BatchStatus.paused
+
+    # Resume
+    result = invoke(runner, ["batch-resume", batch_id], cli_get_session)
+    assert result.exit_code == 0
+
+    db_session.refresh(batch)
+    assert batch.status == BatchStatus.executing
+
+
+# ---------------------------------------------------------------------------
+# Research item batch rejection (AC6)
+# ---------------------------------------------------------------------------
+
+
+def test_batch_create_rejects_research_item(
+    db_session: Any,
+    test_project: Project,
+    cli_get_session: Any,
+) -> None:
+    research_id = _register_research(cli_get_session)
+    feature_id = _register_and_approve_feature(cli_get_session)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["--project", "test-proj", "--json", "batch-create", research_id, feature_id],
+        obj={"get_session": cli_get_session},
+        catch_exceptions=False,
+    )
+    assert result.exit_code != 0, result.output
+    err = result.stderr or result.output
+    assert "research item" in err
+    assert "cannot be added to a batch" in err
+
+    batches = db_session.query(Batch).filter(Batch.project_id == "test-proj").all()
+    assert len(batches) == 0
+
+
+# ---------------------------------------------------------------------------
+# CR-00036: auto_merge flag matrix
+# ---------------------------------------------------------------------------
+
+
+class TestBatchCreateAutoMergeFlag:
+    """AC1, AC2: CLI flag overrides project default; absent flag uses project default."""
+
+    def _make_item(self, db_session: Any, item_id: str) -> WorkItem:
+        item = WorkItem(
+            project_id="test-proj",
+            id=item_id,
+            type=WorkItemType.Issue,
+            title=f"Test item {item_id}",
+            status=WorkItemStatus.approved,
+            phase=WorkItemPhase.active,
+            config={},
+            depends_on=[],
+            blocks=[],
+        )
+        db_session.add(item)
+        db_session.flush()
+        return item
+
+    def test_batch_create_default_auto_merge_true_when_no_project_flag(
+        self,
+        db_session: Any,
+        test_project: Project,
+        cli_get_session: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AC1: absent --auto-merge/--no-auto-merge → project's auto_merge_default (True)."""
+        self._make_item(db_session, "WI-AM-DEFAULT-01")
+        self._make_item(db_session, "WI-AM-DEFAULT-02")
+
+        # Project default is True (absent auto_merge in projects.toml)
+        class FakeProjConfig:
+            auto_merge_default = True
+
+        class FakeProjectsToml:
+            def get(self, project_id: str) -> FakeProjConfig | None:
+                return FakeProjConfig()
+
+        monkeypatch.setattr(
+            "orch.cli.batch_commands.load_projects_toml",
+            lambda *_: {"test-proj": FakeProjConfig()},
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "--project",
+                "test-proj",
+                "--json",
+                "batch-create",
+                "WI-AM-DEFAULT-01",
+                "WI-AM-DEFAULT-02",
+            ],
+            obj={"get_session": cli_get_session},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        batch_id = data["batch_id"]
+
+        batch = db_session.get(Batch, ("test-proj", batch_id))
+        assert batch is not None
+        assert batch.auto_merge is True
+
+    def test_batch_create_project_default_false(
+        self,
+        db_session: Any,
+        test_project: Project,
+        cli_get_session: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AC1: absent --auto-merge/--no-auto-merge → project default (False)."""
+        self._make_item(db_session, "WI-AM-PROJ-FALSE-01")
+
+        class FakeProjConfig:
+            auto_merge_default = False
+
+        monkeypatch.setattr(
+            "orch.cli.batch_commands.load_projects_toml",
+            lambda *_: {"test-proj": FakeProjConfig()},
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["--project", "test-proj", "--json", "batch-create", "WI-AM-PROJ-FALSE-01"],
+            obj={"get_session": cli_get_session},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        batch_id = json.loads(result.output)["batch_id"]
+
+        batch = db_session.get(Batch, ("test-proj", batch_id))
+        assert batch is not None
+        assert batch.auto_merge is False
+
+    def test_batch_create_explicit_auto_merge_overrides_project_false(
+        self,
+        db_session: Any,
+        test_project: Project,
+        cli_get_session: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AC2: --auto-merge overrides project default (False) → True."""
+        self._make_item(db_session, "WI-AM-EXPLICIT-TRUE-01")
+
+        class FakeProjConfig:
+            auto_merge_default = False
+
+        monkeypatch.setattr(
+            "orch.cli.batch_commands.load_projects_toml",
+            lambda *_: {"test-proj": FakeProjConfig()},
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "--project",
+                "test-proj",
+                "--json",
+                "batch-create",
+                "--auto-merge",
+                "WI-AM-EXPLICIT-TRUE-01",
+            ],
+            obj={"get_session": cli_get_session},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        batch_id = json.loads(result.output)["batch_id"]
+
+        batch = db_session.get(Batch, ("test-proj", batch_id))
+        assert batch is not None
+        assert batch.auto_merge is True
+
+    def test_batch_create_explicit_no_auto_merge_overrides_project_true(
+        self,
+        db_session: Any,
+        test_project: Project,
+        cli_get_session: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AC2 variant: --no-auto-merge overrides project default (True) → False."""
+        self._make_item(db_session, "WI-AM-EXPLICIT-FALSE-01")
+
+        class FakeProjConfig:
+            auto_merge_default = True
+
+        monkeypatch.setattr(
+            "orch.cli.batch_commands.load_projects_toml",
+            lambda *_: {"test-proj": FakeProjConfig()},
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "--project",
+                "test-proj",
+                "--json",
+                "batch-create",
+                "--no-auto-merge",
+                "WI-AM-EXPLICIT-FALSE-01",
+            ],
+            obj={"get_session": cli_get_session},
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0, result.output
+        batch_id = json.loads(result.output)["batch_id"]
+
+        batch = db_session.get(Batch, ("test-proj", batch_id))
+        assert batch is not None
+        assert batch.auto_merge is False

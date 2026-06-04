@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}{{ doc.title }} — Research{% endblock %}
+
+{% block content %}
+{% include "components/libs/mermaid.html" %}
+
+{# ── Breadcrumb ── #}
+<div class="flex items-center gap-2 text-xs text-muted-foreground mb-4">
+  <a href="/project/{{ current_project.id }}/research" class="hover:text-foreground transition-colors">Research</a>
+  <span>/</span>
+  <span class="text-foreground font-mono">{{ doc.doc_id }}</span>
+</div>
+
+{# ── Header: title + badges left | action buttons right ── #}
+<div class="flex flex-wrap items-start justify-between gap-4 mb-3">
+
+  {# Left: badges + title #}
+  <div class="min-w-0">
+    <div class="flex flex-wrap items-center gap-1.5 mb-2">
+      {% set mode_colors = {
+        'technical': 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200',
+        'functional': 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200',
+        'guide': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
+        'compliance': 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200',
+        'marketing': 'bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-200',
+        'release': 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200'
+      } %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ mode_colors.get(doc.editorial_category.value, 'bg-muted text-muted-foreground') }}">
+        {{ doc.editorial_category.value|replace('_',' ')|title if doc.editorial_category else '—' }}
+      </span>
+
+      {% set status_colors = {
+        'planned': 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+        'draft': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200',
+        'published': 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200',
+        'archived': 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300'
+      } %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ status_colors.get(doc.status.value, 'bg-muted text-muted-foreground') }}">
+        {{ doc.status.value|title }}
+      </span>
+
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground font-mono">
+        v{{ doc.version }}
+      </span>
+    </div>
+    <h1 class="text-2xl font-bold text-foreground leading-tight">{{ doc.title }}</h1>
+  </div>
+
+  {# Right: back link #}
+  <div class="flex items-center gap-2 flex-shrink-0">
+    <a href="/project/{{ current_project.id }}/research"
+       class="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border bg-card text-foreground rounded-md text-xs font-medium hover:bg-muted transition-colors">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+      </svg>
+      Back to Research
+    </a>
+  </div>
+</div>
+
+{# ── Version History ── #}
+<div id="meta-drawer" class="mb-4">
+  {% if versions %}
+  <div class="bg-muted/30 border border-border rounded-lg p-4">
+    <h3 class="text-sm font-medium text-foreground mb-3">Version History</h3>
+    <div class="space-y-2">
+      {% for v in versions %}
+      <div class="flex items-center justify-between text-sm">
+        <span class="font-mono text-muted-foreground">v{{ v.version }}</span>
+        <span class="text-muted-foreground">
+          {{ v.created_at.strftime('%Y-%m-%d %H:%M') if v.created_at else '—' }}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Viewer card ── #}
+<div class="bg-card border border-border rounded-lg overflow-hidden">
+
+  {% if doc.content %}
+
+  {# Tab strip #}
+  <div class="border-b border-border px-4 flex items-center gap-0" role="tablist" aria-label="Document view mode">
+    <button role="tab" aria-selected="true" aria-controls="view-markdown"
+            id="tab-markdown" onclick="switchDocTab('markdown')"
+            class="doc-tab px-4 py-2.5 text-sm font-medium border-b-2 border-primary text-primary transition-colors flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      Markdown
+    </button>
+    <button role="tab" aria-selected="false" aria-controls="view-html"
+            id="tab-html" onclick="switchDocTab('html')"
+            class="doc-tab px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+      </svg>
+      HTML
+    </button>
+  </div>
+
+  {# Viewer panels #}
+  <div id="doc-content-area">
+
+    {# Markdown panel #}
+    <div id="view-markdown" class="p-8 overflow-y-auto" style="max-height: calc(100vh - 220px);">
+      <div class="prose-doc max-w-4xl mx-auto">
+        <style>
+          .prose-doc h1,.prose-doc h2,.prose-doc h3,.prose-doc h4 { color:var(--foreground); font-weight:600; margin-top:1.5em; margin-bottom:0.5em; }
+          .prose-doc h1 { font-size:1.5rem; }
+          .prose-doc h2 { font-size:1.15rem; border-bottom:1px solid var(--border); padding-bottom:0.3em; }
+          .prose-doc h3 { font-size:1rem; }
+          .prose-doc p  { color:var(--foreground); line-height:1.75; margin-bottom:0.85em; font-size:0.9375rem; }
+          .prose-doc ul,.prose-doc ol { padding-left:1.5em; margin-bottom:0.75em; font-size:0.9375rem; color:var(--foreground); }
+          .prose-doc li { margin-bottom:0.3em; line-height:1.65; }
+          .prose-doc code { font-family:var(--font-mono); font-size:0.8rem; background:var(--muted); color:var(--foreground); padding:0.1em 0.35em; border-radius:3px; }
+          .prose-doc pre { background:var(--muted); border:1px solid var(--border); border-radius:var(--radius); padding:1em; overflow-x:auto; margin-bottom:1em; }
+          .prose-doc pre code { background:none; padding:0; font-size:0.8rem; }
+          .prose-doc table { width:100%; border-collapse:collapse; font-size:0.9rem; margin-bottom:1em; }
+          .prose-doc th,.prose-doc td { border:1px solid var(--border); padding:0.45em 0.8em; text-align:left; }
+          .prose-doc th { background:var(--muted); font-weight:600; }
+          .prose-doc blockquote { border-left:3px solid var(--primary); padding-left:1em; color:var(--muted-foreground); margin:1em 0; font-style:italic; font-size:0.9rem; }
+          .prose-doc a { color:var(--primary); text-decoration:underline; }
+          .prose-doc img { max-width:100%; border-radius:var(--radius); border:1px solid var(--border); margin:1em 0; }
+          .prose-doc hr { border:none; border-top:1px solid var(--border); margin:2em 0; }
+        </style>
+        {# nosemgrep: python.flask.security.xss.audit.template-unescaped-with-safe.template-unescaped-with-safe — server-rendered Markdown→HTML from trusted research-doc content #}
+        {{ content_html | safe }}
+      </div>
+    </div>
+
+    {# HTML panel — lazy iframe #}
+    <div id="view-html" class="hidden">
+      <iframe id="html-frame"
+              src="about:blank"
+              data-src="/project/{{ current_project.id }}/research/{{ doc.doc_id }}/html-view"
+              class="w-full border-0 block"
+              style="height: calc(100vh - 220px);"
+              title="{{ doc.title }} — HTML view"></iframe>
+    </div>
+
+  </div>
+
+  {% else %}
+
+  {# No content placeholder #}
+  <div class="flex flex-col items-center justify-center py-20 text-center">
+    <svg class="w-12 h-12 text-muted-foreground mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+    </svg>
+    <h3 class="text-lg font-semibold text-foreground mb-2">Content not available</h3>
+    <p class="text-muted-foreground text-sm">This research document has no content yet.</p>
+  </div>
+
+  {% endif %}
+
+</div>
+
+<script>
+function switchDocTab(mode) {
+  ['markdown','html'].forEach(function(v) {
+    var panel = document.getElementById('view-' + v);
+    var tab   = document.getElementById('tab-' + v);
+    if (!panel || !tab) return;
+    var active = v === mode;
+    panel.classList.toggle('hidden', !active);
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    if (active) {
+      tab.classList.add('border-primary','text-primary');
+      tab.classList.remove('border-transparent','text-muted-foreground','hover:text-foreground');
+    } else {
+      tab.classList.remove('border-primary','text-primary');
+      tab.classList.add('border-transparent','text-muted-foreground','hover:text-foreground');
+    }
+  });
+  // Lazy-load iframe on first activation
+  var frame = document.getElementById(mode + '-frame');
+  if (frame && frame.getAttribute('src') === 'about:blank') {
+    frame.setAttribute('src', frame.getAttribute('data-src'));
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  var proseDoc = document.querySelector('.prose-doc');
+  if (proseDoc && typeof window.iwRenderMermaid === 'function') {
+    // Shim: convert pre>code.language-mermaid blocks into div.mermaid so
+    // iwRenderMermaid can process them.
+    var preBlocks = proseDoc.querySelectorAll('pre > code.language-mermaid');
+    preBlocks.forEach(function(codeEl) {
+      var preEl = codeEl.parentNode;
+      if (!preEl || preEl.tagName !== 'PRE') return;
+      var src = codeEl.textContent || '';
+      src = src.replace(/^<!--[\s\S]*?-->\s*/m, '').trim();
+      var div = document.createElement('div');
+      div.className = 'mermaid';
+      div.textContent = src;
+      preEl.parentNode.replaceChild(div, preEl);
+    });
+    window.iwRenderMermaid(proseDoc);
+  }
+});
+</script>
+<script>
+if (typeof window.iwChat !== 'undefined') {
+  window.iwChat.setContext({type: "research", id: "{{ doc.id }}", title: {{ doc.title | tojson }}});
+}
+</script>
+
+{% endblock %}

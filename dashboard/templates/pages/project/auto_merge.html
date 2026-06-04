@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Auto-Merge — {{ current_project.display_name if current_project else '' }}{% endblock %}
+
+{% block content %}
+<section class="space-y-4">
+  <header class="auto-merge-page-header bg-card border border-border rounded-lg p-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-lg font-semibold text-foreground">Auto-Merge Resolver</h1>
+        <p class="text-xs text-muted-foreground">{{ current_project.display_name }}</p>
+      </div>
+      {% include "fragments/auto_merge_status_chip.html" %}
+    </div>
+  </header>
+
+  {% if status.config.phase == 0 %}
+    <div class="bg-card border border-border rounded-lg p-4">
+      <p class="font-medium text-foreground">Resolver is in plumbing-only mode for this project.</p>
+      <p class="text-sm text-muted-foreground mt-1">Use Settings to enable Phase 1 dry-run.</p>
+    </div>
+    {% include "fragments/auto_merge_settings.html" %}
+  {% else %}
+    {% include "fragments/auto_merge_settings.html" %}
+
+    <div id="auto-merge-rollup"
+         hx-get="/project/{{ current_project.id }}/auto-merge/rollup?window=7d"
+         hx-trigger="load"
+         hx-target="this"
+         hx-swap="innerHTML"
+         class="bg-card border border-border rounded-lg p-4 text-sm text-muted-foreground">
+      Loading rollups…
+    </div>
+
+    <section class="bg-card border border-border rounded-lg p-4">
+      <div id="auto-merge-events"
+           hx-get="/project/{{ current_project.id }}/auto-merge/events?page=0&page_size=50"
+           hx-trigger="load"
+           hx-target="this"
+           hx-swap="innerHTML"
+           class="text-sm text-muted-foreground">
+        Loading events…
+      </div>
+    </section>
+
+  {% endif %}
+</section>
+{% endblock %}

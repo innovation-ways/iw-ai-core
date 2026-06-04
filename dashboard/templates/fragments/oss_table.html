@@ -1,0 +1,128 @@
+<table class="oss-findings filter-failing w-full text-sm border border-border rounded-lg overflow-hidden">
+  <thead>
+    <tr class="bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+      <th class="text-left px-3 py-2">Group</th>
+      <th class="text-left px-3 py-2">Test</th>
+      <th class="text-left px-3 py-2 w-24">Severity</th>
+      <th class="text-left px-3 py-2 w-28">Status</th>
+      <th class="text-right px-3 py-2 w-12"></th>
+    </tr>
+  </thead>
+  {% for domain, group in findings_by_domain.items() %}
+    <tbody class="oss-domain-group" data-domain="{{ domain }}">
+      <tr class="oss-domain-header bg-muted/60 cursor-pointer hover:bg-muted/80"
+          onclick="this.closest('tbody').classList.toggle('collapsed')"
+          tabindex="0"
+          role="button"
+          aria-expanded="true">
+        <th colspan="5" class="text-left px-3 py-2 font-semibold">
+          <span class="oss-chevron mr-2 text-muted-foreground">▾</span>
+          <span class="text-foreground">{{ domain_context.get(domain, {}).get('name', domain) }}</span>
+          <span class="text-xs font-normal ml-3 inline-flex items-center gap-2 align-middle flex-wrap">
+            {% if group.counts.must > 0 %}
+              <span class="inline-flex items-center gap-1 text-red-700 dark:text-red-300">
+                <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>{{ group.counts.must }} MUST
+              </span>
+            {% endif %}
+            {% if group.counts.should > 0 %}
+              <span class="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{{ group.counts.should }} SHOULD
+              </span>
+            {% endif %}
+            {% if group.counts.info > 0 %}
+              <span class="inline-flex items-center gap-1 text-sky-700 dark:text-sky-300">
+                <span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span>{{ group.counts.info }} INFO
+              </span>
+            {% endif %}
+            {% if group.counts.may > 0 %}
+              <span class="inline-flex items-center gap-1 text-muted-foreground">
+                <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground/60"></span>{{ group.counts.may }} MAY
+              </span>
+            {% endif %}
+            {% if group.counts.human_required > 0 %}
+              <span class="inline-flex items-center gap-1 text-purple-700 dark:text-purple-300">
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>{{ group.counts.human_required }} attestation
+              </span>
+            {% endif %}
+            <span class="text-muted-foreground">{{ group.counts.pass_status }} passing</span>
+          </span>
+        </th>
+      </tr>
+      {% for finding in group.findings %}
+        <tr id="row-{{ finding.check_id }}"
+            class="oss-finding-row border-t border-border"
+            data-status="{{ finding.status.value }}"
+            data-severity="{{ finding.severity.value }}"
+            data-check-id="{{ finding.check_id }}"
+            data-finding-hash="{{ finding.finding_hash }}"
+            data-finding-id="{{ finding.id }}"
+            data-auto-apply-safe="{{ finding.auto_apply_safe|lower if finding.auto_apply_safe else 'false' }}">
+          <td class="px-3 py-2 text-muted-foreground text-xs">{{ domain }}</td>
+          <td class="px-3 py-2">
+            <span class="font-medium text-foreground">{{ finding.summary }}</span>
+            <span class="ml-2 text-xs font-mono text-muted-foreground">{{ finding.check_id }}</span>
+          </td>
+          <td class="px-3 py-2">
+            <span class="severity-pill severity-{{ finding.severity.value|lower }}">
+              {{ finding.severity.value }}
+            </span>
+          </td>
+          <td class="px-3 py-2">
+            <span class="status-pill status-{{ finding.status.value }}">
+              {{ status_copy[finding.status.value].label }}
+            </span>
+          </td>
+          <td class="px-3 py-2 text-right">
+            <button type="button" class="oss-details-btn text-muted-foreground hover:text-foreground"
+                    data-check-id="{{ finding.check_id }}"
+                    data-finding-hash="{{ finding.finding_hash }}"
+                    aria-label="View details for {{ finding.check_id }}">…</button>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  {% endfor %}
+  {% if accepted_findings %}
+    <tbody class="oss-domain-group oss-accepted-group">
+      <tr class="oss-domain-header bg-muted/60 cursor-pointer hover:bg-muted/80"
+          onclick="this.closest('tbody').classList.toggle('collapsed')"
+          tabindex="0"
+          role="button"
+          aria-expanded="true">
+        <th colspan="5" class="text-left px-3 py-2 font-semibold text-muted-foreground">
+          <span class="oss-chevron mr-2">▾</span>
+          Accepted risk ({{ accepted_findings|length }})
+        </th>
+      </tr>
+      {% for finding in accepted_findings %}
+        <tr id="row-{{ finding.check_id }}"
+            class="oss-finding-row border-t border-border"
+            data-status="accepted"
+            data-severity="{{ finding.severity.value }}"
+            data-check-id="{{ finding.check_id }}"
+            data-finding-hash="{{ finding.finding_hash }}"
+            data-finding-id="{{ finding.id }}">
+          <td class="px-3 py-2 text-muted-foreground text-xs">accepted</td>
+          <td class="px-3 py-2">
+            <span class="font-medium">{{ finding.summary }}</span>
+            <span class="ml-2 text-xs font-mono text-muted-foreground">{{ finding.check_id }}</span>
+          </td>
+          <td class="px-3 py-2">
+            <span class="severity-pill severity-{{ finding.severity.value|lower }}">
+              {{ finding.severity.value }}
+            </span>
+          </td>
+          <td class="px-3 py-2">
+            <span class="status-pill status-accepted">ACCEPTED</span>
+          </td>
+          <td class="px-3 py-2 text-right">
+            <button type="button" class="oss-details-btn text-muted-foreground hover:text-foreground"
+                    data-check-id="{{ finding.check_id }}"
+                    data-finding-hash="{{ finding.finding_hash }}"
+                    aria-label="View details for {{ finding.check_id }}">…</button>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  {% endif %}
+</table>

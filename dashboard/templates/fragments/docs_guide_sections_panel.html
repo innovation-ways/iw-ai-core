@@ -1,0 +1,27 @@
+<div class="p-4 border rounded-lg bg-card">
+  <h3 class="font-semibold text-sm mb-3">Section Guides
+    {% if sections == ["Document"] %}
+    <span class="text-xs text-muted-foreground ml-1">(No H2 headings — editing 'Document' guide)</span>
+    {% endif %}
+  </h3>
+  <div class="space-y-3">
+    {% for section_name in sections %}
+    <div class="border rounded p-3">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-semibold text-foreground">{{ section_name }}</span>
+      </div>
+      {% set current_guide = section_guides.get(section_name, '') %}
+      <form hx-post="/project/{{ project_id }}/api/docs/{{ doc_id }}/guide/sections/{{ section_name }}"
+            hx-target="this" hx-swap="outerHTML">
+        <textarea name="guide_md" rows="4"
+                  class="w-full font-mono text-xs border rounded p-2 bg-background resize-y"
+                  placeholder="No guide for this section.">{{ current_guide }}</textarea>
+        <button type="submit"
+                class="mt-2 px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90">
+          Save
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>

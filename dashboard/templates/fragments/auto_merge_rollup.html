@@ -1,0 +1,37 @@
+{% set accuracy_den = verdict_rollup.correct + verdict_rollup.wrong + verdict_rollup.partial %}
+{% set accuracy_pct = ((verdict_rollup.correct * 100.0) / accuracy_den) if accuracy_den > 0 else 0 %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <section class="bg-card border border-border rounded-lg p-4">
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="text-sm font-semibold">Verdict rollup</h3>
+      <div class="flex gap-1 text-xs">
+        {% for w in ['7d', '30d'] %}
+          <button type="button" hx-get="/project/{{ request.path_params.project_id }}/auto-merge/rollup?window={{ w }}" hx-target="#auto-merge-rollup" hx-swap="innerHTML" class="px-2 py-1 rounded border {% if window == w %}bg-primary text-primary-foreground border-primary{% else %}border-border{% endif %}">{{ w }}</button>
+        {% endfor %}
+      </div>
+    </div>
+    <ul class="text-xs space-y-1">
+      <li>pending: {{ verdict_rollup.pending }}</li><li>correct: {{ verdict_rollup.correct }}</li><li>wrong: {{ verdict_rollup.wrong }}</li><li>partial: {{ verdict_rollup.partial }}</li>
+    </ul>
+    <p class="mt-2 text-xs text-muted-foreground">Accuracy: {{ "%.1f%%"|format(accuracy_pct) }}</p>
+  </section>
+
+  <section class="bg-card border border-border rounded-lg p-4">
+    <h3 class="text-sm font-semibold mb-2">Token cost rollup</h3>
+    <p class="text-xs">in: {{ token_cost_rollup.total_input_tokens }} · out: {{ token_cost_rollup.total_output_tokens }} · {% set _cost = token_cost_rollup.total_cost_usd %}{% if _cost == 0 %}$0{% else %}${{ ("%.6f"|format(_cost)).rstrip('0').rstrip('.') }}{% endif %}</p>
+    {% if token_cost_rollup.has_unknown_models %}<p class="text-xs text-warning mt-1">Some models have unknown pricing.</p>{% endif %}
+    <table class="w-full text-xs mt-2">
+      <thead><tr class="text-muted-foreground"><th class="text-left">model</th><th class="text-right">input</th><th class="text-right">output</th><th class="text-right">$</th></tr></thead>
+      <tbody>
+      {% for model, row in token_cost_rollup.breakdown_by_model.items() %}
+        <tr><td class="py-0.5">{{ model }}</td><td class="text-right">{{ row.input }}</td><td class="text-right">{{ row.output }}</td><td class="text-right">{{ "%.6f"|format(row.cost) }}</td></tr>
+      {% else %}
+        <tr><td colspan="4" class="text-muted-foreground py-1">No token usage in window.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {% include "fragments/auto_merge_refuse_list.html" %}
+</div>

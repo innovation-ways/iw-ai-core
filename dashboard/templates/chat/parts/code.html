@@ -1,0 +1,16 @@
+<div class="code-block-wrapper" data-language="{{ language | default('text') }}" data-partial="true">
+  <div class="code-block-header">
+    <span class="code-block-lang text-xs text-muted-foreground font-mono uppercase">{{ language | default('text') }}</span>
+    <button class="code-copy-btn min-h-[44px] min-w-[44px]"
+            aria-label="Copy code"
+            data-copy-payload="{{ raw_code | e }}"
+            type="button">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="9" y="9" width="13" height="13" rx="2" stroke-width="2"/>
+        <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke-width="2"/>
+      </svg>
+      <span class="text-xs">Copy</span>
+    </button>
+  </div>
+  <pre class="code-block-pre"><code class="code-block-code language-{{ language | default('text') }}">{{ raw_code }}</code></pre>
+</div>

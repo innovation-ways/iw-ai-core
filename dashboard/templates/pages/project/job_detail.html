@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+{% from "components/status_badge.html" import status_badge %}
+
+{% block title %}Job {{ job.job_id }} — {{ job.title }}{% endblock %}
+{% block page_help_slug %}job_detail{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <a href="/project/{{ current_project.id }}/jobs"
+     class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3">
+    ← Jobs
+  </a>
+  <div class="flex items-center gap-3">
+    <h1 class="text-2xl font-semibold text-foreground">{{ job.title }}</h1>
+    {{ status_badge(job.status) }}
+  </div>
+</div>
+
+{# Summary card #}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <h2 class="text-sm font-medium text-foreground mb-3">Summary</h2>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    <div>
+      <dt class="text-xs text-muted-foreground">Type</dt>
+      <dd class="font-medium">{{ job.job_type.value }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Status</dt>
+      <dd>{{ status_badge(job.status) }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Triggered by</dt>
+      <dd class="font-medium">{{ job.triggered_by or '—' }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Started</dt>
+      <dd class="font-medium">{{ job.started_at | localdt('%Y-%m-%d %H:%M:%S') if job.started_at else '—' }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Finished</dt>
+      <dd class="font-medium">{{ job.finished_at | localdt('%Y-%m-%d %H:%M:%S') if job.finished_at else '—' }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Duration</dt>
+      <dd class="font-medium">
+        {%- if job.started_at and job.finished_at -%}
+          {%- set diff = job.finished_at - job.started_at -%}
+          {%- set seconds = diff.total_seconds() -%}
+          {%- set mins = (seconds // 60)|int -%}
+          {%- if mins >= 60 -%}
+            {{ (mins // 60) }}h{{ "%02dm"|format(mins % 60) }}
+          {%- else -%}
+            {{ "%dm%02ds"|format(mins, (seconds % 60)|int) }}
+          {%- endif -%}
+        {%- else -%}
+          —
+        {%- endif -%}
+      </dd>
+    </div>
+  </dl>
+</div>
+
+{# Type-specific parameters #}
+{% if job.job_type.value == 'code_mapping' %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <h2 class="text-sm font-medium text-foreground mb-3">Parameters</h2>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    {% for k, v in [
+      ('llm_model', raw.get('llm_model')),
+      ('embed_model', raw.get('embed_model')),
+      ('index_tier', raw.get('index_tier')),
+      ('provider', raw.get('provider')),
+      ('files_discovered', raw.get('files_discovered')),
+      ('files_indexed', raw.get('files_indexed')),
+      ('chunks_created', raw.get('chunks_created')),
+      ('languages_detected', raw.get('languages_detected')),
+    ] %}
+      {% if v is not none and v != '' %}
+        <div>
+          <dt class="text-xs text-muted-foreground">{{ k }}</dt>
+          <dd class="font-medium">{{ v }}</dd>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </dl>
+  {% if raw.get('doc_id') %}
+    <div class="mt-4 pt-4 border-t border-border">
+      <a href="/project/{{ current_project.id }}/code"
+         class="text-sm text-primary hover:underline">
+        → View code map
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+{% elif job.job_type.value == 'doc_generation' %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <h2 class="text-sm font-medium text-foreground mb-3">Parameters</h2>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    {% for k, v in [
+      ('skill_used', raw.get('skill_used')),
+      ('trigger_reason', raw.get('trigger_reason')),
+      ('duration_seconds', raw.get('duration_seconds')),
+    ] %}
+      {% if v is not none and v != '' %}
+        <div>
+          <dt class="text-xs text-muted-foreground">{{ k }}</dt>
+          <dd class="font-medium">{{ v }}</dd>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </dl>
+  {% if raw.get('lint_warnings') %}
+    <div class="mt-3">
+      <dt class="text-xs text-muted-foreground mb-1">lint_warnings</dt>
+      <dd>
+        <ul class="text-sm text-warning-foreground space-y-1">
+          {% for w in raw.get('lint_warnings', []) %}
+            <li class="text-xs">{{ w }}</li>
+          {% endfor %}
+        </ul>
+      </dd>
+    </div>
+  {% endif %}
+  {% if raw.get('doc_id') %}
+    <div class="mt-4 pt-4 border-t border-border">
+      <a href="/project/{{ current_project.id }}/docs/{{ raw.get('doc_id') }}"
+         class="text-sm text-primary hover:underline">
+        → View document
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+{# Live Log card — only while the job is running #}
+{% if job.status == 'running' %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-sm font-medium text-foreground">Live Log</h2>
+    <span class="text-xs text-muted-foreground">streaming…</span>
+  </div>
+  <pre id="doc-job-log"
+       class="font-mono text-xs whitespace-pre-wrap break-words bg-muted/50 rounded p-3 overflow-auto"
+       style="max-height: 32rem;"
+       aria-live="polite"
+       aria-label="Live agent log"></pre>
+  <script>
+    (function () {
+      var log = document.getElementById('doc-job-log');
+      if (!log) return;
+      var src = new EventSource('/project/{{ current_project.id }}/jobs/doc_generation/{{ raw.id }}/log/stream');
+      src.onmessage = function (e) {
+        log.textContent += e.data + '\n';
+        log.scrollTop = log.scrollHeight;
+      };
+      src.addEventListener('status', function (e) {
+        if (e.data === 'terminal') src.close();
+      });
+      src.onerror = function () { src.close(); };
+    })();
+  </script>
+</div>
+{% endif %}
+
+{# Persisted-output fallback — terminal state with captured stdout #}
+{% if job.status != 'running' and raw.get('agent_output') %}
+<details class="bg-card border border-border rounded-lg p-4 mb-6">
+  <summary class="text-sm font-medium text-foreground cursor-pointer">Captured log ({{ raw.get('agent_output')|length }} chars)</summary>
+  <pre class="font-mono text-xs whitespace-pre-wrap break-words bg-muted/50 rounded p-3 mt-3 overflow-auto" style="max-height: 32rem;">{{ raw.get('agent_output') }}</pre>
+</details>
+{% endif %}
+
+{# Execution Report card — shown whenever raw.report is populated #}
+{% if raw.get('report') %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <h2 class="text-sm font-medium text-foreground mb-3">Execution Report</h2>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    <div>
+      <dt class="text-xs text-muted-foreground">Outcome</dt>
+      <dd>{{ status_badge(raw.get('report').get('outcome')) }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Duration</dt>
+      <dd class="font-medium">{{ raw.get('report').get('duration_seconds') }}s</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Skill</dt>
+      <dd class="font-medium">{{ raw.get('report').get('skill_used') or '—' }}</dd>
+    </div>
+    <div class="col-span-full">
+      <dt class="text-xs text-muted-foreground">Command issued</dt>
+      <dd><code class="text-xs">{{ raw.get('report').get('command_issued') or '—' }}</code></dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Log size</dt>
+      <dd>{{ raw.get('report').get('log_size_bytes') }} bytes / {{ raw.get('report').get('log_line_count') }} lines</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">doc-update calls</dt>
+      <dd class="font-medium">{{ raw.get('report').get('doc_update_invocations') }}</dd>
+    </div>
+    <div>
+      <dt class="text-xs text-muted-foreground">Lint warnings</dt>
+      <dd class="font-medium">{{ raw.get('report').get('lint_warning_count') }}</dd>
+    </div>
+  </dl>
+
+  {% if raw.get('report').get('tool_calls') %}
+  <div class="mt-4 pt-4 border-t border-border">
+    <dt class="text-xs text-muted-foreground mb-2">Tool calls</dt>
+    <table class="text-xs w-full">
+      <thead><tr class="text-muted-foreground"><th class="text-left">Tool</th><th class="text-left">Exit</th></tr></thead>
+      <tbody>
+        {% for tc in raw.get('report').get('tool_calls', []) %}
+        <tr><td><code>{{ tc.get('tool') }}</code></td><td>{{ tc.get('exit_code') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if raw.get('report').get('diagnosis') %}
+  <div class="mt-4 pt-4 border-t border-border">
+    <dt class="text-xs text-muted-foreground mb-1">Diagnosis</dt>
+    <dd class="text-sm">{{ raw.get('report').get('diagnosis') }}</dd>
+  </div>
+  {% endif %}
+
+  {% if log_file_exists %}
+  <div class="mt-4 pt-4 border-t border-border">
+    <a href="/project/{{ current_project.id }}/jobs/doc_generation/{{ raw.id }}/log/raw"
+       class="text-sm text-primary hover:underline">
+      → Download raw log
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% elif job.job_type.value == 'batch_execution' %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <h2 class="text-sm font-medium text-foreground mb-3">Parameters</h2>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    {% for k, v in [
+      ('max_parallel', raw.get('max_parallel')),
+      ('cli_tool', raw.get('cli_tool')),
+      ('auto_publish', raw.get('auto_publish')),
+    ] %}
+      {% if v is not none and v != '' %}
+        <div>
+          <dt class="text-xs text-muted-foreground">{{ k }}</dt>
+          <dd class="font-medium">{{ v }}</dd>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </dl>
+  {% if raw.get('id') %}
+    <div class="mt-4 pt-4 border-t border-border">
+      <a href="/project/{{ current_project.id }}/batches/{{ raw.get('id') }}"
+         class="text-sm text-primary hover:underline">
+        → View batch
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+{% elif job.job_type.value == 'oss_scan' %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <h2 class="text-sm font-medium text-foreground mb-3">Parameters</h2>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    {% for k, v in [
+      ('kind', raw.get('kind')),
+      ('exit_code', raw.get('exit_code')),
+      ('scan_id', raw.get('scan_id')),
+      ('scan_status', raw.get('scan_status')),
+      ('scan_exit_code', raw.get('scan_exit_code')),
+      ('scan_pill_color', raw.get('scan_pill_color')),
+      ('scan_head_sha', raw.get('scan_head_sha')),
+    ] %}
+      {% if v is not none and v != '' %}
+        <div>
+          <dt class="text-xs text-muted-foreground">{{ k }}</dt>
+          <dd class="font-medium">{{ v }}</dd>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </dl>
+  {% if raw.get('scan_error_message') %}
+    <div class="mt-4 pt-4 border-t border-border">
+      <dt class="text-xs text-muted-foreground mb-1">scan_error_message</dt>
+      <dd>
+        <pre class="text-xs whitespace-pre-wrap text-destructive">{{ raw.get('scan_error_message') }}</pre>
+      </dd>
+    </div>
+  {% endif %}
+  {% if raw.get('stdout_tail') %}
+    <div class="mt-4 pt-4 border-t border-border">
+      <dt class="text-xs text-muted-foreground mb-1">stdout_tail</dt>
+      <dd>
+        <pre class="text-xs whitespace-pre-wrap font-mono">{{ raw.get('stdout_tail') }}</pre>
+      </dd>
+    </div>
+  {% endif %}
+  <div class="mt-4 pt-4 border-t border-border">
+    <a href="/project/{{ current_project.id }}/oss"
+       class="text-sm text-primary hover:underline">
+      → View OSS Compliance
+    </a>
+  </div>
+</div>
+
+{% elif job.job_type.value == 'research' %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <h2 class="text-sm font-medium text-foreground mb-3">Parameters</h2>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    {% for k, v in [
+      ('audience', raw.get('audience')),
+      ('version', raw.get('version')),
+    ] %}
+      {% if v is not none and v != '' %}
+        <div>
+          <dt class="text-xs text-muted-foreground">{{ k }}</dt>
+          <dd class="font-medium">{{ v }}</dd>
+        </div>
+      {% endif %}
+    {% endfor %}
+    {% if raw.get('source_paths') %}
+      <div class="col-span-full">
+        <dt class="text-xs text-muted-foreground">source_paths</dt>
+        <dd class="font-mono text-xs mt-1">
+          {% for p in raw.get('source_paths', []) %}
+            <div>{{ p }}</div>
+          {% endfor %}
+        </dd>
+      </div>
+    {% endif %}
+  </dl>
+  {% if raw.get('doc_id') %}
+    <div class="mt-4 pt-4 border-t border-border">
+      <a href="/project/{{ current_project.id }}/research/{{ raw.get('doc_id') }}"
+         class="text-sm text-primary hover:underline">
+        → View research
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+{% elif job.job_type.value == 'db_backup' %}
+<div class="bg-card border border-border rounded-lg p-4 mb-6">
+  <h2 class="text-sm font-medium text-foreground mb-3">Parameters</h2>
+  <dl class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+    {% for k, v in [
+      ('backup_type', raw.get('backup_type')),
+      ('label', raw.get('label')),
+      ('bytes', raw.get('bytes')),
+      ('alembic_revision', raw.get('alembic_revision')),
+      ('instance_id', raw.get('instance_id')),
+    ] %}
+      {% if v is not none and v != '' %}
+        <div>
+          <dt class="text-xs text-muted-foreground">{{ k }}</dt>
+          <dd class="font-medium">{{ v }}</dd>
+        </div>
+      {% endif %}
+    {% endfor %}
+    {% if raw.get('path') %}
+      <div class="col-span-full">
+        <dt class="text-xs text-muted-foreground">path</dt>
+        <dd class="font-mono text-xs mt-1 break-all">{{ raw.get('path') }}</dd>
+      </div>
+    {% endif %}
+  </dl>
+  {% if raw.get('row_counts') %}
+    <div class="mt-4 pt-4 border-t border-border">
+      <dt class="text-xs text-muted-foreground mb-1">row_counts</dt>
+      <dd>
+        <table class="text-xs w-full">
+          <tbody>
+            {% for table_name, count in raw.get('row_counts', {}).items() %}
+            <tr><td class="font-mono pr-4">{{ table_name }}</td><td>{{ count }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </dd>
+    </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# Error block — different sources expose the message under different keys #}
+{% set error_text = raw.get('error') or raw.get('error_message') %}
+{% if job.status == 'failed' and error_text %}
+<div class="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+  <h2 class="text-sm font-medium text-destructive mb-2">Error</h2>
+  <pre class="text-xs text-destructive whitespace-pre-wrap">{{ error_text }}</pre>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,85 @@
+{% from "macros/db_guard.html" import write_button_attrs %}
+
+{% macro kill_button(project_id, item_id, step_id) %}
+  <button
+    hx-get="/project/{{ project_id }}/api/confirm/kill-step/{{ item_id }}/{{ step_id }}"
+    hx-target="#confirm-dialog"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    {{ write_button_attrs(request) }}>
+    Kill
+  </button>
+{% endmacro %}
+
+{% macro restart_button(project_id, item_id, step_id) %}
+  <button
+    hx-get="/project/{{ project_id }}/api/confirm/restart-step/{{ item_id }}/{{ step_id }}"
+    hx-target="#confirm-dialog"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    title="Restart step"
+    {{ write_button_attrs(request) }}>
+    ↻
+  </button>
+{% endmacro %}
+
+{% macro skip_button(project_id, item_id, step_id) %}
+  <button
+    hx-get="/project/{{ project_id }}/api/confirm/skip-step/{{ item_id }}/{{ step_id }}"
+    hx-target="#confirm-dialog"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    title="Skip step"
+    {{ write_button_attrs(request) }}>
+    ⏭
+  </button>
+{% endmacro %}
+
+{% macro restart_merge_button(project_id, item_id) %}
+  <button
+    hx-get="/project/{{ project_id }}/api/confirm-item/restart-merge/{{ item_id }}"
+    hx-target="#confirm-dialog"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    title="Retry merge"
+    {{ write_button_attrs(request) }}>
+    ↻ Retry Merge
+  </button>
+{% endmacro %}
+
+{% macro abandon_merge_button(project_id, item_id) %}
+  <button
+    hx-get="/project/{{ project_id }}/api/confirm-item/abandon-merge/{{ item_id }}"
+    hx-target="#confirm-dialog"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-destructive text-destructive-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    title="Abandon merge"
+    {{ write_button_attrs(request) }}>
+    ⚠ Abandon
+  </button>
+{% endmacro %}
+
+{% macro approve_merge_button(project_id, item_id) %}
+  <button
+    type="button"
+    hx-post="/project/{{ project_id }}/api/item/{{ item_id }}/approve-merge"
+    hx-target="#action-toast"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-success text-success-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    title="Approve and trigger the squash-merge to main"
+    {{ write_button_attrs(request) }}>
+    Merge
+  </button>
+{% endmacro %}
+
+{% macro restart_setup_button(project_id, item_id) %}
+  <button
+    hx-get="/project/{{ project_id }}/api/confirm-item/restart-setup/{{ item_id }}"
+    hx-target="#confirm-dialog"
+    hx-swap="innerHTML"
+    class="px-2 py-1 bg-secondary text-secondary-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+    title="Restart setup (delete worktree, reset all steps)"
+    {{ write_button_attrs(request) }}>
+    ↻ Restart Setup
+  </button>
+{% endmacro %}

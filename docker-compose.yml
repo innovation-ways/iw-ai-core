@@ -1,0 +1,16 @@
+# docker-compose.yml
+#
+# INTENTIONALLY EMPTY.
+#
+# The `db` service has been moved to docker-compose.bootstrap.yml to prevent
+# accidental `docker compose up` invocations from creating empty postgres
+# volumes that clobber the production orchestration DB. See
+# docs/IW_AI_Core_DB_Setup.md for context and the 2026-04-22 incident.
+#
+# If you are looking for a `db` service, use:
+#   docker compose -f docker-compose.bootstrap.yml up -d db
+#
+# Or, preferred for the production orchestration DB:
+#   see docs/IW_AI_Core_DB_Setup.md
+
+services: {}

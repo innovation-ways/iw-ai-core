@@ -1,0 +1,25 @@
+{
+  "name": "cr-00013",
+  "version": "1.0.0",
+  "description": "**AI orchestration platform for AI-assisted software development.**",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "postcss": "^8.5.14",
+    "postcss-selector-parser": "^6.1.2",
+    "tailwindcss": "^3.4.19"
+  },
+  "dependencies": {
+    "@jridgewell/gen-mapping": "^0.1.1",
+    "sucrase": "^3.35.0"
+  }
+}

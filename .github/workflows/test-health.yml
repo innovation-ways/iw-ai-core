@@ -1,0 +1,70 @@
+name: Test Health
+
+# Runs on a self-hosted runner with network access to the orchestration DB
+# on port 5433. Snapshots are persisted to the live test_health_snapshots
+# table — NOT to an ephemeral GH-Actions service-container Postgres.
+# See docs/IW_AI_Core_Testing_Strategy.md §10 Self-dashboarding for the
+# full persistence-model rationale.
+#
+# PREREQUISITES (operator must set up before this workflow will succeed):
+#   1. A self-hosted runner labelled "iw-core" must be provisioned and online.
+#   2. GitHub secrets IW_CORE_DB_HOST, IW_CORE_DB_PORT, IW_CORE_DB_NAME,
+#      IW_CORE_DB_USER, IW_CORE_DB_PASSWORD must be created in the repo
+#      settings, pointing at the live orchestration DB on port 5433.
+#   3. The runner's network must be able to reach IW_CORE_DB_HOST:5433.
+# Without all three the workflow will fail at the "iw test-health-capture" step.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC nightly
+  workflow_dispatch: {}    # allow manual trigger for debugging
+
+concurrency:
+  group: test-health
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    name: Capture test health
+    runs-on: [self-hosted, iw-core]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Capture test health snapshot
+        env:
+          IW_CORE_DB_HOST: ${{ secrets.IW_CORE_DB_HOST }}
+          IW_CORE_DB_PORT: ${{ secrets.IW_CORE_DB_PORT }}
+          IW_CORE_DB_NAME: ${{ secrets.IW_CORE_DB_NAME }}
+          IW_CORE_DB_USER: ${{ secrets.IW_CORE_DB_USER }}
+          IW_CORE_DB_PASSWORD: ${{ secrets.IW_CORE_DB_PASSWORD }}
+          IW_CORE_DASHBOARD_HOST: "127.0.0.1"
+          IW_CORE_DASHBOARD_PORT: "9900"
+          IW_CORE_POLL_INTERVAL: "60"
+          IW_CORE_STALL_THRESHOLD: "300"
+          IW_CORE_PID_FILE: "/tmp/iw-orch-daemon.pid"
+          IW_CORE_ARCHIVE_DIR: "/tmp/iw-archive"
+          IW_CORE_ARCHIVE_TTL: "30"
+          IW_CORE_LOG_LEVEL: "INFO"
+          IW_CORE_LOG_FILE: "/tmp/iw-ai-core.log"
+        run: |
+          uv run iw test-health-capture --project iw-ai-core \
+            | tee test-health-summary.json
+
+      - name: Upload summary artefact
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: test-health-summary
+          path: test-health-summary.json
+          retention-days: 30

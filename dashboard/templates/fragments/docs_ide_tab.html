@@ -1,0 +1,13 @@
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+  <div class="lg:col-span-3 space-y-4">
+    <h3 class="font-semibold text-sm">Guide Editor</h3>
+    <div hx-get="/project/{{ project_id }}/api/docs/{{ doc_id }}/guide/type"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <span class="text-sm text-muted-foreground">Loading guide editor...</span>
+    </div>
+  </div>
+  <div class="lg:col-span-2">
+    {% include "fragments/docs_section_diff_panel.html" %}
+  </div>
+</div>

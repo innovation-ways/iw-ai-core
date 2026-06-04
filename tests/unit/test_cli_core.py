@@ -1,0 +1,517 @@
+"""Unit tests for CLI core — pure logic, no DB or I/O required."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+from orch.cli.item_commands import (
+    _ITEM_TYPE_MAP,
+    agent_to_label,
+    agent_to_step_type,
+    validate_approve_transition,
+    validate_item_retry_transition,
+    validate_unapprove_transition,
+)
+from orch.cli.utils import (
+    TYPE_TO_ID_PREFIX,
+    TYPE_TO_PREFIX,
+    find_project_root,
+    format_id,
+    validate_id_prefix,
+)
+from orch.db.models import (
+    BatchItemStatus,
+    BatchStatus,
+    DocType,
+    StepType,
+    WorkItemStatus,
+    WorkItemType,
+)
+
+# ---------------------------------------------------------------------------
+# find_project_root
+# ---------------------------------------------------------------------------
+
+
+def test_find_project_root_found_in_cwd(tmp_path: Path) -> None:
+    """Verifies that find project root found in cwd."""
+    config = tmp_path / ".iw-orch.json"
+    config.write_text('{"project_id": "myproject"}')
+
+    result = find_project_root(tmp_path)
+
+    assert result is not None
+    project_id, root = result
+    assert project_id == "myproject"
+    assert root == tmp_path
+
+
+def test_find_project_root_found_in_ancestor(tmp_path: Path) -> None:
+    """Verifies that find project root found in ancestor."""
+    config = tmp_path / ".iw-orch.json"
+    config.write_text('{"project_id": "ancestor-proj"}')
+
+    subdir = tmp_path / "a" / "b" / "c"
+    subdir.mkdir(parents=True)
+
+    result = find_project_root(subdir)
+
+    assert result is not None
+    project_id, root = result
+    assert project_id == "ancestor-proj"
+    assert root == tmp_path
+
+
+def test_find_project_root_not_found(tmp_path: Path) -> None:
+    """Verifies that find project root not found."""
+    result = find_project_root(tmp_path)
+    assert result is None
+
+
+def test_find_project_root_invalid_json(tmp_path: Path) -> None:
+    """Verifies that find project root invalid json."""
+    config = tmp_path / ".iw-orch.json"
+    config.write_text("not valid json {{{")
+
+    result = find_project_root(tmp_path)
+    assert result is None
+
+
+def test_find_project_root_missing_project_id(tmp_path: Path) -> None:
+    """Verifies that find project root missing project id."""
+    config = tmp_path / ".iw-orch.json"
+    config.write_text('{"other_key": "value"}')
+
+    result = find_project_root(tmp_path)
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# format_id
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("prefix", "number", "expected"),
+    [
+        ("F", 1, "F-00001"),
+        ("F", 42, "F-00042"),
+        ("F", 999, "F-00999"),
+        ("I", 1, "I-00001"),
+        ("CR", 3, "CR-00003"),
+        ("BATCH", 1, "BATCH-00001"),
+        ("BATCH", 12, "BATCH-00012"),
+        ("BATCH", 999, "BATCH-00999"),
+        ("R", 1, "R-00001"),
+        ("R", 42, "R-00042"),
+    ],
+)
+def test_format_id(prefix: str, number: int, expected: str) -> None:
+    """Verifies that format id."""
+    assert format_id(prefix, number) == expected
+
+
+# ---------------------------------------------------------------------------
+# validate_id_prefix
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("item_id", "item_type", "expected"),
+    [
+        ("I-00001", "incident", True),
+        ("I-00999", "incident", True),
+        ("F-00001", "feature", True),
+        ("CR-00001", "cr", True),
+        ("CR-00042", "cr", True),
+        ("R-00001", "research", True),
+        ("R-00042", "research", True),
+        # Wrong prefix for type
+        ("I-00001", "feature", False),
+        ("F-00001", "incident", False),
+        ("CR-00001", "feature", False),
+        ("F-00001", "cr", False),
+        ("R-00001", "feature", False),
+        ("F-00001", "research", False),
+        # Prefix with no digits
+        ("I", "incident", False),
+        ("F", "feature", False),
+        ("R", "research", False),
+        # Completely wrong format
+        ("BATCH-00001", "incident", False),
+        ("001", "incident", False),
+    ],
+)
+def test_validate_id_prefix(item_id: str, item_type: str, expected: bool) -> None:
+    """Verifies that validate id prefix."""
+    assert validate_id_prefix(item_id, item_type) == expected
+
+
+# ---------------------------------------------------------------------------
+# validate_approve_transition
+# ---------------------------------------------------------------------------
+
+
+def test_approve_draft_is_valid() -> None:
+    """Verifies that approve draft is valid."""
+    assert validate_approve_transition(WorkItemStatus.draft) is None
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        WorkItemStatus.approved,
+        WorkItemStatus.in_progress,
+        WorkItemStatus.completed,
+        WorkItemStatus.failed,
+        WorkItemStatus.paused,
+    ],
+)
+def test_approve_non_draft_returns_error(status: WorkItemStatus) -> None:
+    """Verifies that approve non draft returns error."""
+    error = validate_approve_transition(status)
+    assert error is not None
+    assert status.value in error
+
+
+# ---------------------------------------------------------------------------
+# validate_unapprove_transition
+# ---------------------------------------------------------------------------
+
+
+def test_unapprove_approved_no_batch_is_valid() -> None:
+    """Verifies that unapprove approved no batch is valid."""
+    assert validate_unapprove_transition(WorkItemStatus.approved, None) is None
+
+
+def test_unapprove_rejects_non_approved_status() -> None:
+    """Verifies that unapprove rejects non approved status."""
+    error = validate_unapprove_transition(WorkItemStatus.draft, None)
+    assert error is not None
+    assert "draft" in error
+
+
+def test_unapprove_rejects_item_in_active_batch() -> None:
+    """Verifies that unapprove rejects item in active batch."""
+    error = validate_unapprove_transition(WorkItemStatus.approved, "BATCH-00003")
+    assert error is not None
+    assert "BATCH-00003" in error
+
+
+def test_unapprove_status_error_takes_precedence_over_batch() -> None:
+    """Verifies that unapprove status error takes precedence over batch."""
+    error = validate_unapprove_transition(WorkItemStatus.in_progress, "BATCH-00001")
+    assert error is not None
+    assert "in_progress" in error
+
+
+# ---------------------------------------------------------------------------
+# agent_to_step_type
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("agent", "expected"),
+    [
+        ("backend-impl", StepType.implementation),
+        ("frontend-impl", StepType.implementation),
+        ("code-review-impl", StepType.code_review),
+        ("code-review-fix-impl", StepType.code_review_fix),
+        ("code-review-final-impl", StepType.code_review_final),
+        ("code-review-fix-final-impl", StepType.code_review_fix_final),
+        ("backend-review", StepType.code_review),
+        ("api-review", StepType.code_review),
+        ("frontend-review", StepType.code_review),
+        ("tests-review", StepType.code_review),
+        ("database-review", StepType.code_review),
+        ("pipeline-review", StepType.code_review),
+        ("template-review", StepType.code_review),
+        ("quality-validation-impl", StepType.quality_validation),
+        ("qv-gate", StepType.quality_validation),
+        ("qv-fix-impl", StepType.qv_fix),
+        ("qv-browser", StepType.browser_verification),
+        ("browser-verification-impl", StepType.browser_verification),
+        ("something-else", StepType.implementation),
+    ],
+)
+def test_agent_to_step_type(agent: str, expected: StepType) -> None:
+    """Verifies that agent to step type."""
+    assert agent_to_step_type(agent) == expected
+
+
+# ---------------------------------------------------------------------------
+# agent_to_label
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("agent", "expected"),
+    [
+        ("backend-impl", "Backend"),
+        ("frontend-impl", "Frontend"),
+        ("code-review-impl", "CodeReview"),
+        ("code-review-final-impl", "CodeReviewFinal"),
+        ("quality-validation-impl", "QualityValidation"),
+        ("qv-gate", "QvGate"),
+        ("qv-browser", "QvBrowser"),
+    ],
+)
+def test_agent_to_label(agent: str, expected: str) -> None:
+    """Verifies that agent to label."""
+    assert agent_to_label(agent) == expected
+
+
+# ---------------------------------------------------------------------------
+# parse_manifest_steps (with tmp_path)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_manifest_steps(tmp_path: Path) -> None:
+    """Verifies that parse manifest steps."""
+    from orch.cli.item_commands import parse_manifest_steps
+
+    manifest = tmp_path / "workflow-manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "steps": [
+                    {"step": "S01", "agent": "backend-impl"},
+                    {"step": "S02", "agent": "code-review-impl"},
+                ]
+            }
+        )
+    )
+
+    steps = parse_manifest_steps(manifest)
+
+    assert len(steps) == 2
+    assert steps[0]["step"] == "S01"
+    assert steps[1]["agent"] == "code-review-impl"
+
+
+# ---------------------------------------------------------------------------
+# Research work item type tests
+# ---------------------------------------------------------------------------
+
+
+def test_work_item_type_research() -> None:
+    """Verifies that work item type research."""
+    assert WorkItemType.Research.value == "Research"
+
+
+def test_doc_type_research() -> None:
+    """Verifies that doc type research."""
+    assert DocType.research.value == "research"
+
+
+def test_type_to_prefix_research() -> None:
+    """Verifies that type to prefix research."""
+    assert TYPE_TO_PREFIX.get("research") == "R"
+
+
+def test_type_to_id_prefix_research() -> None:
+    """Verifies that type to id prefix research."""
+    assert TYPE_TO_ID_PREFIX.get("research") == "R-"
+
+
+def test_item_type_map_research() -> None:
+    """Verifies that item type map research."""
+    assert _ITEM_TYPE_MAP.get("research") == WorkItemType.Research
+
+
+# ---------------------------------------------------------------------------
+# validate_approve_transition — research rejection (AC1)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_approve_transition_rejects_research() -> None:
+    """Verifies that validate approve transition rejects research."""
+    msg = validate_approve_transition(WorkItemStatus.draft, WorkItemType.Research)
+    assert msg is not None
+    assert "Cannot approve research items" in msg
+
+
+def test_validate_approve_transition_non_research_draft_ok() -> None:
+    """Verifies that validate approve transition non research draft ok."""
+    assert validate_approve_transition(WorkItemStatus.draft) is None
+    assert validate_approve_transition(WorkItemStatus.draft, WorkItemType.Feature) is None
+    assert validate_approve_transition(WorkItemStatus.draft, WorkItemType.ChangeRequest) is None
+    assert validate_approve_transition(WorkItemStatus.draft, WorkItemType.Issue) is None
+
+
+def test_validate_approve_transition_research_check_fires_before_status_check() -> None:
+    """Verifies that validate approve transition research check fires before status check."""
+    msg = validate_approve_transition(WorkItemStatus.approved, WorkItemType.Research)
+    assert msg is not None
+    assert "Cannot approve research items" in msg
+
+
+# ---------------------------------------------------------------------------
+# validate_unapprove_transition — research rejection (AC2)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_unapprove_transition_rejects_research() -> None:
+    """Verifies that validate unapprove transition rejects research."""
+    msg = validate_unapprove_transition(WorkItemStatus.approved, None, WorkItemType.Research)
+    assert msg is not None
+    assert "Cannot unapprove research items" in msg
+
+
+def test_validate_unapprove_transition_non_research_approved_ok() -> None:
+    """Verifies that validate unapprove transition non research approved ok."""
+    assert validate_unapprove_transition(WorkItemStatus.approved, None) is None
+    assert (
+        validate_unapprove_transition(WorkItemStatus.approved, None, WorkItemType.Feature) is None
+    )
+    assert validate_unapprove_transition(WorkItemStatus.approved, None, WorkItemType.Issue) is None
+    assert (
+        validate_unapprove_transition(WorkItemStatus.approved, None, WorkItemType.ChangeRequest)
+        is None
+    )
+
+
+def test_validate_unapprove_transition_research_check_fires_before_status_check() -> None:
+    """Verifies that validate unapprove transition research check fires before status check."""
+    msg = validate_unapprove_transition(WorkItemStatus.draft, None, WorkItemType.Research)
+    assert msg is not None
+    assert "Cannot unapprove research items" in msg
+
+
+# ---------------------------------------------------------------------------
+# validate_item_retry_transition
+# ---------------------------------------------------------------------------
+
+
+class TestValidateItemRetryTransitions:
+    """Tests for item-retry transition validation (pure, no DB)."""
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            WorkItemStatus.draft,
+            WorkItemStatus.approved,
+            WorkItemStatus.paused,
+        ],
+    )
+    def test_rejects_healthy_item(self, status: WorkItemStatus) -> None:
+        """Healthy items must not be disrupted by retry."""
+        error, is_noop = validate_item_retry_transition(
+            status,
+            BatchItemStatus.pending,
+            BatchStatus.executing,
+        )
+        assert error is not None, f"Expected rejection for {status.value}"
+        assert "not stuck" in error.lower()
+        assert is_noop is False
+
+    def test_idempotent_in_progress_healthy_state(self) -> None:
+        """in_progress + pending + executing is already recovered (idempotent)."""
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.in_progress,
+            BatchItemStatus.pending,
+            BatchStatus.executing,
+        )
+        assert error is None
+        assert is_noop is True
+
+    def test_idempotent_in_progress_completed_with_errors(self) -> None:
+        """Idempotent: in_progress + completed_with_errors is already partially recovered."""
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.in_progress,
+            BatchItemStatus.failed,
+            BatchStatus.completed_with_errors,
+        )
+        assert error is None
+        assert is_noop is True
+
+    @pytest.mark.parametrize(
+        "batch_item_status",
+        [
+            BatchItemStatus.failed,
+            BatchItemStatus.setup_failed,
+            BatchItemStatus.stalled,
+            BatchItemStatus.migration_rebase_failed,
+            BatchItemStatus.merge_failed,
+        ],
+    )
+    def test_accepts_terminal_batch_item_status(self, batch_item_status: BatchItemStatus) -> None:
+        """Terminal batch_item statuses make the item eligible for retry."""
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.failed,
+            batch_item_status,
+            BatchStatus.executing,
+        )
+        assert error is None
+        assert is_noop is False
+
+    def test_accepts_completed_with_errors_batch(self) -> None:
+        """completed_with_errors batch makes the item eligible for retry."""
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.failed,
+            BatchItemStatus.pending,  # batch_item may already be pending in some paths
+            BatchStatus.completed_with_errors,
+        )
+        assert error is None
+        assert is_noop is False
+
+    @pytest.mark.parametrize(
+        "work_item_status",
+        [
+            WorkItemStatus.failed,
+            WorkItemStatus.completed,
+            WorkItemStatus.cancelled,
+        ],
+    )
+    def test_accepts_terminal_work_item_without_batch(
+        self, work_item_status: WorkItemStatus
+    ) -> None:
+        """Terminal work_item without batch membership is still eligible."""
+        error, is_noop = validate_item_retry_transition(
+            work_item_status,
+            None,  # no batch_item
+            None,  # no batch
+        )
+        assert error is None
+        assert is_noop is False
+
+    def test_accepts_terminal_work_item_with_completed_batch(self) -> None:
+        """Terminal work_item with completed batch is eligible."""
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.failed,
+            BatchItemStatus.pending,
+            BatchStatus.completed,  # not completed_with_errors, but item is terminal
+        )
+        # The batch_item is pending so it's eligible (work_item=failed is terminal)
+        assert error is None
+
+    @pytest.mark.parametrize(
+        "batch_item_status",
+        [
+            # pending is covered by idempotency tests (in_progress case) and
+            # approved/paused rejection tests (healthy case)
+            BatchItemStatus.setting_up,
+            BatchItemStatus.executing,
+            BatchItemStatus.completed,
+            BatchItemStatus.awaiting_merge_approval,
+            BatchItemStatus.merging,
+            BatchItemStatus.merged,
+            BatchItemStatus.skipped,
+            BatchItemStatus.migration_invalid,
+            BatchItemStatus.migration_rolled_back,
+        ],
+    )
+    def test_rejects_non_terminal_batch_item_status(
+        self, batch_item_status: BatchItemStatus
+    ) -> None:
+        """Non-terminal batch_item statuses with healthy work_item are not eligible."""
+        # Use approved work_item to avoid idempotency/terminal-work-item cases
+        error, is_noop = validate_item_retry_transition(
+            WorkItemStatus.approved,
+            batch_item_status,
+            BatchStatus.executing,
+        )
+        # approved is "not stuck" — should reject regardless of batch_item state
+        assert error is not None
+        assert error.lower().find("not stuck") != -1, f"Expected 'not stuck' in error: {error!r}"

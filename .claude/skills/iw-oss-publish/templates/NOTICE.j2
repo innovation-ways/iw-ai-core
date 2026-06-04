@@ -1,0 +1,16 @@
+{{project_name}}
+Copyright {{year}} {{company_legal_name}}
+
+This product is developed and maintained by {{company_brand}}
+({{homepage}}).
+
+{% if third_party_notices -%}
+---
+
+## Third-party attributions
+
+This product includes software developed by third parties. The following
+notices are reproduced from upstream Apache-2.0 licensed dependencies:
+
+{{third_party_notices}}
+{%- endif %}

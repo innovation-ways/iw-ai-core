@@ -1,0 +1,24 @@
+{% if citations %}
+<details class="sources-panel">
+  <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+    Sources ({{ citations|length }})
+  </summary>
+  <ol class="mt-2 space-y-1 text-sm">
+    {% for cite in citations %}
+    <li class="flex items-start gap-2">
+      <span class="font-medium text-primary">{{ cite.n }}.</span>
+      <div class="flex-1 min-w-0">
+        <a href="{{ cite.url }}"
+           class="text-primary hover:underline truncate block"
+           {% if cite.url.startswith('http') %}target="_blank" rel="noopener noreferrer"{% endif %}>
+          {{ cite.label }}
+        </a>
+        {% if cite.snippet %}
+        <p class="text-xs text-muted-foreground mt-0.5 line-clamp-2">{{ cite.snippet[:240] }}</p>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</details>
+{% endif %}

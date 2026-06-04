@@ -1,0 +1,456 @@
+<mxfile host="draw.io" modified="2026-04-07T00:00:00.000Z" agent="draw.io" version="24.0.0" type="device">
+  <diagram id="e2e-flow" name="End-to-End Flow">
+    <mxGraphModel dx="1654" dy="1169" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============================================================ -->
+        <!-- TITLE                                                        -->
+        <!-- ============================================================ -->
+        <mxCell id="title" value="&lt;b&gt;End-to-End Flow: /iw-new-incident to Merged Code&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontSize=16;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="450" y="15" width="500" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- PHASE 1: DESIGN SWIM LANE                                    -->
+        <!-- ============================================================ -->
+        <mxCell id="phase1-lane" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D4E4F7;strokeColor=#9DC3E6;opacity=40;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="1574" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="phase1-label" value="&lt;b&gt;Phase 1: Design&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="50" y="65" width="130" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Developer actor -->
+        <mxCell id="p1-developer" value="Developer" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fontFamily=Inter;fontSize=10;fillColor=#FFFFFF;strokeColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="80" y="110" width="30" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- /iw-new-incident command -->
+        <mxCell id="p1-command" value="&lt;b&gt;/iw-new-incident&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;Developer types command&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6B7280;fontFamily=Inter;fontSize=11;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="150" y="115" width="140" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-edge-dev-cmd" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6B7280;fontFamily=Inter;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="p1-developer" target="p1-command">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Skill loads -->
+        <mxCell id="p1-skill-load" value="&lt;b&gt;Skill loads&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;from .claude/skills/&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E86AB;fontFamily=Inter;fontSize=11;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="330" y="115" width="120" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-edge-cmd-skill" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6B7280;fontFamily=Inter;" edge="1" parent="1" source="p1-command" target="p1-skill-load">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- iw next-id -->
+        <mxCell id="p1-next-id" value="&lt;b&gt;iw next-id&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;CLI call&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E86AB;fontFamily=Inter;fontSize=11;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="490" y="115" width="100" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-edge-skill-nextid" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E86AB;fontFamily=Inter;" edge="1" parent="1" source="p1-skill-load" target="p1-next-id">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- PostgreSQL returns I001 -->
+        <mxCell id="p1-db-nextid" value="&lt;b&gt;PostgreSQL&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;Returns I001&lt;br&gt;(atomic sequence)&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#DAE8FC;strokeColor=#2E86AB;fontFamily=Inter;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="625" y="100" width="110" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-edge-nextid-db" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E86AB;fontFamily=Inter;" edge="1" parent="1" source="p1-next-id" target="p1-db-nextid">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Claude creates design doc -->
+        <mxCell id="p1-create-design" value="&lt;b&gt;Claude creates&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;design doc + prompts&lt;/font&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.15;fillColor=#F5F5F5;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="775" y="105" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-edge-db-design" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p1-db-nextid" target="p1-create-design">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- iw register I001 -->
+        <mxCell id="p1-register" value="&lt;b&gt;iw register I001&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;CLI call&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#2E86AB;fontFamily=Inter;fontSize=11;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="945" y="115" width="120" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-edge-design-register" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p1-create-design" target="p1-register">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- DB records work_item -->
+        <mxCell id="p1-db-register" value="&lt;b&gt;DB: work_item&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;status = draft&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#DAE8FC;strokeColor=#2E86AB;fontFamily=Inter;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1105" y="100" width="110" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-edge-register-db" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E86AB;fontFamily=Inter;" edge="1" parent="1" source="p1-register" target="p1-db-register">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- PHASE 2: APPROVAL SWIM LANE                                  -->
+        <!-- ============================================================ -->
+        <mxCell id="phase2-lane" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#F0E68C;opacity=40;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="40" y="260" width="1574" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="phase2-label" value="&lt;b&gt;Phase 2: Approval&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="50" y="265" width="140" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Dashboard shows I001 -->
+        <mxCell id="p2-dashboard" value="&lt;b&gt;AI Dashboard&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;Shows I001 in queue&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6B7280;fontFamily=Inter;fontSize=11;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="150" y="310" width="130" height="45" as="geometry" />
+        </mxCell>
+        <!-- Connector from phase 1 end to phase 2 start -->
+        <mxCell id="p1-p2-connector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E86AB;fontFamily=Inter;dashed=1;" edge="1" parent="1" source="p1-db-register" target="p2-dashboard">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1160" y="200" />
+              <mxPoint x="130" y="200" />
+              <mxPoint x="130" y="333" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Developer reviews -->
+        <mxCell id="p2-review" value="&lt;b&gt;Developer reviews&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;design doc + prompts&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6B7280;fontFamily=Inter;fontSize=11;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="340" y="310" width="140" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-edge-dash-review" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6B7280;fontFamily=Inter;" edge="1" parent="1" source="p2-dashboard" target="p2-review">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Decision: Approve? -->
+        <mxCell id="p2-decision" value="&lt;b&gt;Approve?&lt;/b&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#6B7280;fontFamily=Inter;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="545" y="300" width="100" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-edge-review-decision" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6B7280;fontFamily=Inter;" edge="1" parent="1" source="p2-review" target="p2-decision">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Reject loops back -->
+        <mxCell id="p2-reject-label" value="&lt;font style=&quot;font-size:9px&quot;&gt;No (revise)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="560" y="370" width="70" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-reject-edge" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6B7280;fontFamily=Inter;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="p2-decision" target="p2-review">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="595" y="395" />
+              <mxPoint x="410" y="395" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- iw approve I001 -->
+        <mxCell id="p2-approve" value="&lt;b&gt;iw approve I001&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;or Dashboard click&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6B7280;fontFamily=Inter;fontSize=11;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="710" y="310" width="130" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-edge-decision-approve" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6B7280;fontFamily=Inter;" edge="1" parent="1" source="p2-decision" target="p2-approve">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-yes-label" value="&lt;font style=&quot;font-size:9px&quot;&gt;Yes&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="650" y="310" width="35" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- DB updates status=approved -->
+        <mxCell id="p2-db-approve" value="&lt;b&gt;DB: work_item&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;status = approved&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#DAE8FC;strokeColor=#2E86AB;fontFamily=Inter;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="900" y="298" width="120" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-edge-approve-db" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E86AB;fontFamily=Inter;" edge="1" parent="1" source="p2-approve" target="p2-db-approve">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- PHASE 3: BATCH & LAUNCH SWIM LANE                            -->
+        <!-- ============================================================ -->
+        <mxCell id="phase3-lane" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#CE93D8;opacity=40;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="40" y="440" width="1574" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="phase3-label" value="&lt;b&gt;Phase 3: Batch &amp;amp; Launch&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="50" y="445" width="180" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Developer runs /iw-batch-execute -->
+        <mxCell id="p3-batch-cmd" value="&lt;b&gt;/iw-batch-execute&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;I001 I002&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6B7280;fontFamily=Inter;fontSize=11;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="150" y="490" width="140" height="45" as="geometry" />
+        </mxCell>
+        <!-- Connector from phase 2 to phase 3 -->
+        <mxCell id="p2-p3-connector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E86AB;fontFamily=Inter;dashed=1;" edge="1" parent="1" source="p2-db-approve" target="p3-batch-cmd">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="960" y="420" />
+              <mxPoint x="130" y="420" />
+              <mxPoint x="130" y="513" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Batch created -->
+        <mxCell id="p3-batch-created" value="&lt;b&gt;Batch created&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;BATCH-001&lt;br&gt;plan + manifest&lt;/font&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.15;fillColor=#F5F5F5;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="350" y="480" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-edge-cmd-batch" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p3-batch-cmd" target="p3-batch-created">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Human approves -->
+        <mxCell id="p3-human-approve" value="&lt;b&gt;make batch-launch&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;Human reviews &amp;amp; approves&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6B7280;fontFamily=Inter;fontSize=11;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="545" y="490" width="155" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-edge-batch-approve" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6B7280;fontFamily=Inter;" edge="1" parent="1" source="p3-batch-created" target="p3-human-approve">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Daemon picks up -->
+        <mxCell id="p3-daemon" value="&lt;b&gt;Daemon starts&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;batch_dispatcher.sh&lt;br&gt;picks up batch&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#F18F01;fontFamily=Inter;fontSize=10;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="770" y="485" width="140" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-edge-approve-daemon" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F18F01;fontFamily=Inter;" edge="1" parent="1" source="p3-human-approve" target="p3-daemon">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- PHASE 4: EXECUTION SWIM LANE                                 -->
+        <!-- ============================================================ -->
+        <mxCell id="phase4-lane" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#A5D6A7;opacity=40;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="40" y="620" width="1574" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="phase4-label" value="&lt;b&gt;Phase 4: Execution&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="50" y="625" width="150" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Connector from phase 3 to phase 4 -->
+        <mxCell id="p3-p4-connector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F18F01;fontFamily=Inter;dashed=1;" edge="1" parent="1" source="p3-daemon" target="p4-worktree">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="840" y="600" />
+              <mxPoint x="130" y="600" />
+              <mxPoint x="130" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Worktree setup -->
+        <mxCell id="p4-worktree" value="&lt;b&gt;worktree_setup.sh&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;Daemon calls script&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#F18F01;fontFamily=Inter;fontSize=10;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="160" y="680" width="130" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Worktree created + deps -->
+        <mxCell id="p4-worktree-ready" value="&lt;b&gt;Worktree ready&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;+ deps installed&lt;br&gt;+ execution_brief.json&lt;/font&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.15;fillColor=#F5F5F5;strokeColor=#F18F01;fontFamily=Inter;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="330" y="670" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-edge-wt-ready" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F18F01;fontFamily=Inter;" edge="1" parent="1" source="p4-worktree" target="p4-worktree-ready">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Agent launched -->
+        <mxCell id="p4-agent-launch" value="&lt;b&gt;Agent launched&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;opencode / claude&lt;br&gt;reads execution_brief&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82b366;fontFamily=Inter;fontSize=10;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="510" y="675" width="135" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-edge-ready-agent" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p4-worktree-ready" target="p4-agent-launch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Step loop box -->
+        <mxCell id="p4-step-loop" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#82b366;fontFamily=Inter;dashed=1;dashPattern=5 5;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="685" y="655" width="430" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-step-loop-label" value="&lt;font style=&quot;font-size:9px;color:#82b366&quot;&gt;For each step in manifest&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="690" y="657" width="150" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- iw step-start -->
+        <mxCell id="p4-step-start" value="&lt;b&gt;iw step-start&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82b366;fontFamily=Inter;fontSize=10;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="700" y="690" width="95" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-edge-agent-step" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p4-agent-launch" target="p4-step-start">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Execute step -->
+        <mxCell id="p4-execute" value="&lt;b&gt;Execute&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;implement + test&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82b366;fontFamily=Inter;fontSize=10;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="820" y="690" width="90" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-edge-start-exec" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p4-step-start" target="p4-execute">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Write report -->
+        <mxCell id="p4-report" value="&lt;b&gt;Write report&lt;/b&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.2;fillColor=#F5F5F5;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="935" y="685" width="85" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-edge-exec-report" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p4-execute" target="p4-report">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- iw step-done -->
+        <mxCell id="p4-step-done" value="&lt;b&gt;iw step-done&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82b366;fontFamily=Inter;fontSize=10;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="1045" y="690" width="95" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-edge-report-done" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p4-report" target="p4-step-done">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Code review cycle -->
+        <mxCell id="p4-code-review" value="&lt;b&gt;Code review&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;fix cycle (max 5)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82b366;fontFamily=Inter;fontSize=10;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="680" width="110" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-edge-done-review" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p4-step-done" target="p4-code-review">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- QV gates -->
+        <mxCell id="p4-qv" value="&lt;b&gt;QV Gates&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;lint, test, types&lt;br&gt;security, coverage&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="670" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-edge-review-qv" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p4-code-review" target="p4-qv">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- QV fail loops back -->
+        <mxCell id="p4-qv-fail-label" value="&lt;font style=&quot;font-size:9px;color:#82b366&quot;&gt;Fail&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="755" width="40" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="p4-qv-fail-edge" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="p4-qv" target="p4-code-review">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1400" y="780" />
+              <mxPoint x="1235" y="780" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p4-qv-pass-label" value="&lt;font style=&quot;font-size:9px;color:#82b366&quot;&gt;Pass&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="1470" y="695" width="40" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- PHASE 5: COMPLETION SWIM LANE                                -->
+        <!-- ============================================================ -->
+        <mxCell id="phase5-lane" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFE0B2;strokeColor=#FFCC80;opacity=40;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="40" y="860" width="1574" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="phase5-label" value="&lt;b&gt;Phase 5: Completion&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=top;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontSize=13;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="50" y="865" width="155" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Connector from phase 4 to phase 5 -->
+        <mxCell id="p4-p5-connector" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;dashed=1;" edge="1" parent="1" source="p4-qv" target="p5-all-complete">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1500" y="710" />
+              <mxPoint x="1500" y="840" />
+              <mxPoint x="130" y="840" />
+              <mxPoint x="130" y="935" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- All steps complete -->
+        <mxCell id="p5-all-complete" value="&lt;b&gt;All steps complete&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;Agent exits cleanly&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82b366;fontFamily=Inter;fontSize=10;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="160" y="910" width="130" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Daemon detects -->
+        <mxCell id="p5-daemon-detect" value="&lt;b&gt;Daemon detects&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;via DB poll&lt;br&gt;all steps passed&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#F18F01;fontFamily=Inter;fontSize=10;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="345" y="905" width="130" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-edge-complete-detect" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F18F01;fontFamily=Inter;" edge="1" parent="1" source="p5-all-complete" target="p5-daemon-detect">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Squash merge -->
+        <mxCell id="p5-squash-merge" value="&lt;b&gt;Squash-merge&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;to main branch&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#F18F01;fontFamily=Inter;fontSize=10;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="530" y="910" width="120" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-edge-detect-merge" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F18F01;fontFamily=Inter;" edge="1" parent="1" source="p5-daemon-detect" target="p5-squash-merge">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- DB status=merged -->
+        <mxCell id="p5-db-merged" value="&lt;b&gt;DB: batch_item&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;status = merged&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=8;fillColor=#DAE8FC;strokeColor=#2E86AB;fontFamily=Inter;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="700" y="900" width="115" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-edge-merge-db" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E86AB;fontFamily=Inter;" edge="1" parent="1" source="p5-squash-merge" target="p5-db-merged">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Archive to done/ -->
+        <mxCell id="p5-archive" value="&lt;b&gt;Archive to done/&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;worktree cleaned up&lt;/font&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.15;fillColor=#F5F5F5;strokeColor=#F18F01;fontFamily=Inter;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="870" y="900" width="130" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-edge-db-archive" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F18F01;fontFamily=Inter;" edge="1" parent="1" source="p5-db-merged" target="p5-archive">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Final success indicator -->
+        <mxCell id="p5-done" value="&lt;b style=&quot;color:#1B2A4A&quot;&gt;DONE&lt;/b&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#C8E6C9;strokeColor=#82b366;fontFamily=Inter;fontSize=13;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="910" width="50" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="p5-edge-archive-done" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1" source="p5-archive" target="p5-done">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LEGEND                                                       -->
+        <!-- ============================================================ -->
+        <mxCell id="legend-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#D0D0D0;fontFamily=Inter;arcSize=5;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="880" width="350" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="&lt;b&gt;Legend&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontSize=11;fontColor=#1B2A4A;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="885" width="55" height="22" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-blue-line" value="" style="endArrow=classic;html=1;strokeColor=#2E86AB;fontFamily=Inter;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1265" y="920" as="sourcePoint" />
+            <mxPoint x="1310" y="920" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-blue-text" value="&lt;font style=&quot;font-size:10px&quot;&gt;DB operations&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontColor=#2E86AB;" vertex="1" parent="1">
+          <mxGeometry x="1315" y="910" width="90" height="22" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-orange-line" value="" style="endArrow=classic;html=1;strokeColor=#F18F01;fontFamily=Inter;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1265" y="945" as="sourcePoint" />
+            <mxPoint x="1310" y="945" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-orange-text" value="&lt;font style=&quot;font-size:10px&quot;&gt;Daemon / executor&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontColor=#F18F01;" vertex="1" parent="1">
+          <mxGeometry x="1315" y="935" width="115" height="22" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-green-line" value="" style="endArrow=classic;html=1;strokeColor=#82b366;fontFamily=Inter;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1265" y="970" as="sourcePoint" />
+            <mxPoint x="1310" y="970" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-green-text" value="&lt;font style=&quot;font-size:10px&quot;&gt;Agent operations&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1315" y="960" width="105" height="22" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-gray-line" value="" style="endArrow=classic;html=1;strokeColor=#6B7280;fontFamily=Inter;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1265" y="995" as="sourcePoint" />
+            <mxPoint x="1310" y="995" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-gray-text" value="&lt;font style=&quot;font-size:10px&quot;&gt;Human actions&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontFamily=Inter;fontColor=#6B7280;" vertex="1" parent="1">
+          <mxGeometry x="1315" y="985" width="90" height="22" as="geometry" />
+        </mxCell>
+
+        <!-- Shape legend -->
+        <mxCell id="legend-cylinder" value="&lt;font style=&quot;font-size:9px&quot;&gt;Database&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=5;fillColor=#DAE8FC;strokeColor=#2E86AB;fontFamily=Inter;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1440" y="908" width="50" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-doc" value="&lt;font style=&quot;font-size:9px&quot;&gt;File&lt;/font&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=0.2;fillColor=#F5F5F5;strokeColor=#6B7280;fontFamily=Inter;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1505" y="908" width="50" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-diamond" value="&lt;font style=&quot;font-size:8px&quot;&gt;Decision&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF9C4;strokeColor=#6B7280;fontFamily=Inter;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1440" y="950" width="60" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-rounded" value="&lt;font style=&quot;font-size:9px&quot;&gt;Action&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6B7280;fontFamily=Inter;fontSize=9;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="1515" y="955" width="55" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

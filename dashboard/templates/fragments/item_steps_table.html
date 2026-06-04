@@ -1,0 +1,322 @@
+{% from "components/status_badge.html" import status_badge %}
+{% from "components/action_button.html" import restart_button, skip_button, kill_button, restart_merge_button, abandon_merge_button, restart_setup_button, approve_merge_button with context %}
+
+<div id="item-steps-table" class="bg-card border border-border rounded-lg overflow-x-auto">
+  <table class="w-full text-sm min-w-[600px]">
+    <thead>
+      <tr class="border-b border-border bg-muted/30">
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Step</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Agent</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">CLI</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Model</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Prompt</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Logs</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Context</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Started</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground">Duration</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Runs</th>
+        <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden md:table-cell">Error</th>
+        <th class="px-4 py-2 text-right font-medium text-muted-foreground">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for step in steps %}
+        {% set run_count = step_run_counts[step.step_id] if step_run_counts is defined and step.step_id in step_run_counts else step.run_count %}
+        <tr class="border-b border-border last:border-0 hover:bg-muted/20">
+          <td class="px-4 py-2 font-mono text-xs font-semibold">
+            {{ step.step_id }}
+            <!-- C.1: run-count badge when step ran more than once -->
+            {% if not step.is_synthetic and run_count > 1 %}
+              <button
+                class="step-run-badge ml-1 inline-flex items-center px-1 py-0.5 rounded
+                       text-xs font-normal bg-muted text-muted-foreground border border-border
+                       cursor-pointer hover:bg-muted/80 transition-colors"
+                aria-label="{{ run_count }} runs for step {{ step.step_id }} — click to expand"
+                hx-get="/project/{{ item.project_id }}/item/{{ item.id }}/step-runs/{{ step.step_id }}"
+                hx-target="#step-runs-{{ step.step_id }}"
+                hx-swap="innerHTML"
+                hx-trigger="click"
+                onclick="this.setAttribute('aria-expanded', this.getAttribute('aria-expanded') === 'true' ? 'false' : 'true')"
+                aria-expanded="false"
+                aria-controls="step-runs-{{ step.step_id }}">
+                ×{{ run_count }}
+              </button>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2">
+            <div class="text-xs text-foreground">{{ step.agent_label }}</div>
+            {% set subtitle = step.step_label or step.description %}
+            {% if subtitle %}
+              <div class="text-xs text-muted-foreground truncate max-w-xs" title="{{ subtitle }}">{{ subtitle }}</div>
+            {% endif %}
+            <!-- C.1: lazy-loaded run list container -->
+            {% if not step.is_synthetic and run_count > 1 %}
+              <div id="step-runs-{{ step.step_id }}" class="step-runs-container"></div>
+            {% endif %}
+          </td>
+          {# F-00081: CLI column — <select> for editable steps (pending|failed), badge for others #}
+          <td class="px-4 py-2">
+            {% if step.is_synthetic %}
+              <span class="text-xs text-muted-foreground">—</span>
+            {% elif step.status in ('pending', 'failed') %}
+              {# Do NOT disable this <select> in an onchange handler — htmx omits disabled
+                 form controls from the request body (shouldInclude), which drops option_id
+                 and clears the override instead of setting it. Use hx-disabled-elt so htmx
+                 disables it only after serialising the value. A <select> already triggers
+                 htmx on `change` by default — no explicit htmx.trigger needed. #}
+              <select
+                class="text-xs border border-border rounded bg-background text-foreground px-1 py-0.5 cursor-pointer w-48"
+                hx-patch="/project/{{ item.project_id }}/api/item/{{ item.id }}/step/{{ step.step_id }}/runtime-override"
+                hx-target="#item-steps-table"
+                hx-swap="outerHTML"
+                hx-disabled-elt="this"
+                name="option_id">
+                <option value="">{% if inherited_runtime_label %}{{ inherited_runtime_label }} (inherited){% else %}— inherit —{% endif %}</option>
+                {% for opt in runtime_options %}
+                  <option value="{{ opt.id }}" {% if step.runtime_option_id == opt.id %}selected{% endif %}>{{ opt.display_name }}</option>
+                {% endfor %}
+              </select>
+            {% else %}
+              {# Resolve the read-only label from ALL runtime options (enabled or
+                 not) so a completed step still shows the runtime it ran on once
+                 the option is disabled — e.g. a retired model like Opus 4.7. #}
+              {% set ro_opt = (runtime_option_labels | default({})).get(step.runtime_option_id) %}
+              {% if ro_opt %}
+                <span class="text-xs font-medium text-foreground">{{ ro_opt.cli_label }}</span>
+              {% else %}
+                <span class="text-xs text-muted-foreground">(default)</span>
+              {% endif %}
+            {% endif %}
+          </td>
+          {# F-00081: Model column — read-only badge #}
+          <td class="px-4 py-2">
+            {% if step.is_synthetic %}
+              <span class="text-xs text-muted-foreground">—</span>
+            {% else %}
+              {% set ro_opt = (runtime_option_labels | default({})).get(step.runtime_option_id) %}
+              <span class="text-xs text-muted-foreground">{{ ro_opt.model_label if ro_opt else '—' }}</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2">
+            {% if step.is_synthetic or not step.has_prompt %}
+              <span class="text-xs text-muted-foreground">—</span>
+            {% else %}
+              <button
+                type="button"
+                class="prompt-view-trigger text-xs px-2 py-0.5 rounded border border-border bg-background hover:bg-muted/40 transition-colors"
+                aria-label="View prompt for step {{ step.step_id }}"
+                hx-get="/project/{{ item.project_id }}/item/{{ item.id }}/step/{{ step.step_id }}/prompt-modal"
+                hx-target="#prompt-modal-mount"
+                hx-swap="innerHTML">
+                View
+              </button>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2">
+              {% if step.scope_violations %}
+                {# I-00101: scope-blocked badge with accessible path list #}
+                <span
+                  class="badge-scope-blocked inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium bg-amber-200 text-amber-900 border border-amber-400"
+                  title="Out-of-scope paths: {{ step.scope_violations | join(', ') }}"
+                  aria-label="Scope blocked: {{ step.scope_violations | join(', ') }}">
+                  Scope blocked
+                </span>
+              {% else %}
+                {{ status_badge(step.status) }}
+              {% endif %}
+            </td>
+          <td class="px-4 py-2">
+            {% if not step.is_synthetic and step.run_count > 0 %}
+            <button
+              class="session-log-trigger p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
+              aria-label="View logs for step {{ step.step_id }}"
+              hx-get="/project/{{ item.project_id }}/item/{{ item.id }}/step/{{ step.step_id }}/session-log"
+              hx-target="#session-log-modal-body"
+              hx-trigger="click"
+              hx-on::after-request="document.getElementById('session-log-modal').classList.remove('hidden')"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h10M4 14h8M4 18h6"/>
+              </svg>
+            </button>
+            {% else %}
+            <span class="text-muted-foreground/30">—</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2 min-w-[90px]">
+            {% set ctx_peak = step.context_tokens_peak | default(none) %}
+            {% set ctx_window = step.context_window_tokens | default(none) %}
+            {% set ctx_eff_pct = step.context_effective_pct | default(none) %}
+            {% if ctx_peak is not none %}
+              {% if ctx_window %}
+                {# I-00105 S05: use precomputed effective-budget percentage; bar width clamps to 100% but label may read ≥100% #}
+                {% set ctx_pct = ctx_eff_pct | round(0) | int if ctx_eff_pct is not none else ((ctx_peak / ctx_window * 100) | round(0) | int) %}
+                {% if ctx_pct <= 60 %}{% set ctx_color_class = "ctx-bar-green" %}
+                {% elif ctx_pct <= 85 %}{% set ctx_color_class = "ctx-bar-yellow" %}
+                {% else %}{% set ctx_color_class = "ctx-bar-red" %}{% endif %}
+                <div class="text-xs text-muted-foreground whitespace-nowrap">
+                  {{ (ctx_peak / 1000) | round(0) | int }}K / {{ (ctx_window / 1000) | round(0) | int }}K
+                </div>
+                <div class="ctx-bar-track mt-0.5">
+                  <div class="ctx-bar-fill {{ ctx_color_class }}" style="width: {{ [ctx_pct, 100] | min }}%"></div>
+                </div>
+                <div class="text-xs text-muted-foreground">{{ ctx_pct }}%</div>
+              {% else %}
+                <div class="text-xs text-muted-foreground">{{ (ctx_peak / 1000) | round(0) | int }}K</div>
+              {% endif %}
+            {% else %}
+              <span class="text-muted-foreground/30">—</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2 font-mono text-xs text-muted-foreground hidden sm:table-cell">
+            {% if step.started_at %}
+              {{ step.started_at | localdt('%H:%M:%S') }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
+            {% if step.duration_secs is not none %}
+              {% set m = (step.duration_secs // 60)|int %}
+              {% set s = (step.duration_secs % 60)|int %}
+              {{ "%dm%02ds"|format(m, s) }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">
+            {{ step.run_count }}
+            {% if step.fix_cycle_count > 0 %}
+              <span class="ml-1 inline-flex items-center px-1 py-0.5 rounded text-xs font-medium bg-warning/20 text-warning-foreground border border-warning/30" title="{{ step.fix_cycle_count }} fix cycle{{ 's' if step.fix_cycle_count != 1 else '' }}">
+                {{ step.fix_cycle_count }}&#x21bb;
+              </span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2 text-xs text-muted-foreground max-w-xs truncate hidden md:table-cell"
+              title="{{ step.error_message or '' }}">
+            {{ step.error_message or '—' }}
+          </td>
+          <td class="px-4 py-2 text-right">
+            {% if step.step_id == 'MERGE' and step.status == 'awaiting_approval' %}
+              <div class="flex items-center justify-end gap-1">
+                {{ approve_merge_button(item.project_id, item.id) }}
+              </div>
+            {% elif step.step_id == 'MERGE' and step.status in ('failed', 'merge_failed') %}
+              <div class="flex items-center justify-end gap-1">
+                {{ restart_merge_button(item.project_id, item.id) }}
+                {% if step.status == 'merge_failed' %}
+                  {{ abandon_merge_button(item.project_id, item.id) }}
+                {% endif %}
+              </div>
+            {% elif step.is_synthetic and step.step_id == 'S00' and step.restartable %}
+              <div class="flex items-center justify-end gap-1">
+                {{ restart_setup_button(item.project_id, item.id) }}
+              </div>
+            {% elif not step.is_synthetic %}
+              {% if step.status in ('failed', 'needs_fix') %}
+                {% if step.scope_violations %}
+                  {# I-00101: scope-blocked — show Amend + Revert + Skip #}
+                  <div class="flex items-center justify-end gap-1">
+                    <button
+                      type="button"
+                      class="px-2 py-1 bg-warning text-warning-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+                      hx-get="/project/{{ item.project_id }}/api/item/{{ item.id }}/scope/amend-modal/{{ step.step_id }}"
+                      hx-target="#modal-root"
+                      hx-swap="beforeend"
+                      title="Amend scope and restart"
+                      {{ write_button_attrs(request) }}>
+                      ✎ Amend scope
+                    </button>
+                    <button
+                      type="button"
+                      class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs font-medium hover:opacity-90 transition-opacity"
+                      hx-post="/project/{{ item.project_id }}/api/item/{{ item.id }}/scope/revert-and-restart/{{ step.step_id }}"
+                      hx-confirm="Revert the agent's out-of-scope edits for {{ step.scope_violations | join(', ') }} and restart the step?"
+                      hx-swap="none"
+                      title="Revert and restart"
+                      {{ write_button_attrs(request) }}>
+                      ↩ Revert
+                    </button>
+                    {{ skip_button(item.project_id, item.id, step.step_id) }}
+                  </div>
+                {% else %}
+                  <div class="flex items-center justify-end gap-1">
+                    {{ restart_button(item.project_id, item.id, step.step_id) }}
+                    {{ skip_button(item.project_id, item.id, step.step_id) }}
+                  </div>
+                {% endif %}
+              {% elif step.status == 'in_progress' %}
+                <div class="flex items-center justify-end gap-1">
+                  {{ kill_button(item.project_id, item.id, step.step_id) }}
+                </div>
+              {% endif %}
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      {% if not steps %}
+        <tr>
+          <td colspan="12" class="px-4 py-8 text-center text-muted-foreground text-sm">
+            No steps found.
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+  {# F-00081: Apply to all remaining editable steps (pending|failed) #}
+  <div class="flex items-center gap-2 px-4 py-2 border-t border-border bg-muted/10">
+    <span class="text-xs text-muted-foreground">Apply to remaining steps:</span>
+    <select
+      id="bulk-runtime-option"
+      class="text-xs border border-border rounded bg-background text-foreground px-1 py-0.5 w-36">
+      <option value="">{% if inherited_runtime_label %}{{ inherited_runtime_label }} (inherited){% else %}— inherit —{% endif %}</option>
+      {% for opt in runtime_options %}
+        <option value="{{ opt.id }}">{{ opt.display_name }}</option>
+      {% endfor %}
+    </select>
+    <button
+      class="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-0.5 rounded border border-border transition-colors"
+      hx-patch="/project/{{ item.project_id }}/api/item/{{ item.id }}/runtime-override/bulk"
+      hx-vals="javascript:{option_id: document.getElementById('bulk-runtime-option').value}"
+      hx-target="#item-steps-table"
+      hx-swap="outerHTML">
+      Apply
+    </button>
+  </div>
+  <div id="prompt-modal-mount"></div>
+
+  <!-- CR-00065: Session log modal -->
+  <div id="session-log-modal"
+       class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="session-log-modal-title">
+    <div class="bg-card border border-border rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col mx-4">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+        <h2 id="session-log-modal-title" class="text-sm font-semibold">Agent Session Log</h2>
+        <button
+          class="p-1 rounded hover:bg-muted/60 transition-colors text-muted-foreground"
+          aria-label="Close log viewer"
+          onclick="document.getElementById('session-log-modal').classList.add('hidden')"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div id="session-log-modal-body"
+           class="overflow-y-auto flex-1 p-4 text-xs font-mono">
+        <span class="text-muted-foreground">Select a step to view its log.</span>
+      </div>
+    </div>
+  </div>
+  <script>
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') document.getElementById('session-log-modal').classList.add('hidden');
+  });
+  document.getElementById('session-log-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.classList.add('hidden');
+  });
+  </script>
+</div>

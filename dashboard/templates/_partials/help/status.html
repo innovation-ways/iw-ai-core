@@ -1,0 +1,27 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">System Status</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>System status is a live health readout of the IW AI Core platform: daemon uptime, DB connectivity, worktree pool, and instance identity.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Verify the daemon is polling and healthy</li>
+    <li>Check DB schema is up-to-date with head</li>
+    <li>Confirm instance identity matches expected (CR-00014)</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Daemon</dt><dd>The background process that polls PostgreSQL every 60 s and drives all agent execution.</dd>
+    <dt>Worktree</dt><dd>A git worktree created by the daemon for each agent run — isolated and disposable.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="{{ docs_link }}">Open full docs →</a>
+  </footer>
+</section>

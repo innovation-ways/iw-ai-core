@@ -1,0 +1,160 @@
+# Security scan — pip-audit, bandit, trivy (IaC + image)
+#
+# Failure policy: HIGH + CRITICAL findings block the workflow.
+# MEDIUM/LOW findings appear in GitHub Code Scanning but do not fail.
+# Action versions are pinned to commit SHAs to prevent supply-chain risk.
+
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"   # weekly, Monday 06:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  deps-audit:
+    name: Python deps + bandit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@cda7432b7ae1feb69168d44b610cb8e3cdbd09b0 # v1
+
+      - name: Install deps
+        run: uv sync --frozen
+
+      - name: pip-audit
+        # pip-audit has no native SARIF format (only json/columns/cyclonedx/markdown),
+        # so this job relies on pip-audit's non-zero exit on vulnerabilities to gate.
+        # --strict is intentionally NOT set: it would treat the local iw-ai-core
+        # "not on PyPI" skip as a failure.
+        run: |
+          set -euo pipefail
+          uv run pip-audit -l
+
+      - name: Bandit
+        # Bandit 1.x has no native SARIF format (only csv/html/json/screen/txt/xml/yaml).
+        # We rely on bandit's non-zero exit on -ll (medium+high) findings to gate.
+        run: |
+          set -euo pipefail
+          uv run bandit -r orch dashboard executor -c pyproject.toml -ll
+
+  secrets-scan:
+    name: Secrets scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+
+      # SARIF uploads target GitHub Code Scanning, which on private repos requires
+      # GitHub Advanced Security. Skip the upload while private; it resumes
+      # automatically once the repo is published. Mirrors codeql.yml /
+      # compliance-scan.yml.
+      - name: Upload SARIF
+        if: always() && !github.event.repository.private && hashFiles('gitleaks.sarif') != ''
+        uses: github/codeql-action/upload-sarif@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+  iac-scan:
+    name: Trivy IaC scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Run Trivy config scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: config
+          severity: HIGH,CRITICAL
+          # Without this the action emits SARIF for ALL severities (UNKNOWN→CRITICAL)
+          # and `exit-code: '1'` then fails on LOW/MEDIUM findings, contradicting
+          # the `severity: HIGH,CRITICAL` gate. Honour the documented policy:
+          # MEDIUM/LOW go to Code Scanning but do not fail the workflow.
+          limit-severities-for-sarif: 'true'
+          exit-code: '1'
+          format: sarif
+          output: trivy-iac.sarif
+
+      # SARIF uploads target GitHub Code Scanning, which on private repos requires
+      # GitHub Advanced Security. Skip the upload while private; it resumes
+      # automatically once the repo is published. Mirrors codeql.yml /
+      # compliance-scan.yml.
+      - name: Upload SARIF
+        if: always() && !github.event.repository.private && hashFiles('trivy-iac.sarif') != ''
+        uses: github/codeql-action/upload-sarif@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        with:
+          sarif_file: trivy-iac.sarif
+          category: trivy-iac
+
+  semgrep:
+    name: Semgrep SAST (burn-in)
+    runs-on: ubuntu-latest
+    continue-on-error: true  # burn-in: findings are informational during noise-floor triage; flip to blocking in P1-CR-D-followup-semgrep-block
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@cda7432b7ae1feb69168d44b610cb8e3cdbd09b0 # v1
+
+      - name: Install deps
+        run: uv sync --frozen
+
+      - name: Install semgrep
+        run: pip install semgrep
+
+      - name: Run Semgrep
+        run: |
+          set -euo pipefail
+          semgrep --config p/python --config p/owasp-top-ten --config p/security-audit orch dashboard executor --sarif --output semgrep.sarif
+
+      # SARIF uploads target GitHub Code Scanning, which on private repos requires
+      # GitHub Advanced Security. Skip the upload while private; it resumes
+      # automatically once the repo is published. Mirrors codeql.yml /
+      # compliance-scan.yml.
+      - name: Upload SARIF
+        if: always() && !github.event.repository.private && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # TODO(image-scan): Add image scan job once versioned images are built in CI.
+  # Requires:
+  #   1. A docker/build-push-action step to build + save the image as tar
+  #   2. A trivy image scan step reading from that tar
+  # Example:
+  #   - name: Build dashboard image
+  #     run: docker build -t iw-ai-core-dashboard:local .
+  #   - name: Trivy image scan
+  #     uses: aquasecurity/trivy-action@<PIN>
+  #     with:
+  #       image: iw-ai-core-dashboard:local
+  #       severity: HIGH,CRITICAL
+  #       exit-code: '1'
+  #       format: sarif
+  #       output: trivy-image.sarif

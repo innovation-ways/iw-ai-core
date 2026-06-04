@@ -1,0 +1,45 @@
+{% from "components/status_badge.html" import status_badge %}
+{% for batch in batches %}
+  <tr class="border-b border-border last:border-0 hover:bg-muted/20 cursor-pointer"
+      onclick="window.location='/project/{{ current_project.id }}/batch/{{ batch.id }}'"
+      data-sort-id="{{ batch.id }}"
+      data-sort-status="{{ batch.status }}"
+      data-sort-items="{{ batch.completed_items }}"
+      data-sort-progress="{{ batch.progress_pct }}"
+      data-sort-created="{{ batch.created_at.isoformat() }}"
+      data-sort-duration="{{ batch.duration_secs if batch.duration_secs is not none else -1 }}">
+    <td class="px-4 py-2 font-mono text-xs font-semibold text-primary">{{ batch.id }}</td>
+    <td class="px-4 py-2">{{ status_badge(batch.status) }}</td>
+    <td class="px-4 py-2 text-xs text-foreground">
+      {{ batch.completed_items }}/{{ batch.total_items }}
+    </td>
+    <td class="px-4 py-2">
+      <div class="flex items-center gap-2">
+        <div class="w-20 h-1.5 bg-border rounded-full overflow-hidden">
+          <div class="h-full bg-primary rounded-full"
+               style="width: {{ batch.progress_pct }}%"></div>
+        </div>
+        <span class="text-xs text-muted-foreground">{{ batch.progress_pct }}%</span>
+      </div>
+    </td>
+    <td class="px-4 py-2 text-xs text-muted-foreground">
+      {{ batch.created_at | localdt('%b %d %H:%M') }}
+    </td>
+    <td class="px-4 py-2 font-mono text-xs text-muted-foreground">
+      {% if batch.duration_secs is not none %}
+        {% set mins = (batch.duration_secs // 60)|int %}
+        {% set secs = (batch.duration_secs % 60)|int %}
+        {{ "%dm%02ds"|format(mins, secs) }}
+      {% else %}
+        —
+      {% endif %}
+    </td>
+  </tr>
+{% endfor %}
+{% if not batches %}
+  <tr class="empty-row">
+    <td colspan="6" class="px-4 py-8 text-center text-muted-foreground text-sm">
+      No batches found{% if status_filter %} with status: {{ status_filter | join(', ') }}{% endif %}.
+    </td>
+  </tr>
+{% endif %}

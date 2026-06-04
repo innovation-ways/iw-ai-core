@@ -1,0 +1,15 @@
+# CODEOWNERS for IW AI Core Platform
+# Documentation: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Syntax: path/pattern  @owner1 @owner2
+# Order matters — later rules override earlier ones for the same path.
+
+# Global ownership: every file is owned by the maintainers team unless overridden below.
+*                           @innovation-ways/maintainers
+
+# Security-sensitive areas (optional; uncomment and customize as your team grows):
+# /SECURITY.md               @innovation-ways/security
+# /.github/workflows/        @innovation-ways/security @innovation-ways/maintainers
+# /LICENSE                   @innovation-ways/legal
+# /NOTICE                    @innovation-ways/legal
+# /TRADEMARK.md              @innovation-ways/legal

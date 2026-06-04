@@ -1,0 +1,94 @@
+# syntax=docker/dockerfile:1.6
+# Isolated E2E image for browser_verification steps.
+#
+# Runs the dashboard against a per-worktree postgres + Ollama stub,
+# both wired via docker-compose.e2e.yml. The CMD is overridden per service
+# (dashboard runs uvicorn; the Ollama stub runs scripts/e2e_ollama_stub.py).
+
+FROM python:3.12-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_SYSTEM_PYTHON=1
+
+# Install uv to a system-wide location so the non-root runtime user can invoke
+# it. git is also installed because browser_verification agents shell into this
+# container to introspect git state (e.g. `git -C /app status --short`) when
+# verifying working-tree-only fix recipes — see CR-00022 V3/V4/V7.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl ca-certificates git \
+        libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 \
+        chromium \
+        fonts-liberation libnss3 libxss1 libasound2 \
+        libatk-bridge2.0-0 libatk1.0-0 libcups2 \
+        libdrm2 libgbm1 libgtk-3-0 \
+        libx11-xcb1 libxcomposite1 libxdamage1 libxfixes3 \
+        libxkbcommon0 libxrandr2 \
+    && env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 \
+       sh -c 'curl -LsSf https://astral.sh/uv/install.sh | sh' \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ----------------------------------------------------------------------
+# OpenCode stub shim (CR-00054)
+#
+# The production daemon runs against the real `opencode` binary on the
+# host's PATH. The per-worktree e2e stack does NOT install the real
+# binary because it would balloon the image with ~100 MB plus an
+# LLM-provider config that the stack does not own. Instead we install
+# a shim at /usr/local/bin/opencode that execs a Python stub
+# (scripts/e2e_opencode_stub.py) implementing opencode v1.15.0's
+# HTTP+SSE wire protocol.
+#
+# When v1.15.0's protocol bumps, update both:
+#   - scripts/e2e_opencode_stub.py (event shapes / endpoint payloads)
+#   - this Dockerfile (shim path / wrapper invocation, if changed)
+# ----------------------------------------------------------------------
+RUN printf '%s\n' '#!/bin/sh' 'exec uv run python /app/scripts/e2e_opencode_stub.py "$@"' > /usr/local/bin/opencode \
+    && chmod 755 /usr/local/bin/opencode
+
+ENV IW_PLAYWRIGHT_CHROME_PATH=/usr/bin/chromium
+
+# Run as a non-root user (Trivy AVD-DS-0002). /app is the user's home so
+# `git config --global` (writes ~/.gitconfig) and uv-sync (writes /app/.venv)
+# both stay inside writable storage.
+RUN groupadd --system app && useradd --system --gid app --home-dir /app --shell /bin/bash app
+WORKDIR /app
+RUN chown app:app /app
+USER app
+
+# Install dependencies first so they are cached when source changes.
+COPY --chown=app:app pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+# Bring in the source tree.
+# NOTE: this COPY must include project-root .opencode/config.json so the
+# runtime permission policy is available inside the E2E container.
+COPY --chown=app:app . .
+
+# Reinstall to register the project entry points against the source.
+RUN uv sync --frozen --no-dev
+
+# Build-time sanity: shim resolves, script imports cleanly.
+# (We rely on a tiny --selftest entrypoint in scripts/e2e_opencode_stub.py
+# that imports the FastAPI app and exits 0 without binding a port. If S01
+# did not add --selftest, fall back to `--help` and drop the `|| true` only
+# once that succeeds end-to-end locally.)
+RUN /usr/local/bin/opencode --selftest
+
+# Initialise /app as a git repo at image build time so browser_verification
+# agents can `git -C /app status --short` to confirm that fix recipes wrote
+# to the working tree. The host .git/ is excluded by .dockerignore so /app
+# is otherwise not a git work-tree.
+RUN git config --global user.email e2e@example.com \
+    && git config --global user.name "iw-ai-core e2e" \
+    && git init -q -b main \
+    && git add -A \
+    && git commit -q -m "e2e baseline"
+
+EXPOSE 9900 11434
+
+# Default: dashboard. docker-compose.e2e.yml overrides for the Ollama stub.
+CMD ["/app/scripts/e2e_dashboard_entrypoint.sh"]

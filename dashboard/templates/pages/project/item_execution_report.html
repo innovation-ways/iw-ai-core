@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block title %}Execution Report — {{ execution_report.work_item_id }}{% endblock %}
+
+{% block content %}
+<h1 class="text-lg font-semibold text-foreground mb-4">
+  {{ execution_report.work_item_id }} — {{ execution_report.work_item_title }}
+</h1>
+{% include "fragments/item_execution_report.html" %}
+{% endblock %}

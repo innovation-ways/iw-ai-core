@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Test Coverage — IW AI Core{% endblock %}
+{% block page_help_slug %}coverage{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  {% if not view.available %}
+    <div role="status"
+         class="rounded-lg border border-dashed border-border p-8 text-center bg-card">
+      <p class="text-lg font-medium text-foreground">No coverage data yet</p>
+      <p class="text-sm text-muted-foreground mt-2">
+        Run <code class="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">make test-unit</code>
+        or <code class="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">make test-parallel</code>
+        to generate coverage data.
+      </p>
+      {% if view.error %}
+        <p class="text-xs text-destructive mt-4">Parse error: {{ view.error }}</p>
+      {% endif %}
+      {% if view.mtime_iso %}
+        <p class="text-xs text-muted-foreground mt-2">
+          Last seen: {{ view.mtime_iso }}
+        </p>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="rounded-lg border border-border bg-card p-4">
+        <p class="text-xs text-muted-foreground uppercase tracking-wide">Overall Lines</p>
+        <p class="text-3xl font-bold text-foreground mt-1">{{ "%.1f"|format(view.overall_line_pct) }}%</p>
+      </div>
+      <div class="rounded-lg border border-border bg-card p-4">
+        <p class="text-xs text-muted-foreground uppercase tracking-wide">Overall Branches</p>
+        <p class="text-3xl font-bold text-foreground mt-1">
+          {% if view.overall_branch_pct is not none %}{{ "%.1f"|format(view.overall_branch_pct) }}%{% else %}—{% endif %}
+        </p>
+      </div>
+      <div class="rounded-lg border border-border bg-card p-4">
+        <p class="text-xs text-muted-foreground uppercase tracking-wide">Threshold</p>
+        <p class="text-3xl font-bold text-foreground mt-1">{{ view.threshold }}%</p>
+        <p class="text-xs mt-1
+           {% if view.gap_pct is not none and view.gap_pct < 0 %}text-destructive
+           {% else %}text-muted-foreground{% endif %}">
+          {% if view.gap_pct is none %}n/a{% elif view.gap_pct >= 0 %}+{{ "%.1f"|format(view.gap_pct) }} pp above{% else %}{{ "%.1f"|format(view.gap_pct) }} pp below{% endif %}
+        </p>
+      </div>
+      <div class="rounded-lg border border-border bg-card p-4">
+        <p class="text-xs text-muted-foreground uppercase tracking-wide">Last Run</p>
+        <p class="text-sm font-medium text-foreground mt-1">{{ view.mtime_iso or "—" }}</p>
+        {% if view.test_count is not none %}
+          <p class="text-xs text-muted-foreground mt-1">{{ view.test_count }} statements</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="rounded-lg border border-border bg-card overflow-x-auto">
+      <table class="w-full text-sm min-w-[600px]">
+        <thead>
+          <tr class="border-b border-border bg-muted/40 text-left">
+            <th class="px-4 py-2 font-medium text-muted-foreground">Package</th>
+            <th class="px-4 py-2 font-medium text-muted-foreground">Lines</th>
+            <th class="px-4 py-2 font-medium text-muted-foreground">Branches</th>
+            <th class="px-4 py-2 font-medium text-muted-foreground">Missing</th>
+            <th class="px-4 py-2 font-medium text-muted-foreground">Status</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pkg in view.packages %}
+            <tr class="border-t border-border hover:bg-muted/30 cursor-pointer"
+                role="button"
+                tabindex="0"
+                data-pkg-toggle="{{ pkg.name }}"
+                data-expanded="false"
+                hx-get="/system/coverage/files/{{ pkg.name }}"
+                hx-target="#files-{{ pkg.name }}"
+                hx-trigger="click[this.dataset.expanded!='true'], keydown[key=='Enter'][this.dataset.expanded!='true']"
+                hx-swap="innerHTML">
+              <td class="px-4 py-3 font-medium text-foreground">{{ pkg.name }}</td>
+              <td class="px-4 py-3 text-foreground">{{ "%.1f"|format(pkg.line_pct) }}%</td>
+              <td class="px-4 py-3 text-foreground">
+                {% if pkg.branch_pct is not none %}{{ "%.1f"|format(pkg.branch_pct) }}%{% else %}—{% endif %}
+              </td>
+              <td class="px-4 py-3 text-foreground">{{ pkg.missing_lines }}</td>
+              <td class="px-4 py-3">
+                {% set badge_class = {'green': 'bg-green-100 text-green-800', 'amber': 'bg-amber-100 text-amber-800', 'red': 'bg-red-100 text-red-800'}[pkg.badge] %}
+                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium {{ badge_class }}">
+                  {{ pkg.badge|upper }}
+                </span>
+              </td>
+              <td id="expand-label-{{ pkg.name }}" class="px-4 py-3 text-xs text-muted-foreground">click to expand</td>
+            </tr>
+            <tr class="border-t border-border bg-muted/10">
+              <td colspan="6" class="px-4 py-2">
+                <div id="files-{{ pkg.name }}"></div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+<script>
+  (function () {
+    document.querySelectorAll('[data-pkg-toggle]').forEach(function (row) {
+      var pkgName = row.dataset.pkgToggle;
+      row.addEventListener('click', function () {
+        if (row.dataset.expanded === 'true') {
+          var filesDiv = document.getElementById('files-' + pkgName);
+          var label = document.getElementById('expand-label-' + pkgName);
+          if (filesDiv) filesDiv.innerHTML = '';
+          row.dataset.expanded = 'false';
+          if (label) label.textContent = 'click to expand';
+        }
+      });
+    });
+
+    document.body.addEventListener('htmx:afterSwap', function (evt) {
+      var target = evt.detail.target;
+      if (!target || !target.id || !target.id.startsWith('files-')) return;
+      var pkgName = target.id.slice('files-'.length);
+      var row = document.querySelector('[data-pkg-toggle="' + pkgName + '"]');
+      var label = document.getElementById('expand-label-' + pkgName);
+      if (row && label && target.children.length > 0) {
+        row.dataset.expanded = 'true';
+        label.textContent = 'click to collapse';
+      }
+    });
+  }());
+</script>
+{% endblock %}

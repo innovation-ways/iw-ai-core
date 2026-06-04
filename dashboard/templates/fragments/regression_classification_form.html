@@ -1,0 +1,226 @@
+{# F-00090: Incident regression classification form (AC5).
+
+    Mounted in the Incident detail page (item_detail.html or item_overview.html).
+
+    htmx-driven — posts to /project/{pid}/item/{item_id}/regression-classify
+    and swaps the response in-place into the form container.
+    The response is the re-rendered form (with error) or the updated row fragment.
+
+    Context variables required:
+      - project_id: str
+      - item_id: str
+      - item: WorkItem (for existing classification values)
+      - top_suggestion: Candidate|None (from suggest_introducer; None → no accept button)
+      - error_message: str|None (set when form was submitted with validation error)
+#}
+
+{# Container — htmx targets this by ID so the entire form re-renders after submit #}
+<div id="regression-classification-form"
+     hx-controller="regression_classification"
+>
+
+  {# Inline error message (set on 422 from ValueError at write time) #}
+  {% if error_message %}
+    <div class="mb-3 p-3 bg-destructive/10 border border-destructive/30 rounded text-sm text-destructive flex items-start gap-2" role="alert">
+      <svg class="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <span>{{ error_message }}</span>
+    </div>
+  {% endif %}
+
+  {# Section heading #}
+  <div class="flex items-center gap-2 mb-3">
+    <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+    </svg>
+    <h3 class="text-sm font-semibold text-foreground">Regression classification</h3>
+    {% if item.regression_classification %}
+      <span class="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+        {{ item.regression_classification.value }}
+      </span>
+    {% endif %}
+  </div>
+
+  <form
+    hx-post="/project/{{ project_id }}/item/{{ item_id }}/regression-classify"
+    hx-target="#regression-classification-form"
+    hx-swap="outerHTML"
+    class="space-y-3"
+  >
+    {# --------------------------------------------------- #}
+    {# Row 1: Searchable dropdown of merged work items      #}
+    {# --------------------------------------------------- #}
+    <div>
+      <label for="introduced-by-input"
+             class="block text-xs font-medium text-muted-foreground mb-1">
+        Introduced by (prior merged work item)
+      </label>
+      {# Use a combobox-style search: a text input whose list attribute points
+         to a <datalist> that htmx-populates from /project/{pid}/work-items/search.
+         The datalist is populated lazily on keystroke via the search input's
+         oninput handler. #}
+      <div class="relative">
+        <input
+          type="text"
+          id="introduced-by-input"
+          name="introduced_by_work_item_id"
+          value="{{ item.introduced_by_work_item_id or '' }}"
+          placeholder="Search by ID or title…"
+          autocomplete="off"
+          list="merged-work-items-list-{{ item_id }}"
+          hx-get="/project/{{ project_id }}/work-items/search"
+          hx-params="q"
+          hx-trigger="change, keyup delay:200ms"
+          hx-target="#merged-work-items-list-{{ item_id }}"
+          hx-swap="innerHTML"
+          class="w-full px-3 py-2 pr-8 border border-border rounded text-sm bg-background text-foreground
+                 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary
+                 placeholder:text-muted-foreground"
+        />
+        {# Search icon #}
+        <svg class="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none"
+             fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        {# <datalist> for browser native autocomplete — populated by htmx #}
+        <datalist id="merged-work-items-list-{{ item_id }}">
+          {# Options are injected by htmx GET to /project/{pid}/work-items/search;
+             placeholder options for already-classified items: #}
+          {% if item.introduced_by_work_item_id %}
+            <option value="{{ item.introduced_by_work_item_id }}">
+          {% endif %}
+        </datalist>
+      </div>
+      {# Hidden fallback: a <select> that pre-loads a limited set of candidates
+         for projects with few items. Shown only when datalist search fails or
+         is not supported (progressive enhancement). #}
+      <p class="mt-1 text-xs text-muted-foreground">
+        Start typing to search prior merged work items.
+        Or
+        <button type="button"
+                class="text-primary hover:underline"
+                hx-get="/project/{{ project_id }}/work-items/search?q="
+                hx-target="#merged-work-items-list-{{ item_id }}"
+                hx-swap="innerHTML">
+          show all recent
+        </button>.
+      </p>
+    </div>
+
+    {# --------------------------------------------------- #}
+    {# Row 2: Commit SHA (optional)                         #}
+    {# --------------------------------------------------- #}
+    <div>
+      <label for="commit-sha-input"
+             class="block text-xs font-medium text-muted-foreground mb-1">
+        Commit SHA
+        <span class="text-muted text-xs">(optional, 7–40 hex digits)</span>
+      </label>
+      <input
+        type="text"
+        id="commit-sha-input"
+        name="commit_sha"
+        value="{{ item.introduced_by_commit_sha or '' }}"
+        placeholder="e.g. a1b2c3d or a1b2c3d4e5f6…"
+        pattern="[0-9a-fA-F]{7,40}"
+        maxlength="40"
+        autocomplete="off"
+        class="w-full px-3 py-2 border border-border rounded text-sm bg-background text-foreground font-mono
+               focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary
+               placeholder:text-muted-foreground placeholder:font-sans"
+      />
+      <p class="mt-1 text-xs text-muted-foreground">
+        Paste the exact commit SHA if known. Leave blank if relying on the work item ID only.
+      </p>
+    </div>
+
+    {# --------------------------------------------------- #}
+    {# Row 3: Classification radio group                    #}
+    {# --------------------------------------------------- #}
+    <fieldset>
+      <legend class="block text-xs font-medium text-muted-foreground mb-2">
+        Classification
+        <span class="text-destructive text-xs ml-1">*</span>
+      </legend>
+      <div class="flex flex-wrap gap-4">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="classification"
+            value="regression"
+            required
+            class="accent-primary"
+          />
+          <span class="text-sm text-foreground">Regression</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="classification"
+            value="pre_existing"
+            class="accent-primary"
+          />
+          <span class="text-sm text-foreground">Pre-existing</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name="classification"
+            value="unknown"
+            class="accent-primary"
+          />
+          <span class="text-sm text-foreground">Unknown</span>
+        </label>
+      </div>
+    </fieldset>
+
+    {# --------------------------------------------------- #}
+    {# Row 4: Actions (submit + accept suggestion)          #}
+    {# --------------------------------------------------- #}
+    <div class="flex items-center gap-3 flex-wrap pt-1">
+      <button
+        type="submit"
+        class="px-4 py-2 bg-primary text-primary-foreground rounded text-sm font-medium
+               hover:opacity-90 transition-opacity">
+        Classify
+      </button>
+
+      {# "Accept suggestion" button — shown only when top_suggestion is provided #}
+      {% if top_suggestion %}
+        <button
+          type="submit"
+          name="accept_top"
+          value="1"
+          class="px-4 py-2 bg-warning text-warning-foreground rounded text-sm font-medium
+                 hover:opacity-90 transition-opacity flex items-center gap-2">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          Accept suggestion
+          {# Show the suggested work item ID or short SHA #}
+          <span class="font-mono text-xs ml-1">
+            {{ top_suggestion.work_item_id or top_suggestion.commit_sha[:7] }}
+          </span>
+        </button>
+      {% endif %}
+
+      {# Clear / reset button #}
+      {% if item.regression_classification %}
+        <button
+          type="button"
+          hx-post="/project/{{ project_id }}/item/{{ item_id }}/regression-classify"
+          hx-vals='{"clear": "1"}'
+          hx-target="#regression-classification-form"
+          hx-swap="outerHTML"
+          class="px-3 py-2 text-muted-foreground hover:text-foreground text-sm transition-colors">
+          Clear
+        </button>
+      {% endif %}
+    </div>
+  </form>
+</div>

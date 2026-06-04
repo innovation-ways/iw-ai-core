@@ -1,0 +1,359 @@
+<mxfile host="draw.io" modified="2026-04-07T00:00:00.000Z" agent="draw.io" version="24.0.0" type="device">
+  <diagram id="multi-project-topology" name="Multi-Project Topology">
+    <mxGraphModel dx="1654" dy="1169" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============================================================ -->
+        <!-- TITLE                                                        -->
+        <!-- ============================================================ -->
+        <mxCell id="title" value="Multi-Project Topology — Centralized Orchestration" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=16;fontStyle=1;fontColor=#1B2A4A;fontFamily=Inter;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="477" y="20" width="700" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- CENTRAL HUB: iw-ai-core                                     -->
+        <!-- ============================================================ -->
+        <mxCell id="hub-container" value="&lt;b style=&quot;font-size:14px;color:#2E86AB;&quot;&gt;iw-ai-core&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F7FA;strokeColor=#2E86AB;strokeWidth=2;verticalAlign=top;align=center;spacingTop=5;fontFamily=Inter;arcSize=8;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="497" y="280" width="660" height="540" as="geometry" />
+        </mxCell>
+
+        <!-- PostgreSQL Cylinder -->
+        <mxCell id="postgresql" value="&lt;b&gt;PostgreSQL&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;margin:4px 0;&quot;&gt;&lt;span style=&quot;font-size:10px;&quot;&gt;projects&lt;br&gt;id_sequences&lt;br&gt;work_items&lt;br&gt;workflow_steps&lt;br&gt;batches&lt;br&gt;batch_items&lt;br&gt;daemon_events&lt;/span&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#FFE0B2;strokeColor=#d6b656;strokeWidth=1.5;fontFamily=Inter;fontSize=11;verticalAlign=middle;spacingTop=8;" vertex="1" parent="hub-container">
+          <mxGeometry x="30" y="50" width="180" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- Dashboard -->
+        <mxCell id="dashboard" value="&lt;b&gt;Dashboard&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;margin:4px 0;&quot;&gt;&lt;span style=&quot;font-size:10px;&quot;&gt;/project/innoforge/&lt;br&gt;/project/project-b/&lt;br&gt;/project/project-c/&lt;br&gt;/system/&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D4E4F7;strokeColor=#2E86AB;strokeWidth=1.5;fontFamily=Inter;fontSize=11;verticalAlign=middle;" vertex="1" parent="hub-container">
+          <mxGeometry x="240" y="50" width="190" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- Daemon -->
+        <mxCell id="daemon" value="&lt;b&gt;Daemon&lt;/b&gt;&lt;hr size=&quot;1&quot; style=&quot;margin:4px 0;&quot;&gt;&lt;span style=&quot;font-size:10px;&quot;&gt;BatchManager[innoforge]&lt;br&gt;BatchManager[project-b]&lt;br&gt;BatchManager[project-c]&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1BEE7;strokeColor=#9673a6;strokeWidth=1.5;fontFamily=Inter;fontSize=11;verticalAlign=middle;" vertex="1" parent="hub-container">
+          <mxGeometry x="460" y="50" width="180" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- projects.toml -->
+        <mxCell id="projects-toml" value="&lt;b&gt;projects.toml&lt;/b&gt;" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;size=0.15;fillColor=#FFF9C4;strokeColor=#d6b656;strokeWidth=1.5;fontFamily=Inter;fontSize=11;verticalAlign=middle;" vertex="1" parent="hub-container">
+          <mxGeometry x="290" y="220" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- CALLOUT NOTE 1: DB Isolation (near PostgreSQL)               -->
+        <!-- ============================================================ -->
+        <mxCell id="callout-db-isolation" value="&lt;span style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;DB Isolation:&lt;/b&gt; Every query filters by&lt;br&gt;project_id. No cross-project data leaks.&lt;/span&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=14;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=1;fontFamily=Inter;align=left;spacingLeft=8;spacingRight=6;" vertex="1" parent="hub-container">
+          <mxGeometry x="20" y="280" width="220" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- CALLOUT NOTE 2: ID Independence (near projects.toml) -->
+        <mxCell id="callout-id-independence" value="&lt;span style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;ID Independence:&lt;/b&gt; InnoForge I001 !=&lt;br&gt;Project B I001 (composite PK)&lt;/span&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=14;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=1;fontFamily=Inter;align=left;spacingLeft=8;spacingRight=6;" vertex="1" parent="hub-container">
+          <mxGeometry x="220" y="310" width="220" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- CALLOUT NOTE 3: Merge Queues (near daemon) -->
+        <mxCell id="callout-merge-queues" value="&lt;span style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;Merge Queues:&lt;/b&gt; Per-project.&lt;br&gt;InnoForge merges don&amp;rsquo;t block Project B.&lt;/span&gt;" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=14;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=1;fontFamily=Inter;align=left;spacingLeft=8;spacingRight=6;" vertex="1" parent="hub-container">
+          <mxGeometry x="420" y="310" width="230" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- SATELLITE: InnoForge (left)                                  -->
+        <!-- ============================================================ -->
+        <mxCell id="innoforge-container" value="&lt;b style=&quot;font-size:13px;color:#82b366;&quot;&gt;InnoForge&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;align=center;spacingTop=5;fontFamily=Inter;arcSize=10;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="30" y="310" width="400" height="380" as="geometry" />
+        </mxCell>
+
+        <mxCell id="innoforge-path" value="&lt;span style=&quot;font-size:9px;color:#666;&quot;&gt;/home/sergiog/dev/iw-doc-plan/main/iw-doc-plan&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;strokeColor=none;fillColor=none;" vertex="1" parent="innoforge-container">
+          <mxGeometry x="10" y="25" width="380" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="innoforge-orch-json" value=".iw-orch.json" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="innoforge-container">
+          <mxGeometry x="20" y="60" width="110" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="innoforge-skills" value=".claude/skills/ &lt;i&gt;(synced)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="innoforge-container">
+          <mxGeometry x="150" y="60" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="innoforge-design" value="ai-dev/design/ &lt;i&gt;(content)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="innoforge-container">
+          <mxGeometry x="20" y="105" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="innoforge-workflow" value="ai-dev/workflow.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="innoforge-container">
+          <mxGeometry x="200" y="105" width="140" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="innoforge-worktrees" value="&lt;b&gt;.worktrees/&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:10px;&quot;&gt;I001/ &amp;nbsp; I002/&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=11;" vertex="1" parent="innoforge-container">
+          <mxGeometry x="20" y="155" width="320" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="innoforge-ports" value="&lt;span style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;Ports:&lt;/b&gt; API :8000 &amp;nbsp;|&amp;nbsp; Frontend :5173 &amp;nbsp;|&amp;nbsp; DB :5432&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="innoforge-container">
+          <mxGeometry x="20" y="220" width="320" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- SATELLITE: Project B (top-right)                             -->
+        <!-- ============================================================ -->
+        <mxCell id="projectb-container" value="&lt;b style=&quot;font-size:13px;color:#82b366;&quot;&gt;Project B&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;align=center;spacingTop=5;fontFamily=Inter;arcSize=10;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="80" width="390" height="320" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectb-path" value="&lt;span style=&quot;font-size:9px;color:#666;&quot;&gt;/home/sergiog/dev/project-b&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;strokeColor=none;fillColor=none;" vertex="1" parent="projectb-container">
+          <mxGeometry x="10" y="25" width="370" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectb-orch-json" value=".iw-orch.json" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="projectb-container">
+          <mxGeometry x="20" y="60" width="110" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectb-skills" value=".claude/skills/ &lt;i&gt;(synced)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="projectb-container">
+          <mxGeometry x="150" y="60" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectb-design" value="ai-dev/design/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="projectb-container">
+          <mxGeometry x="20" y="105" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectb-workflow" value="ai-dev/workflow.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="projectb-container">
+          <mxGeometry x="160" y="105" width="140" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectb-worktrees" value="&lt;b&gt;.worktrees/&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=11;" vertex="1" parent="projectb-container">
+          <mxGeometry x="20" y="155" width="300" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectb-ports" value="&lt;span style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;Ports:&lt;/b&gt; API :8100 &amp;nbsp;|&amp;nbsp; Frontend :5274 &amp;nbsp;|&amp;nbsp; DB :5433&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="projectb-container">
+          <mxGeometry x="20" y="210" width="300" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- SATELLITE: Project C (bottom-right)                          -->
+        <!-- ============================================================ -->
+        <mxCell id="projectc-container" value="&lt;b style=&quot;font-size:13px;color:#82b366;&quot;&gt;Project C&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;verticalAlign=top;align=center;spacingTop=5;fontFamily=Inter;arcSize=10;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="470" width="390" height="320" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectc-path" value="&lt;span style=&quot;font-size:9px;color:#666;&quot;&gt;/home/sergiog/dev/project-c&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;strokeColor=none;fillColor=none;" vertex="1" parent="projectc-container">
+          <mxGeometry x="10" y="25" width="370" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectc-orch-json" value=".iw-orch.json" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="projectc-container">
+          <mxGeometry x="20" y="60" width="110" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectc-skills" value=".claude/skills/ &lt;i&gt;(synced)&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="projectc-container">
+          <mxGeometry x="150" y="60" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectc-design" value="ai-dev/design/" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="projectc-container">
+          <mxGeometry x="20" y="105" width="120" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectc-workflow" value="ai-dev/workflow.md" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="projectc-container">
+          <mxGeometry x="160" y="105" width="140" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectc-worktrees" value="&lt;b&gt;.worktrees/&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontFamily=Inter;fontSize=11;" vertex="1" parent="projectc-container">
+          <mxGeometry x="20" y="155" width="300" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projectc-ports" value="&lt;span style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;Ports:&lt;/b&gt; API :8200 &amp;nbsp;|&amp;nbsp; Frontend :5375 &amp;nbsp;|&amp;nbsp; DB :5434&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#82b366;fontFamily=Inter;fontSize=10;" vertex="1" parent="projectc-container">
+          <mxGeometry x="20" y="210" width="300" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- CONNECTIONS: Project -> PostgreSQL ("project_id filter")      -->
+        <!-- ============================================================ -->
+        <!-- InnoForge -> PostgreSQL -->
+        <mxCell id="conn-innoforge-pg" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;project_id filter&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E86AB;strokeWidth=2;fontFamily=Inter;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" source="innoforge-container" target="postgresql" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Project B -> PostgreSQL -->
+        <mxCell id="conn-projectb-pg" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;project_id filter&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E86AB;strokeWidth=2;fontFamily=Inter;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" source="projectb-container" target="postgresql" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1230" y="420" />
+              <mxPoint x="617" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Project C -> PostgreSQL -->
+        <mxCell id="conn-projectc-pg" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;project_id filter&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2E86AB;strokeWidth=2;fontFamily=Inter;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.8;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" source="projectc-container" target="postgresql" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1200" y="630" />
+              <mxPoint x="1200" y="510" />
+              <mxPoint x="707" y="510" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- CONNECTIONS: Project -> projects.toml ("registered")          -->
+        <!-- ============================================================ -->
+        <!-- InnoForge -> projects.toml -->
+        <mxCell id="conn-innoforge-toml" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;registered&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1.5;dashed=1;fontFamily=Inter;exitX=1;exitY=0.8;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="innoforge-container" target="projects-toml" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="470" y="614" />
+              <mxPoint x="470" y="530" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Project B -> projects.toml -->
+        <mxCell id="conn-projectb-toml" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;registered&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1.5;dashed=1;fontFamily=Inter;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;" edge="1" source="projectb-container" target="projects-toml" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1180" y="304" />
+              <mxPoint x="1180" y="490" />
+              <mxPoint x="927" y="490" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Project C -> projects.toml -->
+        <mxCell id="conn-projectc-toml" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;registered&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#999999;strokeWidth=1.5;dashed=1;fontFamily=Inter;exitX=0;exitY=0.3;exitDx=0;exitDy=0;entryX=1;entryY=1;entryDx=0;entryDy=0;" edge="1" source="projectc-container" target="projects-toml" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1160" y="566" />
+              <mxPoint x="1160" y="550" />
+              <mxPoint x="927" y="550" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- CONNECTIONS: Daemon -> Projects ("poll + execute")            -->
+        <!-- ============================================================ -->
+        <!-- Daemon -> InnoForge -->
+        <mxCell id="conn-daemon-innoforge" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;poll + execute&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#E67E22;strokeWidth=2;fontFamily=Inter;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="daemon" target="innoforge-container" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="957" y="265" />
+              <mxPoint x="460" y="265" />
+              <mxPoint x="460" y="295" />
+              <mxPoint x="230" y="295" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Daemon -> Project B -->
+        <mxCell id="conn-daemon-projectb" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;poll + execute&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#E67E22;strokeWidth=2;fontFamily=Inter;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="daemon" target="projectb-container" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1157" y="349" />
+              <mxPoint x="1425" y="70" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Daemon -> Project C -->
+        <mxCell id="conn-daemon-projectc" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;poll + execute&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#E67E22;strokeWidth=2;fontFamily=Inter;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" source="daemon" target="projectc-container" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1157" y="377" />
+              <mxPoint x="1190" y="377" />
+              <mxPoint x="1190" y="450" />
+              <mxPoint x="1425" y="450" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- CONNECTIONS: iw-ai-core -> skills ("iw sync-skills")          -->
+        <!-- ============================================================ -->
+        <!-- iw-ai-core -> InnoForge skills -->
+        <mxCell id="conn-sync-innoforge" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;iw sync-skills&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9C27B0;strokeWidth=1.5;dashed=1;fontFamily=Inter;exitX=0;exitY=0.3;exitDx=0;exitDy=0;entryX=1;entryY=0.3;entryDx=0;entryDy=0;" edge="1" source="hub-container" target="innoforge-container" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="480" y="442" />
+              <mxPoint x="480" y="424" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- iw-ai-core -> Project B skills -->
+        <mxCell id="conn-sync-projectb" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;iw sync-skills&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9C27B0;strokeWidth=1.5;dashed=1;fontFamily=Inter;exitX=1;exitY=0.15;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="hub-container" target="projectb-container" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1180" y="361" />
+              <mxPoint x="1180" y="240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- iw-ai-core -> Project C skills -->
+        <mxCell id="conn-sync-projectc" value="&lt;span style=&quot;font-size:9px;background:#fff;padding:2px 4px;&quot;&gt;iw sync-skills&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#9C27B0;strokeWidth=1.5;dashed=1;fontFamily=Inter;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="hub-container" target="projectc-container" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1180" y="739" />
+              <mxPoint x="1180" y="630" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LEGEND                                                       -->
+        <!-- ============================================================ -->
+        <mxCell id="legend-box" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#CCCCCC;strokeWidth=1;fontFamily=Inter;container=1;collapsible=0;" vertex="1" parent="1">
+          <mxGeometry x="30" y="80" width="300" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-title" value="&lt;b&gt;Legend&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;fontSize=11;strokeColor=none;fillColor=none;" vertex="1" parent="legend-box">
+          <mxGeometry x="10" y="5" width="100" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-line1" value="" style="endArrow=classic;html=1;strokeColor=#2E86AB;strokeWidth=2;fontFamily=Inter;" edge="1" parent="legend-box">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="15" y="45" as="sourcePoint" />
+            <mxPoint x="55" y="45" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-label1" value="&lt;span style=&quot;font-size:10px;&quot;&gt;project_id filter (blue solid)&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;strokeColor=none;fillColor=none;" vertex="1" parent="legend-box">
+          <mxGeometry x="65" y="35" width="220" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-line2" value="" style="endArrow=classic;html=1;strokeColor=#999999;strokeWidth=1.5;dashed=1;fontFamily=Inter;" edge="1" parent="legend-box">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="15" y="70" as="sourcePoint" />
+            <mxPoint x="55" y="70" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-label2" value="&lt;span style=&quot;font-size:10px;&quot;&gt;registered (gray dashed)&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;strokeColor=none;fillColor=none;" vertex="1" parent="legend-box">
+          <mxGeometry x="65" y="60" width="220" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-line3" value="" style="endArrow=classic;html=1;strokeColor=#E67E22;strokeWidth=2;fontFamily=Inter;" edge="1" parent="legend-box">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="15" y="95" as="sourcePoint" />
+            <mxPoint x="55" y="95" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-label3" value="&lt;span style=&quot;font-size:10px;&quot;&gt;poll + execute (orange solid)&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;strokeColor=none;fillColor=none;" vertex="1" parent="legend-box">
+          <mxGeometry x="65" y="85" width="220" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-line4" value="" style="endArrow=classic;html=1;strokeColor=#9C27B0;strokeWidth=1.5;dashed=1;fontFamily=Inter;" edge="1" parent="legend-box">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="15" y="120" as="sourcePoint" />
+            <mxPoint x="55" y="120" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-label4" value="&lt;span style=&quot;font-size:10px;&quot;&gt;iw sync-skills (purple dashed)&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;strokeColor=none;fillColor=none;" vertex="1" parent="legend-box">
+          <mxGeometry x="65" y="110" width="220" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-note-icon" value="" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=8;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=1;fontFamily=Inter;" vertex="1" parent="legend-box">
+          <mxGeometry x="15" y="140" width="30" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-label5" value="&lt;span style=&quot;font-size:10px;&quot;&gt;Architecture invariant callout&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;fontFamily=Inter;strokeColor=none;fillColor=none;" vertex="1" parent="legend-box">
+          <mxGeometry x="65" y="140" width="220" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,88 @@
+<style>
+  #chat-panel[data-collapsed="true"] #chat-context-label,
+  #chat-panel[data-collapsed="true"] #chat-messages,
+  #chat-panel[data-collapsed="true"] #chat-scroll-to-bottom-wrap,
+  #chat-panel[data-collapsed="true"] #chat-composer,
+  #chat-panel[data-collapsed="true"] #chat-new-btn,
+  #chat-panel[data-collapsed="true"] #chat-collapse-btn { display: none; }
+  #chat-panel:not([data-collapsed="true"]) #chat-expand-rail { display: none; }
+</style>
+<div class="relative flex-1 min-h-0">
+  <div id="chat-panel"
+       class="bg-card border-l border-border flex flex-col
+              translate-x-full transition-transform duration-200 ease-in-out
+              lg:relative lg:inset-auto lg:translate-x-0 lg:transition-none
+              h-full"
+       data-collapsed="true"
+       role="region"
+       aria-label="Code module chat">
+    <div id="chat-resize-handle" aria-hidden="true" class="hidden lg:block absolute left-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/30"></div>
+
+    <!-- Expanded header: title + collapse button -->
+    <header class="flex items-center justify-between px-3 py-2 border-b border-border">
+      <h2 id="chat-context-label" class="text-sm font-medium truncate" title="Chat — Architecture">Chat — Architecture</h2>
+      <div class="flex items-center gap-1">
+        <button id="chat-new-btn"
+                class="tap inline-flex items-center justify-center text-xs px-2 py-1 rounded border border-border hover:bg-muted"
+                aria-label="Start a new chat (clears history)">
+          <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          New
+        </button>
+        <button id="chat-collapse-btn"
+              class="tap inline-flex items-center justify-center"
+              aria-label="Collapse chat panel (Cmd+\)">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Collapsed rail (shown when data-collapsed="true") -->
+    <div id="chat-expand-rail"
+         class="flex flex-col items-center justify-center gap-2 p-2 cursor-pointer min-h-[200px]"
+         role="button"
+         aria-label="Expand chat panel (Cmd+\)">
+      <!-- Chat bubble icon -->
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h12M12 8v8M7 20h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v11a2 2 0 002 2z"/>
+      </svg>
+      <!-- Rotated "Chat" label -->
+      <span class="text-xs font-medium" style="writing-mode: vertical-rl; transform: rotate(180deg);">Chat</span>
+      <!-- Expand chevron -->
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </div>
+
+    <div id="chat-messages" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation" class="flex-1 overflow-y-auto px-3 py-2 space-y-3">
+      <div id="chat-empty-state" class="text-sm text-muted-foreground py-8 px-2 text-center space-y-2">
+        <p class="font-medium text-foreground">Ask about this module</p>
+        <p>Try: <span class="font-mono">What does this component do?</span></p>
+        <p class="text-xs">Type <kbd class="px-1 py-0.5 rounded border border-border bg-muted">/</kbd> for commands</p>
+      </div>
+      <div id="chat-scroll-anchor" aria-hidden="true"></div>
+    </div>
+    <div id="chat-scroll-to-bottom-wrap" class="relative">
+      <button id="chat-scroll-to-bottom"
+              class="hidden absolute bottom-2 right-3 rounded-full bg-primary text-primary-foreground px-3 py-1 text-xs min-h-[44px] min-w-[44px]"
+              aria-label="Jump to latest">
+        ↓ Latest
+      </button>
+    </div>
+    {% include "chat/composer.html" %}
+  </div>
+</div>
+
+<button id="chat-drawer-open"
+        class="lg:hidden fixed bottom-4 right-4 rounded-full bg-primary text-primary-foreground p-3 shadow-lg min-h-[44px] min-w-[44px] inline-flex items-center justify-center z-40"
+        aria-label="Open chat panel">
+  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h12M12 8v8"/>
+  </svg>
+</button>
+
+<div id="chat-drawer-backdrop"
+     class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden"
+     aria-hidden="true"></div>

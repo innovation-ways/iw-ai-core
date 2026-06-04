@@ -1,0 +1,865 @@
+# Third-Party Licenses — IW AI Core Platform
+
+Aggregated third-party license notices for dependencies of this project.
+Generated from SBOM; see `.iw/sbom.spdx.json`.
+
+---
+
+## License Elections
+
+Some upstream projects offer their code under more than one license. Where that
+happens, this section records which license we elect to receive the work
+under, and why that election is compatible with our Apache-2.0 outbound
+license. The same elections are encoded in
+`.iw/oss-publish.toml` under `[dependencies.license_elections]` so the
+`iw-oss-publish` scanner (`OSS-DEP-01`) treats them as resolved.
+
+### pyphen
+
+- **Upstream licenses (tri-license):** GPL 2.0+ **or** LGPL 2.1+ **or** MPL 1.1
+- **Elected license:** **MPL 1.1**
+- **Upstream evidence:** The Pyphen README states *"Free software: GPL 2.0+ or
+  LGPL 2.1+ or MPL 1.1 for the code"* and the repository ships three license
+  files: `COPYING.GPL`, `COPYING.LGPL`, `COPYING.MPL`
+  (https://github.com/Kozea/Pyphen).
+- **Why MPL-1.1:** MPL 1.1 is a file-level weak copyleft. An Apache-2.0
+  project may incorporate MPL-1.1 code as long as the original MPL-licensed
+  files retain their MPL notices and any modifications to those files are
+  re-released under MPL. We do not modify pyphen — it is consumed unmodified
+  as a transitive dependency.
+- **Why pyphen is here:** pyphen is pulled in transitively by `weasyprint` to
+  implement CSS `hyphens: auto` during PDF rendering (see
+  `dashboard/routers/items.py` for the WeasyPrint diff-PDF endpoint, and
+  `dashboard/utils/markdown.py`). Without pyphen, WeasyPrint still functions;
+  only automatic hyphenation in justified text is lost.
+- **PyPI metadata note:** PyPI exposes only a single SPDX identifier
+  (`GPL-2.0-only`), which is why automated license scanners initially flag
+  pyphen as incompatible with Apache-2.0. The actual upstream grant is
+  broader, as documented above.
+
+The MPL 1.1 license text is available at
+https://www.mozilla.org/en-US/MPL/1.1/ and in the upstream repository at
+https://github.com/Kozea/Pyphen/blob/master/COPYING.MPL.
+
+---
+
+## MIT
+
+- backports-tarfile@1.2.0
+- backports-tarfile@1.2.0
+- jaraco-text@4.0.0
+- jaraco-text@4.0.0
+- mdurl@0.1.2
+- mdurl@0.1.2
+
+## NOASSERTION
+
+- /home/sergiog/dev/iw-doc-plan/main/iw-ai-core@?
+- @alloc/quick-lru@5.2.0
+- @alloc/quick-lru@5.2.0
+- @jridgewell/gen-mapping@0.3.13
+- @jridgewell/gen-mapping@0.3.13
+- @jridgewell/resolve-uri@3.1.2
+- @jridgewell/resolve-uri@3.1.2
+- @jridgewell/sourcemap-codec@1.5.5
+- @jridgewell/sourcemap-codec@1.5.5
+- @jridgewell/trace-mapping@0.3.31
+- @jridgewell/trace-mapping@0.3.31
+- @nodelib/fs.scandir@2.1.5
+- @nodelib/fs.scandir@2.1.5
+- @nodelib/fs.stat@2.0.5
+- @nodelib/fs.stat@2.0.5
+- @nodelib/fs.walk@1.2.8
+- @nodelib/fs.walk@1.2.8
+- @opencode-ai/plugin@1.3.17
+- @opencode-ai/sdk@1.3.17
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- Simple Launcher@1.1.0.14
+- actions/attest-build-provenance@v2
+- actions/attest-build-provenance@v2
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/checkout@v4
+- actions/setup-node@v4
+- actions/setup-node@v4
+- actions/upload-artifact@v4
+- actions/upload-artifact@v4
+- actions/upload-artifact@v4
+- actions/upload-artifact@v4
+- actions/upload-artifact@v4
+- actions/upload-artifact@v4
+- aiohappyeyeballs@2.6.1
+- aiohappyeyeballs@2.6.1
+- aiohappyeyeballs@2.6.1
+- aiohappyeyeballs@2.6.1
+- aiohttp@3.13.5
+- aiohttp@3.13.5
+- aiohttp@3.13.5
+- aiohttp@3.13.5
+- aiosignal@1.4.0
+- aiosignal@1.4.0
+- aiosignal@1.4.0
+- aiosignal@1.4.0
+- aiosqlite@0.22.1
+- aiosqlite@0.22.1
+- aiosqlite@0.22.1
+- aiosqlite@0.22.1
+- alembic@1.18.4
+- alembic@1.18.4
+- alembic@1.18.4
+- alembic@1.18.4
+- allure-pytest@2.15.3
+- allure-pytest@2.15.3
+- allure-pytest@2.15.3
+- allure-pytest@2.15.3
+- allure-python-commons@2.15.3
+- allure-python-commons@2.15.3
+- allure-python-commons@2.15.3
+- allure-python-commons@2.15.3
+- annotated-doc@0.0.4
+- annotated-doc@0.0.4
+- annotated-doc@0.0.4
+- annotated-doc@0.0.4
+- annotated-types@0.7.0
+- annotated-types@0.7.0
+- annotated-types@0.7.0
+- annotated-types@0.7.0
+- any-promise@1.3.0
+- any-promise@1.3.0
+- anyio@4.13.0
+- anyio@4.13.0
+- anyio@4.13.0
+- anyio@4.13.0
+- anymatch@3.1.3
+- anymatch@3.1.3
+- arg@5.0.2
+- arg@5.0.2
+- attrs@26.1.0
+- attrs@26.1.0
+- attrs@26.1.0
+- attrs@26.1.0
+- autocommand@2.2.2
+- autocommand@2.2.2
+- banks@2.4.1
+- banks@2.4.1
+- banks@2.4.1
+- banks@2.4.1
+- beautifulsoup4@4.14.3
+- beautifulsoup4@4.14.3
+- beautifulsoup4@4.14.3
+- beautifulsoup4@4.14.3
+- binary-extensions@2.3.0
+- binary-extensions@2.3.0
+- braces@3.0.3
+- braces@3.0.3
+- camelcase-css@2.0.1
+- camelcase-css@2.0.1
+- certifi@2026.2.25
+- certifi@2026.2.25
+- certifi@2026.2.25
+- certifi@2026.2.25
+- cfgv@3.5.0
+- cfgv@3.5.0
+- cfgv@3.5.0
+- cfgv@3.5.0
+- charset-normalizer@3.4.7
+- charset-normalizer@3.4.7
+- charset-normalizer@3.4.7
+- charset-normalizer@3.4.7
+- chokidar@3.6.0
+- chokidar@3.6.0
+- cli-32@UNKNOWN
+- cli-32@UNKNOWN
+- cli-64@UNKNOWN
+- cli-64@UNKNOWN
+- cli-arm64@UNKNOWN
+- cli-arm64@UNKNOWN
+- cli@UNKNOWN
+- cli@UNKNOWN
+- click@8.3.2
+- click@8.3.2
+- click@8.3.2
+- click@8.3.2
+- colorama@0.4.6
+- colorama@0.4.6
+- colorama@0.4.6
+- colorama@0.4.6
+- commander@4.1.1
+- commander@4.1.1
+- coverage@7.13.5
+- coverage@7.13.5
+- coverage@7.13.5
+- coverage@7.13.5
+- cr-00013@1.0.0
+- cr-00013@1.0.0
+- cross-spawn@7.0.6
+- cssesc@3.0.0
+- cssesc@3.0.0
+- dataclasses-json@0.6.7
+- dataclasses-json@0.6.7
+- dataclasses-json@0.6.7
+- dataclasses-json@0.6.7
+- deprecated@1.3.1
+- deprecated@1.3.1
+- deprecated@1.3.1
+- deprecated@1.3.1
+- deprecation@2.1.0
+- deprecation@2.1.0
+- deprecation@2.1.0
+- deprecation@2.1.0
+- didyoumean@1.2.2
+- didyoumean@1.2.2
+- dirtyjson@1.0.8
+- dirtyjson@1.0.8
+- dirtyjson@1.0.8
+- dirtyjson@1.0.8
+- distlib@0.4.0
+- distlib@0.4.0
+- distlib@0.4.0
+- distlib@0.4.0
+- dlv@1.1.3
+- dlv@1.1.3
+- docker@7.1.0
+- docker@7.1.0
+- docker@7.1.0
+- docker@7.1.0
+- es-errors@1.3.0
+- es-errors@1.3.0
+- factory-boy@3.3.3
+- factory-boy@3.3.3
+- factory-boy@3.3.3
+- factory-boy@3.3.3
+- faker@40.13.0
+- faker@40.13.0
+- faker@40.13.0
+- faker@40.13.0
+- fast-glob@3.3.3
+- fast-glob@3.3.3
+- fastapi@0.135.3
+- fastapi@0.135.3
+- fastapi@0.135.3
+- fastapi@0.135.3
+- fastq@1.20.1
+- fastq@1.20.1
+- fdir@6.5.0
+- fdir@6.5.0
+- filelock@3.25.2
+- filelock@3.25.2
+- filelock@3.25.2
+- filelock@3.25.2
+- filetype@1.2.0
+- filetype@1.2.0
+- filetype@1.2.0
+- filetype@1.2.0
+- fill-range@7.1.1
+- fill-range@7.1.1
+- freezegun@1.5.5
+- freezegun@1.5.5
+- freezegun@1.5.5
+- freezegun@1.5.5
+- frozenlist@1.8.0
+- frozenlist@1.8.0
+- frozenlist@1.8.0
+- frozenlist@1.8.0
+- fsevents@2.3.3
+- fsevents@2.3.3
+- fsspec@2026.3.0
+- fsspec@2026.3.0
+- fsspec@2026.3.0
+- fsspec@2026.3.0
+- function-bind@1.1.2
+- function-bind@1.1.2
+- github/codeql-action/analyze@v3
+- github/codeql-action/analyze@v3
+- github/codeql-action/autobuild@v3
+- github/codeql-action/autobuild@v3
+- github/codeql-action/init@v3
+- github/codeql-action/init@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- github/codeql-action/upload-sarif@v3
+- glob-parent@5.1.2
+- glob-parent@5.1.2
+- glob-parent@6.0.2
+- glob-parent@6.0.2
+- googleapis/release-please-action@v4
+- googleapis/release-please-action@v4
+- greenlet@3.3.2
+- greenlet@3.3.2
+- greenlet@3.3.2
+- greenlet@3.3.2
+- griffe@2.0.2
+- griffe@2.0.2
+- griffe@2.0.2
+- griffe@2.0.2
+- griffecli@2.0.2
+- griffecli@2.0.2
+- griffecli@2.0.2
+- griffecli@2.0.2
+- griffelib@2.0.2
+- griffelib@2.0.2
+- griffelib@2.0.2
+- griffelib@2.0.2
+- gui-32@UNKNOWN
+- gui-32@UNKNOWN
+- gui-64@UNKNOWN
+- gui-64@UNKNOWN
+- gui-arm64@UNKNOWN
+- gui-arm64@UNKNOWN
+- gui@UNKNOWN
+- gui@UNKNOWN
+- h11@0.16.0
+- h11@0.16.0
+- h11@0.16.0
+- h11@0.16.0
+- hasown@2.0.3
+- hasown@2.0.3
+- httpcore@1.0.9
+- httpcore@1.0.9
+- httpcore@1.0.9
+- httpcore@1.0.9
+- httptools@0.7.1
+- httptools@0.7.1
+- httptools@0.7.1
+- httptools@0.7.1
+- httpx@0.28.1
+- httpx@0.28.1
+- httpx@0.28.1
+- httpx@0.28.1
+- identify@2.6.18
+- identify@2.6.18
+- identify@2.6.18
+- identify@2.6.18
+- idna@3.11
+- idna@3.11
+- idna@3.11
+- idna@3.11
+- importlib-metadata@8.7.1
+- importlib-metadata@8.7.1
+- iniconfig@2.3.0
+- iniconfig@2.3.0
+- iniconfig@2.3.0
+- iniconfig@2.3.0
+- is-binary-path@2.1.0
+- is-binary-path@2.1.0
+- is-core-module@2.16.1
+- is-core-module@2.16.1
+- is-extglob@2.1.1
+- is-extglob@2.1.1
+- is-glob@4.0.3
+- is-glob@4.0.3
+- is-number@7.0.0
+- is-number@7.0.0
+- isexe@2.0.0
+- iw-ai-core@0.1.0
+- iw-ai-core@0.1.0
+- iw-ai-core@0.1.0
+- iw-ai-core@0.1.0
+- jaraco-context@6.1.0
+- jaraco-context@6.1.0
+- jaraco-functools@4.4.0
+- jaraco-functools@4.4.0
+- jinja2@3.1.6
+- jinja2@3.1.6
+- jinja2@3.1.6
+- jinja2@3.1.6
+- jiti@1.21.7
+- jiti@1.21.7
+- joblib@1.5.3
+- joblib@1.5.3
+- joblib@1.5.3
+- joblib@1.5.3
+- lance-namespace-urllib3-client@0.6.1
+- lance-namespace-urllib3-client@0.6.1
+- lance-namespace-urllib3-client@0.6.1
+- lance-namespace-urllib3-client@0.6.1
+- lance-namespace@0.6.1
+- lance-namespace@0.6.1
+- lance-namespace@0.6.1
+- lance-namespace@0.6.1
+- lancedb@0.30.2
+- lancedb@0.30.2
+- lancedb@0.30.2
+- lancedb@0.30.2
+- librt@0.8.1
+- librt@0.8.1
+- librt@0.8.1
+- librt@0.8.1
+- lilconfig@3.1.3
+- lilconfig@3.1.3
+- lines-and-columns@1.2.4
+- lines-and-columns@1.2.4
+- llama-index-core@0.14.20
+- llama-index-core@0.14.20
+- llama-index-core@0.14.20
+- llama-index-core@0.14.20
+- llama-index-embeddings-ollama@0.9.0
+- llama-index-embeddings-ollama@0.9.0
+- llama-index-embeddings-ollama@0.9.0
+- llama-index-embeddings-ollama@0.9.0
+- llama-index-instrumentation@0.5.0
+- llama-index-instrumentation@0.5.0
+- llama-index-instrumentation@0.5.0
+- llama-index-instrumentation@0.5.0
+- llama-index-llms-ollama@0.10.1
+- llama-index-llms-ollama@0.10.1
+- llama-index-llms-ollama@0.10.1
+- llama-index-llms-ollama@0.10.1
+- llama-index-vector-stores-lancedb@0.5.0
+- llama-index-vector-stores-lancedb@0.5.0
+- llama-index-vector-stores-lancedb@0.5.0
+- llama-index-vector-stores-lancedb@0.5.0
+- llama-index-workflows@2.19.0
+- llama-index-workflows@2.19.0
+- llama-index-workflows@2.19.0
+- llama-index-workflows@2.19.0
+- mako@1.3.10
+- mako@1.3.10
+- mako@1.3.10
+- mako@1.3.10
+- markdown-it-py@4.0.0
+- markdown-it-py@4.0.0
+- markdown-it-py@4.0.0
+- markdown-it-py@4.0.0
+- markdown@3.10.2
+- markdown@3.10.2
+- markdown@3.10.2
+- markdown@3.10.2
+- markupsafe@3.0.3
+- markupsafe@3.0.3
+- markupsafe@3.0.3
+- markupsafe@3.0.3
+- marshmallow@3.26.2
+- marshmallow@3.26.2
+- marshmallow@3.26.2
+- marshmallow@3.26.2
+- mdurl@0.1.2
+- mdurl@0.1.2
+- merge2@1.4.1
+- merge2@1.4.1
+- micromatch@4.0.8
+- micromatch@4.0.8
+- more-itertools@10.8.0
+- more-itertools@10.8.0
+- multidict@6.7.1
+- multidict@6.7.1
+- multidict@6.7.1
+- multidict@6.7.1
+- mypy-extensions@1.1.0
+- mypy-extensions@1.1.0
+- mypy-extensions@1.1.0
+- mypy-extensions@1.1.0
+- mypy@1.20.0
+- mypy@1.20.0
+- mypy@1.20.0
+- mypy@1.20.0
+- mz@2.7.0
+- mz@2.7.0
+- nanoid@3.3.11
+- nanoid@3.3.11
+- nest-asyncio@1.6.0
+- nest-asyncio@1.6.0
+- nest-asyncio@1.6.0
+- nest-asyncio@1.6.0
+- networkx@3.6.1
+- networkx@3.6.1
+- networkx@3.6.1
+- networkx@3.6.1
+- nltk@3.9.4
+- nltk@3.9.4
+- nltk@3.9.4
+- nltk@3.9.4
+- nodeenv@1.10.0
+- nodeenv@1.10.0
+- nodeenv@1.10.0
+- nodeenv@1.10.0
+- normalize-path@3.0.0
+- normalize-path@3.0.0
+- numpy@2.4.4
+- numpy@2.4.4
+- numpy@2.4.4
+- numpy@2.4.4
+- object-assign@4.1.1
+- object-assign@4.1.1
+- object-hash@3.0.0
+- object-hash@3.0.0
+- ollama@0.6.1
+- ollama@0.6.1
+- ollama@0.6.1
+- ollama@0.6.1
+- ossf/scorecard-action@v2.4.0
+- ossf/scorecard-action@v2.4.0
+- ossf/scorecard-action@v2.4.0
+- ossf/scorecard-action@v2.4.0
+- ossf/scorecard-action@v2.4.0
+- ossf/scorecard-action@v2.4.0
+- packaging@26.0
+- packaging@26.0
+- packaging@26.0
+- packaging@26.0
+- packaging@26.0
+- packaging@26.0
+- pandas@3.0.2
+- pandas@3.0.2
+- pandas@3.0.2
+- pandas@3.0.2
+- path-key@3.1.1
+- path-parse@1.0.7
+- path-parse@1.0.7
+- pathspec@1.0.4
+- pathspec@1.0.4
+- pathspec@1.0.4
+- pathspec@1.0.4
+- picocolors@1.1.1
+- picocolors@1.1.1
+- picomatch@2.3.2
+- picomatch@2.3.2
+- picomatch@4.0.4
+- picomatch@4.0.4
+- pify@2.3.0
+- pify@2.3.0
+- pillow@12.2.0
+- pillow@12.2.0
+- pillow@12.2.0
+- pillow@12.2.0
+- pirates@4.0.7
+- pirates@4.0.7
+- platformdirs@4.4.0
+- platformdirs@4.4.0
+- platformdirs@4.9.4
+- platformdirs@4.9.4
+- platformdirs@4.9.4
+- platformdirs@4.9.4
+- pluggy@1.6.0
+- pluggy@1.6.0
+- pluggy@1.6.0
+- pluggy@1.6.0
+- postcss-import@15.1.0
+- postcss-import@15.1.0
+- postcss-js@4.1.0
+- postcss-js@4.1.0
+- postcss-load-config@6.0.1
+- postcss-load-config@6.0.1
+- postcss-nested@6.2.0
+- postcss-nested@6.2.0
+- postcss-selector-parser@6.1.2
+- postcss-selector-parser@6.1.2
+- postcss-selector-parser@7.1.1
+- postcss-selector-parser@7.1.1
+- postcss-value-parser@4.2.0
+- postcss-value-parser@4.2.0
+- postcss@8.5.10
+- postcss@8.5.10
+- pre-commit-package@dev-1
+- pre-commit-package@dev-1
+- pre-commit@4.5.1
+- pre-commit@4.5.1
+- pre-commit@4.5.1
+- pre-commit@4.5.1
+- pre_commit_placeholder_package@0.0.0
+- pre_commit_placeholder_package@0.0.0
+- propcache@0.4.1
+- propcache@0.4.1
+- propcache@0.4.1
+- propcache@0.4.1
+- psycopg-binary@3.3.3
+- psycopg-binary@3.3.3
+- psycopg-binary@3.3.3
+- psycopg-binary@3.3.3
+- psycopg@3.3.3
+- psycopg@3.3.3
+- psycopg@3.3.3
+- psycopg@3.3.3
+- pyarrow@23.0.1
+- pyarrow@23.0.1
+- pyarrow@23.0.1
+- pyarrow@23.0.1
+- pydantic-core@2.41.5
+- pydantic-core@2.41.5
+- pydantic-core@2.41.5
+- pydantic-core@2.41.5
+- pydantic@2.12.5
+- pydantic@2.12.5
+- pydantic@2.12.5
+- pydantic@2.12.5
+- pygments@2.20.0
+- pygments@2.20.0
+- pygments@2.20.0
+- pygments@2.20.0
+- pylance@4.0.0
+- pylance@4.0.0
+- pylance@4.0.0
+- pylance@4.0.0
+- pytest-asyncio@1.3.0
+- pytest-asyncio@1.3.0
+- pytest-asyncio@1.3.0
+- pytest-asyncio@1.3.0
+- pytest-cov@7.1.0
+- pytest-cov@7.1.0
+- pytest-cov@7.1.0
+- pytest-cov@7.1.0
+- pytest@9.0.3
+- pytest@9.0.3
+- pytest@9.0.3
+- pytest@9.0.3
+- python-dateutil@2.9.0.post0
+- python-dateutil@2.9.0.post0
+- python-dateutil@2.9.0.post0
+- python-dateutil@2.9.0.post0
+- python-discovery@1.2.2
+- python-discovery@1.2.2
+- python-discovery@1.2.2
+- python-discovery@1.2.2
+- python-dotenv@1.2.2
+- python-dotenv@1.2.2
+- python-dotenv@1.2.2
+- python-dotenv@1.2.2
+- python-multipart@0.0.24
+- python-multipart@0.0.24
+- python-multipart@0.0.24
+- python-multipart@0.0.24
+- pywin32@311
+- pywin32@311
+- pyyaml@6.0.3
+- pyyaml@6.0.3
+- pyyaml@6.0.3
+- pyyaml@6.0.3
+- queue-microtask@1.2.3
+- queue-microtask@1.2.3
+- read-cache@1.0.0
+- read-cache@1.0.0
+- readdirp@3.6.0
+- readdirp@3.6.0
+- regex@2026.4.4
+- regex@2026.4.4
+- regex@2026.4.4
+- regex@2026.4.4
+- requests@2.33.1
+- requests@2.33.1
+- requests@2.33.1
+- requests@2.33.1
+- resolve@1.22.12
+- resolve@1.22.12
+- reusify@1.1.0
+- reusify@1.1.0
+- rich@14.3.3
+- rich@14.3.3
+- rich@14.3.3
+- rich@14.3.3
+- ruff@0.15.9
+- ruff@0.15.9
+- ruff@0.15.9
+- ruff@0.15.9
+- run-parallel@1.2.0
+- run-parallel@1.2.0
+- setuptools@82.0.1
+- setuptools@82.0.1
+- setuptools@82.0.1
+- setuptools@82.0.1
+- shebang-command@2.0.0
+- shebang-regex@3.0.0
+- six@1.17.0
+- six@1.17.0
+- six@1.17.0
+- six@1.17.0
+- soupsieve@2.8.3
+- soupsieve@2.8.3
+- soupsieve@2.8.3
+- soupsieve@2.8.3
+- source-map-js@1.2.1
+- source-map-js@1.2.1
+- sqlalchemy@2.0.49
+- sqlalchemy@2.0.49
+- sqlalchemy@2.0.49
+- sqlalchemy@2.0.49
+- starlette@1.0.0
+- starlette@1.0.0
+- starlette@1.0.0
+- starlette@1.0.0
+- sucrase@3.35.1
+- sucrase@3.35.1
+- supports-preserve-symlinks-flag@1.0.0
+- supports-preserve-symlinks-flag@1.0.0
+- tailwindcss@3.4.19
+- tailwindcss@3.4.19
+- tantivy@0.25.1
+- tantivy@0.25.1
+- tantivy@0.25.1
+- tantivy@0.25.1
+- tenacity@9.1.4
+- tenacity@9.1.4
+- tenacity@9.1.4
+- tenacity@9.1.4
+- testcontainers@4.14.2
+- testcontainers@4.14.2
+- testcontainers@4.14.2
+- testcontainers@4.14.2
+- thenify-all@1.6.0
+- thenify-all@1.6.0
+- thenify@3.3.1
+- thenify@3.3.1
+- tiktoken@0.12.0
+- tiktoken@0.12.0
+- tiktoken@0.12.0
+- tiktoken@0.12.0
+- tinyglobby@0.2.16
+- tinyglobby@0.2.16
+- tinytag@2.2.1
+- tinytag@2.2.1
+- tinytag@2.2.1
+- tinytag@2.2.1
+- to-regex-range@5.0.1
+- to-regex-range@5.0.1
+- tomli@2.4.0
+- tomli@2.4.0
+- tqdm@4.67.3
+- tqdm@4.67.3
+- tqdm@4.67.3
+- tqdm@4.67.3
+- tree-sitter-languages@1.10.2
+- tree-sitter-languages@1.10.2
+- tree-sitter-languages@1.10.2
+- tree-sitter-languages@1.10.2
+- tree-sitter@0.25.2
+- tree-sitter@0.25.2
+- tree-sitter@0.25.2
+- tree-sitter@0.25.2
+- ts-interface-checker@0.1.13
+- ts-interface-checker@0.1.13
+- types-freezegun@1.1.10
+- types-freezegun@1.1.10
+- types-freezegun@1.1.10
+- types-freezegun@1.1.10
+- types-markdown@3.10.2.20260408
+- types-markdown@3.10.2.20260408
+- types-markdown@3.10.2.20260408
+- types-markdown@3.10.2.20260408
+- types-pyyaml@6.0.12.20260408
+- types-pyyaml@6.0.12.20260408
+- types-pyyaml@6.0.12.20260408
+- types-pyyaml@6.0.12.20260408
+- typing-extensions@4.15.0
+- typing-extensions@4.15.0
+- typing-extensions@4.15.0
+- typing-extensions@4.15.0
+- typing-inspect@0.9.0
+- typing-inspect@0.9.0
+- typing-inspect@0.9.0
+- typing-inspect@0.9.0
+- typing-inspection@0.4.2
+- typing-inspection@0.4.2
+- typing-inspection@0.4.2
+- typing-inspection@0.4.2
+- tzdata@2026.1
+- tzdata@2026.1
+- urllib3@2.6.3
+- urllib3@2.6.3
+- urllib3@2.6.3
+- urllib3@2.6.3
+- util-deprecate@1.0.2
+- util-deprecate@1.0.2
+- uvicorn@0.44.0
+- uvicorn@0.44.0
+- uvicorn@0.44.0
+- uvicorn@0.44.0
+- uvloop@0.22.1
+- uvloop@0.22.1
+- uvloop@0.22.1
+- uvloop@0.22.1
+- virtualenv@21.2.0
+- virtualenv@21.2.0
+- virtualenv@21.2.0
+- virtualenv@21.2.0
+- watchfiles@1.1.1
+- watchfiles@1.1.1
+- watchfiles@1.1.1
+- watchfiles@1.1.1
+- websockets@16.0
+- websockets@16.0
+- websockets@16.0
+- websockets@16.0
+- wheel@0.46.3
+- wheel@0.46.3
+- which@2.0.2
+- wrapt@2.1.2
+- wrapt@2.1.2
+- wrapt@2.1.2
+- wrapt@2.1.2
+- yarl@1.23.0
+- yarl@1.23.0
+- yarl@1.23.0
+- yarl@1.23.0
+- zipp@3.23.0
+- zipp@3.23.0
+- zod@4.1.8
+- zstandard@0.25.0
+- zstandard@0.25.0
+- zstandard@0.25.0
+- zstandard@0.25.0
+
+---
+
+## Driver.js
+
+**MIT License**
+
+Driver.js v1.4.0
+Copyright (c) Kamran Ahmed
+License: MIT
+Source: https://github.com/kamranahmedse/driver.js
+Vendored at: dashboard/static/vendor/driver/driver.js.iife.js
+
+MIT License
+
+Copyright (c) Kamran Ahmed
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

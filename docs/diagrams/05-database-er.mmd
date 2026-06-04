@@ -1,0 +1,99 @@
+---
+config:
+  layout: elk
+---
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#D4E4F7', 'primaryTextColor': '#1A1A2E', 'primaryBorderColor': '#2E86AB', 'lineColor': '#6B7280', 'secondaryColor': '#E0F0F8', 'tertiaryColor': '#F5F7FA', 'background': '#FFFFFF', 'mainBkg': '#D4E4F7', 'nodeBorder': '#2E86AB', 'clusterBkg': '#F0F4F8', 'clusterBorder': '#2E86AB', 'titleColor': '#1B2A4A', 'fontFamily': 'Inter', 'fontSize': '14px'}}}%%
+erDiagram
+    projects {
+        string id PK
+        string display_name
+        string repo_root
+        jsonb config
+        boolean enabled
+    }
+
+    id_sequences {
+        string project_id FK
+        string prefix
+        int next_number
+    }
+
+    work_items {
+        string project_id FK
+        string id
+        string type
+        string title
+        string status
+        string phase
+        text design_doc_content
+        tsvector design_doc_search
+        text summary
+        text archive_path
+        timestamptz archived_at
+    }
+
+    workflow_steps {
+        int id PK
+        string project_id FK
+        string work_item_id FK
+        int step_number
+        string step_id
+        string agent
+        string status
+        text report_content
+        timestamptz started_at
+        timestamptz completed_at
+    }
+
+    step_runs {
+        int id PK
+        int step_id FK
+        int run_number
+        string status
+        int pid
+        boolean pid_alive
+        text command
+        text worktree_path
+        string cli_tool
+        timestamptz last_heartbeat
+        int timeout_secs
+        text error_message
+    }
+
+    batches {
+        string project_id FK
+        string id
+        string status
+        int max_parallel
+        boolean auto_publish
+        timestamptz created_at
+    }
+
+    batch_items {
+        string project_id FK
+        string batch_id FK
+        string work_item_id FK
+        int group_number
+        string status
+        int pid
+        timestamptz merged_at
+    }
+
+    daemon_events {
+        int id PK
+        string project_id FK
+        string event_type
+        string entity_id
+        text message
+        jsonb event_metadata
+        timestamptz created_at
+    }
+
+    projects ||--o{ id_sequences : "owns"
+    projects ||--o{ work_items : "contains"
+    projects ||--o{ batches : "contains"
+    projects ||--o{ daemon_events : "logs"
+    work_items ||--o{ workflow_steps : "has"
+    workflow_steps ||--o{ step_runs : "tracked by"
+    batches ||--o{ batch_items : "groups"
+    work_items ||--o{ batch_items : "included in"

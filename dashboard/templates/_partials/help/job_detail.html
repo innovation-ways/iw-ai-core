@@ -1,0 +1,27 @@
+<section class="help-content">
+  <header class="help-content__header">
+    <h2 class="help-content__title">Job Detail</h2>
+    <button type="button" class="help-content__close" data-help-close aria-label="Close help">×</button>
+  </header>
+
+  <h3>What is this page?</h3>
+  <p>Job detail shows the full runtime log and status progression of a single background job — index build, doc render, or research draft generation.</p>
+
+  <h3>What can I do here?</h3>
+  <ul>
+    <li>Stream the live log as the job runs</li>
+    <li>Cancel a stuck or misfired job</li>
+    <li>Inspect errors and retry if possible</li>
+  </ul>
+
+  <h3>Vocabulary</h3>
+  <dl>
+    <dt>Job</dt><dd>Any background operation: code index build, DocGenerationJob render, research draft, or batch run.</dd>
+    <dt>RAG / Code Understanding</dt><dd>The system that indexes your repo for semantic code Q&amp;A.</dd>
+  </dl>
+
+  <footer class="help-content__footer">
+    <button type="button" class="help-content__tour" data-tour-start>Take the 30-second tour →</button>
+    <a class="help-content__docs-link" href="{{ docs_link }}">Open full docs →</a>
+  </footer>
+</section>

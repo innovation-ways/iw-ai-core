@@ -1,0 +1,187 @@
+{% if staleness and (staleness.services or staleness.alembic) %}
+{%- set has_stale_alembic = staleness.alembic and staleness.alembic.status == "stale" %}
+{%- set has_stale_service = staleness.services | selectattr("status", "equalto", "stale") | list | length > 0 %}
+<section id="staleness-panel"
+         hx-get="/projects/{{ project.id }}/staleness"
+         hx-trigger="every 15s"
+         hx-swap="outerHTML"
+         class="mb-6">
+
+  <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Service Health</h2>
+
+  {% if has_stale_alembic and has_stale_service %}
+    <div class="mb-4 px-4 py-2 bg-warning/10 border border-warning/30 rounded-md text-sm text-warning-foreground">
+      Apply migrations first, then restart services.
+    </div>
+  {% endif %}
+
+  <div class="space-y-4">
+
+    {# --- Migrations section (rendered FIRST per F-00063 Invariant 7) --- #}
+    {% if staleness.alembic and staleness.alembic.status != "no_config" %}
+      <div class="bg-card border border-border rounded-lg p-4">
+        <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Migrations</h3>
+
+        {% if staleness.alembic.status == "up_to_date" %}
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-success flex-shrink-0"></span>
+            <span class="text-sm text-foreground">Database schema is up-to-date</span>
+            {% if staleness.alembic.current %}
+              <span class="font-mono text-xs text-muted-foreground ml-2">{{ staleness.alembic.current[:8] }}</span>
+            {% endif %}
+          </div>
+
+        {% elif staleness.alembic.status == "stale" %}
+          <div class="flex items-start gap-2 mb-3">
+            <span class="w-2 h-2 rounded-full bg-destructive flex-shrink-0 mt-1.5"></span>
+            <div class="min-w-0">
+              <p class="text-sm text-foreground">
+                DB at <code class="font-mono text-xs bg-muted px-1 rounded">{{ staleness.alembic.current or "none" }}</code>,
+                code has <code class="font-mono text-xs bg-muted px-1 rounded">{{ staleness.alembic.head }}</code>
+                {% if staleness.alembic.pending %}
+                  ({{ staleness.alembic.pending | length }} unapplied revision{{ "s" if staleness.alembic.pending | length != 1 }})
+                {% endif %}
+              </p>
+              {% if staleness.alembic.pending %}
+                <ul class="mt-2 space-y-1">
+                  {% for rev in staleness.alembic.pending %}
+                    <li class="flex items-baseline gap-2 text-xs">
+                      <code class="font-mono text-muted-foreground flex-shrink-0">{{ rev.rev_id[:8] }}</code>
+                      <span class="text-foreground">{{ rev.message }}</span>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          </div>
+          <button hx-get="/projects/{{ project.id }}/alembic/upgrade/confirm"
+                  hx-target="#staleness-confirm-dialog"
+                  hx-swap="innerHTML"
+                  onclick="document.getElementById('staleness-confirm-dialog').style.display='flex'"
+                  class="px-3 py-1.5 bg-destructive text-destructive-foreground rounded text-xs hover:opacity-90 transition-opacity cursor-pointer">
+            Upgrade head
+          </button>
+
+        {% elif staleness.alembic.status == "unreachable" %}
+          <div class="flex items-start gap-2">
+            <span class="w-2 h-2 rounded-full bg-muted-foreground flex-shrink-0 mt-1.5"></span>
+            <div class="min-w-0">
+              <p class="text-sm text-foreground">Cannot reach the database</p>
+              {% if staleness.alembic.error %}
+                <details class="mt-1">
+                  <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground">Details</summary>
+                  <code class="block font-mono text-xs text-muted-foreground mt-1 bg-muted p-2 rounded break-all">{{ staleness.alembic.error }}</code>
+                </details>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {# --- Services section --- #}
+    {% if staleness.services %}
+      <div class="bg-card border border-border rounded-lg overflow-hidden">
+        <div class="px-4 py-3 border-b border-border">
+          <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Services</h3>
+        </div>
+        <div class="divide-y divide-border">
+          {% for svc in staleness.services %}
+            <div class="px-4 py-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+
+                {# Left: name + status badge + start time #}
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-semibold text-sm text-foreground">{{ svc.name }}</span>
+
+                  {# Status badge #}
+                  {% if svc.status == "up_to_date" %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success">up-to-date</span>
+                  {% elif svc.status == "stale" %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive">stale</span>
+                  {% elif svc.status == "not_running" %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">not running</span>
+                  {% elif svc.status == "hot_reload_skipped" %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-info/10 text-info">hot reload</span>
+                  {% else %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">{{ svc.status }}</span>
+                  {% endif %}
+
+                  {# Start time #}
+                  {% if svc.start_time %}
+                    <span class="text-xs text-muted-foreground" title="{{ svc.start_time.isoformat() }}">
+                      started {{ svc.start_time.strftime('%Y-%m-%d %H:%M') }}
+                    </span>
+                  {% endif %}
+                </div>
+
+                {# Right: action buttons #}
+                <div class="flex items-center gap-2">
+                  {% if "restart" in svc.actions %}
+                    <button hx-get="/projects/{{ project.id }}/services/{{ svc.name }}/restart/confirm"
+                            hx-target="#staleness-confirm-dialog"
+                            hx-swap="innerHTML"
+                            onclick="document.getElementById('staleness-confirm-dialog').style.display='flex'"
+                            class="px-3 py-1 bg-secondary text-secondary-foreground rounded text-xs hover:opacity-90 transition-opacity cursor-pointer">
+                      Restart
+                    </button>
+                  {% endif %}
+                  {% if "stop" in svc.actions %}
+                    <button hx-get="/projects/{{ project.id }}/services/{{ svc.name }}/stop/confirm"
+                            hx-target="#staleness-confirm-dialog"
+                            hx-swap="innerHTML"
+                            onclick="document.getElementById('staleness-confirm-dialog').style.display='flex'"
+                            class="px-3 py-1 bg-destructive text-destructive-foreground rounded text-xs hover:opacity-90 transition-opacity cursor-pointer">
+                      Stop
+                    </button>
+                  {% endif %}
+                  {% if "start" in svc.actions %}
+                    <button hx-get="/projects/{{ project.id }}/services/{{ svc.name }}/start/confirm"
+                            hx-target="#staleness-confirm-dialog"
+                            hx-swap="innerHTML"
+                            onclick="document.getElementById('staleness-confirm-dialog').style.display='flex'"
+                            class="px-3 py-1 bg-primary text-primary-foreground rounded text-xs hover:opacity-90 transition-opacity cursor-pointer">
+                      Start
+                    </button>
+                  {% endif %}
+                </div>
+              </div>
+
+              {# Commit list (stale only, collapsible) #}
+              {% if svc.status == "stale" and svc.commits %}
+                <details class="mt-2">
+                  <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                    {{ svc.commits | length }} commit{{ "s" if svc.commits | length != 1 }} since process start
+                  </summary>
+                  <ul class="mt-1 space-y-0.5 pl-2">
+                    {% for commit in svc.commits %}
+                      <li class="flex items-baseline gap-2 text-xs">
+                        <code class="font-mono text-muted-foreground flex-shrink-0">{{ commit.sha[:7] }}</code>
+                        <span class="text-foreground">{{ commit.subject }}</span>
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </details>
+              {% endif %}
+
+              {# Error message #}
+              {% if svc.error %}
+                <p class="mt-1 text-xs text-muted-foreground">{{ svc.error }}</p>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+  </div>
+
+  {# Confirm dialog overlay — populated by action button GET requests #}
+  <div id="staleness-confirm-dialog"
+       class="fixed inset-0 bg-black/50 items-center justify-center z-50"
+       style="display:none"
+       onclick="if(event.target===this){this.style.display='none';this.innerHTML=''}">
+  </div>
+
+</section>
+{% endif %}

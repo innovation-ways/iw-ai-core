@@ -1,0 +1,381 @@
+"""Project-scoped pages: queue, history."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from sqlalchemy import exists, select
+
+from dashboard.dependencies import get_db
+from dashboard.routers.batches import _get_scope_statuses
+from dashboard.routers.project_dashboard import (
+    regression_count_for_merge as _regression_count_for_merge,
+)
+from orch.db.models import (
+    Batch,
+    BatchItem,
+    BatchStatus,
+    Project,
+    WorkItem,
+    WorkItemPhase,
+    WorkItemStatus,
+    WorkItemType,
+)
+
+if TYPE_CHECKING:
+    from fastapi.templating import Jinja2Templates
+    from sqlalchemy.orm import Session
+
+router = APIRouter(prefix="/project/{project_id}")
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_project_or_404(project_id: str, db: Session) -> Project:
+    """Fetch a project by ID or raise HTTP 404.
+
+    Args:
+        project_id: The project identifier to look up.
+        db: Active database session.
+
+    Returns:
+        The matching Project ORM row.
+
+    Raises:
+        HTTPException: With status 404 if the project does not exist.
+    """
+    project = db.scalar(select(Project).where(Project.id == project_id))
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
+    return project
+
+
+@dataclass
+class QueueItem:
+    """A work item row for the queue page.
+
+    Attributes:
+        id: Work item identifier.
+        type: Work item type string.
+        title: Human-readable work item title.
+        status: Current status string.
+        created_at: When the work item was created.
+        scope_status: Optional scope-gate status for approved items.
+    """
+
+    id: str
+    type: str
+    title: str
+    status: str
+    created_at: datetime
+    scope_status: Any = None
+
+
+_ACTIVE_BATCH_STATUSES = (
+    BatchStatus.approved,
+    BatchStatus.executing,
+    BatchStatus.paused,
+    BatchStatus.publishing,
+)
+
+
+def _queue_items(project_id: str, db: Session) -> tuple[list[QueueItem], list[QueueItem]]:
+    """Return (approved_items, draft_items) for the queue page."""
+    # Exclude items already associated with an active batch
+    in_active_batch = (
+        exists()
+        .where(
+            BatchItem.project_id == WorkItem.project_id,
+            BatchItem.work_item_id == WorkItem.id,
+        )
+        .where(
+            Batch.project_id == BatchItem.project_id,
+            Batch.id == BatchItem.batch_id,
+            Batch.status.in_(_ACTIVE_BATCH_STATUSES),
+        )
+        .correlate(WorkItem)
+    )
+    stmt = (
+        select(WorkItem)
+        .where(
+            WorkItem.project_id == project_id,
+            WorkItem.status.in_([WorkItemStatus.approved, WorkItemStatus.draft]),
+            WorkItem.type != WorkItemType.Research,
+            ~in_active_batch,
+        )
+        .order_by(WorkItem.created_at.desc())
+    )
+    rows = list(db.scalars(stmt))
+    approved_ids = [r.id for r in rows if r.status == WorkItemStatus.approved]
+    scope_statuses = _get_scope_statuses(project_id, approved_ids, db)
+    approved = [
+        QueueItem(
+            id=r.id,
+            type=r.type.value,
+            title=r.title,
+            status=r.status.value,
+            created_at=r.created_at,
+            scope_status=scope_statuses.get(r.id),
+        )
+        for r in rows
+        if r.status == WorkItemStatus.approved
+    ]
+    drafts = [
+        QueueItem(
+            id=r.id,
+            type=r.type.value,
+            title=r.title,
+            status=r.status.value,
+            created_at=r.created_at,
+        )
+        for r in rows
+        if r.status == WorkItemStatus.draft
+    ]
+    return approved, drafts
+
+
+@dataclass
+class HistoryItem:
+    """A completed or failed work item row for the history page.
+
+    Attributes:
+        id: Work item identifier.
+        type: Work item type string.
+        title: Human-readable work item title.
+        status: Terminal status string ('completed' or 'failed').
+        created_at: When the work item was created.
+        completed_at: When the work item reached its terminal status.
+        duration_secs: Total processing duration in seconds, or None.
+        regression_count: Count of regressions introduced by this merge (F-00090 AC7).
+    """
+
+    id: str
+    type: str
+    title: str
+    status: str
+    created_at: datetime
+    completed_at: datetime | None
+    duration_secs: int | None
+    regression_count: int = 0
+
+
+_HISTORY_PAGE_SIZE = 20
+
+_SORT_COLUMNS: dict[str, Any] = {
+    "id": WorkItem.id,
+    "title": WorkItem.title,
+    "created_at": WorkItem.created_at,
+    "type": WorkItem.type,
+    "status": WorkItem.status,
+}
+
+
+def _history_items(
+    project_id: str,
+    db: Session,
+    *,
+    type_filter: str | None,
+    status_filter: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    page: int = 1,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
+) -> tuple[list[HistoryItem], int]:
+    """Return paginated, sorted history items and total count."""
+    base = select(WorkItem).where(
+        WorkItem.project_id == project_id,
+        WorkItem.status.in_([WorkItemStatus.completed, WorkItemStatus.failed])
+        | WorkItem.phase.in_([WorkItemPhase.done]),
+    )
+
+    if type_filter:
+        for wt in WorkItemType:
+            if wt.value.lower() == type_filter.lower():
+                base = base.where(WorkItem.type == wt)
+                break
+
+    if status_filter:
+        for ws in WorkItemStatus:
+            if ws.value.lower() == status_filter.lower():
+                base = base.where(WorkItem.status == ws)
+                break
+
+    if date_from:
+        try:
+            dt = datetime.fromisoformat(date_from).replace(tzinfo=UTC)
+            base = base.where(WorkItem.created_at >= dt)
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            dt = datetime.fromisoformat(date_to).replace(tzinfo=UTC)
+            base = base.where(WorkItem.created_at <= dt)
+        except ValueError:
+            pass
+
+    # Total count (before pagination)
+    from sqlalchemy import func as sa_func
+
+    total = db.scalar(select(sa_func.count()).select_from(base.subquery())) or 0
+
+    # Sorting — "duration" uses completed_at as proxy with NULLS LAST (asc) / NULLS FIRST (desc)
+    if sort_by == "duration":
+        if sort_dir == "asc":
+            base = base.order_by(WorkItem.completed_at.asc().nulls_last())
+        else:
+            base = base.order_by(WorkItem.completed_at.desc().nulls_first())
+    else:
+        col = _SORT_COLUMNS.get(sort_by, WorkItem.created_at)
+        direction = col.desc().nulls_last() if sort_dir == "desc" else col.asc().nulls_last()
+        base = base.order_by(
+            direction, WorkItem.id.desc() if sort_dir == "desc" else WorkItem.id.asc()
+        )
+
+    # Pagination
+    offset = (max(page, 1) - 1) * _HISTORY_PAGE_SIZE
+    stmt = base.offset(offset).limit(_HISTORY_PAGE_SIZE)
+
+    items_list = list(db.scalars(stmt))
+    item_ids = [r.id for r in items_list]
+
+    # F-00090 AC7: pre-fetch regression counts in one batched query (avoids N+1)
+    regression_counts: dict[str, int] = {}
+    if item_ids:
+        regression_counts = _regression_count_for_merge(project_id, item_ids, db)
+
+    items = []
+    for r in items_list:
+        duration: int | None = None
+        if r.completed_at and r.created_at:
+            duration = int((r.completed_at - r.created_at).total_seconds())
+        items.append(
+            HistoryItem(
+                id=r.id,
+                type=r.type.value,
+                title=r.title,
+                status=r.status.value,
+                created_at=r.created_at,
+                completed_at=r.completed_at,
+                duration_secs=duration,
+                regression_count=regression_counts.get(r.id, 0),
+            )
+        )
+    return items, total
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+
+@router.get("/queue", response_class=HTMLResponse)
+def project_queue(project_id: str, request: Request, db: Session = Depends(get_db)) -> Any:
+    """Render the work item queue page (approved + draft items).
+
+    Args:
+        project_id: The project whose queue is displayed.
+        request: The current FastAPI request.
+        db: Active database session.
+
+    Returns:
+        Full HTML queue page with approved and draft item lists.
+    """
+    project = _get_project_or_404(project_id, db)
+    approved, drafts = _queue_items(project_id, db)
+
+    # Load project auto_merge_default for pre-filling the create-batch form
+    try:
+        from orch.config import load_config
+        from orch.daemon.project_registry import load_projects_toml
+
+        cfg = load_projects_toml(load_config().projects_toml)
+        proj_cfg = cfg.get(project_id)
+        auto_merge_default = proj_cfg.auto_merge_default if proj_cfg else True
+    except Exception:
+        auto_merge_default = True
+
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "pages/project/queue.html",
+        {
+            "current_project": project,
+            "running_count": 0,
+            "approved_items": approved,
+            "draft_items": drafts,
+            "auto_merge_default": auto_merge_default,
+        },
+    )
+
+
+@router.get("/history", response_class=HTMLResponse)
+def project_history(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    type: str | None = None,  # noqa: A002
+    status: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    page: int = 1,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
+) -> Any:
+    """Render the paginated work item history page.
+
+    Args:
+        project_id: The project whose history is displayed.
+        request: The current FastAPI request.
+        db: Active database session.
+        type: Optional work item type filter.
+        status: Optional terminal status filter.
+        date_from: ISO date string for the inclusive start of the date range.
+        date_to: ISO date string for the inclusive end of the date range.
+        page: 1-based page number.
+        sort_by: Column name to sort by.
+        sort_dir: Sort direction — 'asc' or 'desc'.
+
+    Returns:
+        Full HTML history page with filtered, paginated, sorted work item rows.
+    """
+    project = _get_project_or_404(project_id, db)
+    items, total = _history_items(
+        project_id,
+        db,
+        type_filter=type,
+        status_filter=status,
+        date_from=date_from,
+        date_to=date_to,
+        page=page,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+    )
+    templates: Jinja2Templates = request.app.state.templates
+    return templates.TemplateResponse(
+        request,
+        "pages/project/history.html",
+        {
+            "current_project": project,
+            "running_count": 0,
+            "items": items,
+            "total": total,
+            "type_filter": type,
+            "status_filter": status,
+            "date_from": date_from or "",
+            "date_to": date_to or "",
+            "item_types": [t.value for t in WorkItemType],
+            "item_statuses": [s.value for s in [WorkItemStatus.completed, WorkItemStatus.failed]],
+            "page": page,
+            "page_size": _HISTORY_PAGE_SIZE,
+            "sort_by": sort_by,
+            "sort_dir": sort_dir,
+        },
+    )

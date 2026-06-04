@@ -1,0 +1,65 @@
+<form id="chat-assistant-composer"
+      class="border-t border-border p-2 flex flex-col gap-2"
+      onsubmit="return false;">
+
+  <!-- Context chip row -->
+  <div id="chat-assistant-chips" class="flex flex-wrap gap-1"></div>
+
+  <!-- Input + slash menu -->
+  <div class="relative">
+    <textarea id="chat-assistant-input"
+              rows="2"
+              class="w-full resize-y rounded-md border border-border bg-background p-2 text-sm"
+              placeholder="Ask the AI Assistant… (/ for skills)"></textarea>
+    <div id="chat-assistant-slash-menu"
+         class="hidden absolute bottom-full mb-1 w-full border border-border bg-card rounded-md shadow z-50"
+         role="listbox"
+         aria-label="Skill and command autocomplete"></div>
+  </div>
+
+  <!-- Send / Abort row -->
+  <div class="flex items-center justify-between gap-2">
+    <button id="chat-assistant-settings-btn"
+            type="button"
+            class="tap inline-flex items-center justify-center p-1.5 rounded border border-border hover:bg-muted text-muted-foreground min-h-[44px] min-w-[44px]"
+            aria-label="Tab settings"
+            title="Tab settings (title, runtime, model)">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+    </button>
+    <div class="flex items-center gap-2">
+      <div id="chat-assistant-context-pct"
+           class="chat-assistant-context-pct chat-assistant-context-pct--unknown"
+           role="status"
+           aria-label="Context window usage"
+           title="Context window usage">
+        <span class="chat-assistant-context-pct__bar" aria-hidden="true">
+          <span class="chat-assistant-context-pct__fill" style="width: 0%;"></span>
+        </span>
+        <span class="chat-assistant-context-pct__label">—%</span>
+      </div>
+      <button id="chat-assistant-clear"
+              type="button"
+              disabled
+              class="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:bg-muted min-h-[44px] min-w-[44px]"
+              aria-label="Clear chat history"
+              title="Clear all messages and reset context">
+        Clear
+      </button>
+      <button id="chat-assistant-abort"
+              type="button"
+              style="opacity: 0.45;"
+              class="text-xs px-3 py-1.5 rounded border border-destructive text-destructive hover:bg-destructive/10 min-h-[44px] min-w-[44px]"
+              aria-label="Abort current run"
+              title="No active run to abort">
+        Abort
+      </button>
+      <button id="chat-assistant-send"
+              type="button"
+              class="bg-primary text-primary-foreground text-sm px-3 py-1.5 rounded min-h-[44px] min-w-[44px]">
+        Send ↵
+      </button>
+    </div>
+  </div>
+</form>
