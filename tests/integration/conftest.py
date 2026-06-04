@@ -102,7 +102,14 @@ def pytest_collection_modifyitems(
     # F-00055 workflow fixture and the e2e_seed regression net only run when
     # a developer has the local archive on disk. CI doesn't.
     project_root = Path(__file__).resolve().parent.parent.parent
-    has_f00055_fixtures = (project_root / "ai-dev/archive/F-00055/e2e_fixtures").is_dir()
+    # Check for the actual fixture ``.py`` source, not merely the directory: a
+    # leftover ``__pycache__`` (stale bytecode from a deleted source) keeps the
+    # directory alive on dev machines, which would defeat a bare ``.is_dir()``
+    # guard and run the tests without their fixtures. Mirror the sibling
+    # ``has_e2e_fixtures`` glob so local runs match CI (where the dir is absent).
+    has_f00055_fixtures = bool(
+        list((project_root / "ai-dev/archive/F-00055/e2e_fixtures").glob("*.py"))
+    )
     has_e2e_fixtures = bool(list(project_root.glob("ai-dev/*/*/e2e_fixtures/*.py")))
     fixture_skip = pytest.mark.skip(reason="ai-dev/archive/* fixtures not present (CI)")
 
