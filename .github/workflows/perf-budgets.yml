@@ -76,7 +76,7 @@ jobs:
       # in place rather than create a separate PR.
       - name: Record regression follow-up
         if: failure()
-        uses: peter-evans/create-pull-request@5e914c959695dc0e9c38ad6a5ace00e592a86d86 # v7.0.0
+        uses: peter-evans/create-pull-request@4320041ed380b20e97d388d56a7fb4f9b8c20e79 # v7.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           base: main
