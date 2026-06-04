@@ -136,6 +136,16 @@ The dashboard is the human interface to the platform — a FastAPI + htmx web ap
       <sub><b>Quality Gates</b> — lint, format, type-check, dead code, and dependency hygiene</sub>
     </td>
   </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/screenshot-item-detail.png" width="420"/><br/>
+      <sub><b>Item Detail</b> — step pipeline with agent assignments, fix cycles, and execution metrics for a completed incident</sub>
+    </td>
+    <td align="center">
+      <img src="assets/screenshot-item-test-restart.png" width="420"/><br/>
+      <sub><b>Implementation with Test Verification</b> — 15-step pipeline over 761m with 6 fix cycles including test-suite restart steps</sub>
+    </td>
+  </tr>
 </table>
 
 ---
