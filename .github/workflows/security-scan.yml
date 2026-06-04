@@ -62,6 +62,12 @@ jobs:
 
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          # gitleaks-action requires GITHUB_TOKEN to enumerate PR commits via
+          # the API; without it the action hard-fails on `pull_request` events
+          # ("GITHUB_TOKEN is now required to scan pull requests"). `push`
+          # events scan the ref directly and don't need it.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # SARIF uploads target GitHub Code Scanning, which on private repos requires
       # GitHub Advanced Security. Skip the upload while private; it resumes
