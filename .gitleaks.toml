@@ -30,6 +30,19 @@ description = "RFC 1918 private IP address (likely internal infrastructure refer
 regex = '''\b(?:10(?:\.[0-9]{1,3}){3}|172\.(?:1[6-9]|2[0-9]|3[01])(?:\.[0-9]{1,3}){2}|192\.168(?:\.[0-9]{1,3}){2})\b'''
 tags = ["internal", "infra"]
 
+# Generic password/secret/token/api-key assigned a quoted literal value, e.g.
+# `IW_CORE_DB_PASSWORD = "s3cr3t"`. The default ruleset only matches known
+# provider token shapes (AWS, etc.), so a plain credential in a .toml/.env/.py
+# slips through (this is exactly how worktree-env.toml leaked pre-OSS-release).
+# The value pattern excludes shell/template expansions (`"$VAR"`, `"${VAR}"`)
+# by requiring the first value char to not be `$` — RE2 has no lookahead.
+[[rules]]
+id = "iw-generic-secret-assignment"
+description = "Generic password/secret/token/api-key assigned a literal value (excludes shell/template vars)"
+regex = '''(?i)(pass(?:word|wd)?|pwd|secret|token|api[_-]?key|access[_-]?key)["']?\s*[:=]\s*['"][^'"\s$][^'"\s]{5,}['"]'''
+keywords = ["password", "passwd", "pwd", "secret", "token", "apikey", "api_key", "accesskey", "access_key"]
+tags = ["secret", "credential"]
+
 # ---------------------------------------------------------------
 # Allowlists — paths and values that should NOT trigger findings
 # ---------------------------------------------------------------
