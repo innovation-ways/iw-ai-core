@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import os
 import stat
 import subprocess
@@ -101,17 +102,46 @@ def _install_pi_stub(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
 
 
 def _run_guard(
-    item_id: str, step_id: str, *, max_reprompts: int = 5
+    item_id: str,
+    step_id: str,
+    *,
+    cwd: Path,
+    project_id: str = "iw-ai-core",
+    max_reprompts: int = 5,
 ) -> subprocess.CompletedProcess[str]:
+    """Run the narration guard against the seeded step, hermetically.
+
+    The guard shells out to ``uv run iw item-status`` which resolves the project
+    from a ``.iw-orch.json`` found by walking up from its working directory — in
+    production that file lives in the agent's worktree. To keep the test
+    independent of the (gitignored) repo-root ``.iw-orch.json`` that only exists
+    on developer machines, we write a throwaway ``.iw-orch.json`` into ``cwd``
+    and launch the guard there, while pinning ``uv`` to the real project via
+    ``UV_PROJECT`` so ``uv run`` still finds the ``iw`` entry point.
+
+    Args:
+        item_id: Seeded work item ID to poll.
+        step_id: Seeded step ID to poll.
+        cwd: Hermetic working directory the guard runs in (gets a ``.iw-orch.json``).
+        project_id: Project ID written into the throwaway ``.iw-orch.json``.
+        max_reprompts: Reprompt cap passed to the guard.
+
+    Returns:
+        The completed guard subprocess.
+    """
+    repo_root = Path.cwd()
+    (cwd / ".iw-orch.json").write_text(json.dumps({"project_id": project_id}), encoding="utf-8")
+
     env = os.environ.copy()
     for key in ("HOST", "PORT", "NAME", "USER", "PASSWORD"):
         env[f"IW_CORE_ORCH_DB_{key}"] = env[f"IW_CORE_DB_{key}"]
     env["IW_CORE_OPERATOR_APPLY"] = "true"
+    env["UV_PROJECT"] = str(repo_root)
 
     return subprocess.run(
         [
             "python",
-            "executor/pi_narration_guard.py",
+            str(repo_root / "executor" / "pi_narration_guard.py"),
             "--item-id",
             item_id,
             "--step-id",
@@ -129,6 +159,7 @@ def _run_guard(
         text=True,
         check=False,
         timeout=10,
+        cwd=str(cwd),
         env=env,
     )
 
@@ -158,7 +189,7 @@ def test_narration_exit_emits_event_and_reprompts(
     monkeypatch.setenv("STUB_PI_WRITE_SESSION", "1")
     monkeypatch.setenv("STUB_PI_SESSION_KIND", "narration")
 
-    result = _run_guard(item_id, step_id)
+    result = _run_guard(item_id, step_id, cwd=tmp_path, project_id=project_id)
 
     assert result.returncode == 0, result.stderr
     narration_events = _narration_events(db_session, project_id, item_id)
@@ -182,7 +213,7 @@ def test_clean_exit_with_step_done_does_not_reprompt(
     monkeypatch.setenv("STUB_PI_EXIT_CODE", "0")
     monkeypatch.setenv("STUB_PI_SESSION_KIND", "narration")
 
-    result = _run_guard(item_id, step_id)
+    result = _run_guard(item_id, step_id, cwd=tmp_path, project_id=project_id)
 
     assert result.returncode == 0, result.stderr
     assert _narration_events(db_session, project_id, item_id) == []
@@ -197,7 +228,7 @@ def test_non_zero_pi_exit_does_not_reprompt(
     marker_dir, _ = _install_pi_stub(tmp_path, monkeypatch)
     monkeypatch.setenv("STUB_PI_EXIT_CODE", "42")
 
-    result = _run_guard(item_id, step_id)
+    result = _run_guard(item_id, step_id, cwd=tmp_path, project_id=project_id)
 
     assert result.returncode == 42
     assert _narration_events(db_session, project_id, item_id) == []
@@ -213,7 +244,7 @@ def test_guard_falls_back_after_5_reprompts(
     monkeypatch.setenv("STUB_PI_EXIT_CODE", "0")
     monkeypatch.setenv("STUB_PI_SESSION_KIND", "narration")
 
-    result = _run_guard(item_id, step_id, max_reprompts=5)
+    result = _run_guard(item_id, step_id, cwd=tmp_path, project_id=project_id, max_reprompts=5)
 
     assert result.returncode == 0, result.stderr
     assert len(_narration_events(db_session, project_id, item_id)) == 5, result.stderr
