@@ -98,14 +98,14 @@ class TestContextTokensMigration:
             assert str(col["type"]) == "INTEGER"
 
     def test_migration_seeds_known_models(self, migrated_engine: Engine) -> None:
-        """After upgrade, all rows for the 4 known models have context_window_tokens = 200000.
+        """After upgrade, the seeded Claude models keep 200000 and minimax M3 is 1M.
 
         Note: some models appear multiple times with different cli_tools
         (e.g. claude-opus-4-7 with both opencode and claude). That's valid —
-        we just verify ALL rows for these models have the seeded value. The
-        minimax row is seeded as M2.7 by CR-00066 and renamed to M3 at head by
-        migration 08850d673ff6 (context_window_tokens preserved), so at head we
-        assert on minimax/MiniMax-M3.
+        we just verify ALL rows for a model have the expected value. The minimax
+        row is seeded as M2.7/200000 by CR-00066, renamed to M3 by 08850d673ff6,
+        then raised to a 1,000,000-token window by 53e45cb21742; so at head the
+        Claude models stay at 200000 while minimax/MiniMax-M3 is 1,000,000.
         """
         connection = migrated_engine.connect()
         try:
@@ -117,18 +117,33 @@ class TestContextTokensMigration:
                     WHERE model IN (
                         'claude-opus-4-7',
                         'claude-sonnet-4-6',
-                        'claude-haiku-4-5-20251001',
-                        'minimax/MiniMax-M3'
+                        'claude-haiku-4-5-20251001'
                     )
                     ORDER BY model
                     """
                 )
             )
             rows = list(result.fetchall())
-            assert len(rows) >= 4, f"Expected at least 4 seeded model rows, got {len(rows)}: {rows}"
+            assert len(rows) >= 3, f"Expected at least 3 seeded model rows, got {len(rows)}: {rows}"
             for model, tokens in rows:
                 assert tokens == 200000, (
                     f"Model {model} expected context_window_tokens=200000, got {tokens}"
+                )
+
+            m3_rows = connection.execute(
+                text(
+                    """
+                    SELECT model, context_window_tokens
+                    FROM agent_runtime_options
+                    WHERE model = 'minimax/MiniMax-M3'
+                    """
+                )
+            ).fetchall()
+            assert len(m3_rows) >= 1, "Expected at least one minimax/MiniMax-M3 row"
+            for model, tokens in m3_rows:
+                assert tokens == 1000000, (
+                    f"Model {model} expected context_window_tokens=1000000 (M3 1M window), "
+                    f"got {tokens}"
                 )
         finally:
             connection.close()

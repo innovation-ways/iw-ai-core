@@ -200,7 +200,7 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
     "claude-opus-4-7": {"input": 15.00, "output": 75.00},
     "openai/gpt-5.3-codex": {"input": 5.00, "output": 20.00},
-    "minimax/MiniMax-M2.7": {"input": 0.20, "output": 1.00},
+    "minimax/MiniMax-M3": {"input": 0.20, "output": 1.00},
 }
 
 

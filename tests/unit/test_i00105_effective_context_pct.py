@@ -198,7 +198,7 @@ class TestI00105EffectiveContextPct:
     def test_raw_window_caps_at_100_contrast_with_effective_can_exceed(self) -> None:
         """Raw window meter clamps to 100 %; effective-budget meter can exceed it.
 
-        At 205K input on MiniMax-M2.7 (131K output reservation):
+        At 205K input on a 204,800-window model (131K output reservation):
         - Raw window pct = 131,072/204,800*100 = 64 % (clamped to 100 pre-fix)
         - Effective pct  = 131,072/(204,800-131,072-20,000)*100 ≈ 244 % (no clamp)
 

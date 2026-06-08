@@ -26,9 +26,7 @@ def test_pricing_known_model_claude_sonnet() -> None:
 def test_pricing_known_model_minimax() -> None:
     """Verifies that pricing known model minimax."""
     db = MagicMock()
-    db.scalars.return_value.all.return_value = [
-        _event("minimax/MiniMax-M2.7", 1_000_000, 1_000_000)
-    ]
+    db.scalars.return_value.all.return_value = [_event("minimax/MiniMax-M3", 1_000_000, 1_000_000)]
     rollup = get_token_cost_rollup(db, "p", "7d")
     assert rollup.total_cost_usd == 1.2
 
@@ -61,6 +59,6 @@ def test_pricing_covers_every_enabled_agent_runtime_option() -> None:
         "claude-sonnet-4-6",
         "claude-opus-4-7",
         "openai/gpt-5.3-codex",
-        "minimax/MiniMax-M2.7",
+        "minimax/MiniMax-M3",
     }
     assert required.issubset(known_models)

@@ -209,8 +209,8 @@ def compute_effective_context_pct(
 
     Unlike ``compute_context_pct`` which divides by the raw ``context_window``,
     this function accounts for the output reservation — required for models where
-    ``max_output_tokens`` is a large fraction of the window (e.g. MiniMax-M2.7:
-    204,800 window / 131,072 max output → effective budget ~74K).
+    ``max_output_tokens`` is a large fraction of the window (e.g. a 204,800-token
+    window with 131,072 max output → effective budget ~74K).
 
     The percentage is **allowed to exceed 100%** so callers can display a
     "PAST CEILING" warning; use ``min(result, 100)`` if a clamped gauge is needed.
