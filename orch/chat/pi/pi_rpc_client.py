@@ -229,14 +229,24 @@ class PiRpcClient:
             ) from None
 
     async def reply_extension_ui(self, request_id: str, value: Any) -> None:
-        """Write an ``extension_ui_response`` to subprocess stdin."""
-        await self.send_command(
-            {
-                "type": "extension_ui_response",
-                "id": request_id,
-                "value": value,
-            }
-        )
+        """Write an ``extension_ui_response`` to subprocess stdin.
+
+        Pi's confirm dialog (``ctx.ui.confirm``, used by the approval flow)
+        reads the response's ``confirmed`` field, while select/input dialogs
+        read ``value`` (verified against pi-coding-agent 0.79
+        ``dist/modes/rpc/rpc-mode.js``).  A boolean ``value`` is therefore
+        encoded as ``confirmed``; any other type is sent as ``value``.
+
+        Args:
+            request_id: The ``id`` of the originating ``extension_ui_request``.
+            value: ``bool`` for confirm dialogs; the chosen value otherwise.
+        """
+        payload: dict[str, Any] = {"type": "extension_ui_response", "id": request_id}
+        if isinstance(value, bool):
+            payload["confirmed"] = value
+        else:
+            payload["value"] = value
+        await self.send_command(payload)
 
     # ------------------------------------------------------------------
     # Properties

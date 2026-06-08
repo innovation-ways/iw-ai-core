@@ -5,9 +5,10 @@ Behaviour:
 - For each {"type": "prompt", "message": <text>}:
     - If message contains "trigger-approval":
         1. Emits agent_start
-        2. Emits extension_ui_request with id="iw-chat-approvals.test-001"
-        3. Waits for extension_ui_response on stdin
-        4. Emits tool_execution_start / tool_execution_end based on the response value
+        2. Emits extension_ui_request (Pi 0.79 confirm shape:
+           method="confirm", title="iw-chat-approvals", message=JSON payload)
+        3. Waits for extension_ui_response on stdin (confirm → ``confirmed``)
+        4. Emits tool_execution_start / tool_execution_end based on the response
         5. Emits agent_end
         6. Emits {"type":"response","ok":true}
     - Otherwise (normal prompt):
@@ -22,8 +23,9 @@ Behaviour:
     1. Emits {"type":"response","ok":true,"messages":[]}
 - For {"type": "set_model"}:
     1. Emits {"type":"response","ok":true}
-- For {"type": "extension_ui_response", "id": ..., "value": ...}:
-    The _approval_queue is populated; the waiting prompt handler reads it.
+- For {"type": "extension_ui_response", "id": ..., "confirmed": ...}:
+    The _approval_queue is populated; the waiting prompt handler reads it
+    (confirm replies carry ``confirmed``; ``value`` is accepted as a fallback).
 
 Usage (by the bash wrapper):
     exec python3 _pi_stub.py --mode rpc --session-dir <dir> [...]
@@ -48,6 +50,11 @@ def _emit(event: dict[str, Any]) -> None:
         sys.stdout.flush()
 
 
+# Fixed id used for the synthetic approval request.  Pi 0.79 emits a random
+# UUID here; the normalizer routes on the confirm title, not the id, so any
+# stable value works and lets tests assert the id round-trips through reply.
+_APPROVAL_REQUEST_ID = "ext-req-001"
+
 # Queue for extension_ui_response events arriving on stdin while a prompt
 # handler is waiting for approval.
 _approval_queue: queue.Queue[dict[str, Any]] = queue.Queue()
@@ -61,21 +68,30 @@ def _handle_prompt(message: str) -> None:
     _emit({"type": "agent_start"})
 
     if "trigger-approval" in message:
-        # Emit an extension_ui_request and wait for the approval response.
+        # Emit an extension_ui_request in the Pi 0.79 confirm shape
+        # (method/title/message, with the iw-chat-approvals payload packed
+        # into ``message`` as JSON) and wait for the approval response.
         _emit(
             {
                 "type": "extension_ui_request",
-                "id": "iw-chat-approvals.test-001",
-                "tool": "bash",
-                "args": {"cmd": "rm temp.txt"},
-                "question": "Allow bash to run 'rm temp.txt'?",
+                "id": _APPROVAL_REQUEST_ID,
+                "method": "confirm",
+                "title": "iw-chat-approvals",
+                "message": json.dumps(
+                    {
+                        "tool": "bash",
+                        "args": {"cmd": "rm temp.txt"},
+                        "question": "Allow bash to run 'rm temp.txt'?",
+                    }
+                ),
             }
         )
         _waiting_for_approval.set()
-        # Block until the extension_ui_response arrives on stdin.
+        # Block until the extension_ui_response arrives on stdin.  Confirm
+        # responses carry ``confirmed`` (boolean); fall back to ``value``.
         try:
             resp = _approval_queue.get(timeout=30)
-            approved = resp.get("value", False)
+            approved = bool(resp.get("confirmed", resp.get("value", False)))
         except queue.Empty:
             approved = False
         _waiting_for_approval.clear()

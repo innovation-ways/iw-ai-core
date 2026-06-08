@@ -211,35 +211,51 @@ async def test_request_response_timeout_raises() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reply_extension_ui_writes_correct_shape() -> None:
-    """reply_extension_ui writes extension_ui_response with the given id and value."""
+async def test_reply_extension_ui_writes_confirmed_for_bool() -> None:
+    """reply_extension_ui encodes a boolean approval as ``confirmed`` (Pi confirm shape)."""
     client, proc = await _make_client_with_mock_proc(b"")
 
-    await client.reply_extension_ui("iw-chat-approvals.abc", True)
+    await client.reply_extension_ui("ext-req-001", True)
 
     written = b"".join(call.args[0] for call in proc.stdin.write.call_args_list)
     assert written.endswith(b"\n"), "expected LF-terminated output"
     payload = json.loads(written[:-1])
     assert payload == {
         "type": "extension_ui_response",
-        "id": "iw-chat-approvals.abc",
-        "value": True,
+        "id": "ext-req-001",
+        "confirmed": True,
     }, f"unexpected payload: {payload!r}"
 
     await client.close()
 
 
 @pytest.mark.asyncio
-async def test_reply_extension_ui_deny_writes_false() -> None:
-    """reply_extension_ui with value=False encodes ``value:false`` in the JSON."""
+async def test_reply_extension_ui_deny_writes_confirmed_false() -> None:
+    """reply_extension_ui with value=False encodes ``confirmed:false`` in the JSON."""
     client, proc = await _make_client_with_mock_proc(b"")
 
-    await client.reply_extension_ui("iw-chat-approvals.deny-test", False)
+    await client.reply_extension_ui("ext-req-deny", False)
 
     written = b"".join(call.args[0] for call in proc.stdin.write.call_args_list)
     payload = json.loads(written.strip())
-    assert payload["value"] is False, f"expected False, got {payload['value']!r}"
-    assert payload["id"] == "iw-chat-approvals.deny-test"
+    assert payload["confirmed"] is False, f"expected False, got {payload.get('confirmed')!r}"
+    assert "value" not in payload, "boolean approvals must not also send 'value'"
+    assert payload["id"] == "ext-req-deny"
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_reply_extension_ui_non_bool_writes_value() -> None:
+    """A non-boolean reply (select/input dialog) is encoded as ``value``, not ``confirmed``."""
+    client, proc = await _make_client_with_mock_proc(b"")
+
+    await client.reply_extension_ui("ext-req-select", "option-b")
+
+    written = b"".join(call.args[0] for call in proc.stdin.write.call_args_list)
+    payload = json.loads(written.strip())
+    assert payload["value"] == "option-b", f"expected value round-trip, got {payload!r}"
+    assert "confirmed" not in payload, "non-boolean replies must not send 'confirmed'"
 
     await client.close()
 

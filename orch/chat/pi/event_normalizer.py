@@ -13,12 +13,16 @@ References: F-00087 §Scope event-mapping table, R-00072 §2.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-# The IW chat-approvals extension uses this prefix for its extension_ui_request
-# ids.  Any id starting with this prefix is translated to ``permission.asked``
-# for the frontend's approval modal.
-_IW_APPROVALS_PREFIX = "iw-chat-approvals."
+# The IW chat-approvals extension raises its approval prompts via
+# ``ctx.ui.confirm`` with this exact dialog title.  Pi (>=0.79) does NOT
+# namespace ``extension_ui_request`` ids by extension — the id is a random
+# UUID — so routing keys on the confirm ``title`` instead.  The structured
+# payload (tool name + args) travels in the confirm ``message`` as a JSON
+# envelope; see ``.pi/extensions/iw-chat-approvals/index.ts``.
+_IW_APPROVALS_TITLE = "iw-chat-approvals"
 
 _PASSTHROUGH_TYPES = frozenset(
     {
@@ -113,16 +117,32 @@ def normalize_pi_event(pi_event: dict[str, Any]) -> dict[str, Any] | None:
     # Extension UI (approval flow)
     # ------------------------------------------------------------------
     if event_type == "extension_ui_request":
-        request_id = pi_event.get("id", "")
-        if isinstance(request_id, str) and request_id.startswith(_IW_APPROVALS_PREFIX):
-            # Route to the F-00086 approval modal.
+        method = pi_event.get("method")
+        title = pi_event.get("title", "")
+        if method == "confirm" and isinstance(title, str) and title.startswith(_IW_APPROVALS_TITLE):
+            # Route to the F-00086 approval modal.  The iw-chat-approvals
+            # extension packs {tool, args, question} into the confirm message
+            # as JSON; degrade gracefully to the raw message if it is not.
+            tool: Any = None
+            args: Any = {}
+            message = pi_event.get("message", "")
+            question = message
+            if isinstance(message, str):
+                try:
+                    parsed = json.loads(message)
+                except (ValueError, TypeError):
+                    parsed = None
+                if isinstance(parsed, dict):
+                    tool = parsed.get("tool")
+                    args = parsed.get("args", {})
+                    question = parsed.get("question", message)
             return {
                 "event": "permission.asked",
                 "data": {
-                    "id": request_id,
-                    "tool": pi_event.get("tool"),
-                    "args": pi_event.get("args"),
-                    "question": pi_event.get("question"),
+                    "id": pi_event.get("id", ""),
+                    "tool": tool,
+                    "args": args,
+                    "question": question,
                 },
             }
         # Other extension UI requests — passthrough for future extensibility.

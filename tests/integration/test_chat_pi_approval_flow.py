@@ -1,14 +1,14 @@
 """Integration tests: Pi approval flow end-to-end (F-00087 AC3).
 
 Uses the stub ``pi`` binary (tests/integration/stubs/pi → _pi_stub.py).
-The stub emits an ``extension_ui_request`` with id="iw-chat-approvals.test-001"
-when the prompt contains "trigger-approval".
+The stub emits a Pi 0.79 ``extension_ui_request`` (method="confirm",
+title="iw-chat-approvals", id="ext-req-001") when the prompt contains
+"trigger-approval".
 
 Tests:
     - test_ask_pattern_surfaces_permission_asked_event
-    - test_approve_response_writes_value_true_to_stdin
-    - test_deny_response_sends_value_false
-    - test_non_iw_approvals_request_passes_through
+    - test_approve_response_writes_confirmed_true_to_stdin
+    - test_deny_response_sends_confirmed_false
 """
 
 from __future__ import annotations
@@ -147,7 +147,7 @@ async def test_ask_pattern_surfaces_permission_asked_event(
 
         evt = approval_events[0]
         data = evt["data"]
-        assert data["id"] == "iw-chat-approvals.test-001", f"unexpected id: {data.get('id')!r}"
+        assert data["id"] == "ext-req-001", f"unexpected id: {data.get('id')!r}"
         assert data["tool"] == "bash", f"unexpected tool: {data.get('tool')!r}"
         assert data["args"] == {"cmd": "rm temp.txt"}, f"unexpected args: {data.get('args')!r}"
         assert data["question"] is not None, "question field must be present"
@@ -156,11 +156,11 @@ async def test_ask_pattern_surfaces_permission_asked_event(
 
 
 @pytest.mark.asyncio
-async def test_approve_response_writes_value_true_to_stdin(
+async def test_approve_response_writes_confirmed_true_to_stdin(
     stub_pi_on_path: Path,
     tmp_path: Path,
 ) -> None:
-    """reply_permission('approve') → extension_ui_response with value:true → stub proceeds.
+    """reply_permission('approve') → extension_ui_response with confirmed:true → stub proceeds.
 
     After approving, the stub emits tool_execution_end with result='ok'.
     We verify the tool_execution.end event arrives, confirming the approval
@@ -196,7 +196,7 @@ async def test_approve_response_writes_value_true_to_stdin(
             pytest.fail("Timed out waiting for permission.asked event")
 
         # Approve the request.
-        await runtime.reply_permission(sid, "iw-chat-approvals.test-001", "approve")
+        await runtime.reply_permission(sid, "ext-req-001", "approve")
 
         # Wait for the tool.execution.end event confirming the stub proceeded.
         with contextlib.suppress(TimeoutError):
@@ -219,11 +219,11 @@ async def test_approve_response_writes_value_true_to_stdin(
 
 
 @pytest.mark.asyncio
-async def test_deny_response_sends_value_false(
+async def test_deny_response_sends_confirmed_false(
     stub_pi_on_path: Path,
     tmp_path: Path,
 ) -> None:
-    """reply_permission('deny') → extension_ui_response with value:false.
+    """reply_permission('deny') → extension_ui_response with confirmed:false.
 
     After denying, the stub emits tool_execution_end with result='denied'.
     """
@@ -256,7 +256,7 @@ async def test_deny_response_sends_value_false(
             pytest.fail("Timed out waiting for permission.asked event")
 
         # Deny the request.
-        await runtime.reply_permission(sid, "iw-chat-approvals.test-001", "deny")
+        await runtime.reply_permission(sid, "ext-req-001", "deny")
 
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(tool_end_ready.wait(), timeout=5.0)

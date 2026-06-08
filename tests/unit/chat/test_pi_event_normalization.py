@@ -1,7 +1,7 @@
 """Unit tests for ``orch.chat.pi.event_normalizer.normalize_pi_event`` (F-00087).
 
 Invariant #6 — extension_ui_request → permission.asked translation preserves
-id, tool, args, question.
+id and unpacks tool, args, question from the confirm message envelope.
 
 Covers every row in the §Scope event-mapping table:
     - message_update / text_delta → message.part.added
@@ -10,8 +10,8 @@ Covers every row in the §Scope event-mapping table:
     - tool_execution_end → tool.execution.end
     - agent_start → session.start
     - agent_end → session.idle
-    - extension_ui_request (iw-chat-approvals.*) → permission.asked
-    - extension_ui_request (other namespace) → extension.ui_request passthrough
+    - extension_ui_request (confirm, title=iw-chat-approvals) → permission.asked
+    - extension_ui_request (other title / non-confirm method) → passthrough
     - extension_error → session.error
     - turn_start / turn_end / compaction_start / compaction_end /
       auto_retry_start / auto_retry_end → passthrough as-is
@@ -21,6 +21,7 @@ Covers every row in the §Scope event-mapping table:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -146,17 +147,25 @@ def test_agent_end_becomes_session_idle() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_extension_ui_request_with_iw_approvals_namespace_becomes_permission_asked() -> None:
-    """extension_ui_request with id starting 'iw-chat-approvals.' → permission.asked.
+def test_extension_ui_request_confirm_with_iw_title_becomes_permission_asked() -> None:
+    """confirm extension_ui_request titled 'iw-chat-approvals' → permission.asked.
 
-    The id, tool, args, and question fields must all be preserved exactly.
+    Pi 0.79 emits method/title/message (id is a random UUID); the tool, args,
+    and question are packed into the message as a JSON envelope and must be
+    unpacked into the permission.asked payload, with the id preserved.
     """
     pi_event = {
         "type": "extension_ui_request",
-        "id": "iw-chat-approvals.request-001",
-        "tool": "bash",
-        "args": {"cmd": "rm temp.txt"},
-        "question": "Allow bash to run 'rm temp.txt'?",
+        "id": "a1b2c3d4-uuid",
+        "method": "confirm",
+        "title": "iw-chat-approvals",
+        "message": json.dumps(
+            {
+                "tool": "bash",
+                "args": {"cmd": "rm temp.txt"},
+                "question": "Allow bash to run 'rm temp.txt'?",
+            }
+        ),
     }
     result = _norm(pi_event)
 
@@ -164,18 +173,39 @@ def test_extension_ui_request_with_iw_approvals_namespace_becomes_permission_ask
         f"expected permission.asked, got {result['event']!r}"
     )
     data = result["data"]
-    assert data["id"] == "iw-chat-approvals.request-001"
+    assert data["id"] == "a1b2c3d4-uuid"
     assert data["tool"] == "bash"
     assert data["args"] == {"cmd": "rm temp.txt"}
     assert data["question"] == "Allow bash to run 'rm temp.txt'?"
 
 
-def test_extension_ui_request_with_other_namespace_passes_through() -> None:
-    """extension_ui_request with a non-iw-chat-approvals id → extension.ui_request."""
+def test_extension_ui_request_confirm_with_malformed_message_degrades() -> None:
+    """A confirm with a non-JSON message still routes, using the raw message as question."""
     pi_event = {
         "type": "extension_ui_request",
-        "id": "some-other-extension.prompt-abc",
-        "payload": {"x": 1},
+        "id": "uuid-2",
+        "method": "confirm",
+        "title": "iw-chat-approvals",
+        "message": "not json at all",
+    }
+    result = _norm(pi_event)
+
+    assert result["event"] == "permission.asked"
+    data = result["data"]
+    assert data["id"] == "uuid-2"
+    assert data["tool"] is None
+    assert data["args"] == {}
+    assert data["question"] == "not json at all"
+
+
+def test_extension_ui_request_with_other_title_passes_through() -> None:
+    """A confirm from a different extension title → extension.ui_request passthrough."""
+    pi_event = {
+        "type": "extension_ui_request",
+        "id": "uuid-3",
+        "method": "confirm",
+        "title": "some-other-extension",
+        "message": "{}",
     }
     result = _norm(pi_event)
 
@@ -184,19 +214,18 @@ def test_extension_ui_request_with_other_namespace_passes_through() -> None:
     assert result["data"] == pi_event
 
 
-def test_extension_ui_request_exact_prefix_required() -> None:
-    """Only the exact 'iw-chat-approvals.' prefix routes to permission.asked."""
-    # This id starts with a different prefix — must NOT match.
+def test_extension_ui_request_non_confirm_method_passes_through() -> None:
+    """A non-confirm method (e.g. notify) with the iw title does NOT route to approval."""
     pi_event = {
         "type": "extension_ui_request",
-        "id": "iw-chat-approvals-DIFFERENT.xyz",
-        "tool": "bash",
-        "args": {},
-        "question": "?",
+        "id": "uuid-4",
+        "method": "notify",
+        "title": "iw-chat-approvals",
+        "message": "fyi",
     }
     result = _norm(pi_event)
     assert result["event"] == "extension.ui_request", (
-        "prefix without dot should NOT match iw-chat-approvals."
+        "only method=='confirm' should route to permission.asked"
     )
 
 
@@ -274,10 +303,10 @@ def test_normalizer_does_not_add_tab_id() -> None:
         },
         {
             "type": "extension_ui_request",
-            "id": "iw-chat-approvals.abc",
-            "tool": "bash",
-            "args": {},
-            "question": "?",
+            "id": "abc-uuid",
+            "method": "confirm",
+            "title": "iw-chat-approvals",
+            "message": json.dumps({"tool": "bash", "args": {}, "question": "?"}),
         },
         {"type": "unknown_xyz"},
     ]
