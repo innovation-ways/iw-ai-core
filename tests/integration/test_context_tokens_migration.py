@@ -102,7 +102,10 @@ class TestContextTokensMigration:
 
         Note: some models appear multiple times with different cli_tools
         (e.g. claude-opus-4-7 with both opencode and claude). That's valid —
-        we just verify ALL rows for these models have the seeded value.
+        we just verify ALL rows for these models have the seeded value. The
+        minimax row is seeded as M2.7 by CR-00066 and renamed to M3 at head by
+        migration 08850d673ff6 (context_window_tokens preserved), so at head we
+        assert on minimax/MiniMax-M3.
         """
         connection = migrated_engine.connect()
         try:
@@ -115,7 +118,7 @@ class TestContextTokensMigration:
                         'claude-opus-4-7',
                         'claude-sonnet-4-6',
                         'claude-haiku-4-5-20251001',
-                        'minimax/MiniMax-M2.7'
+                        'minimax/MiniMax-M3'
                     )
                     ORDER BY model
                     """
@@ -144,7 +147,7 @@ class TestContextTokensMigration:
                         'claude-opus-4-8',
                         'claude-sonnet-4-6',
                         'claude-haiku-4-5-20251001',
-                        'minimax/MiniMax-M2.7'
+                        'minimax/MiniMax-M3'
                     )
                     """
                 )

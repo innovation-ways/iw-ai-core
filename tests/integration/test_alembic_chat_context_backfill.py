@@ -39,7 +39,10 @@ def test_backfills_null_only_and_downgrade_reverts_only_written_values(db_engine
             )
         )
 
-    alembic_command.upgrade(cfg, "head")
+    # Apply ONLY the migration under test, not head — migrations stacked above
+    # it (e.g. the M2.7→M3 model swap) would otherwise mutate the M2.7 row this
+    # test inspects. See tests/CLAUDE.md rule 4a (pin to a specific revision).
+    alembic_command.upgrade(cfg, REVISION_UNDER_TEST)
 
     with db_engine.connect() as conn:
         filled = conn.execute(

@@ -75,12 +75,15 @@ class TestI00105MaxOutputTokensMigration:
             f"max_output_tokens type should be INTEGER, got {col['type']}"
         )
 
-    def test_migration_backfills_pi_minimax_m2_7(self, migrated_engine: Engine) -> None:
-        """pi / minimax/MiniMax-M2.7 row has max_output_tokens = 131,072 after upgrade.
+    def test_migration_backfills_pi_minimax(self, migrated_engine: Engine) -> None:
+        """pi / minimax MiniMax row has max_output_tokens = 131,072 after upgrade.
 
-        This is the primary backfill target of the I-00105 migration:
-        MiniMax-M2.7 has a 204,800-token context window but only 131,072-token
-        max output, so without this reservation the context gauge would show 64 %
+        This is the primary backfill target of the I-00105 migration. The row
+        was originally seeded as minimax/MiniMax-M2.7; migration 08850d673ff6
+        later renamed it to minimax/MiniMax-M3 while preserving the backfilled
+        max_output_tokens. At head we therefore assert on the M3 model string.
+        MiniMax has a 204,800-token context window but only 131,072-token max
+        output, so without this reservation the context gauge would show 64 %
         when the step is actually at or past its effective ceiling (~244 %).
         """
         connection = migrated_engine.connect()
@@ -91,28 +94,28 @@ class TestI00105MaxOutputTokensMigration:
                     SELECT cli_tool, model, max_output_tokens
                     FROM agent_runtime_options
                     WHERE cli_tool = 'pi'
-                      AND model    = 'minimax/MiniMax-M2.7'
+                      AND model    = 'minimax/MiniMax-M3'
                     """
                 )
             )
             rows = list(result.fetchall())
             assert len(rows) == 1, (
-                f"Expected exactly one pi/MiniMax-M2.7 row, got {len(rows)}: {rows}"
+                f"Expected exactly one pi/MiniMax-M3 row, got {len(rows)}: {rows}"
             )
             cli_tool, model, max_output = rows[0]
             assert max_output == 131072, (
-                f"pi/MiniMax-M2.7 max_output_tokens must be 131072 per I-00105 spec, "
-                f"got {max_output}"
+                f"pi/MiniMax max_output_tokens must be 131072 per I-00105 spec, got {max_output}"
             )
         finally:
             connection.close()
 
     def test_other_runtimes_remain_null(self, migrated_engine: Engine) -> None:
-        """Non-pi/MiniMax-M2.7 runtimes have NULL max_output_tokens (graceful fallback).
+        """Non-pi/MiniMax runtimes have NULL max_output_tokens (graceful fallback).
 
         The migration only backfills known models; unknown models fall back to
         NULL so the effective-budget meter degrades to raw-window behaviour
-        (the safe fallback, not a crash).
+        (the safe fallback, not a crash). The backfilled row is pi/MiniMax-M3 at
+        head (renamed from M2.7 by migration 08850d673ff6).
         """
         connection = migrated_engine.connect()
         try:
@@ -121,7 +124,7 @@ class TestI00105MaxOutputTokensMigration:
                     """
                     SELECT cli_tool, model, max_output_tokens
                     FROM agent_runtime_options
-                    WHERE NOT (cli_tool = 'pi' AND model = 'minimax/MiniMax-M2.7')
+                    WHERE NOT (cli_tool = 'pi' AND model = 'minimax/MiniMax-M3')
                     ORDER BY cli_tool, model
                     """
                 )
@@ -130,7 +133,7 @@ class TestI00105MaxOutputTokensMigration:
             null_rows = [(ct, m, v) for ct, m, v in rows if v is None]
             non_null_unexpected = [(ct, m, v) for ct, m, v in rows if v is not None]
             assert len(non_null_unexpected) == 0, (
-                f"Only pi/MiniMax-M2.7 should be backfilled; "
+                f"Only pi/MiniMax-M3 should be backfilled; "
                 f"found non-NULL for others: {non_null_unexpected}"
             )
             # At least some rows must exist and be NULL (not all runtimes are unknown)
@@ -170,13 +173,14 @@ class TestI00105MaxOutputTokensMigration:
         session = db_session_factory(bind=connection)
 
         try:
-            # Find the pi/MiniMax-M2.7 row (should already have 131072 from backfill)
+            # Find the pi/MiniMax row (renamed M2.7→M3 by 08850d673ff6; should
+            # already have 131072 from the I-00105 backfill, preserved by the swap)
             option = (
                 session.query(AgentRuntimeOption)
-                .filter_by(cli_tool="pi", model="minimax/MiniMax-M2.7")
+                .filter_by(cli_tool="pi", model="minimax/MiniMax-M3")
                 .first()
             )
-            assert option is not None, "pi/MiniMax-M2.7 row must exist"
+            assert option is not None, "pi/MiniMax-M3 row must exist"
             assert option.max_output_tokens == 131072, (
                 f"Backfill value should be 131072, got {option.max_output_tokens}"
             )

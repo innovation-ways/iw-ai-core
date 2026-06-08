@@ -184,9 +184,9 @@ def _build_project_config(project_id: str, entry: dict[str, Any]) -> ProjectConf
             sorted(_VALID_CLI_TOOLS),
         )
         return None
-    # model: read from projects.toml entry; default "minimax/MiniMax-M2.7"
+    # model: read from projects.toml entry; default "minimax/MiniMax-M3"
     # (opencode --model expects provider/model_id format; bare "minimax" crashes)
-    model: str = entry.get("model", "minimax/MiniMax-M2.7")
+    model: str = entry.get("model", "minimax/MiniMax-M3")
     worktree_base: str = iw_config.get("worktree_base", ".worktrees")
 
     dev_clone: str | None = iw_config.get("dev_clone") or None
