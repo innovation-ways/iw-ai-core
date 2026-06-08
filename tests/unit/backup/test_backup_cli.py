@@ -120,6 +120,65 @@ def test_list_empty_reports_no_backups() -> None:
     assert "No backups" in result.output
 
 
+def test_list_reads_all_attrs_inside_session() -> None:
+    """Regression: list must not access row attrs after the session has closed.
+
+    The bug was that the rendering loop lived outside the
+    ``with get_session()`` block, so reading lazy attributes like
+    ``row.bytes`` triggered ``DetachedInstanceError`` on a real SQLAlchemy
+    session. This test simulates that with a fake session that flips a
+    "closed" flag on ``__exit__`` and rows whose attribute access raises
+    once closed.
+    """
+    closed = {"flag": False}
+
+    class _ClosingRow:
+        def __init__(self, data: dict[str, Any]) -> None:
+            self._data = data
+
+        def __getattr__(self, name: str) -> Any:
+            if closed["flag"]:
+                raise RuntimeError(f"attribute {name!r} accessed after session close")
+            return self._data[name]
+
+    session = _FakeSession(
+        [
+            _ClosingRow(
+                {
+                    "id": "job-1",
+                    "backup_type": DbBackupType.manual,
+                    "label": "pre-migration",
+                    "status": DbBackupStatus.success,
+                    "created_at": "2026-06-01T03:00:00+00:00",
+                    "bytes": 2048,
+                    "path": "/opt/postgres/data/backups/20260601T030000Z",
+                }
+            ),
+        ]
+    )
+
+    @contextmanager
+    def _closing_session_factory() -> Any:
+        try:
+            yield session
+        finally:
+            closed["flag"] = True  # simulate SQLAlchemy session close on __exit__
+
+    runner = CliRunner()
+    result = runner.invoke(
+        db_backup,
+        ["list"],
+        obj={"get_session": _closing_session_factory},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "pre-migration" in result.output
+    assert "2048" in result.output
+    # The "close" ran from the ``with`` block; reaching this point means
+    # no row attribute was touched afterwards.
+    assert closed["flag"] is True
+
+
 def test_create_records_manual_backup(monkeypatch: Any) -> None:
     """Verifies that iw db-backup create delegates to the engine with backup_type=manual."""
     captured: dict[str, Any] = {}

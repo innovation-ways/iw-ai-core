@@ -97,20 +97,33 @@ def list_backups(ctx: click.Context) -> None:
         rows = list(
             session.scalars(select(DbBackupJob).order_by(DbBackupJob.created_at.desc())).all()
         )
+        # Read every column we render while the session is still open.
+        # Accessing row.bytes (or any other lazy attribute) after the
+        # ``with`` block exits triggers DetachedInstanceError on a
+        # SQLAlchemy row that wasn't fully eager-loaded.
+        rendered: list[tuple[str, str, str, str, str, str]] = []
+        for row in rows:
+            size = "-" if row.bytes is None else str(row.bytes)
+            label = row.label or "-"
+            rendered.append(
+                (
+                    row.backup_type.value,
+                    row.status.value,
+                    str(row.created_at),
+                    size,
+                    label,
+                    row.path,
+                )
+            )
 
-    if not rows:
+    if not rendered:
         click.echo("No backups recorded.")
         return
 
     header = f"{'TYPE':<10} {'STATUS':<8} {'CREATED':<32} {'SIZE':>12}  LABEL / PATH"
     click.echo(header)
-    for row in rows:
-        size = "-" if row.bytes is None else str(row.bytes)
-        label = row.label or "-"
-        click.echo(
-            f"{row.backup_type.value:<10} {row.status.value:<8} "
-            f"{str(row.created_at):<32} {size:>12}  {label}  {row.path}"
-        )
+    for backup_type, status, created_at, size, label, path in rendered:
+        click.echo(f"{backup_type:<10} {status:<8} {created_at:<32} {size:>12}  {label}  {path}")
 
 
 @db_backup.command("prune")

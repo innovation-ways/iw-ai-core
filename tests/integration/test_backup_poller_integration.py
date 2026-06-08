@@ -92,3 +92,89 @@ def test_poll_missed_window_runs_scheduled_backup(
         job = check.scalars(select(DbBackupJob)).one()
         assert job.backup_type == DbBackupType.scheduled
         assert job.status == DbBackupStatus.success
+
+
+def test_poll_does_not_retry_after_failed_attempt_in_same_window(
+    db_session_factory: sessionmaker, monkeypatch: Any
+) -> None:
+    """Regression: a failed attempt in the current window must suppress re-tries.
+
+    Production bug: when every backup failed with the ``pg_authid``
+    superuser trap, ``is_scheduled_backup_due`` returned True on every
+    daemon poll cycle (it only checked ``last_success_at``, which stayed
+    NULL). The poller re-fired every ~60 s, flooding the jobs table with
+    6,000+ failed rows over 5 days. This test pins the fix: once a
+    scheduled attempt (success OR failure) has been made inside the
+    current daily window, the next poll must be a no-op.
+    """
+    from orch.daemon import backup_poller as poller_mod
+
+    calls: list[str] = []
+    monkeypatch.setattr(poller_mod, "create_backup", _fake_create_backup_factory(calls))
+
+    fixed_now = datetime(2026, 6, 1, 10, 0, tzinfo=UTC)
+
+    # Pre-seed a FAILED scheduled job that already happened at 04:00 today
+    # (inside the 03:00 window).
+    with db_session_factory() as seed:
+        seed.add(
+            DbBackupJob(
+                backup_type=DbBackupType.scheduled,
+                status=DbBackupStatus.failed,
+                path="/tmp/backups/earlier-failure",  # noqa: S108
+                created_at=datetime(2026, 6, 1, 4, 0, tzinfo=UTC),
+            )
+        )
+        seed.commit()
+
+    poller = BackupPoller(
+        db_session_factory,
+        _config(enabled=True),
+        now_fn=lambda: fixed_now,
+    )
+    poller.poll()
+
+    # Critical: no new backup attempt, because a failed attempt already
+    # happened in the current window.
+    assert calls == []
+    with db_session_factory() as check:
+        jobs = check.scalars(select(DbBackupJob)).all()
+        assert len(jobs) == 1
+        assert jobs[0].status == DbBackupStatus.failed
+        assert jobs[0].created_at == datetime(2026, 6, 1, 4, 0, tzinfo=UTC)
+
+
+def test_poll_retries_after_failed_attempt_in_previous_window(
+    db_session_factory: sessionmaker, monkeypatch: Any
+) -> None:
+    """A failed attempt from YESTERDAY's window must still let today's backup run.
+
+    The failure-backoff rule is per-window, not forever: a stale failure
+    from a prior daily window should not poison today's catch-up.
+    """
+    from orch.daemon import backup_poller as poller_mod
+
+    calls: list[str] = []
+    monkeypatch.setattr(poller_mod, "create_backup", _fake_create_backup_factory(calls))
+
+    fixed_now = datetime(2026, 6, 2, 10, 0, tzinfo=UTC)  # day after yesterday's failure
+
+    with db_session_factory() as seed:
+        seed.add(
+            DbBackupJob(
+                backup_type=DbBackupType.scheduled,
+                status=DbBackupStatus.failed,
+                path="/tmp/backups/yesterday-failure",  # noqa: S108
+                created_at=datetime(2026, 6, 1, 4, 0, tzinfo=UTC),
+            )
+        )
+        seed.commit()
+
+    poller = BackupPoller(
+        db_session_factory,
+        _config(enabled=True),
+        now_fn=lambda: fixed_now,
+    )
+    poller.poll()
+
+    assert calls == [DbBackupType.scheduled.value]

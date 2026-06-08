@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from orch.backup.engine import create_backup
 from orch.backup.retention import prune_scheduled_backups
-from orch.db.models import DbBackupJob, DbBackupStatus, DbBackupType
+from orch.db.models import DbBackupJob, DbBackupType
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -66,28 +66,36 @@ def is_scheduled_backup_due(
     *,
     now: datetime,
     backup_time: str,
-    last_success_at: datetime | None,
+    last_attempt_at: datetime | None,
     enabled: bool,
 ) -> bool:
     """Return True if a scheduled backup should run now.
 
+    "Attempt" means any scheduled backup recorded in ``db_backup_jobs``,
+    regardless of success or failure. Counting failed attempts is what
+    bounds the retry loop when a persistent config error (e.g. the
+    ``pg_authid`` superuser trap) makes every backup fail — without this,
+    the poller would re-fire every daemon poll cycle and flood the jobs
+    table with a fresh failed row each time.
+
     Args:
         now: Current datetime (timezone-aware).
         backup_time: Configured backup time in ``HH:MM`` format.
-        last_success_at: Timestamp of the most recent successful scheduled
-            backup, or None if no backup has ever run.
+        last_attempt_at: Timestamp of the most recent scheduled backup
+            attempt (success OR failure), or None if no scheduled backup
+            has ever been attempted.
         enabled: Whether scheduled backups are enabled in config.
 
     Returns:
-        True when a backup is overdue; False when disabled or already run
-        within the current daily window.
+        True when a backup is overdue; False when disabled or when an
+        attempt has already been made in the current daily window.
     """
     if not enabled:
         return False
     interval_start = _interval_start(now.astimezone(UTC), backup_time)
-    if last_success_at is None:
+    if last_attempt_at is None:
         return True
-    return last_success_at.astimezone(UTC) < interval_start
+    return last_attempt_at.astimezone(UTC) < interval_start
 
 
 class BackupPoller:
@@ -119,7 +127,7 @@ class BackupPoller:
         now = self._now_fn().astimezone(UTC)
         try:
             with self._session_factory() as db:
-                last_success = self._last_scheduled_success_at(db)
+                last_attempt = self._last_scheduled_attempt_at(db)
         except Exception:
             logger.exception("BackupPoller: failed to query last scheduled backup")
             return
@@ -127,7 +135,7 @@ class BackupPoller:
         if not is_scheduled_backup_due(
             now=now,
             backup_time=self.config.backup_time,
-            last_success_at=last_success,
+            last_attempt_at=last_attempt,
             enabled=self.config.backup_enabled,
         ):
             return
@@ -165,21 +173,24 @@ class BackupPoller:
             except Exception:
                 logger.exception("Scheduled backup succeeded but prune failed")
 
-    def _last_scheduled_success_at(self, db: Session) -> datetime | None:
-        """Query the timestamp of the most recent successful scheduled backup.
+    def _last_scheduled_attempt_at(self, db: Session) -> datetime | None:
+        """Query the timestamp of the most recent scheduled backup attempt.
+
+        Includes both successful and failed attempts so the poller does not
+        re-fire on the next cycle when the prior attempt failed (the
+        ``last_success_at``-only variant caused a tight retry loop whenever
+        a persistent config error — e.g. the ``pg_authid`` superuser trap —
+        made every backup fail).
 
         Args:
             db: Active database session.
 
         Returns:
-            Timestamp of the last successful scheduled backup, or None if none exists.
+            Timestamp of the last scheduled backup attempt, or None if none exists.
         """
         stmt = (
             select(DbBackupJob.created_at)
-            .where(
-                DbBackupJob.backup_type == DbBackupType.scheduled,
-                DbBackupJob.status == DbBackupStatus.success,
-            )
+            .where(DbBackupJob.backup_type == DbBackupType.scheduled)
             .order_by(DbBackupJob.created_at.desc())
             .limit(1)
         )

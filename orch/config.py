@@ -161,6 +161,11 @@ class DaemonConfig:
     backup_dir: str = "/opt/postgres/data/backups"
     backup_retention_days: int = 30
     backup_time: str = "03:00"
+    # Optional superuser credentials used ONLY for the `pg_dumpall --globals-only`
+    # step, which must read role password hashes from `pg_authid` (superuser-only).
+    # When unset, the globals dump falls back to the app role (db_user/db_password).
+    backup_db_user: str | None = None
+    backup_db_password: str | None = None
 
     # Code Understanding
     index_path: str = DEFAULT_INDEX_PATH
@@ -243,6 +248,8 @@ def load_config() -> DaemonConfig:
         backup_dir=os.environ.get("IW_CORE_BACKUP_DIR", "/opt/postgres/data/backups"),
         backup_retention_days=int(os.environ.get("IW_CORE_BACKUP_RETENTION_DAYS", "30")),
         backup_time=os.environ.get("IW_CORE_BACKUP_TIME", "03:00"),
+        backup_db_user=os.environ.get("IW_CORE_BACKUP_DB_USER") or None,
+        backup_db_password=os.environ.get("IW_CORE_BACKUP_DB_PASSWORD") or None,
         log_level=_require("IW_CORE_LOG_LEVEL"),
         log_file=_require("IW_CORE_LOG_FILE"),
         index_path=str(Path(os.environ.get("IW_CORE_INDEX_PATH", DEFAULT_INDEX_PATH)).expanduser()),

@@ -140,12 +140,37 @@ def _resolve_tools(which_func: Callable[[str], str | None], server_major: int) -
     }
 
 
-def _argv_for_db_tool(tool_ref: str, config: Any) -> list[str]:
+def _parse_docker_ref(tool_ref: str) -> tuple[str, str]:
+    """Split a ``"docker:<image>:<binary>"`` reference into image and binary.
+
+    The image may itself contain a colon (e.g. ``postgres:15-alpine``), so the
+    binary — which never contains a colon — is split off the right-hand side
+    rather than splitting left-to-right.
+
+    Args:
+        tool_ref: A Docker tool reference of the form ``docker:<image>:<binary>``.
+
+    Returns:
+        A ``(image, binary)`` tuple, e.g. ``("postgres:15-alpine", "pg_dump")``.
+    """
+    remainder = tool_ref[len("docker:") :]
+    image, binary = remainder.rsplit(":", 1)
+    return image, binary
+
+
+def _argv_for_db_tool(tool_ref: str, config: Any, user: str | None = None) -> list[str]:
     """Build the argv prefix for a pg_dump/pg_dumpall invocation.
 
     Supports both host-binary paths (plain string) and Docker image references
     (``"docker:<image>:<binary>"``).
+
+    Args:
+        tool_ref: Host-binary path or ``docker:<image>:<binary>`` reference.
+        config: Loaded config providing ``db_host``/``db_port``/``db_user``.
+        user: Connection role override; defaults to ``config.db_user`` when None.
+            Used to run ``pg_dumpall --globals-only`` as a superuser.
     """
+    db_user = user if user is not None else config.db_user
     if not tool_ref.startswith("docker:"):
         return [
             tool_ref,
@@ -154,9 +179,9 @@ def _argv_for_db_tool(tool_ref: str, config: Any) -> list[str]:
             "-p",
             str(config.db_port),
             "-U",
-            config.db_user,
+            db_user,
         ]
-    _, image, binary = tool_ref.split(":", 2)
+    image, binary = _parse_docker_ref(tool_ref)
     return [
         "docker",
         "run",
@@ -172,21 +197,32 @@ def _argv_for_db_tool(tool_ref: str, config: Any) -> list[str]:
         "-p",
         str(config.db_port),
         "-U",
-        config.db_user,
+        db_user,
     ]
 
 
 def _argv_for_restore_list(tool_ref: str, archive_path: Path) -> list[str]:
-    """Build argv for pg_restore --list integrity check, supporting Docker refs."""
+    """Build argv for pg_restore --list integrity check, supporting Docker refs.
+
+    For the Docker fallback the archive lives on the host filesystem, so
+    the parent directory of ``archive_path`` is bind-mounted into the
+    container at the same path. Without the mount ``pg_restore`` inside
+    the container would see the literal host path as a non-existent
+    in-container file and fail with ``No such file or directory`` even
+    though the file is right there on the host.
+    """
     if not tool_ref.startswith("docker:"):
         return [tool_ref, "--list", str(archive_path)]
-    _, image, binary = tool_ref.split(":", 2)
+    image, binary = _parse_docker_ref(tool_ref)
+    parent_dir = str(archive_path.parent.resolve())
     return [
         "docker",
         "run",
         "--rm",
         "--network",
         "host",
+        "-v",
+        f"{parent_dir}:{parent_dir}",
         image,
         binary,
         "--list",
@@ -271,9 +307,19 @@ def create_backup(
         dump_argv.extend(["-Fc", "-d", config.db_name])
         _run_cmd(dump_argv, output_path=archive_path, env=env, command_runner=command_runner)
 
-        globals_argv = _argv_for_db_tool(tools["pg_dumpall"], config)
+        # pg_dumpall --globals-only reads role password hashes from pg_authid, which
+        # requires a superuser. Use the optional backup superuser when configured,
+        # otherwise fall back to the app role (db_user).
+        globals_user = getattr(config, "backup_db_user", None)
+        globals_argv = _argv_for_db_tool(tools["pg_dumpall"], config, user=globals_user)
         globals_argv.append("--globals-only")
-        _run_cmd(globals_argv, output_path=globals_path, env=env, command_runner=command_runner)
+        globals_env = env
+        if globals_user is not None:
+            globals_env = env.copy()
+            globals_env["PGPASSWORD"] = getattr(config, "backup_db_password", None) or ""
+        _run_cmd(
+            globals_argv, output_path=globals_path, env=globals_env, command_runner=command_runner
+        )
         globals_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
         list_argv = _argv_for_restore_list(tools["pg_restore"], archive_path)
