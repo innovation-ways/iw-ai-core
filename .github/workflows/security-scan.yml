@@ -29,7 +29,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@cda7432b7ae1feb69168d44b610cb8e3cdbd09b0 # v1
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v1
 
       - name: Install deps
         run: uv sync --frozen
@@ -119,7 +119,7 @@ jobs:
           persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@cda7432b7ae1feb69168d44b610cb8e3cdbd09b0 # v1
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v1
 
       - name: Install deps
         run: uv sync --frozen
